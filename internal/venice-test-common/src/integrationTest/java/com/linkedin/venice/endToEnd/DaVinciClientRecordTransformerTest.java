@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_SUBSCRIBE_RESOURCES_DURING_BOOTSTRAP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
@@ -97,14 +98,15 @@ public class DaVinciClientRecordTransformerTest {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testRecordTransformer(DaVinciConfig clientConfig) throws Exception {
-    String storeName = Utils.getUniqueString("test-store");
+    String storeName1 = Utils.getUniqueString("test-store");
+    String storeName2 = Utils.getUniqueString("test-store");
     boolean pushStatusStoreEnabled = false;
     boolean chunkingEnabled = false;
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
     String customValue = "a";
     int numKeys = 10;
-
-    setUpStore(storeName, pushStatusStoreEnabled, chunkingEnabled, compressionStrategy, customValue, numKeys);
+    setUpStore(storeName1, pushStatusStoreEnabled, chunkingEnabled, compressionStrategy, customValue, numKeys);
+    setUpStore(storeName2, pushStatusStoreEnabled, chunkingEnabled, compressionStrategy, customValue, numKeys);
 
     VeniceProperties backendConfig = buildRecordTransformerBackendConfig(pushStatusStoreEnabled);
     MetricsRepository metricsRepository = new MetricsRepository();
@@ -114,6 +116,8 @@ public class DaVinciClientRecordTransformerTest {
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
         backendConfig)) {
+      DaVinciClient<Integer, Object> client = factory.getAndStartGenericAvroClient(storeName1, clientConfig);
+
       DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
           (storeVersion) -> new TestStringRecordTransformer(storeVersion, true),
           String.class,
@@ -121,18 +125,22 @@ public class DaVinciClientRecordTransformerTest {
       clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
       DaVinciClient<Integer, Object> clientWithRecordTransformer =
-          factory.getAndStartGenericAvroClient(storeName, clientConfig);
-
+          factory.getAndStartGenericAvroClient(storeName2, clientConfig);
+      client.subscribeAll().get();
       // Test non-existent key access
       clientWithRecordTransformer.subscribeAll().get();
       assertNull(clientWithRecordTransformer.get(numKeys + 1).get());
 
       // Test single-get access
       for (int k = 1; k <= numKeys; ++k) {
-        Object valueObj = clientWithRecordTransformer.get(k).get();
-        String expectedValue = "a" + k + "Transformed";
+        Object valueObj = client.get(k).get();
+        String expectedValue = "a" + k;
+        assertEquals(valueObj.toString(), expectedValue);
+        valueObj = clientWithRecordTransformer.get(k).get();
+        expectedValue = "a" + k + "Transformed";
         assertEquals(valueObj.toString(), expectedValue);
       }
+      client.unsubscribeAll();
       clientWithRecordTransformer.unsubscribeAll();
     }
   }
@@ -573,6 +581,7 @@ public class DaVinciClientRecordTransformerTest {
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true)
         .put(PUSH_STATUS_STORE_ENABLED, pushStatusStoreEnabled)
+        .put(DAVINCI_SUBSCRIBE_RESOURCES_DURING_BOOTSTRAP_ENABLED, false)
         .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000);
 
     if (pushStatusStoreEnabled) {
