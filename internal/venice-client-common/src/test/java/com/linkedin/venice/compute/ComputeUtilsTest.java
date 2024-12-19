@@ -1,7 +1,10 @@
 package com.linkedin.venice.compute;
 
-import static com.linkedin.venice.utils.TestWriteUtils.*;
-import static org.testng.Assert.*;
+import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsString;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.avro.api.PrimitiveFloatList;
 import com.linkedin.avro.fastserde.primitive.PrimitiveFloatArrayList;

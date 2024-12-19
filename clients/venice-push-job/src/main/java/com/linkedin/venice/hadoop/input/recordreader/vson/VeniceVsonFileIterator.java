@@ -22,15 +22,27 @@ public class VeniceVsonFileIterator implements VeniceRecordIterator {
   private final BytesWritable currentKey = new BytesWritable();
   private final BytesWritable currentValue = new BytesWritable();
 
-  public VeniceVsonFileIterator(FileSystem fs, Path hdfsPath, VeniceVsonRecordReader recordReader) {
-    if (fs != null && hdfsPath != null) {
-      try {
-        fileReader = new SequenceFile.Reader(fs, hdfsPath, new Configuration());
-      } catch (IOException e) {
-        LOGGER.info("Path: {} is not a sequence file.", hdfsPath.getName());
-      }
-    } else {
-      throw new VeniceException("Invalid file system or path");
+  public VeniceVsonFileIterator(FileSystem fileSystem, Path hdfsPath, VeniceVsonRecordReader recordReader) {
+    if (fileSystem == null) {
+      LOGGER.error("FileSystem cannot be null for VeniceVsonFileIterator");
+      throw new VeniceException("FileSystem cannot be null for VeniceVsonFileIterator");
+    }
+    if (hdfsPath == null) {
+      LOGGER.error("Path cannot be null for VeniceVsonFileIterator");
+      throw new VeniceException("Path cannot be null for VeniceVsonFileIterator");
+    }
+    if (recordReader == null) {
+      LOGGER.error("RecordReader cannot be null for VeniceVsonFileIterator");
+      throw new VeniceException("RecordReader cannot be null for VeniceVsonFileIterator");
+    }
+
+    try {
+      this.fileReader = new SequenceFile.Reader(fileSystem, hdfsPath, new Configuration());
+    } catch (IOException e) {
+      String errorMessage =
+          String.format("Failed to open file: %s. Ensure that the file is a valid sequence file.", hdfsPath.getName());
+      LOGGER.error(errorMessage, e);
+      throw new VeniceException(errorMessage, e);
     }
 
     this.recordReader = recordReader;
