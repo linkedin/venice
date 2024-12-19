@@ -21,6 +21,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -37,8 +38,11 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.samza.VeniceSystemFactory;
+import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -47,6 +51,7 @@ import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
@@ -55,6 +60,7 @@ import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.samza.config.MapConfig;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -132,6 +138,135 @@ public class TestActiveActiveReplicationForIncPush {
   public void testAAReplicationForIncPush() throws Exception {
     // TODO: Remove this hack if we solve the test-retry plugin's flakiness with DataProviders
     testAAReplicationForIncPush(false);
+  }
+
+  /**
+   * This test reproduces an issue where the real-time topic partition count did not match the hybrid version
+   * partition count under the following scenario:
+   *
+   * 1. Create a store with 1 partition.
+   * 2. Perform a batch push, resulting in a batch version with 1 partition.
+   * 3. Update the store to have 3 partitions and convert it into a hybrid store.
+   * 4. Start real-time writes using push type {@link com.linkedin.venice.meta.Version.PushType#STREAM}.
+   * 5. Perform a full push, which creates a hybrid version with 3 partitions. This push results in an error
+   *    because, after the topic switch to real-time consumers, partitions 1 and 2 of the real-time topic cannot
+   *    be found, as it has only 1 partition (partition: 0).
+   *
+   * The root cause of the issue lies in step 4, where the real-time topic was created if it did not already exist.
+   * The partition count for the real-time topic was derived from the largest existing version, which in this case
+   * was the batch version with 1 partition. This caused the real-time topic to have incorrect partition count (1
+   * instead of 3).
+   *
+   * To resolve this issue:
+   * - STREAM push type is no longer allowed if there is no online hybrid version.
+   * - If there is an online hybrid version, it is safe to assume that the real-time topic partition count matches
+   *   the hybrid version partition count.
+   * - The real-time topic is no longer created if it does not exist as part of the `requestTopicForPushing` method.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testRealTimeTopicPartitionCountMatchesHybridVersion() throws Exception {
+    File inputDirBatch = getTempDataDirectory();
+    String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
+    String inputDirPathBatch = "file:" + inputDirBatch.getAbsolutePath();
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
+      String storeName = Utils.getUniqueString("store");
+      Properties propsBatch =
+          IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathBatch, storeName);
+      propsBatch.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+      Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDirBatch);
+      String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+      String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+
+      TestUtils.assertCommand(parentControllerClient.createNewStore(storeName, "owner", keySchemaStr, valueSchemaStr));
+      UpdateStoreQueryParams updateStoreParams1 =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA).setPartitionCount(1);
+      TestUtils.assertCommand(parentControllerClient.updateStore(storeName, updateStoreParams1));
+
+      // Run a batch push first to create a batch version with 1 partition
+      try (VenicePushJob job = new VenicePushJob("Test push job batch with NR + A/A all fabrics", propsBatch)) {
+        job.run();
+      }
+
+      // wait until version is created and verify the partition count
+      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+        StoreResponse storeResponse = assertCommand(parentControllerClient.getStore(storeName));
+        StoreInfo storeInfo = storeResponse.getStore();
+        assertNotNull(storeInfo, "Store info is null.");
+        assertNull(storeInfo.getHybridStoreConfig(), "Hybrid store config is not null.");
+        assertNotNull(storeInfo.getVersion(1), "Version 1 is not present.");
+        Optional<Version> version = storeInfo.getVersion(1);
+        assertTrue(version.isPresent(), "Version 1 is not present.");
+        assertNull(version.get().getHybridStoreConfig(), "Version level hybrid store config is not null.");
+        assertEquals(version.get().getPartitionCount(), 1, "Partition count is not 1.");
+      });
+
+      // Update the store to have 3 partitions and convert it into a hybrid store
+      UpdateStoreQueryParams updateStoreParams =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setPartitionCount(3)
+              .setHybridOffsetLagThreshold(TEST_TIMEOUT / 2)
+              .setHybridRewindSeconds(2L);
+      TestUtils.assertCommand(parentControllerClient.updateStore(storeName, updateStoreParams));
+
+      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+        StoreResponse storeResponse = assertCommand(parentControllerClient.getStore(storeName));
+        StoreInfo storeInfo = storeResponse.getStore();
+        assertNotNull(storeInfo, "Store info is null.");
+        assertNotNull(storeInfo.getHybridStoreConfig(), "Hybrid store config is null.");
+        // verify that there is just one version and it is batch version
+        assertEquals(storeInfo.getVersions().size(), 1, "Version count is not 1.");
+        Optional<Version> version = storeInfo.getVersion(1);
+        assertTrue(version.isPresent(), "Version 1 is not present.");
+        assertNull(version.get().getHybridStoreConfig(), "Version level hybrid store config is not null.");
+        assertEquals(version.get().getPartitionCount(), 1, "Partition count is not 1.");
+      });
+
+      // Push job step was disabled to reproduce the issue
+      // Run a full push to create a hybrid version with 3 partitions
+      try (VenicePushJob job = new VenicePushJob("push_job_to_create_hybrid_version", propsBatch)) {
+        job.run();
+      }
+
+      // wait until hybrid version is created and verify the partition count
+      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+        StoreResponse storeResponse = assertCommand(parentControllerClient.getStore(storeName));
+        StoreInfo storeInfo = storeResponse.getStore();
+        assertNotNull(storeInfo, "Store info is null.");
+        assertNotNull(storeInfo.getHybridStoreConfig(), "Hybrid store config is null.");
+        assertNotNull(storeInfo.getVersion(2), "Version 2 is not present.");
+        Optional<Version> version = storeInfo.getVersion(2);
+        assertTrue(version.isPresent(), "Version 2 is not present.");
+        assertNotNull(version.get().getHybridStoreConfig(), "Version level hybrid store config is null.");
+        assertEquals(version.get().getPartitionCount(), 3, "Partition count is not 3.");
+      });
+
+      VeniceSystemFactory factory = new VeniceSystemFactory();
+      Map<String, String> samzaConfig = IntegrationTestPushUtils.getSamzaProducerConfig(childDatacenters, 1, storeName);
+      VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null);
+      veniceProducer.start();
+
+      PubSubTopicRepository pubSubTopicRepository =
+          childDatacenters.get(1).getClusters().get(clusterName).getPubSubTopicRepository();
+      PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
+
+      // wait for 120 secs and check producer getTopicName
+      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+        Assert.assertEquals(veniceProducer.getTopicName(), realTimeTopic.getName());
+      });
+
+      try (TopicManager topicManager =
+          IntegrationTestPushUtils
+              .getTopicManagerRepo(
+                  PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE,
+                  100,
+                  0l,
+                  childDatacenters.get(1).getClusters().get(clusterName).getPubSubBrokerWrapper(),
+                  pubSubTopicRepository)
+              .getLocalTopicManager()) {
+        int partitionCount = topicManager.getPartitionCount(realTimeTopic);
+        assertEquals(partitionCount, 3, "Partition count is not 3.");
+      }
+    }
   }
 
   /**
