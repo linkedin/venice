@@ -1,6 +1,6 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;

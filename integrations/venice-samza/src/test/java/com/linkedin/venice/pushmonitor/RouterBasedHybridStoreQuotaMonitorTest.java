@@ -1,7 +1,5 @@
 package com.linkedin.venice.pushmonitor;
 
-import static org.testng.Assert.*;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;

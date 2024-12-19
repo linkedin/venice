@@ -1,8 +1,9 @@
 package com.linkedin.davinci.stats;
 
 import static com.linkedin.venice.stats.StatsErrorCode.NULL_DIV_STATS;
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.Utils;
