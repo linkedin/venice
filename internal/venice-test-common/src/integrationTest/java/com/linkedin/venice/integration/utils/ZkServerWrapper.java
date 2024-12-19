@@ -49,7 +49,7 @@ public class ZkServerWrapper extends ProcessWrapper {
    * The tick time can be low because this Zookeeper instance is intended to be used locally.
    */
   private static final int TICK_TIME = 200;
-  private static final int MAX_SESSION_TIMEOUT = 10 * Time.MS_PER_SECOND;
+  private static final int MAX_SESSION_TIMEOUT = 60 * Time.MS_PER_SECOND;
   private static final int NUM_CONNECTIONS = 5000;
 
   private static final String CLIENT_PORT_PROP = "clientPort";

@@ -18,6 +18,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.AclResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.request.CreateNewStoreRequest;
 import java.util.Optional;
 import spark.Request;
 import spark.Route;
@@ -31,7 +32,7 @@ public class CreateStore extends AbstractRoute {
   /**
    * @see Admin#createStore(String, String, String, String, String, boolean, Optional)
    */
-  public Route createStore(Admin admin) {
+  public Route createStore(Admin admin, VeniceControllerRequestHandler requestHandler) {
     return new VeniceRouteHandler<NewStoreResponse>(NewStoreResponse.class) {
       @Override
       public void internalHandle(Request request, NewStoreResponse veniceResponse) {
@@ -39,25 +40,18 @@ public class CreateStore extends AbstractRoute {
         if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
           return;
         }
+        // Validate request parameters
         AdminSparkServer.validateParams(request, NEW_STORE.getParams(), admin);
-        String clusterName = request.queryParams(CLUSTER);
-        String storeName = request.queryParams(NAME);
-        String keySchema = request.queryParams(KEY_SCHEMA);
-        String valueSchema = request.queryParams(VALUE_SCHEMA);
-        boolean isSystemStore = Boolean.parseBoolean(request.queryParams(IS_SYSTEM_STORE));
-
-        String owner = AdminSparkServer.getOptionalParameterValue(request, OWNER);
-        if (owner == null) {
-          owner = "";
-        }
-
-        String accessPerm = request.queryParams(ACCESS_PERMISSION);
-        Optional<String> accessPermissions = Optional.ofNullable(accessPerm);
-
-        veniceResponse.setCluster(clusterName);
-        veniceResponse.setName(storeName);
-        veniceResponse.setOwner(owner);
-        admin.createStore(clusterName, storeName, owner, keySchema, valueSchema, isSystemStore, accessPermissions);
+        // Extract the parameters from the spark request and create the generic request object
+        CreateNewStoreRequest storeRequest = new CreateNewStoreRequest(
+            request.queryParams(CLUSTER),
+            request.queryParams(NAME),
+            AdminSparkServer.getOptionalParameterValue(request, OWNER),
+            request.queryParams(KEY_SCHEMA),
+            request.queryParams(VALUE_SCHEMA),
+            request.queryParams(ACCESS_PERMISSION),
+            Boolean.parseBoolean(request.queryParams(IS_SYSTEM_STORE)));
+        requestHandler.createStore(storeRequest, veniceResponse);
       }
     };
   }

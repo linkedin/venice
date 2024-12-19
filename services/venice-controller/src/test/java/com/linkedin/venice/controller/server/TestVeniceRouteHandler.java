@@ -1,15 +1,20 @@
 package com.linkedin.venice.controller.server;
 
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
+import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.ExceptionType;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import org.apache.commons.httpclient.HttpStatus;
 import org.testng.Assert;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 import spark.Request;
 import spark.Response;
@@ -17,6 +22,15 @@ import spark.Route;
 
 
 public class TestVeniceRouteHandler {
+  private Admin mockAdmin;
+
+  @BeforeMethod
+  public void setUp() {
+    mockAdmin = mock(VeniceParentHelixAdmin.class);
+    ControllerRequestHandlerDependencies dependencies = mock(ControllerRequestHandlerDependencies.class);
+    doReturn(mockAdmin).when(dependencies).getAdmin();
+  }
+
   @Test
   public void testIsAllowListUser() throws Exception {
     Route userAllowedRoute = new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
