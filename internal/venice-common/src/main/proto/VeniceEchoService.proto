@@ -1,0 +1,29 @@
+syntax = 'proto3';
+package com.linkedin.venice.protocols;
+
+import "google/rpc/status.proto";
+import "google/rpc/error_details.proto";
+import "google/protobuf/descriptor.proto";
+
+import "VeniceStore.proto";
+
+option java_multiple_files = true;
+
+// Define a custom option for method types
+extend google.protobuf.MethodOptions {
+  string methodType = 50001; // Assign a unique field number
+}
+
+service VeniceEchoService {
+  rpc echo (VeniceEchoRequest) returns (VeniceEchoResponse) {
+    option (methodType) = "GET"; // Assign the method type
+  }
+}
+
+message VeniceEchoRequest {
+  string message = 1;
+}
+
+message VeniceEchoResponse {
+  string message = 1;
+}

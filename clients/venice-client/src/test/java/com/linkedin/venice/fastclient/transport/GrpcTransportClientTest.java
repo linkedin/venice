@@ -1,20 +1,27 @@
 package com.linkedin.venice.fastclient.transport;
 
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyBoolean;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 
 import com.google.common.collect.ImmutableMap;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.HttpMethod;
-import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.fastclient.GrpcClientConfig;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.protocols.VeniceReadServiceGrpc;
 import com.linkedin.venice.protocols.VeniceServerResponse;
-import com.linkedin.venice.security.SSLFactory;
-import io.grpc.ChannelCredentials;
 import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -59,14 +66,6 @@ public class GrpcTransportClientTest {
     when(mockClientConfig.getNettyServerToGrpcAddress()).thenReturn(nettyServerToGrpcAddress);
     when(mockClientConfig.getPort()).thenReturn(23900);
     grpcTransportClient = new GrpcTransportClient(mockClientConfig);
-  }
-
-  @Test(expectedExceptions = VeniceClientException.class)
-  public void testBuildChannelCredentials() {
-    ChannelCredentials actualChannelCredentials = grpcTransportClient.buildChannelCredentials(null);
-    assertNotNull(actualChannelCredentials, "Null ssl factory should default to insecure channel credentials");
-
-    grpcTransportClient.buildChannelCredentials(mock(SSLFactory.class));
   }
 
   @Test
