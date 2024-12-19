@@ -23,6 +23,11 @@ public class HttpConstants {
   public static final String VENICE_RETRY = "X-VENICE-RETRY";
 
   public static final String VENICE_COMPRESSION_STRATEGY = "X-VENICE-COMPRESSION-STRATEGY";
+  /**
+   * N.B.: There seems to be an assumption that this header's value will contain just a single compression scheme (GZIP)
+   *       and that it's not correct to pass a list of supported compression strategies (as one might expect). So we
+   *       need to be careful if we ever intend to evolve the way this header is used to accommodate multiple schemes.
+   */
   public static final String VENICE_SUPPORTED_COMPRESSION_STRATEGY = "X-VENICE-SUPPORTED-COMPRESSION-STRATEGY";
 
   public static final String VENICE_STREAMING = "X-VENICE-STREAMING";
@@ -35,6 +40,8 @@ public class HttpConstants {
   public static final String VENICE_ALLOW_REDIRECT = "X-VENICE-ALLOW-REDIRECT";
 
   public static final String VENICE_CLIENT_COMPUTE = "X-VENICE-CLIENT-COMPUTE";
+  public static final String VENICE_CLIENT_COMPUTE_TRUE = "1";
+  public static final String VENICE_CLIENT_COMPUTE_FALSE = "0";
 
   public static final int SC_MISDIRECTED_REQUEST = 421;
 

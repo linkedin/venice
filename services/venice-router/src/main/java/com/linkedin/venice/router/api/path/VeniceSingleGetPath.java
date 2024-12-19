@@ -9,11 +9,14 @@ import com.linkedin.alpini.router.api.RouterException;
 import com.linkedin.venice.RequestConstants;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.meta.RetryManager;
+import com.linkedin.venice.meta.StoreVersionName;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.router.RouterRetryConfig;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.router.api.VenicePartitionFinder;
 import com.linkedin.venice.router.api.VenicePathParser;
+import com.linkedin.venice.router.api.VeniceResponseDecompressor;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
@@ -21,7 +24,6 @@ import io.netty.handler.codec.http.HttpMethod;
 import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Optional;
 import javax.annotation.Nonnull;
 import org.apache.commons.lang.StringUtils;
 import org.apache.http.client.methods.HttpGet;
@@ -33,22 +35,21 @@ public class VeniceSingleGetPath extends VenicePath {
       Integer.toString(ReadAvroProtocolDefinition.SINGLE_GET_ROUTER_REQUEST_V1.getProtocolVersion());
 
   private final RouterKey routerKey;
-  private final String partition;
 
   public VeniceSingleGetPath(
-      String storeName,
-      int versionNumber,
-      String resourceName,
+      StoreVersionName storeVersionName,
       String key,
       String uri,
       VenicePartitionFinder partitionFinder,
       RouterStats<AggRouterHttpRequestStats> stats,
-      RetryManager retryManager) throws RouterException {
-    super(storeName, versionNumber, resourceName, false, -1, retryManager);
+      RouterRetryConfig retryConfig,
+      RetryManager retryManager,
+      VeniceResponseDecompressor responseDecompressor) throws RouterException {
+    super(storeVersionName, retryConfig, retryManager, responseDecompressor);
     if (StringUtils.isEmpty(key)) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-          Optional.empty(),
-          Optional.empty(),
+          null,
+          null,
           BAD_REQUEST,
           "Request URI must have non-empty key.  Uri is: " + uri);
     }
@@ -59,19 +60,21 @@ public class VeniceSingleGetPath extends VenicePath {
       routerKey = RouterKey.fromString(key);
     }
 
-    stats.getStatsByType(RequestType.SINGLE_GET).recordKeySize(storeName, routerKey.getKeySize());
+    stats.getStatsByType(RequestType.SINGLE_GET).recordKeySize(routerKey.getKeyBuffer().remaining());
 
     try {
-      int partitionNum = partitionFinder.getNumPartitions(resourceName);
-      int partitionId = partitionFinder.findPartitionNumber(routerKey, partitionNum, storeName, versionNumber);
+      int partitionNum = partitionFinder.getNumPartitions(storeVersionName.getName());
+      int partitionId = partitionFinder.findPartitionNumber(
+          routerKey,
+          partitionNum,
+          storeVersionName.getStoreName(),
+          storeVersionName.getVersionNumber());
       routerKey.setPartitionId(partitionId);
-      String partition = Integer.toString(partitionId);
       setPartitionKeys(Collections.singleton(routerKey));
-      this.partition = partition;
     } catch (VeniceNoHelixResourceException e) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTrackingResourceNotFound(
-          Optional.of(getStoreName()),
-          Optional.of(RequestType.SINGLE_GET),
+          getStoreName(),
+          RequestType.SINGLE_GET,
           e.getHttpResponseStatus(),
           e.getMessage());
     }
@@ -94,8 +97,8 @@ public class VeniceSingleGetPath extends VenicePath {
   public VenicePath substitutePartitionKey(RouterKey s) {
     if (!routerKey.equals(s)) {
       throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
-          Optional.of(getStoreName()),
-          Optional.of(getRequestType()),
+          getStoreName(),
+          getRequestType(),
           INTERNAL_SERVER_ERROR,
           "RouterKey: " + routerKey + " is expected, but received: " + s);
     }
@@ -105,8 +108,8 @@ public class VeniceSingleGetPath extends VenicePath {
   @Override
   public VenicePath substitutePartitionKey(@Nonnull Collection<RouterKey> s) {
     throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
-        Optional.of(getStoreName()),
-        Optional.of(getRequestType()),
+        getStoreName(),
+        getRequestType(),
         INTERNAL_SERVER_ERROR,
         "substitutePartitionKey(@Nonnull Collection<RouterKey> s) is not expected to be invoked for single-get request");
   }
@@ -127,7 +130,7 @@ public class VeniceSingleGetPath extends VenicePath {
         .append(sep)
         .append(getResourceName())
         .append(sep)
-        .append(partition)
+        .append(routerKey.getPartitionId())
         .append(sep)
         .append(getPartitionKey().base64Encoded())
         .append("?")
@@ -146,10 +149,6 @@ public class VeniceSingleGetPath extends VenicePath {
     return format.equals(RequestConstants.B64_FORMAT);
   }
 
-  public String getPartition() {
-    return this.partition;
-  }
-
   @Override
   public HttpMethod getHttpMethod() {
     return HttpMethod.GET;
@@ -163,5 +162,9 @@ public class VeniceSingleGetPath extends VenicePath {
   @Override
   public String getVeniceApiVersionHeader() {
     return ROUTER_REQUEST_VERSION;
+  }
+
+  public int getLongTailRetryThresholdMs() {
+    return this.retryConfig.getLongTailRetryForSingleGetThresholdMs();
   }
 }

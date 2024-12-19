@@ -47,7 +47,6 @@ import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -96,7 +95,7 @@ public class VeniceChunkedResponse {
   private final String storeName;
   private final RequestType requestType;
   private final RouterStats<AggRouterHttpRequestStats> routerStats;
-  private final Optional<Map<CharSequence, String>> optionalHeaders;
+  private final String clientComputeHeader;
   private final ChannelHandlerContext ctx;
   private final VeniceChunkedWriteHandler chunkedWriteHandler;
   private final ChannelProgressivePromise writeFuture;
@@ -137,11 +136,11 @@ public class VeniceChunkedResponse {
       ChannelHandlerContext ctx,
       VeniceChunkedWriteHandler handler,
       RouterStats<AggRouterHttpRequestStats> routerStats,
-      Optional<Map<CharSequence, String>> optionalHeaders) {
+      String clientComputeHeader) {
     this.storeName = storeName;
     this.requestType = requestType;
     this.routerStats = routerStats;
-    this.optionalHeaders = optionalHeaders;
+    this.clientComputeHeader = clientComputeHeader;
     if (!requestType.equals(RequestType.MULTI_GET_STREAMING) && !requestType.equals(RequestType.COMPUTE_STREAMING)) {
       throw new VeniceException(
           "Unexpected request type for streaming: " + requestType + ", and currently only"
@@ -290,7 +289,9 @@ public class VeniceChunkedResponse {
       // Send out response metadata
       Map<CharSequence, String> headers =
           new HashMap<>(isMultiGetStreaming ? MULTI_GET_VALID_HEADER_MAP : COMPUTE_VALID_HEADER_MAP);
-      optionalHeaders.ifPresent(headers::putAll);
+      if (this.clientComputeHeader != null) {
+        headers.put(HttpConstants.VENICE_CLIENT_COMPUTE, clientComputeHeader);
+      }
       headers.put(HttpConstants.VENICE_COMPRESSION_STRATEGY, Integer.toString(compression.getValue()));
       ChannelPromise writePromise = ctx.newPromise().addListener(new ResponseMetadataWriteListener());
       chunkedWriteHandler.write(ctx, new StreamingResponseMetadata(headers), writePromise);

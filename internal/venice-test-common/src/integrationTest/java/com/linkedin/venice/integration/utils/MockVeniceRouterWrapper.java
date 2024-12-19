@@ -84,6 +84,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
     doReturn(CompressionStrategy.NO_OP).when(mockStore).getCompressionStrategy();
     HelixReadOnlyStoreRepository mockMetadataRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
     doReturn(mockStore).when(mockMetadataRepository).getStore(Mockito.anyString());
+    doReturn(mockStore).when(mockMetadataRepository).getStoreOrThrow(Mockito.anyString());
 
     Version mockVersion = Mockito.mock(Version.class);
     doReturn(mockVersion).when(mockStore).getVersion(Mockito.anyInt());
