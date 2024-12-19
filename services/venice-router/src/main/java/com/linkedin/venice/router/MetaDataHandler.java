@@ -158,7 +158,6 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   static final String REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE =
       "Blob Discovery: failed to get the live node hostNames for store:%s version:%s partition:%s";
   private final VeniceVersionFinder veniceVersionFinder;
-
   private final MetricsRepository metricsRepository;
 
   public MetaDataHandler(
@@ -485,8 +484,9 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     }
 
     // Only create metrics for valid stores
-    Sensor d2DiscoverySensor = metricsRepository.sensor(String.format("venice.router.d2_discovery.%s", storeName));
-    d2DiscoverySensor.add(String.format("venice.router.d2_discovery.%s.request.count", storeName), new Count());
+    String d2DiscoveryMetricName = "venice.router.d2_discovery." + storeName;
+    Sensor d2DiscoverySensor = metricsRepository.sensor(d2DiscoveryMetricName);
+    d2DiscoverySensor.add(d2DiscoveryMetricName + ".request.count", new Count());
     d2DiscoverySensor.record();
 
     String clusterName = config.get().getCluster();
