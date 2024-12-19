@@ -71,6 +71,7 @@ public class TestLogCompactionService {
     latch = new CountDownLatch(1);
   }
 
+  // TODO LC: extract TestHybrid::testHybridStoreLogCompaction() to this method
   @Test
   public void testScheduledLogCompaction() {
 
