@@ -2719,6 +2719,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
             // Update ZK with the new version
             store.addVersion(version, true);
+
             repository.updateStore(store);
           } else {
             if (versionNumber == VERSION_ID_UNSET) {
@@ -2780,7 +2781,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                   && store.getHybridStoreConfig().getDataReplicationPolicy() == DataReplicationPolicy.AGGREGATE)
                   || store.isIncrementalPushEnabled())) {
                 // Create rt topic in parent colo if the store is aggregate mode hybrid store
-                PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
+                PubSubTopic realTimeTopic =
+                    pubSubTopicRepository.getTopic(Utils.getRealTimeTopicNameFromStoreConfig(store));
                 if (!getTopicManager().containsTopic(realTimeTopic)) {
                   getTopicManager().createTopic(
                       realTimeTopic,
@@ -4272,6 +4274,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       // version.getPartitionCount()
       // is read only in getRealTimeTopic and createInternalStore creation, so modifying currentVersion should not have
       // any effect.
+      if (multiClusterConfigs.getUpdateRealTimeTopic() && store.isHybrid()
+          && partitionCount != store.getPartitionCount()) {
+        updateRealTimeTopicName(store);
+      }
       if (partitionCount != 0) {
         store.setPartitionCount(partitionCount);
       } else {
@@ -4285,7 +4291,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   void preCheckStorePartitionCountUpdate(String clusterName, Store store, int newPartitionCount) {
     String errorMessagePrefix = "Store update error for " + store.getName() + " in cluster: " + clusterName + ": ";
     VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
+    int maxPartitionNum = clusterConfig.getMaxNumberOfPartitions();
+
     if (store.isHybrid() && store.getPartitionCount() != newPartitionCount) {
+      if (multiClusterConfigs.getUpdateRealTimeTopic() && newPartitionCount <= maxPartitionNum
+          && newPartitionCount >= 0) {
+        LOGGER.info(
+            "Allow updating store " + store.getName() + " partition count to " + newPartitionCount
+                + " because `updateRealTimeTopic` is true.");
+        return;
+      }
       // Allow the update if partition count is not configured and the new partition count matches RT partition count
       if (store.getPartitionCount() == 0) {
         TopicManager topicManager;
@@ -4308,7 +4323,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
     }
 
-    int maxPartitionNum = clusterConfig.getMaxNumberOfPartitions();
     if (newPartitionCount > maxPartitionNum) {
       String errorMessage =
           errorMessagePrefix + "Partition count: " + newPartitionCount + " should be less than max: " + maxPartitionNum;
@@ -4320,6 +4334,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       LOGGER.error(errorMessage);
       throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
     }
+  }
+
+  private void updateRealTimeTopicName(Store store) {
+    String oldRealTimeTopicName = Utils.getRealTimeTopicName(store);
+    String newRealTimeTopicName;
+    PubSubTopic newRealTimeTopic;
+
+    do {
+      newRealTimeTopicName = Utils.createNewRealTimeTopicName(oldRealTimeTopicName);
+      newRealTimeTopic = getPubSubTopicRepository().getTopic(newRealTimeTopicName);
+      oldRealTimeTopicName = newRealTimeTopicName;
+    } while (getTopicManager().containsTopic(newRealTimeTopic));
+
+    store.getHybridStoreConfig().setRealTimeTopicName(newRealTimeTopicName);
   }
 
   void setStorePartitionerConfig(String clusterName, String storeName, PartitionerConfig partitionerConfig) {
@@ -4799,7 +4827,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Long> hybridTimeLagThreshold = params.getHybridTimeLagThreshold();
     Optional<DataReplicationPolicy> hybridDataReplicationPolicy = params.getHybridDataReplicationPolicy();
     Optional<BufferReplayPolicy> hybridBufferReplayPolicy = params.getHybridBufferReplayPolicy();
-    Optional<String> realTimeTopicName = params.getRealTimeTopicName();
+    Optional<String> realTimeTopicName = Optional.empty(); // real time topic name should only be changed during
+                                                           // partition count update
     Optional<Boolean> accessControlled = params.getAccessControlled();
     Optional<CompressionStrategy> compressionStrategy = params.getCompressionStrategy();
     Optional<Boolean> clientDecompressionEnabled = params.getClientDecompressionEnabled();
