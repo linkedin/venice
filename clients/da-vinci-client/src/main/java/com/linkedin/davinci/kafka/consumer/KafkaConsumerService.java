@@ -262,7 +262,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
        * setting data receiver and unsubscribing concurrently for the same topic partition on a shared consumer.
        */
       try (AutoCloseableLock ignored = AutoCloseableLock.of(consumerToLocks.get(consumer))) {
-        consumer.unSubscribe(pubSubTopicPartition);
+        consumer.unSubscribe(pubSubTopicPartition, timeoutMs);
         removeTopicPartitionFromConsumptionTask(consumer, pubSubTopicPartition);
       }
       versionTopicToTopicPartitionToConsumer.compute(versionTopic, (k, topicPartitionToConsumerMap) -> {
