@@ -484,9 +484,12 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     }
 
     // Only create metrics for valid stores
-    String d2DiscoveryMetricName = "venice.router.d2_discovery." + storeName;
-    Sensor d2DiscoverySensor = metricsRepository.sensor(d2DiscoveryMetricName);
-    d2DiscoverySensor.add(d2DiscoveryMetricName + ".request.count", new Count());
+    Sensor d2DiscoverySensor = metricsRepository.sensor("venice.router.d2_discovery." + storeName);
+    String d2DiscoveryRequestCountMetric = "venice.router.d2_discovery." + storeName + ".request.count";
+    // Check if metric already exists before adding
+    if (!metricsRepository.metrics().containsKey(d2DiscoveryRequestCountMetric)) {
+      d2DiscoverySensor.add(d2DiscoveryRequestCountMetric, new Count());
+    }
     d2DiscoverySensor.record();
 
     String clusterName = config.get().getCluster();
