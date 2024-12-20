@@ -513,6 +513,8 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       Map<Instance, KeyPartitionSet<Instance, RouterKey>> hostMap = new HashMap<>();
       int helixGroupNum = getHelixGroupNum();
       int assignedHelixGroupId = getAssignedHelixGroupId(venicePath);
+      // This is used to record the request start time for the whole Router request.
+      venicePath.recordOriginalRequestStartTimestamp();
       currentPartition = 0;
       try {
         for (; currentPartition < partitionCount; currentPartition++) {

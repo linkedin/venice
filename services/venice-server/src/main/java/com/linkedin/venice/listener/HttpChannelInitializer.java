@@ -176,10 +176,9 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       sslInitializer.setIdentityParser(identityParser::parseIdentityFromCert);
       ch.pipeline().addLast(sslInitializer);
     }
+    ch.pipeline()
+        .addLast(new ServerConnectionStatsHandler(serverConnectionStats, serverConfig.getRouterPrincipalName()));
     ChannelPipelineConsumer httpPipelineInitializer = (pipeline, whetherNeedServerCodec) -> {
-      ServerConnectionStatsHandler serverConnectionStatsHandler =
-          new ServerConnectionStatsHandler(serverConnectionStats, serverConfig.getRouterPrincipalName());
-      pipeline.addLast(serverConnectionStatsHandler);
       StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats);
       pipeline.addLast(statsHandler);
       if (whetherNeedServerCodec) {

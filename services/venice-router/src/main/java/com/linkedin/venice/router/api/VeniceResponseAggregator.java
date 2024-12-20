@@ -184,7 +184,10 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
      * 3. HelixGroupId is valid since Helix-assisted routing is only enabled for multi-key request.
       */
     if (!venicePath.isRetryRequest() && helixGroupSelector != null && venicePath.getHelixGroupId() >= 0) {
-      helixGroupSelector.finishRequest(venicePath.getRequestId(), venicePath.getHelixGroupId());
+      helixGroupSelector.finishRequest(
+          venicePath.getRequestId(),
+          venicePath.getHelixGroupId(),
+          LatencyUtils.getElapsedTimeFromMsToMs(venicePath.getOriginalRequestStartTs()));
     }
     RequestType requestType = venicePath.getRequestType();
     AggRouterHttpRequestStats stats = routerStats.getStatsByType(requestType);
