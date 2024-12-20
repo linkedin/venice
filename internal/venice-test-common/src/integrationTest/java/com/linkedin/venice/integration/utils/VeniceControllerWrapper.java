@@ -339,10 +339,19 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         propertiesList.add(props);
       }
       List<ServiceDiscoveryAnnouncer> d2ServerList = new ArrayList<>();
-      if (options.isD2Enabled()) {
-        d2ServerList.add(createD2Server(options.getZkAddress(), adminPort, false, options.isParent()));
-        if (sslEnabled) {
-          d2ServerList.add(createD2Server(options.getZkAddress(), adminSecurePort, true, options.isParent()));
+      if (options.isParentControllerInChildRegion()) {
+        for (String zkServerAddress: options.getZkServerAddressesList()) {
+          d2ServerList.add(createD2Server(zkServerAddress, adminPort, false, options.isParent()));
+          if (sslEnabled) {
+            d2ServerList.add(createD2Server(zkServerAddress, adminSecurePort, true, options.isParent()));
+          }
+        }
+      } else {
+        if (options.isD2Enabled()) {
+          d2ServerList.add(createD2Server(options.getZkAddress(), adminPort, false, options.isParent()));
+          if (sslEnabled) {
+            d2ServerList.add(createD2Server(options.getZkAddress(), adminSecurePort, true, options.isParent()));
+          }
         }
       }
 
