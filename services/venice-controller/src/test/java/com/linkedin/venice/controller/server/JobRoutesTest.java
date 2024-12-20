@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
+import com.linkedin.venice.controller.server.endpoints.JobStatusRequest;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.Utils;
@@ -34,8 +35,17 @@ public class JobRoutesTest {
     String store = Utils.getUniqueString("store");
     int version = 5;
     JobRoutes jobRoutes = new JobRoutes(false, Optional.empty());
-    JobStatusQueryResponse response =
-        jobRoutes.populateJobStatus(cluster, store, version, mockAdmin, Optional.empty(), null, null);
+
+    JobStatusRequest jobStatusRequest = new JobStatusRequest();
+    jobStatusRequest.setCluster(cluster);
+    jobStatusRequest.setStore(store);
+    jobStatusRequest.setVersionNumber(version);
+    jobStatusRequest.setIncrementalPushVersion("");
+    jobStatusRequest.setTargetedRegions(null);
+    jobStatusRequest.setRegion(null);
+
+    JobStatusQueryResponse response = new JobStatusQueryResponse();
+    jobRoutes.populateJobStatus(jobStatusRequest, mockAdmin, response);
 
     Map<String, String> extraInfo = response.getExtraInfo();
     LOGGER.info("extraInfo: {}", extraInfo);
