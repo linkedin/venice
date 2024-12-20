@@ -17,6 +17,7 @@ plugins {
   id 'me.champeau.jmh' version '0.6.7' apply false
   id 'io.github.lhotari.gradle-nar-plugin' version '0.5.1' apply false
   id 'com.google.protobuf' version '0.9.3' apply false
+  id 'org.checkerframework' version '0.6.47' // Checker Framework pluggable type-checking
 }
 
 apply from: "$rootDir/gradle/helper/git.gradle"
@@ -192,6 +193,7 @@ subprojects {
     plugin 'java-library'
     plugin 'com.github.spotbugs'
     plugin 'org.gradle.test-retry'
+    plugin 'org.checkerframework'
   }
 
   if (isLeafSubModule) {
@@ -818,4 +820,13 @@ task verifyJdkVersion {
 gradle.taskGraph.whenReady {
   // Ensure the JDK version is verified before any other tasks
   verifyJdkVersion
+}
+
+task listSubprojects {
+  doLast {
+    println "Subprojects:"
+    subprojects.each { subproject ->
+      println "${subproject.name}"
+    }
+  }
 }
