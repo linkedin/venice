@@ -395,34 +395,6 @@ public class TestZKStore {
         1);
   }
 
-  /**
-   * We're not relying on push ID uniqueness.  We can reenable this test if we start relying on (and enforcing) push ID uniqueness
-   */
-  @Test(groups = { "flaky" })
-  public void cannotAddDifferentVersionsWithSamePushId() {
-    String storeName = "storeName";
-    Store store = new ZKStore(
-        storeName,
-        "owner",
-        System.currentTimeMillis(),
-        PersistenceType.IN_MEMORY,
-        RoutingStrategy.CONSISTENT_HASH,
-        ReadStrategy.ANY_OF_ONLINE,
-        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
-        1);
-    String duplicatePushJobId = "pushId";
-    Version versionOne = new VersionImpl(storeName, 1, duplicatePushJobId);
-    store.addVersion(versionOne);
-    Version versionTwo = new VersionImpl(storeName, 2, duplicatePushJobId);
-    try {
-      store.addVersion(versionTwo);
-      Assert.fail("Store must not allow adding a new version with same pushId");
-    } catch (Exception e) {
-      // expected
-      LOGGER.info("Expected exception: {}", e.getLocalizedMessage());
-    }
-  }
-
   @Test
   public void testStoreLevelAcl() {
     Store store = new ZKStore(

@@ -27,7 +27,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.BiConsumer;
 import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
@@ -110,8 +109,8 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
     int computeRequestVersion = Integer.parseInt(this.computeRequestVersionHeader);
     if (computeRequestVersion <= 0 || computeRequestVersion > LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-          Optional.of(getStoreName()),
-          Optional.of(getRequestType()),
+          getStoreName(),
+          getRequestType(),
           BAD_REQUEST,
           "Compute API version " + computeRequestVersion + " is invalid. Latest version is "
               + LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST);
@@ -133,8 +132,8 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
       computeRequestLengthInBytes = requestContent.length - decoder.inputStream().available();
     } catch (IOException e) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-          Optional.of(getStoreName()),
-          Optional.of(getRequestType()),
+          getStoreName(),
+          getRequestType(),
           BAD_REQUEST,
           "Exception while getting available number of bytes in request content");
     }
