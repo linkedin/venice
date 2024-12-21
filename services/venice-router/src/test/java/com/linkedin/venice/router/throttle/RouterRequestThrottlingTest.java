@@ -79,7 +79,7 @@ public class RouterRequestThrottlingTest {
     void run() throws RouterException;
   }
 
-  @Test(timeOut = 30000, dataProvider = "multiGet_compute", invocationCount = 100)
+  @Test(timeOut = 30000, dataProvider = "multiGet_compute")
   public void testMultiKeyThrottling(RequestType requestType) throws Exception {
     // Allow 10 multi-key requests per second
     int batchGetSize = 100;
