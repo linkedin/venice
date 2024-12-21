@@ -154,7 +154,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
    * fetch request.
    */
   @Override
-  public StorePropertiesResponse getStoreProperties(String storeName) {
+  public StorePropertiesResponse getStoreProperties(String storeName, Optional<Integer> largestKnownSchemaId) {
     serverMetadataServiceStats.recordRequestBasedMetadataInvokeCount();
     StorePropertiesResponse response = new StorePropertiesResponse();
 
@@ -173,7 +173,20 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       // Value Schemas
       Map<CharSequence, CharSequence> valueSchemas = getValueSchemas(storeName);
       StoreValueSchemas storeValueSchemas = new StoreValueSchemas();
-      storeValueSchemas.setValueSchemaMap(valueSchemas);
+      if (largestKnownSchemaId.isPresent()) {
+        storeValueSchemas.setValueSchemaMap(new HashMap<>());
+
+        // Populate with schemas after version
+        for (Map.Entry<CharSequence, CharSequence> entry: valueSchemas.entrySet()) {
+          int schemaId = Integer.parseInt(entry.getKey().toString());
+          if (schemaId > largestKnownSchemaId.get()) {
+            storeValueSchemas.put(schemaId, entry.getValue());
+          }
+        }
+      } else {
+        // Populate with all schemas
+        storeValueSchemas.setValueSchemaMap(valueSchemas);
+      }
 
       // IdsWrittenPerStoreVersion
       ArrayList<Integer> idsWrittenPerStoreVersion = new ArrayList<>();

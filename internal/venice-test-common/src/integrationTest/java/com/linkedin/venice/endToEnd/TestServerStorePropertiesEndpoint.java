@@ -61,8 +61,9 @@ public class TestServerStorePropertiesEndpoint extends AbstractClientEndToEndSet
   @Test(timeOut = TIME_OUT)
   public void testRequestBasedStoreProperties() throws Exception {
     Admin admin = veniceCluster.getLeaderVeniceController().getVeniceAdmin();
-    StorePropertiesResponseRecord record = getStorePropertiesResponseRecord(storeName);
-    assertStorePropertiesResponseRecord(record, admin, storeName);
+    Optional<Integer> largestKnownSchemaId = Optional.empty();
+    StorePropertiesResponseRecord record = getStorePropertiesResponseRecord(storeName, largestKnownSchemaId);
+    assertStorePropertiesResponseRecord(record, admin, storeName, largestKnownSchemaId);
   }
 
   @Test(timeOut = TIME_OUT)
@@ -77,16 +78,41 @@ public class TestServerStorePropertiesEndpoint extends AbstractClientEndToEndSet
         .getVeniceAdmin()
         .setStoreLargestUsedVersion(clusterName, storeName, largestUsedVersion);
 
-    StorePropertiesResponseRecord record = getStorePropertiesResponseRecord(storeName);
+    Optional<Integer> largestKnownSchemaId = Optional.empty();
+    StorePropertiesResponseRecord record = getStorePropertiesResponseRecord(storeName, largestKnownSchemaId);
 
     assertEquals(record.storeMetaValue.storeProperties.owner.toString(), owner);
     assertEquals(record.storeMetaValue.storeProperties.largestUsedVersionNumber, largestUsedVersion);
 
     Admin admin = veniceCluster.getLeaderVeniceController().getVeniceAdmin();
-    assertStorePropertiesResponseRecord(record, admin, storeName);
+    assertStorePropertiesResponseRecord(record, admin, storeName, largestKnownSchemaId);
   }
 
-  private StorePropertiesResponseRecord getStorePropertiesResponseRecord(String _storeName) throws Exception {
+  @Test(timeOut = TIME_OUT)
+  public void testRequestBasedStorePropertiesWithLargestKnownSchemaId() throws Exception {
+
+    String clusterName = veniceCluster.getClusterName();
+    String owner = Long.toString(RANDOM.nextLong());
+    int largestUsedVersion = RANDOM.nextInt();
+
+    veniceCluster.getLeaderVeniceController().getVeniceAdmin().setStoreOwner(clusterName, storeName, owner);
+    veniceCluster.getLeaderVeniceController()
+        .getVeniceAdmin()
+        .setStoreLargestUsedVersion(clusterName, storeName, largestUsedVersion);
+
+    Optional<Integer> largestKnownSchemaId = Optional.of(1);
+    StorePropertiesResponseRecord record = getStorePropertiesResponseRecord(storeName, largestKnownSchemaId);
+
+    assertEquals(record.storeMetaValue.storeProperties.owner.toString(), owner);
+    assertEquals(record.storeMetaValue.storeProperties.largestUsedVersionNumber, largestUsedVersion);
+
+    Admin admin = veniceCluster.getLeaderVeniceController().getVeniceAdmin();
+    assertStorePropertiesResponseRecord(record, admin, storeName, largestKnownSchemaId);
+  }
+
+  private StorePropertiesResponseRecord getStorePropertiesResponseRecord(
+      String _storeName,
+      Optional<Integer> largestKnownSchemaId) throws Exception {
     StorePropertiesResponseRecord record;
 
     // Request
@@ -94,6 +120,9 @@ public class TestServerStorePropertiesEndpoint extends AbstractClientEndToEndSet
     clientConfig.setSslFactory(sslFactory.get());
     TransportClient transportClient = ClientFactory.getTransportClient(clientConfig);
     String requestUrl = QueryAction.STORE_PROPERTIES.toString().toLowerCase() + "/" + _storeName;
+    if (largestKnownSchemaId.isPresent()) {
+      requestUrl += "/" + largestKnownSchemaId.get();
+    }
     TransportClientResponse response = transportClient.get(requestUrl).get();
 
     // Deserialize
@@ -108,7 +137,8 @@ public class TestServerStorePropertiesEndpoint extends AbstractClientEndToEndSet
   private void assertStorePropertiesResponseRecord(
       StorePropertiesResponseRecord record,
       Admin admin,
-      String _storeName) {
+      String _storeName,
+      Optional<Integer> largestKnownSchemaId) {
 
     String clusterName = veniceCluster.getClusterName();
     Store store = admin.getStore(clusterName, _storeName);
@@ -149,7 +179,6 @@ public class TestServerStorePropertiesEndpoint extends AbstractClientEndToEndSet
     }
 
     // Store Value Schemas
-    assertNotNull(record.storeMetaValue.storeValueSchemas);
     for (Map.Entry<CharSequence, CharSequence> entry: record.storeMetaValue.storeValueSchemas.valueSchemaMap
         .entrySet()) {
       int valueSchemaId = Integer.parseInt(entry.getKey().toString());
@@ -159,7 +188,11 @@ public class TestServerStorePropertiesEndpoint extends AbstractClientEndToEndSet
       String actual = entry.getValue().toString();
       String expected = expectedValueSchemaEntry.getSchema().toString();
       assertEquals(actual, expected);
+      if (largestKnownSchemaId.isPresent()) {
+        assertTrue(largestKnownSchemaId.get() < valueSchemaId);
+      }
     }
+
     assertNotNull(record.helixGroupInfo);
     assertNotNull(record.routingInfo);
   }
