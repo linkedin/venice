@@ -21,7 +21,6 @@ import io.netty.handler.codec.http.HttpMethod;
 import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Optional;
 import javax.annotation.Nonnull;
 import org.apache.commons.lang.StringUtils;
 import org.apache.http.client.methods.HttpGet;
@@ -47,8 +46,8 @@ public class VeniceSingleGetPath extends VenicePath {
     super(storeName, versionNumber, resourceName, false, -1, retryManager);
     if (StringUtils.isEmpty(key)) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-          Optional.empty(),
-          Optional.empty(),
+          null,
+          null,
           BAD_REQUEST,
           "Request URI must have non-empty key.  Uri is: " + uri);
     }
@@ -70,8 +69,8 @@ public class VeniceSingleGetPath extends VenicePath {
       this.partition = partition;
     } catch (VeniceNoHelixResourceException e) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTrackingResourceNotFound(
-          Optional.of(getStoreName()),
-          Optional.of(RequestType.SINGLE_GET),
+          getStoreName(),
+          RequestType.SINGLE_GET,
           e.getHttpResponseStatus(),
           e.getMessage());
     }
@@ -94,8 +93,8 @@ public class VeniceSingleGetPath extends VenicePath {
   public VenicePath substitutePartitionKey(RouterKey s) {
     if (!routerKey.equals(s)) {
       throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
-          Optional.of(getStoreName()),
-          Optional.of(getRequestType()),
+          getStoreName(),
+          getRequestType(),
           INTERNAL_SERVER_ERROR,
           "RouterKey: " + routerKey + " is expected, but received: " + s);
     }
@@ -105,8 +104,8 @@ public class VeniceSingleGetPath extends VenicePath {
   @Override
   public VenicePath substitutePartitionKey(@Nonnull Collection<RouterKey> s) {
     throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
-        Optional.of(getStoreName()),
-        Optional.of(getRequestType()),
+        getStoreName(),
+        getRequestType(),
         INTERNAL_SERVER_ERROR,
         "substitutePartitionKey(@Nonnull Collection<RouterKey> s) is not expected to be invoked for single-get request");
   }

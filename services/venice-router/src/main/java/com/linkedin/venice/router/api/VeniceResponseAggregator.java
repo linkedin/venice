@@ -120,8 +120,8 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
   public void initHelixGroupSelector(HelixGroupSelector helixGroupSelector) {
     if (this.helixGroupSelector != null) {
       throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
-          Optional.empty(),
-          Optional.empty(),
+          null,
+          null,
           INTERNAL_SERVER_ERROR,
           "HelixGroupSelector has already been initialized before, and no further update expected!");
     }
@@ -136,14 +136,11 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       @Nonnull List<FullHttpResponse> gatheredResponses) {
     if (gatheredResponses.isEmpty()) {
       throw RouterExceptionAndTrackingUtils
-          .newVeniceExceptionAndTracking(Optional.empty(), Optional.empty(), BAD_GATEWAY, "Received empty response!");
+          .newVeniceExceptionAndTracking(null, null, BAD_GATEWAY, "Received empty response!");
     }
     if (metrics == null) {
-      throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
-          Optional.empty(),
-          Optional.empty(),
-          INTERNAL_SERVER_ERROR,
-          "'metrics' should not be null");
+      throw RouterExceptionAndTrackingUtils
+          .newVeniceExceptionAndTracking(null, null, INTERNAL_SERVER_ERROR, "'metrics' should not be null");
     }
     VenicePath venicePath = metrics.getPath();
     if (venicePath == null) {
@@ -169,7 +166,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
         }
       } catch (URISyntaxException e) {
         throw RouterExceptionAndTrackingUtils
-            .newVeniceExceptionAndTracking(Optional.empty(), Optional.empty(), BAD_REQUEST, "Failed to parse uri");
+            .newVeniceExceptionAndTracking(null, null, BAD_REQUEST, "Failed to parse uri");
       }
       return response;
     }
@@ -211,11 +208,8 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
           finalResponse = processComputeResponses(gatheredResponses, storeName, optionalHeaders);
           break;
         default:
-          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
-              Optional.empty(),
-              Optional.empty(),
-              INTERNAL_SERVER_ERROR,
-              "Unknown request type: " + requestType);
+          throw RouterExceptionAndTrackingUtils
+              .newVeniceExceptionAndTracking(null, null, INTERNAL_SERVER_ERROR, "Unknown request type: " + requestType);
       }
     }
     stats.recordFanoutRequestCount(storeName, gatheredResponses.size());
@@ -349,11 +343,8 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
           compressionStrategy.getValue(),
           responseCompression.getValue(),
           response.headers().toString());
-      throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
-          Optional.of(storeName),
-          Optional.of(RequestType.MULTI_GET),
-          BAD_GATEWAY,
-          errorMsg);
+      throw RouterExceptionAndTrackingUtils
+          .newVeniceExceptionAndTracking(storeName, RequestType.MULTI_GET, BAD_GATEWAY, errorMsg);
     }
   }
 
@@ -377,15 +368,15 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
         String currentValue = response.headers().get(headerName);
         if (currentValue == null) {
           throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
-              Optional.of(storeName),
-              Optional.of(RequestType.COMPUTE),
+              storeName,
+              RequestType.COMPUTE,
               BAD_GATEWAY,
               "Header: " + headerName + " is expected in compute sub-response");
         }
         if (!headerValue.equals(currentValue)) {
           throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
-              Optional.of(storeName),
-              Optional.of(RequestType.COMPUTE),
+              storeName,
+              RequestType.COMPUTE,
               BAD_GATEWAY,
               "Incompatible header received for " + headerName + ", values: " + headerValue + ", " + currentValue);
         }
@@ -448,15 +439,15 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
         String currentValue = response.headers().get(headerName);
         if (currentValue == null) {
           throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
-              Optional.of(storeName),
-              Optional.of(RequestType.MULTI_GET),
+              storeName,
+              RequestType.MULTI_GET,
               BAD_GATEWAY,
               "Header: " + headerName + " is expected in multi-get sub-response");
         }
         if (!headerValue.equals(currentValue)) {
           throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
-              Optional.of(storeName),
-              Optional.of(RequestType.MULTI_GET),
+              storeName,
+              RequestType.MULTI_GET,
               BAD_GATEWAY,
               "Incompatible header received for " + headerName + ", values: " + headerValue + ", " + currentValue);
         }
