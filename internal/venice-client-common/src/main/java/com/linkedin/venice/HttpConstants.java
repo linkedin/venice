@@ -40,6 +40,8 @@ public class HttpConstants {
   public static final String VENICE_ALLOW_REDIRECT = "X-VENICE-ALLOW-REDIRECT";
 
   public static final String VENICE_CLIENT_COMPUTE = "X-VENICE-CLIENT-COMPUTE";
+  public static final String VENICE_CLIENT_COMPUTE_TRUE = "1";
+  public static final String VENICE_CLIENT_COMPUTE_FALSE = "0";
 
   public static final int SC_MISDIRECTED_REQUEST = 421;
 

@@ -24,8 +24,6 @@ public class RouterKey implements Comparable<RouterKey> {
    */
   private int partitionId = UNKNOWN_PARTITION_ID;
 
-  private int keySize;
-
   public RouterKey(byte[] key) {
     this(ByteBuffer.wrap(key));
   }
@@ -33,7 +31,6 @@ public class RouterKey implements Comparable<RouterKey> {
   public RouterKey(ByteBuffer key) {
     this.keyBuffer = key;
     this.hashCode = this.keyBuffer.hashCode();
-    this.keySize = key.remaining();
   }
 
   public static RouterKey fromString(String s) {
@@ -50,10 +47,6 @@ public class RouterKey implements Comparable<RouterKey> {
 
   public ByteBuffer getKeyBuffer() {
     return keyBuffer;
-  }
-
-  public int getKeySize() {
-    return keySize;
   }
 
   @Override
@@ -84,16 +77,20 @@ public class RouterKey implements Comparable<RouterKey> {
   }
 
   public void setPartitionId(int partitionId) {
-    if (UNKNOWN_PARTITION_ID != this.partitionId) {
+    if (hasPartitionId()) {
       throw new VeniceException("Partition id has been assigned: " + this.partitionId + ", and it is immutable after");
     }
     this.partitionId = partitionId;
   }
 
   public int getPartitionId() {
-    if (UNKNOWN_PARTITION_ID == partitionId) {
+    if (!hasPartitionId()) {
       throw new VeniceException("Partition id hasn't been setup yet");
     }
     return this.partitionId;
+  }
+
+  public boolean hasPartitionId() {
+    return this.partitionId != UNKNOWN_PARTITION_ID;
   }
 }
