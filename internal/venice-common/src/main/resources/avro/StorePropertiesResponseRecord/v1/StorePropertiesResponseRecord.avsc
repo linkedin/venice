@@ -1,0 +1,44 @@
+{
+  "type": "record",
+  "name": "StorePropertiesResponseRecord",
+  "namespace": "com.linkedin.venice.metadata.response",
+  "doc": "This record will store store properties",
+  "fields": [
+    {
+      "name": "storeMetaValue",
+      "doc": "Store metadata",
+      "type": [
+        "null",
+        "com.linkedin.venice.systemstore.schemas.StoreMetaValue"
+      ],
+      "default": null
+    },
+    {
+      "name": "helixGroupInfo",
+      "doc": "Helix group information, maps replicas to their respective groups",
+      "type": [
+        "null",
+        {
+          "type": "map",
+          "values": "int"
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "routingInfo",
+      "doc": "Routing table information, maps resource to partition ID to a list of replicas",
+      "type": [
+        "null",
+        {
+          "type": "map",
+          "values": {
+            "type": "array",
+            "items": "string"
+          }
+        }
+      ],
+      "default": null
+    }
+  ]
+}
