@@ -140,7 +140,9 @@ import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.lingeringjob.DefaultLingeringStoreVersionChecker;
 import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
+import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
+import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controller.supersetschema.DefaultSupersetSchemaGenerator;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controller.util.ParentControllerConfigUpdateUtils;
@@ -4886,6 +4888,29 @@ public class VeniceParentHelixAdmin implements Admin {
       throw new VeniceException("Something went wrong trying to fetch stale stores.", e);
     }
     return retMap;
+  }
+
+  /**
+   * see {@link Admin#getStoresForCompaction}
+   */
+  @Override
+  public List<StoreInfo> getStoresForCompaction(String clusterName) {
+    throw new UnsupportedOperationException("This function is implemented in VeniceHelixAdmin.");
+  }
+
+  /**
+   * see {@link Admin#compactStore}
+   *
+   * @return
+   */
+  @Override
+  public RepushJobResponse compactStore(String storeName) {
+    throw new UnsupportedOperationException("This function is implemented in VeniceHelixAdmin.");
+  }
+
+  @Override
+  public CompactionManager getCompactionManager() {
+    throw new UnsupportedOperationException("This function is implemented in VeniceHelixAdmin.");
   }
 
   /**
