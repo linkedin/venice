@@ -163,7 +163,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       checkStore(storeName, store);
 
       // Store Properties
-      StoreProperties storeProperties = ((ReadOnlyStore) store).cloneStoreProperties();
+      StoreProperties storeProperties = (new ReadOnlyStore(store)).cloneStoreProperties();
 
       // Key Schemas
       Map<CharSequence, CharSequence> keySchema = getKeySchema(storeName);
@@ -193,6 +193,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       idsWrittenPerStoreVersion.add(store.getLatestSuperSetValueSchemaId());
 
       // StoreMetaValue
+      System.out.println("HERE HERE HERE");
       StoreMetaValue storeMetaValue = new StoreMetaValue();
       storeMetaValue.setTimestamp(System.currentTimeMillis());
       storeMetaValue.setStoreProperties(storeProperties);
@@ -210,11 +211,13 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       int currentVersionNumber = getCurrentVersionNumberOrThrow(storeName, store);
       Map<CharSequence, List<CharSequence>> routingInfo = getRoutingInfo(storeName, currentVersionNumber);
 
+      System.out.println("HERE HERE HERE HERE");
       response.setStoreMetaValue(storeMetaValue);
       response.setHelixGroupInfo(helixGroupInfo);
       response.setRoutingInfo(routingInfo);
     } catch (VeniceException e) {
-      LOGGER.warn("Failed to populate request based metadata by client for store: {}.", storeName);
+      LOGGER
+          .warn("Failed to populate request based store properties for store {}: [Venice Expection] {}.", storeName, e);
       response
           .setMessage("Failed to populate metadata by client for store: " + storeName + " due to: " + e.getMessage());
       response.setError(true);
@@ -225,9 +228,9 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
         e.printStackTrace(pw);
       }
       String trace = sw.toString();
-      LOGGER.warn("Failed to populate request based metadata by client for store: {}.", storeName);
-      response.setMessage(
-          "Failed to populate metadata by client for store: " + storeName + " due to: " + e.toString() + "\n" + trace);
+      LOGGER.warn("Failed to populate request based store properties for store {}: [Exception] {}.", storeName, e);
+      response
+          .setMessage("Failed to populate metadata by client for store: " + storeName + " due to: " + e + "\n" + trace);
       response.setError(true);
       serverMetadataServiceStats.recordRequestBasedMetadataFailureCount();
     }
