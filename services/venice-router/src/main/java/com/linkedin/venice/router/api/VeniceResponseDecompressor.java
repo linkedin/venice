@@ -26,7 +26,6 @@ import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpRequest;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Optional;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
 
@@ -178,8 +177,8 @@ public class VeniceResponseDecompressor {
         compressor = compressorFactory.getVersionSpecificCompressor(kafkaTopic);
         if (compressor == null) {
           throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
-              Optional.of(storeName),
-              Optional.of(requestType),
+              this.storeName,
+              requestType,
               SERVICE_UNAVAILABLE,
               "Compressor not available for resource " + kafkaTopic + ". Dictionary not downloaded.");
         }
@@ -192,7 +191,7 @@ public class VeniceResponseDecompressor {
       String errorMsg = String
           .format("Failed to decompress data. Store: %s; Version: %d, error: %s", storeName, version, e.getMessage());
       throw RouterExceptionAndTrackingUtils
-          .newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(requestType), BAD_GATEWAY, errorMsg);
+          .newVeniceExceptionAndTracking(this.storeName, requestType, BAD_GATEWAY, errorMsg);
     }
   }
 
@@ -211,8 +210,8 @@ public class VeniceResponseDecompressor {
         compressor = compressorFactory.getVersionSpecificCompressor(kafkaTopic);
         if (compressor == null) {
           throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
-              Optional.of(storeName),
-              Optional.of(requestType),
+              this.storeName,
+              requestType,
               SERVICE_UNAVAILABLE,
               "Compressor not available for resource " + kafkaTopic + ". Dictionary not downloaded.");
         }
@@ -226,7 +225,7 @@ public class VeniceResponseDecompressor {
       String errorMsg = String
           .format("Failed to decompress data. Store: %s; Version: %d, error: %s", storeName, version, e.getMessage());
       throw RouterExceptionAndTrackingUtils
-          .newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(requestType), BAD_GATEWAY, errorMsg);
+          .newVeniceExceptionAndTracking(this.storeName, requestType, BAD_GATEWAY, errorMsg);
     }
 
     return Unpooled.wrappedBuffer(recordSerializer.serializeObjects(records));

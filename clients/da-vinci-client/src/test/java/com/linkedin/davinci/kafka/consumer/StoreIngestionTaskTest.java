@@ -27,6 +27,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_LOCAL_CONSUMER_CONFIG_PREFIX
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_CONSUMER_CONFIG_PREFIX;
+import static com.linkedin.venice.ConfigKeys.SERVER_RESET_ERROR_REPLICA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
@@ -46,6 +47,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -384,6 +386,8 @@ public abstract class StoreIngestionTaskTest {
   private PubSubTopicPartition barTopicPartition;
 
   private Runnable runnableForKillNonCurrentVersion;
+
+  private ZKHelixAdmin zkHelixAdmin;
 
   private static final int PARTITION_COUNT = 10;
   private static final Set<Integer> ALL_PARTITIONS = new HashSet<>();
@@ -858,6 +862,8 @@ public abstract class StoreIngestionTaskTest {
     Properties kafkaProps = new Properties();
     kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
 
+    zkHelixAdmin = mock(ZKHelixAdmin.class);
+    doNothing().when(zkHelixAdmin).setPartitionsToError(anyString(), anyString(), anyString(), anyList());
     storeIngestionTaskUnderTest = spy(
         ingestionTaskFactory.getNewIngestionTask(
             storageService,
@@ -870,7 +876,7 @@ public abstract class StoreIngestionTaskTest {
             false,
             Optional.empty(),
             recordTransformerFunction,
-            Lazy.of(() -> mock(ZKHelixAdmin.class))));
+            Lazy.of(() -> zkHelixAdmin)));
 
     Future testSubscribeTaskFuture = null;
     try {
@@ -2830,6 +2836,7 @@ public abstract class StoreIngestionTaskTest {
     propertyBuilder.put(SERVER_INGESTION_HEARTBEAT_INTERVAL_MS, 1000);
     propertyBuilder.put(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS, 1000);
     propertyBuilder.put(SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED, true);
+    propertyBuilder.put(SERVER_RESET_ERROR_REPLICA_ENABLED, true);
     extraProperties.forEach(propertyBuilder::put);
 
     Map<String, Map<String, String>> kafkaClusterMap = new HashMap<>();
@@ -4371,8 +4378,7 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test
-  public void testIngestionTaskForCurrentVersionShouldTryToKillOngoingPushWhenEncounteringMemoryLimitException()
-      throws Exception {
+  public void testIngestionTaskCurrentVersionKillOngoingPushOnMemoryLimitException() throws Exception {
     doThrow(new MemoryLimitExhaustedException("mock exception")).doNothing()
         .when(mockAbstractStorageEngine)
         .put(anyInt(), any(), (ByteBuffer) any());
@@ -4389,6 +4395,30 @@ public abstract class StoreIngestionTaskTest {
       verify(mockLogNotifier, timeout(1000)).completed(anyString(), eq(PARTITION_FOO), anyLong(), anyString());
       verify(runnableForKillNonCurrentVersion, times(1)).run();
     }, AA_OFF);
+  }
+
+  @Test
+  public void testIngestionTaskForCurrentVersionResetException() throws Exception {
+    doThrow(new VeniceException("mock exception")).doNothing()
+        .when(mockAbstractStorageEngine)
+        .put(anyInt(), any(), (ByteBuffer) any());
+    isCurrentVersion = () -> true;
+
+    localVeniceWriter.broadcastStartOfPush(new HashMap<>());
+    localVeniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, PUT_KEY_FOO_TIMESTAMP, null).get();
+    localVeniceWriter.broadcastEndOfPush(new HashMap<>());
+
+    StoreIngestionTaskTestConfig testConfig =
+        new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
+          // pcs.completionReported();
+          verify(mockAbstractStorageEngine, timeout(10000).times(1)).put(eq(PARTITION_FOO), any(), (ByteBuffer) any());
+          Utils.sleep(1000);
+          verify(zkHelixAdmin, atLeast(1)).setPartitionsToError(anyString(), anyString(), anyString(), anyList());
+        }, AA_OFF);
+    testConfig.setStoreVersionConfigOverride(configOverride -> {
+      doReturn(true).when(configOverride).isResetErrorReplicaEnabled();
+    });
+    runTest(testConfig);
   }
 
   @Test
@@ -5152,7 +5182,7 @@ public abstract class StoreIngestionTaskTest {
       // This is an actual exception thrown when deserializing a corrupted OffsetRecord
       String msg = "Received Magic Byte '6' which is not supported by InternalAvroSpecificSerializer. "
           + "The only supported Magic Byte for this implementation is '24'.";
-      doThrow(new VeniceMessageException(msg)).when(mockStorageMetadataService).getLastOffset(any(), anyInt());
+      when(mockStorageMetadataService.getLastOffset(any(), anyInt())).thenThrow(new VeniceMessageException(msg));
 
       for (int i = 0; i < StoreIngestionTask.MAX_CONSUMER_ACTION_ATTEMPTS; i++) {
         try {
@@ -5162,7 +5192,11 @@ public abstract class StoreIngestionTaskTest {
         }
       }
       ArgumentCaptor<VeniceException> captor = ArgumentCaptor.forClass(VeniceException.class);
-      verify(storeIngestionTaskUnderTest, atLeastOnce()).reportError(anyString(), eq(PARTITION_FOO), captor.capture());
+      waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
+        assertTrue(storeIngestionTaskUnderTest.consumerActionsQueue.isEmpty(), "Wait for action processing");
+        verify(storeIngestionTaskUnderTest, atLeastOnce())
+            .reportError(anyString(), eq(PARTITION_FOO), captor.capture());
+      });
       assertTrue(captor.getValue().getMessage().endsWith(msg));
     }, AA_OFF);
   }

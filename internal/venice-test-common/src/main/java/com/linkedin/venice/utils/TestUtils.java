@@ -11,7 +11,6 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.github.luben.zstd.Zstd;
@@ -730,23 +729,6 @@ public class TestUtils {
             storeResponse.getStore().isActiveActiveReplicationEnabled(),
             enabledAA,
             "The active active replication config does not match.");
-      }
-    });
-  }
-
-  public static void verifyHybridStoreDataReplicationPolicy(
-      String storeName,
-      DataReplicationPolicy dataReplicationPolicy,
-      ControllerClient... controllerClients) {
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-      for (ControllerClient controllerClient: controllerClients) {
-        StoreResponse storeResponse = assertCommand(controllerClient.getStore(storeName));
-        assertNotNull(storeResponse.getStore(), "Store should not be null");
-        assertNotNull(storeResponse.getStore().getHybridStoreConfig(), "Hybrid store config should not be null");
-        assertEquals(
-            storeResponse.getStore().getHybridStoreConfig().getDataReplicationPolicy(),
-            dataReplicationPolicy,
-            "The data replication policy does not match.");
       }
     });
   }

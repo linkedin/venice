@@ -30,6 +30,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Avro Compatibility Tests
         run: ./gradlew -DmaxParallelForks=2 --parallel :internal:venice-avro-compatibility-test:test --continue
       - name: Package Build Artifacts
@@ -87,6 +89,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run alpini unit tests
         run: ./gradlew --continue --no-daemon -DmaxParallelForks=1 alpiniUnitTest
       - name: Package Build Artifacts
@@ -129,6 +133,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Build with gradle
         run: ./gradlew assemble --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1
 

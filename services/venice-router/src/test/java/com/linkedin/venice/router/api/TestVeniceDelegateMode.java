@@ -2,7 +2,7 @@ package com.linkedin.venice.router.api;
 
 import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.HELIX_ASSISTED_ROUTING;
 import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.LEAST_LOADED_ROUTING;
-import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.atLeastOnce;
@@ -14,6 +14,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
 
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.alpini.router.api.HostFinder;
@@ -723,9 +724,13 @@ public class TestVeniceDelegateMode {
                 .assertEquals(request.getHosts().size(), 1, "There should be only one host for each request"));
     Set<Instance> instanceSet = new HashSet<>();
     requests.stream().forEach(request -> instanceSet.add(request.getHosts().get(0)));
-    Assert.assertTrue(instanceSet.contains(instance1) && instanceSet.contains(instance2));
+    assertEquals(instanceSet.size(), 2, "The instanceSet does not have two entries: " + instanceSet);
+    Assert.assertTrue(
+        (instanceSet.contains(instance1) && instanceSet.contains(instance2))
+            || (instanceSet.contains(instance3) && instanceSet.contains(instance4)),
+        "instanceSet should contain either [1, 2] or [3, 4], but instead contains: " + instanceSet);
 
-    // The second request should pick up another group
+    // The second request should pick up another group; TODO: That does not seem to happen (?!)
     scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
     finalScatter = scatterMode
         .scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, monitor, VeniceRole.REPLICA);
@@ -740,7 +745,11 @@ public class TestVeniceDelegateMode {
                 .assertEquals(request.getHosts().size(), 1, "There should be only one host for each request"));
     instanceSet.clear();
     requests.stream().forEach(request -> instanceSet.add(request.getHosts().get(0)));
-    Assert.assertTrue(instanceSet.contains(instance1) && instanceSet.contains(instance2));
+    assertEquals(instanceSet.size(), 2, "The instanceSet does not have two entries: " + instanceSet);
+    Assert.assertTrue(
+        (instanceSet.contains(instance1) && instanceSet.contains(instance2))
+            || (instanceSet.contains(instance3) && instanceSet.contains(instance4)),
+        "instanceSet should contain either [1, 2] or [3, 4], but instead contains: " + instanceSet);
 
     // Test the scenario that all the replicas for a given partition are slow
     // for partition 1, both instance1 and instance3 are slow

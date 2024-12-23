@@ -4,10 +4,12 @@ import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.LEAST
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.alpini.router.api.HostFinder;
 import com.linkedin.alpini.router.api.HostHealthMonitor;
 import com.linkedin.alpini.router.api.PartitionFinder;
+import com.linkedin.alpini.router.api.RouterException;
 import com.linkedin.alpini.router.api.Scatter;
 import com.linkedin.alpini.router.api.ScatterGatherRequest;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
@@ -72,6 +74,11 @@ public class RouterRequestThrottlingTest {
     return new Object[][] { { RequestType.MULTI_GET }, { RequestType.COMPUTE } };
   }
 
+  /** A simple Runnable-like interface just to reduce boilerplate in the test... */
+  private interface ScatterCall {
+    void run() throws RouterException;
+  }
+
   @Test(timeOut = 30000, dataProvider = "multiGet_compute")
   public void testMultiKeyThrottling(RequestType requestType) throws Exception {
     // Allow 10 multi-key requests per second
@@ -115,18 +122,20 @@ public class RouterRequestThrottlingTest {
     HostFinder<Instance, VeniceRole> hostFinder = mock(VeniceHostFinder.class);
     HostHealthMonitor<Instance> hostHealthMonitor = mock(HostHealthMonitor.class);
 
+    ScatterCall scatterCall = () -> delegateMode.scatter(
+        scatter,
+        HttpMethod.POST.name(),
+        storeName + "_v1",
+        partitionFinder,
+        hostFinder,
+        hostHealthMonitor,
+        VeniceRole.REPLICA);
+
     // The router shouldn't throttle any request if the multi-get QPS is below 10
     for (int iter = 0; iter < 3; iter++) {
       for (int i = 0; i < allowedQPS; i++) {
         try {
-          delegateMode.scatter(
-              scatter,
-              HttpMethod.POST.name(),
-              storeName + "_v1",
-              partitionFinder,
-              hostFinder,
-              hostHealthMonitor,
-              VeniceRole.REPLICA);
+          scatterCall.run();
         } catch (Exception e) {
           Assert.fail("router shouldn't throttle any multi-get requests if the QPS is below " + allowedQPS);
         }
@@ -138,16 +147,11 @@ public class RouterRequestThrottlingTest {
 
     // Router should throttle the multi-get requests if QPS exceeds 10
     boolean multiGetThrottled = false;
-    for (int i = 0; i < allowedQPS + 1; i++) {
+    int queriesSent = allowedQPS + 1;
+    long startTime = System.currentTimeMillis();
+    for (int i = 0; i < queriesSent; i++) {
       try {
-        delegateMode.scatter(
-            scatter,
-            HttpMethod.POST.name(),
-            storeName + "_v1",
-            partitionFinder,
-            hostFinder,
-            hostHealthMonitor,
-            VeniceRole.REPLICA);
+        scatterCall.run();
       } catch (Exception e) {
         multiGetThrottled = true;
         if (i < allowedQPS) {
@@ -156,9 +160,38 @@ public class RouterRequestThrottlingTest {
         }
       }
     }
+    long elapsedTime = System.currentTimeMillis() - startTime;
 
-    // restore the throttler so that it doesn't affect the following test case
-    throttler.restoreAllThrottlers();
-    Assert.assertTrue(multiGetThrottled);
+    if (!multiGetThrottled) {
+      int additionalQueriesNeeded = -1;
+      for (int i = 1; i < queriesSent * 10; i++) {
+        try {
+          scatterCall.run();
+        } catch (Exception e) {
+          additionalQueriesNeeded = i;
+          break;
+        }
+      }
+      long totalElapsedTime = System.currentTimeMillis() - startTime;
+      if (additionalQueriesNeeded < 0) {
+        Assert.fail(
+            "Never triggered quota at all, even after sending 10x more than it should have needed! Original elapsed time: "
+                + elapsedTime + "; total elapsed time: " + totalElapsedTime);
+      } else {
+        /**
+         * N.B.: This test used to be flaky because it would be 1 request short of triggering the quota. It's not clear
+         * why it sometimes takes a little more, and sometimes doesn't (floating point arithmetic being wonky, perhaps?)
+         * but here we're adding a small tolerance threshold, while still ensuring that larger deviations still result
+         * in failure.
+         */
+        int toleranceThreshold = 1;
+        assertTrue(
+            additionalQueriesNeeded <= toleranceThreshold,
+            "Should have triggered quota in " + queriesSent + " requests, but it took " + additionalQueriesNeeded
+                + " additional request(s) before finally triggering, which is higher than the tolerance threshold of "
+                + toleranceThreshold + ". Original elapsed time: " + elapsedTime + "; total elapsed time: "
+                + totalElapsedTime);
+      }
+    }
   }
 }

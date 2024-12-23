@@ -121,3 +121,10 @@ jar {
 ext {
   jacocoCoverageThreshold = 0.39
 }
+
+checkerFramework {
+  extraJavacArgs = ['-Xmaxerrs', '256']
+  checkers = ['org.checkerframework.checker.nullness.NullnessChecker']
+  skipCheckerFramework = true
+  excludeTests = true
+}

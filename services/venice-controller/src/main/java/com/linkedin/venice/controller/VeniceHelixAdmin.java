@@ -2833,7 +2833,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             version.setViewConfigs(store.getViewConfigs());
 
-            if (repushSourceVersion > NON_EXISTING_VERSION) {
+            if (isRepush && repushSourceVersion > NON_EXISTING_VERSION) {
               version.setRepushSourceVersion(repushSourceVersion);
             }
 

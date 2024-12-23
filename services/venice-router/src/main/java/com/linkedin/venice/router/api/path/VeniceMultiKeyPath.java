@@ -21,7 +21,6 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.annotation.Nonnull;
 import org.apache.http.client.methods.HttpPost;
@@ -102,8 +101,8 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
       partitioner = partitionFinder.findPartitioner(getStoreName(), getVersionNumber());
     } catch (VeniceNoHelixResourceException e) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTrackingResourceNotFound(
-          Optional.of(getStoreName()),
-          Optional.of(RequestType.COMPUTE),
+          getStoreName(),
+          RequestType.COMPUTE,
           e.getHttpResponseStatus(),
           e.getMessage());
     }
@@ -121,8 +120,8 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
        * If application is using Venice client to send batch-get request, this piece of logic shouldn't be triggered.
        */
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-          Optional.of(getStoreName()),
-          Optional.of(getRequestType()),
+          getStoreName(),
+          getRequestType(),
           BAD_REQUEST,
           "Key count in multi-get request should not be zero");
     }
@@ -160,8 +159,8 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
     K routerRequestKey = routerKeyMap.get(s);
     if (routerRequestKey == null) {
       throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
-          Optional.of(getStoreName()),
-          Optional.of(getRequestType()),
+          getStoreName(),
+          getRequestType(),
           BAD_GATEWAY,
           "RouterKey: " + s + " should exist in the original path");
     }
@@ -199,8 +198,8 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
       K routerRequestKey = routerKeyMap.get(key);
       if (routerRequestKey == null) {
         throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
-            Optional.of(getStoreName()),
-            Optional.of(getRequestType()),
+            getStoreName(),
+            getRequestType(),
             BAD_GATEWAY,
             "RouterKey: " + key + " should exist in the original path");
       }

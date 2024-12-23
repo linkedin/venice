@@ -1051,11 +1051,6 @@ public class ConfigKeys {
   public static final String ROUTER_CLIENT_DECOMPRESSION_ENABLED = "router.client.decompression.enabled";
 
   /**
-   * Whether to enable fast-avro in router;
-   */
-  public static final String ROUTER_COMPUTE_FAST_AVRO_ENABLED = "router.compute.fast.avro.enabled";
-
-  /**
    * Socket timeout config for the connection manager from router to server
    */
   public static final String ROUTER_SOCKET_TIMEOUT = "router.socket.timeout";
