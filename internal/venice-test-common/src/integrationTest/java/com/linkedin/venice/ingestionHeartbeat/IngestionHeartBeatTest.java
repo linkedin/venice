@@ -164,6 +164,11 @@ public class IngestionHeartBeatTest {
       ControllerResponse updateStoreResponse =
           parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
 
+      // If config combination for incremental push is wrong, update store should fail loudly.
+      if (!isActiveActiveEnabled && isIncrementalPushEnabled) {
+        assertTrue(updateStoreResponse.isError(), "Update store does not error on invalid config combination.");
+        return;
+      }
       assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
 
       VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);

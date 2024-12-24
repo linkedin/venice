@@ -128,8 +128,7 @@ public class TestParentControllerWithMultiDataCenter {
     PubSubTopic rtPubSubTopic = pubSubTopicRepository.getTopic(rtTopicName);
 
     UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams();
-    updateStoreParams.setIncrementalPushEnabled(true)
-        .setBackupStrategy(BackupStrategy.KEEP_MIN_VERSIONS)
+    updateStoreParams.setBackupStrategy(BackupStrategy.KEEP_MIN_VERSIONS)
         .setNumVersionsToPreserve(2)
         .setHybridRewindSeconds(1000)
         .setHybridOffsetLagThreshold(1000);

@@ -338,7 +338,12 @@ public class PushJobDetailsTest {
       // because hadoop job client cannot fetch counters properly.
       parentControllerClient.updateStore(
           testStoreName,
-          new UpdateStoreQueryParams().setStorageQuotaInByte(-1).setPartitionCount(2).setIncrementalPushEnabled(true));
+          new UpdateStoreQueryParams().setStorageQuotaInByte(-1)
+              .setPartitionCount(2)
+              .setHybridOffsetLagThreshold(10)
+              .setHybridRewindSeconds(10)
+              .setActiveActiveReplicationEnabled(true)
+              .setIncrementalPushEnabled(true));
       Properties pushJobProps = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathForFullPush, testStoreName);
       pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
       try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job", pushJobProps)) {

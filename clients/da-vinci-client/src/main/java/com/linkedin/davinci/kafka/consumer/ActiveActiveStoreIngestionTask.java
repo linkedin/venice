@@ -1151,8 +1151,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     syncTopicSwitchToIngestionMetadataService(topicSwitch, partitionConsumptionState);
     if (!isLeader(partitionConsumptionState)) {
       partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
-      // TODO: Remove this check totally once Aggregate mode is fully deprecated.
-      return isHybridAggregateMode();
     }
     return false;
   }

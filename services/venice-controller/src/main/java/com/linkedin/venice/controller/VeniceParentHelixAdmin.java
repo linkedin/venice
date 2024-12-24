@@ -2769,6 +2769,18 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       /**
+       * Pre-flight check for incremental push config update. We only allow incremental push config to be turned on
+       * when store is A/A. Otherwise, we should fail store update.
+       */
+      if (setStore.hybridStoreConfig != null && setStore.incrementalPushEnabled
+          && !setStore.activeActiveReplicationEnabled) {
+        throw new VeniceHttpException(
+            HttpStatus.SC_BAD_REQUEST,
+            "Hybrid store config invalid. Cannot have incremental push enabled while A/A not enabled",
+            ErrorType.BAD_REQUEST);
+      }
+
+      /**
        * By default, parent controllers will not try to replicate the unchanged store configs to child controllers;
        * an updatedConfigsList will be used to represent which configs are updated by users.
        */

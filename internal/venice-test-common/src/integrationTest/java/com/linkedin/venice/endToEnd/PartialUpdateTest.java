@@ -406,6 +406,7 @@ public class PartialUpdateTest {
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setCompressionStrategy(CompressionStrategy.NO_OP)
+              .setActiveActiveReplicationEnabled(true)
               .setWriteComputationEnabled(true)
               .setChunkingEnabled(true)
               .setIncrementalPushEnabled(true)

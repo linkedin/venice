@@ -482,6 +482,7 @@ public class TestPushJobWithNativeReplication {
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1)
             .setHybridOffsetLagThreshold(TEST_TIMEOUT)
             .setHybridRewindSeconds(2L)
+            .setActiveActiveReplicationEnabled(true)
             .setIncrementalPushEnabled(true),
         100,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
@@ -509,8 +510,7 @@ public class TestPushJobWithNativeReplication {
     int partitionCount = 2;
     motherOfAllTests(
         "testActiveActiveForHeartbeatSystemStores",
-        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(partitionCount)
-            .setIncrementalPushEnabled(true),
+        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(partitionCount),
         recordCount,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
           try (
@@ -595,7 +595,8 @@ public class TestPushJobWithNativeReplication {
                 parentControllerClient
                     .updateStore(
                         storeName,
-                        new UpdateStoreQueryParams().setIncrementalPushEnabled(true)
+                        new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+                            .setIncrementalPushEnabled(true)
                             .setHybridOffsetLagThreshold(1)
                             .setHybridRewindSeconds(Time.SECONDS_PER_DAY))
                     .isError());
