@@ -29,7 +29,6 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJ
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
-import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
@@ -85,7 +84,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
 import com.linkedin.venice.status.PushJobDetailsStatus;
@@ -101,9 +99,6 @@ import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.writer.VeniceWriter;
-import com.linkedin.venice.writer.VeniceWriterFactory;
-import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
@@ -957,47 +952,4 @@ public class TestPushJobWithNativeReplication {
         storeResponse.getStore().getCurrentVersion() > 0,
         systemStoreName + " is not ready for DC-" + dcNumber);
   }
-
-  private VeniceWriter<String, String, byte[]> startIncrementalPush(
-      ControllerClient controllerClient,
-      String storeName,
-      VeniceWriterFactory veniceWriterFactory,
-      String incrementalPushVersion) {
-    VersionCreationResponse response = controllerClient.requestTopicForWrites(
-        storeName,
-        1024,
-        Version.PushType.INCREMENTAL,
-        "test-incremental-push",
-        true,
-        true,
-        false,
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        false,
-        -1);
-    assertFalse(response.isError());
-    Assert.assertNotNull(response.getKafkaTopic());
-    VeniceWriter veniceWriter = veniceWriterFactory.createVeniceWriter(
-        new VeniceWriterOptions.Builder(response.getKafkaTopic())
-            .setKeySerializer(new VeniceAvroKafkaSerializer(STRING_SCHEMA.toString()))
-            .setValueSerializer(new VeniceAvroKafkaSerializer(STRING_SCHEMA.toString()))
-            .build());
-    veniceWriter.broadcastStartOfIncrementalPush(incrementalPushVersion, new HashMap<>());
-    return veniceWriter;
-  }
-
-  private void verifyVeniceStoreData(String storeName, String routerUrl, String valuePrefix, int keyCount)
-      throws ExecutionException, InterruptedException {
-    try (AvroGenericStoreClient<String, Object> client = ClientFactory
-        .getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
-      for (int i = 1; i <= keyCount; ++i) {
-        String expected = valuePrefix + i;
-        Object actual = client.get(Integer.toString(i)).get(); /* client.get().get() returns a Utf8 object */
-        Assert.assertNotNull(actual, "Unexpected null value for key: " + i);
-        Assert.assertEquals(actual.toString(), expected);
-      }
-    }
-  }
-
 }

@@ -1,6 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.stats.HostLevelIngestionStats.ASSEMBLED_RMD_SIZE_IN_BYTES;
+import static com.linkedin.venice.endToEnd.TestBatch.TEST_TIMEOUT;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
@@ -63,6 +64,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -74,6 +76,7 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
@@ -1466,6 +1469,46 @@ public class PartialUpdateTest {
         });
       }
     }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testRTTopicDeletionWithHybridAndIncrementalVersions() {
+    String storeName = Utils.getUniqueString("testRTTopicDeletion");
+    String clusterName = CLUSTER_NAME;
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+    ControllerClient parentControllerClient =
+        ControllerClient.constructClusterControllerClient(clusterName, parentControllerURLs);
+    ControllerClient[] childControllerClients = new ControllerClient[childDatacenters.size()];
+    for (int i = 0; i < childDatacenters.size(); i++) {
+      childControllerClients[i] =
+          new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString());
+    }
+
+    NewStoreResponse newStoreResponse =
+        parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
+    Assert.assertFalse(
+        newStoreResponse.isError(),
+        "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+
+    StoreInfo store = TestUtils.assertCommand(parentControllerClient.getStore(storeName)).getStore();
+
+    UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams();
+    updateStoreParams.setBackupStrategy(BackupStrategy.KEEP_MIN_VERSIONS)
+        .setActiveActiveReplicationEnabled(true)
+        // .setIncrementalPushEnabled(true)
+        .setNumVersionsToPreserve(2)
+        .setHybridRewindSeconds(1000)
+        .setHybridOffsetLagThreshold(1000);
+    TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
+
+    VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
+    assertEquals(response.getVersion(), 1);
+    assertFalse(response.isError(), "Empty push to parent colo should succeed");
+    TestUtils.waitForNonDeterministicPushCompletion(
+        Version.composeKafkaTopic(storeName, 1),
+        parentControllerClient,
+        60,
+        TimeUnit.SECONDS);
   }
 
   @Test(timeOut = TEST_TIMEOUT_MS)

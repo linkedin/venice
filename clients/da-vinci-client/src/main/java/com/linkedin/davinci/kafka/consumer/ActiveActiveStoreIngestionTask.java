@@ -1533,7 +1533,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     Set<String> leaderSourceKafkaURLs = getConsumptionSourceKafkaAddress(partitionConsumptionState);
     Map<String, Long> leaderOffsetByKafkaURL = new HashMap<>(leaderSourceKafkaURLs.size());
     List<CharSequence> unreachableBrokerList = new ArrayList<>();
-
     // TODO: Potentially this logic can be merged into below branch.
     if (calculateUpstreamOffsetFromTopicSwitch) {
       leaderOffsetByKafkaURL =
@@ -1555,7 +1554,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           "Failed to reach broker urls {}, will schedule retry to compute upstream offset and resubscribe!",
           unreachableBrokerList.toString());
     }
-
     // subscribe to the new upstream
     leaderOffsetByKafkaURL.forEach((kafkaURL, leaderStartOffset) -> {
       consumerSubscribe(leaderTopic, partitionConsumptionState, leaderStartOffset, kafkaURL);
