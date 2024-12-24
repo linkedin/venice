@@ -2518,7 +2518,7 @@ public class VeniceParentHelixAdmin implements Admin {
           && !veniceHelixAdmin.isHybrid(currStore.getHybridStoreConfig())
           && !veniceHelixAdmin.isHybrid(updatedHybridStoreConfig)) {
         LOGGER.info(
-            "Enabling incremental push for a batch store:{}. Converting it to a hybrid store with default configs.",
+            "Enabling incremental push for a batch store:{}. Converting it to Active/Active hybrid store with default configs.",
             storeName);
         HybridStoreConfigRecord hybridStoreConfigRecord = new HybridStoreConfigRecord();
         hybridStoreConfigRecord.rewindTimeInSeconds = DEFAULT_REWIND_TIME_IN_SECONDS;
@@ -2533,6 +2533,10 @@ public class VeniceParentHelixAdmin implements Admin {
         updatedConfigsList.add(BUFFER_REPLAY_POLICY);
         hybridStoreConfigRecord.realTimeTopicName = DEFAULT_REAL_TIME_TOPIC_NAME;
         setStore.hybridStoreConfig = hybridStoreConfigRecord;
+        if (!currStore.isSystemStore() && controllerConfig.isActiveActiveReplicationEnabledAsDefaultForHybrid()) {
+          setStore.activeActiveReplicationEnabled = true;
+          updatedConfigsList.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
+        }
       }
 
       /**

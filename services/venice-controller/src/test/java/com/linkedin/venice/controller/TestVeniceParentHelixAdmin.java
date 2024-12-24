@@ -2663,8 +2663,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         () -> parentAdmin.deleteAclForStore(clusterName, storeName));
   }
 
-  @Test
-  public void testHybridAndIncrementalUpdateStoreCommands() {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testHybridAndIncrementalUpdateStoreCommands(boolean aaEnabled) {
     String storeName = Utils.getUniqueString("testUpdateStore");
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
@@ -2701,6 +2701,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertEquals(updateStore.hybridStoreConfig.offsetLagThresholdToGoOnline, 20000);
     assertEquals(updateStore.hybridStoreConfig.rewindTimeInSeconds, 60);
 
+    store.setActiveActiveReplicationEnabled(aaEnabled);
     store.setHybridStoreConfig(
         new HybridStoreConfigImpl(
             60,
@@ -2709,10 +2710,15 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             DataReplicationPolicy.NON_AGGREGATE,
             BufferReplayPolicy.REWIND_FROM_EOP));
     // Incremental push can be enabled on a hybrid store, default inc push policy is inc push to RT now
-    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
-
-    // veniceWriter.put will be called again for the second update store command
-    verify(veniceWriter, times(2)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    if (aaEnabled) {
+      parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+      // veniceWriter.put will be called again for the second update store command
+      verify(veniceWriter, times(2)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    } else {
+      assertThrows(
+          () -> parentAdmin
+              .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true)));
+    }
   }
 
   @Test

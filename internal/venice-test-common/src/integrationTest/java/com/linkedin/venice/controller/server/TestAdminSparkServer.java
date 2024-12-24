@@ -545,9 +545,17 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
       OwnerResponse ownerRes = controllerClient.setStoreOwner(storeName, owner);
       Assert.assertFalse(ownerRes.isError(), ownerRes.getError());
       Assert.assertEquals(ownerRes.getOwner(), owner);
-
+      // Need to finish the push before converting to hybrid.
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+        StoreResponse storeResponse = controllerClient.getStore(storeName);
+        Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), 1);
+      });
       UpdateStoreQueryParams updateStoreQueryParams =
-          new UpdateStoreQueryParams().setPartitionCount(partitionCount).setIncrementalPushEnabled(true);
+          new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+              .setHybridRewindSeconds(10)
+              .setHybridOffsetLagThreshold(10)
+              .setPartitionCount(partitionCount)
+              .setIncrementalPushEnabled(true);
       ControllerResponse partitionRes = parentControllerClient.updateStore(storeName, updateStoreQueryParams);
       Assert.assertFalse(partitionRes.isError(), partitionRes.getError());
 
