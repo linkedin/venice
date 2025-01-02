@@ -113,14 +113,14 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
     TestWriteUtils.updateStore(storeName, parentControllerClient, new UpdateStoreQueryParams().setPartitionCount(2));
 
     for (int i = 0; i < childControllerClients.length; i++) {
-      final int ii = i;
+      final int index = i;
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        StoreInfo storeInfo = childControllerClients[ii].getStore(storeName).getStore();
+        StoreInfo storeInfo = childControllerClients[index].getStore(storeName).getStore();
         String realTimeTopicNameInVersion = Utils.getRealTimeTopicName(storeInfo.getVersions().get(0));
         PubSubTopic realTimePubSubTopic = pubSubTopicRepository.getTopic(realTimeTopicNameInVersion);
 
         // verify rt topic is created with the default partition count = 3
-        Assert.assertEquals(topicManagers.get(ii).getPartitionCount(realTimePubSubTopic), 3);
+        Assert.assertEquals(topicManagers.get(index).getPartitionCount(realTimePubSubTopic), 3);
       });
     }
 
@@ -133,9 +133,9 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
     }
 
     for (int i = 0; i < childControllerClients.length; i++) {
-      final int ii = i;
+      final int idx = i;
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        StoreInfo storeInfo = childControllerClients[ii].getStore(storeName).getStore();
+        StoreInfo storeInfo = childControllerClients[idx].getStore(storeName).getStore();
         String realTimeTopicNameInBackupVersion = Utils.getRealTimeTopicName(storeInfo.getVersions().get(0));
         String realTimeTopicNameInCurrentVersion = Utils.getRealTimeTopicName(storeInfo.getVersions().get(1));
         String expectedRealTimeTopicNameInStoreConfig =
@@ -149,7 +149,7 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
         Assert.assertEquals(actualRealTimeTopicNameInStoreConfig, expectedRealTimeTopicNameInStoreConfig);
 
         // verify rt topic is created with the updated partition count = 2
-        Assert.assertEquals(topicManagers.get(ii).getPartitionCount(newRtPubSubTopic), 2);
+        Assert.assertEquals(topicManagers.get(idx).getPartitionCount(newRtPubSubTopic), 2);
       });
     }
   }

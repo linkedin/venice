@@ -73,7 +73,6 @@ import org.apache.commons.lang.Validate;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.util.Strings;
 
 
 /**
@@ -602,7 +601,7 @@ public class Utils {
         versions.stream().filter(version -> version.getNumber() == currentVersionNumber).findFirst();
     if (currentVersion.isPresent() && currentVersion.get().isHybrid()) {
       String realTimeTopicName = currentVersion.get().getHybridStoreConfig().getRealTimeTopicName();
-      if (Strings.isNotBlank(realTimeTopicName)) {
+      if (StringUtils.isNotBlank(realTimeTopicName)) {
         return realTimeTopicName;
       }
     }
@@ -618,7 +617,7 @@ public class Utils {
       try {
         if (version.isHybrid()) {
           String realTimeTopicName = version.getHybridStoreConfig().getRealTimeTopicName();
-          if (Strings.isNotBlank(realTimeTopicName)) {
+          if (StringUtils.isNotBlank(realTimeTopicName)) {
             realTimeTopicNames.add(realTimeTopicName);
           }
         }
@@ -641,7 +640,7 @@ public class Utils {
   }
 
   private static String getRealTimeTopicNameIfEmpty(String realTimeTopicName, String storeName) {
-    return Strings.isBlank(realTimeTopicName) ? composeRealTimeTopic(storeName) : realTimeTopicName;
+    return StringUtils.isBlank(realTimeTopicName) ? composeRealTimeTopic(storeName) : realTimeTopicName;
   }
 
   public static String createNewRealTimeTopicName(String oldRealTimeTopicName) {
@@ -650,21 +649,22 @@ public class Utils {
     }
 
     // Extract the base name and current version
-    String base =
-        oldRealTimeTopicName.substring(0, oldRealTimeTopicName.length() - Version.REAL_TIME_TOPIC_SUFFIX.length());
-    String[] parts = base.split("_v");
+    int suffixLength = Version.REAL_TIME_TOPIC_SUFFIX.length();
+    String base = oldRealTimeTopicName.substring(0, oldRealTimeTopicName.length() - suffixLength);
 
-    String newBase;
-    if (parts.length == 2) {
-      // Increment the version
-      int version = Integer.parseInt(parts[1]) + 1;
-      newBase = parts[0] + "_v" + version;
+    // Locate the last version separator "_v" in the base
+    int versionSeparatorIndex = base.lastIndexOf("_v");
+    if (versionSeparatorIndex > -1 && versionSeparatorIndex < base.length() - 2) {
+      // Extract and increment the version
+      String versionStr = base.substring(versionSeparatorIndex + 2);
+      int version = Integer.parseInt(versionStr) + 1;
+      base = base.substring(0, versionSeparatorIndex) + "_v" + version;
     } else {
-      // Start with version 2
-      newBase = base + "_v2";
+      // Start with version 2 if no valid version is present
+      base = base + "_v2";
     }
 
-    return newBase + Version.REAL_TIME_TOPIC_SUFFIX;
+    return base + Version.REAL_TIME_TOPIC_SUFFIX;
   }
 
   private static class TimeUnitInfo {

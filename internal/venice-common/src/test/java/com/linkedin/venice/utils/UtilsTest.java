@@ -257,7 +257,7 @@ public class UtilsTest {
     when(mockHybridConfig.getRealTimeTopicName()).thenReturn("RealTimeTopic");
 
     String result = Utils.getRealTimeTopicName(mockStore);
-    assertEquals("RealTimeTopic", result);
+    assertEquals(result, "RealTimeTopic");
   }
 
   @Test
@@ -274,7 +274,7 @@ public class UtilsTest {
     when(mockHybridConfig.getRealTimeTopicName()).thenReturn("RealTimeTopic");
 
     String result = Utils.getRealTimeTopicName(mockStoreInfo);
-    assertEquals("RealTimeTopic", result);
+    assertEquals(result, "RealTimeTopic");
   }
 
   @Test
@@ -284,13 +284,13 @@ public class UtilsTest {
     when(mockHybridConfig.getRealTimeTopicName()).thenReturn("RealTimeTopic");
     String result = Utils.getRealTimeTopicName("TestStore", Collections.EMPTY_LIST, 1, mockHybridConfig);
 
-    assertEquals("RealTimeTopic", result);
+    assertEquals(result, "RealTimeTopic");
   }
 
   @Test
   void testGetRealTimeTopicNameWithoutHybridConfig() {
     String result = Utils.getRealTimeTopicName("TestStore", Collections.EMPTY_LIST, 0, null);
-    assertEquals("TestStore" + Version.REAL_TIME_TOPIC_SUFFIX, result);
+    assertEquals(result, "TestStore" + Version.REAL_TIME_TOPIC_SUFFIX);
   }
 
   @Test
@@ -322,7 +322,7 @@ public class UtilsTest {
     when(mockVersion2.isHybrid()).thenReturn(false);
 
     String result = Utils.getRealTimeTopicName("TestStore", Lists.newArrayList(mockVersion1, mockVersion2), 1, null);
-    assertEquals("TestStore" + Version.REAL_TIME_TOPIC_SUFFIX, result);
+    assertEquals(result, "TestStore" + Version.REAL_TIME_TOPIC_SUFFIX);
   }
 
   @Test
@@ -335,7 +335,7 @@ public class UtilsTest {
     when(mockHybridConfig.getRealTimeTopicName()).thenReturn("RealTimeTopic");
 
     String result = Utils.getRealTimeTopicName(mockVersion);
-    assertEquals("RealTimeTopic", result);
+    assertEquals(result, "RealTimeTopic");
   }
 
   @Test
@@ -347,7 +347,7 @@ public class UtilsTest {
     when(mockVersion.getHybridStoreConfig()).thenReturn(null);
     when(mockVersion.getStoreName()).thenReturn("TestStore");
     String result = Utils.getRealTimeTopicName(mockVersion);
-    assertEquals("TestStore" + Version.REAL_TIME_TOPIC_SUFFIX, result);
+    assertEquals(result, "TestStore" + Version.REAL_TIME_TOPIC_SUFFIX);
   }
 
   @Test
@@ -365,7 +365,7 @@ public class UtilsTest {
     String result = Utils.getRealTimeTopicNameFromStoreConfig(store);
 
     // Validate
-    assertEquals("real-time-topic", result);
+    assertEquals(result, "real-time-topic");
 
     // Verify calls
     verify(store).getHybridStoreConfig();
@@ -386,7 +386,7 @@ public class UtilsTest {
 
     String result = Utils.getRealTimeTopicNameFromStoreConfig(store);
 
-    assertEquals("test-store_rt", result);
+    assertEquals(result, "test-store_rt");
   }
 
   @Test
@@ -400,7 +400,7 @@ public class UtilsTest {
 
     String result = Utils.getRealTimeTopicNameFromStoreConfig(store);
 
-    assertEquals("test-store_rt", result);
+    assertEquals(result, "test-store_rt");
   }
 
   @Test
@@ -452,6 +452,16 @@ public class UtilsTest {
   void testValidOldNameWithVersionIncrement() {
     String oldName = "storeName_v1_rt";
     String expectedNewName = "storeName_v2_rt";
+
+    String result = Utils.createNewRealTimeTopicName(oldName);
+
+    assertEquals(expectedNewName, result);
+  }
+
+  @Test
+  void testWithVersionIncrement() {
+    String oldName = "storeName_v11_v55_rt";
+    String expectedNewName = "storeName_v11_v56_rt";
 
     String result = Utils.createNewRealTimeTopicName(oldName);
 
