@@ -1474,15 +1474,9 @@ public class PartialUpdateTest {
   @Test(timeOut = TEST_TIMEOUT)
   public void testRTTopicDeletionWithHybridAndIncrementalVersions() {
     String storeName = Utils.getUniqueString("testRTTopicDeletion");
-    String clusterName = CLUSTER_NAME;
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
     ControllerClient parentControllerClient =
-        ControllerClient.constructClusterControllerClient(clusterName, parentControllerURLs);
-    ControllerClient[] childControllerClients = new ControllerClient[childDatacenters.size()];
-    for (int i = 0; i < childDatacenters.size(); i++) {
-      childControllerClients[i] =
-          new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString());
-    }
+        ControllerClient.constructClusterControllerClient(CLUSTER_NAME, parentControllerURLs);
 
     NewStoreResponse newStoreResponse =
         parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
