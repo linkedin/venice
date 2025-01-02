@@ -326,6 +326,10 @@ public class TestParentControllerWithMultiDataCenter {
           incPushStoreName,
           parentControllerClient,
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setHybridRewindSeconds(expectedHybridRewindSeconds)
+              .setHybridOffsetLagThreshold(expectedHybridOffsetLagThreshold)
+              .setHybridBufferReplayPolicy(expectedHybridBufferReplayPolicy)
+              .setActiveActiveReplicationEnabled(true)
               .setIncrementalPushEnabled(true));
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
         for (ControllerClient controllerClient: controllerClients) {

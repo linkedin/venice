@@ -1490,12 +1490,10 @@ public class PartialUpdateTest {
         newStoreResponse.isError(),
         "The NewStoreResponse returned an error: " + newStoreResponse.getError());
 
-    StoreInfo store = TestUtils.assertCommand(parentControllerClient.getStore(storeName)).getStore();
-
     UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams();
     updateStoreParams.setBackupStrategy(BackupStrategy.KEEP_MIN_VERSIONS)
         .setActiveActiveReplicationEnabled(true)
-        // .setIncrementalPushEnabled(true)
+        .setIncrementalPushEnabled(true)
         .setNumVersionsToPreserve(2)
         .setHybridRewindSeconds(1000)
         .setHybridOffsetLagThreshold(1000);
