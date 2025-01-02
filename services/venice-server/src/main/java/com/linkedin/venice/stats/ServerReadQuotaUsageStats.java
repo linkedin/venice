@@ -2,13 +2,13 @@ package com.linkedin.venice.stats;
 
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Rate;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -30,7 +30,8 @@ public class ServerReadQuotaUsageStats extends AbstractVeniceStats {
   private final Sensor rejectedKPS; // rejected key per second
   private final Sensor allowedUnintentionallyKPS; // allowed KPS unintentionally due to error or insufficient info
   private final Sensor usageRatioSensor; // requested kps divided by nodes quota responsibility
-  private final ConcurrentHashMap<Integer, ServerReadQuotaVersionedStats> versionedStats = new ConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<Integer, ServerReadQuotaVersionedStats> versionedStats =
+      new VeniceConcurrentHashMap<>();
   private final AtomicInteger currentVersion = new AtomicInteger(0);
   private final AtomicInteger backupVersion = new AtomicInteger(0);
   private final Time time;
