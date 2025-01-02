@@ -462,9 +462,11 @@ public class VenicePushJobTest {
     if (applyFirst) {
       info.accept(storeInfo);
     }
-    Version version = new VersionImpl(TEST_STORE, REPUSH_VERSION, TEST_PUSH);
-    version.setHybridStoreConfig(storeInfo.getHybridStoreConfig());
-    storeInfo.setVersions(Collections.singletonList(version));
+    if (storeInfo.getVersions() == null) {
+      Version version = new VersionImpl(TEST_STORE, REPUSH_VERSION, TEST_PUSH);
+      version.setHybridStoreConfig(storeInfo.getHybridStoreConfig());
+      storeInfo.setVersions(Collections.singletonList(version));
+    }
     if (!applyFirst) {
       info.accept(storeInfo);
     }
@@ -963,6 +965,7 @@ public class VenicePushJobTest {
     getSpyVenicePushJob(props, getClient());
   }
 
+  @Test
   public void testConfigureWithMaterializedViewConfigs() throws Exception {
     Properties properties = getVpjRequiredProperties();
     properties.put(KEY_FIELD_PROP, "id");
@@ -983,8 +986,11 @@ public class VenicePushJobTest {
     viewConfigs.put("testView", new ViewConfigImpl(MaterializedView.class.getCanonicalName(), builder.build()));
     viewConfigs
         .put("dummyView", new ViewConfigImpl(ChangeCaptureView.class.getCanonicalName(), Collections.emptyMap()));
+    Version version = new VersionImpl(TEST_STORE, 1, TEST_PUSH);
+    version.setViewConfigs(viewConfigs);
     client = getClient(storeInfo -> {
       storeInfo.setViewConfigs(viewConfigs);
+      storeInfo.setVersions(Collections.singletonList(version));
     }, true);
     doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), eq(null));
     try (final VenicePushJob vpj = getSpyVenicePushJob(properties, client)) {

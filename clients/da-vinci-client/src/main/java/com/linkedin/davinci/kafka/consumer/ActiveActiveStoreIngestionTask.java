@@ -653,8 +653,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         CompletableFuture<Void> currentVersionTopicWrite = new CompletableFuture();
         CompletableFuture[] viewWriterFutures =
             processViewWriters(partitionConsumptionState, keyBytes, mergeConflictResultWrapper);
+        hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
         CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
-          hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
+          hostLevelIngestionStats
+              .recordViewProducerAckLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
           if (exception == null) {
             producePutOrDeleteToKafka(
                 mergeConflictResultWrapper,
@@ -1440,7 +1442,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         oldValueBB == null ? -1 : mergeConflictResultWrapper.getOldValueProvider().get().writerSchemaId();
     for (VeniceViewWriter writer: viewWriters.values()) {
       viewWriterFutures[index++] = writer.processRecord(
-          mergeConflictResult.getNewValue(),
+          mergeConflictResultWrapper.getUpdatedValueBytes(),
           oldValueBB,
           keyBytes,
           mergeConflictResult.getValueSchemaId(),

@@ -1055,15 +1055,16 @@ public class VenicePushJob implements AutoCloseable {
 
   private void configureJobPropertiesWithMaterializedViewConfigs() {
     try {
-      // For now, we only perform view topic writes for basic batch push. No incremental and re-push
-      if (pushJobSetting.isIncrementalPush || pushJobSetting.isSourceKafka) {
+      // For now, we only perform view topic writes for basic batch push and re-push. No incremental pushes.
+      if (pushJobSetting.isIncrementalPush) {
         return;
       }
       StoreResponse storeResponse = ControllerClient.retryableRequest(
           controllerClient,
           pushJobSetting.controllerRetries,
           c -> c.getStore(pushJobSetting.storeName));
-      Map<String, ViewConfig> viewConfigMap = storeResponse.getStore().getViewConfigs();
+      Map<String, ViewConfig> viewConfigMap =
+          storeResponse.getStore().getVersion(pushJobSetting.version).get().getViewConfigs();
       viewConfigMap = viewConfigMap.entrySet()
           .stream()
           .filter(vc -> Objects.equals(vc.getValue().getViewClassName(), MaterializedView.class.getCanonicalName()))
@@ -1072,7 +1073,7 @@ public class VenicePushJob implements AutoCloseable {
         pushJobSetting.materializedViewConfigFlatMap = ViewUtils.flatViewConfigMapString(viewConfigMap);
       }
     } catch (Exception e) {
-      throw new VeniceException("Failed to configure job properties with view configs");
+      throw new VeniceException("Failed to configure job properties with view configs", e);
     }
   }
 

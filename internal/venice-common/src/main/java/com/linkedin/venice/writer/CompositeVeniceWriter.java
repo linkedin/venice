@@ -115,10 +115,42 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
   }
 
   @Override
-  public Future<PubSubProduceResult> delete(K key, PubSubProducerCallback callback, DeleteMetadata deleteMetadata) {
-    return mainWriter.delete(key, callback, deleteMetadata);
+  public CompletableFuture<PubSubProduceResult> delete(
+      K key,
+      PubSubProducerCallback callback,
+      DeleteMetadata deleteMetadata) {
+    CompletableFuture<PubSubProduceResult> finalFuture = new CompletableFuture<>();
+    CompletableFuture[] childFutures = new CompletableFuture[childWriters.length + 1];
+    int index = 0;
+    childFutures[index++] = lastWriteFuture;
+    for (VeniceWriter<K, V, U> writer: childWriters) {
+      childFutures[index++] = writer.delete(key, callback, deleteMetadata);
+    }
+    CompletableFuture.allOf(childFutures).whenCompleteAsync((ignored, childException) -> {
+      if (childException == null) {
+        CompletableFuture<PubSubProduceResult> mainFuture = mainWriter.delete(key, callback, deleteMetadata);
+        mainFuture.whenCompleteAsync((result, mainWriteException) -> {
+          if (mainWriteException == null) {
+            finalFuture.complete(result);
+          } else {
+            finalFuture.completeExceptionally(new VeniceException(mainWriteException));
+          }
+        });
+      } else {
+        VeniceException veniceException = new VeniceException(childException);
+        finalFuture.completeExceptionally(veniceException);
+      }
+    });
+
+    lastWriteFuture = finalFuture;
+    return finalFuture;
   }
 
+  /**
+   * The main use of the {@link CompositeVeniceWriter} for now is to write batch portion of a store version to VT and
+   * materialized view topic in the NR fabric. Updates should never go through the {@link CompositeVeniceWriter} because
+   * it should be written to RT (hybrid writes or incremental push) and handled by view writers in L/F or A/A SIT.
+   */
   @Override
   public Future<PubSubProduceResult> update(
       K key,
@@ -126,7 +158,7 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
       int valueSchemaId,
       int derivedSchemaId,
       PubSubProducerCallback callback) {
-    return mainWriter.update(key, update, valueSchemaId, derivedSchemaId, callback);
+    throw new UnsupportedOperationException(this.getClass().getSimpleName() + "does not support update function");
   }
 
   @Override

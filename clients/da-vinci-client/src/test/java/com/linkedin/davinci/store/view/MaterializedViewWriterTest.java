@@ -29,12 +29,12 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.utils.ObjectMapperFactory;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
-import java.time.Clock;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -112,11 +112,11 @@ public class MaterializedViewWriterTest {
     viewParamsBuilder.setPartitioner(DefaultVenicePartitioner.class.getCanonicalName());
     Map<String, String> viewParamsMap = viewParamsBuilder.build();
     VeniceConfigLoader props = getMockProps();
-    Clock clock = mock(Clock.class);
+    Time time = mock(Time.class);
     long startTime = System.currentTimeMillis();
-    doReturn(startTime).when(clock).millis();
+    doReturn(startTime).when(time).getMilliseconds();
     MaterializedViewWriter materializedViewWriter =
-        new MaterializedViewWriter(props, version, SCHEMA, viewParamsMap, clock);
+        new MaterializedViewWriter(props, version, SCHEMA, viewParamsMap, time);
     ControlMessage controlMessage = new ControlMessage();
     controlMessage.controlMessageType = ControlMessageType.START_OF_SEGMENT.getValue();
     KafkaKey kafkaKey = mock(KafkaKey.class);
@@ -138,7 +138,7 @@ public class MaterializedViewWriterTest {
         .processControlMessage(kafkaKey, kafkaMessageEnvelope, controlMessage, 1, partitionConsumptionState);
     verify(veniceWriter, never()).sendHeartbeat(anyString(), anyInt(), any(), any(), anyBoolean(), any(), anyLong());
     long newTime = startTime + TimeUnit.MINUTES.toMillis(4);
-    doReturn(newTime).when(clock).millis();
+    doReturn(newTime).when(time).getMilliseconds();
     doReturn(startTime + TimeUnit.MINUTES.toMillis(1)).when(producerMetadata).getMessageTimestamp();
     materializedViewWriter
         .processControlMessage(kafkaKey, kafkaMessageEnvelope, controlMessage, 1, partitionConsumptionState);
@@ -157,7 +157,7 @@ public class MaterializedViewWriterTest {
       Assert.assertEquals(timestamp, Long.valueOf(newTime));
     }
     newTime = newTime + TimeUnit.SECONDS.toMillis(30);
-    doReturn(newTime).when(clock).millis();
+    doReturn(newTime).when(time).getMilliseconds();
     doReturn(startTime).when(producerMetadata).getMessageTimestamp();
     materializedViewWriter
         .processControlMessage(kafkaKey, kafkaMessageEnvelope, controlMessage, 2, partitionConsumptionState);
@@ -170,7 +170,7 @@ public class MaterializedViewWriterTest {
     verify(veniceWriter, times(6))
         .sendHeartbeat(anyString(), anyInt(), any(), any(), anyBoolean(), any(), heartbeatTimestampCaptor.capture());
     newTime = newTime + TimeUnit.MINUTES.toMillis(3);
-    doReturn(newTime).when(clock).millis();
+    doReturn(newTime).when(time).getMilliseconds();
     doReturn(newTime).when(producerMetadata).getMessageTimestamp();
     materializedViewWriter
         .processControlMessage(kafkaKey, kafkaMessageEnvelope, controlMessage, 1, partitionConsumptionState);

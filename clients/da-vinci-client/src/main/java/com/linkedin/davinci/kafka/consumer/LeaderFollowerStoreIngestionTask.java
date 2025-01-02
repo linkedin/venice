@@ -3364,8 +3364,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       CompletableFuture<Void> currentVersionTopicWrite = new CompletableFuture<>();
       CompletableFuture[] viewWriterFutures =
           processViewWriters(partitionConsumptionState, keyBytes, writeComputeResultWrapper);
+      hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
       CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
-        hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
+        hostLevelIngestionStats.recordViewProducerAckLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
         if (exception == null) {
           produceToLocalKafkaHelper(
               consumerRecord,
@@ -3983,7 +3984,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   Set<String> getKafkaUrlSetFromTopicSwitch(TopicSwitchWrapper topicSwitchWrapper) {
     if (isSeparatedRealtimeTopicEnabled()) {
       Set<String> result = new HashSet<>();
-      for (String server : topicSwitchWrapper.getSourceServers()) {
+      for (String server: topicSwitchWrapper.getSourceServers()) {
         result.add(server);
         result.add(server + Utils.SEPARATE_TOPIC_SUFFIX);
       }
