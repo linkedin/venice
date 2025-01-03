@@ -32,6 +32,8 @@ import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.ingestion.LagType;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.davinci.replication.merge.MergeConflictResolver;
+import com.linkedin.davinci.replication.merge.RmdSerDe;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
@@ -4742,6 +4744,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public int getRmdProtocolVersionId() {
     throw new VeniceException("getRmdProtocolVersionId() should only be called in active active mode");
+  }
+
+  MergeConflictResolver getMergeConflictResolver() {
+    throw new VeniceException("getMergeConflictResolver() should only be called in active active mode");
+  }
+
+  RmdSerDe getRmdSerDe() {
+    throw new VeniceException("getRmdSerDe() should only be called in active active mode");
   }
 
   public abstract Int2ObjectMap<String> getKafkaClusterIdToUrlMap();

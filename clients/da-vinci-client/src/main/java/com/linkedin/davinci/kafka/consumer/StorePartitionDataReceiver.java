@@ -8,11 +8,7 @@ import com.linkedin.avroutil1.compatibility.shaded.org.apache.commons.lang3.Vali
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
-import com.linkedin.davinci.replication.merge.MergeConflictResolver;
-import com.linkedin.davinci.replication.merge.MergeConflictResolverFactory;
 import com.linkedin.davinci.replication.merge.MergeConflictResult;
-import com.linkedin.davinci.replication.merge.RmdSerDe;
-import com.linkedin.davinci.replication.merge.StringAnnotatedStoreSchemaCache;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
@@ -98,8 +94,6 @@ public class StorePartitionDataReceiver
   private final String kafkaUrl;
   private final String kafkaUrlForLogger;
   private final int kafkaClusterId;
-  private final Lazy<RmdSerDe> rmdSerDe;
-  private final Lazy<MergeConflictResolver> mergeConflictResolver;
   private final Lazy<KeyLevelLocksManager> keyLevelLocksManager;
   private final Lazy<IngestionBatchProcessor> ingestionBatchProcessorLazy;
 
@@ -126,21 +120,6 @@ public class StorePartitionDataReceiver
     this.kafkaClusterId = kafkaClusterId;
     this.LOGGER = LogManager.getLogger(this.getClass().getSimpleName() + " [" + kafkaUrlForLogger + "]");
     this.receivedRecordsCount = 0L;
-    final StringAnnotatedStoreSchemaCache annotatedReadOnlySchemaRepository =
-        new StringAnnotatedStoreSchemaCache(storeIngestionTask.getStoreName(), storeIngestionTask.getSchemaRepo());
-    this.rmdSerDe = Lazy.of(
-        () -> new RmdSerDe(
-            annotatedReadOnlySchemaRepository,
-            storeIngestionTask.getRmdProtocolVersionId(),
-            storeIngestionTask.getServerConfig().isComputeFastAvroEnabled()));
-    this.mergeConflictResolver = Lazy.of(
-        () -> MergeConflictResolverFactory.getInstance()
-            .createMergeConflictResolver(
-                annotatedReadOnlySchemaRepository,
-                rmdSerDe.get(),
-                storeIngestionTask.getStoreName(),
-                storeIngestionTask.isTransientRecordBufferUsed(),
-                storeIngestionTask.getServerConfig().isComputeFastAvroEnabled()));
     this.keyLevelLocksManager = Lazy.of(() -> {
       final int knownKafkaClusterNumber = storeIngestionTask.getServerConfig().getKafkaClusterIdToUrlMap().size();
       final int initialPoolSize = knownKafkaClusterNumber + 1;
@@ -1780,7 +1759,7 @@ public class StorePartitionDataReceiver
     long beforeDCRTimestampInNs = System.nanoTime();
     switch (msgType) {
       case PUT:
-        mergeConflictResult = mergeConflictResolver.get()
+        mergeConflictResult = storeIngestionTask.getMergeConflictResolver()
             .put(
                 oldValueByteBufferProvider,
                 rmdWithValueSchemaID,
@@ -1798,7 +1777,7 @@ public class StorePartitionDataReceiver
         break;
 
       case DELETE:
-        mergeConflictResult = mergeConflictResolver.get()
+        mergeConflictResult = storeIngestionTask.getMergeConflictResolver()
             .delete(
                 oldValueByteBufferProvider,
                 rmdWithValueSchemaID,
@@ -1811,7 +1790,7 @@ public class StorePartitionDataReceiver
         break;
 
       case UPDATE:
-        mergeConflictResult = mergeConflictResolver.get()
+        mergeConflictResult = storeIngestionTask.getMergeConflictResolver()
             .update(
                 oldValueByteBufferProvider,
                 rmdWithValueSchemaID,
@@ -1858,8 +1837,8 @@ public class StorePartitionDataReceiver
       final int valueSchemaId = mergeConflictResult.getValueSchemaId();
 
       GenericRecord rmdRecord = mergeConflictResult.getRmdRecord();
-      final ByteBuffer updatedRmdBytes =
-          rmdSerDe.get().serializeRmdRecord(mergeConflictResult.getValueSchemaId(), mergeConflictResult.getRmdRecord());
+      final ByteBuffer updatedRmdBytes = storeIngestionTask.getRmdSerDe()
+          .serializeRmdRecord(mergeConflictResult.getValueSchemaId(), mergeConflictResult.getRmdRecord());
 
       if (updatedValueBytes == null) {
         storeIngestionTask.getHostLevelIngestionStats().recordTombstoneCreatedDCR();
@@ -2494,7 +2473,7 @@ public class StorePartitionDataReceiver
     RmdWithValueSchemaId rmdWithValueSchemaId = new RmdWithValueSchemaId();
     // Get old RMD manifest value from RMD Manifest container object.
     rmdWithValueSchemaId.setRmdManifest(rmdManifestContainer.getManifest());
-    rmdSerDe.get()
+    storeIngestionTask.getRmdSerDe()
         .deserializeValueSchemaIdPrependedRmdBytes(replicationMetadataWithValueSchemaBytes, rmdWithValueSchemaId);
     return rmdWithValueSchemaId;
   }
