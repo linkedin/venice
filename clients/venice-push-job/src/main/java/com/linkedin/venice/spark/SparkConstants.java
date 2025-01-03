@@ -20,6 +20,16 @@ public class SparkConstants {
       new StructField[] { new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()),
           new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()) });
 
+  public static final StructType KAFKA_INPUT_TABLE_SCHEMA = new StructType(
+      new StructField[] { new StructField("__offset__", IntegerType, false, Metadata.empty()),
+          new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()),
+          new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()),
+          new StructField("__partition__", IntegerType, false, Metadata.empty()),
+          new StructField("__message_type__", IntegerType, false, Metadata.empty()),
+          new StructField("__schema_id__", IntegerType, false, Metadata.empty()),
+          new StructField("__replication_metadata_version_id__", IntegerType, false, Metadata.empty()),
+          new StructField("__replication_metadata_payload__", BinaryType, false, Metadata.empty()) });
+
   public static final StructType DEFAULT_SCHEMA_WITH_PARTITION = new StructType(
       new StructField[] { new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()),
           new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()),

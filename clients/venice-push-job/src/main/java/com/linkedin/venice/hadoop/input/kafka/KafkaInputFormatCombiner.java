@@ -23,6 +23,8 @@ import org.apache.hadoop.mapred.OutputCollector;
 import org.apache.hadoop.mapred.Reducer;
 import org.apache.hadoop.mapred.Reporter;
 
+// for spark impl this needs to be moved out to the next stages after all the kafka records are captured.
+
 
 /**
  * This class is a Combiner, which is a functionality of the MR framework where we can plug a {@link Reducer}
