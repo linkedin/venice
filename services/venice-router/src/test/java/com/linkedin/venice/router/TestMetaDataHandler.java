@@ -75,7 +75,6 @@ import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.metrics.MetricsRepository;
-import io.tehuti.metrics.Sensor;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -89,7 +88,6 @@ import java.util.concurrent.TimeUnit;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.testng.Assert;
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -101,14 +99,7 @@ public class TestMetaDataHandler {
   private final HelixHybridStoreQuotaRepository hybridStoreQuotaRepository =
       Mockito.mock(HelixHybridStoreQuotaRepository.class);
 
-  private MetricsRepository metricsRepository;
-
-  @BeforeMethod
-  public void setUp() {
-    metricsRepository = Mockito.mock(MetricsRepository.class);
-    Sensor mockSensor = Mockito.mock(Sensor.class);
-    Mockito.when(metricsRepository.sensor(Mockito.anyString())).thenReturn(mockSensor);
-  }
+  private MetricsRepository metricsRepository = new MetricsRepository();
 
   public FullHttpResponse passRequestToMetadataHandler(
       String requestUri,
@@ -704,6 +695,10 @@ public class TestMetaDataHandler {
     Assert.assertEquals(d2ServiceResponse.getName(), storeName);
     Assert.assertFalse(d2ServiceResponse.isError());
 
+    Assert.assertEquals(
+        metricsRepository.getMetric("venice.router.d2_discovery." + storeName + ".request.count").value(),
+        1.0,
+        "Request count should be 1 after first request");
     FullHttpResponse response2 = passRequestToMetadataHandler(
         "http://myRouterHost:4567/discover_cluster?store_name=" + storeName,
         null,
@@ -720,6 +715,11 @@ public class TestMetaDataHandler {
     Assert.assertEquals(d2ServiceResponse2.getD2Service(), d2Service);
     Assert.assertEquals(d2ServiceResponse2.getName(), storeName);
     Assert.assertFalse(d2ServiceResponse2.isError());
+
+    Assert.assertEquals(
+        metricsRepository.getMetric("venice.router.d2_discovery." + storeName + ".request.count").value(),
+        2.0,
+        "Request count should be 2 after second request");
   }
 
   @Test
