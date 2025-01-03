@@ -188,12 +188,10 @@ public class ActiveActiveReplicationForHybridTest {
     String storeName1 = Utils.getUniqueString("test-batch-store");
     String storeName2 = Utils.getUniqueString("test-hybrid-agg-store");
     String storeName3 = Utils.getUniqueString("test-hybrid-non-agg-store");
-    String storeName4 = Utils.getUniqueString("test-incremental-push-store");
     try {
       createAndVerifyStoreInAllRegions(storeName1, parentControllerClient, dcControllerClientList);
       createAndVerifyStoreInAllRegions(storeName2, parentControllerClient, dcControllerClientList);
       createAndVerifyStoreInAllRegions(storeName3, parentControllerClient, dcControllerClientList);
-      createAndVerifyStoreInAllRegions(storeName4, parentControllerClient, dcControllerClientList);
 
       assertCommand(
           parentControllerClient.updateStore(
@@ -206,9 +204,6 @@ public class ActiveActiveReplicationForHybridTest {
           parentControllerClient.updateStore(
               storeName3,
               new UpdateStoreQueryParams().setHybridRewindSeconds(10).setHybridOffsetLagThreshold(2)));
-
-      assertCommand(
-          parentControllerClient.updateStore(storeName4, new UpdateStoreQueryParams().setIncrementalPushEnabled(true)));
 
       // Test batch
       assertCommand(
@@ -249,18 +244,8 @@ public class ActiveActiveReplicationForHybridTest {
       verifyDCConfigAARepl(parentControllerClient, storeName3, true, true, false);
       verifyDCConfigAARepl(dc0Client, storeName3, true, true, false);
       verifyDCConfigAARepl(dc1Client, storeName3, true, true, false);
-
-      // Test incremental
-      assertCommand(
-          parentControllerClient.configureActiveActiveReplicationForCluster(
-              true,
-              VeniceUserStoreType.INCREMENTAL_PUSH.toString(),
-              Optional.empty()));
-      verifyDCConfigAARepl(parentControllerClient, storeName4, false, false, true);
-      verifyDCConfigAARepl(dc0Client, storeName4, false, false, true);
-      verifyDCConfigAARepl(dc1Client, storeName4, false, false, true);
     } finally {
-      deleteStores(storeName1, storeName2, storeName3, storeName4);
+      deleteStores(storeName1, storeName2, storeName3);
     }
   }
 

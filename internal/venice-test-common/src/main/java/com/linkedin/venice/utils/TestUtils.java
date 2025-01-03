@@ -465,7 +465,7 @@ public class TestUtils {
       ControllerClient controllerClient,
       long timeout,
       TimeUnit timeoutUnit) {
-    waitForNonDeterministicAssertion(timeout, timeoutUnit, () -> {
+    waitForNonDeterministicAssertion(timeout, timeoutUnit, true, () -> {
       JobStatusQueryResponse jobStatusQueryResponse =
           assertCommand(controllerClient.queryJobStatus(topicName, Optional.empty()));
       ExecutionStatus executionStatus = ExecutionStatus.valueOf(jobStatusQueryResponse.getStatus());

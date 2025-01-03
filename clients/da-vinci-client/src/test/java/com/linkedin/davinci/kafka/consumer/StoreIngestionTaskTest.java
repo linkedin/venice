@@ -3691,16 +3691,20 @@ public abstract class StoreIngestionTaskTest {
 
   @DataProvider
   public static Object[][] testProcessTopicSwitchProvider() {
-    return new Object[][] { { LEADER }, { DA_VINCI } };
+    return DataProviderUtils.allPermutationGenerator(new NodeType[] { DA_VINCI, LEADER }, DataProviderUtils.BOOLEAN);
   }
 
   @Test(dataProvider = "testProcessTopicSwitchProvider")
-  public void testProcessTopicSwitch(NodeType nodeType) {
+  public void testProcessTopicSwitch(NodeType nodeType, boolean isAggregateMode) {
     VenicePartitioner partitioner = getVenicePartitioner();
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
     partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
-    HybridStoreConfig hybridStoreConfig =
-        new HybridStoreConfigImpl(100, 100, 100, DataReplicationPolicy.AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP);
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
+        100,
+        100,
+        100,
+        isAggregateMode ? DataReplicationPolicy.AGGREGATE : DataReplicationPolicy.NON_AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_EOP);
     MockStoreVersionConfigs storeAndVersionConfigs =
         setupStoreAndVersionMocks(2, partitionerConfig, Optional.of(hybridStoreConfig), false, true, AA_OFF);
     StorageService storageService = mock(StorageService.class);
@@ -3748,7 +3752,8 @@ public abstract class StoreIngestionTaskTest {
     doReturn(mockOffsetRecord).when(mockPcs).getOffsetRecord();
     doReturn(PARTITION_FOO).when(mockPcs).getPartition();
     doReturn(PARTITION_FOO).when(mockPcs).getPartition();
-    storeIngestionTaskUnderTest.processTopicSwitch(controlMessage, PARTITION_FOO, 10, mockPcs);
+    boolean result = storeIngestionTaskUnderTest.processTopicSwitch(controlMessage, PARTITION_FOO, 10, mockPcs);
+    Assert.assertEquals(isAggregateMode, result);
     verify(mockTopicManagerRemoteKafka, never()).getOffsetByTime(any(), anyLong());
     verify(mockOffsetRecord, never()).setLeaderUpstreamOffset(anyString(), anyLong());
   }
