@@ -7,9 +7,12 @@ import com.linkedin.venice.systemstore.schemas.DataRecoveryConfig;
 import com.linkedin.venice.systemstore.schemas.StoreETLConfig;
 import com.linkedin.venice.systemstore.schemas.StoreHybridConfig;
 import com.linkedin.venice.systemstore.schemas.StorePartitionerConfig;
+import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
+import com.linkedin.venice.systemstore.schemas.StoreViewConfig;
 import com.linkedin.venice.systemstore.schemas.SystemStoreProperties;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -886,6 +889,78 @@ public class ReadOnlyStore implements Store {
     throw new UnsupportedOperationException();
   }
 
+  public StoreProperties cloneStoreProperties() {
+    StoreProperties storeProperties = new StoreProperties();
+
+    storeProperties.setName(getName());
+    storeProperties.setOwner(getOwner());
+    storeProperties.setCreatedTime(getCreatedTime());
+    storeProperties.setCurrentVersion(getCurrentVersion());
+    storeProperties.setPartitionCount(getPartitionCount());
+    storeProperties.setLowWatermark(getLowWatermark());
+    storeProperties.setEnableWrites(isEnableWrites());
+    storeProperties.setEnableReads(isEnableReads());
+    storeProperties.setStorageQuotaInByte(getStorageQuotaInByte());
+    storeProperties.setPersistenceType(getPersistenceType().value);
+    storeProperties.setRoutingStrategy(getRoutingStrategy().value);
+    storeProperties.setReadStrategy(getReadStrategy().value);
+    storeProperties.setOfflinePushStrategy(getOffLinePushStrategy().value);
+    storeProperties.setLargestUsedVersionNumber(getLargestUsedVersionNumber());
+    storeProperties.setReadQuotaInCU(getReadQuotaInCU());
+    storeProperties.setHybridConfig(convertHybridStoreConfig(getHybridStoreConfig()));
+    storeProperties.setViews(convertViewConfigs(getViewConfigs()));
+    storeProperties.setAccessControlled(isAccessControlled());
+    storeProperties.setCompressionStrategy(getCompressionStrategy().getValue());
+    storeProperties.setClientDecompressionEnabled(getClientDecompressionEnabled());
+    storeProperties.setChunkingEnabled(isChunkingEnabled());
+    storeProperties.setRmdChunkingEnabled(isRmdChunkingEnabled());
+    storeProperties.setBatchGetLimit(getBatchGetLimit());
+    storeProperties.setNumVersionsToPreserve(getNumVersionsToPreserve());
+    storeProperties.setIncrementalPushEnabled(isIncrementalPushEnabled());
+    storeProperties.setSeparateRealTimeTopicEnabled(isSeparateRealTimeTopicEnabled());
+    storeProperties.setMigrating(isMigrating());
+    storeProperties.setWriteComputationEnabled(isWriteComputationEnabled());
+    storeProperties.setReadComputationEnabled(isReadComputationEnabled());
+    storeProperties.setBootstrapToOnlineTimeoutInHours(getBootstrapToOnlineTimeoutInHours());
+    // storeProperties.setLeaderFollowerModelEnabled(isLeaderFollowerModelEnabled());
+    storeProperties.setNativeReplicationEnabled(isNativeReplicationEnabled());
+    // storeProperties.setReplicationMetadataVersionID(getReplicationMetadataVersionID());
+    storeProperties.setPushStreamSourceAddress(getPushStreamSourceAddress());
+    storeProperties.setBackupStrategy(getBackupStrategy().getValue());
+    storeProperties.setSchemaAutoRegisteFromPushJobEnabled(isSchemaAutoRegisterFromPushJobEnabled());
+    storeProperties.setLatestSuperSetValueSchemaId(getLatestSuperSetValueSchemaId());
+    storeProperties.setHybridStoreDiskQuotaEnabled(isHybridStoreDiskQuotaEnabled());
+    storeProperties.setStoreMetaSystemStoreEnabled(isStoreMetaSystemStoreEnabled());
+    storeProperties.setStoreMetadataSystemStoreEnabled(isStoreMetadataSystemStoreEnabled());
+    storeProperties.setEtlConfig(convertETLStoreConfig(getEtlStoreConfig()));
+    storeProperties.setPartitionerConfig(convertPartitionerConfig(getPartitionerConfig()));
+    // storeProperties.setIncrementalPushPolicy(IncrementalPushPolicy());
+    storeProperties.setLatestVersionPromoteToCurrentTimestamp(getLatestVersionPromoteToCurrentTimestamp());
+    storeProperties.setBackupVersionRetentionMs(getBackupVersionRetentionMs());
+    storeProperties.setReplicationFactor(getReplicationFactor());
+    storeProperties.setMigrationDuplicateStore(isMigrationDuplicateStore());
+    storeProperties.setNativeReplicationSourceFabric(getNativeReplicationSourceFabric());
+    storeProperties.setDaVinciPushStatusStoreEnabled(isDaVinciPushStatusStoreEnabled());
+    storeProperties.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled());
+    // storeProperties.setApplyTargetVersionFilterForIncPush(isApplyTargetVersionFilterForIncPush());
+    storeProperties.setMinCompactionLagSeconds(getMinCompactionLagSeconds());
+    storeProperties.setMaxCompactionLagSeconds(getMaxCompactionLagSeconds());
+    storeProperties.setMaxRecordSizeBytes(getMaxRecordSizeBytes());
+    storeProperties.setMaxNearlineRecordSizeBytes(getMaxNearlineRecordSizeBytes());
+    storeProperties.setUnusedSchemaDeletionEnabled(isUnusedSchemaDeletionEnabled());
+    storeProperties.setVersions(convertVersions(getVersions()));
+    storeProperties.setSystemStores(convertSystemStores(getSystemStores()));
+    storeProperties.setStorageNodeReadQuotaEnabled(isStorageNodeReadQuotaEnabled());
+    storeProperties.setBlobTransferEnabled(isBlobTransferEnabled());
+    storeProperties.setNearlineProducerCompressionEnabled(isNearlineProducerCompressionEnabled());
+    storeProperties.setNearlineProducerCountPerWriter(getNearlineProducerCountPerWriter());
+    storeProperties.setTargetSwapRegion(getTargetSwapRegion());
+    storeProperties.setTargetSwapRegionWaitTime(getTargetSwapRegionWaitTime());
+    storeProperties.setIsDaVinciHeartBeatReported(getIsDavinciHeartbeatReported());
+
+    return storeProperties;
+  }
+
   @Override
   public boolean isEnableWrites() {
     return this.delegate.isEnableWrites();
@@ -1522,5 +1597,150 @@ public class ReadOnlyStore implements Store {
     }
     ReadOnlyStore store = (ReadOnlyStore) o;
     return this.delegate.equals(store.delegate);
+  }
+
+  private static StoreETLConfig convertETLStoreConfig(ETLStoreConfig etlStoreConfig) {
+    StoreETLConfig storeETLConfig = new StoreETLConfig();
+
+    storeETLConfig.setEtledUserProxyAccount(etlStoreConfig.getEtledUserProxyAccount());
+    storeETLConfig.setRegularVersionETLEnabled(etlStoreConfig.isRegularVersionETLEnabled());
+    storeETLConfig.setFutureVersionETLEnabled(etlStoreConfig.isFutureVersionETLEnabled());
+
+    return storeETLConfig;
+  }
+
+  private static StorePartitionerConfig convertPartitionerConfig(PartitionerConfig partitionerConfig) {
+    StorePartitionerConfig storePartitionerConfig = new StorePartitionerConfig();
+
+    // Partitioner Class
+    storePartitionerConfig.setPartitionerClass(partitionerConfig.getPartitionerClass());
+
+    // Partitioner Params
+    Map<String, String> partitionerConfigParam = partitionerConfig.getPartitionerParams();
+    Map<CharSequence, CharSequence> storePartitionerConfigParams = new HashMap<>(partitionerConfigParam);
+    storePartitionerConfig.setPartitionerParams(storePartitionerConfigParams);
+
+    // Amplification Factor
+    storePartitionerConfig.setAmplificationFactor(partitionerConfig.getAmplificationFactor());
+
+    return storePartitionerConfig;
+  }
+
+  private static StoreHybridConfig convertHybridStoreConfig(HybridStoreConfig hybridStoreConfig) {
+    if (hybridStoreConfig == null) {
+      return null;
+    }
+    StoreHybridConfig storeHybridConfig = new StoreHybridConfig();
+
+    storeHybridConfig.setRewindTimeInSeconds(hybridStoreConfig.getRewindTimeInSeconds());
+    storeHybridConfig.setOffsetLagThresholdToGoOnline(hybridStoreConfig.getOffsetLagThresholdToGoOnline());
+    storeHybridConfig.setProducerTimestampLagThresholdToGoOnlineInSeconds(
+        hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds());
+    storeHybridConfig.setDataReplicationPolicy(hybridStoreConfig.getDataReplicationPolicy().getValue());
+    storeHybridConfig.setBufferReplayPolicy(hybridStoreConfig.getBufferReplayPolicy().getValue());
+    storeHybridConfig.setRealTimeTopicName(hybridStoreConfig.getRealTimeTopicName());
+
+    return storeHybridConfig;
+  }
+
+  private static Map<CharSequence, StoreViewConfig> convertViewConfigs(Map<String, ViewConfig> viewConfigs) {
+    Map<CharSequence, StoreViewConfig> storeViewConfigs = new HashMap<>();
+
+    for (Map.Entry<String, ViewConfig> entry: viewConfigs.entrySet()) {
+      ViewConfig viewConfig = entry.getValue();
+      StoreViewConfig storeViewConfig = new StoreViewConfig();
+
+      storeViewConfig.setViewClassName(viewConfig.getViewClassName());
+      storeViewConfig.setViewParameters(new HashMap<>(viewConfig.getViewParameters()));
+
+      storeViewConfigs.put(entry.getKey(), storeViewConfig);
+    }
+
+    return storeViewConfigs;
+  }
+
+  private static Map<String, StoreViewConfig> convertViewConfigsStringMap(Map<String, ViewConfig> viewConfigs) {
+    Map<String, StoreViewConfig> storeViewConfigsStringMap = new HashMap<>();
+
+    Map<CharSequence, StoreViewConfig> storeViewConfigs = convertViewConfigs(viewConfigs);
+    for (Map.Entry<CharSequence, StoreViewConfig> entry: storeViewConfigs.entrySet()) {
+      storeViewConfigsStringMap.put(entry.getKey().toString(), entry.getValue());
+    }
+
+    return storeViewConfigsStringMap;
+  }
+
+  private static List<StoreVersion> convertVersions(List<Version> versions) {
+    List<StoreVersion> storeVersions = new ArrayList<>(versions.size());
+    for (Version version: versions) {
+      StoreVersion storeVersion = convertVersion(version);
+      if (storeVersion != null) {
+        storeVersions.add(storeVersion);
+      }
+    }
+    return storeVersions;
+  }
+
+  private static StoreVersion convertVersion(Version version) {
+    if (version == null) {
+      return null;
+    }
+    StoreVersion storeVersion = new StoreVersion();
+
+    storeVersion.setStoreName(version.getStoreName());
+    storeVersion.setNumber(version.getNumber());
+    storeVersion.setCreatedTime(version.getCreatedTime());
+    storeVersion.setStatus(version.getStatus().getValue());
+    storeVersion.setPushJobId(version.getPushJobId());
+    storeVersion.setCompressionStrategy(version.getCompressionStrategy().getValue());
+    storeVersion.setLeaderFollowerModelEnabled(version.isLeaderFollowerModelEnabled());
+    storeVersion.setNativeReplicationEnabled(version.isNativeReplicationEnabled());
+    storeVersion.setPushStreamSourceAddress(version.getPushStreamSourceAddress());
+    // storeVersion.setBufferReplayEnabledForHybrid();
+    storeVersion.setChunkingEnabled(version.isChunkingEnabled());
+    storeVersion.setRmdChunkingEnabled(version.isRmdChunkingEnabled());
+    storeVersion.setPushType(version.getPushType().getValue());
+    storeVersion.setPartitionCount(version.getPartitionCount());
+    storeVersion.setPartitionerConfig(convertPartitionerConfig(version.getPartitionerConfig()));
+    // storeVersion.setIncrementalPushPolicy(version.getIncrementalPushPolicy());
+    storeVersion.setReplicationFactor(version.getReplicationFactor());
+    storeVersion.setNativeReplicationSourceFabric(version.getNativeReplicationSourceFabric());
+    storeVersion.setIncrementalPushEnabled(version.isIncrementalPushEnabled());
+    storeVersion.setSeparateRealTimeTopicEnabled(version.isSeparateRealTimeTopicEnabled());
+    storeVersion.setBlobTransferEnabled(version.isBlobTransferEnabled());
+    storeVersion.setUseVersionLevelIncrementalPushEnabled(version.isUseVersionLevelIncrementalPushEnabled());
+    storeVersion.setHybridConfig(convertHybridStoreConfig(version.getHybridStoreConfig()));
+    storeVersion.setUseVersionLevelHybridConfig(version.isUseVersionLevelHybridConfig());
+    storeVersion.setActiveActiveReplicationEnabled(version.isActiveActiveReplicationEnabled());
+    storeVersion.setTimestampMetadataVersionId(version.getRmdVersionId());
+    storeVersion.setDataRecoveryConfig((DataRecoveryConfig) version.getDataRecoveryVersionConfig());
+    storeVersion.setDeferVersionSwap(version.isVersionSwapDeferred());
+    storeVersion.setRepushSourceVersion(version.getRepushSourceVersion());
+    storeVersion.setTargetSwapRegion(version.getTargetSwapRegion());
+    storeVersion.setTargetSwapRegionWaitTime(version.getTargetSwapRegionWaitTime());
+    storeVersion.setIsDaVinciHeartBeatReported(version.getIsDavinciHeartbeatReported());
+    storeVersion.setViews(convertViewConfigsStringMap(version.getViewConfigs()));
+
+    return storeVersion;
+  }
+
+  private static Map<CharSequence, SystemStoreProperties> convertSystemStores(
+      Map<String, SystemStoreAttributes> systemStoreAttributesMap) {
+
+    Map<CharSequence, SystemStoreProperties> systemStorePropertiesMap = new HashMap<>();
+    for (Map.Entry<String, SystemStoreAttributes> entry: systemStoreAttributesMap.entrySet()) {
+      SystemStoreAttributes systemStoreAttributes = entry.getValue();
+      SystemStoreProperties systemStoreProperties = new SystemStoreProperties();
+
+      systemStoreProperties.setCurrentVersion(systemStoreAttributes.getCurrentVersion());
+      systemStoreProperties.setLargestUsedVersionNumber(systemStoreAttributes.getLargestUsedVersionNumber());
+      systemStoreProperties.setVersions(convertVersions(systemStoreAttributes.getVersions()));
+      systemStoreProperties
+          .setLatestVersionPromoteToCurrentTimestamp(systemStoreAttributes.getLatestVersionPromoteToCurrentTimestamp());
+
+      systemStorePropertiesMap.put(entry.getKey(), systemStoreProperties);
+    }
+
+    return systemStorePropertiesMap;
   }
 }

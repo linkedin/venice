@@ -1,6 +1,7 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.VeniceEnumValue;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -9,7 +10,7 @@ import java.util.Map;
 /**
  * Enums of status of verion.
  */
-public enum VersionStatus {
+public enum VersionStatus implements VeniceEnumValue {
   NOT_CREATED(0), STARTED(1),
   // Version has been pushed to venice(offline job related to this version has been completed), but is not ready to
   // serve read request because the writes to this store is disabled.
@@ -84,5 +85,10 @@ public enum VersionStatus {
   // Check if the version is in ERROR state.
   public static boolean isVersionErrored(VersionStatus status) {
     return status == ERROR;
+  }
+
+  @Override
+  public int getValue() {
+    return value;
   }
 }
