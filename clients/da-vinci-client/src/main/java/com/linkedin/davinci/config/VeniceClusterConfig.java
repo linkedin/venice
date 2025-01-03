@@ -96,7 +96,6 @@ public class VeniceClusterConfig {
 
   public VeniceClusterConfig(VeniceProperties clusterProps, Map<String, Map<String, String>> kafkaClusterMap)
       throws ConfigurationException {
-    LOGGER.info("Input Kafka Cluster Map: {}", kafkaClusterMap);
     this.clusterName = clusterProps.getString(CLUSTER_NAME);
     this.zookeeperAddress = clusterProps.getString(ZOOKEEPER_ADDRESS);
 
