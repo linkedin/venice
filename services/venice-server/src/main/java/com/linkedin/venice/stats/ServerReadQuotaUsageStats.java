@@ -2,14 +2,13 @@ package com.linkedin.venice.stats;
 
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Rate;
-import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
-import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -31,7 +30,8 @@ public class ServerReadQuotaUsageStats extends AbstractVeniceStats {
   private final Sensor rejectedKPS; // rejected key per second
   private final Sensor allowedUnintentionallyKPS; // allowed KPS unintentionally due to error or insufficient info
   private final Sensor usageRatioSensor; // requested kps divided by nodes quota responsibility
-  private final Int2ObjectMap<ServerReadQuotaVersionedStats> versionedStats = new Int2ObjectOpenHashMap<>();
+  private final VeniceConcurrentHashMap<Integer, ServerReadQuotaVersionedStats> versionedStats =
+      new VeniceConcurrentHashMap<>();
   private final AtomicInteger currentVersion = new AtomicInteger(0);
   private final AtomicInteger backupVersion = new AtomicInteger(0);
   private final Time time;
@@ -144,10 +144,10 @@ public class ServerReadQuotaUsageStats extends AbstractVeniceStats {
    */
   final Double getReadQuotaUsageRatio() {
     int version = currentVersion.get();
-    if (version < 1 || !versionedStats.containsKey(version)) {
+    ServerReadQuotaVersionedStats stats = versionedStats.get(version);
+    if (version < 1 || stats == null) {
       return Double.NaN;
     }
-    ServerReadQuotaVersionedStats stats = versionedStats.get(version);
     long nodeKpsResponsibility = stats.getNodeKpsResponsibility();
     if (nodeKpsResponsibility < 1) {
       return Double.NaN;
