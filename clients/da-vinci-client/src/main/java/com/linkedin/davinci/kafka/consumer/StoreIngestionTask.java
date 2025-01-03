@@ -4577,13 +4577,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         && hybridStoreConfig.get().getDataReplicationPolicy().equals(DataReplicationPolicy.AGGREGATE);
   }
 
-  ReadyToServeCheck getReadyToServerChecker() {
+  ReadyToServeCheck getReadyToServeChecker() {
     return defaultReadyToServeChecker;
   }
 
   void maybeApplyReadyToServeCheck(PartitionConsumptionState partitionConsumptionState) {
     if (isHybridAggregateMode()) {
-      getReadyToServerChecker().apply(partitionConsumptionState);
+      getReadyToServeChecker().apply(partitionConsumptionState);
     }
   }
 }
