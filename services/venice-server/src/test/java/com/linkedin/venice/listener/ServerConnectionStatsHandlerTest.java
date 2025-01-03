@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -41,17 +42,17 @@ public class ServerConnectionStatsHandlerTest {
   public void testChannelRegisteredUnregisteredWithNoSslHandler() throws Exception {
     ServerConnectionStats serverConnectionStats = mock(ServerConnectionStats.class);
     ServerConnectionStatsHandler serverConnectionStatsHandler =
-        new ServerConnectionStatsHandler(serverConnectionStats, "venice-router");
+        new ServerConnectionStatsHandler(null, serverConnectionStats, "venice-router");
     Attribute<Boolean> channelActivatedAttr = mock(Attribute.class);
     when(channel.attr(ServerConnectionStatsHandler.CHANNEL_ACTIVATED)).thenReturn(channelActivatedAttr);
     when(channelActivatedAttr.get()).thenReturn(false);
     serverConnectionStatsHandler.channelActive(context);
-    verify(serverConnectionStats, times(1)).incrementClientConnectionCount();
+    verify(serverConnectionStats, never()).incrementClientConnectionCount();
     verify(serverConnectionStats, never()).decrementClientConnectionCount();
     when(channelActivatedAttr.get()).thenReturn(true);
     serverConnectionStatsHandler.channelInactive(context);
-    verify(serverConnectionStats, times(1)).incrementClientConnectionCount();
-    verify(serverConnectionStats, times(1)).decrementClientConnectionCount();
+    verify(serverConnectionStats, never()).incrementClientConnectionCount();
+    verify(serverConnectionStats, never()).decrementClientConnectionCount();
     verify(serverConnectionStats, never()).incrementRouterConnectionCount();
     verify(serverConnectionStats, never()).decrementRouterConnectionCount();
   }
@@ -73,24 +74,25 @@ public class ServerConnectionStatsHandlerTest {
     doReturn(engine).when(sslHandler).engine();
     ServerConnectionStats serverConnectionStats = mock(ServerConnectionStats.class);
     ServerConnectionStatsHandler serverConnectionStatsHandler =
-        new ServerConnectionStatsHandler(serverConnectionStats, veniceRouterPrincipalString);
+        new ServerConnectionStatsHandler(null, serverConnectionStats, veniceRouterPrincipalString);
     Attribute<Boolean> channelActivatedAttr = mock(Attribute.class);
     when(channel.attr(ServerConnectionStatsHandler.CHANNEL_ACTIVATED)).thenReturn(channelActivatedAttr);
     when(channelActivatedAttr.get()).thenReturn(false);
     serverConnectionStatsHandler.channelActive(context);
+    verify(serverConnectionStats, timeout(3000).times(1)).incrementRouterConnectionCount();
     when(channelActivatedAttr.get()).thenReturn(true);
     serverConnectionStatsHandler.channelInactive(context);
-    verify(serverConnectionStats, times(1)).incrementRouterConnectionCount();
     verify(serverConnectionStats, times(1)).decrementRouterConnectionCount();
     verify(serverConnectionStats, never()).incrementClientConnectionCount();
     verify(serverConnectionStats, never()).decrementClientConnectionCount();
     when(channelActivatedAttr.get()).thenReturn(false);
     serverConnectionStatsHandler.channelActive(context);
+    verify(serverConnectionStats, timeout(3000).times(1)).incrementClientConnectionCount();
+
     when(channelActivatedAttr.get()).thenReturn(true);
     serverConnectionStatsHandler.channelInactive(context);
-    verify(serverConnectionStats, times(1)).incrementRouterConnectionCount();
+    verify(serverConnectionStats, timeout(3000).times(1)).incrementRouterConnectionCount();
     verify(serverConnectionStats, times(1)).decrementRouterConnectionCount();
-    verify(serverConnectionStats, times(1)).incrementClientConnectionCount();
     verify(serverConnectionStats, times(1)).decrementClientConnectionCount();
   }
 }

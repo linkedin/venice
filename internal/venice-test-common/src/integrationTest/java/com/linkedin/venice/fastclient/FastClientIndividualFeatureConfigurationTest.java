@@ -26,6 +26,7 @@ import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricsRepository;
@@ -121,8 +122,9 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     });
     int quotaRequestedQPSSum = 0;
     int quotaRequestedKPSSum = 0;
-    int clientConnectionCountRateSum = 0;
-    int routerConnectionCountRateSum = 0;
+    double clientConnectionCountRateSum = 0;
+    double routerConnectionCountRateSum = 0;
+    Utils.sleep(3000); // sleep 3s as the connection tracking metrics are updated every 1s
     for (MetricsRepository serverMetric: serverMetrics) {
       quotaRequestedQPSSum += serverMetric.getMetric(readQuotaRequestedQPSString).value();
       quotaRequestedKPSSum += serverMetric.getMetric(readQuotaRequestedKPSString).value();
@@ -135,7 +137,7 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     assertTrue(quotaRequestedQPSSum >= 0, "Quota request sum: " + quotaRequestedQPSSum);
     assertTrue(quotaRequestedKPSSum >= 0, "Quota request key count sum: " + quotaRequestedKPSSum);
     assertTrue(clientConnectionCountRateSum > 0, "Servers should have more than 0 client connections");
-    assertEquals(routerConnectionCountRateSum, 0, "Servers should have 0 router connections");
+    assertEquals(routerConnectionCountRateSum, 0.0d, "Servers should have 0 router connections");
     // At least one server's usage ratio should eventually be a positive decimal
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       double usageRatio = 0;
