@@ -73,7 +73,6 @@ import org.apache.commons.lang.Validate;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.util.Strings;
 
 
 /**
@@ -545,6 +544,18 @@ public class Utils {
     return storeName + Version.REAL_TIME_TOPIC_SUFFIX;
   }
 
+  public static String getRealTimeTopicNameFromStoreConfig(Store store) {
+    HybridStoreConfig hybridStoreConfig = store.getHybridStoreConfig();
+    String storeName = store.getName();
+
+    if (hybridStoreConfig != null) {
+      String realTimeTopicName = hybridStoreConfig.getRealTimeTopicName();
+      return getRealTimeTopicNameIfEmpty(realTimeTopicName, storeName);
+    } else {
+      return composeRealTimeTopic(storeName);
+    }
+  }
+
   /**
    * It follows the following order to search for real time topic name,
    * i) current store-version config, ii) store config, iii) other store-version configs, iv) default name
@@ -590,7 +601,7 @@ public class Utils {
         versions.stream().filter(version -> version.getNumber() == currentVersionNumber).findFirst();
     if (currentVersion.isPresent() && currentVersion.get().isHybrid()) {
       String realTimeTopicName = currentVersion.get().getHybridStoreConfig().getRealTimeTopicName();
-      if (Strings.isNotBlank(realTimeTopicName)) {
+      if (StringUtils.isNotBlank(realTimeTopicName)) {
         return realTimeTopicName;
       }
     }
@@ -606,7 +617,7 @@ public class Utils {
       try {
         if (version.isHybrid()) {
           String realTimeTopicName = version.getHybridStoreConfig().getRealTimeTopicName();
-          if (Strings.isNotBlank(realTimeTopicName)) {
+          if (StringUtils.isNotBlank(realTimeTopicName)) {
             realTimeTopicNames.add(realTimeTopicName);
           }
         }
@@ -629,7 +640,31 @@ public class Utils {
   }
 
   private static String getRealTimeTopicNameIfEmpty(String realTimeTopicName, String storeName) {
-    return Strings.isBlank(realTimeTopicName) ? composeRealTimeTopic(storeName) : realTimeTopicName;
+    return StringUtils.isBlank(realTimeTopicName) ? composeRealTimeTopic(storeName) : realTimeTopicName;
+  }
+
+  public static String createNewRealTimeTopicName(String oldRealTimeTopicName) {
+    if (oldRealTimeTopicName == null || !oldRealTimeTopicName.endsWith(Version.REAL_TIME_TOPIC_SUFFIX)) {
+      throw new IllegalArgumentException("Invalid old name format");
+    }
+
+    // Extract the base name and current version
+    int suffixLength = Version.REAL_TIME_TOPIC_SUFFIX.length();
+    String base = oldRealTimeTopicName.substring(0, oldRealTimeTopicName.length() - suffixLength);
+
+    // Locate the last version separator "_v" in the base
+    int versionSeparatorIndex = base.lastIndexOf("_v");
+    if (versionSeparatorIndex > -1 && versionSeparatorIndex < base.length() - 2) {
+      // Extract and increment the version
+      String versionStr = base.substring(versionSeparatorIndex + 2);
+      int version = Integer.parseInt(versionStr) + 1;
+      base = base.substring(0, versionSeparatorIndex) + "_v" + version;
+    } else {
+      // Start with version 2 if no valid version is present
+      base = base + "_v2";
+    }
+
+    return base + Version.REAL_TIME_TOPIC_SUFFIX;
   }
 
   private static class TimeUnitInfo {
