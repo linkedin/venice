@@ -953,6 +953,8 @@ public interface Admin extends AutoCloseable, Closeable {
       Optional<Long> offset,
       Optional<Long> upstreamOffset);
 
+  void updateAdminOperationProtocolVersion(String clusterName, Long adminOperationProtocolVersion);
+
   void createStoragePersona(
       String clusterName,
       String name,

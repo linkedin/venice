@@ -7,6 +7,7 @@ import static org.testng.Assert.assertFalse;
 
 import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.Arg;
+import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
@@ -19,7 +20,10 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -27,6 +31,7 @@ import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -185,5 +190,44 @@ public class TestAdminToolEndToEnd {
         { "--node-replicas-readiness", "--url", venice.getLeaderVeniceController().getControllerUrl(), "--cluster",
             clusterName, "--storage-node", Utils.getHelixNodeIdentifier(Utils.getHostName(), server.getPort()) };
     AdminTool.main(nodeReplicasReadinessArgs);
+  }
+
+  @Test(timeOut = 4 * TEST_TIMEOUT)
+  public void testUpdateAdminOperationVersion() throws Exception {
+    Long currentVersion = -1L;
+    Long newVersion = 80L;
+    try (VeniceTwoLayerMultiRegionMultiClusterWrapper venice =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+            new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+                .numberOfClusters(1)
+                .numberOfParentControllers(1)
+                .numberOfChildControllers(1)
+                .numberOfServers(1)
+                .numberOfRouters(1)
+                .replicationFactor(1)
+                .build());) {
+      String clusterName = venice.getClusterNames()[0];
+
+      // Get the parent con†roller
+      VeniceControllerWrapper controller = venice.getParentControllers().get(0);
+      ControllerClient controllerClient = new ControllerClient(clusterName, controller.getControllerUrl());
+
+      // Setup the original metadata
+      AdminTopicMetadataResponse originalMetadata = controllerClient.getAdminTopicMetadata(Optional.empty());
+      Assert.assertEquals(originalMetadata.getAdminOperationProtocolVersion(), currentVersion);
+
+      // Update the admin operation version to newVersion - 80
+      String[] updateAdminOperationVersionArgs =
+          { "--update-admin-operation-protocol-version", "--url", controller.getControllerUrl(), "--cluster",
+              clusterName, "--admin-operation-protocol-version", newVersion.toString() };
+
+      AdminTool.main(updateAdminOperationVersionArgs);
+
+      // Verify the admin operation metadata version is updated
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        AdminTopicMetadataResponse updatedMetadata = controllerClient.getAdminTopicMetadata(Optional.empty());
+        Assert.assertEquals(updatedMetadata.getAdminOperationProtocolVersion(), newVersion);
+      });
+    }
   }
 }

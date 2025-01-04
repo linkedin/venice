@@ -1,6 +1,7 @@
 package com.linkedin.venice.controllerapi;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACCESS_PERMISSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ADMIN_OPERATION_PROTOCOL_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AMPLIFICATION_FACTOR;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_JOB_HEARTBEAT_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
@@ -1360,6 +1361,14 @@ public class ControllerClient implements Closeable {
         .add(OFFSET, offset)
         .add(UPSTREAM_OFFSET, upstreamOffset);
     return request(ControllerRoute.UPDATE_ADMIN_TOPIC_METADATA, params, ControllerResponse.class);
+  }
+
+  public ControllerResponse updateAdminOperationProtocolVersion(
+      String clusterName,
+      Long adminOperationProtocolVersion) {
+    QueryParams params =
+        newParams().add(CLUSTER, clusterName).add(ADMIN_OPERATION_PROTOCOL_VERSION, adminOperationProtocolVersion);
+    return request(ControllerRoute.UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION, params, ControllerResponse.class);
   }
 
   public ControllerResponse deleteKafkaTopic(String topicName) {

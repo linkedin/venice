@@ -35,11 +35,20 @@ public class ZkAdminTopicMetadataAccessor extends AdminTopicMetadataAccessor {
     zkMapAccessor = new ZkBaseDataAccessor<>(zkClient);
   }
 
+  public synchronized void partialUpdateMetadata(String clusterName, Map<String, Long> metadata) {
+    Map<String, Long> currentMetadata = getMetadata(clusterName);
+
+    // Update only the keys present in the metadata map.
+    metadata.forEach(currentMetadata::put);
+
+    updateMetadata(clusterName, currentMetadata);
+  }
+
   /**
    * @see AdminTopicMetadataAccessor#updateMetadata(String, Map)
    */
   @Override
-  public void updateMetadata(String clusterName, Map<String, Long> metadata) {
+  public synchronized void updateMetadata(String clusterName, Map<String, Long> metadata) {
     String path = getAdminTopicMetadataNodePath(clusterName);
     HelixUtils.update(zkMapAccessor, path, metadata, ZK_UPDATE_RETRY);
     LOGGER.info("Persisted admin topic metadata map for cluster: {}, map: {}", clusterName, metadata);
@@ -49,7 +58,7 @@ public class ZkAdminTopicMetadataAccessor extends AdminTopicMetadataAccessor {
    * @see AdminTopicMetadataAccessor#getMetadata(String)
    */
   @Override
-  public Map<String, Long> getMetadata(String clusterName) {
+  public synchronized Map<String, Long> getMetadata(String clusterName) {
     int retry = ZK_UPDATE_RETRY;
     String path = getAdminTopicMetadataNodePath(clusterName);
     while (retry > 0) {

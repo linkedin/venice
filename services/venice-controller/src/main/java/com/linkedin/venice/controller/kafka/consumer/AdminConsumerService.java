@@ -188,11 +188,29 @@ public class AdminConsumerService extends AbstractVeniceService {
   public void updateAdminTopicMetadata(String clusterName, long executionId, long offset, long upstreamOffset) {
     if (clusterName.equals(config.getClusterName())) {
       Map<String, Long> metadata = AdminTopicMetadataAccessor.generateMetadataMap(offset, upstreamOffset, executionId);
-      adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
+      adminTopicMetadataAccessor.partialUpdateMetadata(clusterName, metadata);
     } else {
       throw new VeniceException(
           "This AdminConsumptionService is for cluster: " + config.getClusterName()
               + ".  Cannot get the last succeed execution Id for cluster: " + clusterName);
+    }
+  }
+
+  /**
+   * Update the admin operation protocol version for the given cluster.
+   */
+  public void updateAdminOperationProtocolVersion(String clusterName, long adminOperationProtocolVersion) {
+    if (clusterName.equals(config.getClusterName())) {
+      Map<String, Long> metadata = AdminTopicMetadataAccessor.generateMetadataMap(
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          Optional.of(adminOperationProtocolVersion));
+      adminTopicMetadataAccessor.partialUpdateMetadata(clusterName, metadata);
+    } else {
+      throw new VeniceException(
+          "This AdminConsumptionService is for cluster: " + config.getClusterName()
+              + ".  Cannot update the version for cluster: " + clusterName);
     }
   }
 

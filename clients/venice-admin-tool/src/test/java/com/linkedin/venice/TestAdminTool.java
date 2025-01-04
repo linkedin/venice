@@ -412,4 +412,16 @@ public class TestAdminTool {
     CommandLine finalCommandLine = commandLine;
     Assert.assertThrows(() -> AdminTool.getConfigureStoreViewQueryParams(finalCommandLine));
   }
+
+  @Test
+  public void testUpdateAdminOperationProtocolVersion() throws ParseException, IOException {
+    String[] args = { "--update-admin-operation-protocol-version", "--url", "http://localhost:7036", "--cluster",
+        "test-cluster", "--admin-operation-protocol-version", "1" };
+
+    try {
+      AdminTool.main(args);
+    } catch (Exception e) {
+      Assert.fail("AdminTool should allow admin topic metadata to be updated admin operation version", e);
+    }
+  }
 }

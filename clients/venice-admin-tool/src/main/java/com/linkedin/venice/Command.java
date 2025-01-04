@@ -3,6 +3,7 @@ package com.linkedin.venice;
 import static com.linkedin.venice.Arg.ACCESS_CONTROL;
 import static com.linkedin.venice.Arg.ACL_PERMS;
 import static com.linkedin.venice.Arg.ACTIVE_ACTIVE_REPLICATION_ENABLED;
+import static com.linkedin.venice.Arg.ADMIN_OPERATION_PROTOCOL_VERSION;
 import static com.linkedin.venice.Arg.ALLOW_STORE_MIGRATION;
 import static com.linkedin.venice.Arg.AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED;
 import static com.linkedin.venice.Arg.BACKUP_FOLDER;
@@ -582,6 +583,10 @@ public enum Command {
       "dump-host-heartbeat",
       "Dump all heartbeat belong to a certain storage node. You can use topic/partition to filter specific resource, and you can choose to filter resources that are lagging.",
       new Arg[] { SERVER_URL, KAFKA_TOPIC_NAME }, new Arg[] { PARTITION, LAG_FILTER_ENABLED }
+  ),
+  UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION(
+      "update-admin-operation-protocol-version", "Update the admin operation protocol version",
+      new Arg[] { URL, CLUSTER, ADMIN_OPERATION_PROTOCOL_VERSION }
   );
 
   private final String commandName;

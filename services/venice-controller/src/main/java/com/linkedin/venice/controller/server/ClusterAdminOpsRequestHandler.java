@@ -105,6 +105,8 @@ public class ClusterAdminOpsRequestHandler {
     } else {
       adminMetadataBuilder.setStoreName(storeName);
     }
+    adminMetadataBuilder
+        .setAdminOperationProtocolVersion(AdminTopicMetadataAccessor.getAdminOperationProtocolVersion(metadata));
     return AdminTopicMetadataGrpcResponse.newBuilder().setMetadata(adminMetadataBuilder.build()).build();
   }
 

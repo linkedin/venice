@@ -7501,13 +7501,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @return cluster-level execution id, offset and upstream offset. If store name is specified, it returns store-level execution id.
    */
   public Map<String, Long> getAdminTopicMetadata(String clusterName, Optional<String> storeName) {
+    Map<String, Long> metadata = getAdminConsumerService(clusterName).getAdminTopicMetadata(clusterName);
+
     if (storeName.isPresent()) {
-      Long executionId = executionIdAccessor.getLastSucceededExecutionIdMap(clusterName).get(storeName.get());
+      Long executionId = getExecutionIdAccessor().getLastSucceededExecutionIdMap(clusterName).get(storeName.get());
+      Long adminOperationProtocolVersion = AdminTopicMetadataAccessor.getAdminOperationProtocolVersion(metadata);
       return executionId == null
           ? Collections.emptyMap()
-          : AdminTopicMetadataAccessor.generateMetadataMap(-1, -1, executionId);
+          : AdminTopicMetadataAccessor.generateMetadataMap(-1, -1, executionId, adminOperationProtocolVersion);
     }
-    return adminConsumerServices.get(clusterName).getAdminTopicMetadata(clusterName);
+    return metadata;
   }
 
   /**
@@ -7521,14 +7524,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Optional<Long> offset,
       Optional<Long> upstreamOffset) {
     if (storeName.isPresent()) {
-      executionIdAccessor.updateLastSucceededExecutionIdMap(clusterName, storeName.get(), executionId);
+      getExecutionIdAccessor().updateLastSucceededExecutionIdMap(clusterName, storeName.get(), executionId);
     } else {
       if (!offset.isPresent() || !upstreamOffset.isPresent()) {
         throw new VeniceException("Offsets must be provided to update cluster-level admin topic metadata");
       }
-      adminConsumerServices.get(clusterName)
+      getAdminConsumerService(clusterName)
           .updateAdminTopicMetadata(clusterName, executionId, offset.get(), upstreamOffset.get());
     }
+  }
+
+  /**
+   * Update the version of admin operation protocol in admin topic metadata
+   */
+  public void updateAdminOperationProtocolVersion(String clusterName, Long adminOperationProtocolVersion) {
+    getAdminConsumerService(clusterName)
+        .updateAdminOperationProtocolVersion(clusterName, adminOperationProtocolVersion);
   }
 
   /**
@@ -7668,6 +7679,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public VeniceProperties getPubSubSSLProperties(String pubSubBrokerAddress) {
     return this.getPubSubSSLPropertiesFromControllerConfig(pubSubBrokerAddress);
+  }
+
+  public AdminConsumerService getAdminConsumerService(String clusterName) {
+    return adminConsumerServices.get(clusterName);
   }
 
   private void startMonitorOfflinePush(

@@ -1,11 +1,13 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ADMIN_OPERATION_PROTOCOL_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.EXECUTION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OFFSET;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPSTREAM_OFFSET;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ADMIN_TOPIC_METADATA;
+import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_ADMIN_TOPIC_METADATA;
 
 import com.linkedin.venice.HttpConstants;
@@ -51,6 +53,7 @@ public class AdminTopicMetadataRoutes extends AbstractRoute {
         responseObject.setCluster(clusterName);
         storeName.ifPresent(responseObject::setName);
         responseObject.setExecutionId(adminTopicMetadata.getExecutionId());
+        responseObject.setAdminOperationProtocolVersion(adminTopicMetadata.getAdminOperationProtocolVersion());
         if (!storeName.isPresent()) {
           responseObject.setOffset(adminTopicMetadata.getOffset());
           responseObject.setUpstreamOffset(adminTopicMetadata.getUpstreamOffset());
@@ -94,6 +97,48 @@ public class AdminTopicMetadataRoutes extends AbstractRoute {
             UpdateAdminTopicMetadataGrpcRequest.newBuilder().setMetadata(adminMetadataBuilder).build());
         responseObject.setCluster(internalResponse.getClusterName());
         responseObject.setName(internalResponse.hasStoreName() ? internalResponse.getStoreName() : null);
+        if (storeName.isPresent()) {
+          if (offset.isPresent() || upstreamOffset.isPresent()) {
+            throw new VeniceException("There is no store-level offsets to be updated");
+          }
+        } else {
+          if (!offset.isPresent() || !upstreamOffset.isPresent()) {
+            throw new VeniceException("Offsets must be provided to update cluster-level admin topic metadata");
+          }
+        }
+
+        responseObject.setCluster(clusterName);
+        storeName.ifPresent(responseObject::setName);
+
+        admin.updateAdminTopicMetadata(clusterName, executionId, storeName, offset, upstreamOffset);
+      } catch (Throwable e) {
+        responseObject.setError(e);
+        AdminSparkServer.handleError(new VeniceException(e), request, response);
+      }
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+    };
+  }
+
+  public Route updateAdminOperationProtocolVersion(Admin admin) {
+    return (request, response) -> {
+      ControllerResponse responseObject = new ControllerResponse();
+      response.type(HttpConstants.JSON);
+      try {
+        if (!isAllowListUser(request)) {
+          response.status(HttpStatus.SC_FORBIDDEN);
+          responseObject.setError("Only admin users are allowed to run " + request.url());
+          responseObject.setErrorType(ErrorType.BAD_REQUEST);
+          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+        }
+
+        AdminSparkServer.validateParams(request, UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        Long adminOperationProtocolVersion = Long.parseLong(request.queryParams(ADMIN_OPERATION_PROTOCOL_VERSION));
+
+        responseObject.setCluster(clusterName);
+
+        admin.updateAdminOperationProtocolVersion(clusterName, adminOperationProtocolVersion);
+
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(new VeniceException(e), request, response);

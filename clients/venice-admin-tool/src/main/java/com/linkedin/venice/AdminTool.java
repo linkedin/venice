@@ -597,6 +597,9 @@ public class AdminTool {
         case CLUSTER_BATCH_TASK:
           clusterBatchTask(cmd);
           break;
+        case UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION:
+          updateAdminOperationProtocolVersion(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c: Command.values()) {
@@ -3268,6 +3271,16 @@ public class AdminTool {
     } finally {
       Utils.closeQuietlyWithErrorLogged(transportClient);
     }
+  }
+
+  private static void updateAdminOperationProtocolVersion(CommandLine cmd) throws Exception {
+    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER, Command.UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION);
+    String protocolVersionInString =
+        getRequiredArgument(cmd, Arg.ADMIN_OPERATION_PROTOCOL_VERSION, Command.UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION);
+    long protocolVersion =
+        Utils.parseLongFromString(protocolVersionInString, Arg.ADMIN_OPERATION_PROTOCOL_VERSION.name());
+    ControllerResponse response = controllerClient.updateAdminOperationProtocolVersion(clusterName, protocolVersion);
+    printObject(response);
   }
 
   private static void migrateVeniceZKPaths(CommandLine cmd) throws Exception {

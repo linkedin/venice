@@ -32,6 +32,8 @@ import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.IOException;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -193,6 +195,51 @@ public class AdminConsumptionTaskIntegrationTest {
           Assert.assertTrue(parentControllerClient.getStore(storeName).isError());
         });
       }
+    }
+  }
+
+  @Test(timeOut = 2 * TIMEOUT)
+  public void testUpdateAdminOperationVersion() {
+    Long currentVersion = -1L;
+    Long newVersion = 18L;
+    try (VeniceTwoLayerMultiRegionMultiClusterWrapper venice =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+            new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+                .numberOfClusters(1)
+                .numberOfParentControllers(1)
+                .numberOfChildControllers(1)
+                .numberOfServers(1)
+                .numberOfRouters(1)
+                .replicationFactor(1)
+                .build())) {
+
+      String clusterName = venice.getClusterNames()[0];
+
+      // Get the child controller
+      VeniceControllerWrapper controller = venice.getChildRegions().get(0).getLeaderController(clusterName);
+      Admin admin = controller.getVeniceAdmin();
+
+      AdminConsumerService adminConsumerService = controller.getAdminConsumerServiceByCluster(clusterName);
+
+      // Setup the original metadata
+      adminConsumerService.updateAdminOperationProtocolVersion(clusterName, currentVersion);
+
+      // Verify that the original metadata is correct
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        Map<String, Long> adminTopicMetadata = admin.getAdminTopicMetadata(clusterName, Optional.empty());
+        Assert.assertTrue(adminTopicMetadata.containsKey("adminOperationProtocolVersion"));
+        Assert.assertEquals(adminTopicMetadata.get("adminOperationProtocolVersion"), currentVersion);
+      });
+
+      // Update the admin operation version
+      admin.updateAdminOperationProtocolVersion(clusterName, newVersion);
+
+      // Verify the admin operation metadata version is updated
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        Map<String, Long> adminTopicMetadata = admin.getAdminTopicMetadata(clusterName, Optional.empty());
+        Assert.assertTrue(adminTopicMetadata.containsKey("adminOperationProtocolVersion"));
+        Assert.assertEquals(adminTopicMetadata.get("adminOperationProtocolVersion"), newVersion);
+      });
     }
   }
 
