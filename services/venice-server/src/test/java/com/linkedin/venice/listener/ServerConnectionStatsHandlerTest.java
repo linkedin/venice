@@ -55,6 +55,7 @@ public class ServerConnectionStatsHandlerTest {
     verify(serverConnectionStats, never()).decrementClientConnectionCount();
     verify(serverConnectionStats, never()).incrementRouterConnectionCount();
     verify(serverConnectionStats, never()).decrementRouterConnectionCount();
+    verify(serverConnectionStats, times(1)).newConnectionRequest();
   }
 
   @Test
@@ -94,5 +95,6 @@ public class ServerConnectionStatsHandlerTest {
     verify(serverConnectionStats, timeout(3000).times(1)).incrementRouterConnectionCount();
     verify(serverConnectionStats, times(1)).decrementRouterConnectionCount();
     verify(serverConnectionStats, times(1)).decrementClientConnectionCount();
+    verify(serverConnectionStats, times(2)).newConnectionRequest();
   }
 }

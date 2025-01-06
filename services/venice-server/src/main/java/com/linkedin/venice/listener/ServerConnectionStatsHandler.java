@@ -89,6 +89,11 @@ public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
   @Override
   public void channelActive(ChannelHandlerContext ctx) throws Exception {
     newConnections.add(ctx);
+    /**
+     * The reason to record connection request here is that we want to record all the connection requests,
+     * regardless of whether Server is able to extract a valid cert or not later on.
+     */
+    serverConnectionStats.newConnectionRequest();
     super.channelActive(ctx);
   }
 
