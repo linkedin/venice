@@ -80,6 +80,9 @@ import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
+import com.linkedin.venice.grpc.ControllerGrpcTransport;
+import com.linkedin.venice.grpc.GrpcControllerRoute;
+import com.linkedin.venice.grpc.GrpcConverters;
 import com.linkedin.venice.helix.VeniceJsonSerializer;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
@@ -101,6 +104,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
@@ -125,6 +129,8 @@ public class ControllerClient implements Closeable {
   private String leaderControllerUrl;
   private final List<String> controllerDiscoveryUrls;
 
+  private final boolean useGrpc;
+
   public ControllerClient(String clusterName, String discoveryUrls) {
     this(clusterName, discoveryUrls, Optional.empty());
   }
@@ -144,6 +150,7 @@ public class ControllerClient implements Closeable {
     if (this.controllerDiscoveryUrls.isEmpty()) {
       throw new VeniceException("Controller discovery url list is empty");
     }
+    this.useGrpc = false;
   }
 
   /**
@@ -1438,6 +1445,41 @@ public class ControllerClient implements Closeable {
   }
 
   private <T extends ControllerResponse> T request(
+      ControllerRoute route,
+      QueryParams params,
+      Class<T> responseType,
+      int timeoutMs,
+      int maxAttempts,
+      byte[] data) {
+    if (useGrpc) {
+      return fireRequestUsingGrpc(route, params, responseType, timeoutMs, maxAttempts, data);
+    } else {
+      return fireRequestUsingHttp(route, params, responseType, timeoutMs, maxAttempts, data);
+    }
+  }
+
+  private <T extends ControllerResponse> T fireRequestUsingGrpc(
+      ControllerRoute route,
+      QueryParams params,
+      Class<T> responseType,
+      int timeoutMs,
+      int maxAttempts,
+      byte[] data) {
+    GrpcControllerRoute grpcControllerRoute = GrpcConverters.mapControllerRouteToGrpcControllerRoute(route);
+    try (ControllerGrpcTransport transport = new ControllerGrpcTransport(sslFactory)) {
+      try {
+        CompletionStage<T> responseFuture =
+            transport.request(getLeaderControllerUrl(), params, responseType, grpcControllerRoute);
+        return responseFuture.toCompletableFuture().join();
+      } catch (Exception e) {
+        throw new VeniceException("Encountered error when getting response from server", e);
+      }
+    } catch (Exception e) {
+      throw new VeniceException("Encountered error when fetching response from grpc server", e);
+    }
+  }
+
+  private <T extends ControllerResponse> T fireRequestUsingHttp(
       ControllerRoute route,
       QueryParams params,
       Class<T> responseType,
