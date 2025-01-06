@@ -136,7 +136,6 @@ public class ServerReadMetadataRepositoryTest {
 
   @Test
   public void testGetStoreProperties() {
-    System.out.println("HERE");
     String storeName = "test-store";
     Store mockStore = new ZKStore(
         storeName,

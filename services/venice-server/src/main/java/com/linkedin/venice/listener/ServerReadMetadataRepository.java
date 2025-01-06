@@ -193,7 +193,6 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       idsWrittenPerStoreVersion.add(store.getLatestSuperSetValueSchemaId());
 
       // StoreMetaValue
-      System.out.println("HERE HERE HERE");
       StoreMetaValue storeMetaValue = new StoreMetaValue();
       storeMetaValue.setTimestamp(System.currentTimeMillis());
       storeMetaValue.setStoreProperties(storeProperties);
@@ -211,7 +210,6 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       int currentVersionNumber = getCurrentVersionNumberOrThrow(storeName, store);
       Map<CharSequence, List<CharSequence>> routingInfo = getRoutingInfo(storeName, currentVersionNumber);
 
-      System.out.println("HERE HERE HERE HERE");
       response.setStoreMetaValue(storeMetaValue);
       response.setHelixGroupInfo(helixGroupInfo);
       response.setRoutingInfo(routingInfo);
