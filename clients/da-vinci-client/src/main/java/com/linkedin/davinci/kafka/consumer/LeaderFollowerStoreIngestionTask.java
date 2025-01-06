@@ -83,6 +83,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.LongPredicate;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -2762,8 +2763,20 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  StoreWriteComputeProcessor getStoreWriteComputeHandler() {
-    return storeWriteComputeHandler;
+  byte[] applyWriteCompute(
+      GenericRecord currValue,
+      int writerValueSchemaId,
+      int readerValueSchemaId,
+      ByteBuffer writeComputeBytes,
+      int writerUpdateProtocolVersion,
+      int readerUpdateProtocolVersion) {
+    return storeWriteComputeHandler.applyWriteCompute(
+        currValue,
+        writerValueSchemaId,
+        readerValueSchemaId,
+        writeComputeBytes,
+        writerUpdateProtocolVersion,
+        readerUpdateProtocolVersion);
   }
 
   @Override
@@ -2772,8 +2785,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  Int2ObjectMap<String> getKafkaClusterIdToUrlMap() {
-    return kafkaClusterIdToUrlMap;
+  String getKafkaUrl(int kafkaClusterId) {
+    return kafkaClusterIdToUrlMap.get(kafkaClusterId);
   }
 
   @Override

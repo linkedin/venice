@@ -124,7 +124,6 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
-import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import java.io.Closeable;
 import java.io.IOException;
@@ -162,6 +161,7 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -4246,8 +4246,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return gracefulShutdownLatch;
   }
 
-  StorageUtilizationManager getStorageUtilizationManager() {
-    return storageUtilizationManager;
+  void enforcePartitionQuota(int partition, long totalBytesRead) {
+    storageUtilizationManager.enforcePartitionQuota(partition, totalBytesRead);
+  }
+
+  double getDiskQuotaUsage() {
+    return storageUtilizationManager.getDiskQuotaUsage();
   }
 
   void putConsumerRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record, int partition, String url, long t)
@@ -4259,8 +4263,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return isGlobalRtDivEnabled;
   }
 
-  Consumer<DataValidationException> getDivErrorMetricCallback() {
-    return divErrorMetricCallback;
+  void handleDivErrorMetric(DuplicateDataException e) {
+    divErrorMetricCallback.accept(e);
   }
 
   abstract KafkaDataIntegrityValidator getKafkaDataIntegrityValidatorForLeaders();
@@ -4292,16 +4296,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     throw new VeniceException("getRmdSerDe() should only be called in active active mode");
   }
 
-  abstract Int2ObjectMap<String> getKafkaClusterIdToUrlMap();
+  abstract String getKafkaUrl(int kafkaClusterId);
 
   abstract boolean hasChangeCaptureView();
 
-  abstract StoreWriteComputeProcessor getStoreWriteComputeHandler();
+  abstract byte[] applyWriteCompute(GenericRecord value, int ws, int rs, ByteBuffer bytes, int wp, int rp);
 
   abstract AvroStoreDeserializerCache getStoreDeserializerCache();
 
-  abstract Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriter(
-      PartitionConsumptionState partitionConsumptionState);
+  abstract Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriter(PartitionConsumptionState pcs);
 
   abstract void setRealTimeVeniceWriterRef(PartitionConsumptionState partitionConsumptionState);
 

@@ -501,8 +501,7 @@ public class StorePartitionDataReceiver
     /**
      * Even if the records list is empty, we still need to check quota to potentially resume partition
      */
-    final StorageUtilizationManager storageUtilizationManager = storeIngestionTask.getStorageUtilizationManager();
-    storageUtilizationManager.enforcePartitionQuota(partition, totalBytesRead);
+    storeIngestionTask.enforcePartitionQuota(partition, totalBytesRead);
 
     if (storeIngestionTask.isMetricsEmissionEnabled()) {
       HostLevelIngestionStats hostLevelIngestionStats = storeIngestionTask.getHostLevelIngestionStats();
@@ -515,7 +514,7 @@ public class StorePartitionDataReceiver
             beforeProcessingBatchRecordsTimestampMs);
       }
 
-      hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
+      hostLevelIngestionStats.recordStorageQuotaUsed(storeIngestionTask.getDiskQuotaUsage());
     }
   }
 
@@ -575,7 +574,7 @@ public class StorePartitionDataReceiver
          * override the DIV info for messages from RT; as a result, both leaders and followers will persisted duplicated
          * messages to disk, and potentially rewind a k/v pair to an old value.
          */
-        storeIngestionTask.getDivErrorMetricCallback().accept(e);
+        storeIngestionTask.handleDivErrorMetric(e);
         LOGGER.debug(
             "Skipping a duplicate record from: {} offset: {} for replica: {}",
             record.getTopicPartition(),
@@ -1503,14 +1502,13 @@ public class StorePartitionDataReceiver
           updatedValueBytes = storeIngestionTask.getCompressor()
               .get()
               .compress(
-                  storeIngestionTask.getStoreWriteComputeHandler()
-                      .applyWriteCompute(
-                          currValue,
-                          update.schemaId,
-                          readerValueSchemaId,
-                          update.updateValue,
-                          update.updateSchemaId,
-                          readerUpdateProtocolVersion));
+                  storeIngestionTask.applyWriteCompute(
+                      currValue,
+                      update.schemaId,
+                      readerValueSchemaId,
+                      update.updateValue,
+                      update.updateSchemaId,
+                      readerUpdateProtocolVersion));
           storeIngestionTask.getHostLevelIngestionStats()
               .recordWriteComputeUpdateLatency(LatencyUtils.getElapsedTimeFromNSToMS(writeComputeStartTimeInNS));
         } catch (Exception e) {
@@ -1804,9 +1802,8 @@ public class StorePartitionDataReceiver
     if (mergeConflictResult.isUpdateIgnored()) {
       storeIngestionTask.getHostLevelIngestionStats().recordUpdateIgnoredDCR();
       // Record the last ignored offset
-      partitionConsumptionState.updateLatestIgnoredUpstreamRTOffset(
-          storeIngestionTask.getKafkaClusterIdToUrlMap().get(kafkaClusterId),
-          sourceOffset);
+      partitionConsumptionState
+          .updateLatestIgnoredUpstreamRTOffset(storeIngestionTask.getKafkaUrl(kafkaClusterId), sourceOffset);
       return new PubSubMessageProcessedResult(
           new MergeConflictResultWrapper(
               mergeConflictResult,
