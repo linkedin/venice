@@ -3,9 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
 import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
 
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
-import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.replication.merge.MergeConflictResolver;
@@ -224,11 +222,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     byte[] replicationMetadataBytesWithValueSchemaId = ByteUtils.extractByteArray(bufferWithHeader);
     bufferWithHeader.position(bufferWithHeader.position() + ByteUtils.SIZE_OF_INT);
     return replicationMetadataBytesWithValueSchemaId;
-  }
-
-  @Override
-  RmdSerDe getRmdSerDe() {
-    return rmdSerDe;
   }
 
   @Override
@@ -545,10 +538,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   @Override
-  protected void updateLatestInMemoryLeaderConsumedRTOffset(
-      PartitionConsumptionState pcs,
-      String kafkaUrl,
-      long offset) {
+  void updateLatestInMemoryLeaderConsumedRTOffset(PartitionConsumptionState pcs, String kafkaUrl, long offset) {
     pcs.updateLeaderConsumedUpstreamRTOffset(kafkaUrl, offset);
   }
 
@@ -757,13 +747,18 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   @Override
-  public int getRmdProtocolVersionId() {
+  int getRmdProtocolVersionId() {
     return rmdProtocolVersionId;
   }
 
   @Override
   MergeConflictResolver getMergeConflictResolver() {
     return mergeConflictResolver;
+  }
+
+  @Override
+  RmdSerDe getRmdSerDe() {
+    return rmdSerDe;
   }
 
   /**

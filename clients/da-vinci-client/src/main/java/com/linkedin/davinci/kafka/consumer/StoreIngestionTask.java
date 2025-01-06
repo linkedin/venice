@@ -2808,7 +2808,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // NoOp
   }
 
-  protected abstract boolean shouldProduceToVersionTopic(PartitionConsumptionState partitionConsumptionState);
+  abstract boolean shouldProduceToVersionTopic(PartitionConsumptionState partitionConsumptionState);
 
   protected boolean processTopicSwitch(
       ControlMessage controlMessage,
@@ -3776,7 +3776,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return versionTopic;
   }
 
-  public PubSubTopic getRealTimeTopic() {
+  PubSubTopic getRealTimeTopic() {
     return realTimeTopic;
   }
 
@@ -4246,7 +4246,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return gracefulShutdownLatch;
   }
 
-  public StorageUtilizationManager getStorageUtilizationManager() {
+  StorageUtilizationManager getStorageUtilizationManager() {
     return storageUtilizationManager;
   }
 
@@ -4255,30 +4255,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     storeBufferService.putConsumerRecord(record, this, null, partition, url, t);
   }
 
-  public SparseConcurrentList<Object> getAvailableSchemaIds() {
-    return availableSchemaIds;
-  }
-
-  public SparseConcurrentList<Object> getDeserializedSchemaIds() {
-    return deserializedSchemaIds;
-  }
-
-  public boolean isGlobalRtDivEnabled() {
+  boolean isGlobalRtDivEnabled() {
     return isGlobalRtDivEnabled;
   }
 
-  public Consumer<DataValidationException> getDivErrorMetricCallback() {
+  Consumer<DataValidationException> getDivErrorMetricCallback() {
     return divErrorMetricCallback;
   }
 
-  public abstract KafkaDataIntegrityValidator getKafkaDataIntegrityValidatorForLeaders();
+  abstract KafkaDataIntegrityValidator getKafkaDataIntegrityValidatorForLeaders();
 
-  protected abstract void updateLatestInMemoryLeaderConsumedRTOffset(
+  abstract void updateLatestInMemoryLeaderConsumedRTOffset(
       PartitionConsumptionState pcs,
       String ignoredKafkaUrl,
       long offset);
 
-  protected abstract CompletableFuture<PubSubProduceResult> sendIngestionHeartbeat(
+  abstract CompletableFuture<PubSubProduceResult> sendIngestionHeartbeat(
       PartitionConsumptionState partitionConsumptionState,
       PubSubTopicPartition topicPartition,
       PubSubProducerCallback callback,
@@ -4288,7 +4280,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LeaderCompleteState leaderCompleteState,
       long originTimeStampMs);
 
-  public int getRmdProtocolVersionId() {
+  int getRmdProtocolVersionId() {
     throw new VeniceException("getRmdProtocolVersionId() should only be called in active active mode");
   }
 
@@ -4300,18 +4292,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     throw new VeniceException("getRmdSerDe() should only be called in active active mode");
   }
 
-  public abstract Int2ObjectMap<String> getKafkaClusterIdToUrlMap();
+  abstract Int2ObjectMap<String> getKafkaClusterIdToUrlMap();
 
-  public abstract boolean hasChangeCaptureView();
+  abstract boolean hasChangeCaptureView();
 
-  public abstract StoreWriteComputeProcessor getStoreWriteComputeHandler();
+  abstract StoreWriteComputeProcessor getStoreWriteComputeHandler();
 
-  public abstract AvroStoreDeserializerCache getStoreDeserializerCache();
+  abstract AvroStoreDeserializerCache getStoreDeserializerCache();
 
-  protected abstract Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriter(
+  abstract Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriter(
       PartitionConsumptionState partitionConsumptionState);
 
-  protected abstract void setRealTimeVeniceWriterRef(PartitionConsumptionState partitionConsumptionState);
+  abstract void setRealTimeVeniceWriterRef(PartitionConsumptionState partitionConsumptionState);
 
   protected abstract boolean hasViewWriters();
 
@@ -4319,23 +4311,23 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.writeComputeFailureCode = code;
   }
 
-  public ExecutorService getParallelProcessingThreadPool() {
+  ExecutorService getParallelProcessingThreadPool() {
     return parallelProcessingThreadPool;
   }
 
-  public boolean isDataRecovery() {
+  boolean isDataRecovery() {
     return isDataRecovery;
   }
 
-  public String getLocalKafkaServer() {
+  String getLocalKafkaServer() {
     return localKafkaServer;
   }
 
-  public int getLocalKafkaClusterId() {
+  int getLocalKafkaClusterId() {
     return localKafkaClusterId;
   }
 
-  public int getStoreVersionPartitionCount() {
+  int getStoreVersionPartitionCount() {
     return storeVersionPartitionCount;
   }
 

@@ -1213,7 +1213,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * If buffer replay is disable, all replicas will stick to version topic, no one is going to produce any message.
    */
   @Override
-  protected boolean shouldProduceToVersionTopic(PartitionConsumptionState partitionConsumptionState) {
+  boolean shouldProduceToVersionTopic(PartitionConsumptionState partitionConsumptionState) {
     if (!isLeader(partitionConsumptionState)) {
       return false; // Not leader
     }
@@ -2322,10 +2322,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected void updateLatestInMemoryLeaderConsumedRTOffset(
-      PartitionConsumptionState pcs,
-      String ignoredKafkaUrl,
-      long offset) {
+  void updateLatestInMemoryLeaderConsumedRTOffset(PartitionConsumptionState pcs, String ignoredKafkaUrl, long offset) {
     pcs.updateLeaderConsumedUpstreamRTOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, offset);
   }
 
@@ -2503,12 +2500,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
-  protected Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriter(
-      PartitionConsumptionState partitionConsumptionState) {
+  Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriter(PartitionConsumptionState partitionConsumptionState) {
     return partitionConsumptionState.getVeniceWriterLazyRef();
   }
 
-  protected void setRealTimeVeniceWriterRef(PartitionConsumptionState partitionConsumptionState) {
+  void setRealTimeVeniceWriterRef(PartitionConsumptionState partitionConsumptionState) {
     partitionConsumptionState.setVeniceWriterLazyRef(veniceWriterForRealTime);
   }
 
@@ -2553,7 +2549,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected CompletableFuture<PubSubProduceResult> sendIngestionHeartbeat(
+  CompletableFuture<PubSubProduceResult> sendIngestionHeartbeat(
       PartitionConsumptionState partitionConsumptionState,
       PubSubTopicPartition topicPartition,
       PubSubProducerCallback callback,
@@ -2761,27 +2757,27 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  public KafkaDataIntegrityValidator getKafkaDataIntegrityValidatorForLeaders() {
+  KafkaDataIntegrityValidator getKafkaDataIntegrityValidatorForLeaders() {
     return kafkaDataIntegrityValidatorForLeaders;
   }
 
   @Override
-  public StoreWriteComputeProcessor getStoreWriteComputeHandler() {
+  StoreWriteComputeProcessor getStoreWriteComputeHandler() {
     return storeWriteComputeHandler;
   }
 
   @Override
-  public AvroStoreDeserializerCache getStoreDeserializerCache() {
+  AvroStoreDeserializerCache getStoreDeserializerCache() {
     return storeDeserializerCache;
   }
 
   @Override
-  public Int2ObjectMap<String> getKafkaClusterIdToUrlMap() {
+  Int2ObjectMap<String> getKafkaClusterIdToUrlMap() {
     return kafkaClusterIdToUrlMap;
   }
 
   @Override
-  public boolean hasChangeCaptureView() {
+  boolean hasChangeCaptureView() {
     return hasChangeCaptureView;
   }
 }
