@@ -65,7 +65,7 @@ public class PubSubConstants {
    * Default value of sleep interval for polling topic deletion status from ZK.
    */
   public static final int PUBSUB_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS_DEFAULT_VALUE = 2 * Time.MS_PER_SECOND;
-  public static final long UNKNOWN_LATEST_OFFSET = -12345;
+  public static final long UNKNOWN_LATEST_OFFSET = -404L;
 
   private static final Duration PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE_DEFAULT = Duration.ofMinutes(1);
   private static Duration PUBSUB_OFFSET_API_TIMEOUT_DURATION_DEFAULT_VALUE =
