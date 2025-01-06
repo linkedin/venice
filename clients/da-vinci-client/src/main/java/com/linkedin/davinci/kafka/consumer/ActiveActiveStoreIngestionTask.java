@@ -1127,10 +1127,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
     // Calculate leader offset and start consumption
     prepareLeaderOffsetCheckpointAndStartConsumptionAsLeader(newSourceTopic, partitionConsumptionState, true);
-
-    // In case new topic is empty and leader can never become online
-    // TODO: Remove this check after AGG mode is deprecated.
-    defaultReadyToServeChecker.apply(partitionConsumptionState);
   }
 
   /**
@@ -1155,7 +1151,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     syncTopicSwitchToIngestionMetadataService(topicSwitch, partitionConsumptionState);
     if (!isLeader(partitionConsumptionState)) {
       partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
-      return true;
     }
     return false;
   }
@@ -1538,7 +1533,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     Set<String> leaderSourceKafkaURLs = getConsumptionSourceKafkaAddress(partitionConsumptionState);
     Map<String, Long> leaderOffsetByKafkaURL = new HashMap<>(leaderSourceKafkaURLs.size());
     List<CharSequence> unreachableBrokerList = new ArrayList<>();
-
     // TODO: Potentially this logic can be merged into below branch.
     if (calculateUpstreamOffsetFromTopicSwitch) {
       leaderOffsetByKafkaURL =
@@ -1560,7 +1554,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           "Failed to reach broker urls {}, will schedule retry to compute upstream offset and resubscribe!",
           unreachableBrokerList.toString());
     }
-
     // subscribe to the new upstream
     leaderOffsetByKafkaURL.forEach((kafkaURL, leaderStartOffset) -> {
       consumerSubscribe(leaderTopic, partitionConsumptionState, leaderStartOffset, kafkaURL);

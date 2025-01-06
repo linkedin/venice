@@ -10,6 +10,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.AssertJUnit.fail;
 
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -78,17 +79,19 @@ public class TestParentControllerWithMultiDataCenter {
     controllerProps.put(DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID, 2);
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 3);
     controllerProps.put(DEFAULT_PARTITION_SIZE, 1024);
+    Properties serverProps = new Properties();
     multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
         1,
         1,
+        2,
         1,
-        1,
-        1,
+        2,
         Optional.of(controllerProps),
         Optional.of(controllerProps),
-        Optional.empty());
+        Optional.of(serverProps),
+        false);
 
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
   }
@@ -111,12 +114,6 @@ public class TestParentControllerWithMultiDataCenter {
           new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString());
     }
 
-    List<TopicManager> topicManagers = new ArrayList<>(2);
-    topicManagers
-        .add(childDatacenters.get(0).getControllers().values().iterator().next().getVeniceAdmin().getTopicManager());
-    topicManagers
-        .add(childDatacenters.get(1).getControllers().values().iterator().next().getVeniceAdmin().getTopicManager());
-
     NewStoreResponse newStoreResponse =
         parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
     Assert.assertFalse(
@@ -124,12 +121,15 @@ public class TestParentControllerWithMultiDataCenter {
         "The NewStoreResponse returned an error: " + newStoreResponse.getError());
 
     StoreInfo store = TestUtils.assertCommand(parentControllerClient.getStore(storeName)).getStore();
-    String rtTopicName = Utils.getRealTimeTopicName(store);
-    PubSubTopic rtPubSubTopic = pubSubTopicRepository.getTopic(rtTopicName);
+
+    String metaSystemStoreTopic =
+        Version.composeKafkaTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), 1);
+    TestUtils.waitForNonDeterministicPushCompletion(metaSystemStoreTopic, parentControllerClient, 30, TimeUnit.SECONDS);
 
     UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams();
-    updateStoreParams.setIncrementalPushEnabled(true)
-        .setBackupStrategy(BackupStrategy.KEEP_MIN_VERSIONS)
+    updateStoreParams.setBackupStrategy(BackupStrategy.KEEP_MIN_VERSIONS)
+        .setActiveActiveReplicationEnabled(true)
+        .setIncrementalPushEnabled(true)
         .setNumVersionsToPreserve(2)
         .setHybridRewindSeconds(1000)
         .setHybridOffsetLagThreshold(1000);
@@ -140,6 +140,14 @@ public class TestParentControllerWithMultiDataCenter {
         .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
     PubSubTopic versionPubsubTopic = getVersionPubsubTopic(storeName, response);
 
+    List<TopicManager> topicManagers = new ArrayList<>(2);
+    topicManagers
+        .add(childDatacenters.get(0).getControllers().values().iterator().next().getVeniceAdmin().getTopicManager());
+    topicManagers
+        .add(childDatacenters.get(1).getControllers().values().iterator().next().getVeniceAdmin().getTopicManager());
+
+    String rtTopicName = Utils.getRealTimeTopicName(store);
+    PubSubTopic rtPubSubTopic = pubSubTopicRepository.getTopic(rtTopicName);
     for (TopicManager topicManager: topicManagers) {
       Assert.assertTrue(topicManager.containsTopic(versionPubsubTopic));
       Assert.assertTrue(topicManager.containsTopic(rtPubSubTopic));
@@ -318,6 +326,10 @@ public class TestParentControllerWithMultiDataCenter {
           incPushStoreName,
           parentControllerClient,
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setHybridRewindSeconds(expectedHybridRewindSeconds)
+              .setHybridOffsetLagThreshold(expectedHybridOffsetLagThreshold)
+              .setHybridBufferReplayPolicy(expectedHybridBufferReplayPolicy)
+              .setActiveActiveReplicationEnabled(true)
               .setIncrementalPushEnabled(true));
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
         for (ControllerClient controllerClient: controllerClients) {

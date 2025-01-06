@@ -669,7 +669,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              * In extreme case, if there is no message in real-time topic, there will be no new message after leader switch
              * to the real-time topic, so `isReadyToServe()` check will never be invoked.
              */
-            defaultReadyToServeChecker.apply(partitionConsumptionState);
+            maybeApplyReadyToServeCheck(partitionConsumptionState);
           }
           break;
 
@@ -1064,7 +1064,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         upstreamStartOffset);
 
     // In case new topic is empty and leader can never become online
-    defaultReadyToServeChecker.apply(partitionConsumptionState);
+    maybeApplyReadyToServeCheck(partitionConsumptionState);
   }
 
   protected void syncConsumedUpstreamRTOffsetMapIfNeeded(
@@ -1326,7 +1326,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * Real time topic for that partition is empty or the rewind start offset is very closed to the end, followers
        * calculate the lag of the leader and decides the lag is small enough.
        */
-      return true;
+      return isHybridAggregateMode();
     }
     return false;
   }
