@@ -1,9 +1,11 @@
 package com.linkedin.venice.controllerapi;
 
 import static com.linkedin.venice.meta.Version.PushType.BATCH;
+import static org.mockito.Mockito.*;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
+import java.security.cert.X509Certificate;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -65,6 +67,10 @@ public class RequestTopicForPushRequestTest {
     request.setPartitioners("partitioner1,partitioner2");
     request.setCompressionDictionary("compressionDict");
     request.setEmergencySourceRegion("regionX");
+    request.setSeparateRealTimeTopicEnabled(true);
+
+    X509Certificate x509Certificate = mock(X509Certificate.class);
+    request.setCertificateInRequest(x509Certificate);
 
     assertTrue(request.isSendStartOfPush());
     assertTrue(request.isSorted());
@@ -77,6 +83,8 @@ public class RequestTopicForPushRequestTest {
     assertEquals(request.getPartitioners(), new HashSet<>(Arrays.asList("partitioner1", "partitioner2")));
     assertEquals(request.getCompressionDictionary(), "compressionDict");
     assertEquals(request.getEmergencySourceRegion(), "regionX");
+    assertTrue(request.isSeparateRealTimeTopicEnabled());
+    assertEquals(request.getCertificateInRequest(), x509Certificate);
   }
 
   @Test

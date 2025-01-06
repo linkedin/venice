@@ -4,11 +4,13 @@ import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_DELETE_RET
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.when;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -550,6 +552,51 @@ public class TopicManagerTest {
     Assert.assertThrows(
         PubSubTopicDoesNotExistException.class,
         () -> topicManager.updateTopicRetention(nonExistingTopic, TimeUnit.DAYS.toMillis(1)));
+  }
+
+  @Test
+  public void testGetAndUpdateTopicRetentionWithRetriesForNonExistingTopic() {
+    PubSubTopic existingTopic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("existing-topic"));
+    PubSubTopic nonExistentTopic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("non-existing-topic"));
+    PubSubAdminAdapter mockPubSubAdminAdapter = mock(PubSubAdminAdapter.class);
+    PubSubAdminAdapterFactory adminAdapterFactory = mock(PubSubAdminAdapterFactory.class);
+    PubSubConsumerAdapterFactory consumerAdapterFactory = mock(PubSubConsumerAdapterFactory.class);
+    PubSubConsumerAdapter mockPubSubConsumer = mock(PubSubConsumerAdapter.class);
+    doReturn(mockPubSubConsumer).when(consumerAdapterFactory).create(any(), anyBoolean(), any(), anyString());
+    doReturn(mockPubSubAdminAdapter).when(adminAdapterFactory).create(any(), eq(pubSubTopicRepository));
+
+    PubSubTopicConfiguration topicProperties =
+        new PubSubTopicConfiguration(Optional.of(TimeUnit.DAYS.toMillis(1)), true, Optional.of(1), 4L, Optional.of(5L));
+    when(mockPubSubAdminAdapter.getTopicConfigWithRetry(existingTopic)).thenReturn(topicProperties);
+    when(mockPubSubAdminAdapter.getTopicConfigWithRetry(nonExistentTopic)).thenReturn(topicProperties);
+
+    doNothing().when(mockPubSubAdminAdapter).setTopicConfig(eq(existingTopic), any(PubSubTopicConfiguration.class));
+    doThrow(new PubSubTopicDoesNotExistException("Topic does not exist")).when(mockPubSubAdminAdapter)
+        .setTopicConfig(eq(nonExistentTopic), any(PubSubTopicConfiguration.class));
+
+    TopicManagerContext topicManagerContext =
+        new TopicManagerContext.Builder().setPubSubPropertiesSupplier(k -> VeniceProperties.empty())
+            .setPubSubTopicRepository(pubSubTopicRepository)
+            .setPubSubAdminAdapterFactory(adminAdapterFactory)
+            .setPubSubConsumerAdapterFactory(consumerAdapterFactory)
+            .setTopicDeletionStatusPollIntervalMs(100)
+            .setTopicMetadataFetcherConsumerPoolSize(1)
+            .setTopicMetadataFetcherThreadPoolSize(1)
+            .setTopicMinLogCompactionLagMs(MIN_COMPACTION_LAG)
+            .build();
+
+    try (TopicManager topicManagerForThisTest =
+        new TopicManagerRepository(topicManagerContext, "test").getLocalTopicManager()) {
+      Assert.assertFalse(
+          topicManagerForThisTest.updateTopicRetentionWithRetries(existingTopic, TimeUnit.DAYS.toMillis(1)),
+          "Topic should not be updated since it already has the same retention");
+      Assert.assertTrue(
+          topicManagerForThisTest.updateTopicRetentionWithRetries(existingTopic, TimeUnit.DAYS.toMillis(5)),
+          "Topic should be updated since it has different retention");
+      Assert.assertThrows(
+          PubSubClientRetriableException.class,
+          () -> topicManagerForThisTest.updateTopicRetentionWithRetries(nonExistentTopic, TimeUnit.DAYS.toMillis(2)));
+    }
   }
 
   @Test

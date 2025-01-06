@@ -6,6 +6,7 @@ import static com.linkedin.venice.pubsub.PubSubConstants.ETERNAL_TOPIC_RETENTION
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_FAST_OPERATION_TIMEOUT_MS;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_DELETE_RETRY_TIMES;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_UNKNOWN_RETENTION;
+import static com.linkedin.venice.pubsub.PubSubConstants.TOPIC_METADATA_OP_RETRIABLE_EXCEPTIONS;
 import static com.linkedin.venice.pubsub.manager.TopicManagerStats.SENSOR_TYPE.CONTAINS_TOPIC_WITH_RETRY;
 import static com.linkedin.venice.pubsub.manager.TopicManagerStats.SENSOR_TYPE.CREATE_TOPIC;
 import static com.linkedin.venice.pubsub.manager.TopicManagerStats.SENSOR_TYPE.DELETE_TOPIC;
@@ -273,14 +274,32 @@ public class TopicManager implements Closeable {
   }
 
   public boolean updateTopicRetentionWithRetries(PubSubTopic topicName, long expectedRetentionInMs) {
-    PubSubTopicConfiguration topicConfiguration = getCachedTopicConfig(topicName);
-    return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
-        () -> updateTopicRetention(topicName, expectedRetentionInMs, topicConfiguration),
+    PubSubTopicConfiguration topicConfiguration;
+    try {
+      topicConfiguration = getCachedTopicConfig(topicName).clone();
+    } catch (Exception e) {
+      logger.error("Failed to get topic config for topic: {}", topicName, e);
+      throw new VeniceException(
+          "Failed to update topic retention for topic: " + topicName + " with retention: " + expectedRetentionInMs
+              + " in cluster: " + this.pubSubClusterAddress,
+          e);
+    }
+    if (topicConfiguration.retentionInMs().isPresent()
+        && topicConfiguration.retentionInMs().get() == expectedRetentionInMs) {
+      // Retention time has already been updated for this topic before
+      return false;
+    }
+
+    topicConfiguration.setRetentionInMs(Optional.of(expectedRetentionInMs));
+    RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
+        () -> setTopicConfig(topicName, topicConfiguration),
         5,
         Duration.ofMillis(200),
         Duration.ofSeconds(1),
-        Duration.ofMillis(2 * topicManagerContext.getPubSubOperationTimeoutMs()),
-        CREATE_TOPIC_RETRIABLE_EXCEPTIONS);
+        Duration.ofMinutes(2),
+        TOPIC_METADATA_OP_RETRIABLE_EXCEPTIONS);
+    topicConfigCache.put(topicName, topicConfiguration);
+    return true;
   }
 
   public void updateTopicCompactionPolicy(PubSubTopic topic, boolean expectedLogCompacted) {
@@ -447,7 +466,7 @@ public class TopicManager implements Closeable {
       pubSubAdminAdapter.setTopicConfig(pubSubTopic, pubSubTopicConfiguration);
       stats.recordLatency(SET_TOPIC_CONFIG, startTime);
     } catch (Exception e) {
-      logger.debug("Failed to set topic config for topic: {}", pubSubTopic, e);
+      logger.info("Failed to set topic config for topic: {}", pubSubTopic, e);
       stats.recordPubSubAdminOpFailure();
       throw e;
     }

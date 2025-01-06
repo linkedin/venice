@@ -149,7 +149,6 @@ public class TestAdminSparkWithMocks {
     doReturn(1).when(admin).getReplicationFactor(anyString(), anyString());
     doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString());
     doReturn("kafka-bootstrap").when(admin).getKafkaBootstrapServers(anyBoolean());
-    doReturn("store_rt").when(admin).getRealTimeTopic(anyString(), anyString(), any());
     AdminSparkServer server =
         ServiceFactory.getMockAdminSparkServer(admin, "clustername", Arrays.asList(ControllerRoute.REQUEST_TOPIC));
     int port = server.getPort();
@@ -226,7 +225,6 @@ public class TestAdminSparkWithMocks {
     doReturn(corpRegionKafka).when(admin).getKafkaBootstrapServers(anyBoolean());
     doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(anyString());
     doReturn(true).when(admin).isActiveActiveReplicationEnabledInAllRegion(clusterName, storeName, false);
-    doReturn(Version.composeRealTimeTopic(storeName)).when(admin).getRealTimeTopic(anyString(), anyString(), any());
     doReturn(corpRegionKafka).when(admin).getNativeReplicationKafkaBootstrapServerAddress(corpRegion);
     doReturn(emergencySourceRegionKafka).when(admin)
         .getNativeReplicationKafkaBootstrapServerAddress(emergencySourceRegion);

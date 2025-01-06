@@ -309,8 +309,9 @@ public class VeniceParentHelixAdminTest {
 
       PubSubBrokerWrapper parentPubSub = twoLayerMultiRegionMultiClusterWrapper.getParentKafkaBrokerWrapper();
       PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-      // Manually create an RT topic in the parent region to simulate its existence,
-      // as RT topics are no longer created for regional system stores like meta and ps3.
+      // Manually create an RT topic in the parent region to simulate its presence for lingering system store resources.
+      // This is necessary because RT topics are no longer automatically created for regional system stores such as meta
+      // and ps3.
       try (TopicManagerRepository topicManagerRepo = IntegrationTestPushUtils
           .getTopicManagerRepo(PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE, 100, 0l, parentPubSub, pubSubTopicRepository);
           TopicManager topicManager = topicManagerRepo.getLocalTopicManager()) {
