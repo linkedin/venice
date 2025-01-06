@@ -2979,7 +2979,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /**
      * Generate snapshot after batch write is done.
      */
-    if (storeConfig.isBlobTransferEnabled()) {
+    if (storeConfig.isBlobTransferEnabled() && serverConfig.isBlobTransferManagerEnabled()) {
       storageEngine.createSnapshot(storagePartitionConfig);
     }
 
