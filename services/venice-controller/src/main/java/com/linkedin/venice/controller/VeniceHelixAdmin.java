@@ -4343,7 +4343,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private void updateRealTimeTopicName(Store store) {
-    String oldRealTimeTopicName = Utils.getRealTimeTopicName(store);
+    // get oldRealTimeTopicName from the store config because that will be more (or equally) recent than any version
+    // config
+    String oldRealTimeTopicName = Utils.getRealTimeTopicNameFromStoreConfig(store);
     String newRealTimeTopicName;
     PubSubTopic newRealTimeTopic;
 
