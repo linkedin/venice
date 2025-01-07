@@ -1,6 +1,7 @@
 package com.linkedin.davinci.store.rocksdb;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
@@ -962,7 +963,10 @@ public class RocksDBStoragePartitionTest {
     int partitionId = 0;
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
     partitionConfig.setDeferredWrite(false);
-    VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    Properties extraProps = new Properties();
+    extraProps.setProperty(BLOB_TRANSFER_MANAGER_ENABLED, "true");
+    VeniceProperties veniceServerProperties =
+        AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, extraProps);
     RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
 
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
