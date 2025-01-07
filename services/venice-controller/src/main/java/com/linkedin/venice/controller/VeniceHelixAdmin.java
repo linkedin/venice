@@ -135,6 +135,7 @@ import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.StoreName;
 import com.linkedin.venice.meta.SystemStoreAttributes;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
@@ -1859,7 +1860,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String valueSchema,
       boolean allowSystemStore,
       boolean skipLingeringResourceCheck) {
-    if (!Store.isValidStoreName(storeName)) {
+    if (!StoreName.isValidStoreName(storeName)) {
       throw new VeniceException("Invalid store name " + storeName + ". Only letters, numbers, underscore or dash");
     }
     AvroSchemaUtils.validateAvroSchemaStr(keySchema);

@@ -6,8 +6,6 @@ import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
@@ -42,19 +40,6 @@ public interface Store {
   long DEFAULT_RT_RETENTION_TIME = TimeUnit.DAYS.toMillis(5);
 
   int DEFAULT_BATCH_GET_LIMIT = 150;
-
-  /**
-   * Store name rules:
-   *  1.  Only letters, numbers, underscore or dash
-   *  2. No double dashes
-   */
-
-  Pattern storeNamePattern = Pattern.compile("^[a-zA-Z0-9_-]+$");
-
-  static boolean isValidStoreName(String name) {
-    Matcher matcher = storeNamePattern.matcher(name);
-    return matcher.matches() && !name.contains("--");
-  }
 
   static boolean isSystemStore(String storeName) {
     return storeName.startsWith(SYSTEM_STORE_NAME_PREFIX);

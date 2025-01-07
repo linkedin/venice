@@ -1,6 +1,8 @@
 package com.linkedin.venice.meta;
 
 import java.util.Objects;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.annotation.Nonnull;
 
 
@@ -20,6 +22,8 @@ import javax.annotation.Nonnull;
  *   by identity, in the common case).
  */
 public class StoreName {
+  private static final Pattern STORE_NAME_PATTERN = Pattern.compile("^[a-zA-Z0-9_-]+$");
+
   private final String name;
 
   /**
@@ -28,10 +32,20 @@ public class StoreName {
    * {@link NameRepository#getStoreName(String)}
    */
   StoreName(String name) {
-    if (!Store.isValidStoreName(name)) {
+    if (!isValidStoreName(name)) {
       throw new IllegalArgumentException("Invalid store name!");
     }
     this.name = Objects.requireNonNull(name);
+  }
+
+  /**
+   * Store name rules:
+   *  1. Only letters, numbers, underscore or dash
+   *  2. No double dashes
+   */
+  public static boolean isValidStoreName(String name) {
+    Matcher matcher = STORE_NAME_PATTERN.matcher(name);
+    return matcher.matches() && !name.contains("--");
   }
 
   @Nonnull
