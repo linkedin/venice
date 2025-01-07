@@ -27,7 +27,7 @@ public class StateModelIngestionProgressNotifier implements VeniceNotifier {
 
   void startConsumption(String resourceName, int partitionId) {
     final String stateModelID = getStateModelID(resourceName, partitionId);
-    stateModelToIngestionCompleteFlagMap.put(stateModelID, new CountDownLatch(1));
+    stateModelToIngestionCompleteFlagMap.put(stateModelID, new CountDownLatch(1)); //
     stateModelToSuccessMap.put(stateModelID, false);
   }
 

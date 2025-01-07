@@ -733,6 +733,9 @@ class TopicMetadataFetcher implements Closeable {
     completableFutureSupplier.get().whenComplete((value, throwable) -> {
       if (throwable != null) {
         cache.remove(key);
+
+        T cachedContents = (cachedValue != null) ? cachedValue.getValue() : null;
+        LOGGER.error("Failed to update cachedValue for key: {} cachedValue: {}", key, cachedContents, throwable);
         return;
       }
       putLatestValueInCache(key, value, cache);

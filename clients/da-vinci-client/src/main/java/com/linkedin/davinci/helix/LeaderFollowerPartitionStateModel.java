@@ -102,6 +102,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
        */
       if (isRegularStoreCurrentVersion) {
         notifier.startConsumption(resourceName, getPartition());
+        getIngestionBackend().getStoreIngestionService().recordLatchCreation(resourceName, getPartition());
       }
       try {
         long startTimeForSettingUpNewStorePartitionInNs = System.nanoTime();

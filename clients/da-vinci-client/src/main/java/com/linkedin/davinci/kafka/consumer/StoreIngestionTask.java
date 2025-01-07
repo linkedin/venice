@@ -4645,6 +4645,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return gracefulShutdownLatch;
   }
 
+  abstract void recordLatchCreation(int partition);
+
   // For unit test purpose.
   void setVersionRole(PartitionReplicaIngestionContext.VersionRole versionRole) {
     this.versionRole = versionRole;

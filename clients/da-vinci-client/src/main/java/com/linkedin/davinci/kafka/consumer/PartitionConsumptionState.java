@@ -76,6 +76,8 @@ public class PartitionConsumptionState {
    */
   private boolean isLatchReleased = false;
 
+  private boolean isLatchCreated = false;
+
   /**
    * This future is completed in drainer thread after persisting the associated record and offset to DB.
    */
@@ -331,6 +333,14 @@ public class PartitionConsumptionState {
 
   public void unsubscribe() {
     this.isSubscribed = false;
+  }
+
+  public boolean isLatchCreated() {
+    return isLatchCreated;
+  }
+
+  public void recordLatchCreation() {
+    this.isLatchCreated = true;
   }
 
   public boolean isLatchReleased() {
