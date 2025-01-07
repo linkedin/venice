@@ -366,25 +366,27 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       Version version,
       Properties kafkaConsumerProperties,
       BooleanSupplier isCurrentVersion,
-      VeniceStoreVersionConfig storeConfig,
+      VeniceStoreVersionConfig storeVersionConfig,
       int errorPartitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
       DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
       Queue<VeniceNotifier> notifiers,
       Lazy<ZKHelixAdmin> zkHelixAdmin) {
-    this.storeVersionConfig = storeConfig;
-    this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
-    this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
-    this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
-    this.databaseSyncBytesIntervalForDeferredWriteMode = storeConfig.getDatabaseSyncBytesIntervalForDeferredWriteMode();
+    this.storeVersionConfig = storeVersionConfig;
+    this.readCycleDelayMs = storeVersionConfig.getKafkaReadCycleDelayMs();
+    this.emptyPollSleepMs = storeVersionConfig.getKafkaEmptyPollSleepMs();
+    this.databaseSyncBytesIntervalForTransactionalMode =
+        storeVersionConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
+    this.databaseSyncBytesIntervalForDeferredWriteMode =
+        storeVersionConfig.getDatabaseSyncBytesIntervalForDeferredWriteMode();
     this.kafkaProps = kafkaConsumerProperties;
     this.storageService = storageService;
     this.storageEngineRepository = builder.getStorageEngineRepository();
     this.storageMetadataService = builder.getStorageMetadataService();
     this.storeRepository = builder.getMetadataRepo();
     this.schemaRepository = builder.getSchemaRepo();
-    this.kafkaVersionTopic = storeConfig.getStoreVersionName();
+    this.kafkaVersionTopic = storeVersionConfig.getStoreVersionName();
     this.pubSubTopicRepository = builder.getPubSubTopicRepository();
     this.versionTopic = pubSubTopicRepository.getTopic(kafkaVersionTopic);
     this.storeName = versionTopic.getStoreName();
@@ -414,13 +416,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         new KafkaDataIntegrityValidator(this.kafkaVersionTopic, DISABLED, producerStateMaxAgeMs);
     this.ingestionTaskName = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
     this.topicManagerRepository = builder.getTopicManagerRepository();
-    this.readOnlyForBatchOnlyStoreEnabled = storeConfig.isReadOnlyForBatchOnlyStoreEnabled();
+    this.readOnlyForBatchOnlyStoreEnabled = storeVersionConfig.isReadOnlyForBatchOnlyStoreEnabled();
     this.hostLevelIngestionStats = builder.getIngestionStats().getStoreStats(storeName);
     this.versionedDIVStats = builder.getVersionedDIVStats();
     this.versionedIngestionStats = builder.getVersionedStorageIngestionStats();
     this.isRunning = new AtomicBoolean(true);
     this.emitMetrics = new AtomicBoolean(true);
-    this.resetErrorReplicaEnabled = storeConfig.isResetErrorReplicaEnabled();
+    this.resetErrorReplicaEnabled = storeVersionConfig.isResetErrorReplicaEnabled();
 
     this.storeBufferService = builder.getStoreBufferService();
     this.isCurrentVersion = isCurrentVersion;
@@ -543,7 +545,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     this.batchReportIncPushStatusEnabled = !isDaVinciClient && serverConfig.getBatchReportEOIPEnabled();
     this.parallelProcessingThreadPool = builder.getAAWCWorkLoadProcessingThreadPool();
-    this.hostName = Utils.getHostName() + "_" + storeConfig.getListenerPort();
+    this.hostName = Utils.getHostName() + "_" + storeVersionConfig.getListenerPort();
     this.zkHelixAdmin = zkHelixAdmin;
   }
 
