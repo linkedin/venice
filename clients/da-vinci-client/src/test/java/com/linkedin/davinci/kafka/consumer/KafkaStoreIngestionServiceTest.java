@@ -546,7 +546,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     storageServiceField.setAccessible(true);
     storageServiceField.set(storeIngestionTask, storageService);
 
-    Field storeConfigField = StoreIngestionTask.class.getDeclaredField("storeConfig");
+    Field storeConfigField = StoreIngestionTask.class.getDeclaredField("storeVersionConfig");
     storeConfigField.setAccessible(true);
     storeConfigField.set(storeIngestionTask, config);
 
