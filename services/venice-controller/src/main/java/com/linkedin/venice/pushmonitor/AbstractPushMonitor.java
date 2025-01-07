@@ -1174,6 +1174,8 @@ public abstract class AbstractPushMonitor
         }
       }
 
+      // for target region push, if only set version to online in target regions
+
       store.updateVersionStatus(versionNumber, newStatus);
       LOGGER.info("Updated store: {} version: {} to status: {}", store.getName(), versionNumber, newStatus.toString());
       if (newStatus.equals(VersionStatus.ONLINE)) {

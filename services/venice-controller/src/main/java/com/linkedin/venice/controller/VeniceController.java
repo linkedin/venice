@@ -73,6 +73,8 @@ public class VeniceController {
   private final Optional<StoreGraveyardCleanupService> storeGraveyardCleanupService;
   private final Optional<SystemStoreRepairService> systemStoreRepairService;
 
+  private Optional<DeferredVersionSwapService> deferredVersionSwapService;
+
   private VeniceControllerRequestHandler secureRequestHandler;
   private VeniceControllerRequestHandler unsecureRequestHandler;
   private ThreadPoolExecutor grpcExecutor = null;
@@ -362,6 +364,7 @@ public class VeniceController {
     unusedValueSchemaCleanupService.ifPresent(AbstractVeniceService::start);
     systemStoreRepairService.ifPresent(AbstractVeniceService::start);
     disabledPartitionEnablerService.ifPresent(AbstractVeniceService::start);
+    deferredVersionSwapService.ifPresent(AbstractVeniceService::start);
     // register with service discovery at the end
     asyncRetryingServiceDiscoveryAnnouncer.register();
     if (adminGrpcServer != null) {
@@ -426,6 +429,7 @@ public class VeniceController {
     unusedValueSchemaCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     storeBackupVersionCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     disabledPartitionEnablerService.ifPresent(Utils::closeQuietlyWithErrorLogged);
+    deferredVersionSwapService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     if (adminGrpcServer != null) {
       adminGrpcServer.stop();
     }

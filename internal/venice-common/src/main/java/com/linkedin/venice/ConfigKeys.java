@@ -2398,4 +2398,6 @@ public class ConfigKeys {
    * Default: {@value com.linkedin.venice.meta.NameRepository#DEFAULT_MAXIMUM_ENTRY_COUNT}
    */
   public static final String NAME_REPOSITORY_MAX_ENTRY_COUNT = "name.repository.max.entry.count";
+
+  public static final String CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS = "controller.deferred.version.swap.sleep.ms";
 }
