@@ -155,6 +155,14 @@ import org.apache.commons.cli.CommandLine;
 
 /**
  * TODO: Merge this with {@link com.linkedin.venice.controllerapi.ControllerRoute}
+ *
+ * COMMAND (
+ *   "long-name",
+ *   "short-name",
+ *   "description",
+ *   "required-args",
+ *   "optional-args"
+ * )
  */
 public enum Command {
   LIST_STORES(
@@ -518,6 +526,11 @@ public enum Command {
   REQUEST_BASED_METADATA(
       "request-based-metadata",
       "Get the store's metadata using request based metadata endpoint via a transport client and a server URL",
+      new Arg[] { URL, SERVER_URL, STORE }
+  ),
+  REQUEST_BASED_STORE_PROPERTIES(
+      "request-based-store-properties",
+      "Get the store's properties using request based store properties endpoint via a transport client and a server URL",
       new Arg[] { URL, SERVER_URL, STORE }
   ),
   DUMP_INGESTION_STATE(

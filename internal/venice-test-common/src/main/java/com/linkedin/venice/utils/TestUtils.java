@@ -45,6 +45,12 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.meta.BufferReplayPolicy;
+import com.linkedin.venice.meta.DataReplicationPolicy;
+import com.linkedin.venice.meta.ETLStoreConfig;
+import com.linkedin.venice.meta.ETLStoreConfigImpl;
+import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -56,8 +62,12 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.SystemStoreAttributes;
+import com.linkedin.venice.meta.SystemStoreAttributesImpl;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.meta.ViewConfig;
+import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
@@ -91,6 +101,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Random;
 import java.util.TreeMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -492,6 +503,74 @@ public class TestUtils {
     // Set the default timestamp to make sure every creation will return the same Store object.
     store.setLatestVersionPromoteToCurrentTimestamp(-1);
     return store;
+  }
+
+  public static HybridStoreConfig createTestHybridStoreConfig(Random random) {
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
+        random.nextLong(),
+        random.nextLong(),
+        random.nextInt(),
+        DataReplicationPolicy.AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_SOP);
+    hybridStoreConfig.setRealTimeTopicName(Long.toString(random.nextLong()));
+    return hybridStoreConfig;
+  }
+
+  public static Map<String, ViewConfig> createTestViewConfigs(Random random) {
+    Map<String, ViewConfig> viewConfigs = new HashMap<>();
+    viewConfigs.put("vc1", new ViewConfigImpl("vc1", createTestViewParams(random)));
+    viewConfigs.put("vc2", new ViewConfigImpl("vc2", createTestViewParams(random)));
+    viewConfigs.put("vc3", new ViewConfigImpl("vc3", createTestViewParams(random)));
+    return viewConfigs;
+  }
+
+  public static Map<String, String> createTestViewParams(Random random) {
+    Map<String, String> viewParams = new HashMap<>();
+    viewParams.put("k1", Long.toString(random.nextLong()));
+    viewParams.put("k2", Long.toString(random.nextLong()));
+    viewParams.put("k3", Long.toString(random.nextLong()));
+    return viewParams;
+  }
+
+  public static ETLStoreConfig createTestETLStoreConfig() {
+    ETLStoreConfig etlStoreConfig = new ETLStoreConfigImpl();
+    etlStoreConfig.setEtledUserProxyAccount("etled_user_proxy_account");
+    etlStoreConfig.setFutureVersionETLEnabled(true);
+    etlStoreConfig.setRegularVersionETLEnabled(true);
+    return etlStoreConfig;
+  }
+
+  public static PartitionerConfig createTestPartitionerConfig(Random random) {
+    PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
+    partitionerConfig.setPartitionerClass("partitioner_class");
+    partitionerConfig.setPartitionerParams(new HashMap<>());
+    partitionerConfig.setAmplificationFactor(random.nextInt());
+    return partitionerConfig;
+  }
+
+  public static List<Version> createTestVersions(String storeName, Random random) {
+    List<Version> versions = new ArrayList<>();
+    versions.add(new VersionImpl(storeName, 0, Long.toString(random.nextLong())));
+    versions.add(new VersionImpl(storeName, 1, Long.toString(random.nextLong())));
+    versions.add(new VersionImpl(storeName, 2, Long.toString(random.nextLong())));
+    return versions;
+  }
+
+  public static Map<String, SystemStoreAttributes> createTestSystemStores(String storeName, Random random) {
+    Map<String, SystemStoreAttributes> systemStores = new HashMap<>();
+    systemStores.put("ss1", createTestSystemStoreAttributes(storeName, random));
+    systemStores.put("ss2", createTestSystemStoreAttributes(storeName, random));
+    systemStores.put("ss3", createTestSystemStoreAttributes(storeName, random));
+    return systemStores;
+  }
+
+  public static SystemStoreAttributes createTestSystemStoreAttributes(String storeName, Random random) {
+    SystemStoreAttributes systemStoreAttributes = new SystemStoreAttributesImpl();
+    systemStoreAttributes.setCurrentVersion(random.nextInt());
+    systemStoreAttributes.setVersions(createTestVersions(storeName, random));
+    systemStoreAttributes.setLatestVersionPromoteToCurrentTimestamp(random.nextLong());
+    systemStoreAttributes.setLargestUsedVersionNumber(random.nextInt());
+    return systemStoreAttributes;
   }
 
   /**
