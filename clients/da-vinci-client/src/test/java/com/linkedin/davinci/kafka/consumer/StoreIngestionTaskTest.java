@@ -11,6 +11,7 @@ import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.NodeTyp
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.NodeType.LEADER;
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.SortedInput.SORTED;
 import static com.linkedin.davinci.store.AbstractStorageEngine.StoragePartitionAdjustmentTrigger.PREPARE_FOR_READ;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS;
 import static com.linkedin.venice.ConfigKeys.HYBRID_QUOTA_ENFORCEMENT_ENABLED;
@@ -348,6 +349,7 @@ public abstract class StoreIngestionTaskTest {
   private List<Object[]> mockNotifierError;
   private StorageMetadataService mockStorageMetadataService;
   private AbstractStorageEngine mockAbstractStorageEngine;
+  private DeepCopyStorageEngine mockDeepCopyStorageEngine;
   private IngestionThrottler mockIngestionThrottler;
   private Map<String, EventThrottler> kafkaUrlToRecordsThrottler;
   private KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler;
@@ -1007,8 +1009,9 @@ public abstract class StoreIngestionTaskTest {
       when(mockAbstractStorageEngine.getIterator(anyInt())).thenReturn(iterator);
 
     } else {
-      doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStorageEngineRepository)
-          .getLocalStorageEngine(topic);
+      mockDeepCopyStorageEngine = spy(new DeepCopyStorageEngine(mockAbstractStorageEngine));
+      doReturn(mockDeepCopyStorageEngine).when(mockStorageEngineRepository).getLocalStorageEngine(topic);
+      doNothing().when(mockDeepCopyStorageEngine).createSnapshot(any());
     }
 
     inMemoryLocalKafkaConsumer =
@@ -5306,6 +5309,73 @@ public abstract class StoreIngestionTaskTest {
     runTest(config);
     // The drop partition consumer action should still be handled as part of internalClose
     dropPartitionFuture.get().get();
+  }
+
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "Two-True-and-False")
+  public void testSnapshotGenerationConditions(boolean isBlobTransferEnabled, boolean blobTransferManagerEnabled) {
+    Map<String, Object> serverProperties = new HashMap<>();
+    serverProperties.put(BLOB_TRANSFER_MANAGER_ENABLED, blobTransferManagerEnabled);
+
+    Version version = mock(Version.class);
+    doReturn(1).when(version).getPartitionCount();
+    doReturn(VersionStatus.STARTED).when(version).getStatus();
+    doReturn(true).when(version).isNativeReplicationEnabled();
+    DataRecoveryVersionConfig dataRecoveryVersionConfig = new DataRecoveryVersionConfigImpl("dc-0", false, 1);
+    doReturn(dataRecoveryVersionConfig).when(version).getDataRecoveryVersionConfig();
+
+    StorageService storageService = mock(StorageService.class);
+    Store store = mock(Store.class);
+
+    doReturn(version).when(store).getVersion(eq(1));
+
+    VeniceStoreVersionConfig storeConfig = mock(VeniceStoreVersionConfig.class);
+    doReturn(isBlobTransferEnabled).when(storeConfig).isBlobTransferEnabled();
+    doReturn(topic).when(storeConfig).getStoreVersionName();
+
+    StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(
+        new RandomPollStrategy(),
+        Utils.setOf(PARTITION_FOO),
+        Optional.empty(),
+        serverProperties,
+        true,
+        null,
+        null).build();
+
+    doReturn(Version.parseStoreFromVersionTopic(topic)).when(store).getName();
+    storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
+        storageService,
+        store,
+        version,
+        new Properties(),
+        isCurrentVersion,
+        storeConfig,
+        1,
+        false,
+        Optional.empty(),
+        null,
+        null);
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(pubSubTopic).when(offsetRecord).getLeaderTopic(any());
+    doReturn(false).when(offsetRecord).isEndOfPushReceived();
+    doReturn(100L).when(offsetRecord).getOffsetLag();
+    PartitionConsumptionState partitionConsumptionState =
+        new PartitionConsumptionState(Utils.getReplicaId(pubSubTopic, 0), 0, offsetRecord, true);
+
+    KafkaMessageEnvelope kafkaMessageEnvelope = spy(Mockito.mock(KafkaMessageEnvelope.class));
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.producerGUID = GuidUtils.getGuidFromCharSequence("test_guid");
+    producerMetadata.messageTimestamp = 1000L;
+    kafkaMessageEnvelope.producerMetadata = producerMetadata;
+
+    // action
+    storeIngestionTaskUnderTest
+        .processEndOfPush(kafkaMessageEnvelope, 1, offsetRecord.getOffsetLag(), partitionConsumptionState);
+    // verify
+    if (isBlobTransferEnabled && blobTransferManagerEnabled) {
+      verify(mockDeepCopyStorageEngine).createSnapshot(any());
+    } else {
+      verify(mockDeepCopyStorageEngine, never()).createSnapshot(any());
+    }
   }
 
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(

@@ -253,7 +253,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final Optional<HybridStoreConfig> hybridStoreConfig;
   protected final Consumer<DataValidationException> divErrorMetricCallback;
   private final ExecutorService missingSOPCheckExecutor = Executors.newSingleThreadExecutor();
-  private final VeniceStoreVersionConfig storeConfig;
+  private final VeniceStoreVersionConfig storeVersionConfig;
   protected final long readCycleDelayMs;
   protected final long emptyPollSleepMs;
 
@@ -373,7 +373,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
       Queue<VeniceNotifier> notifiers,
       Lazy<ZKHelixAdmin> zkHelixAdmin) {
-    this.storeConfig = storeConfig;
+    this.storeVersionConfig = storeConfig;
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
     this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
@@ -689,7 +689,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private void dropPartitionSynchronously(PubSubTopicPartition topicPartition) {
     LOGGER.info("{} Dropping partition: {}", ingestionTaskName, topicPartition);
     int partition = topicPartition.getPartitionNumber();
-    this.storageService.dropStorePartition(storeConfig, partition, true);
+    this.storageService.dropStorePartition(storeVersionConfig, partition, true);
     LOGGER.info("{} Dropped partition: {}", ingestionTaskName, topicPartition);
   }
 
@@ -2979,7 +2979,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /**
      * Generate snapshot after batch write is done.
      */
-    if (storeConfig.isBlobTransferEnabled() && serverConfig.isBlobTransferManagerEnabled()) {
+    if (storeVersionConfig.isBlobTransferEnabled() && serverConfig.isBlobTransferManagerEnabled()) {
       storageEngine.createSnapshot(storagePartitionConfig);
     }
 
