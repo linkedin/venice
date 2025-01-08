@@ -455,7 +455,7 @@ public class UtilsTest {
 
     String result = Utils.createNewRealTimeTopicName(oldName);
 
-    assertEquals(expectedNewName, result);
+    assertEquals(result, expectedNewName);
   }
 
   @Test
@@ -465,7 +465,7 @@ public class UtilsTest {
 
     String result = Utils.createNewRealTimeTopicName(oldName);
 
-    assertEquals(expectedNewName, result);
+    assertEquals(result, expectedNewName);
   }
 
   @Test
