@@ -1,6 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.ENABLE_BLOB_TRANSFER;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
@@ -29,6 +30,7 @@ public class TestBatchForRocksDB extends TestBatch {
     serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
     serverProperties.setProperty(ENABLE_BLOB_TRANSFER, "true");
+    serverProperties.setProperty(BLOB_TRANSFER_MANAGER_ENABLED, "true");
     serverProperties.setProperty(DATA_BASE_PATH, BASE_DATA_PATH_1);
     veniceClusterWrapper.addVeniceServer(new Properties(), serverProperties);
     serverProperties.setProperty(DATA_BASE_PATH, BASE_DATA_PATH_2);
