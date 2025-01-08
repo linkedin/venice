@@ -375,10 +375,10 @@ public class TestZKStore {
     List<String> valid = Arrays.asList("foo", "Bar", "foo_bar", "foo-bar", "f00Bar");
     List<String> invalid = Arrays.asList("foo bar", "foo.bar", " foo", ".bar", "!", "@", "#", "$", "%");
     for (String name: valid) {
-      Assert.assertTrue(Store.isValidStoreName(name));
+      Assert.assertTrue(StoreName.isValidStoreName(name));
     }
     for (String name: invalid) {
-      Assert.assertFalse(Store.isValidStoreName(name));
+      Assert.assertFalse(StoreName.isValidStoreName(name));
     }
   }
 
