@@ -4346,14 +4346,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // get oldRealTimeTopicName from the store config because that will be more (or equally) recent than any version
     // config
     String oldRealTimeTopicName = Utils.getRealTimeTopicNameFromStoreConfig(store);
-    String newRealTimeTopicName;
-    PubSubTopic newRealTimeTopic;
+    String newRealTimeTopicName = Utils.createNewRealTimeTopicName(oldRealTimeTopicName);
+    PubSubTopic newRealTimeTopic = getPubSubTopicRepository().getTopic(newRealTimeTopicName);
 
-    do {
-      newRealTimeTopicName = Utils.createNewRealTimeTopicName(oldRealTimeTopicName);
-      newRealTimeTopic = getPubSubTopicRepository().getTopic(newRealTimeTopicName);
-      oldRealTimeTopicName = newRealTimeTopicName;
-    } while (getTopicManager().containsTopic(newRealTimeTopic));
+    if (getTopicManager().containsTopic(newRealTimeTopic)) {
+      throw new VeniceException("Topic " + newRealTimeTopic + " should not exist.");
+    }
 
     store.getHybridStoreConfig().setRealTimeTopicName(newRealTimeTopicName);
   }
