@@ -286,8 +286,4 @@ public class VeniceControllerMultiClusterConfig {
   public List<String> getControllerInstanceTagList() {
     return getCommonConfig().getControllerInstanceTagList();
   }
-
-  public boolean getUpdateRealTimeTopic() {
-    return getCommonConfig().getUpdateRealTimeTopic();
-  }
 }

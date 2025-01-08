@@ -2725,7 +2725,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
             // Update ZK with the new version
             store.addVersion(version, true);
-
             repository.updateStore(store);
           } else {
             if (versionNumber == VERSION_ID_UNSET) {
@@ -4280,9 +4279,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       // version.getPartitionCount()
       // is read only in getRealTimeTopic and createInternalStore creation, so modifying currentVersion should not have
       // any effect.
-      if (multiClusterConfigs.getUpdateRealTimeTopic() && store.isHybrid()
-          && partitionCount != store.getPartitionCount()) {
-        updateRealTimeTopicName(store);
+      if (store.isHybrid()
+          && multiClusterConfigs.getControllerConfig(clusterName).isHybridStorePartitionCountUpdateEnabled()) {
+        generateAndUpdateRealTimeTopicName(store);
       }
       if (partitionCount != 0) {
         store.setPartitionCount(partitionCount);
@@ -4300,8 +4299,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     int maxPartitionNum = clusterConfig.getMaxNumberOfPartitions();
 
     if (store.isHybrid() && store.getPartitionCount() != newPartitionCount) {
-      if (multiClusterConfigs.getUpdateRealTimeTopic() && newPartitionCount <= maxPartitionNum
-          && newPartitionCount >= 0) {
+      if (multiClusterConfigs.getControllerConfig(clusterName).isHybridStorePartitionCountUpdateEnabled()
+          && newPartitionCount <= maxPartitionNum && newPartitionCount >= 0) {
         LOGGER.info(
             "Allow updating store " + store.getName() + " partition count to " + newPartitionCount
                 + " because `updateRealTimeTopic` is true.");
@@ -4342,7 +4341,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  private void updateRealTimeTopicName(Store store) {
+  private void generateAndUpdateRealTimeTopicName(Store store) {
     // get oldRealTimeTopicName from the store config because that will be more (or equally) recent than any version
     // config
     String oldRealTimeTopicName = Utils.getRealTimeTopicNameFromStoreConfig(store);

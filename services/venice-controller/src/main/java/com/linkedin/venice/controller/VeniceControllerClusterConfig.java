@@ -46,7 +46,6 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLE_PARENT_REQUEST_T
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLE_PARENT_TOPIC_TRUNCATION_UPON_COMPLETION;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_EARLY_DELETE_BACKUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_DISABLED_REPLICA_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENFORCE_SSL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_ID;
@@ -178,6 +177,7 @@ import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_MANAGER_ME
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
@@ -535,7 +535,7 @@ public class VeniceControllerClusterConfig {
   private final long serviceDiscoveryRegistrationRetryMS;
 
   private Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
-  private boolean updateRealTimeTopic;
+  private boolean isHybridStorePartitionCountUpdateEnabled;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
@@ -980,7 +980,8 @@ public class VeniceControllerClusterConfig {
     this.serviceDiscoveryRegistrationRetryMS =
         props.getLong(SERVICE_DISCOVERY_REGISTRATION_RETRY_MS, 30L * Time.MS_PER_SECOND);
     this.pushJobUserErrorCheckpoints = parsePushJobUserErrorCheckpoints(props);
-    this.updateRealTimeTopic = props.getBoolean(CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE, false);
+    this.isHybridStorePartitionCountUpdateEnabled =
+        props.getBoolean(ConfigKeys.CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE, false);
   }
 
   public VeniceProperties getProps() {
@@ -1770,8 +1771,8 @@ public class VeniceControllerClusterConfig {
     return danglingTopicOccurrenceThresholdForCleanup;
   }
 
-  public boolean getUpdateRealTimeTopic() {
-    return updateRealTimeTopic;
+  public boolean isHybridStorePartitionCountUpdateEnabled() {
+    return isHybridStorePartitionCountUpdateEnabled;
   }
 
   /**
