@@ -1,5 +1,6 @@
 package com.linkedin.davinci.blobtransfer;
 
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
@@ -12,6 +13,7 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
+import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
 import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -117,7 +119,7 @@ public class TestNettyP2PBlobTransferManager {
   public void testFailedConnectPeer() {
     CompletionStage<InputStream> future = null;
     try {
-      future = client.get("remotehost123", "test_store", 1, 1);
+      future = client.get("remotehost123", "test_store", 1, 1, BlobTransferTableFormat.BLOCK_BASED_TABLE);
     } catch (Exception e) {
       Assert.assertTrue(e instanceof VenicePeersConnectionException);
       Assert.assertEquals(e.getMessage(), "Failed to connect to the host: remotehost123");
@@ -132,7 +134,8 @@ public class TestNettyP2PBlobTransferManager {
   @Test
   public void testFailedRequestFromFinder() {
     doReturn(null).when(finder).discoverBlobPeers(anyString(), anyInt(), anyInt());
-    CompletionStage<InputStream> future = manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    CompletionStage<InputStream> future =
+        manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
     Assert.assertTrue(future.toCompletableFuture().isCompletedExceptionally());
     future.whenComplete((result, throwable) -> {
       Assert.assertNotNull(throwable);
@@ -156,7 +159,8 @@ public class TestNettyP2PBlobTransferManager {
     Mockito.doReturn(expectOffsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
 
     // Execution:
-    CompletionStage<InputStream> future = manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    CompletionStage<InputStream> future =
+        manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
     Assert.assertTrue(future.toCompletableFuture().isCompletedExceptionally());
     future.whenComplete((result, throwable) -> {
       Assert.assertNotNull(throwable);
@@ -164,6 +168,42 @@ public class TestNettyP2PBlobTransferManager {
     });
     // Verification:
     verifyFileTransferFailed(expectOffsetRecord);
+  }
+
+  /**
+   * Testing the request blob transfer table format is not match to the existing snapshot format
+   * @throws IOException
+   */
+  @Test
+  public void testSnapshotFormatNotMatch() throws IOException {
+    // Preparation:
+    Mockito.doReturn(false).when(blobSnapshotManager).isStoreHybrid(anyString(), anyInt());
+
+    BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
+    response.setDiscoveryResult(Collections.singletonList("localhost"));
+    doReturn(response).when(finder).discoverBlobPeers(anyString(), anyInt(), anyInt());
+
+    StoreVersionState storeVersionState = new StoreVersionState();
+    Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());
+
+    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    OffsetRecord expectOffsetRecord = new OffsetRecord(partitionStateSerializer);
+    expectOffsetRecord.setOffsetLag(1000L);
+    Mockito.doReturn(expectOffsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+
+    snapshotPreparation();
+
+    // Execution:
+    // Bootstrap try to get plain table snapshot,
+    // but the existing snapshot is block based table, as the snapshot manager is initialized with block based table
+    // config
+    CompletionStage<InputStream> future =
+        manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.PLAIN_TABLE);
+    future.whenComplete((result, throwable) -> {
+      Assert.assertNotNull(throwable);
+      Assert.assertTrue(throwable instanceof VeniceBlobTransferFileNotFoundException);
+    });
   }
 
   @Test
@@ -189,7 +229,8 @@ public class TestNettyP2PBlobTransferManager {
 
     // Execution:
     // Manager should be able to fetch the file and download it to another directory
-    CompletionStage<InputStream> future = manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    CompletionStage<InputStream> future =
+        manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
     future.toCompletableFuture().get(1, TimeUnit.MINUTES);
 
     // Verification:
@@ -224,7 +265,8 @@ public class TestNettyP2PBlobTransferManager {
 
     // Execution:
     // Manager should be able to fetch the file and download it to another directory, and future is done normally
-    CompletionStage<InputStream> future = manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    CompletionStage<InputStream> future =
+        manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
     future.toCompletableFuture().get(1, TimeUnit.MINUTES);
     future.whenComplete((result, throwable) -> {
       Assert.assertNull(throwable);
@@ -232,9 +274,12 @@ public class TestNettyP2PBlobTransferManager {
 
     // Verification:
     // Verify that even has bad hosts in the list, it still finally uses good host to transfer the file
-    Mockito.verify(client, Mockito.times(1)).get("localhost", TEST_STORE, TEST_VERSION, TEST_PARTITION);
-    Mockito.verify(client, Mockito.times(1)).get("badhost1", TEST_STORE, TEST_VERSION, TEST_PARTITION);
-    Mockito.verify(client, Mockito.times(1)).get("badhost2", TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    Mockito.verify(client, Mockito.times(1))
+        .get("localhost", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+    Mockito.verify(client, Mockito.times(1))
+        .get("badhost1", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+    Mockito.verify(client, Mockito.times(1))
+        .get("badhost2", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
 
     verifyFileTransferSuccess(expectOffsetRecord);
   }
@@ -266,7 +311,8 @@ public class TestNettyP2PBlobTransferManager {
 
     // Execution:
     // Manager should be able to fetch the file and download it to another directory, and future is done normally
-    CompletionStage<InputStream> future = manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    CompletionStage<InputStream> future =
+        manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
     future.toCompletableFuture().get(1, TimeUnit.MINUTES);
     future.whenComplete((result, throwable) -> {
       Assert.assertNull(throwable);
@@ -275,9 +321,12 @@ public class TestNettyP2PBlobTransferManager {
     // Verification:
     // Verify that it has the localhost in the first place, it should use localhost to transfer the file
     // All the remaining bad hosts should not be called to fetch the file.
-    Mockito.verify(client, Mockito.times(1)).get("localhost", TEST_STORE, TEST_VERSION, TEST_PARTITION);
-    Mockito.verify(client, Mockito.never()).get("badhost1", TEST_STORE, TEST_VERSION, TEST_PARTITION);
-    Mockito.verify(client, Mockito.never()).get("badhost2", TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    Mockito.verify(client, Mockito.times(1))
+        .get("localhost", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+    Mockito.verify(client, Mockito.never())
+        .get("badhost1", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+    Mockito.verify(client, Mockito.never())
+        .get("badhost2", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
 
     verifyFileTransferSuccess(expectOffsetRecord);
   }
@@ -306,7 +355,8 @@ public class TestNettyP2PBlobTransferManager {
 
     // Execution:
     // Manager should be able to fetch the file and download it to another directory
-    CompletionStage<InputStream> future = manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    CompletionStage<InputStream> future =
+        manager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
     future.toCompletableFuture().get(1, TimeUnit.MINUTES);
 
     // Verification:
@@ -394,7 +444,7 @@ public class TestNettyP2PBlobTransferManager {
    */
   private void verifyFileTransferFailed(OffsetRecord expectOffsetRecord) {
     // Verify client never get called
-    Mockito.verify(client, Mockito.never()).get(anyString(), anyString(), anyInt(), anyInt());
+    Mockito.verify(client, Mockito.never()).get(anyString(), anyString(), anyInt(), anyInt(), Mockito.any());
 
     // Verify files are not written to the partition directory
     Assert.assertFalse(Files.exists(destFile1));

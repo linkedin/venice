@@ -493,6 +493,10 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     return new ArrayList<>(veniceServerWrappers.values());
   }
 
+  public synchronized VeniceServerWrapper getVeniceServerByPort(int port) {
+    return veniceServerWrappers.get(port);
+  }
+
   public synchronized Map<String, String> getNettyServerToGrpcAddress() {
     return nettyServerToGrpcAddress;
   }

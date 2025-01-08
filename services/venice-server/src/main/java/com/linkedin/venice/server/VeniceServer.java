@@ -3,6 +3,7 @@ package com.linkedin.venice.server;
 import com.linkedin.avro.fastserde.FastDeserializerGeneratorAccessor;
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtil;
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -473,7 +474,10 @@ public class VeniceServer {
           serverConfig.getMaxConcurrentSnapshotUser(),
           serverConfig.getSnapshotRetentionTimeInMin(),
           serverConfig.getBlobTransferMaxTimeoutInMin(),
-          aggVersionedBlobTransferStats);
+          aggVersionedBlobTransferStats,
+          serverConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
+              ? BlobTransferTableFormat.PLAIN_TABLE
+              : BlobTransferTableFormat.BLOCK_BASED_TABLE);
     } else {
       aggVersionedBlobTransferStats = null;
       blobTransferManager = null;
