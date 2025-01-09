@@ -30,11 +30,12 @@ public class HelixGroupSelector implements HelixGroupSelectionStrategy {
       HelixInstanceConfigRepository instanceConfigRepository,
       HelixGroupSelectionStrategyEnum strategyEnum,
       TimeoutProcessor timeoutProcessor) {
-    this.helixGroupStats = new HelixGroupStats(metricsRepository, this);
+    this.helixGroupStats = new HelixGroupStats(metricsRepository);
     this.instanceConfigRepository = instanceConfigRepository;
     Class<? extends HelixGroupSelectionStrategy> strategyClass = strategyEnum.getStrategyClass();
     if (strategyClass.equals(HelixGroupLeastLoadedStrategy.class)) {
-      this.selectionStrategy = new HelixGroupLeastLoadedStrategy(timeoutProcessor, HELIX_GROUP_COUNTER_TIMEOUT_MS);
+      this.selectionStrategy =
+          new HelixGroupLeastLoadedStrategy(timeoutProcessor, HELIX_GROUP_COUNTER_TIMEOUT_MS, helixGroupStats);
     } else {
       try {
         this.selectionStrategy = strategyClass.getDeclaredConstructor().newInstance();
@@ -57,27 +58,11 @@ public class HelixGroupSelector implements HelixGroupSelectionStrategy {
     helixGroupStats.recordGroupNum(groupNum);
     int assignedGroupId = selectionStrategy.selectGroup(requestId, groupNum);
     helixGroupStats.recordGroupRequest(assignedGroupId);
-
     return assignedGroupId;
   }
 
   @Override
-  public void finishRequest(long requestId, int groupId) {
-    selectionStrategy.finishRequest(requestId, groupId);
-  }
-
-  @Override
-  public int getMaxGroupPendingRequest() {
-    return selectionStrategy.getMaxGroupPendingRequest();
-  }
-
-  @Override
-  public int getMinGroupPendingRequest() {
-    return selectionStrategy.getMinGroupPendingRequest();
-  }
-
-  @Override
-  public int getAvgGroupPendingRequest() {
-    return selectionStrategy.getAvgGroupPendingRequest();
+  public void finishRequest(long requestId, int groupId, double latency) {
+    selectionStrategy.finishRequest(requestId, groupId, latency);
   }
 }
