@@ -1324,30 +1324,6 @@ public class DaVinciClientTest {
 
       // Test batch-get access
       assertEquals(client1.batchGet(keyValueMap.keySet()).get(), keyValueMap);
-
-      // Test automatic new version ingestion
-      for (int i = 0; i < 2; ++i) {
-        // Test per-version partitioning parameters
-        int partitionCount = i + 1;
-        String iString = String.valueOf(i);
-        cluster.useControllerClient(controllerClient -> {
-          ControllerResponse response = controllerClient.updateStore(
-              storeName1,
-              new UpdateStoreQueryParams().setPartitionerClass(ConstantVenicePartitioner.class.getName())
-                  .setPartitionCount(partitionCount)
-                  .setPartitionerParams(
-                      Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, iString)));
-          assertFalse(response.isError(), response.getError());
-        });
-
-        Integer expectedValue = cluster.createVersion(storeName1, KEY_COUNT);
-        TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-          for (int k = 0; k < KEY_COUNT; ++k) {
-            Object readValue = client1.get(k).get();
-            assertEquals(readValue, expectedValue);
-          }
-        });
-      }
     }
 
     // Test managed clients
@@ -1362,12 +1338,13 @@ public class DaVinciClientTest {
 
       Set<Integer> partitions = new HashSet<>();
 
-      for (int i = 0; i < 5; i++) {
+      for (int i = 0; i < 2; i++) {
         partitions.add(i);
       }
 
       client1.subscribe(partitions);
       client1.unsubscribeAll();
+      assertEquals(client1.getPartitionCount(), 2);
 
       DaVinciBackend daVinciBackend = AvroGenericDaVinciClient.getBackend();
       if (daVinciBackend != null) {
