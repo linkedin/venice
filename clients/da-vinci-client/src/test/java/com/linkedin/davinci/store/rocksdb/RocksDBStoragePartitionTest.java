@@ -25,6 +25,7 @@ import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 import static org.testng.AssertJUnit.assertFalse;
 
@@ -41,6 +42,7 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
@@ -135,6 +137,119 @@ public class RocksDBStoragePartitionTest {
         { false, true, false, false, true }, // Unsorted input with interruption, without verifyChecksum
         { false, true, true, false, true } // Unsorted input with storage node re-boot, without verifyChecksum
     };
+  }
+
+  @Test
+  public void testBlobDBCompatibility() {
+    String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
+    String storeDir = getTempDatabaseDir(storeName);
+    int partitionId = 0;
+    String dbFolder = RocksDBUtils.composePartitionDbDir(DATA_BASE_DIR, storeName, partitionId);
+    File dbDir = new File(dbFolder);
+
+    Supplier<String[]> sstFileFinder = () -> dbDir.list(((dir, name) -> name.endsWith(".sst")));
+    Supplier<String[]> blobFileFinder = () -> dbDir.list(((dir, name) -> name.endsWith(".blob")));
+
+    StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
+
+    Map<String, String> inputRecords = generateInput(1000, false, 10000);
+    List<Map.Entry<String, String>> entryList = new ArrayList<>(inputRecords.entrySet());
+    Properties extraProps = new Properties();
+    // Disable blob files
+    extraProps.put(ROCKSDB_BLOB_FILES_ENABLED, "false");
+    extraProps.put(ROCKSDB_MIN_BLOB_SIZE_IN_BYTES, "1");
+    extraProps.put(ROCKSDB_BLOB_FILE_SIZE_IN_BYTES, "2097152");
+    extraProps.put(ROCKSDB_BLOB_FILE_STARTING_LEVEL, "0");
+    extraProps.put(ROCKSDB_MEMTABLE_SIZE_IN_BYTES, "1048576"); // 1MB
+
+    VeniceProperties veniceServerProperties =
+        AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, extraProps);
+    RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
+    VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
+    RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        ROCKSDB_THROTTLER,
+        rocksDBServerConfig,
+        storeConfig);
+    // Insert the first 300 [0, 300) entries with blob db disabled
+    for (int i = 0; i < 300; i++) {
+      storagePartition.put(entryList.get(i).getKey().getBytes(), entryList.get(i).getValue().getBytes());
+    }
+    storagePartition.close();
+    // Make sure no blob files were generated
+    assertTrue(sstFileFinder.get().length > 0);
+    assertTrue(blobFileFinder.get().length == 0);
+
+    // Enable blob files
+    extraProps.put(ROCKSDB_BLOB_FILES_ENABLED, "true");
+
+    veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, extraProps);
+    rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
+    serverConfig = new VeniceServerConfig(veniceServerProperties);
+    factory = new RocksDBStorageEngineFactory(serverConfig);
+    storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
+    storagePartition = new RocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        ROCKSDB_THROTTLER,
+        rocksDBServerConfig,
+        storeConfig);
+    // Insert [300, 700) entries with blob db enabled
+    for (int i = 300; i < 700; i++) {
+      storagePartition.put(entryList.get(i).getKey().getBytes(), entryList.get(i).getValue().getBytes());
+    }
+    storagePartition.sync();
+    // Make sure blob files were generated
+    assertTrue(sstFileFinder.get().length > 0);
+    int blobFileCnt = blobFileFinder.get().length;
+    assertTrue(blobFileCnt > 0);
+    // Validate all the entries inserted so far
+    for (int i = 0; i < 700; i++) {
+      Assert.assertEquals(
+          storagePartition.get(entryList.get(i).getKey().getBytes()),
+          entryList.get(i).getValue().getBytes());
+    }
+    storagePartition.close();
+
+    // Disable blob files
+    extraProps.put(ROCKSDB_BLOB_FILES_ENABLED, "false");
+
+    veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, extraProps);
+    rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
+    serverConfig = new VeniceServerConfig(veniceServerProperties);
+    factory = new RocksDBStorageEngineFactory(serverConfig);
+    storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
+    storagePartition = new RocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        ROCKSDB_THROTTLER,
+        rocksDBServerConfig,
+        storeConfig);
+    // Insert [700, 1000) entries with blob db enabled
+    for (int i = 700; i < 1000; i++) {
+      storagePartition.put(entryList.get(i).getKey().getBytes(), entryList.get(i).getValue().getBytes());
+    }
+
+    storagePartition.sync();
+    // Make sure no new blob files were generated
+    assertEquals(blobFileFinder.get().length, blobFileCnt);
+    // Validate all the entries inserted previously
+    for (Map.Entry<String, String> entry: entryList) {
+      Assert.assertEquals(storagePartition.get(entry.getKey().getBytes()), entry.getValue().getBytes());
+    }
+
+    storagePartition.close();
+    storagePartition.drop();
+    removeDir(storeDir);
   }
 
   @Test(dataProvider = "testIngestionDataProvider")
