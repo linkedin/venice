@@ -96,6 +96,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             Set<String> remainingRegions = getRegionsForVersionSwap(coloToVersions, targetRegions);
 
             // Do not perform version swap for davinci stores
+            // TODO remove this check once DVC delayed ingestion is completed
             int targetVersion = getTargetVersionFromTargetRegion(coloToVersions, targetRegions);
             Version version = store.getVersion(targetVersion);
             if (version.getIsDavinciHeartbeatReported()) {
@@ -145,6 +146,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                   store.getTargetSwapRegionWaitTime());
               continue;
             }
+
+            // TODO add check for postStoreVersionSwap() once it is implemented
 
             String remainingRegionsString = String.join(",\\s*", remainingRegions);
             LOGGER.info(
