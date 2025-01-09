@@ -99,6 +99,7 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
         .setBackupStrategy(BackupStrategy.KEEP_MIN_VERSIONS)
         .setNumVersionsToPreserve(2)
         .setHybridRewindSeconds(1000)
+        .setActiveActiveReplicationEnabled(true)
         .setHybridOffsetLagThreshold(1000);
     TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
 
