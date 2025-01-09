@@ -87,6 +87,10 @@ public class RocksDBStoragePartitionTest {
       BLOB_GARBAGE_METRIC);
 
   private Map<String, String> generateInput(int recordCnt, boolean sorted, int padLength) {
+    return generateInput(recordCnt, sorted, padLength, 0);
+  }
+
+  private Map<String, String> generateInput(int recordCnt, boolean sorted, int padLength, int startIdx) {
     Map<String, String> records;
     if (sorted) {
       BytewiseComparator comparator = new BytewiseComparator(new ComparatorOptions());
@@ -98,7 +102,7 @@ public class RocksDBStoragePartitionTest {
     } else {
       records = new HashMap<>();
     }
-    for (int i = 0; i < recordCnt; ++i) {
+    for (int i = startIdx; i < recordCnt + startIdx; ++i) {
       String value = VALUE_PREFIX + i;
       if (padLength > 0) {
         value += RandomStringUtils.random(padLength, true, true);
@@ -152,12 +156,15 @@ public class RocksDBStoragePartitionTest {
 
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
 
-    Map<String, String> inputRecords = generateInput(1000, false, 10000);
-    List<Map.Entry<String, String>> entryList = new ArrayList<>(inputRecords.entrySet());
+    Map<String, String> largeInputRecords = generateInput(1000, false, 10000, 0);
+    Map<String, String> smallInputRecords = generateInput(1000, false, 10, 10000);
+    List<Map.Entry<String, String>> largeEntryList = new ArrayList<>(largeInputRecords.entrySet());
+    List<Map.Entry<String, String>> smallEntryList = new ArrayList<>(smallInputRecords.entrySet());
     Properties extraProps = new Properties();
     // Disable blob files
     extraProps.put(ROCKSDB_BLOB_FILES_ENABLED, "false");
-    extraProps.put(ROCKSDB_MIN_BLOB_SIZE_IN_BYTES, "1");
+    extraProps.put(ROCKSDB_MIN_BLOB_SIZE_IN_BYTES, "1000"); // make sure the threshold is larger than small records
+                                                            // generated
     extraProps.put(ROCKSDB_BLOB_FILE_SIZE_IN_BYTES, "2097152");
     extraProps.put(ROCKSDB_BLOB_FILE_STARTING_LEVEL, "0");
     extraProps.put(ROCKSDB_MEMTABLE_SIZE_IN_BYTES, "1048576"); // 1MB
@@ -178,7 +185,8 @@ public class RocksDBStoragePartitionTest {
         storeConfig);
     // Insert the first 300 [0, 300) entries with blob db disabled
     for (int i = 0; i < 300; i++) {
-      storagePartition.put(entryList.get(i).getKey().getBytes(), entryList.get(i).getValue().getBytes());
+      storagePartition.put(largeEntryList.get(i).getKey().getBytes(), largeEntryList.get(i).getValue().getBytes());
+      storagePartition.put(smallEntryList.get(i).getKey().getBytes(), smallEntryList.get(i).getValue().getBytes());
     }
     storagePartition.close();
     // Make sure no blob files were generated
@@ -203,7 +211,8 @@ public class RocksDBStoragePartitionTest {
         storeConfig);
     // Insert [300, 700) entries with blob db enabled
     for (int i = 300; i < 700; i++) {
-      storagePartition.put(entryList.get(i).getKey().getBytes(), entryList.get(i).getValue().getBytes());
+      storagePartition.put(largeEntryList.get(i).getKey().getBytes(), largeEntryList.get(i).getValue().getBytes());
+      storagePartition.put(smallEntryList.get(i).getKey().getBytes(), smallEntryList.get(i).getValue().getBytes());
     }
     storagePartition.sync();
     // Make sure blob files were generated
@@ -213,8 +222,11 @@ public class RocksDBStoragePartitionTest {
     // Validate all the entries inserted so far
     for (int i = 0; i < 700; i++) {
       Assert.assertEquals(
-          storagePartition.get(entryList.get(i).getKey().getBytes()),
-          entryList.get(i).getValue().getBytes());
+          storagePartition.get(largeEntryList.get(i).getKey().getBytes()),
+          largeEntryList.get(i).getValue().getBytes());
+      Assert.assertEquals(
+          storagePartition.get(smallEntryList.get(i).getKey().getBytes()),
+          smallEntryList.get(i).getValue().getBytes());
     }
     storagePartition.close();
 
@@ -236,14 +248,18 @@ public class RocksDBStoragePartitionTest {
         storeConfig);
     // Insert [700, 1000) entries with blob db enabled
     for (int i = 700; i < 1000; i++) {
-      storagePartition.put(entryList.get(i).getKey().getBytes(), entryList.get(i).getValue().getBytes());
+      storagePartition.put(largeEntryList.get(i).getKey().getBytes(), largeEntryList.get(i).getValue().getBytes());
+      storagePartition.put(smallEntryList.get(i).getKey().getBytes(), smallEntryList.get(i).getValue().getBytes());
     }
 
     storagePartition.sync();
     // Make sure no new blob files were generated
     assertEquals(blobFileFinder.get().length, blobFileCnt);
     // Validate all the entries inserted previously
-    for (Map.Entry<String, String> entry: entryList) {
+    for (Map.Entry<String, String> entry: largeEntryList) {
+      Assert.assertEquals(storagePartition.get(entry.getKey().getBytes()), entry.getValue().getBytes());
+    }
+    for (Map.Entry<String, String> entry: smallEntryList) {
       Assert.assertEquals(storagePartition.get(entry.getKey().getBytes()), entry.getValue().getBytes());
     }
 
