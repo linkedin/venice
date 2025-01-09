@@ -22,16 +22,16 @@ import org.testng.annotations.Test;
 
 
 public class TestDeferredVersionSwapService {
-  private Admin admin;
+  private VeniceParentHelixAdmin admin;
   private VeniceControllerMultiClusterConfig veniceControllerMultiClusterConfig;
-  private final String clusterName = "testCluster";
+  private static final String clusterName = "testCluster";
 
-  private final String region1 = "test1";
-  private final String region2 = "test2";
+  private static final String region1 = "test1";
+  private static final String region2 = "test2";
 
   @BeforeMethod
   public void setUp() {
-    admin = mock(Admin.class);
+    admin = mock(VeniceParentHelixAdmin.class);
     veniceControllerMultiClusterConfig = mock(VeniceControllerMultiClusterConfig.class);
 
     Set<String> clusters = new HashSet<>();
