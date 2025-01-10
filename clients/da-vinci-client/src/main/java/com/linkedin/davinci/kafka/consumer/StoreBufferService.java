@@ -317,12 +317,12 @@ public class StoreBufferService extends AbstractStoreBufferService {
   @Override
   public void stopInner() throws Exception {
     // Graceful shutdown
+    isStarted = false;
     drainerList.forEach(drainer -> drainer.stop());
     if (this.executorService != null) {
       this.executorService.shutdownNow();
       this.executorService.awaitTermination(10, TimeUnit.SECONDS);
     }
-    isStarted = false;
   }
 
   @Override
