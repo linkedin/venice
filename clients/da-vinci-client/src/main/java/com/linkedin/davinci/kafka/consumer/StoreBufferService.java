@@ -65,7 +65,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
   private final boolean isSorted;
 
-  private boolean isStarted = false;
+  private volatile boolean isStarted = false;
 
   public StoreBufferService(
       int drainerNum,
