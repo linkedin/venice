@@ -65,6 +65,7 @@ include 'internal:alpini:router:alpini-router-impl'
 
 // 3rd-party system integration modules
 include 'integrations:venice-beam'
+include 'integrations:venice-duckdb'
 include 'integrations:venice-pulsar'
 include 'integrations:venice-samza'
 
