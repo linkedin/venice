@@ -93,8 +93,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         for (String cluster: allClusters) {
           List<Store> stores = veniceParentHelixAdmin.getAllStores(cluster);
           for (Store store: stores) {
-            int parentVersion = store.getLargestUsedVersionNumber();
-            if (store.getVersion(parentVersion).getStatus() == VersionStatus.ONLINE) {
+            int targetVersion = store.getLargestUsedVersionNumber();
+            if (store.getVersion(targetVersion).getStatus() == VersionStatus.ONLINE) {
               continue;
             }
 
@@ -107,9 +107,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             Set<String> targetRegions = RegionUtils.parseRegionsFilterList(store.getTargetSwapRegion());
             Set<String> remainingRegions = getRegionsForVersionSwap(coloToVersions, targetRegions);
 
-            // Do not perform version swap for davinci stores
-            // TODO remove this check once DVC delayed ingestion is completed
-            int targetVersion = coloToVersions.get(getTargetRegion(targetRegions));
             StoreResponse targetRegionStore = getStoreForRegion(cluster, targetRegions, store.getName());
             Optional<Version> version = targetRegionStore.getStore().getVersion(targetVersion);
             if (!version.isPresent()) {
@@ -120,6 +117,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                   store.getTargetSwapRegion());
             }
 
+            // Do not perform version swap for davinci stores
+            // TODO remove this check once DVC delayed ingestion is completed
             if (version.get().getIsDavinciHeartbeatReported()) {
               LOGGER.info(
                   "Skipping version swap for store: {} on version: {} as it is davinci",
