@@ -494,4 +494,10 @@
       <Class name="com.linkedin.venice.beam.consumer.VeniceChangelogConsumerIO$Read$RemoveMetadata"/>
     </Or>
   </Match>
+  <Match>
+    <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE"/>
+    <Or>
+      <Class name="com.linkedin.venice.duckdb.HelloWorldTest"/>
+    </Or>
+  </Match>
 </FindBugsFilter>
