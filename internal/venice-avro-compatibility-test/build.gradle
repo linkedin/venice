@@ -6,6 +6,7 @@ configurations {
   avro1_8
   avro1_9
   avro1_10
+  avro1_11
 }
 
 def AVRO_1_4 = 'org.apache.avro:avro:1.4.1'
@@ -15,6 +16,7 @@ def AVRO_1_7 = 'org.apache.avro:avro:1.7.7'
 def AVRO_1_8 = 'org.apache.avro:avro:1.8.2'
 def AVRO_1_9 = 'org.apache.avro:avro:1.9.2'
 def AVRO_1_10 = 'org.apache.avro:avro:1.10.2'
+def AVRO_1_11 = 'org.apache.avro:avro:1.11.4'
 
 dependencies {
   testImplementation project(':clients:da-vinci-client')
@@ -59,9 +61,12 @@ dependencies {
   avro1_10 (AVRO_1_10) {
     exclude group: 'org.slf4j'
   }
+  avro1_11 (AVRO_1_11) {
+    exclude group: 'org.slf4j'
+  }
 }
 
-for (version in ['1_4', '1_5', '1_6', '1_7', '1_8', '1_9', '1_10']) {
+for (version in ['1_4', '1_5', '1_6', '1_7', '1_8', '1_9', '1_10', '1_11']) {
   task "testAvro${version}" (type: Test) {
     classpath = project.sourceSets.test.runtimeClasspath
         .filter { !it.name.contains('avro-1.') }
@@ -78,7 +83,8 @@ test {
     testAvro1_7,
     testAvro1_8,
     testAvro1_9,
-    testAvro1_10
+    testAvro1_10,
+    testAvro1_11
   )
   exclude '**/VeniceClientCompatibilityTest.class'
 }
