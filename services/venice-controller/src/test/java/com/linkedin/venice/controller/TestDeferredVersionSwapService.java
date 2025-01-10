@@ -2,7 +2,10 @@ package com.linkedin.venice.controller;
 
 import static org.mockito.Mockito.*;
 
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
@@ -56,6 +59,7 @@ public class TestDeferredVersionSwapService {
       Version v = mock(Version.class);
       doReturn(n).when(v).getNumber();
       doReturn(s).when(v).getStatus();
+      doReturn(v).when(store).getVersion(n);
       versionList.add(v);
     });
     doReturn(versionList).when(store).getVersions();
@@ -89,16 +93,22 @@ public class TestDeferredVersionSwapService {
   @Test
   public void testDeferredVersionSwap() throws Exception {
     Map<Integer, VersionStatus> versions = new HashMap<>();
-    versions.put(1, VersionStatus.ONLINE);
-    versions.put(2, VersionStatus.ONLINE);
+    int targetVersionNum = 3;
+    int davinciVersionNum = 2;
+    int completedVersionNum = 1;
+    versions.put(completedVersionNum, VersionStatus.ONLINE);
+    versions.put(davinciVersionNum, VersionStatus.PUSHED);
+    versions.put(targetVersionNum, VersionStatus.PUSHED);
     String storeName1 = "testStore";
     String storeName2 = "testStore2";
     String storeName3 = "testStore3";
     String storeName4 = "testStore4";
-    Store store1 = mockStore(2, 60, region1, versions, storeName1);
-    Store store2 = mockStore(2, 60, region1, versions, storeName2);
-    Store store3 = mockStore(2, 60, region1, versions, storeName3);
-    Store store4 = mockStore(1, 60, region1, versions, storeName4);
+    String storeName5 = "testStore5";
+    Store store1 = mockStore(davinciVersionNum, 60, region1, versions, storeName1);
+    Store store2 = mockStore(completedVersionNum, 60, region1, versions, storeName2);
+    Store store3 = mockStore(davinciVersionNum, 60, region1, versions, storeName3);
+    Store store4 = mockStore(davinciVersionNum, 60, region1, versions, storeName4);
+    Store store5 = mockStore(completedVersionNum, 60, region1, versions, storeName5);
 
     Time time = new SystemTime();
     List<Store> storeList = new ArrayList<>();
@@ -107,20 +117,41 @@ public class TestDeferredVersionSwapService {
     storeList.add(store3);
     storeList.add(store4);
     doReturn(storeList).when(admin).getAllStores(clusterName);
+    doReturn(3).when(store1).getLargestUsedVersionNumber();
+    doReturn(2).when(store2).getLargestUsedVersionNumber();
+    doReturn(3).when(store3).getLargestUsedVersionNumber();
+    doReturn(3).when(store4).getLargestUsedVersionNumber();
+    doReturn(1).when(store5).getLargestUsedVersionNumber();
 
-    Version davinciVersion = new VersionImpl(storeName2, 2);
-    Version normalVersion = new VersionImpl(storeName1, 2);
+    Version davinciVersion = new VersionImpl(storeName2, davinciVersionNum);
+    Version targetVersion = new VersionImpl(storeName1, targetVersionNum);
     davinciVersion.setIsDavinciHeartbeatReported(true);
-    doReturn(davinciVersion).when(store2).getVersion(2);
-    doReturn(normalVersion).when(store1).getVersion(2);
-    doReturn(normalVersion).when(store3).getVersion(2);
-    doReturn(normalVersion).when(store4).getVersion(1);
+
+    ControllerClient controllerClient = mock(ControllerClient.class);
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
+    controllerClientMap.put(region1, controllerClient);
+    StoreResponse storeResponse = new StoreResponse();
+    StoreInfo storeInfo = new StoreInfo();
+    List<Version> versionList = new ArrayList<>();
+    versionList.add(targetVersion);
+    versionList.add(davinciVersion);
+    storeInfo.setVersions(versionList);
+    storeResponse.setStore(storeInfo);
+
+    doReturn(storeResponse).when(controllerClient).getStore(any());
+    doReturn(veniceHelixAdmin).when(admin).getVeniceHelixAdmin();
+    doReturn(controllerClientMap).when(veniceHelixAdmin).getControllerClientMap(clusterName);
 
     Map<String, Integer> coloToVersions = new HashMap<>();
-    coloToVersions.put(region1, 2);
-    coloToVersions.put(region2, 1);
+    Map<String, Integer> davinciColoToVersions = new HashMap<>();
+    coloToVersions.put(region1, 3);
+    coloToVersions.put(region2, 2);
+    davinciColoToVersions.put(region1, 2);
+    davinciColoToVersions.put(region2, 1);
+
     doReturn(coloToVersions).when(admin).getCurrentVersionsForMultiColos(clusterName, storeName1);
-    doReturn(coloToVersions).when(admin).getCurrentVersionsForMultiColos(clusterName, storeName2);
+    doReturn(davinciColoToVersions).when(admin).getCurrentVersionsForMultiColos(clusterName, storeName2);
     doReturn(coloToVersions).when(admin).getCurrentVersionsForMultiColos(clusterName, storeName3);
     doReturn(coloToVersions).when(admin).getCurrentVersionsForMultiColos(clusterName, storeName4);
 
@@ -140,10 +171,10 @@ public class TestDeferredVersionSwapService {
         time.getMilliseconds() - TimeUnit.MINUTES.toMillis(30),
         time.getMilliseconds() - TimeUnit.MINUTES.toMillis(30));
 
-    String kafkaTopicName1 = Version.composeKafkaTopic(storeName1, 2);
-    String kafkaTopicName2 = Version.composeKafkaTopic(storeName2, 2);
-    String kafkaTopicName3 = Version.composeKafkaTopic(storeName3, 2);
-    String kafkaTopicName4 = Version.composeKafkaTopic(storeName4, 1);
+    String kafkaTopicName1 = Version.composeKafkaTopic(storeName1, targetVersionNum);
+    String kafkaTopicName2 = Version.composeKafkaTopic(storeName2, davinciVersionNum);
+    String kafkaTopicName3 = Version.composeKafkaTopic(storeName3, targetVersionNum);
+    String kafkaTopicName4 = Version.composeKafkaTopic(storeName4, targetVersionNum);
     doReturn(offlinePushStatusInfoWithWaitTimeElapsed).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName1);
     doReturn(offlinePushStatusInfoWithWaitTimeElapsed).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName2);
     doReturn(offlinePushStatusInfoWithoutWaitTimeElapsed).when(admin)
@@ -167,6 +198,9 @@ public class TestDeferredVersionSwapService {
 
       // push not completed in target region
       verify(admin, never()).rollForwardToFutureVersion(clusterName, storeName4, region2);
+
+      // push is complete in all regions
+      verify(admin, never()).rollForwardToFutureVersion(clusterName, storeName5, region2);
     });
   }
 
