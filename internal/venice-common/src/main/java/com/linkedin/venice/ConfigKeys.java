@@ -2351,4 +2351,7 @@ public class ConfigKeys {
 
   public static final String SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP =
       "server.delete.unassigned.partitions.on.startup";
+
+  public static final String CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE =
+      "controller.enable.hybrid.store.partition.count.update";
 }
