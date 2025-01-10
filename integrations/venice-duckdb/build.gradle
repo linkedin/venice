@@ -1,4 +1,5 @@
 dependencies {
+  implementation libraries.avro
   implementation libraries.duckdbJdbc
 }
 
