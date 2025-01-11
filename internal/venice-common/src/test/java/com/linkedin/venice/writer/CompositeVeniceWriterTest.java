@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import java.util.concurrent.CompletableFuture;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -35,18 +36,27 @@ public class CompositeVeniceWriterTest {
     VeniceWriter<byte[], byte[], byte[]> mockMainWriter = mock(VeniceWriter.class);
     CompletableFuture<PubSubProduceResult> mainWriterFuture = CompletableFuture.completedFuture(null);
     doReturn(mainWriterFuture).when(mockMainWriter).put(any(), any(), anyInt(), eq(null));
+    PubSubProducerCallback deletePubSubProducerCallback = mock(PubSubProducerCallback.class);
+    DeleteMetadata deleteMetadata = mock(DeleteMetadata.class);
+    doReturn(mainWriterFuture).when(mockMainWriter).delete(any(), eq(deletePubSubProducerCallback), eq(deleteMetadata));
     VeniceWriter<byte[], byte[], byte[]> mockChildWriter = mock(VeniceWriter.class);
     CompletableFuture<PubSubProduceResult> childWriterFuture = new CompletableFuture<>();
     doReturn(childWriterFuture).when(mockChildWriter).put(any(), any(), anyInt(), eq(null));
+    doReturn(childWriterFuture).when(mockChildWriter)
+        .delete(any(), eq(deletePubSubProducerCallback), eq(deleteMetadata));
     VeniceWriter[] childWriters = new VeniceWriter[1];
     childWriters[0] = mockChildWriter;
     AbstractVeniceWriter<byte[], byte[], byte[]> compositeVeniceWriter =
         new CompositeVeniceWriter<byte[], byte[], byte[]>("test_v1", mockMainWriter, childWriters, null);
     compositeVeniceWriter.put(new byte[1], new byte[1], 1, null);
+    compositeVeniceWriter.delete(new byte[1], deletePubSubProducerCallback, deleteMetadata);
     verify(mockMainWriter, never()).put(any(), any(), anyInt(), eq(null));
+    verify(mockMainWriter, never()).delete(any(), eq(deletePubSubProducerCallback), eq(deleteMetadata));
     Thread.sleep(1000);
     verify(mockMainWriter, never()).put(any(), any(), anyInt(), eq(null));
+    verify(mockMainWriter, never()).delete(any(), eq(deletePubSubProducerCallback), eq(deleteMetadata));
     childWriterFuture.complete(null);
     verify(mockMainWriter, timeout(1000)).put(any(), any(), anyInt(), eq(null));
+    verify(mockMainWriter, timeout(1000)).delete(any(), eq(deletePubSubProducerCallback), eq(deleteMetadata));
   }
 }

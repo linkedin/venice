@@ -2498,8 +2498,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  private void cleanUpViewResources(Properties params, Store store, int version) {
-    Map<String, ViewConfig> viewConfigs = store.getViewConfigs();
+  private void cleanUpViewResources(Properties params, Store store, Version version) {
+    Map<String, ViewConfig> viewConfigs = version.getViewConfigs();
     if (viewConfigs == null || viewConfigs.isEmpty()) {
       return;
     }
@@ -2511,11 +2511,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     for (ViewConfig rawView: viewConfigs.values()) {
       VeniceView adminView =
           ViewUtils.getVeniceView(rawView.getViewClassName(), params, store.getName(), rawView.getViewParameters());
-      topicNamesAndConfigs.putAll(adminView.getTopicNamesAndConfigsForVersion(version));
+      topicNamesAndConfigs.putAll(adminView.getTopicNamesAndConfigsForVersion(version.getNumber()));
     }
     Set<String> versionTopicsToDelete = topicNamesAndConfigs.keySet()
         .stream()
-        .filter(t -> VeniceView.parseVersionFromViewTopic(t) == version)
+        .filter(t -> VeniceView.parseVersionFromViewTopic(t) == version.getNumber())
         .collect(Collectors.toSet());
     for (String topic: versionTopicsToDelete) {
       truncateKafkaTopic(topic);
@@ -3765,7 +3765,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           if (deletedVersion.get().getPushType().isStreamReprocessing()) {
             truncateKafkaTopic(Version.composeStreamReprocessingTopic(storeName, versionNumber));
           }
-          cleanUpViewResources(new Properties(), store, deletedVersion.get().getNumber());
+          cleanUpViewResources(new Properties(), store, deletedVersion.get());
         }
         if (store.isDaVinciPushStatusStoreEnabled() && !isParent()) {
           ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -3963,6 +3963,33 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           true,
           expectedMinCompactionLagMs,
           expectedMaxCompactionLagMs > 0 ? Optional.of(expectedMaxCompactionLagMs) : Optional.empty());
+
+      // Compaction settings should also be applied to corresponding materialized view topics
+      Map<String, ViewConfig> viewConfigs = store.getVersionOrThrow(versionNumber).getViewConfigs();
+      if (viewConfigs != null && !viewConfigs.isEmpty()) {
+        Set<String> viewTopicsToUpdate = new HashSet<>();
+        for (ViewConfig rawViewConfig: viewConfigs.values()) {
+          if (MaterializedView.class.getCanonicalName().equals(rawViewConfig.getViewClassName())) {
+            viewTopicsToUpdate.addAll(
+                ViewUtils
+                    .getVeniceView(
+                        rawViewConfig.getViewClassName(),
+                        new Properties(),
+                        storeName,
+                        rawViewConfig.getViewParameters())
+                    .getTopicNamesAndConfigsForVersion(versionNumber)
+                    .keySet());
+          }
+        }
+        for (String topic: viewTopicsToUpdate) {
+          PubSubTopic viewTopic = pubSubTopicRepository.getTopic(topic);
+          getTopicManager().updateTopicCompactionPolicy(
+              viewTopic,
+              true,
+              expectedMinCompactionLagMs,
+              expectedMaxCompactionLagMs > 0 ? Optional.of(expectedMaxCompactionLagMs) : Optional.empty());
+        }
+      }
     }
   }
 

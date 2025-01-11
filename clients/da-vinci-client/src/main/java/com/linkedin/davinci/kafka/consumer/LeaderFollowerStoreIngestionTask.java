@@ -2475,7 +2475,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
       if (kafkaKey.isControlMessage()) {
         boolean producedFinally = true;
-        ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
+        ControlMessage controlMessage = (ControlMessage) kafkaValue.getPayloadUnion();
         ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
         leaderProducedRecordContext = LeaderProducedRecordContext
             .newControlMessageRecord(kafkaClusterId, consumerRecord.getOffset(), kafkaKey.getKey(), controlMessage);
@@ -2502,10 +2502,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           case END_OF_PUSH:
             // CMs that are produced with DIV pass-through mode can break DIV without synchronization with view writers.
             // This is because for data (PUT) records we queue their produceToLocalKafka behind the completion of view
-            // writers. The main SIT will move on to subsequent messages and for CMs we are producing them directly
-            // because we don't need to replicate these CMs to view topics. If we don't synchronize before producing the
+            // writers. The main SIT will move on to subsequent messages and for CMs that don't need to be propagated
+            // to view topics we are producing them directly. If we don't check the previous write before producing the
             // CMs then in the VT we might get out of order messages and with pass-through DIV that's going to be an
             // issue. e.g. a PUT record belonging to seg:0 can come after the EOS of seg:0 due to view writer delays.
+            // Since SOP and EOP are rare we can simply wait for the last VT produce future.
             checkAndWaitForLastVTProduceFuture(partitionConsumptionState);
             /**
              * Simply produce this EOP to local VT. It will be processed in order in the drainer queue later
@@ -2551,38 +2552,63 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              *
              * There is one exception that overrules the above conditions. i.e. if the SOS is a heartbeat from the RT topic.
              * In such case the heartbeat is produced to VT with updated {@link LeaderMetadataWrapper}.
+             *
+             * We want to ensure correct ordering for any SOS and EOS that we do decide to write to VT. This is done by
+             * coordinating with the corresponding {@link PartitionConsumptionState#getLastVTProduceCallFuture}.
              */
             if (!consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
-              checkAndWaitForLastVTProduceFuture(partitionConsumptionState);
-              produceToLocalKafka(
-                  consumerRecord,
-                  partitionConsumptionState,
-                  leaderProducedRecordContext,
-                  (callback, leaderMetadataWrapper) -> partitionConsumptionState.getVeniceWriterLazyRef()
-                      .get()
-                      .put(
-                          consumerRecord.getKey(),
-                          consumerRecord.getValue(),
-                          callback,
-                          consumerRecord.getTopicPartition().getPartitionNumber(),
-                          leaderMetadataWrapper),
-                  partition,
-                  kafkaUrl,
-                  kafkaClusterId,
-                  beforeProcessingPerRecordTimestampNs);
+
+              final LeaderProducedRecordContext segmentCMLeaderProduceRecordContext = leaderProducedRecordContext;
+              CompletableFuture<Void> propagateSegmentCMWrite = new CompletableFuture<>();
+              partitionConsumptionState.getLastVTProduceCallFuture().whenCompleteAsync((value, exception) -> {
+                if (exception == null) {
+                  produceToLocalKafka(
+                      consumerRecord,
+                      partitionConsumptionState,
+                      segmentCMLeaderProduceRecordContext,
+                      (callback, leaderMetadataWrapper) -> partitionConsumptionState.getVeniceWriterLazyRef()
+                          .get()
+                          .put(
+                              consumerRecord.getKey(),
+                              consumerRecord.getValue(),
+                              callback,
+                              consumerRecord.getTopicPartition().getPartitionNumber(),
+                              leaderMetadataWrapper),
+                      partition,
+                      kafkaUrl,
+                      kafkaClusterId,
+                      beforeProcessingPerRecordTimestampNs);
+                  propagateSegmentCMWrite.complete(null);
+                } else {
+                  VeniceException veniceException = new VeniceException(exception);
+                  this.setIngestionException(partitionConsumptionState.getPartition(), veniceException);
+                  propagateSegmentCMWrite.completeExceptionally(veniceException);
+                }
+              });
+              partitionConsumptionState.setLastVTProduceCallFuture(propagateSegmentCMWrite);
             } else {
               if (controlMessageType == START_OF_SEGMENT
                   && Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
-                // We also want to synchronize with view writers for heartbeat CMs, so we can detect hanging VWs
-                checkAndWaitForLastVTProduceFuture(partitionConsumptionState);
-                propagateHeartbeatFromUpstreamTopicToLocalVersionTopic(
-                    partitionConsumptionState,
-                    consumerRecord,
-                    leaderProducedRecordContext,
-                    partition,
-                    kafkaUrl,
-                    kafkaClusterId,
-                    beforeProcessingPerRecordTimestampNs);
+                CompletableFuture<Void> propagateHeartbeatWrite = new CompletableFuture<>();
+                final LeaderProducedRecordContext heartbeatLeaderProducedRecordContext = leaderProducedRecordContext;
+                partitionConsumptionState.getLastVTProduceCallFuture().whenCompleteAsync((value, exception) -> {
+                  if (exception == null) {
+                    propagateHeartbeatFromUpstreamTopicToLocalVersionTopic(
+                        partitionConsumptionState,
+                        consumerRecord,
+                        heartbeatLeaderProducedRecordContext,
+                        partition,
+                        kafkaUrl,
+                        kafkaClusterId,
+                        beforeProcessingPerRecordTimestampNs);
+                    propagateHeartbeatWrite.complete(null);
+                  } else {
+                    VeniceException veniceException = new VeniceException(exception);
+                    this.setIngestionException(partitionConsumptionState.getPartition(), veniceException);
+                    propagateHeartbeatWrite.completeExceptionally(veniceException);
+                  }
+                });
+                partitionConsumptionState.setLastVTProduceCallFuture(propagateHeartbeatWrite);
               } else {
                 /**
                  * Based on current design handling this case (specially EOS) is tricky as we don't produce the SOS/EOS

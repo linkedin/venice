@@ -18,6 +18,10 @@ public class ViewUtils {
 
   public static final String ETERNAL_TOPIC_RETENTION_ENABLED = "eternal.topic.retention.enabled";
 
+  public static final String NEARLINE_PRODUCER_COMPRESSION_ENABLED = "nearline.producer.compression.enabled";
+
+  public static final String NEARLINE_PRODUCER_COUNT_PER_WRITER = "nearline.producer.count.per.writer";
+
   public static VeniceView getVeniceView(
       String viewClass,
       Properties params,

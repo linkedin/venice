@@ -6,6 +6,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import org.apache.avro.Schema;
@@ -25,11 +26,15 @@ public class ViewWriterUtils extends ViewUtils {
         new Class<?>[] { Properties.class, String.class, Map.class },
         new Object[] { params, store.getName(), extraViewParameters });
 
-    VeniceViewWriter viewWriter = ReflectUtils.callConstructor(
+    // Make a copy of the view parameters map to insert producer configs
+    Map<String, String> viewParamsWithProducerConfigs = new HashMap<>(extraViewParameters);
+    viewParamsWithProducerConfigs
+        .put(NEARLINE_PRODUCER_COMPRESSION_ENABLED, Boolean.toString(store.isNearlineProducerCompressionEnabled()));
+    viewParamsWithProducerConfigs
+        .put(NEARLINE_PRODUCER_COUNT_PER_WRITER, Integer.toString(store.getNearlineProducerCountPerWriter()));
+    return ReflectUtils.callConstructor(
         ReflectUtils.loadClass(view.getWriterClassName()),
         new Class<?>[] { VeniceConfigLoader.class, Version.class, Schema.class, Map.class },
-        new Object[] { configLoader, store.getVersionOrThrow(version), keySchema, extraViewParameters });
-
-    return viewWriter;
+        new Object[] { configLoader, store.getVersionOrThrow(version), keySchema, viewParamsWithProducerConfigs });
   }
 }

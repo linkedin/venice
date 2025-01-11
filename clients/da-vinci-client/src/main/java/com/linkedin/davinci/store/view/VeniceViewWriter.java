@@ -1,11 +1,13 @@
 package com.linkedin.davinci.store.view;
 
+import static com.linkedin.venice.views.ViewUtils.NEARLINE_PRODUCER_COMPRESSION_ENABLED;
+import static com.linkedin.venice.views.ViewUtils.NEARLINE_PRODUCER_COUNT_PER_WRITER;
+
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.views.VeniceView;
@@ -43,6 +45,14 @@ public abstract class VeniceViewWriter extends VeniceView {
     super(props.getCombinedProperties().toProperties(), version.getStoreName(), extraViewParameters);
     this.version = version;
     this.versionNumber = version.getNumber();
+    if (extraViewParameters.containsKey(NEARLINE_PRODUCER_COMPRESSION_ENABLED)) {
+      isNearlineProducerCompressionEnabled =
+          Optional.of(Boolean.valueOf(extraViewParameters.get(NEARLINE_PRODUCER_COMPRESSION_ENABLED)));
+    }
+    if (extraViewParameters.containsKey(NEARLINE_PRODUCER_COUNT_PER_WRITER)) {
+      nearlineProducerCountPerWriter =
+          Optional.of(Integer.valueOf(extraViewParameters.get(NEARLINE_PRODUCER_COUNT_PER_WRITER)));
+    }
   }
 
   /**
@@ -100,15 +110,6 @@ public abstract class VeniceViewWriter extends VeniceView {
       int partition,
       PartitionConsumptionState partitionConsumptionState) {
     // Optionally act on Control Message
-  }
-
-  /**
-   * Configure view writer options based on the configs of the provided Store
-   * @param store to extract the relevant configs from
-   */
-  public void configureWriterOptions(Store store) {
-    isNearlineProducerCompressionEnabled = Optional.of(store.isNearlineProducerCompressionEnabled());
-    nearlineProducerCountPerWriter = Optional.of(store.getNearlineProducerCountPerWriter());
   }
 
   /**

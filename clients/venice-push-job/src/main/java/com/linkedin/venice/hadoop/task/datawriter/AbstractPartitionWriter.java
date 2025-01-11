@@ -143,6 +143,8 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   private long lastMessageCompletedCount = 0;
 
   private AbstractVeniceWriter<byte[], byte[], byte[]> veniceWriter = null;
+  private VeniceWriter<byte[], byte[], byte[]> mainWriter = null;
+  private VeniceWriter[] childWriters = null;
   private int valueSchemaId = -1;
   private int derivedValueSchemaId = -1;
   private boolean enableWriteCompute = false;
@@ -369,9 +371,10 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         .build();
     String flatViewConfigMapString = props.getString(PUSH_JOB_VIEW_CONFIGS, "");
     if (!flatViewConfigMapString.isEmpty()) {
+      mainWriter = veniceWriterFactoryFactory.createVeniceWriter(options);
       return createCompositeVeniceWriter(
           veniceWriterFactoryFactory,
-          veniceWriterFactoryFactory.createVeniceWriter(options),
+          mainWriter,
           flatViewConfigMapString,
           topicName,
           chunkingEnabled,
@@ -391,7 +394,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       boolean rmdChunkingEnabled) {
     try {
       Map<String, ViewConfig> viewConfigMap = ViewUtils.parseViewConfigMapString(flatViewConfigMapString);
-      VeniceWriter[] childWriters = new VeniceWriter[viewConfigMap.size()];
+      childWriters = new VeniceWriter[viewConfigMap.size()];
       String storeName = Version.parseStoreFromKafkaTopicName(topicName);
       int versionNumber = Version.parseVersionFromKafkaTopicName(topicName);
       // TODO using a dummy Version to get venice writer options could be error prone. Alternatively we could change
@@ -466,6 +469,16 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
                   || dataWriterTaskTracker.getProgress() == TaskTracker.PROGRESS_NOT_SUPPORTED);
         } finally {
           veniceWriter.close(shouldEndAllSegments);
+        }
+        if (veniceWriter instanceof CompositeVeniceWriter) {
+          if (childWriters != null) {
+            for (VeniceWriter childWriter: childWriters) {
+              childWriter.close(shouldEndAllSegments);
+            }
+          }
+          if (mainWriter != null) {
+            mainWriter.close(shouldEndAllSegments);
+          }
         }
       }
       maybePropagateCallbackException();

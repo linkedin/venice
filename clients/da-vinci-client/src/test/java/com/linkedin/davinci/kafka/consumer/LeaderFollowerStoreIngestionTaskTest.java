@@ -2,9 +2,11 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -19,7 +21,12 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
+import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -28,7 +35,9 @@ import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.TestUtils;
@@ -267,5 +276,49 @@ public class LeaderFollowerStoreIngestionTaskTest {
     assertEquals(futures.length, 2);
     verify(mockPartitionConsumptionState, times(1)).getLastVTProduceCallFuture();
     verify(materializedViewWriter, times(1)).processRecord(any(), any(), anyInt());
+  }
+
+  /**
+   * This test is to ensure if there are view writers the CMs produced to the VT don't get out of order due previous
+   * writes to the VT getting delayed by corresponding view writers. Since during NR we write to view topic(s) before VT
+   */
+  @Test
+  public void testControlMessagesAreInOrderWithPassthroughDIV() throws InterruptedException {
+    setUp();
+    PubSubMessageProcessedResultWrapper pubSubMessageProcessedResultWrapper =
+        mock(PubSubMessageProcessedResultWrapper.class);
+    PubSubMessage pubSubMessage = mock(PubSubMessage.class);
+    doReturn(pubSubMessage).when(pubSubMessageProcessedResultWrapper).getMessage();
+    KafkaKey kafkaKey = mock(KafkaKey.class);
+    doReturn(kafkaKey).when(pubSubMessage).getKey();
+    KafkaMessageEnvelope kafkaValue = mock(KafkaMessageEnvelope.class);
+    doReturn(MessageType.CONTROL_MESSAGE.getValue()).when(kafkaValue).getMessageType();
+    doReturn(kafkaValue).when(pubSubMessage).getValue();
+    doReturn(true).when(mockPartitionConsumptionState).consumeRemotely();
+    doReturn(LeaderFollowerStateType.LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(offsetRecord).when(mockPartitionConsumptionState).getOffsetRecord();
+    PubSubTopicPartition pubSubTopicPartition = mock(PubSubTopicPartition.class);
+    doReturn(pubSubTopicPartition).when(pubSubMessage).getTopicPartition();
+    PubSubTopic pubSubTopic = mock(PubSubTopic.class);
+    doReturn(pubSubTopic).when(pubSubTopicPartition).getPubSubTopic();
+    doReturn(false).when(pubSubTopic).isRealTime();
+    doReturn(true).when(kafkaKey).isControlMessage();
+    ControlMessage controlMessage = mock(ControlMessage.class);
+    doReturn(controlMessage).when(kafkaValue).getPayloadUnion();
+    doReturn(ControlMessageType.END_OF_SEGMENT.getValue()).when(controlMessage).getControlMessageType();
+    doReturn(0L).when(pubSubMessage).getOffset();
+    CompletableFuture<Void> lastVTWriteFuture = new CompletableFuture<>();
+    doReturn(lastVTWriteFuture).when(mockPartitionConsumptionState).getLastVTProduceCallFuture();
+    VeniceWriter veniceWriter = mock(VeniceWriter.class);
+    doReturn(Lazy.of(() -> veniceWriter)).when(mockPartitionConsumptionState).getVeniceWriterLazyRef();
+
+    leaderFollowerStoreIngestionTask.delegateConsumerRecord(pubSubMessageProcessedResultWrapper, 0, "testURL", 0, 0, 0);
+    Thread.sleep(1000);
+    // The CM write should be queued but not executed yet since the previous VT write future is still incomplete
+    verify(veniceWriter, never()).put(eq(kafkaKey), eq(kafkaValue), any(), anyInt(), any());
+    lastVTWriteFuture.complete(null);
+    // The CM should be written once the previous VT write is completed
+    verify(veniceWriter, timeout(1000)).put(eq(kafkaKey), eq(kafkaValue), any(), anyInt(), any());
   }
 }
