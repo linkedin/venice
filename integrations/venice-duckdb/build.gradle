@@ -1,5 +1,6 @@
 dependencies {
   implementation libraries.avro
+  implementation libraries.avroUtilCompatHelper
   implementation libraries.duckdbJdbc
 }
 

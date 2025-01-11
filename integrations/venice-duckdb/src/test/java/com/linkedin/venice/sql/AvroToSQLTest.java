@@ -1,5 +1,6 @@
 package com.linkedin.venice.sql;
 
+import static com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper.createSchemaField;
 import static com.linkedin.venice.sql.AvroToSQL.UnsupportedTypeHandling.FAIL;
 import static com.linkedin.venice.sql.AvroToSQL.UnsupportedTypeHandling.SKIP;
 import static org.testng.Assert.assertEquals;
@@ -48,14 +49,14 @@ public class AvroToSQLTest {
     Schema schemaWithAllSupportedFieldTypes = Schema.createRecord("MyRecord", "", "", false, allFields);
 
     String createTableStatementForAllFields =
-        AvroToSQL.createTableStatement(schemaWithAllSupportedFieldTypes, Collections.emptySet(), FAIL);
+        AvroToSQL.createTableStatement("MyRecord", schemaWithAllSupportedFieldTypes, Collections.emptySet(), FAIL);
     assertEquals(createTableStatementForAllFields, EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES);
 
     // Primary keys
     Set<String> primaryKeys = new HashSet<>();
     primaryKeys.add("stringField");
     String createTableWithPrimaryKey =
-        AvroToSQL.createTableStatement(schemaWithAllSupportedFieldTypes, primaryKeys, FAIL);
+        AvroToSQL.createTableStatement("MyRecord", schemaWithAllSupportedFieldTypes, primaryKeys, FAIL);
     String expectedCreateTable = EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES
         .replace("stringField VARCHAR", "stringField VARCHAR PRIMARY KEY");
     assertEquals(createTableWithPrimaryKey, expectedCreateTable);
@@ -67,52 +68,64 @@ public class AvroToSQLTest {
 
     assertThrows(
         IllegalArgumentException.class,
-        () -> AvroToSQL.createTableStatement(Schema.create(Schema.Type.INT), Collections.emptySet(), FAIL));
+        () -> AvroToSQL.createTableStatement("MyRecord", Schema.create(Schema.Type.INT), Collections.emptySet(), FAIL));
 
     testSchemaWithInvalidType(
-        new Schema.Field(
+        createSchemaField(
             "TripleUnionWithNull",
             Schema.createUnion(
                 Schema.create(Schema.Type.NULL),
                 Schema.create(Schema.Type.INT),
-                Schema.create(Schema.Type.STRING))));
+                Schema.create(Schema.Type.STRING)),
+            "",
+            null));
 
     testSchemaWithInvalidType(
-        new Schema.Field(
+        createSchemaField(
             "TripleUnionWithoutNull",
             Schema.createUnion(
                 Schema.create(Schema.Type.BOOLEAN),
                 Schema.create(Schema.Type.INT),
-                Schema.create(Schema.Type.STRING))));
+                Schema.create(Schema.Type.STRING)),
+            "",
+            null));
 
     testSchemaWithInvalidType(
-        new Schema.Field(
+        createSchemaField(
             "DoubleUnionWithoutNull",
-            Schema.createUnion(Schema.create(Schema.Type.INT), Schema.create(Schema.Type.STRING))));
+            Schema.createUnion(Schema.create(Schema.Type.INT), Schema.create(Schema.Type.STRING)),
+            "",
+            null));
 
     // Types that could eventually become supported...
 
-    testSchemaWithInvalidType(new Schema.Field("StringArray", Schema.createArray(Schema.create(Schema.Type.STRING))));
-
-    testSchemaWithInvalidType(new Schema.Field("StringStringMap", Schema.createMap(Schema.create(Schema.Type.STRING))));
+    testSchemaWithInvalidType(
+        createSchemaField("StringArray", Schema.createArray(Schema.create(Schema.Type.STRING)), "", null));
 
     testSchemaWithInvalidType(
-        new Schema.Field("Record", Schema.createRecord("NestedRecord", "", "", false, Collections.emptyList())));
+        createSchemaField("StringStringMap", Schema.createMap(Schema.create(Schema.Type.STRING)), "", null));
+
+    testSchemaWithInvalidType(
+        createSchemaField(
+            "Record",
+            Schema.createRecord("NestedRecord", "", "", false, Collections.emptyList()),
+            "",
+            null));
   }
 
   private List<Schema.Field> getAllValidFields() {
     List<Schema.Field> allFields = new ArrayList<>();
 
     // Basic types
-    allFields.add(new Schema.Field("fixedField", Schema.createFixed("MyFixed", "", "", 1)));
-    allFields.add(new Schema.Field("stringField", Schema.create(Schema.Type.STRING)));
-    allFields.add(new Schema.Field("bytesField", Schema.create(Schema.Type.BYTES)));
-    allFields.add(new Schema.Field("intField", Schema.create(Schema.Type.INT)));
-    allFields.add(new Schema.Field("longField", Schema.create(Schema.Type.LONG)));
-    allFields.add(new Schema.Field("floatField", Schema.create(Schema.Type.FLOAT)));
-    allFields.add(new Schema.Field("doubleField", Schema.create(Schema.Type.DOUBLE)));
-    allFields.add(new Schema.Field("booleanField", Schema.create(Schema.Type.BOOLEAN)));
-    allFields.add(new Schema.Field("nullField", Schema.create(Schema.Type.NULL)));
+    allFields.add(createSchemaField("fixedField", Schema.createFixed("MyFixed", "", "", 1), "", null));
+    allFields.add(createSchemaField("stringField", Schema.create(Schema.Type.STRING), "", null));
+    allFields.add(createSchemaField("bytesField", Schema.create(Schema.Type.BYTES), "", null));
+    allFields.add(createSchemaField("intField", Schema.create(Schema.Type.INT), "", null));
+    allFields.add(createSchemaField("longField", Schema.create(Schema.Type.LONG), "", null));
+    allFields.add(createSchemaField("floatField", Schema.create(Schema.Type.FLOAT), "", null));
+    allFields.add(createSchemaField("doubleField", Schema.create(Schema.Type.DOUBLE), "", null));
+    allFields.add(createSchemaField("booleanField", Schema.create(Schema.Type.BOOLEAN), "", null));
+    allFields.add(createSchemaField("nullField", Schema.create(Schema.Type.NULL), "", null));
 
     // Unions with null
     List<Schema.Field> allOptionalFields = new ArrayList<>();
@@ -124,13 +137,17 @@ public class AvroToSQLTest {
 
       // Include both union branch orders
       allOptionalFields.add(
-          new Schema.Field(
+          createSchemaField(
               field.name() + "Union1",
-              Schema.createUnion(Schema.create(Schema.Type.NULL), field.schema())));
+              Schema.createUnion(Schema.create(Schema.Type.NULL), field.schema()),
+              "",
+              null));
       allOptionalFields.add(
-          new Schema.Field(
+          createSchemaField(
               field.name() + "Union2",
-              Schema.createUnion(field.schema(), Schema.create(Schema.Type.NULL))));
+              Schema.createUnion(field.schema(), Schema.create(Schema.Type.NULL)),
+              "",
+              null));
     }
     allFields.addAll(allOptionalFields);
 
@@ -145,9 +162,9 @@ public class AvroToSQLTest {
 
     assertThrows(
         IllegalArgumentException.class,
-        () -> AvroToSQL.createTableStatement(schema, Collections.emptySet(), FAIL));
+        () -> AvroToSQL.createTableStatement("MyRecord", schema, Collections.emptySet(), FAIL));
 
-    String createTableStatement = AvroToSQL.createTableStatement(schema, Collections.emptySet(), SKIP);
+    String createTableStatement = AvroToSQL.createTableStatement("MyRecord", schema, Collections.emptySet(), SKIP);
     assertEquals(createTableStatement, EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES);
   }
 }

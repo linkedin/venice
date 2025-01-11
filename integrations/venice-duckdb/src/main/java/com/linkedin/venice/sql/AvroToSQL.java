@@ -61,13 +61,14 @@ public class AvroToSQL {
   }
 
   public static String createTableStatement(
+      String tableName,
       Schema avroSchema,
       Set<String> primaryKeyColumns,
       UnsupportedTypeHandling unsupportedTypeHandling) {
     if (avroSchema.getType() != Schema.Type.RECORD) {
       throw new IllegalArgumentException("Only Avro records can have a corresponding CREATE TABLE statement.");
     }
-    String createTable = "CREATE TABLE " + cleanTableName(avroSchema.getName()) + "(";
+    String createTable = "CREATE TABLE " + cleanTableName(tableName) + "(";
     boolean firstColumn = true;
 
     for (Schema.Field field: avroSchema.getFields()) {
@@ -78,12 +79,14 @@ public class AvroToSQL {
       if (fieldType == Schema.Type.UNION) {
         List<Schema> unionBranches = fieldSchema.getTypes();
         boolean unsupported = false;
-        if (unionBranches.size() != 2) {
-          unsupported = true;
-        } else if (unionBranches.get(0).getType() == Schema.Type.NULL) {
-          fieldType = unionBranches.get(1).getType();
-        } else if (unionBranches.get(1).getType() == Schema.Type.NULL) {
-          fieldType = unionBranches.get(0).getType();
+        if (unionBranches.size() == 2) {
+          if (unionBranches.get(0).getType() == Schema.Type.NULL) {
+            fieldType = unionBranches.get(1).getType();
+          } else if (unionBranches.get(1).getType() == Schema.Type.NULL) {
+            fieldType = unionBranches.get(0).getType();
+          } else {
+            unsupported = true;
+          }
         } else {
           unsupported = true;
         }
@@ -95,6 +98,8 @@ public class AvroToSQL {
               throw new IllegalArgumentException(
                   "Avro unions are only supported if they have two branches and one of them is null. Provided union: "
                       + field.schema());
+            default:
+              throw new IllegalStateException("Missing enum branch handling!");
           }
         }
       }
@@ -106,6 +111,8 @@ public class AvroToSQL {
             continue;
           case FAIL:
             throw new IllegalArgumentException(fieldType + " is not supported!");
+          default:
+            throw new IllegalStateException("Missing enum branch handling!");
         }
       }
 
