@@ -125,7 +125,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
 
         // Check the snapshot table format
         BlobTransferTableFormat currentSnapshotTableFormat = blobSnapshotManager.getBlobTransferTableFormat();
-        if (!blobTransferRequest.getRequestTableFormat().name().equals(currentSnapshotTableFormat.name())) {
+        if (blobTransferRequest.getRequestTableFormat() != currentSnapshotTableFormat) {
           byte[] errBody = ("Table format mismatch for " + blobTransferRequest.getFullResourceName()
               + ", current snapshot format is " + currentSnapshotTableFormat.name() + ", requested format is "
               + blobTransferRequest.getRequestTableFormat().name()).getBytes();
