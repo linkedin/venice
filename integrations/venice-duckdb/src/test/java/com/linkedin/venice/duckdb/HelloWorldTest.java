@@ -2,6 +2,7 @@ package com.linkedin.venice.duckdb;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import java.sql.Connection;
@@ -17,7 +18,7 @@ import org.testng.annotations.Test;
  */
 public class HelloWorldTest {
   /**
-   * Lightly adapted from: https://duckdb.org/docs/api/java.html#querying
+   * Adapted from: https://duckdb.org/docs/api/java.html#querying
    */
   @Test
   public void test() throws SQLException {
@@ -121,6 +122,23 @@ public class HelloWorldTest {
       try (ResultSet rs = stmt.executeQuery("SELECT * FROM my_table_current_version")) {
         assertValidityOfResultSet2(rs);
       }
+    }
+  }
+
+  @Test
+  public void testPrimaryKey() throws SQLException {
+    try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
+        Statement stmt = connection.createStatement()) {
+      // create a table
+      stmt.execute("CREATE TABLE items (item VARCHAR PRIMARY KEY, value DECIMAL(10, 2), count INTEGER)");
+      // insert two items into the table
+      stmt.execute(insertDataset1Statement("items"));
+
+      try (ResultSet rs = stmt.executeQuery("SELECT * FROM items")) {
+        assertValidityOfResultSet1(rs);
+      }
+
+      assertThrows(SQLException.class, () -> stmt.execute(insertDataset2Statement("items")));
     }
   }
 
