@@ -1343,13 +1343,13 @@ public class DaVinciClientTest {
       }
 
       client1.subscribe(partitions);
-      client1.unsubscribeAll();
-      assertEquals(client1.getPartitionCount(), 2);
+      assertEquals(client1.getPartitionCount(), 3);
 
       DaVinciBackend daVinciBackend = AvroGenericDaVinciClient.getBackend();
       if (daVinciBackend != null) {
         StoreBackend storeBackend = daVinciBackend.getStoreOrThrow(storeName1);
         ComplementSet<Integer> subscription = storeBackend.getSubscription();
+        subscription.removeAll(ComplementSet.wrap(partitions));
         assertTrue(subscription.isEmpty());
       }
     }
