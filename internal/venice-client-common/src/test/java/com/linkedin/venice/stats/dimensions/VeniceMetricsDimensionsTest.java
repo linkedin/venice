@@ -1,5 +1,6 @@
 package com.linkedin.venice.stats.dimensions;
 
+import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE;
 import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat;
@@ -9,7 +10,7 @@ import org.testng.annotations.Test;
 public class VeniceMetricsDimensionsTest {
   @Test
   public void testGetDimensionNameInSnakeCase() {
-    VeniceOpenTelemetryMetricNamingFormat format = VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE;
+    VeniceOpenTelemetryMetricNamingFormat format = SNAKE_CASE;
     for (VeniceMetricsDimensions dimension: VeniceMetricsDimensions.values()) {
       switch (dimension) {
         case VENICE_STORE_NAME:

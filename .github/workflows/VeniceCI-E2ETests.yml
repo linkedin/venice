@@ -14,6 +14,7 @@ on: [push, pull_request, workflow_dispatch]
 
 jobs:
   IntegrationTests_1000:
+    name: IntegrationTests_1000
     strategy:
       fail-fast: false
       matrix:
@@ -23,7 +24,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1000
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,6 +47,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1000
       - name: Package Build Artifacts
@@ -60,14 +68,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -75,8 +97,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1010:
+    name: IntegrationTests_1010
     strategy:
       fail-fast: false
       matrix:
@@ -86,7 +119,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1010
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -104,6 +142,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1010
       - name: Package Build Artifacts
@@ -123,14 +163,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -138,8 +192,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1020:
+    name: IntegrationTests_1020
     strategy:
       fail-fast: false
       matrix:
@@ -149,7 +214,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1020
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -167,6 +237,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1020
       - name: Package Build Artifacts
@@ -186,14 +258,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -201,8 +287,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1030:
+    name: IntegrationTests_1030
     strategy:
       fail-fast: false
       matrix:
@@ -212,7 +309,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1030
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -230,6 +332,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1030
       - name: Package Build Artifacts
@@ -249,14 +353,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -264,8 +382,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1040:
+    name: IntegrationTests_1040
     strategy:
       fail-fast: false
       matrix:
@@ -275,7 +404,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1040
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -293,6 +427,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1040
       - name: Package Build Artifacts
@@ -312,14 +448,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -327,8 +477,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1050:
+    name: IntegrationTests_1050
     strategy:
       fail-fast: false
       matrix:
@@ -338,7 +499,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1050
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -356,6 +522,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1050
       - name: Package Build Artifacts
@@ -375,14 +543,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -390,8 +572,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1060:
+    name: IntegrationTests_1060
     strategy:
       fail-fast: false
       matrix:
@@ -401,7 +594,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1060
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -419,6 +617,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1060
       - name: Package Build Artifacts
@@ -438,14 +638,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -453,8 +667,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1070:
+    name: IntegrationTests_1070
     strategy:
       fail-fast: false
       matrix:
@@ -464,7 +689,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1070
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -482,6 +712,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1070
       - name: Package Build Artifacts
@@ -501,14 +733,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -516,8 +762,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1080:
+    name: IntegrationTests_1080
     strategy:
       fail-fast: false
       matrix:
@@ -527,7 +784,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1080
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -545,6 +807,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1080
       - name: Package Build Artifacts
@@ -564,14 +828,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -579,8 +857,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1090:
+    name: IntegrationTests_1090
     strategy:
       fail-fast: false
       matrix:
@@ -590,7 +879,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1090
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -608,6 +902,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1090
       - name: Package Build Artifacts
@@ -627,14 +923,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -642,8 +952,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1100:
+    name: IntegrationTests_1100
     strategy:
       fail-fast: false
       matrix:
@@ -653,7 +974,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1100
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -671,6 +997,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1100
       - name: Package Build Artifacts
@@ -690,14 +1018,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -705,8 +1047,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1110:
+    name: IntegrationTests_1110
     strategy:
       fail-fast: false
       matrix:
@@ -716,7 +1069,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1110
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -734,6 +1092,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1110
       - name: Package Build Artifacts
@@ -753,14 +1113,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -768,8 +1142,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1120:
+    name: IntegrationTests_1120
     strategy:
       fail-fast: false
       matrix:
@@ -779,7 +1164,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1120
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -797,6 +1187,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1120
       - name: Package Build Artifacts
@@ -816,14 +1208,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -831,8 +1237,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1130:
+    name: IntegrationTests_1130
     strategy:
       fail-fast: false
       matrix:
@@ -842,7 +1259,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1130
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -860,6 +1282,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1130
       - name: Package Build Artifacts
@@ -879,14 +1303,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -894,8 +1332,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1200:
+    name: IntegrationTests_1200
     strategy:
       fail-fast: false
       matrix:
@@ -905,7 +1354,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1200
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -923,6 +1377,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1200
       - name: Package Build Artifacts
@@ -942,14 +1398,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -957,8 +1427,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1210:
+    name: IntegrationTests_1210
     strategy:
       fail-fast: false
       matrix:
@@ -968,7 +1449,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1210
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -986,6 +1472,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1210
       - name: Package Build Artifacts
@@ -1005,14 +1493,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1020,8 +1522,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1220:
+    name: IntegrationTests_1220
     strategy:
       fail-fast: false
       matrix:
@@ -1031,7 +1544,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1220
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1049,6 +1567,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1220
       - name: Package Build Artifacts
@@ -1068,14 +1588,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1083,8 +1617,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1230:
+    name: IntegrationTests_1230
     strategy:
       fail-fast: false
       matrix:
@@ -1094,7 +1639,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1230
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1112,6 +1662,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1230
       - name: Package Build Artifacts
@@ -1131,14 +1683,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1146,8 +1712,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1240:
+    name: IntegrationTests_1240
     strategy:
       fail-fast: false
       matrix:
@@ -1157,7 +1734,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1240
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1175,6 +1757,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1240
       - name: Package Build Artifacts
@@ -1194,14 +1778,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1209,8 +1807,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1250:
+    name: IntegrationTests_1250
     strategy:
       fail-fast: false
       matrix:
@@ -1220,7 +1829,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1250
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1238,6 +1852,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1250
       - name: Package Build Artifacts
@@ -1257,14 +1873,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1272,8 +1902,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1260:
+    name: IntegrationTests_1260
     strategy:
       fail-fast: false
       matrix:
@@ -1283,7 +1924,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1260
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1301,6 +1947,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1260
       - name: Package Build Artifacts
@@ -1320,14 +1968,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1335,8 +1997,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1270:
+    name: IntegrationTests_1270
     strategy:
       fail-fast: false
       matrix:
@@ -1346,7 +2019,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1270
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1364,6 +2042,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1270
       - name: Package Build Artifacts
@@ -1383,14 +2063,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1398,8 +2092,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1280:
+    name: IntegrationTests_1280
     strategy:
       fail-fast: false
       matrix:
@@ -1409,7 +2114,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1280
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1427,6 +2137,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1280
       - name: Package Build Artifacts
@@ -1446,14 +2158,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1461,8 +2187,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1400:
+    name: IntegrationTests_1400
     strategy:
       fail-fast: false
       matrix:
@@ -1472,7 +2209,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1400
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1490,6 +2232,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1400
       - name: Package Build Artifacts
@@ -1509,14 +2253,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1524,8 +2282,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1410:
+    name: IntegrationTests_1410
     strategy:
       fail-fast: false
       matrix:
@@ -1535,7 +2304,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1410
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1553,6 +2327,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1410
       - name: Package Build Artifacts
@@ -1572,14 +2348,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1587,8 +2377,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1420:
+    name: IntegrationTests_1420
     strategy:
       fail-fast: false
       matrix:
@@ -1598,7 +2399,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1420
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1616,6 +2422,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1420
       - name: Package Build Artifacts
@@ -1635,14 +2443,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1650,8 +2472,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1430:
+    name: IntegrationTests_1430
     strategy:
       fail-fast: false
       matrix:
@@ -1661,7 +2494,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1430
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1679,6 +2517,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1430
       - name: Package Build Artifacts
@@ -1698,14 +2538,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1713,8 +2567,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1440:
+    name: IntegrationTests_1440
     strategy:
       fail-fast: false
       matrix:
@@ -1724,7 +2589,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1440
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1742,6 +2612,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1440
       - name: Package Build Artifacts
@@ -1761,14 +2633,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1776,8 +2662,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1500:
+    name: IntegrationTests_1500
     strategy:
       fail-fast: false
       matrix:
@@ -1787,7 +2684,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1500
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1805,6 +2707,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1500
       - name: Package Build Artifacts
@@ -1824,14 +2728,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1839,8 +2757,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_1550:
+    name: IntegrationTests_1550
     strategy:
       fail-fast: false
       matrix:
@@ -1850,7 +2779,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_1550
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1868,6 +2802,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1550
       - name: Package Build Artifacts
@@ -1887,14 +2823,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1902,8 +2852,19 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   IntegrationTests_9999:
+    name: IntegrationTests_9999
     strategy:
       fail-fast: false
       matrix:
@@ -1913,7 +2874,12 @@ jobs:
      id-token: write
      contents: read
      checks: write
+     pull-requests: write
+     issues: write
     timeout-minutes: 120
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk${{ matrix.jdk }}-IntegrationTests_9999
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1931,6 +2897,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_9999
       - name: Package Build Artifacts
@@ -1950,14 +2918,28 @@ jobs:
         env:
          NODE_OPTIONS: --max-old-space-size=9182
         with:
-         token: ${{ secrets.GITHUB_TOKEN }}
-         name: ${{ github.job }} Test Reports       # Name where it report the test results
-         path: '**/TEST-*.xml'
-         fail-on-error: 'false'
-         max-annotations: '10'
-         list-tests: 'all'
-         list-suites: 'all'
-         reporter: java-junit
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ github.job }} Test Reports       # Name where it report the test results
+          path: '**/TEST-*.xml'
+          fail-on-error: 'false'
+          max-annotations: '10'
+          list-tests: 'all'
+          list-suites: 'all'
+          reporter: java-junit
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          check_name: ${{ github.job }}-jdk${{ matrix.jdk }} Report
+          comment: false
+          annotate_only: true
+          flaky_summary: true
+          commit: ${{github.event.workflow_run.head_sha}}
+          detailed_summary: true
+          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4
@@ -1965,6 +2947,16 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Upload test results to BuildPulse for flaky test detection
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: buildpulse/buildpulse-action@main
+        with:
+          account: 100582612927
+          repository: 100441445875
+          path: |
+            **/TEST-*.xml
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
   E2ETestsCompletion:
     strategy:

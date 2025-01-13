@@ -158,6 +158,12 @@ public abstract class AbstractStore implements Store {
 
       version.setUseVersionLevelIncrementalPushEnabled(true);
 
+      version.setTargetSwapRegion(getTargetSwapRegion());
+
+      version.setTargetSwapRegionWaitTime(getTargetSwapRegionWaitTime());
+
+      version.setIsDavinciHeartbeatReported(getIsDavinciHeartbeatReported());
+
       HybridStoreConfig hybridStoreConfig = getHybridStoreConfig();
       if (hybridStoreConfig != null) {
         version.setHybridStoreConfig(hybridStoreConfig.clone());
@@ -339,6 +345,19 @@ public abstract class AbstractStore implements Store {
       }
       if (version.getPartitionCount() == 0) {
         version.setPartitionCount(getPartitionCount());
+      }
+    }
+  }
+
+  @Override
+  public void updateVersionForDaVinciHeartbeat(int versionNumber, boolean reported) {
+    checkVersionSupplier();
+
+    for (StoreVersion storeVersion: storeVersionsSupplier.getForUpdate()) {
+      Version version = new VersionImpl(storeVersion);
+      if (version.getNumber() == versionNumber) {
+        version.setIsDavinciHeartbeatReported(reported);
+        return;
       }
     }
   }

@@ -46,6 +46,15 @@ public abstract class AbstractPartitionStateModel extends StateModel {
   private static final int RETRY_COUNT = 5;
   private static final int RETRY_DURATION_MS = 1000;
   private static final int WAIT_PARTITION_ACCESSOR_TIME_OUT_MS = (int) TimeUnit.MINUTES.toMillis(5);
+  // The drop partition consumer action may take longer than expected and eventually timeout if:
+  // 1. The corresponding ingestion task is stuck and unable to process consumer actions.
+  // 2. The corresponding ingestion task died due to errors.
+  // We want to wait for drop partition because consumer actions are executed asynchronously w.r.t. Helix state
+  // transitions. Currently, we open a partition synchronously during OFFLINE->STANDBY. This can be problematic and have
+  // race conditions if we don't wait on the drop partition during X->DROPPED. This is because Helix can send the
+  // following state transitions right after each other for the same partition to the same node:
+  // X->DROPPED, OFFLINE->STANDBY
+  protected static final long WAIT_DROP_PARTITION_TIME_OUT_MS = TimeUnit.MINUTES.toMillis(60);
 
   private final IngestionBackend ingestionBackend;
   private final ReadOnlyStoreRepository storeRepository;
@@ -156,7 +165,8 @@ public abstract class AbstractPartitionStateModel extends StateModel {
   public void onBecomeDroppedFromError(Message message, NotificationContext context) {
     executeStateTransition(message, context, () -> {
       try {
-        removePartitionFromStoreGracefully();
+        CompletableFuture<Void> dropPartitionFuture = removePartitionFromStoreGracefully();
+        dropPartitionFuture.get(WAIT_DROP_PARTITION_TIME_OUT_MS, TimeUnit.MILLISECONDS);
       } catch (Exception e) {
         // Catch exception here to ensure state transition can complete ana avoid error->dropped->error->... loop
         logger.error("Encountered exception during the transition from ERROR to DROPPED.", e);
@@ -240,18 +250,19 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     }
   }
 
-  protected void removePartitionFromStoreGracefully() {
+  protected CompletableFuture<Void> removePartitionFromStoreGracefully() {
     // Gracefully drop partition to drain the requests to this partition
     // This method is called during OFFLINE->DROPPED state transition. Due to Zk or other transient issues a store
     // version could miss ONLINE->OFFLINE transition and newer version could come online triggering this transition.
     // Since this removes the storageEngine from the map not doing an un-subscribe and dropping a partition could
     // lead to NPE and other issues.
     // Adding a topic unsubscribe call for those race conditions as a safeguard before dropping the partition.
-    ingestionBackend.dropStoragePartitionGracefully(
+    CompletableFuture<Void> dropPartitionFuture = ingestionBackend.dropStoragePartitionGracefully(
         storeAndServerConfigs,
         partition,
         getStoreAndServerConfigs().getStopConsumptionTimeoutInSeconds());
     removeCustomizedState();
+    return dropPartitionFuture;
   }
 
   /**

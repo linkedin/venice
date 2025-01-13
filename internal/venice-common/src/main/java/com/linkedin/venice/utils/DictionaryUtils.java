@@ -62,45 +62,50 @@ public class DictionaryUtils {
     PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topicName);
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopic, 0);
     pubSubConsumer.subscribe(pubSubTopicPartition, 0);
-    boolean startOfPushReceived = false;
-    ByteBuffer compressionDictionary = null;
+    try {
+      boolean startOfPushReceived = false;
+      ByteBuffer compressionDictionary = null;
 
-    KafkaKey kafkaKey;
-    KafkaMessageEnvelope kafkaValue = null;
-    while (!startOfPushReceived) {
-      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
-          pubSubConsumer.poll(10 * Time.MS_PER_SECOND);
+      KafkaKey kafkaKey;
+      KafkaMessageEnvelope kafkaValue = null;
+      while (!startOfPushReceived) {
+        Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
+            pubSubConsumer.poll(10 * Time.MS_PER_SECOND);
 
-      if (!messages.containsKey(pubSubTopicPartition)) {
-        continue;
-      }
+        if (!messages.containsKey(pubSubTopicPartition)) {
+          continue;
+        }
 
-      for (final PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messages.get(pubSubTopicPartition)) {
-        kafkaKey = message.getKey();
-        kafkaValue = message.getValue();
-        if (kafkaKey.isControlMessage()) {
-          ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
-          ControlMessageType type = ControlMessageType.valueOf(controlMessage);
-          LOGGER.info("Consumed ControlMessage: {} from topic partition: {}", type.name(), message.getTopicPartition());
-          if (type == ControlMessageType.START_OF_PUSH) {
-            startOfPushReceived = true;
-            compressionDictionary = ((StartOfPush) controlMessage.controlMessageUnion).compressionDictionary;
-            if (compressionDictionary == null || !compressionDictionary.hasRemaining()) {
-              LOGGER.warn(
-                  "No dictionary present in Start of Push message from topic partition: {}",
-                  message.getTopicPartition());
-              return null;
+        for (final PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messages.get(pubSubTopicPartition)) {
+          kafkaKey = message.getKey();
+          kafkaValue = message.getValue();
+          if (kafkaKey.isControlMessage()) {
+            ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
+            ControlMessageType type = ControlMessageType.valueOf(controlMessage);
+            LOGGER
+                .info("Consumed ControlMessage: {} from topic partition: {}", type.name(), message.getTopicPartition());
+            if (type == ControlMessageType.START_OF_PUSH) {
+              startOfPushReceived = true;
+              compressionDictionary = ((StartOfPush) controlMessage.controlMessageUnion).compressionDictionary;
+              if (compressionDictionary == null || !compressionDictionary.hasRemaining()) {
+                LOGGER.warn(
+                    "No dictionary present in Start of Push message from topic partition: {}",
+                    message.getTopicPartition());
+                return null;
+              }
+              break;
             }
-            break;
+          } else {
+            LOGGER.error(
+                "Consumed non Control Message before Start of Push from topic partition: {}",
+                message.getTopicPartition());
+            return null;
           }
-        } else {
-          LOGGER.error(
-              "Consumed non Control Message before Start of Push from topic partition: {}",
-              message.getTopicPartition());
-          return null;
         }
       }
+      return compressionDictionary;
+    } finally {
+      pubSubConsumer.unSubscribe(pubSubTopicPartition);
     }
-    return compressionDictionary;
   }
 }

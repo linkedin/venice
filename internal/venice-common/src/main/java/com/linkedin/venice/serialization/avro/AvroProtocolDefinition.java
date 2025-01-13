@@ -16,6 +16,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
+import com.linkedin.venice.metadata.response.StorePropertiesResponseRecord;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pushstatus.PushStatusKey;
@@ -72,7 +73,7 @@ public enum AvroProtocolDefinition {
    *
    * TODO: Move AdminOperation to venice-common module so that we can properly reference it here.
    */
-  ADMIN_OPERATION(83, SpecificData.get().getSchema(ByteBuffer.class), "AdminOperation"),
+  ADMIN_OPERATION(84, SpecificData.get().getSchema(ByteBuffer.class), "AdminOperation"),
 
   /**
    * Single chunk of a large multi-chunk value. Just a bunch of bytes.
@@ -143,7 +144,7 @@ public enum AvroProtocolDefinition {
   /**
    * Value schema for metadata system store.
    */
-  METADATA_SYSTEM_SCHEMA_STORE(26, StoreMetaValue.class),
+  METADATA_SYSTEM_SCHEMA_STORE(27, StoreMetaValue.class),
 
   /**
    * Key schema for push status system store.
@@ -169,6 +170,11 @@ public enum AvroProtocolDefinition {
    * Response record for metadata fetch request.
    */
   SERVER_METADATA_RESPONSE(2, MetadataResponseRecord.class),
+
+  /**
+   * Response record for metadata by client fetch request.
+   */
+  SERVER_STORE_PROPERTIES_RESPONSE(1, StorePropertiesResponseRecord.class),
 
   /**
    * Value schema for change capture event.

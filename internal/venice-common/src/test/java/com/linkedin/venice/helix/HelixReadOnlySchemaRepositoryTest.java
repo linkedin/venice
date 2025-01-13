@@ -14,7 +14,6 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertThrows;
 
-import com.linkedin.alpini.io.IOUtils;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -27,22 +26,18 @@ import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import com.linkedin.venice.writer.update.UpdateBuilderImplTest;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.avro.Schema;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -50,10 +45,8 @@ import org.testng.annotations.Test;
 
 
 public class HelixReadOnlySchemaRepositoryTest {
-  private static final Logger LOGGER = LogManager.getLogger(UpdateBuilderImplTest.class);
-
   private static final Schema VALUE_SCHEMA =
-      AvroCompatibilityHelper.parse(loadFileAsString("TestWriteComputeBuilder.avsc"));
+      AvroCompatibilityHelper.parse(TestUtils.loadFileAsString("TestWriteComputeBuilder.avsc"));
   private static final Schema UPDATE_SCHEMA =
       WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(VALUE_SCHEMA);
 
@@ -233,16 +226,5 @@ public class HelixReadOnlySchemaRepositoryTest {
     doCallRealMethod().when(listener).handleSchemaChanges(storeName, list);
     listener.handleSchemaChanges(storeName, list);
     verify(accessor, times(1)).getValueSchema(anyString(), anyString());
-  }
-
-  private static String loadFileAsString(String fileName) {
-    try {
-      return IOUtils.toString(
-          Objects.requireNonNull(Thread.currentThread().getContextClassLoader().getResourceAsStream(fileName)),
-          StandardCharsets.UTF_8);
-    } catch (Exception e) {
-      LOGGER.error(e);
-      return null;
-    }
   }
 }

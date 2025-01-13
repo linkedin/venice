@@ -375,10 +375,10 @@ public class TestZKStore {
     List<String> valid = Arrays.asList("foo", "Bar", "foo_bar", "foo-bar", "f00Bar");
     List<String> invalid = Arrays.asList("foo bar", "foo.bar", " foo", ".bar", "!", "@", "#", "$", "%");
     for (String name: valid) {
-      Assert.assertTrue(Store.isValidStoreName(name));
+      Assert.assertTrue(StoreName.isValidStoreName(name));
     }
     for (String name: invalid) {
-      Assert.assertFalse(Store.isValidStoreName(name));
+      Assert.assertFalse(StoreName.isValidStoreName(name));
     }
   }
 
@@ -395,34 +395,6 @@ public class TestZKStore {
         1);
   }
 
-  /**
-   * We're not relying on push ID uniqueness.  We can reenable this test if we start relying on (and enforcing) push ID uniqueness
-   */
-  @Test(groups = { "flaky" })
-  public void cannotAddDifferentVersionsWithSamePushId() {
-    String storeName = "storeName";
-    Store store = new ZKStore(
-        storeName,
-        "owner",
-        System.currentTimeMillis(),
-        PersistenceType.IN_MEMORY,
-        RoutingStrategy.CONSISTENT_HASH,
-        ReadStrategy.ANY_OF_ONLINE,
-        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
-        1);
-    String duplicatePushJobId = "pushId";
-    Version versionOne = new VersionImpl(storeName, 1, duplicatePushJobId);
-    store.addVersion(versionOne);
-    Version versionTwo = new VersionImpl(storeName, 2, duplicatePushJobId);
-    try {
-      store.addVersion(versionTwo);
-      Assert.fail("Store must not allow adding a new version with same pushId");
-    } catch (Exception e) {
-      // expected
-      LOGGER.info("Expected exception: {}", e.getLocalizedMessage());
-    }
-  }
-
   @Test
   public void testStoreLevelAcl() {
     Store store = new ZKStore(
@@ -435,5 +407,14 @@ public class TestZKStore {
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
         1);
     Assert.assertTrue(store.isAccessControlled());
+  }
+
+  @Test
+  public void testUpdateVersionForDaVinciHeartbeat() {
+    String storeName = "testUpdateVersionForDaVinciHeartbeat";
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    store.addVersion(new VersionImpl(storeName, 1, "test"));
+    store.updateVersionForDaVinciHeartbeat(1, true);
+    Assert.assertTrue(store.getVersion(1).getIsDavinciHeartbeatReported());
   }
 }

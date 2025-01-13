@@ -11,6 +11,7 @@ import com.linkedin.venice.listener.request.HeartbeatRequest;
 import com.linkedin.venice.listener.request.MetadataFetchRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
+import com.linkedin.venice.listener.request.StorePropertiesFetchRequest;
 import com.linkedin.venice.listener.request.TopicPartitionIngestionContextRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.meta.QueryAction;
@@ -131,6 +132,13 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
               MetadataFetchRequest.parseGetHttpRequest(uri.getPath(), requestParts);
           statsHandler.setStoreName(metadataFetchRequest.getStoreName());
           ctx.fireChannelRead(metadataFetchRequest);
+          break;
+        case STORE_PROPERTIES:
+          statsHandler.setMetadataRequest(true);
+          StorePropertiesFetchRequest storePropertiesFetchRequest =
+              StorePropertiesFetchRequest.parseGetHttpRequest(uri.getPath(), requestParts);
+          statsHandler.setStoreName(storePropertiesFetchRequest.getStoreName());
+          ctx.fireChannelRead(storePropertiesFetchRequest);
           break;
         case CURRENT_VERSION:
           statsHandler.setMetadataRequest(true);

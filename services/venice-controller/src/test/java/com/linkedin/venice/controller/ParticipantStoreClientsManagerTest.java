@@ -14,13 +14,13 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -95,7 +95,7 @@ public class ParticipantStoreClientsManagerTest {
 
   @Test
   public void testGetWriter() {
-    String participantStoreRT = Version.composeRealTimeTopic(PARTICIPANT_STORE_NAME);
+    String participantStoreRT = Utils.composeRealTimeTopic(PARTICIPANT_STORE_NAME);
     PubSubTopic participantStoreTopic = pubSubTopicRepository.getTopic(participantStoreRT);
     TopicManager localTopicManager = mock(TopicManager.class);
     when(topicManagerRepository.getLocalTopicManager()).thenReturn(localTopicManager);
@@ -122,7 +122,7 @@ public class ParticipantStoreClientsManagerTest {
 
   @Test
   public void testGetWriterTopicNotFound() {
-    String participantStoreRT = Version.composeRealTimeTopic(PARTICIPANT_STORE_NAME);
+    String participantStoreRT = Utils.composeRealTimeTopic(PARTICIPANT_STORE_NAME);
     PubSubTopic participantStoreTopic = pubSubTopicRepository.getTopic(participantStoreRT);
     TopicManager localTopicManager = mock(TopicManager.class);
     when(topicManagerRepository.getLocalTopicManager()).thenReturn(localTopicManager);

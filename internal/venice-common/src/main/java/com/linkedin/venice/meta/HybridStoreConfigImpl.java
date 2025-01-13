@@ -56,7 +56,7 @@ public class HybridStoreConfigImpl implements HybridStoreConfig {
         : dataReplicationPolicy.getValue();
     this.hybridConfig.bufferReplayPolicy =
         bufferReplayPolicy == null ? BufferReplayPolicy.REWIND_FROM_EOP.getValue() : bufferReplayPolicy.getValue();
-    this.hybridConfig.realTimeTopicName = realTimeTopicName;
+    this.hybridConfig.realTimeTopicName = realTimeTopicName == null ? DEFAULT_REAL_TIME_TOPIC_NAME : realTimeTopicName;
   }
 
   HybridStoreConfigImpl(StoreHybridConfig config) {

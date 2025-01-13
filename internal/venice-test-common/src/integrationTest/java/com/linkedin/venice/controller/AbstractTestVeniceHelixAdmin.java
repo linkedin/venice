@@ -29,7 +29,6 @@ import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.utils.HelixUtils;
@@ -271,6 +270,6 @@ class AbstractTestVeniceHelixAdmin {
         TimeUnit.SECONDS,
         () -> Assert.assertEquals(
             veniceAdmin.getRealTimeTopic(clusterName, participantStoreName),
-            Version.composeRealTimeTopic(participantStoreName)));
+            Utils.composeRealTimeTopic(participantStoreName)));
   }
 }

@@ -479,4 +479,8 @@ public class HelixParticipationService extends AbstractVeniceService
       LOGGER.info("Ignore the kill message for topic: {}", message.getKafkaTopic());
     }
   }
+
+  public KafkaStoreIngestionService getKafkaStoreIngestionService() {
+    return (KafkaStoreIngestionService) ingestionService;
+  }
 }

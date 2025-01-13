@@ -1,5 +1,6 @@
 package com.linkedin.davinci.blobtransfer;
 
+import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import java.io.InputStream;
@@ -46,4 +47,10 @@ public interface BlobTransferManager<T> extends AutoCloseable {
    * Close the blob transfer manager and related resources
    */
   void close() throws Exception;
+
+  /**
+   * Get the blob transfer stats
+   * @return the blob transfer stats
+   */
+  AggVersionedBlobTransferStats getAggVersionedBlobTransferStats();
 }

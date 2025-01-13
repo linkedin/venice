@@ -61,6 +61,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PERMISSION_777;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_JOB_STATUS_INTERVAL_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_STATUS_RETRY_ATTEMPTS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_SECONDS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
@@ -76,6 +77,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SUPPRESS_END_OF_PUS
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TEMP_DIR_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.UNCREATED_VERSION_NUMBER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.USE_MAPPER_TO_BUILD_DICTIONARY;
@@ -293,6 +295,12 @@ public class VenicePushJob implements AutoCloseable {
         Lazy.of(() -> ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData()));
     sharedTmpDir = new Path(pushJobSetting.sharedTmpDir);
     jobTmpDir = new Path(pushJobSetting.jobTmpDir);
+    String pushId =
+        pushJobSetting.jobStartTimeMs + "_" + props.getString(JOB_EXEC_URL, "failed_to_obtain_execution_url");
+    if (pushJobSetting.isSourceKafka) {
+      pushId = pushJobSetting.repushTTLEnabled ? Version.generateTTLRePushId(pushId) : Version.generateRePushId(pushId);
+    }
+    pushJobDetails.pushId = pushId;
   }
 
   // This is a part of the public API. There is value in exposing this to users of VenicePushJob for reporting purposes
@@ -362,6 +370,8 @@ public class VenicePushJob implements AutoCloseable {
         props.getLong(JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS, DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS);
     pushJobSettingToReturn.sendControlMessagesDirectly = props.getBoolean(SEND_CONTROL_MESSAGES_DIRECTLY, false);
     pushJobSettingToReturn.enableWriteCompute = props.getBoolean(ENABLE_WRITE_COMPUTE, false);
+    pushJobSettingToReturn.pushToSeparateRealtimeTopicEnabled =
+        props.getBoolean(PUSH_TO_SEPARATE_REALTIME_TOPIC, false);
     pushJobSettingToReturn.isSourceETL = props.getBoolean(SOURCE_ETL, false);
     pushJobSettingToReturn.isSourceKafka = props.getBoolean(SOURCE_KAFKA, false);
     pushJobSettingToReturn.kafkaInputCombinerEnabled = props.getBoolean(KAFKA_INPUT_COMBINER_ENABLED, false);
@@ -399,8 +409,24 @@ public class VenicePushJob implements AutoCloseable {
     if (pushJobSettingToReturn.isIncrementalPush && pushJobSettingToReturn.isTargetedRegionPushEnabled) {
       throw new VeniceException("Incremental push is not supported while using targeted region push mode");
     }
+
+    // If target region push with deferred version swap is enabled, enable deferVersionSwap and
+    // isTargetedRegionPushEnabled
+    if (props.getBoolean(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, false)) {
+      pushJobSettingToReturn.deferVersionSwap = true;
+      pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled = true;
+    }
+
+    if (pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled
+        && pushJobSettingToReturn.isTargetedRegionPushEnabled) {
+      throw new VeniceException(
+          "Target region push and target region push with deferred version swap cannot be enabled"
+              + " at the same time");
+    }
+
     if (props.containsKey(TARGETED_REGION_PUSH_LIST)) {
-      if (pushJobSettingToReturn.isTargetedRegionPushEnabled) {
+      if (pushJobSettingToReturn.isTargetedRegionPushEnabled
+          || pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled) {
         pushJobSettingToReturn.targetedRegions = props.getString(TARGETED_REGION_PUSH_LIST);
       } else {
         throw new VeniceException("Targeted region push list is only supported when targeted region push is enabled");
@@ -501,7 +527,6 @@ public class VenicePushJob implements AutoCloseable {
       Validate.isAssignableFrom(DataWriterComputeJob.class, objectClass);
       pushJobSettingToReturn.dataWriterComputeJobClass = objectClass;
     }
-
     return pushJobSettingToReturn;
   }
 
@@ -734,10 +759,7 @@ public class VenicePushJob implements AutoCloseable {
       }
 
       Optional<ByteBuffer> optionalCompressionDictionary = getCompressionDictionary();
-      String pushId =
-          pushJobSetting.jobStartTimeMs + "_" + props.getString(JOB_EXEC_URL, "failed_to_obtain_execution_url");
       if (pushJobSetting.isSourceKafka) {
-        pushId = Version.generateRePushId(pushId);
         if (pushJobSetting.sourceKafkaInputVersionInfo.getHybridStoreConfig() != null
             && pushJobSetting.rewindTimeInSecondsOverride == NOT_SET) {
           pushJobSetting.rewindTimeInSecondsOverride = DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
@@ -764,12 +786,11 @@ public class VenicePushJob implements AutoCloseable {
           pushJobSetting,
           inputDataInfo.getInputFileDataSizeInBytes(),
           controllerClient,
-          pushId,
+          pushJobDetails.pushId.toString(),
           props,
           optionalCompressionDictionary);
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.NEW_VERSION_CREATED);
       // Update and send push job details with new info to the controller
-      pushJobDetails.pushId = pushId;
       pushJobDetails.partitionCount = pushJobSetting.partitionCount;
       pushJobDetails.valueCompressionStrategy = pushJobSetting.topicCompressionStrategy != null
           ? pushJobSetting.topicCompressionStrategy.getValue()
@@ -844,14 +865,14 @@ public class VenicePushJob implements AutoCloseable {
 
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
       // Do not mark completed yet as for target region push it will be marked inside postValidationConsumption
-      if (!pushJobSetting.isTargetedRegionPushEnabled) {
+      if (!pushJobSetting.isTargetedRegionPushEnabled && !pushJobSetting.isTargetRegionPushWithDeferredSwapEnabled) {
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
       }
       pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
       sendPushJobDetailsToController();
 
       // only kick off the validation and post-validation flow when everything has to be done in a single VPJ
-      if (!pushJobSetting.isTargetedRegionPushEnabled) {
+      if (!pushJobSetting.isTargetedRegionPushEnabled || pushJobSetting.isTargetRegionPushWithDeferredSwapEnabled) {
         return;
       }
 
@@ -1574,7 +1595,6 @@ public class VenicePushJob implements AutoCloseable {
     pushJobDetails.clusterName = pushJobSetting.clusterName;
     pushJobDetails.overallStatus = new ArrayList<>();
     pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.STARTED.getValue()));
-    pushJobDetails.pushId = "";
     pushJobDetails.partitionCount = -1;
     pushJobDetails.valueCompressionStrategy = CompressionStrategy.NO_OP.getValue();
     pushJobDetails.chunkingEnabled = false;
@@ -2075,14 +2095,17 @@ public class VenicePushJob implements AutoCloseable {
     jobSetting.storeStorageQuota = storeResponse.getStore().getStorageQuotaInByte();
 
     // Do not enable for deferred swap or hybrid store
-    if (pushJobSetting.deferVersionSwap || storeResponse.getStore().getHybridStoreConfig() != null) {
+    boolean isDeferredSwap =
+        pushJobSetting.deferVersionSwap && !pushJobSetting.isTargetRegionPushWithDeferredSwapEnabled;
+    if (isDeferredSwap || storeResponse.getStore().getHybridStoreConfig() != null) {
       LOGGER.warn(
           "target region is not available for {} as it hybrid or deferred version swap enabled.",
           jobSetting.storeName);
       jobSetting.isTargetedRegionPushEnabled = false;
     }
 
-    if (jobSetting.isTargetedRegionPushEnabled && jobSetting.targetedRegions == null) {
+    if ((jobSetting.isTargetedRegionPushEnabled || jobSetting.isTargetRegionPushWithDeferredSwapEnabled)
+        && jobSetting.targetedRegions == null) {
       // only override the targeted regions if it is not set and it is a single region push
       // use source grid fabric as target region to reduce data hop, else use default NR source
       if (!StringUtils.isEmpty(jobSetting.sourceGridFabric)) {
@@ -2218,7 +2241,8 @@ public class VenicePushJob implements AutoCloseable {
             setting.rewindTimeInSecondsOverride,
             setting.deferVersionSwap,
             setting.targetedRegions,
-            pushJobSetting.repushSourceVersion));
+            pushJobSetting.repushSourceVersion,
+            setting.pushToSeparateRealtimeTopicEnabled));
     if (versionCreationResponse.isError()) {
       if (ErrorType.CONCURRENT_BATCH_PUSH.equals(versionCreationResponse.getErrorType())) {
         LOGGER.error("Unable to run this job since another batch push is running. See the error message for details.");
@@ -2231,7 +2255,7 @@ public class VenicePushJob implements AutoCloseable {
       // TODO: Fix the server-side request handling. This should not happen. We should get a 404 instead.
       throw new VeniceException("Got version 0 from: " + versionCreationResponse);
     } else {
-      LOGGER.info(versionCreationResponse.toString());
+      LOGGER.info("Push target version response: {}", versionCreationResponse);
     }
 
     setting.topic = versionCreationResponse.getKafkaTopic();

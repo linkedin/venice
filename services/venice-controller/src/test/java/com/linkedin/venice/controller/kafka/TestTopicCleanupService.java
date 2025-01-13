@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller.kafka;
 
-import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.atLeast;
@@ -101,6 +101,14 @@ public class TestTopicCleanupService {
         pubSubTopicRepository,
         topicCleanupServiceStats,
         pubSubClientsFactory);
+
+    when(admin.getStore(any(), anyString())).thenAnswer(invocation -> {
+      String requestedStoreName = invocation.getArgument(1); // Capture the storeName argument
+      Store mockStore = mock(Store.class, RETURNS_DEEP_STUBS);
+      when(mockStore.getHybridStoreConfig().getRealTimeTopicName())
+          .thenReturn(Utils.composeRealTimeTopic(requestedStoreName));
+      return mockStore;
+    });
   }
 
   @AfterMethod
@@ -291,30 +299,12 @@ public class TestTopicCleanupService {
     doReturn(Collections.singletonList(hybridVersion)).when(store3).getVersions();
     doReturn(Collections.singletonList(batchVersion)).when(store6).getVersions();
     // simulating blocked delete
-    doReturn(false).when(admin)
-        .isRTTopicDeletionPermittedByAllControllers(
-            anyString(),
-            argThat(arg -> (arg != null && storeName1.equals(arg.getName()))));
-    doReturn(false).when(admin)
-        .isRTTopicDeletionPermittedByAllControllers(
-            anyString(),
-            argThat(arg -> (arg != null && storeName2.equals(arg.getName()))));
-    doReturn(false).when(admin)
-        .isRTTopicDeletionPermittedByAllControllers(
-            anyString(),
-            argThat(arg -> (arg != null && storeName3.equals(arg.getName()))));
-    doReturn(true).when(admin)
-        .isRTTopicDeletionPermittedByAllControllers(
-            anyString(),
-            argThat(arg -> (arg != null && storeName4.equals(arg.getName()))));
-    doReturn(true).when(admin)
-        .isRTTopicDeletionPermittedByAllControllers(
-            anyString(),
-            argThat(arg -> (arg != null && storeName5.equals(arg.getName()))));
-    doReturn(true).when(admin)
-        .isRTTopicDeletionPermittedByAllControllers(
-            anyString(),
-            argThat(arg -> (arg != null && storeName6.equals(arg.getName()))));
+    doReturn(false).when(admin).isRTTopicDeletionPermittedByAllControllers(anyString(), eq(storeName1));
+    doReturn(false).when(admin).isRTTopicDeletionPermittedByAllControllers(anyString(), eq(storeName2));
+    doReturn(false).when(admin).isRTTopicDeletionPermittedByAllControllers(anyString(), eq(storeName3));
+    doReturn(true).when(admin).isRTTopicDeletionPermittedByAllControllers(anyString(), eq(storeName4));
+    doReturn(true).when(admin).isRTTopicDeletionPermittedByAllControllers(anyString(), eq(storeName5));
+    doReturn(true).when(admin).isRTTopicDeletionPermittedByAllControllers(anyString(), eq(storeName6));
 
     topicCleanupService.cleanupVeniceTopics();
 
@@ -337,14 +327,8 @@ public class TestTopicCleanupService {
     verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName4, "_rt"));
     verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName5, "_v1"));
 
-    doReturn(true).when(admin)
-        .isRTTopicDeletionPermittedByAllControllers(
-            anyString(),
-            argThat(arg -> (arg != null && arg.getName().equals(storeName2))));
-    doReturn(true).when(admin)
-        .isRTTopicDeletionPermittedByAllControllers(
-            anyString(),
-            argThat(arg -> (arg != null && arg.getName().equals(storeName3))));
+    doReturn(true).when(admin).isRTTopicDeletionPermittedByAllControllers(anyString(), eq(storeName2));
+    doReturn(true).when(admin).isRTTopicDeletionPermittedByAllControllers(anyString(), eq(storeName3));
     topicCleanupService.cleanupVeniceTopics();
 
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, "_v3"));
@@ -490,7 +474,7 @@ public class TestTopicCleanupService {
   public void testExtractVersionTopicsToCleanupIgnoresInputWithNonVersionTopics() {
     String storeName = Utils.getUniqueString("test_store");
     Map<PubSubTopic, Long> topicRetentions = new HashMap<>();
-    topicRetentions.put(pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName)), Long.MAX_VALUE);
+    topicRetentions.put(pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(storeName)), Long.MAX_VALUE);
     topicRetentions
         .put(pubSubTopicRepository.getTopic(Version.composeStreamReprocessingTopic(storeName, 1)), Long.MAX_VALUE);
     topicRetentions.put(pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1)), 1000L);

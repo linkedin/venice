@@ -20,11 +20,13 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.DATA_REPL
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_DAVINCI_PUSH_STATUS_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_META_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_READS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_DAVINCI_HEARTBEAT_REPORTED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LATEST_SUPERSET_SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_COMPACTION_LAG_SECONDS;
@@ -57,6 +59,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_N
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION_WAIT_TIME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UNUSED_SCHEMA_DELETION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
@@ -1706,11 +1710,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see VeniceHelixAdmin#getRealTimeTopic(String, String)
+   * @see VeniceHelixAdmin#getRealTimeTopic(String, Store)
    */
   @Override
-  public String getRealTimeTopic(String clusterName, String storeName) {
-    return getVeniceHelixAdmin().getRealTimeTopic(clusterName, storeName);
+  public String getRealTimeTopic(String clusterName, Store store) {
+    return getVeniceHelixAdmin().getRealTimeTopic(clusterName, store);
   }
 
   @Override
@@ -1741,7 +1745,7 @@ public class VeniceParentHelixAdmin implements Admin {
       throw new VeniceException("Cannot start incremental push since batch push is on going." + " store: " + storeName);
     }
 
-    String incrementalPushTopic = Version.composeRealTimeTopic(storeName);
+    String incrementalPushTopic = Utils.composeRealTimeTopic(storeName);
     if (status.isError() || getVeniceHelixAdmin().isTopicTruncated(incrementalPushTopic)) {
       throw new VeniceException(
           "Cannot start incremental push since previous batch push has failed. Please run another bash job."
@@ -2298,7 +2302,9 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.storeName = storeName;
       setStore.owner = owner.map(addToUpdatedConfigList(updatedConfigsList, OWNER)).orElseGet(currStore::getOwner);
 
-      if (!currStore.isHybrid() && (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent())) {
+      boolean isUpdateForStoreMigration = storeMigration.orElse(false);
+      if (!isUpdateForStoreMigration && !currStore.isHybrid()
+          && (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent())) {
         // Today target colo pushjob cannot handle hybrid stores, so if a batch push is running, fail the request
         Optional<String> currentPushTopic = getTopicForCurrentPushJob(clusterName, storeName, false, false);
         if (currentPushTopic.isPresent()) {
@@ -2512,7 +2518,7 @@ public class VeniceParentHelixAdmin implements Admin {
           && !veniceHelixAdmin.isHybrid(currStore.getHybridStoreConfig())
           && !veniceHelixAdmin.isHybrid(updatedHybridStoreConfig)) {
         LOGGER.info(
-            "Enabling incremental push for a batch store:{}. Converting it to a hybrid store with default configs.",
+            "Enabling incremental push for a batch store:{}. Converting it to Active/Active hybrid store with default configs.",
             storeName);
         HybridStoreConfigRecord hybridStoreConfigRecord = new HybridStoreConfigRecord();
         hybridStoreConfigRecord.rewindTimeInSeconds = DEFAULT_REWIND_TIME_IN_SECONDS;
@@ -2527,6 +2533,10 @@ public class VeniceParentHelixAdmin implements Admin {
         updatedConfigsList.add(BUFFER_REPLAY_POLICY);
         hybridStoreConfigRecord.realTimeTopicName = DEFAULT_REAL_TIME_TOPIC_NAME;
         setStore.hybridStoreConfig = hybridStoreConfigRecord;
+        if (!currStore.isSystemStore() && controllerConfig.isActiveActiveReplicationEnabledAsDefaultForHybrid()) {
+          setStore.activeActiveReplicationEnabled = true;
+          updatedConfigsList.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
+        }
       }
 
       /**
@@ -2552,8 +2562,10 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.numVersionsToPreserve =
           numVersionsToPreserve.map(addToUpdatedConfigList(updatedConfigsList, NUM_VERSIONS_TO_PRESERVE))
               .orElseGet(currStore::getNumVersionsToPreserve);
-      setStore.isMigrating = storeMigration.map(addToUpdatedConfigList(updatedConfigsList, STORE_MIGRATION))
-          .orElseGet(currStore::isMigrating);
+      setStore.isMigrating =
+          storeMigration.map(addToUpdatedConfigList(updatedConfigsList, STORE_MIGRATION, ENABLE_STORE_MIGRATION))
+
+              .orElseGet(currStore::isMigrating);
       setStore.replicationMetadataVersionID = replicationMetadataVersionID
           .map(addToUpdatedConfigList(updatedConfigsList, REPLICATION_METADATA_PROTOCOL_VERSION_ID))
           .orElse(currStore.getRmdVersion());
@@ -2624,6 +2636,18 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.nearlineProducerCountPerWriter = params.getNearlineProducerCountPerWriter()
           .map(addToUpdatedConfigList(updatedConfigsList, NEARLINE_PRODUCER_COUNT_PER_WRITER))
           .orElseGet(currStore::getNearlineProducerCountPerWriter);
+
+      setStore.targetSwapRegion = params.getTargetSwapRegion()
+          .map(addToUpdatedConfigList(updatedConfigsList, TARGET_SWAP_REGION))
+          .orElseGet(currStore::getTargetSwapRegion);
+
+      setStore.targetSwapRegionWaitTime = params.getTargetRegionSwapWaitTime()
+          .map(addToUpdatedConfigList(updatedConfigsList, TARGET_SWAP_REGION_WAIT_TIME))
+          .orElseGet((currStore::getTargetSwapRegionWaitTime));
+
+      setStore.isDaVinciHeartBeatReported = params.getIsDavinciHeartbeatReported()
+          .map(addToUpdatedConfigList(updatedConfigsList, IS_DAVINCI_HEARTBEAT_REPORTED))
+          .orElseGet((currStore::getIsDavinciHeartbeatReported));
 
       // Check whether the passed param is valid or not
       if (latestSupersetSchemaId.isPresent()) {
@@ -2746,6 +2770,18 @@ public class VeniceParentHelixAdmin implements Admin {
             setStore.getPartitionNum(),
             storeName);
         updatedConfigsList.add(PARTITION_COUNT);
+      }
+
+      /**
+       * Pre-flight check for incremental push config update. We only allow incremental push config to be turned on
+       * when store is A/A. Otherwise, we should fail store update.
+       */
+      if (setStore.hybridStoreConfig != null && setStore.incrementalPushEnabled
+          && !setStore.activeActiveReplicationEnabled) {
+        throw new VeniceHttpException(
+            HttpStatus.SC_BAD_REQUEST,
+            "Hybrid store config invalid. Cannot have incremental push enabled while A/A not enabled",
+            ErrorType.BAD_REQUEST);
       }
 
       /**
@@ -3854,7 +3890,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, Store store) {
+  public boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, String storeName) {
     return false;
   }
 
@@ -5065,6 +5101,17 @@ public class VeniceParentHelixAdmin implements Admin {
   private <T> Function<T, T> addToUpdatedConfigList(List<CharSequence> updatedConfigList, String config) {
     return (configValue) -> {
       updatedConfigList.add(config);
+      return configValue;
+    };
+  }
+
+  static private <T> Function<T, T> addToUpdatedConfigList(
+      List<CharSequence> updatedConfigList,
+      String config,
+      String legacyConfigName) {
+    return (configValue) -> {
+      updatedConfigList.add(config);
+      updatedConfigList.add(legacyConfigName);
       return configValue;
     };
   }

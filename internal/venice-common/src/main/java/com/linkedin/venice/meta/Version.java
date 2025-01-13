@@ -36,6 +36,8 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
    */
   String VENICE_RE_PUSH_PUSH_ID_PREFIX = "venice_re_push_";
 
+  String VENICE_TTL_RE_PUSH_PUSH_ID_PREFIX = "venice_ttl_re_push_";
+
   /**
    * Producer type for writing data to Venice
    */
@@ -195,6 +197,18 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   DataRecoveryVersionConfig getDataRecoveryVersionConfig();
 
   void setDataRecoveryVersionConfig(DataRecoveryVersionConfig dataRecoveryVersionConfig);
+
+  void setTargetSwapRegion(String targetRegion);
+
+  String getTargetSwapRegion();
+
+  void setTargetSwapRegionWaitTime(int waitTime);
+
+  int getTargetSwapRegionWaitTime();
+
+  void setIsDavinciHeartbeatReported(boolean isReported);
+
+  boolean getIsDavinciHeartbeatReported();
 
   /**
    * Get the replication metadata version id.
@@ -413,6 +427,17 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   static String generateRePushId(String pushId) {
     return VENICE_RE_PUSH_PUSH_ID_PREFIX + pushId;
+  }
+
+  static String generateTTLRePushId(String pushId) {
+    return VENICE_TTL_RE_PUSH_PUSH_ID_PREFIX + pushId;
+  }
+
+  static boolean isPushIdTTLRePush(String pushId) {
+    if (pushId == null || pushId.isEmpty()) {
+      return false;
+    }
+    return pushId.startsWith(VENICE_TTL_RE_PUSH_PUSH_ID_PREFIX);
   }
 
   static boolean isPushIdRePush(String pushId) {

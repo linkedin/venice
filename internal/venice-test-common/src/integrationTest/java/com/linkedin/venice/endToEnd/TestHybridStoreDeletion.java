@@ -111,6 +111,7 @@ public class TestHybridStoreDeletion {
     final String storeNameFirst = Utils.getUniqueString("hybrid-store-test-first");
     final String storeNameSecond = Utils.getUniqueString("hybrid-store-test-second");
     final String[] storeNames = new String[] { storeNameFirst, storeNameSecond };
+    String[] realTimeTopicNames = new String[storeNames.length];
 
     try (TopicManager topicManager =
         IntegrationTestPushUtils
@@ -124,9 +125,15 @@ public class TestHybridStoreDeletion {
 
       createStoresAndVersions(storeNames, streamingRewindSeconds, streamingMessageLag);
 
+      veniceCluster.useControllerClient(controllerClient -> {
+        realTimeTopicNames[0] =
+            Utils.getRealTimeTopicName(TestUtils.assertCommand(controllerClient.getStore(storeNameFirst)).getStore());
+        realTimeTopicNames[1] =
+            Utils.getRealTimeTopicName(TestUtils.assertCommand(controllerClient.getStore(storeNameSecond)).getStore());
+      });
+
       // Wait until the rt topic of the first store is fully deleted.
-      PubSubTopic rtTopicFirst1 =
-          veniceCluster.getPubSubTopicRepository().getTopic(Version.composeRealTimeTopic(storeNameFirst));
+      PubSubTopic rtTopicFirst1 = veniceCluster.getPubSubTopicRepository().getTopic(realTimeTopicNames[0]);
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true, () -> {
         Assert.assertTrue(topicManager.containsTopic(rtTopicFirst1));
       });
@@ -135,12 +142,11 @@ public class TestHybridStoreDeletion {
       produceToStoreRTTopic(storeNameFirst, 200);
 
       // Delete the rt topic of the first store.
-      topicManager.ensureTopicIsDeletedAndBlock(
-          veniceCluster.getPubSubTopicRepository().getTopic(Version.composeRealTimeTopic(storeNameFirst)));
+      topicManager
+          .ensureTopicIsDeletedAndBlock(veniceCluster.getPubSubTopicRepository().getTopic(realTimeTopicNames[0]));
 
       // Wait until the rt topic of the first store is fully deleted.
-      PubSubTopic rtTopicFirst =
-          veniceCluster.getPubSubTopicRepository().getTopic(Version.composeRealTimeTopic(storeNameFirst));
+      PubSubTopic rtTopicFirst = veniceCluster.getPubSubTopicRepository().getTopic(realTimeTopicNames[0]);
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true, () -> {
         Assert.assertFalse(topicManager.containsTopic(rtTopicFirst));
       });
@@ -162,7 +168,6 @@ public class TestHybridStoreDeletion {
           }
         });
       }
-
     }
   }
 

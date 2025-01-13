@@ -71,6 +71,7 @@ public class StorageUtilizationManagerTest {
         partitionConsumptionStateMap,
         true,
         true,
+        false,
         ingestionNotificationDispatcher,
         (t, p) -> {},
         (t, p) -> {});

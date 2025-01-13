@@ -12,7 +12,8 @@ import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import java.util.Optional;
+import java.util.Objects;
+import java.util.function.BiConsumer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -23,14 +24,27 @@ import org.apache.logging.log4j.Logger;
  *
  * TODO: If later on DDS router could support a better way to register a handler to handle the exceptional cases,
  * we should update the logic here.
- *
- * TODO: Remove all {@link Optional} from this class.
  */
-
 public class RouterExceptionAndTrackingUtils {
   public enum FailureType {
-    REGULAR, SMART_RETRY_ABORTED_BY_SLOW_ROUTE, SMART_RETRY_ABORTED_BY_DELAY_CONSTRAINT,
-    SMART_RETRY_ABORTED_BY_MAX_RETRY_ROUTE_LIMIT, RESOURCE_NOT_FOUND, RETRY_ABORTED_BY_NO_AVAILABLE_REPLICA
+    REGULAR, RESOURCE_NOT_FOUND,
+    SMART_RETRY_ABORTED_BY_SLOW_ROUTE(AggRouterHttpRequestStats::recordSlowRouteAbortedRetryRequest),
+    SMART_RETRY_ABORTED_BY_DELAY_CONSTRAINT(AggRouterHttpRequestStats::recordDelayConstraintAbortedRetryRequest),
+    SMART_RETRY_ABORTED_BY_MAX_RETRY_ROUTE_LIMIT(AggRouterHttpRequestStats::recordRetryRouteLimitAbortedRetryRequest),
+    RETRY_ABORTED_BY_NO_AVAILABLE_REPLICA(AggRouterHttpRequestStats::recordNoAvailableReplicaAbortedRetryRequest);
+
+    final boolean reportUnhealthy;
+    final BiConsumer<AggRouterHttpRequestStats, String> statsRecorder;
+
+    FailureType() {
+      this.reportUnhealthy = true;
+      this.statsRecorder = (stats, store) -> {}; // No op
+    }
+
+    FailureType(BiConsumer<AggRouterHttpRequestStats, String> statsRecorder) {
+      this.reportUnhealthy = false;
+      this.statsRecorder = Objects.requireNonNull(statsRecorder);
+    }
   }
 
   private static RouterStats<AggRouterHttpRequestStats> ROUTER_STATS;
@@ -45,8 +59,8 @@ public class RouterExceptionAndTrackingUtils {
   }
 
   public static RouterException newRouterExceptionAndTracking(
-      Optional<String> storeName,
-      Optional<RequestType> requestType,
+      String storeName,
+      RequestType requestType,
       HttpResponseStatus responseStatus,
       String msg,
       FailureType failureType) {
@@ -63,17 +77,16 @@ public class RouterExceptionAndTrackingUtils {
             /** We do not fill in the stacktrace at all for "expected exceptions" (quota, etc) */
             false)
         : new RouterException(HttpResponseStatus.class, responseStatus, responseStatus.code(), msg, false);
-    String name = storeName.isPresent() ? storeName.get() : "";
-    if (!EXCEPTION_FILTER.isRedundantException(name, String.valueOf(e.code()))) {
+    if (!EXCEPTION_FILTER.isRedundantException(storeName, String.valueOf(e.code()))) {
       if (responseStatus == BAD_REQUEST) {
-        String error = "Received bad request for store: " + name;
+        String error = "Received bad request for store: " + storeName;
         if (!EXCEPTION_FILTER.isRedundantException(error)) {
           LOGGER.warn(error, e);
         }
       } else if (failureType == FailureType.RESOURCE_NOT_FOUND) {
-        LOGGER.error("Could not find resources for store: {} ", name, e);
+        LOGGER.error("Could not find resources for store: {} ", storeName, e);
       } else {
-        LOGGER.warn("Got an exception for store: {} ", name, e);
+        LOGGER.warn("Got an exception for store: {} ", storeName, e);
       }
     }
     return e;
@@ -91,16 +104,16 @@ public class RouterExceptionAndTrackingUtils {
   }
 
   public static RouterException newRouterExceptionAndTracking(
-      Optional<String> storeName,
-      Optional<RequestType> requestType,
+      String storeName,
+      RequestType requestType,
       HttpResponseStatus responseStatus,
       String msg) {
     return newRouterExceptionAndTracking(storeName, requestType, responseStatus, msg, FailureType.REGULAR);
   }
 
   public static RouterException newRouterExceptionAndTrackingResourceNotFound(
-      Optional<String> storeName,
-      Optional<RequestType> requestType,
+      String storeName,
+      RequestType requestType,
       HttpResponseStatus responseStatus,
       String msg) {
     return newRouterExceptionAndTracking(storeName, requestType, responseStatus, msg, FailureType.RESOURCE_NOT_FOUND);
@@ -108,28 +121,27 @@ public class RouterExceptionAndTrackingUtils {
 
   @Deprecated
   public static VeniceException newVeniceExceptionAndTracking(
-      Optional<String> storeName,
-      Optional<RequestType> requestType,
+      String storeName,
+      RequestType requestType,
       HttpResponseStatus responseStatus,
       String msg,
       FailureType failureType) {
     metricTracking(storeName, requestType, responseStatus, failureType);
-    String name = storeName.isPresent() ? storeName.get() : "";
     VeniceException e = isExpected(responseStatus, failureType)
         // Do not dump stack-trace for Quota exceed exception as it might blow up memory on high load
         ? new VeniceException(msg, false)
         : new VeniceException(msg);
 
-    if (!EXCEPTION_FILTER.isRedundantException(name, e)) {
-      LOGGER.warn("Got an exception for store: {}", name, e);
+    if (!EXCEPTION_FILTER.isRedundantException(storeName, e)) {
+      LOGGER.warn("Got an exception for store: {}", storeName, e);
     }
     return e;
   }
 
   @Deprecated
   public static VeniceException newVeniceExceptionAndTracking(
-      Optional<String> storeName,
-      Optional<RequestType> requestType,
+      String storeName,
+      RequestType requestType,
       HttpResponseStatus responseStatus,
       String msg) {
     return newVeniceExceptionAndTracking(storeName, requestType, responseStatus, msg, FailureType.REGULAR);
@@ -141,8 +153,8 @@ public class RouterExceptionAndTrackingUtils {
   }
 
   private static void metricTracking(
-      Optional<String> storeName,
-      Optional<RequestType> requestType,
+      String storeName,
+      RequestType requestType,
       HttpResponseStatus responseStatus,
       FailureType failureType) {
     if (ROUTER_STATS == null) {
@@ -150,14 +162,14 @@ public class RouterExceptionAndTrackingUtils {
       throw new VeniceException("'ROUTER_STATS' hasn't been setup yet, so there must be some bug causing this.");
     }
     AggRouterHttpRequestStats stats =
-        ROUTER_STATS.getStatsByType(requestType.isPresent() ? requestType.get() : RequestType.SINGLE_GET);
+        ROUTER_STATS.getStatsByType(requestType == null ? RequestType.SINGLE_GET : requestType);
     // If we don't know the actual store name, this error will only be aggregated in server level, but not
     // in store level
     if (responseStatus.equals(BAD_REQUEST) || responseStatus.equals(REQUEST_ENTITY_TOO_LARGE)) {
-      stats.recordBadRequest(storeName.orElse(null), responseStatus);
+      stats.recordBadRequest(storeName, responseStatus);
     } else if (responseStatus.equals(TOO_MANY_REQUESTS)) {
-      if (storeName.isPresent()) {
-        if (requestType.isPresent()) {
+      if (storeName != null) {
+        if (requestType != null) {
           /**
            * Once we stop throwing quota exceptions from within the {@link VeniceDelegateMode} then we can
            * process everything through {@link VeniceResponseAggregator} and remove the metric tracking
@@ -165,46 +177,26 @@ public class RouterExceptionAndTrackingUtils {
            *
            * TODO: Remove this metric after the above work is done...
            */
-          stats.recordThrottledRequest(storeName.get(), responseStatus);
+          stats.recordThrottledRequest(storeName, responseStatus);
         }
       } else {
         // not possible to have empty store name in this scenario
         throw new VeniceException("Received a TOO_MANY_REQUESTS error without store name present");
       }
     } else {
-      /**
-       * It is on purpose that here doesn't record retry request abort as unhealthy request.
-       */
-      switch (failureType) {
-        case SMART_RETRY_ABORTED_BY_SLOW_ROUTE:
-          if (storeName.isPresent()) {
-            stats.recordSlowRouteAbortedRetryRequest(storeName.get());
-          }
-          return;
-        case SMART_RETRY_ABORTED_BY_DELAY_CONSTRAINT:
-          if (storeName.isPresent()) {
-            stats.recordDelayConstraintAbortedRetryRequest(storeName.get());
-          }
-          return;
-        case SMART_RETRY_ABORTED_BY_MAX_RETRY_ROUTE_LIMIT:
-          if (storeName.isPresent()) {
-            stats.recordRetryRouteLimitAbortedRetryRequest(storeName.get());
-          }
-          return;
-        case RETRY_ABORTED_BY_NO_AVAILABLE_REPLICA:
-          if (storeName.isPresent()) {
-            stats.recordNoAvailableReplicaAbortedRetryRequest(storeName.get());
-          }
-          return;
+      if (storeName != null) {
+        failureType.statsRecorder.accept(stats, storeName);
       }
+      if (failureType.reportUnhealthy) {
+        /** It is on purpose that we do not record unhealthy request for certain types of aborted retry scenarios. */
+        stats.recordUnhealthyRequest(storeName, responseStatus);
 
-      stats.recordUnhealthyRequest(storeName.orElse(null), responseStatus);
-
-      if (responseStatus.equals(SERVICE_UNAVAILABLE)) {
-        if (storeName.isPresent()) {
-          stats.recordUnavailableRequest(storeName.get());
-        } else {
-          throw new VeniceException("Received a SERVICE_UNAVAILABLE error without store name present");
+        if (responseStatus.equals(SERVICE_UNAVAILABLE)) {
+          if (storeName != null) {
+            stats.recordUnavailableRequest(storeName);
+          } else {
+            throw new VeniceException("Received a SERVICE_UNAVAILABLE error without store name present");
+          }
         }
       }
     }

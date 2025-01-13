@@ -2,6 +2,7 @@ package com.linkedin.venice;
 
 import static com.linkedin.venice.kafka.protocol.enums.MessageType.PUT;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -25,13 +26,13 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.StoreInfo;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.utils.Utils;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -50,7 +51,7 @@ public class TestAdminToolConsumption {
   @Test
   void testAdminToolAdminMessageConsumption() {
     int assignedPartition = 0;
-    String topic = Version.composeRealTimeTopic(STORE_NAME);
+    String topic = Utils.composeRealTimeTopic(STORE_NAME);
     PubSubTopicPartition pubSubTopicPartition =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), assignedPartition);
     int adminMessageNum = 10;
@@ -112,16 +113,17 @@ public class TestAdminToolConsumption {
 
   @Test
   public void testAdminToolConsumption() {
-    String topic = Version.composeRealTimeTopic(STORE_NAME);
     ControllerClient controllerClient = mock(ControllerClient.class);
     SchemaResponse schemaResponse = mock(SchemaResponse.class);
     when(schemaResponse.getSchemaStr()).thenReturn(SCHEMA_STRING);
     when(controllerClient.getKeySchema(STORE_NAME)).thenReturn(schemaResponse);
     StoreResponse storeResponse = mock(StoreResponse.class);
-    StoreInfo storeInfo = mock(StoreInfo.class);
+    StoreInfo storeInfo = mock(StoreInfo.class, RETURNS_DEEP_STUBS);
     when(storeInfo.getPartitionCount()).thenReturn(2);
     when(controllerClient.getStore(STORE_NAME)).thenReturn(storeResponse);
     when(storeResponse.getStore()).thenReturn(storeInfo);
+    when(storeInfo.getHybridStoreConfig().getRealTimeTopicName()).thenReturn(Utils.composeRealTimeTopic(STORE_NAME));
+    String topic = storeInfo.getHybridStoreConfig().getRealTimeTopicName();
 
     int assignedPartition = 0;
     long startOffset = 0;
@@ -210,16 +212,13 @@ public class TestAdminToolConsumption {
     KafkaTopicDumper kafkaTopicDumper = new KafkaTopicDumper(
         controllerClient,
         apacheKafkaConsumer,
-        topic,
-        assignedPartition,
-        0,
-        2,
+        pubSubTopicPartition,
         "",
         3,
         true,
         false,
         false,
         false);
-    Assert.assertEquals(kafkaTopicDumper.fetchAndProcess(), consumedMessageCount);
+    Assert.assertEquals(kafkaTopicDumper.fetchAndProcess(0, 1, 2), consumedMessageCount);
   }
 }

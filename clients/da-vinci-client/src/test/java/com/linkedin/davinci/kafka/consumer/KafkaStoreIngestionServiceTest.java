@@ -180,6 +180,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         null,
         mockPubSubClientsFactory,
         Optional.empty(),
+        null,
         null);
 
     String mockStoreName = "test";
@@ -264,6 +265,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         null,
         mockPubSubClientsFactory,
         Optional.empty(),
+        null,
         null);
     String topic1 = "test-store_v1";
     String topic2 = "test-store_v2";
@@ -352,6 +354,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         null,
         mockPubSubClientsFactory,
         Optional.empty(),
+        null,
         null);
     String topicName = "test-store_v1";
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
@@ -417,6 +420,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         null,
         mockPubSubClientsFactory,
         Optional.empty(),
+        null,
         null);
     String topicName = "test-store_v1";
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
@@ -460,7 +464,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     AbstractKafkaConsumerService kafkaConsumerService =
         spy(storeIngestionTask.aggKafkaConsumerService.createKafkaConsumerService(consumerProperties));
     kafkaStoreIngestionService.getTopicPartitionIngestionContext(topicName, topicName, 0);
-    verify(kafkaConsumerService, atMostOnce()).getIngestionInfoFromConsumer(pubSubTopic, pubSubTopicPartition);
+    verify(kafkaConsumerService, atMostOnce()).getIngestionInfoFor(pubSubTopic, pubSubTopicPartition);
   }
 
   @Test
@@ -542,7 +546,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     storageServiceField.setAccessible(true);
     storageServiceField.set(storeIngestionTask, storageService);
 
-    Field storeConfigField = StoreIngestionTask.class.getDeclaredField("storeConfig");
+    Field storeConfigField = StoreIngestionTask.class.getDeclaredField("storeVersionConfig");
     storeConfigField.setAccessible(true);
     storeConfigField.set(storeIngestionTask, config);
 

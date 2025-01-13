@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
+import com.linkedin.davinci.listener.response.StorePropertiesResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -131,6 +132,69 @@ public class ServerReadMetadataRepositoryTest {
     mockStore.setBatchGetLimit(300);
     metadataResponse = serverReadMetadataRepository.getMetadata(storeName);
     Assert.assertEquals(metadataResponse.getResponseRecord().getBatchGetLimit(), 300);
+  }
+
+  @Test
+  public void testGetStoreProperties() {
+    String storeName = "test-store";
+    Store mockStore = new ZKStore(
+        storeName,
+        "unit-test",
+        0,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        1);
+    mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id"));
+    mockStore.addVersion(new VersionImpl(storeName, 2, "test-job-id2"));
+    mockStore.setCurrentVersion(2);
+    mockStore.setStorageNodeReadQuotaEnabled(false);
+    String topicName = Version.composeKafkaTopic(storeName, 2);
+    PartitionAssignment partitionAssignment = new PartitionAssignment(topicName, 1);
+    Partition partition = mock(Partition.class);
+    when(partition.getId()).thenReturn(0);
+    List<Instance> readyToServeInstances = Collections.singletonList(new Instance("host1", "host1", 1234));
+    doReturn(readyToServeInstances).when(partition).getReadyToServeInstances();
+    partitionAssignment.addPartition(partition);
+    String schema = "\"string\"";
+    doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeName);
+    Mockito.when(mockSchemaRepo.getKeySchema(storeName)).thenReturn(new SchemaEntry(0, schema));
+    Mockito.when(mockSchemaRepo.getValueSchemas(storeName))
+        .thenReturn(Collections.singletonList(new SchemaEntry(0, schema)));
+    Mockito.when(mockCustomizedViewRepository.getPartitionAssignments(topicName)).thenReturn(partitionAssignment);
+    Mockito.when(mockHelixInstanceConfigRepository.getInstanceGroupIdMapping()).thenReturn(Collections.emptyMap());
+
+    mockStore.setStorageNodeReadQuotaEnabled(true);
+    StorePropertiesResponse storePropertiesResponse =
+        serverReadMetadataRepository.getStoreProperties(storeName, Optional.empty());
+    Assert.assertNotNull(storePropertiesResponse);
+    Assert.assertNotNull(storePropertiesResponse.getResponseRecord());
+    Assert.assertNotNull(storePropertiesResponse.getResponseRecord().getStoreMetaValue());
+    Assert.assertEquals(
+        storePropertiesResponse.getResponseRecord().getStoreMetaValue().getStoreKeySchemas().getKeySchemaMap().get("0"),
+        "\"string\"");
+    // Verify the metadata
+    Assert.assertEquals(
+        storePropertiesResponse.getResponseRecord().getStoreMetaValue().getStoreProperties().getVersions().size(),
+        2);
+    Assert.assertEquals(storePropertiesResponse.getResponseRecord().getRoutingInfo().get("0").size(), 1);
+
+    String metadataInvokeMetricName = ".ServerMetadataStats--request_based_metadata_invoke_count.Rate";
+    String metadataFailureMetricName = ".ServerMetadataStats--request_based_metadata_failure_count.Rate";
+    Assert.assertTrue(metricsRepository.getMetric(metadataInvokeMetricName).value() > 0);
+    Assert.assertEquals(metricsRepository.getMetric(metadataFailureMetricName).value(), 0d);
+
+    ServerCurrentVersionResponse currentVersionResponse =
+        serverReadMetadataRepository.getCurrentVersionResponse(storeName);
+    Assert.assertNotNull(currentVersionResponse);
+    Assert.assertEquals(currentVersionResponse.getCurrentVersion(), 2);
+
+    mockStore.setBatchGetLimit(300);
+    storePropertiesResponse = serverReadMetadataRepository.getStoreProperties(storeName, Optional.empty());
+    Assert.assertEquals(
+        storePropertiesResponse.getResponseRecord().getStoreMetaValue().getStoreProperties().getBatchGetLimit(),
+        300);
   }
 
   @Test

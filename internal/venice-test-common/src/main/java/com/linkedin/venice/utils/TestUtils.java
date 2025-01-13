@@ -11,7 +11,6 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.github.luben.zstd.Zstd;
@@ -46,7 +45,12 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
+import com.linkedin.venice.meta.ETLStoreConfig;
+import com.linkedin.venice.meta.ETLStoreConfigImpl;
+import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -58,8 +62,12 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.SystemStoreAttributes;
+import com.linkedin.venice.meta.SystemStoreAttributesImpl;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.meta.ViewConfig;
+import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
@@ -80,6 +88,7 @@ import java.io.File;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.security.Permission;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -89,8 +98,10 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Random;
 import java.util.TreeMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -104,6 +115,7 @@ import java.util.stream.Stream;
 import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.participant.statemachine.StateModel;
@@ -464,7 +476,7 @@ public class TestUtils {
       ControllerClient controllerClient,
       long timeout,
       TimeUnit timeoutUnit) {
-    waitForNonDeterministicAssertion(timeout, timeoutUnit, () -> {
+    waitForNonDeterministicAssertion(timeout, timeoutUnit, true, () -> {
       JobStatusQueryResponse jobStatusQueryResponse =
           assertCommand(controllerClient.queryJobStatus(topicName, Optional.empty()));
       ExecutionStatus executionStatus = ExecutionStatus.valueOf(jobStatusQueryResponse.getStatus());
@@ -491,6 +503,74 @@ public class TestUtils {
     // Set the default timestamp to make sure every creation will return the same Store object.
     store.setLatestVersionPromoteToCurrentTimestamp(-1);
     return store;
+  }
+
+  public static HybridStoreConfig createTestHybridStoreConfig(Random random) {
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
+        random.nextLong(),
+        random.nextLong(),
+        random.nextInt(),
+        DataReplicationPolicy.AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_SOP);
+    hybridStoreConfig.setRealTimeTopicName(Long.toString(random.nextLong()));
+    return hybridStoreConfig;
+  }
+
+  public static Map<String, ViewConfig> createTestViewConfigs(Random random) {
+    Map<String, ViewConfig> viewConfigs = new HashMap<>();
+    viewConfigs.put("vc1", new ViewConfigImpl("vc1", createTestViewParams(random)));
+    viewConfigs.put("vc2", new ViewConfigImpl("vc2", createTestViewParams(random)));
+    viewConfigs.put("vc3", new ViewConfigImpl("vc3", createTestViewParams(random)));
+    return viewConfigs;
+  }
+
+  public static Map<String, String> createTestViewParams(Random random) {
+    Map<String, String> viewParams = new HashMap<>();
+    viewParams.put("k1", Long.toString(random.nextLong()));
+    viewParams.put("k2", Long.toString(random.nextLong()));
+    viewParams.put("k3", Long.toString(random.nextLong()));
+    return viewParams;
+  }
+
+  public static ETLStoreConfig createTestETLStoreConfig() {
+    ETLStoreConfig etlStoreConfig = new ETLStoreConfigImpl();
+    etlStoreConfig.setEtledUserProxyAccount("etled_user_proxy_account");
+    etlStoreConfig.setFutureVersionETLEnabled(true);
+    etlStoreConfig.setRegularVersionETLEnabled(true);
+    return etlStoreConfig;
+  }
+
+  public static PartitionerConfig createTestPartitionerConfig(Random random) {
+    PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
+    partitionerConfig.setPartitionerClass("partitioner_class");
+    partitionerConfig.setPartitionerParams(new HashMap<>());
+    partitionerConfig.setAmplificationFactor(random.nextInt());
+    return partitionerConfig;
+  }
+
+  public static List<Version> createTestVersions(String storeName, Random random) {
+    List<Version> versions = new ArrayList<>();
+    versions.add(new VersionImpl(storeName, 0, Long.toString(random.nextLong())));
+    versions.add(new VersionImpl(storeName, 1, Long.toString(random.nextLong())));
+    versions.add(new VersionImpl(storeName, 2, Long.toString(random.nextLong())));
+    return versions;
+  }
+
+  public static Map<String, SystemStoreAttributes> createTestSystemStores(String storeName, Random random) {
+    Map<String, SystemStoreAttributes> systemStores = new HashMap<>();
+    systemStores.put("ss1", createTestSystemStoreAttributes(storeName, random));
+    systemStores.put("ss2", createTestSystemStoreAttributes(storeName, random));
+    systemStores.put("ss3", createTestSystemStoreAttributes(storeName, random));
+    return systemStores;
+  }
+
+  public static SystemStoreAttributes createTestSystemStoreAttributes(String storeName, Random random) {
+    SystemStoreAttributes systemStoreAttributes = new SystemStoreAttributesImpl();
+    systemStoreAttributes.setCurrentVersion(random.nextInt());
+    systemStoreAttributes.setVersions(createTestVersions(storeName, random));
+    systemStoreAttributes.setLatestVersionPromoteToCurrentTimestamp(random.nextLong());
+    systemStoreAttributes.setLargestUsedVersionNumber(random.nextInt());
+    return systemStoreAttributes;
   }
 
   /**
@@ -653,23 +733,6 @@ public class TestUtils {
     });
   }
 
-  public static void verifyHybridStoreDataReplicationPolicy(
-      String storeName,
-      DataReplicationPolicy dataReplicationPolicy,
-      ControllerClient... controllerClients) {
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-      for (ControllerClient controllerClient: controllerClients) {
-        StoreResponse storeResponse = assertCommand(controllerClient.getStore(storeName));
-        assertNotNull(storeResponse.getStore(), "Store should not be null");
-        assertNotNull(storeResponse.getStore().getHybridStoreConfig(), "Hybrid store config should not be null");
-        assertEquals(
-            storeResponse.getStore().getHybridStoreConfig().getDataReplicationPolicy(),
-            dataReplicationPolicy,
-            "The data replication policy does not match.");
-      }
-    });
-  }
-
   public static StoreIngestionTaskFactory.Builder getStoreIngestionTaskBuilder(String storeName) {
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
     doReturn(false).when(mockVeniceServerConfig).isHybridQuotaEnabled();
@@ -814,7 +877,7 @@ public class TestUtils {
     } else if (pubSubTopicType.equals(PubSubTopicType.VERSION_TOPIC)) {
       return getUniqueString(prefix) + Version.VERSION_SEPARATOR + (version);
     } else if (pubSubTopicType.equals(PubSubTopicType.ADMIN_TOPIC)) {
-      return pubSubTopicType.ADMIN_TOPIC_PREFIX + getUniqueString(prefix);
+      return PubSubTopicType.ADMIN_TOPIC_PREFIX + getUniqueString(prefix);
     } else if (pubSubTopicType.equals(PubSubTopicType.VIEW_TOPIC)) {
       return getUniqueString(prefix) + Version.VERSION_SEPARATOR + (version)
           + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
@@ -872,12 +935,12 @@ public class TestUtils {
   public static List<String> searchForFileExtension(File directory, String fileExtension) {
     List<String> result = new ArrayList<>();
     if (!directory.canRead()) {
-      LOGGER.error("Cannot read directory: ", directory.getAbsolutePath());
+      LOGGER.error("Cannot read directory: {}", directory.getAbsolutePath());
       return result;
     }
     File[] files = directory.listFiles();
     if (files == null) {
-      LOGGER.error("Error reading directory ", directory.getAbsolutePath());
+      LOGGER.error("Error reading directory: {}", directory.getAbsolutePath());
       return result;
     }
     for (File file: files) {
@@ -911,6 +974,17 @@ public class TestUtils {
       FileUtils.deleteDirectory(fileToDelete);
     } catch (IOException e) {
       throw new VeniceException("Could not delete directory: " + fileToDelete, e);
+    }
+  }
+
+  public static String loadFileAsString(String fileName) {
+    try {
+      return IOUtils.toString(
+          Objects.requireNonNull(Thread.currentThread().getContextClassLoader().getResourceAsStream(fileName)),
+          StandardCharsets.UTF_8);
+    } catch (Exception e) {
+      LOGGER.error(e);
+      return null;
     }
   }
 }

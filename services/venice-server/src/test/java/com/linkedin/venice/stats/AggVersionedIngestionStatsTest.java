@@ -64,7 +64,6 @@ public class AggVersionedIngestionStatsTest {
     storeList.add(mockStore);
 
     doReturn(mockStore).when(mockMetaRepository).getStoreOrThrow(any());
-
     doReturn(storeList).when(mockMetaRepository).getAllStores();
 
     // No metrics initially.
@@ -139,7 +138,6 @@ public class AggVersionedIngestionStatsTest {
     storeList.add(mockStore);
 
     doReturn(mockStore).when(mockMetaRepository).getStoreOrThrow(any());
-
     doReturn(storeList).when(mockMetaRepository).getAllStores();
 
     stats.loadAllStats();

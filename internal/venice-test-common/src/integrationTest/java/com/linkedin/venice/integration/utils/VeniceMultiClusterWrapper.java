@@ -231,7 +231,15 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
     return zkServerWrapper;
   }
 
+  /**
+   * @deprecated Use {@link #getPubSubBrokerWrapper()} instead.
+   */
+  @Deprecated
   public PubSubBrokerWrapper getKafkaBrokerWrapper() {
+    return pubSubBrokerWrapper;
+  }
+
+  public PubSubBrokerWrapper getPubSubBrokerWrapper() {
     return pubSubBrokerWrapper;
   }
 

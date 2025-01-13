@@ -137,8 +137,9 @@ Feel free to engage with the community using our:
 - [<img src="assets/icons/github-icon.svg" width="15" />](./dev_guide/how_to/how_to.md) [Contributor's guide](./dev_guide/how_to/how_to.md)
 
 Follow us to hear more about the progress of the Venice project and community:
-- [<img src="assets/icons/hashnode-icon.svg" width="15" />](https://blog.venicedb.org) [Official blog](https://blog.venicedb.org)
+- [<img src="assets/icons/hashnode-icon.svg" width="15" />](https://blog.venicedb.org) [Blog](https://blog.venicedb.org)
+- [<img src="assets/icons/bluesky-icon.svg" width="15" />](https://bsky.app/profile/venicedb.org) [Bluesky handle](https://bsky.app/profile/venicedb.org)
 - [<img src="assets/icons/linkedin-icon.svg" width="15" />](https://www.linkedin.com/company/venicedb) [LinkedIn page](https://www.linkedin.com/company/venicedb)
-- [<img src="assets/icons/x-icon.svg" width="15" />](https://x.com/VeniceDataBase) [X page](https://x.com/VeniceDataBase)
+- [<img src="assets/icons/x-icon.svg" width="15" />](https://x.com/VeniceDataBase) [X handle](https://x.com/VeniceDataBase)
 - [<img src="assets/icons/youtube-icon.svg" width="15" />](https://youtube.com/@venicedb) [YouTube channel](https://youtube.com/@venicedb)
 

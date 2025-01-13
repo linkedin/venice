@@ -249,6 +249,7 @@ public class ServerStoreAclHandlerTest {
         case CURRENT_VERSION:
         case HEALTH:
         case METADATA:
+        case STORE_PROPERTIES:
         case TOPIC_PARTITION_INGESTION_CONTEXT:
         case HOST_HEARTBEAT_LAG:
           verify(spyMockAccessController, never()).hasAccess(any(), any(), any());
@@ -279,6 +280,8 @@ public class ServerStoreAclHandlerTest {
             + ServerAdminAction.DUMP_INGESTION_STATE;
       case METADATA:
         return "/" + QueryAction.METADATA.toString().toLowerCase() + "/" + TEST_STORE_NAME;
+      case STORE_PROPERTIES:
+        return "/" + QueryAction.STORE_PROPERTIES.toString().toLowerCase() + "/" + TEST_STORE_NAME;
       case CURRENT_VERSION:
         return "/" + QueryAction.CURRENT_VERSION.toString().toLowerCase() + "/" + TEST_STORE_NAME;
       case TOPIC_PARTITION_INGESTION_CONTEXT:

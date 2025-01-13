@@ -17,6 +17,7 @@ plugins {
   id 'me.champeau.jmh' version '0.6.7' apply false
   id 'io.github.lhotari.gradle-nar-plugin' version '0.5.1' apply false
   id 'com.google.protobuf' version '0.9.3' apply false
+  id 'org.checkerframework' version '0.6.47' // Checker Framework pluggable type-checking
 }
 
 apply from: "$rootDir/gradle/helper/git.gradle"
@@ -38,7 +39,7 @@ if (project.hasProperty('overrideBuildEnvironment')) {
 }
 
 def avroVersion = '1.10.2'
-def avroUtilVersion = '0.3.21'
+def avroUtilVersion = '0.4.22'
 def grpcVersion = '1.49.2'
 // N.B.: The build should also work when substituting Kafka from the Apache fork to LinkedIn's fork:
 def kafkaGroup = 'org.apache.kafka' // 'com.linkedin.kafka'
@@ -81,6 +82,7 @@ ext.libraries = [
     commonsLang: 'commons-lang:commons-lang:2.6',
     conscrypt: 'org.conscrypt:conscrypt-openjdk-uber:2.5.2',
     d2: "com.linkedin.pegasus:d2:${pegasusVersion}",
+    duckdbJdbc: "org.duckdb:duckdb_jdbc:1.1.3",
     failsafe: 'net.jodah:failsafe:2.4.0',
     fastUtil: 'it.unimi.dsi:fastutil:8.3.0',
     grpcNettyShaded: "io.grpc:grpc-netty-shaded:${grpcVersion}",
@@ -115,6 +117,11 @@ ext.libraries = [
     mapreduceClientJobClient: "org.apache.hadoop:hadoop-mapreduce-client-jobclient:${hadoopVersion}",
     mockito: 'org.mockito:mockito-core:4.11.0',
     netty: 'io.netty:netty-all:4.1.74.Final',
+    opentelemetryApi: "io.opentelemetry:opentelemetry-api:${openTelemetryVersion}",
+    opentelemetrySdk: "io.opentelemetry:opentelemetry-sdk:${openTelemetryVersion}",
+    opentelemetryExporterLogging: "io.opentelemetry:opentelemetry-exporter-logging:${openTelemetryVersion}",
+    opentelemetryExporterOtlp: "io.opentelemetry:opentelemetry-exporter-otlp:${openTelemetryVersion}",
+    opentelemetryExporterCommon: "io.opentelemetry:opentelemetry-exporter-common:${openTelemetryVersion}",
     oss: 'org.sonatype.oss:oss-parent:7',
     pulsarClient: "${pulsarGroup}:pulsar-client:${pulsarVersion}",
     pulsarIoCore: "${pulsarGroup}:pulsar-io-core:${pulsarVersion}",
@@ -141,12 +148,7 @@ ext.libraries = [
     xerces: 'xerces:xercesImpl:2.9.1',
     zkclient: 'com.101tec:zkclient:0.7', // For Kafka AdminUtils
     zookeeper: 'org.apache.zookeeper:zookeeper:3.6.3',
-    zstd: 'com.github.luben:zstd-jni:1.5.2-3',
-    opentelemetryApi: "io.opentelemetry:opentelemetry-api:${openTelemetryVersion}",
-    opentelemetrySdk: "io.opentelemetry:opentelemetry-sdk:${openTelemetryVersion}",
-    opentelemetryExporterLogging: "io.opentelemetry:opentelemetry-exporter-logging:${openTelemetryVersion}",
-    opentelemetryExporterOtlp: "io.opentelemetry:opentelemetry-exporter-otlp:${openTelemetryVersion}",
-    opentelemetryExporterCommon: "io.opentelemetry:opentelemetry-exporter-common:${openTelemetryVersion}"
+    zstd: 'com.github.luben:zstd-jni:1.5.2-3'
 ]
 
 group = 'com.linkedin.venice'
@@ -187,18 +189,25 @@ subprojects {
 
   def isLeafSubModule = project.childProjects.isEmpty()
 
+  // We consider a sub-module to be a "proto module" if it has any proto schemas defined under the right path.
+  def protoDir = new File(project.projectDir, "src/main/proto");
+  def isProtoModule = protoDir != null && protoDir.list() != null && protoDir.list().size() != 0
+
   apply {
     plugin 'idea'
     plugin 'java-library'
+    plugin 'com.form.diff-coverage'
     plugin 'com.github.spotbugs'
     plugin 'org.gradle.test-retry'
+    plugin 'org.checkerframework'
   }
 
   if (isLeafSubModule) {
     apply {
       plugin 'jacoco'
-      plugin 'com.form.diff-coverage'
-      plugin 'com.google.protobuf'
+      if (isProtoModule) {
+        plugin 'com.google.protobuf'
+      }
     }
   }
 
@@ -216,7 +225,7 @@ subprojects {
     //withJavadocJar()
   }
 
-  if (isLeafSubModule) {
+  if (isLeafSubModule && isProtoModule) {
     protobuf {
       protoc {
         artifact = 'com.google.protobuf:protoc:' + protobufVersion
@@ -387,7 +396,6 @@ subprojects {
   def ALPINI_TEST_FILTER = 'com.linkedin.alpini.*'
   def ALPINI_NETTY_TEST_FILTER = 'io.netty.*'
   def ALPINI_UNIT_TEST_TASK_NAME = 'alpiniUnitTest'
-  def ALPINI_FUNCTIONAL_TEST_TASK_NAME = 'alpiniFunctionalTest'
 
   tasks.withType(Test) {
     mustRunAfter tasks.withType(SpotBugsTask)
@@ -419,7 +427,7 @@ subprojects {
       println "jvmArgs=$allJvmArgs"
     }
 
-    if (name != ALPINI_UNIT_TEST_TASK_NAME && name != ALPINI_FUNCTIONAL_TEST_TASK_NAME) {
+    if (name != ALPINI_UNIT_TEST_TASK_NAME) {
       filter {
         excludeTestsMatching ALPINI_TEST_FILTER
         excludeTestsMatching ALPINI_NETTY_TEST_FILTER
@@ -497,10 +505,6 @@ subprojects {
         xml.enabled = true
         html.enabled = true
       }
-
-      doLast {
-        parseJacocoXml("$buildDir/reports/jacoco/test/jacocoTestReport.xml")
-      }
     }
 
     afterEvaluate {
@@ -564,17 +568,6 @@ subprojects {
     }
   }
 
-  task "$ALPINI_FUNCTIONAL_TEST_TASK_NAME"(type: Test) {
-    useTestNG() {
-      includeGroups 'functional'
-    }
-    filter {
-      includeTestsMatching ALPINI_TEST_FILTER
-      includeTestsMatching ALPINI_NETTY_TEST_FILTER
-      failOnNoMatchingTests = false
-    }
-  }
-
   tasks.withType(Jar) {
     zip64 = true
     duplicatesStrategy = DuplicatesStrategy.FAIL
@@ -589,6 +582,13 @@ subprojects {
   // Only publish artifacts for projects that are at the leaf level
   if (isLeafSubModule) {
     publishing.configureArtifactPublishing(project, testJar)
+  }
+}
+
+// 2nd round of subprojects configuration... the 1st round must be fully done for all submodules for this one to work.
+subprojects {
+  task recursiveDiffCoverage {
+    dependsOn subprojects.diffCoverage
   }
 }
 
@@ -830,4 +830,13 @@ task verifyJdkVersion {
 gradle.taskGraph.whenReady {
   // Ensure the JDK version is verified before any other tasks
   verifyJdkVersion
+}
+
+task listSubprojects {
+  doLast {
+    println "Subprojects:"
+    subprojects.each { subproject ->
+      println "${subproject.name}"
+    }
+  }
 }

@@ -15,6 +15,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
 import static org.testng.Assert.assertEquals;
@@ -38,7 +39,6 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
-import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -122,12 +122,23 @@ public class TestActiveActiveReplicationForIncPush {
     multiRegionMultiClusterWrapper.close();
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testAAReplicationForIncPushWithSeparateRT() throws Exception {
+    // TODO: Remove this hack if we solve the test-retry plugin's flakiness with DataProviders
+    testAAReplicationForIncPush(true);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testAAReplicationForIncPush() throws Exception {
+    // TODO: Remove this hack if we solve the test-retry plugin's flakiness with DataProviders
+    testAAReplicationForIncPush(false);
+  }
+
   /**
    * The purpose of this test is to verify that incremental push with RT policy succeeds when A/A is enabled in all
    * regions. And also incremental push can push to the closes kafka cluster from the grid using the SOURCE_GRID_CONFIG.
    */
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testAAReplicationForIncrementalPushToRT(boolean isSeparateRealTimeTopicEnabled) throws Exception {
+  private void testAAReplicationForIncPush(boolean isSeparateRealTimeTopicEnabled) throws Exception {
     File inputDirBatch = getTempDataDirectory();
     File inputDirInc1 = getTempDataDirectory();
     File inputDirInc2 = getTempDataDirectory();
@@ -159,6 +170,9 @@ public class TestActiveActiveReplicationForIncPush {
 
       propsInc1.setProperty(INCREMENTAL_PUSH, "true");
       propsInc1.put(SOURCE_GRID_FABRIC, dcNames[2]);
+      if (isSeparateRealTimeTopicEnabled) {
+        propsInc1.put(PUSH_TO_SEPARATE_REALTIME_TOPIC, "true");
+      }
       TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema2(inputDirInc1);
 
       propsInc2.setProperty(INCREMENTAL_PUSH, "true");
@@ -166,6 +180,8 @@ public class TestActiveActiveReplicationForIncPush {
       TestWriteUtils.writeSimpleAvroFileWithString2StringSchema3(inputDirInc2);
 
       TestUtils.assertCommand(parentControllerClient.createNewStore(storeName, "owner", keySchemaStr, valueSchemaStr));
+
+      StoreInfo storeInfo = TestUtils.assertCommand(parentControllerClient.getStore(storeName)).getStore();
 
       verifyHybridAndIncPushConfig(
           storeName,
@@ -218,7 +234,7 @@ public class TestActiveActiveReplicationForIncPush {
         Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
       }
       if (isSeparateRealTimeTopicEnabled) {
-        verifyForSeparateIncrementalPushTopic(storeName, propsInc1, 2);
+        verifyForSeparateIncrementalPushTopic(storeName, propsInc1, 2, storeInfo);
       } else {
         verifyForRealTimeIncrementalPushTopic(storeName, propsInc1, propsInc2);
       }
@@ -228,7 +244,8 @@ public class TestActiveActiveReplicationForIncPush {
   private void verifyForSeparateIncrementalPushTopic(
       String storeName,
       Properties propsInc1,
-      int dcIndexForSourceRegion) {
+      int dcIndexForSourceRegion,
+      StoreInfo storeInfo) {
     // Prepare TopicManagers
     List<TopicManager> topicManagers = new ArrayList<>();
     for (VeniceMultiClusterWrapper childDataCenter: childDatacenters) {
@@ -249,7 +266,7 @@ public class TestActiveActiveReplicationForIncPush {
         PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeSeparateRealTimeTopic(storeName)),
         0);
     PubSubTopicPartition realTimeTopicPartition =
-        new PubSubTopicPartitionImpl(PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeRealTimeTopic(storeName)), 0);
+        new PubSubTopicPartitionImpl(PUB_SUB_TOPIC_REPOSITORY.getTopic(Utils.getRealTimeTopicName(storeInfo)), 0);
     try (VenicePushJob job = new VenicePushJob("Test push job incremental with NR + A/A from dc-2", propsInc1)) {
       // TODO: Once server part separate topic ingestion logic is ready, we should avoid runAsync here and add extra
       // check

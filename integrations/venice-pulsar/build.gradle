@@ -52,3 +52,10 @@ ext {
   // tested in integration test
   jacocoCoverageThreshold = 0.00
 }
+
+checkerFramework {
+  extraJavacArgs = ['-Xmaxerrs', '256']
+  checkers = ['org.checkerframework.checker.nullness.NullnessChecker']
+  skipCheckerFramework = true
+  excludeTests = true
+}

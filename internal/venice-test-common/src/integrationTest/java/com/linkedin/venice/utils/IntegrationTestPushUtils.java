@@ -25,7 +25,13 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
+import static org.testng.Assert.assertTrue;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.linkedin.davinci.kafka.consumer.ConsumerPoolType;
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.davinci.kafka.consumer.TopicPartitionIngestionInfo;
+import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -35,22 +41,27 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.endToEnd.DaVinciClientDiskFullTest;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
+import com.linkedin.venice.helix.VeniceJsonSerializer;
 import com.linkedin.venice.integration.utils.KafkaTestUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManagerContext;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -72,6 +83,10 @@ import org.testng.Assert;
 
 public class IntegrationTestPushUtils {
   private static final Logger LOGGER = LogManager.getLogger(IntegrationTestPushUtils.class);
+
+  private static final VeniceJsonSerializer<Map<String, Map<String, TopicPartitionIngestionInfo>>> VENICE_JSON_SERIALIZER =
+      new VeniceJsonSerializer<>(new TypeReference<Map<String, Map<String, TopicPartitionIngestionInfo>>>() {
+      });
 
   public static Properties defaultVPJProps(VeniceClusterWrapper veniceCluster, String inputDirPath, String storeName) {
     Map<String, String> childRegionNamesToZkAddress =
@@ -462,5 +477,55 @@ public class IntegrationTestPushUtils {
     veniceWriterProperties
         .putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));
     return TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory);
+  }
+
+  public static void verifyConsumerThreadPoolFor(
+      VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper,
+      String clusterName,
+      PubSubTopic versionTopic,
+      PubSubTopicPartition pubSubTopicPartition,
+      ConsumerPoolType consumerPoolType,
+      int expectedSourceRegionNumOnServer,
+      int expectedReplicaNumPerRegion) {
+    for (VeniceMultiClusterWrapper veniceMultiClusterWrapper: multiRegionMultiClusterWrapper.getChildRegions()) {
+      int replicaPerRegionCount = 0;
+      for (VeniceServerWrapper serverWrapper: veniceMultiClusterWrapper.getClusters()
+          .get(clusterName)
+          .getVeniceServers()) {
+        KafkaStoreIngestionService kafkaStoreIngestionService =
+            serverWrapper.getVeniceServer().getKafkaStoreIngestionService();
+        ReplicaIngestionResponse replicaIngestionResponse =
+            kafkaStoreIngestionService.getTopicPartitionIngestionContext(
+                versionTopic.getName(),
+                pubSubTopicPartition.getTopicName(),
+                pubSubTopicPartition.getPartitionNumber());
+        try {
+          Map<String, Map<String, TopicPartitionIngestionInfo>> topicPartitionIngestionContexts =
+              VENICE_JSON_SERIALIZER.deserialize(replicaIngestionResponse.getPayload(), "");
+          if (!topicPartitionIngestionContexts.isEmpty()) {
+            int regionCount = 0;
+            for (Map.Entry<String, Map<String, TopicPartitionIngestionInfo>> entry: topicPartitionIngestionContexts
+                .entrySet()) {
+              Map<String, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap = entry.getValue();
+              for (Map.Entry<String, TopicPartitionIngestionInfo> topicPartitionIngestionInfoEntry: topicPartitionIngestionInfoMap
+                  .entrySet()) {
+                String topicPartitionStr = topicPartitionIngestionInfoEntry.getKey();
+                if (pubSubTopicPartition.toString().equals(topicPartitionStr)) {
+                  TopicPartitionIngestionInfo topicPartitionIngestionInfo = topicPartitionIngestionInfoEntry.getValue();
+                  assertTrue(topicPartitionIngestionInfo.getConsumerIdStr().contains(consumerPoolType.getStatSuffix()));
+                  regionCount += 1;
+                }
+              }
+            }
+            // To ensure exactly one consumer from specific pool is allocated for each region.
+            Assert.assertEquals(regionCount, expectedSourceRegionNumOnServer);
+            replicaPerRegionCount += 1;
+          }
+        } catch (IOException e) {
+          throw new VeniceException("Got IO Exception during consumer pool check.", e);
+        }
+      }
+      Assert.assertEquals(replicaPerRegionCount, expectedReplicaNumPerRegion);
+    }
   }
 }

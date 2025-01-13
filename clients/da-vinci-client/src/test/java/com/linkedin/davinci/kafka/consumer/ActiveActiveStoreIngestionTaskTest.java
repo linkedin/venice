@@ -227,8 +227,6 @@ public class ActiveActiveStoreIngestionTaskTest {
         100L,
         DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
-    Version mockVersion = new VersionImpl(STORE_NAME, 1, PUSH_JOB_ID);
-    mockVersion.setHybridStoreConfig(hybridStoreConfig);
 
     StorageService storageService = mock(StorageService.class);
     Store store = new ZKStore(
@@ -241,6 +239,8 @@ public class ActiveActiveStoreIngestionTaskTest {
         OfflinePushStrategy.WAIT_ALL_REPLICAS,
         1);
     store.setHybridStoreConfig(hybridStoreConfig);
+    Version mockVersion = new VersionImpl(STORE_NAME, 1, PUSH_JOB_ID);
+    mockVersion.setHybridStoreConfig(hybridStoreConfig);
     store.setVersions(Collections.singletonList(mockVersion));
 
     Properties kafkaConsumerProperties = new Properties();
@@ -249,6 +249,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     kafkaConsumerProperties.put(ZOOKEEPER_ADDRESS, BOOTSTRAP_SERVER);
     VeniceStoreVersionConfig storeVersionConfig =
         new VeniceStoreVersionConfig(STORE_NAME + "_v1", new VeniceProperties(kafkaConsumerProperties));
+    int port = 123;
     ActiveActiveStoreIngestionTask ingestionTask = new ActiveActiveStoreIngestionTask(
         storageService,
         builder,
@@ -260,6 +261,7 @@ public class ActiveActiveStoreIngestionTaskTest {
         1,
         false,
         Optional.empty(),
+        null,
         null);
 
     PartitionConsumptionState badPartitionConsumptionState = mock(PartitionConsumptionState.class);
@@ -727,15 +729,16 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(serverConfig.getConsumerPoolStrategyType())
         .thenReturn(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION);
     when(serverConfig.getConsumerPoolSizeForCurrentVersionAAWCLeader()).thenReturn(10);
+    when(serverConfig.getConsumerPoolSizeForCurrentVersionSepRTLeader()).thenReturn(10);
     when(serverConfig.getConsumerPoolSizeForNonCurrentVersionAAWCLeader()).thenReturn(20);
     when(serverConfig.getConsumerPoolSizeForCurrentVersionNonAAWCLeader()).thenReturn(30);
     when(serverConfig.getConsumerPoolSizeForNonCurrentVersionNonAAWCLeader()).thenReturn(40);
-    assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 1000), 91);
+    assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 1000), 121);
 
     // Test with parallel compute is enabled
     when(serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize()).thenReturn(8);
     when(serverConfig.isAAWCWorkloadParallelProcessingEnabled()).thenReturn(true);
-    assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 1000), 721);
+    assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 1000), 961);
   }
 
   @Test

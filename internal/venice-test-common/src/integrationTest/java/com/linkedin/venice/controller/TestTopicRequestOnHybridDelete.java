@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.meta.Version.composeRealTimeTopic;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.makeStoreHybrid;
@@ -19,6 +18,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -67,6 +67,7 @@ public class TestTopicRequestOnHybridDelete {
 
       String storeName = Utils.getUniqueString("hybrid-store");
       venice.getNewStore(storeName);
+      StoreInfo storeInfo = TestUtils.assertCommand(finalControllerClient.getStore(storeName)).getStore();
       makeStoreHybrid(venice, storeName, 100L, 5L);
       controllerClient.emptyPush(storeName, Utils.getUniqueString("push-id"), 1L);
 
@@ -113,7 +114,8 @@ public class TestTopicRequestOnHybridDelete {
 
       TopicManager topicManager = venice.getLeaderVeniceController().getVeniceAdmin().getTopicManager();
       try {
-        topicManager.ensureTopicIsDeletedAndBlock(pubSubTopicRepository.getTopic(composeRealTimeTopic(storeName)));
+        topicManager
+            .ensureTopicIsDeletedAndBlock(pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(storeInfo)));
       } catch (VeniceException e) {
         fail("Exception during topic deletion " + e);
       }

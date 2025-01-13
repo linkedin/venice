@@ -29,20 +29,15 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJ
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
-import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 
@@ -89,7 +84,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
 import com.linkedin.venice.status.PushJobDetailsStatus;
@@ -105,9 +99,6 @@ import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.writer.VeniceWriter;
-import com.linkedin.venice.writer.VeniceWriterFactory;
-import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
@@ -118,7 +109,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -481,6 +471,7 @@ public class TestPushJobWithNativeReplication {
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1)
             .setHybridOffsetLagThreshold(TEST_TIMEOUT)
             .setHybridRewindSeconds(2L)
+            .setActiveActiveReplicationEnabled(true)
             .setIncrementalPushEnabled(true),
         100,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
@@ -508,8 +499,7 @@ public class TestPushJobWithNativeReplication {
     int partitionCount = 2;
     motherOfAllTests(
         "testActiveActiveForHeartbeatSystemStores",
-        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(partitionCount)
-            .setIncrementalPushEnabled(true),
+        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(partitionCount),
         recordCount,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
           try (
@@ -572,93 +562,6 @@ public class TestPushJobWithNativeReplication {
               }
             }
           });
-        });
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testMultiDataCenterRePushWithIncrementalPush() throws Exception {
-    motherOfAllTests(
-        "testMultiDataCenterRePushWithIncrementalPush",
-        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
-        100,
-        (parentControllerClient, clusterName, storeName, props, inputDir) -> {
-          try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
-            job.run();
-
-            // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
-            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
-          }
-          VeniceWriter<String, String, byte[]> incPushToRTWriter = null;
-          try {
-            assertFalse(
-                parentControllerClient
-                    .updateStore(
-                        storeName,
-                        new UpdateStoreQueryParams().setIncrementalPushEnabled(true)
-                            .setHybridOffsetLagThreshold(1)
-                            .setHybridRewindSeconds(Time.SECONDS_PER_DAY))
-                    .isError());
-
-            // Update the store to L/F hybrid and enable INCREMENTAL_PUSH_SAME_AS_REAL_TIME.
-            props.setProperty(SOURCE_KAFKA, "true");
-            props.setProperty(
-                KAFKA_INPUT_BROKER_URL,
-                multiRegionMultiClusterWrapper.getParentKafkaBrokerWrapper().getAddress());
-            props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
-            props.setProperty(VeniceWriter.ENABLE_CHUNKING, "false");
-            props.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 1));
-
-            try (VenicePushJob rePushJob = new VenicePushJob("Test re-push job re-push", props)) {
-              rePushJob.run();
-            }
-            String incPushToRTVersion = System.currentTimeMillis() + "_test_inc_push_to_rt";
-            VeniceControllerWrapper parentController =
-                parentControllers.stream().filter(c -> c.isLeaderController(clusterName)).findAny().get();
-            incPushToRTWriter = startIncrementalPush(
-                parentControllerClient,
-                storeName,
-                parentController.getVeniceAdmin().getVeniceWriterFactory(),
-                incPushToRTVersion);
-            final String newVersionTopic = Version.composeKafkaTopic(
-                storeName,
-                parentControllerClient.getStore(storeName).getStore().getLargestUsedVersionNumber());
-            // Incremental push shouldn't be blocked and we will complete it once the new re-push is started.
-            String incValuePrefix = "inc_test_";
-            int newRePushVersion = Version.parseVersionFromKafkaTopicName(newVersionTopic) + 1;
-            VeniceWriter<String, String, byte[]> finalIncPushToRTWriter = incPushToRTWriter;
-            CompletableFuture.runAsync(() -> {
-              TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-                Assert.assertEquals(
-                    parentControllerClient.getStore(storeName).getStore().getLargestUsedVersionNumber(),
-                    newRePushVersion);
-              });
-              for (int i = 1; i <= 10; i++) {
-                finalIncPushToRTWriter.put(Integer.toString(i), incValuePrefix + i, 1);
-              }
-              finalIncPushToRTWriter.broadcastEndOfIncrementalPush(incPushToRTVersion, new HashMap<>());
-            });
-            // The re-push should complete and contain all the incremental push to RT data.
-            props.setProperty(KAFKA_INPUT_TOPIC, newVersionTopic);
-            try (VenicePushJob rePushJob = new VenicePushJob("Test re-push job re-push", props)) {
-              rePushJob.run();
-            }
-            // Rewind should be overwritten.
-            Optional<Version> latestVersion =
-                parentControllerClient.getStore(storeName).getStore().getVersion(newRePushVersion);
-            Assert.assertTrue(latestVersion.isPresent());
-            Assert.assertEquals(
-                latestVersion.get().getHybridStoreConfig().getRewindTimeInSeconds(),
-                DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE);
-            for (int dataCenterIndex = 0; dataCenterIndex < NUMBER_OF_CHILD_DATACENTERS; dataCenterIndex++) {
-              String routerUrl =
-                  childDatacenters.get(dataCenterIndex).getClusters().get(clusterName).getRandomRouterURL();
-              verifyVeniceStoreData(storeName, routerUrl, incValuePrefix, 10);
-            }
-          } finally {
-            if (incPushToRTWriter != null) {
-              incPushToRTWriter.close();
-            }
-          }
         });
   }
 
@@ -866,6 +769,52 @@ public class TestPushJobWithNativeReplication {
         });
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testTargetRegionPushWithDeferredVersionSwap() throws Exception {
+    motherOfAllTests(
+        "testTargetRegionPushWithDeferredVersionSwap",
+        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
+        100,
+        (parentControllerClient, clusterName, storeName, props, inputDir) -> {
+          // start a regular push job
+          try (VenicePushJob job = new VenicePushJob("Test regular push job", props)) {
+            job.run();
+
+            // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
+            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+              // Current version should become 1 all data centers
+              for (int version: parentControllerClient.getStore(storeName)
+                  .getStore()
+                  .getColoToCurrentVersions()
+                  .values()) {
+                Assert.assertEquals(version, 1);
+              }
+            });
+          }
+
+          // start target version push with deferred swap
+          props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+          try (VenicePushJob job = new VenicePushJob("Test target region push w. deferred version swap", props)) {
+            job.run();
+
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+              Map<String, Integer> coloVersions =
+                  parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
+
+              coloVersions.forEach((colo, version) -> {
+                if (colo.equals(DEFAULT_NATIVE_REPLICATION_SOURCE)) {
+                  Assert.assertEquals((int) version, 2); // Version should only be swapped in dc-0
+                } else {
+                  Assert.assertEquals((int) version, 1); // The remaining regions shouldn't be swapped
+                }
+              });
+            });
+          }
+        });
+  }
+
   private interface NativeReplicationTest {
     void run(
         ControllerClient parentControllerClient,
@@ -1003,47 +952,4 @@ public class TestPushJobWithNativeReplication {
         storeResponse.getStore().getCurrentVersion() > 0,
         systemStoreName + " is not ready for DC-" + dcNumber);
   }
-
-  private VeniceWriter<String, String, byte[]> startIncrementalPush(
-      ControllerClient controllerClient,
-      String storeName,
-      VeniceWriterFactory veniceWriterFactory,
-      String incrementalPushVersion) {
-    VersionCreationResponse response = controllerClient.requestTopicForWrites(
-        storeName,
-        1024,
-        Version.PushType.INCREMENTAL,
-        "test-incremental-push",
-        true,
-        true,
-        false,
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        false,
-        -1);
-    assertFalse(response.isError());
-    Assert.assertNotNull(response.getKafkaTopic());
-    VeniceWriter veniceWriter = veniceWriterFactory.createVeniceWriter(
-        new VeniceWriterOptions.Builder(response.getKafkaTopic())
-            .setKeySerializer(new VeniceAvroKafkaSerializer(STRING_SCHEMA.toString()))
-            .setValueSerializer(new VeniceAvroKafkaSerializer(STRING_SCHEMA.toString()))
-            .build());
-    veniceWriter.broadcastStartOfIncrementalPush(incrementalPushVersion, new HashMap<>());
-    return veniceWriter;
-  }
-
-  private void verifyVeniceStoreData(String storeName, String routerUrl, String valuePrefix, int keyCount)
-      throws ExecutionException, InterruptedException {
-    try (AvroGenericStoreClient<String, Object> client = ClientFactory
-        .getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
-      for (int i = 1; i <= keyCount; ++i) {
-        String expected = valuePrefix + i;
-        Object actual = client.get(Integer.toString(i)).get(); /* client.get().get() returns a Utf8 object */
-        Assert.assertNotNull(actual, "Unexpected null value for key: " + i);
-        Assert.assertEquals(actual.toString(), expected);
-      }
-    }
-  }
-
 }

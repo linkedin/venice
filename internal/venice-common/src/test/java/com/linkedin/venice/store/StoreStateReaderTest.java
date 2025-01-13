@@ -67,8 +67,6 @@ public class StoreStateReaderTest {
   private ZKStore getStore() {
     int partitionCount = 10;
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
-    Version version = new VersionImpl(storeName, 1, "test-job-id");
-    version.setPartitionCount(partitionCount);
 
     HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
         1000,
@@ -92,6 +90,8 @@ public class StoreStateReaderTest {
         partitionerConfig,
         3);
     store.setPartitionCount(partitionCount);
+    Version version = new VersionImpl(storeName, 1, "test-job-id");
+    version.setPartitionCount(partitionCount);
     store.setVersions(Collections.singletonList(version));
 
     return store;

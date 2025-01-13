@@ -68,6 +68,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.EmptyHttpHeaders;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -1276,6 +1277,7 @@ public class TestMetaDataHandler {
 
     Mockito.doReturn(1).when(store).getCurrentVersion();
     Mockito.doReturn(currentVersion).when(store).getVersion(1);
+    Mockito.doReturn(storeName).when(store).getName();
 
     Mockito.doReturn(store).when(storeRepository).getStore(storeName);
     FullHttpResponse response = passRequestToMetadataHandler(
@@ -1291,7 +1293,7 @@ public class TestMetaDataHandler {
         OBJECT_MAPPER.readValue(response.content().array(), VersionCreationResponse.class);
     Assert.assertEquals(versionCreationResponse.getName(), storeName);
     Assert.assertEquals(versionCreationResponse.getCluster(), clusterName);
-    Assert.assertEquals(versionCreationResponse.getKafkaTopic(), Version.composeRealTimeTopic(storeName));
+    Assert.assertEquals(versionCreationResponse.getKafkaTopic(), Utils.getRealTimeTopicName(store));
     Assert.assertEquals(versionCreationResponse.getKafkaBootstrapServers(), KAFKA_BOOTSTRAP_SERVERS);
     Assert.assertEquals(versionCreationResponse.getAmplificationFactor(), 1);
     Assert.assertEquals(versionCreationResponse.getPartitions(), 10);
@@ -1329,6 +1331,7 @@ public class TestMetaDataHandler {
 
     Mockito.doReturn(1).when(store).getCurrentVersion();
     Mockito.doReturn(currentVersion).when(store).getVersion(1);
+    Mockito.doReturn(storeName).when(store).getName();
 
     Mockito.doReturn(store).when(storeRepository).getStore(storeName);
     FullHttpResponse response = passRequestToMetadataHandler(
@@ -1344,7 +1347,7 @@ public class TestMetaDataHandler {
         OBJECT_MAPPER.readValue(response.content().array(), VersionCreationResponse.class);
     Assert.assertEquals(versionCreationResponse.getName(), storeName);
     Assert.assertEquals(versionCreationResponse.getCluster(), clusterName);
-    Assert.assertEquals(versionCreationResponse.getKafkaTopic(), Version.composeRealTimeTopic(storeName));
+    Assert.assertEquals(versionCreationResponse.getKafkaTopic(), Utils.getRealTimeTopicName(store));
     Assert.assertEquals(versionCreationResponse.getKafkaBootstrapServers(), KAFKA_BOOTSTRAP_SERVERS);
     Assert.assertEquals(versionCreationResponse.getAmplificationFactor(), 1);
     Assert.assertEquals(versionCreationResponse.getPartitions(), 10);
@@ -1384,6 +1387,7 @@ public class TestMetaDataHandler {
 
     Mockito.doReturn(1).when(store).getCurrentVersion();
     Mockito.doReturn(currentVersion).when(store).getVersion(1);
+    Mockito.doReturn(storeName).when(store).getName();
 
     Mockito.doReturn(store).when(storeRepository).getStore(storeName);
     FullHttpResponse response = passRequestToMetadataHandler(
@@ -1400,7 +1404,7 @@ public class TestMetaDataHandler {
         OBJECT_MAPPER.readValue(response.content().array(), VersionCreationResponse.class);
     Assert.assertEquals(versionCreationResponse.getName(), storeName);
     Assert.assertEquals(versionCreationResponse.getCluster(), clusterName);
-    Assert.assertEquals(versionCreationResponse.getKafkaTopic(), Version.composeRealTimeTopic(storeName));
+    Assert.assertEquals(versionCreationResponse.getKafkaTopic(), Utils.getRealTimeTopicName(store));
     Assert.assertEquals(versionCreationResponse.getKafkaBootstrapServers(), KAFKA_BOOTSTRAP_SERVERS);
     Assert.assertEquals(versionCreationResponse.getAmplificationFactor(), 1);
     Assert.assertEquals(versionCreationResponse.getPartitions(), 10);

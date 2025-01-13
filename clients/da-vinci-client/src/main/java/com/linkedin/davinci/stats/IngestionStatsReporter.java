@@ -43,6 +43,7 @@ import static com.linkedin.venice.stats.StatsErrorCode.NULL_INGESTION_STATS;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.utils.RegionUtils;
+import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
@@ -344,6 +345,11 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
           .getServerConfig()
           .getKafkaClusterIdToAliasMap()
           .int2ObjectEntrySet()) {
+        // We will only register sensor for SIT with separate RT topic enabled to avoid unnecessary metrics.
+        if (!getStats().getIngestionTask().isSeparatedRealtimeTopicEnabled()
+            && Utils.isSeparateTopicRegion(entry.getValue())) {
+          continue;
+        }
         int regionId = entry.getIntKey();
         String regionNamePrefix = RegionUtils.getRegionSpecificMetricPrefix(
             getStats().getIngestionTask().getServerConfig().getRegionName(),

@@ -17,6 +17,7 @@ import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -43,6 +44,8 @@ public class DefaultIngestionBackendTest {
   private KafkaStoreIngestionService storeIngestionService;
   @Mock
   private StorageService storageService;
+  @Mock
+  private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
   @Mock
   private BlobTransferManager blobTransferManager;
   @Mock
@@ -89,6 +92,8 @@ public class DefaultIngestionBackendTest {
     when(storageMetadataService.getLastOffset(Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER), PARTITION))
         .thenReturn(offsetRecord);
 
+    when(blobTransferManager.getAggVersionedBlobTransferStats()).thenReturn(aggVersionedBlobTransferStats);
+
     // Create the DefaultIngestionBackend instance with mocked dependencies
     ingestionBackend = new DefaultIngestionBackend(
         storageMetadataService,
@@ -98,17 +103,20 @@ public class DefaultIngestionBackendTest {
         veniceServerConfig);
   }
 
-  // verify that blobTransferManager was called given it is a hybrid & blob enabled
+  // verify that blobTransferManager was called given it is blob enabled
   @Test
   public void testStartConsumptionWithBlobTransfer() {
     when(store.isBlobTransferEnabled()).thenReturn(true);
-    when(store.isHybrid()).thenReturn(false);
+    when(store.isHybrid()).thenReturn(true);
     when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION)))
         .thenReturn(CompletableFuture.completedFuture(null));
     when(veniceServerConfig.getRocksDBPath()).thenReturn(BASE_DIR);
 
     ingestionBackend.startConsumption(storeConfig, PARTITION);
     verify(blobTransferManager).get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION));
+    verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
+    verify(aggVersionedBlobTransferStats)
+        .recordBlobTransferResponsesBasedOnBoostrapStatus(eq(STORE_NAME), eq(VERSION_NUMBER), eq(true));
   }
 
   @Test
@@ -122,6 +130,9 @@ public class DefaultIngestionBackendTest {
     CompletableFuture<Void> future =
         ingestionBackend.bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, 100L).toCompletableFuture();
     assertTrue(future.isDone());
+    verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
+    verify(aggVersionedBlobTransferStats)
+        .recordBlobTransferResponsesBasedOnBoostrapStatus(eq(STORE_NAME), eq(VERSION_NUMBER), eq(false));
   }
 
   @Test
@@ -141,6 +152,9 @@ public class DefaultIngestionBackendTest {
         ingestionBackend.bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, laggingThreshold).toCompletableFuture();
     assertTrue(result.isDone());
     verify(blobTransferManager, never()).get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION));
+    verify(aggVersionedBlobTransferStats, never()).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
+    verify(aggVersionedBlobTransferStats, never())
+        .recordBlobTransferResponsesBasedOnBoostrapStatus(eq(STORE_NAME), eq(VERSION_NUMBER), eq(false));
   }
 
   @Test

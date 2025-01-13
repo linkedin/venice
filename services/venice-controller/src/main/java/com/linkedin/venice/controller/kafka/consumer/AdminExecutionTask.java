@@ -500,7 +500,13 @@ public class AdminExecutionTask implements Callable<Void> {
         .setBlobTransferEnabled(message.blobTransferEnabled)
         .setUnusedSchemaDeletionEnabled(message.unusedSchemaDeletionEnabled)
         .setNearlineProducerCompressionEnabled(message.nearlineProducerCompressionEnabled)
-        .setNearlineProducerCountPerWriter(message.nearlineProducerCountPerWriter);
+        .setNearlineProducerCountPerWriter(message.nearlineProducerCountPerWriter)
+        .setTargetRegionSwapWaitTime(message.targetSwapRegionWaitTime)
+        .setIsDavinciHeartbeatReported(message.isDaVinciHeartBeatReported);
+
+    if (message.targetSwapRegion != null) {
+      params.setTargetRegionSwap(message.getTargetSwapRegion().toString());
+    }
 
     if (message.ETLStoreConfig != null) {
       params.setRegularVersionETLEnabled(message.ETLStoreConfig.regularVersionETLEnabled)
@@ -642,6 +648,7 @@ public class AdminExecutionTask implements Callable<Void> {
         storeName,
         clusterName,
         versionNumber);
+
     if (isParentController) {
       if (checkPreConditionForReplicateAddVersion(clusterName, storeName)) {
         // Parent controller mirrors new version to src or dest cluster if the store is migrating
@@ -659,7 +666,9 @@ public class AdminExecutionTask implements Callable<Void> {
     } else {
       boolean skipConsumption = message.targetedRegions != null && !message.targetedRegions.isEmpty()
           && message.targetedRegions.stream().map(Object::toString).noneMatch(regionName::equals);
-      if (skipConsumption) {
+      boolean isTargetRegionPushWithDeferredSwap = message.targetedRegions != null && message.versionSwapDeferred;
+      String targetedRegions = message.targetedRegions != null ? String.join(",", message.targetedRegions) : "";
+      if (skipConsumption && !isTargetRegionPushWithDeferredSwap) {
         // for targeted region push, only allow specified region to process add version message
         LOGGER.info(
             "Skip the add version message for store {} in region {} since this is targeted region push and "
@@ -680,6 +689,7 @@ public class AdminExecutionTask implements Callable<Void> {
             rewindTimeInSecondsOverride,
             replicationMetadataVersionId,
             message.versionSwapDeferred,
+            targetedRegions,
             repushSourceVersion);
       }
     }

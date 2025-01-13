@@ -2,6 +2,7 @@ package com.linkedin.venice.router.api.routing.helix;
 
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.router.stats.HelixGroupStats;
 import com.linkedin.venice.utils.Pair;
 import java.util.HashMap;
 import java.util.Map;
@@ -24,18 +25,18 @@ public class HelixGroupLeastLoadedStrategy implements HelixGroupSelectionStrateg
 
   public static final int MAX_ALLOWED_GROUP = 100;
   private final int[] counters = new int[MAX_ALLOWED_GROUP];
-  /**
-   * The group count could potentially change during the runtime since the storage node cluster can be expanded
-   * without bouncing Routers.
-   */
-  private int currentGroupCount = 0;
   private final TimeoutProcessor timeoutProcessor;
   private final long timeoutInMS;
   private final Map<Long, Pair<Integer, TimeoutProcessor.TimeoutFuture>> requestTimeoutFutureMap = new HashMap<>();
+  private final HelixGroupStats helixGroupStats;
 
-  public HelixGroupLeastLoadedStrategy(TimeoutProcessor timeoutProcessor, long timeoutInMS) {
+  public HelixGroupLeastLoadedStrategy(
+      TimeoutProcessor timeoutProcessor,
+      long timeoutInMS,
+      HelixGroupStats helixGroupStats) {
     this.timeoutProcessor = timeoutProcessor;
     this.timeoutInMS = timeoutInMS;
+    this.helixGroupStats = helixGroupStats;
   }
 
   @Override
@@ -44,8 +45,8 @@ public class HelixGroupLeastLoadedStrategy implements HelixGroupSelectionStrateg
       throw new VeniceException(
           "The valid group num must fail into this range: [1, " + MAX_ALLOWED_GROUP + "], but received: " + groupCount);
     }
-    this.currentGroupCount = groupCount;
-    long smallestCounter = Integer.MAX_VALUE;
+    int smallestCounter = Integer.MAX_VALUE;
+    double lowestAvgLatency = Double.MAX_VALUE;
     int leastLoadedGroup = 0;
     int startGroupId = (int) (requestId % groupCount);
     /**
@@ -60,10 +61,21 @@ public class HelixGroupLeastLoadedStrategy implements HelixGroupSelectionStrateg
       }
       for (int i = 0; i < groupCount; ++i) {
         int currentGroup = (i + startGroupId) % groupCount;
-        long currentGroupCounter = counters[currentGroup];
+        int currentGroupCounter = counters[currentGroup];
         if (currentGroupCounter < smallestCounter) {
           smallestCounter = currentGroupCounter;
           leastLoadedGroup = currentGroup;
+          lowestAvgLatency = helixGroupStats.getGroupResponseWaitingTimeAvg(currentGroup);
+        } else if (currentGroupCounter == smallestCounter) {
+          double currentGroupAvgLatency = helixGroupStats.getGroupResponseWaitingTimeAvg(currentGroup);
+          /**
+           * Here we don't check whether {@link #currentGroupAvgLatency} is less than 0 or not, as when the group is not
+           * being used at all, the average latency will be -1.0.
+           */
+          if (currentGroupAvgLatency < lowestAvgLatency) {
+            lowestAvgLatency = currentGroupAvgLatency;
+            leastLoadedGroup = currentGroup;
+          }
         }
       }
       final int finalLeastLoadedGroup = leastLoadedGroup;
@@ -82,6 +94,7 @@ public class HelixGroupLeastLoadedStrategy implements HelixGroupSelectionStrateg
 
       ++counters[leastLoadedGroup];
     }
+    helixGroupStats.recordGroupPendingRequest(leastLoadedGroup, counters[leastLoadedGroup]);
 
     return leastLoadedGroup;
   }
@@ -99,6 +112,10 @@ public class HelixGroupLeastLoadedStrategy implements HelixGroupSelectionStrateg
       throw new VeniceException(
           "The allowed group id must fail into this range: [0, " + (MAX_ALLOWED_GROUP - 1) + "], but received: "
               + groupId);
+    }
+    if (!cancelTimeoutFuture) {
+      // Timeout request
+      helixGroupStats.recordGroupResponseWaitingTime(groupId, timeoutInMS);
     }
     synchronized (this) {
       Pair<Integer, TimeoutProcessor.TimeoutFuture> timeoutFuturePair = requestTimeoutFutureMap.get(requestId);
@@ -133,47 +150,8 @@ public class HelixGroupLeastLoadedStrategy implements HelixGroupSelectionStrateg
   }
 
   @Override
-  public void finishRequest(long requestId, int groupId) {
+  public void finishRequest(long requestId, int groupId, double latency) {
     timeoutRequest(requestId, groupId, true);
-  }
-
-  @Override
-  public int getMaxGroupPendingRequest() {
-    if (currentGroupCount == 0) {
-      return 0;
-    }
-    int maxPendingRequest = 0;
-    for (int i = 0; i < currentGroupCount; ++i) {
-      if (counters[i] > maxPendingRequest) {
-        maxPendingRequest = counters[i];
-      }
-    }
-    return maxPendingRequest;
-  }
-
-  @Override
-  public int getMinGroupPendingRequest() {
-    if (currentGroupCount == 0) {
-      return 0;
-    }
-    int minPendingRequest = Integer.MAX_VALUE;
-    for (int i = 0; i < currentGroupCount; ++i) {
-      if (counters[i] < minPendingRequest) {
-        minPendingRequest = counters[i];
-      }
-    }
-    return minPendingRequest;
-  }
-
-  @Override
-  public int getAvgGroupPendingRequest() {
-    if (currentGroupCount == 0) {
-      return 0;
-    }
-    int totalPendingRequest = 0;
-    for (int i = 0; i < currentGroupCount; ++i) {
-      totalPendingRequest += counters[i];
-    }
-    return totalPendingRequest / currentGroupCount;
+    helixGroupStats.recordGroupResponseWaitingTime(groupId, latency);
   }
 }

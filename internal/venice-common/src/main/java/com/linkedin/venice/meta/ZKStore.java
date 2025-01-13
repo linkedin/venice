@@ -93,7 +93,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
       HybridStoreConfig hybridStoreConfig,
       PartitionerConfig partitionerConfig,
       int replicationFactor) {
-    if (!Store.isValidStoreName(name)) {
+    if (!StoreName.isValidStoreName(name)) {
       throw new VeniceException("Invalid store name: " + name);
     }
 
@@ -151,7 +151,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   }
 
   public ZKStore(StoreProperties storeProperties) {
-    if (!Store.isValidStoreName(storeProperties.name.toString())) {
+    if (!StoreName.isValidStoreName(storeProperties.name.toString())) {
       throw new VeniceException("Invalid store name: " + storeProperties.name.toString());
     }
     this.storeProperties = storeProperties;
@@ -230,6 +230,9 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setBlobTransferEnabled(store.isBlobTransferEnabled());
     setNearlineProducerCompressionEnabled(store.isNearlineProducerCompressionEnabled());
     setNearlineProducerCountPerWriter(store.getNearlineProducerCountPerWriter());
+    setTargetSwapRegion(store.getTargetSwapRegion());
+    setTargetSwapRegionWaitTime(store.getTargetSwapRegionWaitTime());
+    setIsDavinciHeartbeatReported(store.getIsDavinciHeartbeatReported());
 
     for (Version storeVersion: store.getVersions()) {
       forceAddVersion(storeVersion.cloneVersion(), true);
@@ -923,6 +926,36 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setNearlineProducerCountPerWriter(int producerCnt) {
     this.storeProperties.nearlineProducerCountPerWriter = producerCnt;
+  }
+
+  @Override
+  public int getTargetSwapRegionWaitTime() {
+    return this.storeProperties.targetSwapRegionWaitTime;
+  }
+
+  @Override
+  public String getTargetSwapRegion() {
+    return this.storeProperties.targetSwapRegion.toString();
+  }
+
+  @Override
+  public void setTargetSwapRegion(String targetRegion) {
+    this.storeProperties.targetSwapRegion = targetRegion;
+  }
+
+  @Override
+  public void setTargetSwapRegionWaitTime(int waitTime) {
+    this.storeProperties.targetSwapRegionWaitTime = waitTime;
+  }
+
+  @Override
+  public void setIsDavinciHeartbeatReported(boolean isReported) {
+    this.storeProperties.isDaVinciHeartBeatReported = isReported;
+  }
+
+  @Override
+  public boolean getIsDavinciHeartbeatReported() {
+    return this.storeProperties.isDaVinciHeartBeatReported;
   }
 
   /**

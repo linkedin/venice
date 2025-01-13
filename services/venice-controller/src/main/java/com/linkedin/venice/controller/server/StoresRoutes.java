@@ -109,11 +109,15 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.http.HttpStatus;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import spark.Request;
 import spark.Route;
 
 
 public class StoresRoutes extends AbstractRoute {
+  private static final Logger LOGGER = LogManager.getLogger(StoresRoutes.class);
+
   private final PubSubTopicRepository pubSubTopicRepository;
 
   public StoresRoutes(
@@ -857,7 +861,15 @@ public class StoresRoutes extends AbstractRoute {
           List<String> deletableTopicsList = new ArrayList<>();
           int minNumberOfUnusedKafkaTopicsToPreserve = admin.getMinNumberOfUnusedKafkaTopicsToPreserve();
           allStoreTopics.forEach((storeName, topicsWithRetention) -> {
-            PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
+            String cluster;
+            try {
+              cluster = admin.discoverCluster(storeName).getFirst();
+            } catch (VeniceNoStoreException e) {
+              LOGGER.warn("Store " + storeName + " does not exist. Skipping it.");
+              return;
+            }
+            Store store = admin.getStore(cluster, storeName);
+            PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
             if (topicsWithRetention.containsKey(realTimeTopic)) {
               if (admin.isTopicTruncatedBasedOnRetention(topicsWithRetention.get(realTimeTopic))) {
                 deletableTopicsList.add(realTimeTopic.getName());

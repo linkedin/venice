@@ -14,7 +14,7 @@ Follow this guide to set up a simple venice cluster using docker images
 provided by Venice team.
 
 
-#### Step 1: Install and set up Docker Engine
+#### Step 1: Install and set up Docker Engine and docker-compose
     Follow https://docs.docker.com/engine/install/ to install docker and start docker engine
 
 
@@ -30,7 +30,7 @@ Once containers are up and running, it will create a test cluster, namely, `veni
 
 Note: Make sure the `docker-compose-single-dc-setup.yaml` downloaded in step 2 is in the same directory from which you will run the following command.
 ```
-docker compose -f docker-compose-single-dc-setup.yaml up -d
+docker-compose -f docker-compose-single-dc-setup.yaml up -d
 ```
 
 #### Step 4: Access `venice-client` container's bash shell
@@ -60,7 +60,7 @@ value schema:
 ```
 
 Let's create a venice store:
-```
+```bash
 ./create-store.sh http://venice-controller:5555 venice-cluster0 test-store sample-data/schema/keySchema.avsc sample-data/schema/valueSchema.avsc
 ```
 
@@ -72,8 +72,15 @@ key: 1 to 100
 value: val1 to val100
 ```
 
-Let's push the data:
+##### Print dataset
+```bash
+./avro-to-json.sh sample-data/batch-push-data/kv_records.avro 
 ```
+
+##### Run a push job
+
+Let's push the data:
+```bash
 ./run-vpj.sh sample-data/single-dc-configs/batch-push-job.properties
 ```
 
@@ -102,15 +109,21 @@ value=null
 #### Step 8: Update and add some new records using Incremental Push
 Venice supports incremental push which allows us to update values of existing rows or to add new rows in an existing store.
 In this example, we will
-1. update values for keys from `51-100`. For example, the new value of `100` will be `val100_v1`
-2. add new rows (key: `101-150`)
+1. update values for keys from `91-100`. For example, the new value of `100` will be `val100_v1`
+2. add new rows (key: `101-110`)
 
+##### Print records to be updated and added to the existing dataset in the store
+```bash
+./avro-to-json.sh sample-data/inc-push-data/kv_records_v1.avro 
+```
+
+##### Run incremental push job
 ```bash
 ./run-vpj.sh sample-data/single-dc-configs/inc-push-job.properties
 ```
 
 #### Step 9: Read data from the store after Incremental Push
-Incremental Push updated the values of keys 51-100 and added new rows 101-150.
+Incremental Push updated the values of keys 91-100 and added new rows 101-110.
 Let's read the data once again.
 
 ```bash
@@ -132,14 +145,15 @@ value=val101
 
 
 #### Step 10: Exit `venice-client`
-```
+```bash
+# type exit command on the terminal or use cntrl + c
 exit
 ```
 
 #### Step 11: Stop docker
 Tear down the venice cluster
-```
-docker compose -f docker-compose-single-dc-setup.yaml down
+```bash
+docker-compose -f docker-compose-single-dc-setup.yaml down
 ```
 
 ## Next steps

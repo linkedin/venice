@@ -15,9 +15,9 @@ Fork the Venice repo at [https://github.com/linkedin/venice](https://github.com/
 
 ## Setting up the repository locally
 ```shell
-git clone https://github.com/${githubUsername}/venice.git
+git clone git@github.com:${githubUsername}/venice.git
 cd venice
-git remote add upstream https://github.com/linkedin/venice.git
+git remote add upstream git@github.com:linkedin/venice.git
 git fetch upstream
 ```
 
@@ -38,6 +38,14 @@ To set up IntelliJ, run:
 ```shell
 ./gradlew idea
 ```
+
+### Disable wildcard imports
+1. In IntelliJ, click the gear icon in the top right and select settings
+2. Go to Editor -> Code Style -> Java and select Imports from the tabs
+3. Next to Scheme, select the gear icon and hit duplicate
+4. Only check `Use single class import`
+5. Set `Class count to use import with *` to 1000
+6. Set `Names count to use static import with *` to 1000
 
 ## Setting up your system
 ### Set the maximum number of open files limit

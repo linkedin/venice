@@ -21,6 +21,7 @@ import static com.linkedin.venice.Arg.CLUSTER_LIST;
 import static com.linkedin.venice.Arg.CLUSTER_SRC;
 import static com.linkedin.venice.Arg.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.Arg.DATETIME;
+import static com.linkedin.venice.Arg.DAVINCI_HEARTBEAT_REPORTED;
 import static com.linkedin.venice.Arg.DEBUG;
 import static com.linkedin.venice.Arg.DERIVED_SCHEMA;
 import static com.linkedin.venice.Arg.DERIVED_SCHEMA_ID;
@@ -30,6 +31,7 @@ import static com.linkedin.venice.Arg.DEST_ZOOKEEPER_URL;
 import static com.linkedin.venice.Arg.DISABLE_DAVINCI_PUSH_STATUS_STORE;
 import static com.linkedin.venice.Arg.DISABLE_META_STORE;
 import static com.linkedin.venice.Arg.ENABLE_DISABLED_REPLICA;
+import static com.linkedin.venice.Arg.ENABLE_STORE_MIGRATION;
 import static com.linkedin.venice.Arg.END_DATE;
 import static com.linkedin.venice.Arg.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.Arg.EXECUTION;
@@ -123,6 +125,8 @@ import static com.linkedin.venice.Arg.STORE_SIZE;
 import static com.linkedin.venice.Arg.STORE_TYPE;
 import static com.linkedin.venice.Arg.STORE_VIEW_CONFIGS;
 import static com.linkedin.venice.Arg.SYSTEM_STORE_TYPE;
+import static com.linkedin.venice.Arg.TARGET_SWAP_REGION;
+import static com.linkedin.venice.Arg.TARGET_SWAP_REGION_WAIT_TIME;
 import static com.linkedin.venice.Arg.TO_BE_STOPPED_NODES;
 import static com.linkedin.venice.Arg.UNUSED_SCHEMA_DELETION_ENABLED;
 import static com.linkedin.venice.Arg.URL;
@@ -151,6 +155,14 @@ import org.apache.commons.cli.CommandLine;
 
 /**
  * TODO: Merge this with {@link com.linkedin.venice.controllerapi.ControllerRoute}
+ *
+ * COMMAND (
+ *   "long-name",
+ *   "short-name",
+ *   "description",
+ *   "required-args",
+ *   "optional-args"
+ * )
  */
 public enum Command {
   LIST_STORES(
@@ -274,7 +286,8 @@ public enum Command {
           STORAGE_PERSONA, STORE_VIEW_CONFIGS, LATEST_SUPERSET_SCHEMA_ID, MIN_COMPACTION_LAG_SECONDS,
           MAX_COMPACTION_LAG_SECONDS, MAX_RECORD_SIZE_BYTES, MAX_NEARLINE_RECORD_SIZE_BYTES,
           UNUSED_SCHEMA_DELETION_ENABLED, BLOB_TRANSFER_ENABLED, SEPARATE_REALTIME_TOPIC_ENABLED,
-          NEARLINE_PRODUCER_COMPRESSION_ENABLED, NEARLINE_PRODUCER_COUNT_PER_WRITER }
+          NEARLINE_PRODUCER_COMPRESSION_ENABLED, NEARLINE_PRODUCER_COUNT_PER_WRITER, TARGET_SWAP_REGION,
+          TARGET_SWAP_REGION_WAIT_TIME, DAVINCI_HEARTBEAT_REPORTED, ENABLE_STORE_MIGRATION }
   ),
   UPDATE_CLUSTER_CONFIG(
       "update-cluster-config", "Update live cluster configs", new Arg[] { URL, CLUSTER },
@@ -513,6 +526,11 @@ public enum Command {
   REQUEST_BASED_METADATA(
       "request-based-metadata",
       "Get the store's metadata using request based metadata endpoint via a transport client and a server URL",
+      new Arg[] { URL, SERVER_URL, STORE }
+  ),
+  REQUEST_BASED_STORE_PROPERTIES(
+      "request-based-store-properties",
+      "Get the store's properties using request based store properties endpoint via a transport client and a server URL",
       new Arg[] { URL, SERVER_URL, STORE }
   ),
   DUMP_INGESTION_STATE(

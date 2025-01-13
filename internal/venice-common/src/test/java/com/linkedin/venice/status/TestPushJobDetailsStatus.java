@@ -8,7 +8,7 @@ import static com.linkedin.venice.status.PushJobDetailsStatus.isSucceeded;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.alpini.base.misc.CollectionUtil;
+import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.VeniceEnumValueTest;
 import java.util.Map;
 import org.testng.annotations.Test;
@@ -21,7 +21,7 @@ public class TestPushJobDetailsStatus extends VeniceEnumValueTest<PushJobDetails
 
   @Override
   protected Map<Integer, PushJobDetailsStatus> expectedMapping() {
-    return CollectionUtil.<Integer, PushJobDetailsStatus>mapBuilder()
+    return CollectionUtils.<Integer, PushJobDetailsStatus>mapBuilder()
         .put(0, PushJobDetailsStatus.STARTED)
         .put(1, PushJobDetailsStatus.COMPLETED)
         .put(2, PushJobDetailsStatus.ERROR)

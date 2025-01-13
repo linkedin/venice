@@ -762,6 +762,7 @@ public class ConfigKeys {
 
   public static final String SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED =
       "server.db.read.only.for.batch.only.store.enabled";
+  public static final String SERVER_RESET_ERROR_REPLICA_ENABLED = "server.reset.error.replica.enabled";
   /**
    * A list of fully-qualified class names of all stats classes that needs to be initialized in isolated ingestion process,
    * separated by comma. This config will help isolated ingestion process to register extra stats needed for monitoring,
@@ -1052,11 +1053,6 @@ public class ConfigKeys {
       "router.netty.graceful.shutdown.period.seconds";
 
   public static final String ROUTER_CLIENT_DECOMPRESSION_ENABLED = "router.client.decompression.enabled";
-
-  /**
-   * Whether to enable fast-avro in router;
-   */
-  public static final String ROUTER_COMPUTE_FAST_AVRO_ENABLED = "router.compute.fast.avro.enabled";
 
   /**
    * Socket timeout config for the connection manager from router to server
@@ -2211,6 +2207,14 @@ public class ConfigKeys {
    */
   public static final String SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_AA_WC_LEADER =
       "server.consumer.pool.size.for.current.version.aa.wc.leader";
+
+  /**
+   * Consumer Pool for separate realtime leader of current version, the traffic we need to isolate due to
+   * it is more costly than normal leader processing and current version should be allocated more resources to prioritize.
+   */
+  public static final String SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_SEPARATE_RT_LEADER =
+      "server.consumer.pool.size.for.current.version.separate.rt.leader";
+
   /**
    * Consumer Pool for active-active or write computer leader of future or backup version, the traffic we need to isolate
    * due to it is still more costly than normal leader processing and it has less priority than current version.
@@ -2318,6 +2322,8 @@ public class ConfigKeys {
    */
   public static final String SERVER_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND =
       "server.current.version.aa.wc.leader.quota.records.per.second";
+  public static final String SERVER_CURRENT_VERSION_SEPARATE_RT_LEADER_QUOTA_RECORDS_PER_SECOND =
+      "server.current.version.separate.rt.leader.quota.records.per.second";
   public static final String SERVER_CURRENT_VERSION_NON_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND =
       "server.current.version.non.aa.wc.leader.quota.records.per.second";
   public static final String SERVER_NON_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND =
@@ -2346,4 +2352,10 @@ public class ConfigKeys {
       "server.nearline.workload.producer.throughput.optimization.enabled";
 
   public static final String SERVER_ZSTD_DICT_COMPRESSION_LEVEL = "server.zstd.dict.compression.level";
+
+  public static final String SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP =
+      "server.delete.unassigned.partitions.on.startup";
+
+  public static final String CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE =
+      "controller.enable.hybrid.store.partition.count.update";
 }

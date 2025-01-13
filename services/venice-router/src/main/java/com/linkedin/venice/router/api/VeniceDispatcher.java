@@ -44,7 +44,6 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -133,8 +132,8 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
 
     if (part.getHosts().size() != 1) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-          Optional.of(storeName),
-          Optional.of(requestType),
+          storeName,
+          requestType,
           INTERNAL_SERVER_ERROR,
           "There should be only one chosen replica for the request: " + part);
     }
@@ -190,8 +189,8 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
       AggRouterHttpRequestStats stats = routerStats.getStatsByType(requestType);
       stats.recordRequestThrottledByRouterCapacity(storeName);
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-          Optional.of(storeName),
-          Optional.of(requestType),
+          storeName,
+          requestType,
           SERVICE_UNAVAILABLE,
           "Maximum number of pending request threshold reached! Current pending request count: "
               + pendingRequestThrottler.getCurrentPendingRequestCount());
@@ -216,8 +215,8 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
           return responseFuture;
         } else {
           throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-              Optional.of(storeName),
-              Optional.of(requestType),
+              storeName,
+              requestType,
               SERVICE_UNAVAILABLE,
               "Too many pending request to storage node : " + hostName);
         }
@@ -302,8 +301,8 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
             break;
           default:
             throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
-                Optional.empty(),
-                Optional.empty(),
+                null,
+                null,
                 INTERNAL_SERVER_ERROR,
                 "Unknown request type: " + path.getRequestType());
         }

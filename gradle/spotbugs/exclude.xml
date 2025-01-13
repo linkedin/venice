@@ -259,6 +259,12 @@
     </Or>
   </Match>
   <Match>
+    <Bug pattern="RC_REF_COMPARISON"/>
+    <Or>
+      <Class name="com.linkedin.venice.utils.CollectionUtilsTest"/>
+    </Or>
+  </Match>
+  <Match>
     <!--Auto-generated classes. No plan to fix-->
     <Bug pattern="RI_REDUNDANT_INTERFACES"/>
     <Or>
@@ -486,6 +492,12 @@
       <Class name="com.linkedin.venice.beam.consumer.VeniceMessageCoder$2"/>
       <Class name="com.linkedin.venice.beam.consumer.VeniceChangelogConsumerIO$Read$CurrentValueTransform"/>
       <Class name="com.linkedin.venice.beam.consumer.VeniceChangelogConsumerIO$Read$RemoveMetadata"/>
+    </Or>
+  </Match>
+  <Match>
+    <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE"/>
+    <Or>
+      <Class name="com.linkedin.venice.duckdb.HelloWorldTest"/>
     </Or>
   </Match>
 </FindBugsFilter>

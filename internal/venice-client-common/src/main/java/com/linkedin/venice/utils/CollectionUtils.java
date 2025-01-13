@@ -1,14 +1,22 @@
 package com.linkedin.venice.utils;
 
+import com.linkedin.alpini.base.misc.ImmutableMapEntry;
 import java.util.AbstractList;
+import java.util.AbstractMap;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.RandomAccess;
+import java.util.Set;
+import javax.annotation.Nonnull;
 
 
 public class CollectionUtils {
@@ -111,5 +119,93 @@ public class CollectionUtils {
    */
   public static <K, V> Map<K, V> substituteEmptyMap(Map<K, V> map) {
     return map == null || map.isEmpty() ? Collections.emptyMap() : map;
+  }
+
+  public static <K, V> MapBuilder<K, V> mapBuilder() {
+    return new MapBuilder<>();
+  }
+
+  public static <T> Set<T> setOf(T value) {
+    return Collections.singleton(value);
+  }
+
+  @SafeVarargs
+  public static <T> Set<T> setOf(T... values) {
+    if (values == null || values.length == 0) {
+      return Collections.emptySet();
+    } else if (values.length == 1) {
+      return setOf(values[0]);
+    } else {
+      return setOf(Arrays.asList(values));
+    }
+  }
+
+  public static <T> Set<T> setOf(Collection<T> values) {
+    if (values == null || values.isEmpty()) {
+      return Collections.emptySet();
+    } else {
+      return Collections.unmodifiableSet(new HashSet<>(values));
+    }
+  }
+
+  private static <K, V> Map<K, V> mapOfEntries(Set<Map.Entry<K, V>> entries) {
+    return Collections.unmodifiableMap(new HashMap<>(new AbstractMap<K, V>() {
+      @Override
+      @Nonnull
+      public Set<Entry<K, V>> entrySet() {
+        return entries;
+      }
+    }));
+  }
+
+  public static final class MapBuilder<K, V> extends CollectionBuilder<ImmutableMapEntry<K, V>, MapBuilder<K, V>> {
+    private MapBuilder() {
+    }
+
+    public MapBuilder<K, V> put(K key, V value) {
+      return super.add(ImmutableMapEntry.make(key, value));
+    }
+
+    public MapBuilder<K, V> putAll(Map<K, V> values) {
+      return super.addAll(values.entrySet().stream().map(ImmutableMapEntry::make).iterator());
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<K, V> build() {
+      List<Map.Entry<K, V>> list = (List<Map.Entry<K, V>>) (List) this._list;
+      return mapOfEntries(setOf(list));
+    }
+  }
+
+  private static class CollectionBuilder<T, B extends CollectionBuilder<T, B>> {
+    protected LinkedList<T> _list = new LinkedList<>();
+
+    private CollectionBuilder() {
+    }
+
+    @SuppressWarnings("unchecked")
+    protected B self() {
+      return (B) this;
+    }
+
+    public B add(@Nonnull T value) {
+      _list.add(Objects.requireNonNull(value));
+      return self();
+    }
+
+    @SafeVarargs
+    public final B add(T... values) {
+      return addAll(Arrays.asList(values));
+    }
+
+    public B addAll(Collection<? extends T> values) {
+      _list.addAll(values);
+      return self();
+    }
+
+    public B addAll(Iterator<? extends T> values) {
+      values.forEachRemaining(this::add);
+      return self();
+    }
   }
 }

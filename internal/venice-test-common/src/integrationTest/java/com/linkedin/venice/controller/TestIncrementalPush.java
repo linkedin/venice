@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -69,6 +70,11 @@ public class TestIncrementalPush {
   public void testIncrementalPushStatusNotUpdateReplicaCurrentStatus() throws IOException {
     String storeName = Utils.getUniqueString("testIncPushStore");
     cluster.getNewStore(storeName);
+    AtomicReference<StoreInfo> storeInfo = new AtomicReference<>();
+    cluster.useControllerClient(controllerClient -> {
+      StoreResponse storeResponse = TestUtils.assertCommand(controllerClient.getStore(storeName));
+      storeInfo.set(storeResponse.getStore());
+    });
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     params.setIncrementalPushEnabled(true)
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
@@ -85,7 +91,7 @@ public class TestIncrementalPush {
     String incPushTopic = "TEST_INC_PUSH";
 
     VeniceWriter<String, String, byte[]> veniceWriterRt =
-        cluster.getVeniceWriter(Version.composeRealTimeTopic(storeName));
+        cluster.getVeniceWriter(Utils.getRealTimeTopicName(storeInfo.get()));
     veniceWriterRt.broadcastStartOfIncrementalPush(incPushTopic, new HashMap<>());
 
     TestUtils.waitForNonDeterministicCompletion(

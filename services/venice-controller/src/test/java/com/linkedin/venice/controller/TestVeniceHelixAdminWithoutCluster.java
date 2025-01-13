@@ -151,7 +151,7 @@ public class TestVeniceHelixAdminWithoutCluster {
     String clusterName = "cluster1";
     String storeName = Utils.getUniqueString("test_store_recreation");
     Set<PubSubTopic> topics = new HashSet<>();
-    topics.add(pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName)));
+    topics.add(pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(storeName)));
     topics.add(pubSubTopicRepository.getTopic("unknown_store_v1"));
     testCheckResourceCleanupBeforeStoreCreationWithParams(
         clusterName,
@@ -170,7 +170,7 @@ public class TestVeniceHelixAdminWithoutCluster {
     Set<PubSubTopic> topics = new HashSet<>();
     topics.add(
         pubSubTopicRepository
-            .getTopic(Version.composeRealTimeTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName))));
+            .getTopic(Utils.composeRealTimeTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName))));
     topics.add(pubSubTopicRepository.getTopic("unknown_store_v1"));
     testCheckResourceCleanupBeforeStoreCreationWithParams(
         clusterName,
@@ -237,6 +237,7 @@ public class TestVeniceHelixAdminWithoutCluster {
     TopicManager topicManager = mock(TopicManager.class);
     doReturn(topics).when(topicManager).listTopics();
     doReturn(topicManager).when(admin).getTopicManager();
+    doReturn(store.orElse(null)).when(admin).getStore(clusterName, storeName);
 
     doReturn(helixResources).when(admin).getAllLiveHelixResources(clusterName);
 

@@ -396,6 +396,36 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public void setTargetSwapRegion(String targetRegion) {
+    this.storeVersion.targetSwapRegion = targetRegion;
+  }
+
+  @Override
+  public String getTargetSwapRegion() {
+    return this.storeVersion.targetSwapRegion.toString();
+  }
+
+  @Override
+  public void setTargetSwapRegionWaitTime(int waitTime) {
+    this.storeVersion.targetSwapRegionWaitTime = waitTime;
+  }
+
+  @Override
+  public int getTargetSwapRegionWaitTime() {
+    return this.storeVersion.targetSwapRegionWaitTime;
+  }
+
+  @Override
+  public void setIsDavinciHeartbeatReported(boolean isReported) {
+    this.storeVersion.isDaVinciHeartBeatReported = isReported;
+  }
+
+  @Override
+  public boolean getIsDavinciHeartbeatReported() {
+    return this.storeVersion.isDaVinciHeartBeatReported;
+  }
+
+  @Override
   public StoreVersion dataModel() {
     return this.storeVersion;
   }
@@ -475,6 +505,9 @@ public class VersionImpl implements Version {
     clonedVersion.setRepushSourceVersion(getRepushSourceVersion());
     clonedVersion.setViewConfigs(getViewConfigs());
     clonedVersion.setBlobTransferEnabled(isBlobTransferEnabled());
+    clonedVersion.setTargetSwapRegion(getTargetSwapRegion());
+    clonedVersion.setTargetSwapRegionWaitTime(getTargetSwapRegionWaitTime());
+    clonedVersion.setIsDavinciHeartbeatReported(getIsDavinciHeartbeatReported());
     return clonedVersion;
   }
 

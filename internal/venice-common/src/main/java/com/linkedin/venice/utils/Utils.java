@@ -22,8 +22,10 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -39,6 +41,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.DecimalFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -53,6 +57,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.TimeZone;
 import java.util.TreeMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -68,7 +73,6 @@ import org.apache.commons.lang.Validate;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.util.Strings;
 
 
 /**
@@ -540,6 +544,18 @@ public class Utils {
     return storeName + Version.REAL_TIME_TOPIC_SUFFIX;
   }
 
+  public static String getRealTimeTopicNameFromStoreConfig(Store store) {
+    HybridStoreConfig hybridStoreConfig = store.getHybridStoreConfig();
+    String storeName = store.getName();
+
+    if (hybridStoreConfig != null) {
+      String realTimeTopicName = hybridStoreConfig.getRealTimeTopicName();
+      return getRealTimeTopicNameIfEmpty(realTimeTopicName, storeName);
+    } else {
+      return composeRealTimeTopic(storeName);
+    }
+  }
+
   /**
    * It follows the following order to search for real time topic name,
    * i) current store-version config, ii) store config, iii) other store-version configs, iv) default name
@@ -585,7 +601,7 @@ public class Utils {
         versions.stream().filter(version -> version.getNumber() == currentVersionNumber).findFirst();
     if (currentVersion.isPresent() && currentVersion.get().isHybrid()) {
       String realTimeTopicName = currentVersion.get().getHybridStoreConfig().getRealTimeTopicName();
-      if (Strings.isNotBlank(realTimeTopicName)) {
+      if (StringUtils.isNotBlank(realTimeTopicName)) {
         return realTimeTopicName;
       }
     }
@@ -601,7 +617,7 @@ public class Utils {
       try {
         if (version.isHybrid()) {
           String realTimeTopicName = version.getHybridStoreConfig().getRealTimeTopicName();
-          if (Strings.isNotBlank(realTimeTopicName)) {
+          if (StringUtils.isNotBlank(realTimeTopicName)) {
             realTimeTopicNames.add(realTimeTopicName);
           }
         }
@@ -624,7 +640,31 @@ public class Utils {
   }
 
   private static String getRealTimeTopicNameIfEmpty(String realTimeTopicName, String storeName) {
-    return Strings.isBlank(realTimeTopicName) ? composeRealTimeTopic(storeName) : realTimeTopicName;
+    return StringUtils.isBlank(realTimeTopicName) ? composeRealTimeTopic(storeName) : realTimeTopicName;
+  }
+
+  public static String createNewRealTimeTopicName(String oldRealTimeTopicName) {
+    if (oldRealTimeTopicName == null || !oldRealTimeTopicName.endsWith(Version.REAL_TIME_TOPIC_SUFFIX)) {
+      throw new IllegalArgumentException("Invalid old name format");
+    }
+
+    // Extract the base name and current version
+    int suffixLength = Version.REAL_TIME_TOPIC_SUFFIX.length();
+    String base = oldRealTimeTopicName.substring(0, oldRealTimeTopicName.length() - suffixLength);
+
+    // Locate the last version separator "_v" in the base
+    int versionSeparatorIndex = base.lastIndexOf("_v");
+    if (versionSeparatorIndex > -1 && versionSeparatorIndex < base.length() - 2) {
+      // Extract and increment the version
+      String versionStr = base.substring(versionSeparatorIndex + 2);
+      int version = Integer.parseInt(versionStr) + 1;
+      base = base.substring(0, versionSeparatorIndex) + "_v" + version;
+    } else {
+      // Start with version 2 if no valid version is present
+      base = base + "_v2";
+    }
+
+    return base + Version.REAL_TIME_TOPIC_SUFFIX;
   }
 
   private static class TimeUnitInfo {
@@ -1033,5 +1073,41 @@ public class Utils {
       return kafkaUrl.substring(0, kafkaUrl.length() - SEPARATE_TOPIC_SUFFIX.length());
     }
     return kafkaUrl;
+  }
+
+  /**
+   * Check whether input region is for separate RT topic.
+   */
+  public static boolean isSeparateTopicRegion(String region) {
+    return region.endsWith(SEPARATE_TOPIC_SUFFIX);
+  }
+
+  /**
+   * Resolve leader topic from input topic.
+   * If input topic is separate RT topic, return the corresponding RT topic.
+   * Otherwise, return the original input topic.
+   */
+  public static PubSubTopic resolveLeaderTopicFromPubSubTopic(
+      PubSubTopicRepository pubSubTopicRepository,
+      PubSubTopic pubSubTopic) {
+    if (pubSubTopic.getPubSubTopicType().equals(PubSubTopicType.REALTIME_TOPIC)
+        && pubSubTopic.getName().endsWith(SEPARATE_TOPIC_SUFFIX)) {
+      return pubSubTopicRepository.getTopic(composeRealTimeTopic(pubSubTopic.getStoreName()));
+    }
+    return pubSubTopic;
+  }
+
+  /**
+   * Parses a date-time string to epoch milliseconds using the default format and time zone.
+   *
+   * @param dateTime the date-time string in the format "yyyy-MM-dd hh:mm:ss"
+   * @return the epoch time in milliseconds
+   * @throws ParseException if the date-time string cannot be parsed
+   */
+  public static long parseDateTimeToEpoch(String dateTime, String dateTimeFormat, String timeZone)
+      throws ParseException {
+    SimpleDateFormat dateFormat = new SimpleDateFormat(dateTimeFormat);
+    dateFormat.setTimeZone(TimeZone.getTimeZone(timeZone));
+    return dateFormat.parse(dateTime).getTime();
   }
 }

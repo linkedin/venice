@@ -8,23 +8,9 @@ public interface ScatterGatherStatsMBean {
 
   long getTotalRetriedKeys();
 
-  long getTotalRetriedOn429();
-
   long getTotalRetriesDiscarded();
 
   long getTotalRetriesWinner();
 
   long getTotalRetriesError();
-
-  long getTotalDiscardedBytes();
-
-  long getTotalRequestsSent();
-
-  long getTotalRequestsReceived();
-
-  long getTotalRetriesOn503();
-
-  long getTotalRetriesOn503Winner();
-
-  long getTotalRetriesOn503Error();
 }

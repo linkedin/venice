@@ -1,6 +1,6 @@
 package com.linkedin.venice.compression;
 
-import com.linkedin.alpini.base.misc.CollectionUtil;
+import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.VeniceEnumValueTest;
 import java.util.Map;
 
@@ -12,7 +12,7 @@ public class CompressionStrategyTest extends VeniceEnumValueTest<CompressionStra
 
   @Override
   protected Map<Integer, CompressionStrategy> expectedMapping() {
-    return CollectionUtil.<Integer, CompressionStrategy>mapBuilder()
+    return CollectionUtils.<Integer, CompressionStrategy>mapBuilder()
         .put(0, CompressionStrategy.NO_OP)
         .put(1, CompressionStrategy.GZIP)
         .put(2, CompressionStrategy.ZSTD)

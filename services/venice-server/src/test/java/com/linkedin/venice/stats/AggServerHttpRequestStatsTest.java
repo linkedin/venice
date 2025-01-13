@@ -13,10 +13,13 @@ import org.testng.annotations.Test;
 
 
 public class AggServerHttpRequestStatsTest {
-  protected MetricsRepository metricsRepository;
-  protected MockTehutiReporter reporter;
-  protected AggServerHttpRequestStats singleGetStats;
-  protected AggServerHttpRequestStats batchGetStats;
+  private MetricsRepository metricsRepository;
+  private MockTehutiReporter reporter;
+  private MetricsRepository metricsRepositoryForKVProfiling;
+  private MockTehutiReporter reporterForKVProfiling;
+  private AggServerHttpRequestStats singleGetStats;
+  private AggServerHttpRequestStats singleGetStatsWithKVProfiling;
+  private AggServerHttpRequestStats batchGetStats;
 
   private static final String STORE_FOO = "store_foo";
   private static final String STORE_BAR = "store_bar";
@@ -26,9 +29,16 @@ public class AggServerHttpRequestStatsTest {
   @BeforeTest
   public void setUp() {
     this.metricsRepository = new MetricsRepository();
-    Assert.assertEquals(metricsRepository.metrics().size(), 0);
     this.reporter = new MockTehutiReporter();
     this.metricsRepository.addReporter(reporter);
+
+    this.metricsRepositoryForKVProfiling = new MetricsRepository();
+    this.reporterForKVProfiling = new MockTehutiReporter();
+    this.metricsRepositoryForKVProfiling.addReporter(reporterForKVProfiling);
+
+    Assert.assertEquals(metricsRepository.metrics().size(), 0);
+    Assert.assertEquals(metricsRepositoryForKVProfiling.metrics().size(), 0);
+
     this.singleGetStats = new AggServerHttpRequestStats(
         "test_cluster",
         metricsRepository,
@@ -45,23 +55,42 @@ public class AggServerHttpRequestStatsTest {
         Mockito.mock(ReadOnlyStoreRepository.class),
         true,
         false);
+
+    this.singleGetStatsWithKVProfiling = new AggServerHttpRequestStats(
+        "test_cluster",
+        metricsRepositoryForKVProfiling,
+        RequestType.SINGLE_GET,
+        true,
+        Mockito.mock(ReadOnlyStoreRepository.class),
+        true,
+        false);
   }
 
   @AfterTest
   public void cleanUp() {
     metricsRepository.close();
+    metricsRepositoryForKVProfiling.close();
     reporter.close();
+    reporterForKVProfiling.close();
   }
 
   @Test
   public void testMetrics() {
     ServerHttpRequestStats singleGetServerStatsFoo = singleGetStats.getStoreStats(STORE_FOO);
     ServerHttpRequestStats singleGetServerStatsBar = singleGetStats.getStoreStats(STORE_BAR);
+    ServerHttpRequestStats singleGetServerStatsWithKvProfilingFoo =
+        singleGetStatsWithKVProfiling.getStoreStats(STORE_FOO);
 
     singleGetServerStatsFoo.recordSuccessRequest();
     singleGetServerStatsFoo.recordSuccessRequest();
     singleGetServerStatsFoo.recordErrorRequest();
     singleGetServerStatsBar.recordErrorRequest();
+
+    singleGetServerStatsFoo.recordKeySizeInByte(100);
+    singleGetServerStatsFoo.recordValueSizeInByte(1000);
+
+    singleGetServerStatsWithKvProfilingFoo.recordKeySizeInByte(100);
+    singleGetServerStatsWithKvProfilingFoo.recordValueSizeInByte(1000);
 
     Assert.assertTrue(
         reporter.query("." + STORE_FOO + "--success_request.OccurrenceRate").value() > 0,
@@ -72,6 +101,35 @@ public class AggServerHttpRequestStatsTest {
     Assert.assertTrue(
         reporter.query(".total--success_request_ratio.RatioStat").value() > 0,
         "success_request_ratio should be positive");
+    Assert.assertTrue(
+        reporter.query(".store_foo--request_key_size.Avg").value() > 0,
+        "Avg value for request key size should always be recorded");
+    Assert.assertTrue(
+        reporter.query(".store_foo--request_key_size.Max").value() > 0,
+        "Max value for request key size should always be recorded");
+
+    Assert.assertTrue(
+        reporterForKVProfiling.query(".store_foo--request_key_size.Avg").value() > 0,
+        "Avg value for request key size should always be recorded");
+    Assert.assertTrue(
+        reporterForKVProfiling.query(".store_foo--request_key_size.Max").value() > 0,
+        "Max value for request key size should always be recorded");
+
+    String[] fineGrainedPercentiles = new String[] { "0_01", "0_01", "0_1", "1", "2", "3", "4", "5", "10", "20", "30",
+        "40", "50", "60", "70", "80", "90", "95", "99", "99_9" };
+    for (String fineGrainedPercentile: fineGrainedPercentiles) {
+      Assert.assertNull(
+          metricsRepository.getMetric(".store_foo--request_key_size." + fineGrainedPercentile + "thPercentile"));
+      Assert.assertNull(
+          metricsRepository.getMetric(".store_foo--request_value_size." + fineGrainedPercentile + "thPercentile"));
+
+      Assert.assertTrue(
+          reporterForKVProfiling.query(".store_foo--request_key_size." + fineGrainedPercentile + "thPercentile")
+              .value() > 0);
+      Assert.assertTrue(
+          reporterForKVProfiling.query(".store_foo--request_value_size." + fineGrainedPercentile + "thPercentile")
+              .value() > 0);
+    }
 
     singleGetStats.handleStoreDeleted(STORE_FOO);
     Assert.assertNull(metricsRepository.getMetric("." + STORE_FOO + "--success_request.OccurrenceRate"));
@@ -83,7 +141,7 @@ public class AggServerHttpRequestStatsTest {
     String storeName = "storeName";
     Percentiles percentiles = TehutiUtils.getPercentileStatForNetworkLatency(sensorName, storeName);
     percentiles.stats().stream().map(namedMeasurable -> namedMeasurable.name()).forEach(System.out::println);
-    String[] percentileStrings = new String[] { "50", "77", "90", "95", "99", "99_9" };
+    String[] percentileStrings = new String[] { "50", "95", "99", "99_9" };
 
     for (int i = 0; i < percentileStrings.length; i++) {
       String expectedName = sensorName + "--" + storeName + "." + percentileStrings[i] + "thPercentile";

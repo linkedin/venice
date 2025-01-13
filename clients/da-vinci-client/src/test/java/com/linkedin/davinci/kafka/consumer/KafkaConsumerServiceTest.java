@@ -205,7 +205,7 @@ public class KafkaConsumerServiceTest {
     TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, true, true, () -> {
       verify(consumer1, atLeastOnce()).poll(anyLong());
       Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
-          consumerService.getIngestionInfoFromConsumer(versionTopic, topicPartition);
+          consumerService.getIngestionInfoFor(versionTopic, topicPartition);
       Assert.assertEquals(topicPartitionIngestionInfoMap.size(), 1);
       Assert.assertTrue(topicPartitionIngestionInfoMap.containsKey(topicPartition));
       Assert.assertTrue(topicPartitionIngestionInfoMap.get(topicPartition).getConsumerIdStr().contains("0"));
@@ -232,7 +232,7 @@ public class KafkaConsumerServiceTest {
         poolType,
         factory,
         properties,
-        1000l,
+        1000L,
         1,
         mockIngestionThrottler,
         mock(KafkaClusterBasedRecordThrottler.class),
@@ -436,6 +436,8 @@ public class KafkaConsumerServiceTest {
     PubSubTopic pubSubTopicForStoreName3 = pubSubTopicRepository.getTopic(topicForStoreName3);
 
     String storeName4 = Utils.getUniqueString("test_consumer_service4");
+    String topicForStoreName4 = Version.composeKafkaTopic(storeName4, 1);
+    PubSubTopic pubSubTopicForStoreName4 = pubSubTopicRepository.getTopic(topicForStoreName4);
 
     SharedKafkaConsumer consumer1 = mock(SharedKafkaConsumer.class);
     SharedKafkaConsumer consumer2 = mock(SharedKafkaConsumer.class);
@@ -461,9 +463,9 @@ public class KafkaConsumerServiceTest {
     when(consumerService.getLOGGER())
         .thenReturn(LogManager.getLogger(StoreAwarePartitionWiseKafkaConsumerService.class));
     doCallRealMethod().when(consumerService).pickConsumerForPartition(any(), any());
-    doCallRealMethod().when(consumerService).getConsumerStoreLoad(any(), anyString());
-    doCallRealMethod().when(consumerService).increaseConsumerStoreLoad(any(), anyString());
-    doCallRealMethod().when(consumerService).decreaseConsumerStoreLoad(any(), anyString());
+    doCallRealMethod().when(consumerService).getConsumerStoreLoad(any(), any());
+    doCallRealMethod().when(consumerService).increaseConsumerStoreLoad(any(), any());
+    doCallRealMethod().when(consumerService).decreaseConsumerStoreLoad(any(), any());
 
     consumerToBasicLoadMap.put(consumer1, 1);
     Map<String, Integer> innerMap1 = new VeniceConcurrentHashMap<>();
@@ -508,25 +510,28 @@ public class KafkaConsumerServiceTest {
     Assert.assertEquals(consumerService.getConsumerStoreLoad(consumer1, storeName3), 10003);
 
     // Validate decrease consumer entry
-    Assert.assertThrows(() -> consumerService.decreaseConsumerStoreLoad(consumer1, storeName4));
+    Assert.assertThrows(() -> consumerService.decreaseConsumerStoreLoad(consumer1, pubSubTopicForStoreName4));
 
-    consumerService.decreaseConsumerStoreLoad(consumer1, storeName1);
+    consumerService.decreaseConsumerStoreLoad(consumer1, pubSubTopicForStoreName1);
     Assert.assertEquals(consumerToBasicLoadMap.get(consumer1).intValue(), 2);
     Assert.assertNull(consumerToStoreLoadMap.get(consumer1).get(storeName1));
     Assert.assertEquals(consumerService.getConsumerStoreLoad(consumer1, storeName1), 2);
-    Assert.assertThrows(() -> consumerService.decreaseConsumerStoreLoad(consumer1, storeName1));
+    Assert.assertThrows(() -> consumerService.decreaseConsumerStoreLoad(consumer1, pubSubTopicForStoreName1));
 
-    consumerService.decreaseConsumerStoreLoad(consumer1, storeName2);
+    consumerService.decreaseConsumerStoreLoad(consumer1, pubSubTopicForStoreName2);
     Assert.assertEquals(consumerToBasicLoadMap.get(consumer1).intValue(), 1);
     Assert.assertNull(consumerToStoreLoadMap.get(consumer1).get(storeName2));
     Assert.assertEquals(consumerService.getConsumerStoreLoad(consumer1, storeName2), 1);
-    Assert.assertThrows(() -> consumerService.decreaseConsumerStoreLoad(consumer1, storeName2));
+    Assert.assertThrows(() -> consumerService.decreaseConsumerStoreLoad(consumer1, pubSubTopicForStoreName2));
 
-    consumerService.decreaseConsumerStoreLoad(consumer1, storeName3);
+    consumerService.decreaseConsumerStoreLoad(consumer1, pubSubTopicForStoreName3);
     Assert.assertNull(consumerToBasicLoadMap.get(consumer1));
     Assert.assertNull(consumerToStoreLoadMap.get(consumer1));
     Assert.assertEquals(consumerService.getConsumerStoreLoad(consumer1, storeName3), 0);
-    Assert.assertThrows(() -> consumerService.decreaseConsumerStoreLoad(consumer1, storeName3));
+    Assert.assertThrows(() -> consumerService.decreaseConsumerStoreLoad(consumer1, pubSubTopicForStoreName3));
+
+    // Make sure invalid versionTopic won't throw NPE.
+    consumerService.decreaseConsumerStoreLoad(consumer1, null);
 
     // Validate increase consumer entry
     consumerService.increaseConsumerStoreLoad(consumer1, storeName1);

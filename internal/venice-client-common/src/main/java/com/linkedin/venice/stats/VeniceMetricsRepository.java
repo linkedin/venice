@@ -22,11 +22,14 @@ public class VeniceMetricsRepository extends MetricsRepository implements Closea
   public VeniceMetricsRepository() {
     super();
     this.veniceMetricsConfig = new VeniceMetricsConfig.Builder().build();
-    this.openTelemetryMetricsRepository = new VeniceOpenTelemetryMetricsRepository(veniceMetricsConfig);
+    this.openTelemetryMetricsRepository =
+        (veniceMetricsConfig.emitOtelMetrics() ? new VeniceOpenTelemetryMetricsRepository(veniceMetricsConfig) : null);
   }
 
   public VeniceMetricsRepository(VeniceMetricsConfig veniceMetricsConfig) {
-    this(veniceMetricsConfig, new VeniceOpenTelemetryMetricsRepository(veniceMetricsConfig));
+    this(
+        veniceMetricsConfig,
+        veniceMetricsConfig.emitOtelMetrics() ? new VeniceOpenTelemetryMetricsRepository(veniceMetricsConfig) : null);
   }
 
   public VeniceMetricsRepository(

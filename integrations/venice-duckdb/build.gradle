@@ -1,0 +1,12 @@
+dependencies {
+  implementation libraries.avro
+  implementation libraries.avroUtilCompatHelper
+  implementation libraries.duckdbJdbc
+}
+
+checkerFramework {
+  extraJavacArgs = ['-Xmaxerrs', '256']
+  checkers = ['org.checkerframework.checker.nullness.NullnessChecker']
+  skipCheckerFramework = true
+  excludeTests = true
+}

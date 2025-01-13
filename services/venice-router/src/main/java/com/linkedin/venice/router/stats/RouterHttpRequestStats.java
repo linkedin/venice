@@ -24,7 +24,6 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static java.util.Collections.singletonList;
 
-import com.linkedin.alpini.base.misc.CollectionUtil;
 import com.linkedin.alpini.router.monitoring.ScatterGatherStats;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.read.RequestType;
@@ -42,6 +41,7 @@ import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntityState;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
+import com.linkedin.venice.utils.CollectionUtils;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
@@ -142,27 +142,30 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
       ScatterGatherStats scatterGatherStats,
       boolean isKeyValueProfilingEnabled) {
     super(metricsRepository, storeName, requestType);
-    VeniceOpenTelemetryMetricsRepository otelRepository;
+    VeniceOpenTelemetryMetricsRepository otelRepository = null;
     if (metricsRepository instanceof VeniceMetricsRepository) {
       VeniceMetricsRepository veniceMetricsRepository = (VeniceMetricsRepository) metricsRepository;
       VeniceMetricsConfig veniceMetricsConfig = veniceMetricsRepository.getVeniceMetricsConfig();
       emitOpenTelemetryMetrics = veniceMetricsConfig.emitOtelMetrics();
       openTelemetryMetricFormat = veniceMetricsConfig.getMetricNamingFormat();
-      otelRepository = veniceMetricsRepository.getOpenTelemetryMetricsRepository();
-      AttributesBuilder attributesBuilder = Attributes.builder()
-          .put(getDimensionName(VENICE_STORE_NAME), storeName)
-          .put(getDimensionName(VENICE_REQUEST_METHOD), requestType.name().toLowerCase())
-          .put(getDimensionName(VENICE_CLUSTER_NAME), clusterName);
-      // add custom dimensions passed in by the user
-      for (Map.Entry<String, String> entry: veniceMetricsConfig.getOtelCustomDimensionsMap().entrySet()) {
-        attributesBuilder.put(entry.getKey(), entry.getValue());
+      if (emitOpenTelemetryMetrics) {
+        otelRepository = veniceMetricsRepository.getOpenTelemetryMetricsRepository();
+        AttributesBuilder attributesBuilder = Attributes.builder()
+            .put(getDimensionName(VENICE_STORE_NAME), storeName)
+            .put(getDimensionName(VENICE_REQUEST_METHOD), requestType.name().toLowerCase())
+            .put(getDimensionName(VENICE_CLUSTER_NAME), clusterName);
+        // add custom dimensions passed in by the user
+        for (Map.Entry<String, String> entry: veniceMetricsConfig.getOtelCustomDimensionsMap().entrySet()) {
+          attributesBuilder.put(entry.getKey(), entry.getValue());
+        }
+        commonMetricDimensions = attributesBuilder.build();
+      } else {
+        commonMetricDimensions = null;
       }
-      commonMetricDimensions = attributesBuilder.build();
     } else {
       emitOpenTelemetryMetrics = false;
-      openTelemetryMetricFormat = VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE;
+      openTelemetryMetricFormat = VeniceOpenTelemetryMetricNamingFormat.getDefaultFormat();
       commonMetricDimensions = null;
-      otelRepository = null;
     }
 
     this.systemStoreName = VeniceSystemStoreUtils.extractSystemStoreType(storeName);
@@ -174,7 +177,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         INCOMING_CALL_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorFinal,
-        CollectionUtil.<TehutiMetricNameEnum, List<MeasurableStat>>mapBuilder()
+        CollectionUtils.<TehutiMetricNameEnum, List<MeasurableStat>>mapBuilder()
             .put(RouterTehutiMetricNameEnum.REQUEST, Arrays.asList(new Count(), requestRate))
             .build());
 
@@ -187,7 +190,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         CALL_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorFinal,
-        CollectionUtil.<TehutiMetricNameEnum, List<MeasurableStat>>mapBuilder()
+        CollectionUtils.<TehutiMetricNameEnum, List<MeasurableStat>>mapBuilder()
             .put(RouterTehutiMetricNameEnum.HEALTHY_REQUEST, Arrays.asList(new Count(), healthyRequestRate))
             .put(RouterTehutiMetricNameEnum.UNHEALTHY_REQUEST, singletonList(new Count()))
             .put(RouterTehutiMetricNameEnum.TARDY_REQUEST, Arrays.asList(new Count(), tardyRequestRate))
@@ -200,7 +203,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         CALL_TIME.getMetricEntity(),
         otelRepository,
         this::registerSensorFinal,
-        CollectionUtil.<TehutiMetricNameEnum, List<MeasurableStat>>mapBuilder()
+        CollectionUtils.<TehutiMetricNameEnum, List<MeasurableStat>>mapBuilder()
             .put(
                 RouterTehutiMetricNameEnum.HEALTHY_REQUEST_LATENCY,
                 Arrays.asList(
@@ -218,7 +221,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         RETRY_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorFinal,
-        CollectionUtil.<TehutiMetricNameEnum, List<MeasurableStat>>mapBuilder()
+        CollectionUtils.<TehutiMetricNameEnum, List<MeasurableStat>>mapBuilder()
             .put(RouterTehutiMetricNameEnum.ERROR_RETRY, singletonList(new Count()))
             .build());
 
@@ -226,7 +229,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         ALLOWED_RETRY_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorFinal,
-        CollectionUtil.<TehutiMetricNameEnum, List<MeasurableStat>>mapBuilder()
+        CollectionUtils.<TehutiMetricNameEnum, List<MeasurableStat>>mapBuilder()
             .put(RouterTehutiMetricNameEnum.ALLOWED_RETRY_REQUEST_COUNT, singletonList(new OccurrenceRate()))
             .build());
 
@@ -234,7 +237,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         DISALLOWED_RETRY_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorFinal,
-        CollectionUtil.<TehutiMetricNameEnum, List<MeasurableStat>>mapBuilder()
+        CollectionUtils.<TehutiMetricNameEnum, List<MeasurableStat>>mapBuilder()
             .put(RouterTehutiMetricNameEnum.DISALLOWED_RETRY_REQUEST_COUNT, singletonList(new OccurrenceRate()))
             .build());
 
@@ -242,7 +245,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         RETRY_DELAY.getMetricEntity(),
         otelRepository,
         this::registerSensorFinal,
-        CollectionUtil.<TehutiMetricNameEnum, List<MeasurableStat>>mapBuilder()
+        CollectionUtils.<TehutiMetricNameEnum, List<MeasurableStat>>mapBuilder()
             .put(RouterTehutiMetricNameEnum.RETRY_DELAY, Arrays.asList(new Avg(), new Max()))
             .build());
 
@@ -250,7 +253,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         ABORTED_RETRY_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorFinal,
-        CollectionUtil.<TehutiMetricNameEnum, List<MeasurableStat>>mapBuilder()
+        CollectionUtils.<TehutiMetricNameEnum, List<MeasurableStat>>mapBuilder()
             .put(RouterTehutiMetricNameEnum.DELAY_CONSTRAINT_ABORTED_RETRY_REQUEST, singletonList(new Count()))
             .put(RouterTehutiMetricNameEnum.SLOW_ROUTE_ABORTED_RETRY_REQUEST, singletonList(new Count()))
             .put(RouterTehutiMetricNameEnum.RETRY_ROUTE_LIMIT_ABORTED_RETRY_REQUEST, singletonList(new Count()))
@@ -261,7 +264,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         CALL_KEY_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorFinal,
-        CollectionUtil.<TehutiMetricNameEnum, List<MeasurableStat>>mapBuilder()
+        CollectionUtils.<TehutiMetricNameEnum, List<MeasurableStat>>mapBuilder()
             .put(RouterTehutiMetricNameEnum.KEY_NUM, Arrays.asList(new OccurrenceRate(), new Avg(), new Max(0)))
             .put(
                 RouterTehutiMetricNameEnum.BAD_REQUEST_KEY_COUNT,
@@ -673,10 +676,25 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     return Double.isFinite(metric.value()) ? metric.value() > 0.0 : false;
   }
 
+  /** used only for testing */
+  boolean emitOpenTelemetryMetrics() {
+    return this.emitOpenTelemetryMetrics;
+  }
+
+  /** used only for testing */
+  VeniceOpenTelemetryMetricNamingFormat getOpenTelemetryMetricsFormat() {
+    return this.openTelemetryMetricFormat;
+  }
+
+  /** used only for testing */
+  Attributes getCommonMetricDimensions() {
+    return this.commonMetricDimensions;
+  }
+
   /**
    * Metric names for tehuti metrics used in this class
    */
-  private enum RouterTehutiMetricNameEnum implements TehutiMetricNameEnum {
+  enum RouterTehutiMetricNameEnum implements TehutiMetricNameEnum {
     /** for {@link RouterMetricEntity#INCOMING_CALL_COUNT} */
     REQUEST,
     /** for {@link RouterMetricEntity#CALL_COUNT} */

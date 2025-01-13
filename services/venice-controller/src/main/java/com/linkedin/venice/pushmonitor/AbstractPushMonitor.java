@@ -31,7 +31,9 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
@@ -88,6 +90,7 @@ public abstract class AbstractPushMonitor
   private final boolean isOfflinePushMonitorDaVinciPushStatusEnabled;
 
   private final DisabledPartitionStats disabledPartitionStats;
+  private final String regionName;
 
   public AbstractPushMonitor(
       String clusterName,
@@ -134,6 +137,7 @@ public abstract class AbstractPushMonitor
         controllerConfig.getDaVinciPushStatusScanMaxOfflineInstanceRatio(),
         controllerConfig.useDaVinciSpecificExecutionStatusForError());
     this.isOfflinePushMonitorDaVinciPushStatusEnabled = controllerConfig.isDaVinciPushStatusEnabled();
+    this.regionName = controllerConfig.getRegionName();
     pushStatusCollector.start();
   }
 
@@ -932,7 +936,7 @@ public abstract class AbstractPushMonitor
         try {
           String newStatusDetails;
           realTimeTopicSwitcher.switchToRealTimeTopic(
-              Version.composeRealTimeTopic(storeName),
+              Utils.getRealTimeTopicName(store),
               offlinePushStatus.getKafkaTopic(),
               store,
               aggregateRealTimeSourceKafkaUrl,
@@ -1120,15 +1124,41 @@ public abstract class AbstractPushMonitor
                     storeName,
                     versionNumber));
           }
-          if (version.isVersionSwapDeferred()) {
+
+          /**
+           * Switch to the new version if:
+           * 1.deferred version swap is not enabled and it is not a target region push w/ deferred version swap
+           * 2.target region push w/ deferred swap is enabled and the current region matches the target region
+           *
+           * Do not switch to the new version now if:
+           * 1.deferred version swap is enabled (it will be manually swapped at a later date)
+           * 2.target region push is enabled and the current region does NOT match the target region (it will be swapped
+           *  after targetSwapRegionWaitTime passes)
+           */
+          Set<String> targetRegions = RegionUtils.parseRegionsFilterList(version.getTargetSwapRegion());
+          boolean isTargetRegionPushWithDeferredSwap =
+              version.isVersionSwapDeferred() && targetRegions.contains(regionName);
+          boolean isNormalPush = !version.isVersionSwapDeferred();
+          boolean isDeferredSwap = version.isVersionSwapDeferred() && targetRegions.isEmpty();
+          if (isTargetRegionPushWithDeferredSwap || isNormalPush) {
             LOGGER.info(
-                "Version swap is deferred for store {} on version {}. Skipping version swap.",
+                "Swapping to version {} for store {} in region {} during "
+                    + (isNormalPush ? "normal push" : "target region push with deferred version swap"),
+                versionNumber,
                 store.getName(),
-                versionNumber);
-          } else {
+                regionName,
+                isTargetRegionPushWithDeferredSwap,
+                isNormalPush);
             int previousVersion = store.getCurrentVersion();
             store.setCurrentVersion(versionNumber);
             realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
+          } else {
+            LOGGER.info(
+                "Version swap is deferred for store {} on version {} in region {} because "
+                    + (isDeferredSwap ? "deferred version swap is enabled" : "it is not in the target regions"),
+                store.getName(),
+                versionNumber,
+                regionName);
           }
         } else {
           LOGGER.info(

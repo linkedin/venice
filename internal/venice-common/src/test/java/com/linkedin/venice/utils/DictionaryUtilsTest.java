@@ -1,6 +1,7 @@
 package com.linkedin.venice.utils;
 
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -65,6 +66,8 @@ public class DictionaryUtilsTest {
     ByteBuffer dictionaryFromKafka =
         DictionaryUtils.readDictionaryFromKafka(topic.getName(), pubSubConsumer, pubSubTopicRepository);
     Assert.assertEquals(dictionaryFromKafka.array(), dictionaryToSend);
+    verify(pubSubConsumer, times(1)).subscribe(eq(topicPartition), anyLong());
+    verify(pubSubConsumer, times(1)).unSubscribe(topicPartition);
     verify(pubSubConsumer, times(1)).poll(anyLong());
   }
 
@@ -94,6 +97,8 @@ public class DictionaryUtilsTest {
     ByteBuffer dictionaryFromKafka =
         DictionaryUtils.readDictionaryFromKafka(topic.getName(), pubSubConsumer, pubSubTopicRepository);
     Assert.assertNull(dictionaryFromKafka);
+    verify(pubSubConsumer, times(1)).subscribe(eq(topicPartition), anyLong());
+    verify(pubSubConsumer, times(1)).unSubscribe(topicPartition);
     verify(pubSubConsumer, times(1)).poll(anyLong());
   }
 
@@ -121,6 +126,8 @@ public class DictionaryUtilsTest {
     ByteBuffer dictionaryFromKafka =
         DictionaryUtils.readDictionaryFromKafka(topic.getName(), pubSubConsumer, pubSubTopicRepository);
     Assert.assertNull(dictionaryFromKafka);
+    verify(pubSubConsumer, times(1)).subscribe(eq(topicPartition), anyLong());
+    verify(pubSubConsumer, times(1)).unSubscribe(topicPartition);
     verify(pubSubConsumer, times(1)).poll(anyLong());
   }
 
@@ -154,6 +161,8 @@ public class DictionaryUtilsTest {
     ByteBuffer dictionaryFromKafka =
         DictionaryUtils.readDictionaryFromKafka(topic.getName(), pubSubConsumer, pubSubTopicRepository);
     Assert.assertEquals(dictionaryFromKafka.array(), dictionaryToSend);
+    verify(pubSubConsumer, times(1)).subscribe(eq(topicPartition), anyLong());
+    verify(pubSubConsumer, times(1)).unSubscribe(topicPartition);
     verify(pubSubConsumer, times(2)).poll(anyLong());
   }
 }

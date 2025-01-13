@@ -83,7 +83,17 @@ public class ControllerApiConstants {
   public static final String PUSH_STRATEGY = "push_strategy";
 
   public static final String ACCESS_CONTROLLED = "access_controlled";
+  /**
+   * @deprecated Use {@link #ENABLE_STORE_MIGRATION} instead. This constant is kept for backward compatibility
+   * and will be removed in a future release.
+   */
+  @Deprecated
   public static final String STORE_MIGRATION = "store_migration";
+
+  /**
+   * Constant for enabling store migration. Replaces the deprecated {@link #STORE_MIGRATION}.
+   */
+  public static final String ENABLE_STORE_MIGRATION = "enable_store_migration";
 
   public static final String PUSH_JOB_STATUS = "push_job_status";
   public static final String PUSH_JOB_DURATION = "push_job_duration";
@@ -242,4 +252,7 @@ public class ControllerApiConstants {
 
   public static final String NEARLINE_PRODUCER_COMPRESSION_ENABLED = "nearline_producer_compression_enabled";
   public static final String NEARLINE_PRODUCER_COUNT_PER_WRITER = "nearline_producer_count_per_writer";
+  public static final String TARGET_SWAP_REGION = "target_swap_region";
+  public static final String TARGET_SWAP_REGION_WAIT_TIME = "target_swap_region_wait_time";
+  public static final String IS_DAVINCI_HEARTBEAT_REPORTED = "is_davinci_heartbeat_reported";
 }

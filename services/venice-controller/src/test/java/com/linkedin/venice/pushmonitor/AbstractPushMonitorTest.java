@@ -772,7 +772,7 @@ public abstract class AbstractPushMonitorTest {
     replicaStatuses.get(0).updateStatus(ExecutionStatus.END_OF_PUSH_RECEIVED);
     monitor.onPartitionStatusChange(topic, partitionStatus);
     verify(realTimeTopicSwitcher, times(1)).switchToRealTimeTopic(
-        eq(Version.composeRealTimeTopic(store.getName())),
+        eq(Utils.getRealTimeTopicName(store)),
         eq(topic),
         eq(store),
         eq(aggregateRealTimeSourceKafkaUrl),
@@ -841,7 +841,7 @@ public abstract class AbstractPushMonitorTest {
     }
     // Only send one SOBR
     verify(realTimeTopicSwitcher, only()).switchToRealTimeTopic(
-        eq(Version.composeRealTimeTopic(store.getName())),
+        eq(Utils.getRealTimeTopicName(store)),
         eq(topic),
         eq(store),
         eq(aggregateRealTimeSourceKafkaUrl),

@@ -9,6 +9,7 @@ import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
@@ -288,7 +289,15 @@ public interface Admin extends AutoCloseable, Closeable {
       String targetedRegions,
       int repushSourceVersion);
 
-  String getRealTimeTopic(String clusterName, String storeName);
+  String getRealTimeTopic(String clusterName, Store store);
+
+  default String getRealTimeTopic(String clusterName, String storeName) {
+    Store store = getStore(clusterName, storeName);
+    if (store == null) {
+      throw new VeniceNoStoreException(storeName, clusterName);
+    }
+    return getRealTimeTopic(clusterName, store);
+  }
 
   String getSeparateRealTimeTopic(String clusterName, String storeName);
 
@@ -538,7 +547,7 @@ public interface Admin extends AutoCloseable, Closeable {
       List<String> toBeStoppedInstances,
       boolean isSSLEnabled);
 
-  boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, Store store);
+  boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, String storeName);
 
   /**
    * Check if this controller itself is the leader controller for a given cluster or not. Note that the controller can be

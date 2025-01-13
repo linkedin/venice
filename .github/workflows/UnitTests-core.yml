@@ -22,6 +22,8 @@ jobs:
       contents: read
       checks: write
       id-token: write
+      pull-requests: write
+      issues: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,6 +41,8 @@ jobs:
           git fetch upstream
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Run Unit Tests with Code Coverage
         run: ./gradlew  -x :internal:venice-avro-compatibility-test:test  ${{ inputs.arg }}
       - name: Package Build Artifacts
@@ -50,12 +54,19 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ inputs.artifact_suffix }}-artifacts
           tar -zcvf ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ inputs.artifact_suffix }}-artifacts
       - name: Publish Test Report
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v3
-        if: always() # always run even if the previous step fails
+        uses: mikepenz/action-junit-report@v5
+        if: always()
         with:
-          report_paths: '**/build/test-results/test/TEST-*.xml'
+         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         comment: false
+         annotate_only: true
+         flaky_summary: true
+         commit: ${{github.event.workflow_run.head_sha}}
+         detailed_summary: true
+         report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v4

@@ -43,7 +43,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -147,14 +146,14 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
     this.retryManagerScheduler = retryManagerScheduler;
     this.routerSingleKeyRetryManagers = new VeniceConcurrentHashMap<>();
     this.routerMultiKeyRetryManagers = new VeniceConcurrentHashMap<>();
-  };
+  }
 
   @Override
   public VenicePath parseResourceUri(String uri, HTTP_REQUEST request) throws RouterException {
     if (!(request instanceof BasicFullHttpRequest)) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-          Optional.empty(),
-          Optional.empty(),
+          null,
+          null,
           BAD_GATEWAY,
           "parseResourceUri should receive a BasicFullHttpRequest");
     }
@@ -164,18 +163,15 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
     RouterResourceType resourceType = pathHelper.getResourceType();
     if (resourceType != RouterResourceType.TYPE_STORAGE && resourceType != RouterResourceType.TYPE_COMPUTE) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-          Optional.empty(),
-          Optional.empty(),
+          null,
+          null,
           BAD_REQUEST,
           "Requested resource type: " + resourceType + " is not a valid type");
     }
     String storeName = pathHelper.getResourceName();
     if (StringUtils.isEmpty(storeName)) {
-      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-          Optional.empty(),
-          Optional.empty(),
-          BAD_REQUEST,
-          "Request URI must have storeName.  Uri is: " + uri);
+      throw RouterExceptionAndTrackingUtils
+          .newRouterExceptionAndTracking(null, null, BAD_REQUEST, "Request URI must have storeName.  Uri is: " + uri);
     }
 
     VenicePath path = null;
@@ -251,8 +247,8 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
           } else {
             if (!request.headers().contains(HttpConstants.VENICE_CLIENT_COMPUTE)) {
               throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-                  Optional.of(storeName),
-                  Optional.of(computePath.getRequestType()),
+                  storeName,
+                  computePath.getRequestType(),
                   METHOD_NOT_ALLOWED,
                   "Read compute is not enabled for the store. Please contact Venice team to enable the feature.");
             }
@@ -263,18 +259,15 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
           }
         } else {
           throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-              Optional.of(storeName),
-              Optional.empty(),
+              storeName,
+              null,
               BAD_REQUEST,
               "The passed in request must be either a GET or " + "be a POST with a resource type of " + TYPE_STORAGE
                   + " or " + TYPE_COMPUTE + ", but instead it was: " + request.toString());
         }
       } else {
-        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-            Optional.empty(),
-            Optional.empty(),
-            BAD_REQUEST,
-            "Method: " + method + " is not allowed");
+        throw RouterExceptionAndTrackingUtils
+            .newRouterExceptionAndTracking(null, null, BAD_REQUEST, "Method: " + method + " is not allowed");
       }
       RequestType requestType = path.getRequestType();
       if (StreamingUtils.isStreamingEnabled(request)) {
@@ -333,16 +326,15 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
       aggRouterHttpRequestStats.recordRequest(storeName);
       aggRouterHttpRequestStats.recordRequestSize(storeName, path.getRequestSize());
     } catch (VeniceException e) {
-      Optional<RequestType> requestTypeOptional =
-          (path == null) ? Optional.empty() : Optional.of(path.getRequestType());
+      RequestType requestType = path == null ? null : path.getRequestType();
       HttpResponseStatus responseStatus = BAD_REQUEST;
       if (e instanceof VeniceStoreIsMigratedException) {
-        requestTypeOptional = Optional.empty();
+        requestType = null;
         responseStatus = MOVED_PERMANENTLY;
       }
       if (e instanceof VeniceKeyCountLimitException) {
         VeniceKeyCountLimitException keyCountLimitException = (VeniceKeyCountLimitException) e;
-        requestTypeOptional = Optional.of(keyCountLimitException.getRequestType());
+        requestType = keyCountLimitException.getRequestType();
         responseStatus = REQUEST_ENTITY_TOO_LARGE;
         routerStats.getStatsByType(keyCountLimitException.getRequestType())
             .recordBadRequestKeyCount(
@@ -353,7 +345,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
        * Tracking the bad requests in {@link RouterExceptionAndTrackingUtils} by logging and metrics.
        */
       throw RouterExceptionAndTrackingUtils
-          .newRouterExceptionAndTracking(Optional.of(storeName), requestTypeOptional, responseStatus, e.getMessage());
+          .newRouterExceptionAndTracking(storeName, requestType, responseStatus, e.getMessage());
     } finally {
       // Always record request usage in the single get stats, so we could compare it with the quota easily.
       // Right now we use key num as request usage, in the future we might consider the Capacity unit.
@@ -366,8 +358,8 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
   @Override
   public VenicePath parseResourceUri(String uri) throws RouterException {
     throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-        Optional.empty(),
-        Optional.empty(),
+        null,
+        null,
         BAD_REQUEST,
         "parseResourceUri without param: request should not be invoked");
   }

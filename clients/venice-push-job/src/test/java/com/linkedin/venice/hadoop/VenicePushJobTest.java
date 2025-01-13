@@ -27,6 +27,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
@@ -173,6 +174,7 @@ public class VenicePushJobTest {
       PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
       Assert.assertTrue(pushJobSetting.repushTTLEnabled);
       Assert.assertEquals(pushJobSetting.repushTTLStartTimeMs, -1);
+      Assert.assertTrue(Version.isPushIdTTLRePush(pushJob.getPushJobDetails().getPushId().toString()));
     }
 
     // Test with explicit TTL start timestamp
@@ -183,6 +185,7 @@ public class VenicePushJobTest {
       PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
       Assert.assertTrue(pushJobSetting.repushTTLEnabled);
       Assert.assertEquals(pushJobSetting.repushTTLStartTimeMs, 100);
+      Assert.assertTrue(Version.isPushIdTTLRePush(pushJob.getPushJobDetails().getPushId().toString()));
     }
 
     // Test with explicit TTL age
@@ -216,6 +219,7 @@ public class VenicePushJobTest {
       PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
       Assert.assertFalse(pushJobSetting.repushTTLEnabled);
       Assert.assertEquals(pushJobSetting.repushTTLStartTimeMs, -1);
+      Assert.assertTrue(Version.isPushIdRePush(pushJob.getPushJobDetails().getPushId().toString()));
     }
   }
 
@@ -923,6 +927,36 @@ public class VenicePushJobTest {
     }
   }
 
+  @Test
+  public void testTargetRegionPushWithDeferredSwapSettings() {
+    Properties props = getVpjRequiredProperties();
+    String regions = "test1, test2";
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
+    props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+    props.put(TARGETED_REGION_PUSH_LIST, regions);
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, getClient())) {
+      PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
+      Assert.assertEquals(pushJobSetting.deferVersionSwap, true);
+      Assert.assertEquals(pushJobSetting.isTargetRegionPushWithDeferredSwapEnabled, true);
+      Assert.assertEquals(pushJobSetting.targetedRegions, regions);
+    }
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*cannot be enabled at the same time.*")
+  public void testEnableBothTargetRegionConfigs() {
+    Properties props = getVpjRequiredProperties();
+    String regions = "test1, test2";
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
+    props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+    props.put(TARGETED_REGION_PUSH_ENABLED, true);
+    props.put(TARGETED_REGION_PUSH_LIST, regions);
+
+    getSpyVenicePushJob(props, getClient());
+  }
+
   private JobStatusQueryResponse mockJobStatusQuery() {
     JobStatusQueryResponse response = new JobStatusQueryResponse();
     response.setStatus(ExecutionStatus.COMPLETED.toString());
@@ -967,7 +1001,8 @@ public class VenicePushJobTest {
               anyLong(),
               anyBoolean(),
               any(),
-              anyInt());
+              anyInt(),
+              anyBoolean());
     }
 
     return versionCreationResponse;

@@ -177,6 +177,7 @@ import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_MANAGER_ME
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
@@ -534,6 +535,7 @@ public class VeniceControllerClusterConfig {
   private final long serviceDiscoveryRegistrationRetryMS;
 
   private Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
+  private boolean isHybridStorePartitionCountUpdateEnabled;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
@@ -978,6 +980,8 @@ public class VeniceControllerClusterConfig {
     this.serviceDiscoveryRegistrationRetryMS =
         props.getLong(SERVICE_DISCOVERY_REGISTRATION_RETRY_MS, 30L * Time.MS_PER_SECOND);
     this.pushJobUserErrorCheckpoints = parsePushJobUserErrorCheckpoints(props);
+    this.isHybridStorePartitionCountUpdateEnabled =
+        props.getBoolean(ConfigKeys.CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE, false);
   }
 
   public VeniceProperties getProps() {
@@ -1765,6 +1769,10 @@ public class VeniceControllerClusterConfig {
 
   public int getDanglingTopicOccurrenceThresholdForCleanup() {
     return danglingTopicOccurrenceThresholdForCleanup;
+  }
+
+  public boolean isHybridStorePartitionCountUpdateEnabled() {
+    return isHybridStorePartitionCountUpdateEnabled;
   }
 
   /**
