@@ -13,7 +13,6 @@ import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.ZKStore;
-import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
@@ -63,12 +62,12 @@ public class ThinClientMetaStoreBasedRepository extends NativeMetadataRepository
   }
 
   @Override
-  protected StoreConfig getStoreConfigFromSystemStore(String storeName) {
+  protected StoreConfig fetchStoreConfigFromRemote(String storeName) {
     return getStoreConfigFromMetaSystemStore(storeName);
   }
 
   @Override
-  protected Store getStoreFromSystemStore(String storeName, String clusterName) {
+  protected Store fetchStoreFromRemote(String storeName, String clusterName) {
     StoreProperties storeProperties =
         getStoreMetaValue(storeName, MetaStoreDataType.STORE_PROPERTIES.getStoreMetaKey(new HashMap<String, String>() {
           {
@@ -77,11 +76,6 @@ public class ThinClientMetaStoreBasedRepository extends NativeMetadataRepository
           }
         })).storeProperties;
     return new ZKStore(storeProperties);
-  }
-
-  @Override
-  protected SchemaData getSchemaDataFromSystemStore(String storeName) {
-    return getSchemaDataFromMetaSystemStore(storeName);
   }
 
   @Override

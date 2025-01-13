@@ -65,6 +65,9 @@ public class ClientConfig<T extends SpecificRecord> {
   // HttpTransport settings
   private int maxConnectionsPerRoute; // only for HTTP1
 
+  // NativeMetadataRepository settings
+  private boolean useRequestBasedMetaRepository = false;
+
   private int maxConnectionsTotal; // only for HTTP1
 
   private boolean httpClient5Http2Enabled;
@@ -276,6 +279,15 @@ public class ClientConfig<T extends SpecificRecord> {
 
   public ClientConfig<T> setMaxConnectionsPerRoute(int maxConnectionsPerRoute) {
     this.maxConnectionsPerRoute = maxConnectionsPerRoute;
+    return this;
+  }
+
+  public boolean isUseRequestBasedMetaRepository() {
+    return useRequestBasedMetaRepository;
+  }
+
+  public ClientConfig<T> setUseRequestBasedMetaRepository(boolean useRequestBasedMetaRepository) {
+    this.useRequestBasedMetaRepository = useRequestBasedMetaRepository;
     return this;
   }
 

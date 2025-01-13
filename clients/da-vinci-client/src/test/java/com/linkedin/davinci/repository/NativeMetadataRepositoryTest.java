@@ -13,7 +13,6 @@ import com.linkedin.venice.client.store.schemas.TestValueRecord;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
-import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreKeySchemas;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
@@ -34,7 +33,8 @@ import org.testng.annotations.Test;
 
 
 public class NativeMetadataRepositoryTest {
-  private ClientConfig clientConfig;
+  private ClientConfig clientConfigThinClient;
+  private ClientConfig clientConfigRequestBased;
   private VeniceProperties backendConfig;
   private MetricsRepository metricsRepository;
   private Clock clock;
@@ -42,19 +42,22 @@ public class NativeMetadataRepositoryTest {
 
   @BeforeMethod
   public void setUpMocks() {
-    clientConfig = mock(ClientConfig.class);
+    clientConfigThinClient = mock(ClientConfig.class);
+    clientConfigRequestBased = mock(ClientConfig.class);
     backendConfig = mock(VeniceProperties.class);
     doReturn(1L).when(backendConfig).getLong(eq(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS), anyLong());
     metricsRepository = new MetricsRepository();
-    doReturn(metricsRepository).when(clientConfig).getMetricsRepository();
+    doReturn(metricsRepository).when(clientConfigThinClient).getMetricsRepository();
+    doReturn(metricsRepository).when(clientConfigRequestBased).getMetricsRepository();
+    doReturn(true).when(clientConfigRequestBased).isUseRequestBasedMetaRepository();
     clock = mock(Clock.class);
     doReturn(0L).when(clock).millis();
   }
 
   @Test
-  public void testGetInstance() {
+  public void testGetThinClientInstance() {
     NativeMetadataRepository nativeMetadataRepository =
-        NativeMetadataRepository.getInstance(clientConfig, backendConfig);
+        NativeMetadataRepository.getInstance(clientConfigThinClient, backendConfig);
     Assert.assertTrue(nativeMetadataRepository instanceof ThinClientMetaStoreBasedRepository);
 
     Assert.assertThrows(() -> nativeMetadataRepository.subscribe(STORE_NAME));
@@ -65,8 +68,21 @@ public class NativeMetadataRepositoryTest {
   }
 
   @Test
+  public void testGetRequestBasedInstance() {
+    NativeMetadataRepository nativeMetadataRepository =
+        NativeMetadataRepository.getInstance(clientConfigRequestBased, backendConfig);
+    Assert.assertTrue(nativeMetadataRepository instanceof RequestBasedMetaRepository);
+
+    Assert.assertThrows(() -> nativeMetadataRepository.subscribe(STORE_NAME));
+    nativeMetadataRepository.start();
+    nativeMetadataRepository.clear();
+    Assert.assertThrows(() -> nativeMetadataRepository.subscribe(STORE_NAME));
+    Assert.assertThrows(() -> nativeMetadataRepository.start());
+  }
+
+  @Test
   public void testGetSchemaDataFromReadThroughCache() throws InterruptedException {
-    TestNMR nmr = new TestNMR(clientConfig, backendConfig, clock);
+    TestNMR nmr = new TestNMR(clientConfigThinClient, backendConfig, clock);
     nmr.start();
     Assert.assertThrows(VeniceNoStoreException.class, () -> nmr.getKeySchema(STORE_NAME));
     nmr.subscribe(STORE_NAME);
@@ -77,7 +93,7 @@ public class NativeMetadataRepositoryTest {
   public void testGetSchemaDataEfficiently() throws InterruptedException {
     doReturn(Long.MAX_VALUE).when(backendConfig)
         .getLong(eq(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS), anyLong());
-    TestNMR nmr = new TestNMR(clientConfig, backendConfig, clock);
+    TestNMR nmr = new TestNMR(clientConfigThinClient, backendConfig, clock);
     nmr.start();
     Assert.assertEquals(nmr.keySchemaRequestCount, 0);
     Assert.assertEquals(nmr.valueSchemasRequestCount, 0);
@@ -115,7 +131,7 @@ public class NativeMetadataRepositoryTest {
   public void testNativeMetadataRepositoryStats() throws InterruptedException {
     doReturn(Long.MAX_VALUE).when(backendConfig)
         .getLong(eq(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS), anyLong());
-    TestNMR nmr = new TestNMR(clientConfig, backendConfig, clock);
+    TestNMR nmr = new TestNMR(clientConfigThinClient, backendConfig, clock);
     nmr.start();
     nmr.subscribe(STORE_NAME);
     doReturn(1000L).when(clock).millis();
@@ -159,14 +175,14 @@ public class NativeMetadataRepositoryTest {
     }
 
     @Override
-    protected StoreConfig getStoreConfigFromSystemStore(String storeName) {
+    protected StoreConfig fetchStoreConfigFromRemote(String storeName) {
       StoreConfig storeConfig = mock(StoreConfig.class);
       when(storeConfig.isDeleting()).thenReturn(false);
       return storeConfig;
     }
 
     @Override
-    protected Store getStoreFromSystemStore(String storeName, String clusterName) {
+    protected Store fetchStoreFromRemote(String storeName, String clusterName) {
       Store store = mock(Store.class);
       when(store.getName()).thenReturn(storeName);
       when(store.getReadQuotaInCU()).thenReturn(1L);
@@ -201,11 +217,6 @@ public class NativeMetadataRepositoryTest {
           // do nothing
       }
       return storeMetaValue;
-    }
-
-    @Override
-    protected SchemaData getSchemaDataFromSystemStore(String storeName) {
-      return getSchemaDataFromMetaSystemStore(storeName);
     }
   }
 }

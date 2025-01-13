@@ -128,8 +128,12 @@ public abstract class NativeMetadataRepository
     LOGGER.info(
         "Initializing {} with {}",
         NativeMetadataRepository.class.getSimpleName(),
-        ThinClientMetaStoreBasedRepository.class.getSimpleName());
-    return new ThinClientMetaStoreBasedRepository(clientConfig, backendConfig, icProvider);
+        RequestBasedMetaRepository.class.getSimpleName());
+    if (clientConfig.isUseRequestBasedMetaRepository()) {
+      return new RequestBasedMetaRepository(clientConfig, backendConfig);
+    } else {
+      return new ThinClientMetaStoreBasedRepository(clientConfig, backendConfig, icProvider);
+    }
   }
 
   @Override
@@ -171,20 +175,14 @@ public abstract class NativeMetadataRepository
   @Override
   public Store refreshOneStore(String storeName) {
     try {
-      getAndSetStoreConfigFromSystemStore(storeName);
-      StoreConfig storeConfig = storeConfigMap.get(storeName);
+      StoreConfig storeConfig = cacheStoreConfigFromRemote(storeName);
       if (storeConfig == null) {
         throw new VeniceException("StoreConfig is missing unexpectedly for store: " + storeName);
       }
-      Store newStore = getStoreFromSystemStore(storeName, storeConfig.getCluster());
-      // isDeleting check to detect deleted store is only supported by meta system store based implementation.
-      if (newStore != null && !storeConfig.isDeleting()) {
-        putStore(newStore);
-        getAndCacheSchemaDataFromSystemStore(storeName);
-        nativeMetadataRepositoryStats.updateCacheTimestamp(storeName, clock.millis());
-      } else {
-        removeStore(storeName);
-      }
+      Store newStore = fetchStoreFromRemote(storeName, storeConfig.getCluster());
+      putStore(newStore);
+      getAndCacheSchemaDataFromSystemStore(storeName);
+      nativeMetadataRepositoryStats.updateCacheTimestamp(storeName, clock.millis());
       return newStore;
     } catch (ServiceDiscoveryException | MissingKeyInStoreMetadataException e) {
       throw new VeniceNoStoreException(storeName, e);
@@ -393,13 +391,15 @@ public abstract class NativeMetadataRepository
    * Get the store cluster config from system store and update the local cache with it. Different implementation will
    * get the data differently but should all populate the store cluster config map.
    */
-  protected void getAndSetStoreConfigFromSystemStore(String storeName) {
-    storeConfigMap.put(storeName, getStoreConfigFromSystemStore(storeName));
+  protected StoreConfig cacheStoreConfigFromRemote(String storeName) {
+    StoreConfig storeConfig = fetchStoreConfigFromRemote(storeName);
+    storeConfigMap.put(storeName, storeConfig);
+    return storeConfig;
   }
 
-  protected abstract StoreConfig getStoreConfigFromSystemStore(String storeName);
+  protected abstract StoreConfig fetchStoreConfigFromRemote(String storeName);
 
-  protected abstract Store getStoreFromSystemStore(String storeName, String clusterName);
+  protected abstract Store fetchStoreFromRemote(String storeName, String clusterName);
 
   protected abstract StoreMetaValue getStoreMetaValue(String storeName, StoreMetaKey key);
 
@@ -413,7 +413,7 @@ public abstract class NativeMetadataRepository
   }
 
   // Helper function with common code for retrieving SchemaData from meta system store.
-  protected SchemaData getSchemaDataFromMetaSystemStore(String storeName) {
+  protected SchemaData getSchemaData(String storeName) {
     SchemaData schemaData = schemaMap.get(storeName);
     SchemaEntry keySchema;
     if (schemaData == null) {
@@ -520,7 +520,7 @@ public abstract class NativeMetadataRepository
     if (!hasStore(storeName)) {
       throw new VeniceNoStoreException(storeName);
     }
-    SchemaData schemaData = getSchemaDataFromSystemStore(storeName);
+    SchemaData schemaData = getSchemaData(storeName);
     schemaMap.put(storeName, schemaData);
     return schemaData;
   }
@@ -544,8 +544,6 @@ public abstract class NativeMetadataRepository
     }
     return schemaData.getValueSchema(id);
   }
-
-  protected abstract SchemaData getSchemaDataFromSystemStore(String storeName);
 
   /**
    * This function is used to remove schema entry for the given store from local cache,
