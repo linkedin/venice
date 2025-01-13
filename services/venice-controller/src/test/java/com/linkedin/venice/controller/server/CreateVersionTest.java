@@ -33,6 +33,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -53,6 +54,7 @@ import com.linkedin.venice.controllerapi.RequestTopicForPushRequest;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
+import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
@@ -640,13 +642,15 @@ public class CreateVersionTest {
 
   @Test
   public void testVerifyAndConfigurePartitionerSettings() {
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+
     VersionCreationResponse response = new VersionCreationResponse();
     PartitionerConfig storePartitionerConfig = mock(PartitionerConfig.class);
     when(storePartitionerConfig.getPartitionerClass()).thenReturn("f.q.c.n.DefaultPartitioner");
 
     // Test Case 1: Null partitionersFromRequest (should pass)
     try {
-      CreateVersion.verifyAndConfigurePartitionerSettings(storePartitionerConfig, null, response);
+      createVersion.verifyAndConfigurePartitionerSettings(storePartitionerConfig, null, response);
     } catch (Exception e) {
       fail("Null partitionersFromRequest should not throw an exception.");
     }
@@ -656,7 +660,7 @@ public class CreateVersionTest {
     response = new VersionCreationResponse();
     Set<String> partitionersFromRequest = Collections.emptySet();
     try {
-      CreateVersion.verifyAndConfigurePartitionerSettings(storePartitionerConfig, partitionersFromRequest, response);
+      createVersion.verifyAndConfigurePartitionerSettings(storePartitionerConfig, partitionersFromRequest, response);
     } catch (Exception e) {
       fail("Empty partitionersFromRequest should not throw an exception.");
     }
@@ -666,7 +670,7 @@ public class CreateVersionTest {
     response = new VersionCreationResponse();
     partitionersFromRequest = new HashSet<>(Arrays.asList("f.q.c.n.DefaultPartitioner", "f.q.c.n.CustomPartitioner"));
     try {
-      CreateVersion.verifyAndConfigurePartitionerSettings(storePartitionerConfig, partitionersFromRequest, response);
+      createVersion.verifyAndConfigurePartitionerSettings(storePartitionerConfig, partitionersFromRequest, response);
     } catch (Exception e) {
       fail("Matching partitioner should not throw an exception.");
     }
@@ -678,7 +682,7 @@ public class CreateVersionTest {
     Set<String> finalPartitionersFromRequest = partitionersFromRequest;
     Exception e = expectThrows(
         VeniceException.class,
-        () -> CreateVersion.verifyAndConfigurePartitionerSettings(
+        () -> createVersion.verifyAndConfigurePartitionerSettings(
             storePartitionerConfig,
             finalPartitionersFromRequest,
             finalResponse));
@@ -687,6 +691,8 @@ public class CreateVersionTest {
 
   @Test
   public void testDetermineResponseTopic() {
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+
     String storeName = "test_store";
     String vtName = Version.composeKafkaTopic(storeName, 1);
     String rtName = Version.composeRealTimeTopic(storeName);
@@ -700,67 +706,76 @@ public class CreateVersionTest {
     when(mockVersion1.kafkaTopicName()).thenReturn(vtName);
     when(mockVersion1.isSeparateRealTimeTopicEnabled()).thenReturn(true);
     request.setSeparateRealTimeTopicEnabled(true);
-    String result1 = CreateVersion.determineResponseTopic(storeName, mockVersion1, request);
+    String result1 = createVersion.determineResponseTopic(storeName, mockVersion1, request);
     assertEquals(result1, separateRtName);
 
     // Test Case: PushType.INCREMENTAL with separate real-time topic enabled, but the request does not have the separate
     // real-time topic flag
     mockVersion1 = mock(Version.class);
+    when(mockVersion1.getStoreName()).thenReturn(storeName);
     when(mockVersion1.kafkaTopicName()).thenReturn(vtName);
     when(mockVersion1.isSeparateRealTimeTopicEnabled()).thenReturn(true);
     request.setSeparateRealTimeTopicEnabled(false);
-    result1 = CreateVersion.determineResponseTopic(storeName, mockVersion1, request);
+    result1 = createVersion.determineResponseTopic(storeName, mockVersion1, request);
     assertEquals(result1, rtName);
 
     // Test Case: PushType.INCREMENTAL without separate real-time topic enabled
     Version mockVersion2 = mock(Version.class);
+    when(mockVersion2.getStoreName()).thenReturn(storeName);
     when(mockVersion2.kafkaTopicName()).thenReturn(vtName);
     when(mockVersion2.isSeparateRealTimeTopicEnabled()).thenReturn(true);
     request = new RequestTopicForPushRequest("v0", storeName, INCREMENTAL, "JOB_ID");
-    String result2 = CreateVersion.determineResponseTopic(storeName, mockVersion2, request);
+    String result2 = createVersion.determineResponseTopic(storeName, mockVersion2, request);
     assertEquals(result2, rtName);
 
     // Test Case: PushType.STREAM
     Version mockVersion3 = mock(Version.class);
+    when(mockVersion3.getStoreName()).thenReturn(storeName);
     when(mockVersion3.kafkaTopicName()).thenReturn(vtName);
     request = new RequestTopicForPushRequest("v0", storeName, STREAM, "JOB_ID");
-    String result3 = CreateVersion.determineResponseTopic(storeName, mockVersion3, request);
+    String result3 = createVersion.determineResponseTopic(storeName, mockVersion3, request);
     assertEquals(result3, rtName);
 
     // Test Case: PushType.STREAM_REPROCESSING
     Version mockVersion4 = mock(Version.class);
+    when(mockVersion4.getStoreName()).thenReturn(storeName);
     when(mockVersion4.kafkaTopicName()).thenReturn(vtName);
     when(mockVersion4.getNumber()).thenReturn(1);
     request = new RequestTopicForPushRequest("v0", storeName, STREAM_REPROCESSING, "JOB_ID");
-    String result4 = CreateVersion.determineResponseTopic(storeName, mockVersion4, request);
+    String result4 = createVersion.determineResponseTopic(storeName, mockVersion4, request);
     assertEquals(result4, srTopicName);
 
     // Test Case: Default case with a Kafka topic
     Version mockVersion5 = mock(Version.class);
+    when(mockVersion5.getStoreName()).thenReturn(storeName);
     when(mockVersion5.kafkaTopicName()).thenReturn(vtName);
     request = new RequestTopicForPushRequest("v0", storeName, BATCH, "JOB_ID");
-    String result5 = CreateVersion.determineResponseTopic(storeName, mockVersion5, request);
+    String result5 = createVersion.determineResponseTopic(storeName, mockVersion5, request);
     assertEquals(result5, vtName);
   }
 
   @Test
   public void testGetCompressionStrategy() {
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+
     // Test Case 1: Real-time topic returns NO_OP
     Version mockVersion1 = mock(Version.class);
     String responseTopic1 = Version.composeRealTimeTopic("test_store");
-    CompressionStrategy result1 = CreateVersion.getCompressionStrategy(mockVersion1, responseTopic1);
+    CompressionStrategy result1 = createVersion.getCompressionStrategy(mockVersion1, responseTopic1);
     assertEquals(result1, CompressionStrategy.NO_OP);
 
     // Test Case 2: Non-real-time topic returns version's compression strategy
     Version mockVersion2 = mock(Version.class);
     String responseTopic2 = Version.composeKafkaTopic("test_store", 1);
     when(mockVersion2.getCompressionStrategy()).thenReturn(CompressionStrategy.GZIP);
-    CompressionStrategy result2 = CreateVersion.getCompressionStrategy(mockVersion2, responseTopic2);
+    CompressionStrategy result2 = createVersion.getCompressionStrategy(mockVersion2, responseTopic2);
     assertEquals(result2, CompressionStrategy.GZIP);
   }
 
   @Test
   public void testConfigureSourceFabric() {
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+
     // Test Case 1: Native replication enabled and non-incremental push type
     Admin mockAdmin1 = mock(Admin.class);
     Version mockVersion1 = mock(Version.class);
@@ -773,7 +788,7 @@ public class CreateVersionTest {
     when(mockVersion1.getNativeReplicationSourceFabric()).thenReturn("sourceFabric1");
     when(mockRequest1.getPushType()).thenReturn(BATCH);
 
-    CreateVersion.configureSourceFabric(mockAdmin1, mockVersion1, mockLazy1, mockRequest1, mockResponse1);
+    createVersion.configureSourceFabric(mockAdmin1, mockVersion1, mockLazy1, mockRequest1, mockResponse1);
 
     assertEquals(mockResponse1.getKafkaBootstrapServers(), "bootstrapServer1");
     assertEquals(mockResponse1.getKafkaSourceRegion(), "sourceFabric1");
@@ -790,7 +805,7 @@ public class CreateVersionTest {
     when(mockVersion2.getNativeReplicationSourceFabric()).thenReturn("sourceFabric2");
     when(mockRequest2.getPushType()).thenReturn(BATCH);
 
-    CreateVersion.configureSourceFabric(mockAdmin2, mockVersion2, mockLazy2, mockRequest2, mockResponse2);
+    createVersion.configureSourceFabric(mockAdmin2, mockVersion2, mockLazy2, mockRequest2, mockResponse2);
 
     assertNull(mockResponse2.getKafkaBootstrapServers());
     assertEquals(mockResponse2.getKafkaSourceRegion(), "sourceFabric2");
@@ -814,7 +829,7 @@ public class CreateVersionTest {
     when(mockAdmin3.getNativeReplicationKafkaBootstrapServerAddress("emergencyRegion"))
         .thenReturn("emergencyRegionAddress");
 
-    CreateVersion.configureSourceFabric(mockAdmin3, mockVersion3, mockLazy3, mockRequest3, mockResponse3);
+    createVersion.configureSourceFabric(mockAdmin3, mockVersion3, mockLazy3, mockRequest3, mockResponse3);
 
     assertEquals(mockResponse3.getKafkaBootstrapServers(), "emergencyRegionAddress");
 
@@ -933,5 +948,148 @@ public class CreateVersionTest {
     assertEquals(response.getPartitions(), 42);
     assertEquals(response.getCompressionStrategy(), CompressionStrategy.NO_OP);
     assertEquals(response.getKafkaTopic(), Version.composeRealTimeTopic(STORE_NAME));
+  }
+
+  @Test
+  public void testGetActiveActiveReplicationCheck() {
+    Admin admin = mock(Admin.class);
+    Store store = mock(Store.class);
+    String clusterName = "testCluster";
+    String storeName = "testStore";
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+
+    // Case 1: Admin is parent, store has AA replication, and AA replication is enabled in all regions
+    when(admin.isParent()).thenReturn(true);
+    when(store.isActiveActiveReplicationEnabled()).thenReturn(true);
+    when(admin.isActiveActiveReplicationEnabledInAllRegion(clusterName, storeName, true)).thenReturn(true);
+
+    Lazy<Boolean> check = createVersion.getActiveActiveReplicationCheck(admin, store, clusterName, storeName, true);
+    assertTrue(check.get(), "Expected AA replication check to return true");
+
+    // Case 2: Admin is not parent
+    when(admin.isParent()).thenReturn(false);
+    check = createVersion.getActiveActiveReplicationCheck(admin, store, clusterName, storeName, true);
+    assertFalse(check.get(), "Expected AA replication check to return false as admin is not parent");
+
+    // Case 3: Store does not have AA replication enabled
+    when(admin.isParent()).thenReturn(true);
+    when(store.isActiveActiveReplicationEnabled()).thenReturn(false);
+    check = createVersion.getActiveActiveReplicationCheck(admin, store, clusterName, storeName, true);
+    assertFalse(check.get(), "Expected AA replication check to return false as store does not have AA replication");
+  }
+
+  @Test
+  public void testApplyConfigBasedOnReplication() {
+    Lazy<Boolean> isAARCheckEnabled = Lazy.of(() -> true);
+    String configType = "TestConfig";
+    String configValue = "TestValue";
+    String storeName = "testStore";
+
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+
+    // Case 1: Config is applied as AA replication is enabled
+    String result = createVersion.applyConfigBasedOnReplication(configType, configValue, storeName, isAARCheckEnabled);
+    assertEquals(result, configValue, "Expected config to be applied as AA replication is enabled");
+
+    // Case 2: Config is ignored as AA replication is disabled
+    isAARCheckEnabled = Lazy.of(() -> false);
+    result = createVersion.applyConfigBasedOnReplication(configType, configValue, storeName, isAARCheckEnabled);
+    assertNull(result, "Expected config to be ignored as AA replication is disabled");
+
+    // Case 3: Config value is null
+    result = createVersion.applyConfigBasedOnReplication(configType, null, storeName, isAARCheckEnabled);
+    assertNull(result, "Expected config to remain null when input configValue is null");
+  }
+
+  @Test
+  public void testHandleNonStreamPushType() {
+    String clusterName = "testCluster";
+    String storeName = "testStore";
+    String pushJobId = "pushJob123";
+    int versionNumber = 11;
+    Version.PushType pushType = INCREMENTAL;
+    int computedPartitionCount = 10;
+    Admin admin = mock(Admin.class);
+    Store store = mock(Store.class);
+    RequestTopicForPushRequest request = new RequestTopicForPushRequest(clusterName, storeName, pushType, pushJobId);
+    VersionCreationResponse response = new VersionCreationResponse();
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+    Lazy<Boolean> isActiveActiveReplicationEnabledInAllRegions = Lazy.of(() -> true);
+
+    // Mock admin methods
+    when(admin.whetherEnableBatchPushFromAdmin(storeName)).thenReturn(true);
+    when(admin.calculateNumberOfPartitions(clusterName, storeName)).thenReturn(computedPartitionCount);
+
+    Version version = mock(Version.class);
+    when(version.getStoreName()).thenReturn(storeName);
+    when(version.getPartitionCount()).thenReturn(computedPartitionCount);
+    when(version.getNumber()).thenReturn(versionNumber);
+
+    when(
+        admin.incrementVersionIdempotent(
+            clusterName,
+            storeName,
+            request.getPushJobId(),
+            computedPartitionCount,
+            response.getReplicas(),
+            pushType,
+            request.isSendStartOfPush(),
+            request.isSorted(),
+            request.getCompressionDictionary(),
+            Optional.ofNullable(request.getSourceGridFabric()),
+            Optional.ofNullable(request.getCertificateInRequest()),
+            request.getRewindTimeInSecondsOverride(),
+            Optional.ofNullable(request.getEmergencySourceRegion()),
+            request.isDeferVersionSwap(),
+            request.getTargetedRegions(),
+            request.getRepushSourceVersion())).thenReturn(version);
+
+    when(createVersion.getCompressionStrategy(version, "testStore_v1")).thenReturn(CompressionStrategy.NO_OP);
+
+    // Case 1: Happy Path - All validations pass
+    createVersion
+        .handleNonStreamPushType(admin, store, request, response, isActiveActiveReplicationEnabledInAllRegions);
+    assertEquals(response.getPartitions(), computedPartitionCount, "Expected partition count to match.");
+    assertEquals(response.getVersion(), versionNumber, "Expected version number to match.");
+    assertEquals(response.getKafkaTopic(), "testStore_rt", "Expected Kafka topic to match.");
+    assertEquals(
+        response.getCompressionStrategy(),
+        CompressionStrategy.NO_OP,
+        "Expected compression strategy to be NO_OP.");
+
+    // Case 2: Batch push is not enabled
+    when(admin.whetherEnableBatchPushFromAdmin(storeName)).thenReturn(false);
+    VeniceUnsupportedOperationException ex1 = expectThrows(
+        VeniceUnsupportedOperationException.class,
+        () -> createVersion
+            .handleNonStreamPushType(admin, store, request, response, isActiveActiveReplicationEnabledInAllRegions));
+    assertTrue(ex1.getMessage().contains("Please push data to Venice Parent Colo instead"));
+
+    // Case 3: Increment version fails
+    doThrow(new VeniceException("Version creation failure")).when(admin)
+        .incrementVersionIdempotent(
+            clusterName,
+            storeName,
+            request.getPushJobId(),
+            computedPartitionCount,
+            response.getReplicas(),
+            pushType,
+            request.isSendStartOfPush(),
+            request.isSorted(),
+            request.getCompressionDictionary(),
+            Optional.ofNullable(request.getSourceGridFabric()),
+            Optional.ofNullable(request.getCertificateInRequest()),
+            request.getRewindTimeInSecondsOverride(),
+            Optional.ofNullable(request.getEmergencySourceRegion()),
+            request.isDeferVersionSwap(),
+            request.getTargetedRegions(),
+            request.getRepushSourceVersion());
+
+    when(admin.whetherEnableBatchPushFromAdmin(storeName)).thenReturn(true);
+    VeniceException ex2 = expectThrows(
+        VeniceException.class,
+        () -> createVersion
+            .handleNonStreamPushType(admin, store, request, response, isActiveActiveReplicationEnabledInAllRegions));
+    assertTrue(ex2.getMessage().contains("Version creation failure"), "Actual Message: " + ex2.getMessage());
   }
 }

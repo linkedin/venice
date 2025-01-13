@@ -75,7 +75,7 @@ public class CreateVersion extends AbstractRoute {
     this.disableParentRequestTopicForStreamPushes = disableParentRequestTopicForStreamPushes;
   }
 
-  static void extractOptionalParamsFromRequestTopicRequest(
+  protected static void extractOptionalParamsFromRequestTopicRequest(
       Request httpRequest,
       RequestTopicForPushRequest request,
       boolean isAclEnabled) {
@@ -136,7 +136,9 @@ public class CreateVersion extends AbstractRoute {
    * @param storePartitionerConfig The store's partitioner configuration to use for validation.
    * @throws VeniceException if the store's partitioner is not in the provided partitioners.
    */
-  private static void verifyPartitioner(Set<String> partitionersFromRequest, PartitionerConfig storePartitionerConfig) {
+  private static void validatePartitionerAgainstStoreConfig(
+      Set<String> partitionersFromRequest,
+      PartitionerConfig storePartitionerConfig) {
     // Skip validation if the user didn't provide any partitioner. Partitioner from store config will be used.
     if (partitionersFromRequest == null || partitionersFromRequest.isEmpty()) {
       return;
@@ -149,11 +151,11 @@ public class CreateVersion extends AbstractRoute {
     }
   }
 
-  static void verifyAndConfigurePartitionerSettings(
+  protected void verifyAndConfigurePartitionerSettings(
       PartitionerConfig storePartitionerConfig,
       Set<String> partitionersFromRequest,
       VersionCreationResponse response) {
-    verifyPartitioner(partitionersFromRequest, storePartitionerConfig);
+    validatePartitionerAgainstStoreConfig(partitionersFromRequest, storePartitionerConfig);
     partitionersFromRequest = partitionersFromRequest != null ? partitionersFromRequest : Collections.emptySet();
     // Get the first partitioner that matches the store partitioner
     for (String partitioner: partitionersFromRequest) {
@@ -169,7 +171,7 @@ public class CreateVersion extends AbstractRoute {
     response.setAmplificationFactor(storePartitionerConfig.getAmplificationFactor());
   }
 
-  private Lazy<Boolean> getActiveActiveReplicationCheck(
+  protected Lazy<Boolean> getActiveActiveReplicationCheck(
       Admin admin,
       Store store,
       String clusterName,
@@ -180,7 +182,7 @@ public class CreateVersion extends AbstractRoute {
             && admin.isActiveActiveReplicationEnabledInAllRegion(clusterName, storeName, checkCurrentVersion));
   }
 
-  private static String resolveConfig(
+  protected String applyConfigBasedOnReplication(
       String configType,
       String configValue,
       String storeName,
@@ -203,7 +205,7 @@ public class CreateVersion extends AbstractRoute {
    * In such cases, this method ensures that the source fabric is not overridden with the native replication (NR)
    * source fabric to maintain proper configuration.
    */
-  public static void configureSourceFabric(
+  protected void configureSourceFabric(
       Admin admin,
       Version version,
       Lazy<Boolean> isActiveActiveReplicationEnabledInAllRegions,
@@ -239,14 +241,14 @@ public class CreateVersion extends AbstractRoute {
     }
   }
 
-  static CompressionStrategy getCompressionStrategy(Version version, String responseTopic) {
+  protected CompressionStrategy getCompressionStrategy(Version version, String responseTopic) {
     if (Version.isRealTimeTopic(responseTopic)) {
       return CompressionStrategy.NO_OP;
     }
     return version.getCompressionStrategy();
   }
 
-  static String determineResponseTopic(String storeName, Version version, RequestTopicForPushRequest request) {
+  protected String determineResponseTopic(String storeName, Version version, RequestTopicForPushRequest request) {
     String responseTopic;
     PushType pushType = request.getPushType();
     if (pushType == PushType.INCREMENTAL) {
@@ -254,7 +256,7 @@ public class CreateVersion extends AbstractRoute {
       if (version.isSeparateRealTimeTopicEnabled() && request.isSeparateRealTimeTopicEnabled()) {
         responseTopic = Version.composeSeparateRealTimeTopic(storeName);
       } else {
-        responseTopic = Version.composeRealTimeTopic(storeName);
+        responseTopic = Utils.getRealTimeTopicName(version);
       }
     } else if (pushType == PushType.STREAM) {
       responseTopic = Version.composeRealTimeTopic(storeName);
@@ -266,7 +268,7 @@ public class CreateVersion extends AbstractRoute {
     return responseTopic;
   }
 
-  private void handleNonStreamPushType(
+  protected void handleNonStreamPushType(
       Admin admin,
       Store store,
       RequestTopicForPushRequest request,
@@ -316,7 +318,7 @@ public class CreateVersion extends AbstractRoute {
   /**
    * Method handle request to get a topic for pushing data to Venice with {@link PushType#STREAM}
    */
-  void handleStreamPushType(
+  protected void handleStreamPushType(
       Admin admin,
       Store store,
       RequestTopicForPushRequest request,
@@ -409,12 +411,12 @@ public class CreateVersion extends AbstractRoute {
         getActiveActiveReplicationCheck(admin, store, clusterName, storeName, true);
 
     // Validate source and emergency region details and update request object
-    String sourceGridFabric = resolveConfig(
+    String sourceGridFabric = applyConfigBasedOnReplication(
         SOURCE_GRID_FABRIC,
         request.getSourceGridFabric(),
         storeName,
         isActiveActiveReplicationEnabledInAllRegions);
-    String emergencySourceRegion = resolveConfig(
+    String emergencySourceRegion = applyConfigBasedOnReplication(
         EMERGENCY_SOURCE_REGION,
         admin.getEmergencySourceRegion(clusterName).orElse(null),
         storeName,

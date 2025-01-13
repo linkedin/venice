@@ -174,6 +174,7 @@ public class PartialUpdateTest {
         Boolean.toString(isAAWCParallelProcessingEnabled()));
     Properties controllerProps = new Properties();
     controllerProps.put(ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
+    controllerProps.put(ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED, false);
     this.multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,

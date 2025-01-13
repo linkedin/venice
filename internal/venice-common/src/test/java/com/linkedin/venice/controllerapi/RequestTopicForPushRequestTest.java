@@ -1,7 +1,7 @@
 package com.linkedin.venice.controllerapi;
 
 import static com.linkedin.venice.meta.Version.PushType.BATCH;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
