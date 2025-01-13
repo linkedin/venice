@@ -1895,6 +1895,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       boolean addLeaderCompleteState,
       LeaderCompleteState leaderCompleteState,
       long originTimeStampMs) {
+    if (isClosed) {
+      CompletableFuture<PubSubProduceResult> future = new CompletableFuture<>();
+      future.completeExceptionally(
+          new VeniceException("VeniceWriter already closed for partition " + topicPartition.getTopicName()));
+      return future;
+    }
     KafkaMessageEnvelope kafkaMessageEnvelope =
         getHeartbeatKME(originTimeStampMs, leaderMetadataWrapper, heartBeatMessage, writerId);
     return producerAdapter.sendMessage(
