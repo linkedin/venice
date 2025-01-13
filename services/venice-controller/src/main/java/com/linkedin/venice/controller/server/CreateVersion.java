@@ -283,7 +283,6 @@ public class CreateVersion extends AbstractRoute {
           request.getPushType().name(),
           "Please push data to Venice Parent Colo instead");
     }
-    response.setPartitions(admin.calculateNumberOfPartitions(clusterName, storeName));
     int computedPartitionCount = admin.calculateNumberOfPartitions(clusterName, storeName);
     final Version version = admin.incrementVersionIdempotent(
         clusterName,
