@@ -1055,8 +1055,9 @@ public class DaVinciClientTest {
       if (daVinciBackend != null) {
         StoreBackend storeBackend = daVinciBackend.getStoreOrThrow(storeName1);
         ComplementSet<Integer> subscription = storeBackend.getSubscription();
-        subscription.removeAll(ComplementSet.wrap(partitions));
-        assertTrue(subscription.isEmpty());
+        assertTrue(subscription.contains(0));
+        assertTrue(subscription.contains(1));
+        assertFalse(subscription.contains(2));
       }
     }
   }
