@@ -498,6 +498,13 @@
     <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE"/>
     <Or>
       <Class name="com.linkedin.venice.duckdb.HelloWorldTest"/>
+      <Class name="com.linkedin.venice.duckdb.DuckDBAvroToSQLTest"/>
+    </Or>
+  </Match>
+  <Match>
+    <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING"/>
+    <Or>
+      <Class name="com.linkedin.venice.duckdb.DuckDBAvroToSQLTest"/>
     </Or>
   </Match>
 </FindBugsFilter>

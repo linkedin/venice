@@ -7,9 +7,13 @@ import static org.testng.Assert.assertTrue;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import org.duckdb.DuckDBAppender;
+import org.duckdb.DuckDBConnection;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -25,7 +29,7 @@ public class HelloWorldTest {
     try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
         Statement stmt = connection.createStatement()) {
       // create a table
-      stmt.execute(createTableStatement("items"));
+      stmt.execute(createTableStatement("items", false));
       // insert two items into the table
       stmt.execute(insertDataset1Statement("items"));
 
@@ -50,7 +54,7 @@ public class HelloWorldTest {
     try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
         Statement stmt = connection.createStatement()) {
       // create the current_version table
-      stmt.execute(createTableStatement("current_version"));
+      stmt.execute(createTableStatement("current_version", false));
       // insert two items into the table
       stmt.execute(insertDataset1Statement("current_version"));
 
@@ -59,9 +63,9 @@ public class HelloWorldTest {
       }
 
       // create the future_version table
-      stmt.execute(createTableStatement("future_version"));
+      stmt.execute(createTableStatement("future_version", false));
       // insert two items into the table
-      stmt.execute(insertDataset2Statement("future_version"));
+      stmt.execute(insertDataset2Statement("future_version", false));
 
       try (ResultSet rs = stmt.executeQuery("SELECT * FROM future_version")) {
         assertValidityOfResultSet2(rs);
@@ -88,7 +92,7 @@ public class HelloWorldTest {
     try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
         Statement stmt = connection.createStatement()) {
       // create the current_version table
-      stmt.execute(createTableStatement("my_table_v1"));
+      stmt.execute(createTableStatement("my_table_v1", false));
       // insert two items into the table
       stmt.execute(insertDataset1Statement("my_table_v1"));
       // create current_version view
@@ -103,9 +107,9 @@ public class HelloWorldTest {
       }
 
       // create the future_version table
-      stmt.execute(createTableStatement("my_table_v2"));
+      stmt.execute(createTableStatement("my_table_v2", false));
       // insert two items into the table
-      stmt.execute(insertDataset2Statement("my_table_v2"));
+      stmt.execute(insertDataset2Statement("my_table_v2", false));
 
       try (ResultSet rs = stmt.executeQuery("SELECT * FROM my_table_v2")) {
         assertValidityOfResultSet2(rs);
@@ -130,7 +134,7 @@ public class HelloWorldTest {
     try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
         Statement stmt = connection.createStatement()) {
       // create a table
-      stmt.execute("CREATE TABLE items (item VARCHAR PRIMARY KEY, value DECIMAL(10, 2), count INTEGER)");
+      stmt.execute(createTableStatement("items", true));
       // insert two items into the table
       stmt.execute(insertDataset1Statement("items"));
 
@@ -138,12 +142,89 @@ public class HelloWorldTest {
         assertValidityOfResultSet1(rs);
       }
 
-      assertThrows(SQLException.class, () -> stmt.execute(insertDataset2Statement("items")));
+      assertThrows(SQLException.class, () -> stmt.execute(insertDataset2Statement("items", false)));
     }
   }
 
-  private String createTableStatement(String tableName) {
-    return "CREATE TABLE " + tableName + " (item VARCHAR, value DECIMAL(10, 2), count INTEGER)";
+  @Test
+  public void testUpsertStatement() throws SQLException {
+    try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
+        Statement stmt = connection.createStatement()) {
+      // create a table
+      stmt.execute(createTableStatement("items", true));
+      // insert two items into the table
+      stmt.execute(insertDataset1Statement("items"));
+
+      stmt.execute(insertDataset2Statement("items", true));
+      try (ResultSet rs = stmt.executeQuery("SELECT * FROM items")) {
+        assertValidityOfResultSet1WithUpsertDataSet2(rs);
+      }
+    }
+  }
+
+  @DataProvider
+  public Object[][] upsertFlavors() {
+    return new Object[][] { { "INSERT OR REPLACE INTO items VALUES (?, ?, ?)" }, {
+        "INSERT INTO items VALUES (?, ?, ?) ON CONFLICT DO UPDATE SET value = EXCLUDED.value, count = EXCLUDED.count" } };
+  }
+
+  @Test(dataProvider = "upsertFlavors")
+  public void testUpsertPreparedStatement(String upsert) throws SQLException {
+    try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
+        Statement stmt = connection.createStatement()) {
+      // create a table
+      stmt.execute(createTableStatement("items", true));
+      // insert two items into the table
+      stmt.execute(insertDataset1Statement("items"));
+
+      try (PreparedStatement preparedStatement = connection.prepareStatement(upsert)) {
+        preparedStatement.setString(1, "jeans");
+        preparedStatement.setDouble(2, 20.0);
+        preparedStatement.setInt(3, 2);
+        preparedStatement.execute();
+
+        preparedStatement.setString(1, "t-shirt");
+        preparedStatement.setDouble(2, 42.2);
+        preparedStatement.setInt(3, 1);
+        preparedStatement.execute();
+
+        try (ResultSet rs = stmt.executeQuery("SELECT * FROM items")) {
+          assertValidityOfResultSet1WithUpsertDataSet2(rs);
+        }
+      }
+    }
+  }
+
+  @Test
+  public void testAppender() throws SQLException {
+    try (DuckDBConnection connection = (DuckDBConnection) DriverManager.getConnection("jdbc:duckdb:");
+        Statement stmt = connection.createStatement()) {
+      // create a table
+      stmt.execute(createTableStatement("items", true));
+      // insert two items into the table
+      try (DuckDBAppender appender = connection.createAppender(DuckDBConnection.DEFAULT_SCHEMA, "items")) {
+        appender.beginRow();
+        appender.append("jeans");
+        appender.append(20.0);
+        appender.append(1);
+        appender.endRow();
+
+        appender.beginRow();
+        appender.append("hammer");
+        appender.append(42.2);
+        appender.append(2);
+        appender.endRow();
+      }
+
+      try (ResultSet rs = stmt.executeQuery("SELECT * FROM items")) {
+        assertValidityOfResultSet1(rs);
+      }
+    }
+  }
+
+  private String createTableStatement(String tableName, boolean primaryKey) {
+    String pk = primaryKey ? " PRIMARY KEY" : "";
+    return "CREATE TABLE " + tableName + " (item VARCHAR" + pk + ", value DECIMAL(10, 2), count INTEGER)";
   }
 
   private String createViewStatement(String tableName) {
@@ -154,8 +235,9 @@ public class HelloWorldTest {
     return "INSERT INTO " + tableName + " VALUES ('jeans', 20.0, 1), ('hammer', 42.2, 2)";
   }
 
-  private String insertDataset2Statement(String tableName) {
-    return "INSERT INTO " + tableName + " VALUES ('jeans', 20.0, 2), ('t-shirt', 42.2, 1)";
+  private String insertDataset2Statement(String tableName, boolean upsert) {
+    String orReplace = upsert ? " OR REPLACE" : "";
+    return "INSERT" + orReplace + " INTO " + tableName + " VALUES ('jeans', 20.0, 2), ('t-shirt', 42.2, 1)";
   }
 
   private void assertValidityOfResultSet1(ResultSet rs) throws SQLException {
@@ -180,5 +262,21 @@ public class HelloWorldTest {
     assertEquals(rs.getInt(3), 1);
 
     assertFalse(rs.next(), "There should only be two rows!");
+  }
+
+  private void assertValidityOfResultSet1WithUpsertDataSet2(ResultSet rs) throws SQLException {
+    assertTrue(rs.next(), "There should be a first row!");
+    assertEquals(rs.getString(1), "jeans");
+    assertEquals(rs.getInt(3), 2);
+
+    assertTrue(rs.next(), "There should be a second row!");
+    assertEquals(rs.getString(1), "hammer");
+    assertEquals(rs.getInt(3), 2);
+
+    assertTrue(rs.next(), "There should be a third row!");
+    assertEquals(rs.getString(1), "t-shirt");
+    assertEquals(rs.getInt(3), 1);
+
+    assertFalse(rs.next(), "There should only be three rows!");
   }
 }

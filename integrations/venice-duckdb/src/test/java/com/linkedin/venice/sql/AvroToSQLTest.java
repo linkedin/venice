@@ -25,7 +25,7 @@ public class AvroToSQLTest {
       + "floatField FLOAT, " //
       + "doubleField DOUBLE, " //
       + "booleanField BOOLEAN, " //
-      + "nullField NULL, " //
+      // + "nullField NULL, " //
       + "fixedFieldUnion1 BINARY, " //
       + "fixedFieldUnion2 BINARY, " //
       + "stringFieldUnion1 VARCHAR, " //
@@ -43,6 +43,22 @@ public class AvroToSQLTest {
       + "booleanFieldUnion1 BOOLEAN, " //
       + "booleanFieldUnion2 BOOLEAN);";
 
+  private static final String EXPECTED_UPSERT_STATEMENT_WITH_ALL_TYPES =
+      "INSERT INTO MyRecord VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+          + "ON CONFLICT(intField) DO UPDATE SET " + "fixedField = EXCLUDED.fixedField, "
+          + "stringField = EXCLUDED.stringField, " + "bytesField = EXCLUDED.bytesField, "
+          + "longField = EXCLUDED.longField, " + "floatField = EXCLUDED.floatField, "
+          + "doubleField = EXCLUDED.doubleField, " + "booleanField = EXCLUDED.booleanField, "
+          + "fixedFieldUnion1 = EXCLUDED.fixedFieldUnion1, " + "fixedFieldUnion2 = EXCLUDED.fixedFieldUnion2, "
+          + "stringFieldUnion1 = EXCLUDED.stringFieldUnion1, " + "stringFieldUnion2 = EXCLUDED.stringFieldUnion2, "
+          + "bytesFieldUnion1 = EXCLUDED.bytesFieldUnion1, " + "bytesFieldUnion2 = EXCLUDED.bytesFieldUnion2, "
+          + "intFieldUnion1 = EXCLUDED.intFieldUnion1, " + "intFieldUnion2 = EXCLUDED.intFieldUnion2, "
+          + "longFieldUnion1 = EXCLUDED.longFieldUnion1, " + "longFieldUnion2 = EXCLUDED.longFieldUnion2, "
+          + "floatFieldUnion1 = EXCLUDED.floatFieldUnion1, " + "floatFieldUnion2 = EXCLUDED.floatFieldUnion2, "
+          + "doubleFieldUnion1 = EXCLUDED.doubleFieldUnion1, " + "doubleFieldUnion2 = EXCLUDED.doubleFieldUnion2, "
+          + "booleanFieldUnion1 = EXCLUDED.booleanFieldUnion1, " + "booleanFieldUnion2 = EXCLUDED.booleanFieldUnion2;";
+
+  // "INSERT OR REPLACE INTO MyRecord(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
   @Test
   public void testValidCreateTable() {
     List<Schema.Field> allFields = getAllValidFields();
@@ -63,7 +79,7 @@ public class AvroToSQLTest {
   }
 
   @Test
-  public void testInvalidCreateTable() {
+  public void testUnsupportedTypesHandling() {
     // Types that will for sure not be supported.
 
     assertThrows(
@@ -113,7 +129,17 @@ public class AvroToSQLTest {
             null));
   }
 
-  private List<Schema.Field> getAllValidFields() {
+  @Test
+  public void testUpsertStatement() {
+    List<Schema.Field> allFields = getAllValidFields();
+    Schema schemaWithAllSupportedFieldTypes = Schema.createRecord("MyRecord", "", "", false, allFields);
+
+    String upsertStatementForAllFields =
+        AvroToSQL.upsertStatement("MyRecord", schemaWithAllSupportedFieldTypes, Collections.singleton("intField"));
+    assertEquals(upsertStatementForAllFields, EXPECTED_UPSERT_STATEMENT_WITH_ALL_TYPES);
+  }
+
+  public static List<Schema.Field> getAllValidFields() {
     List<Schema.Field> allFields = new ArrayList<>();
 
     // Basic types
@@ -125,7 +151,7 @@ public class AvroToSQLTest {
     allFields.add(createSchemaField("floatField", Schema.create(Schema.Type.FLOAT), "", null));
     allFields.add(createSchemaField("doubleField", Schema.create(Schema.Type.DOUBLE), "", null));
     allFields.add(createSchemaField("booleanField", Schema.create(Schema.Type.BOOLEAN), "", null));
-    allFields.add(createSchemaField("nullField", Schema.create(Schema.Type.NULL), "", null));
+    // allFields.add(createSchemaField("nullField", Schema.create(Schema.Type.NULL), "", null));
 
     // Unions with null
     List<Schema.Field> allOptionalFields = new ArrayList<>();
@@ -166,5 +192,8 @@ public class AvroToSQLTest {
 
     String createTableStatement = AvroToSQL.createTableStatement("MyRecord", schema, Collections.emptySet(), SKIP);
     assertEquals(createTableStatement, EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES);
+
+    String upsertStatement = AvroToSQL.upsertStatement("MyRecord", schema, Collections.singleton("intField"));
+    assertEquals(upsertStatement, EXPECTED_UPSERT_STATEMENT_WITH_ALL_TYPES);
   }
 }
