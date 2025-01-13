@@ -2,6 +2,8 @@ dependencies {
   implementation libraries.avro
   implementation libraries.avroUtilCompatHelper
   implementation libraries.duckdbJdbc
+
+  implementation project(':internal:venice-client-common')
 }
 
 checkerFramework {
