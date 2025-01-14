@@ -10,9 +10,9 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
-import com.linkedin.venice.utils.Time;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -110,7 +110,7 @@ public class TestDeferredVersionSwapService {
     Store store4 = mockStore(davinciVersionNum, 60, region1, versions, storeName4);
     Store store5 = mockStore(completedVersionNum, 60, region1, versions, storeName5);
 
-    Time time = new SystemTime();
+    Long time = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
     List<Store> storeList = new ArrayList<>();
     storeList.add(store1);
     storeList.add(store2);
@@ -158,18 +158,18 @@ public class TestDeferredVersionSwapService {
     Admin.OfflinePushStatusInfo offlinePushStatusInfoWithWaitTimeElapsed = getOfflinePushStatusInfo(
         ExecutionStatus.COMPLETED.toString(),
         ExecutionStatus.COMPLETED.toString(),
-        time.getMilliseconds() - TimeUnit.MINUTES.toMillis(90),
-        time.getMilliseconds() - TimeUnit.MINUTES.toMillis(30));
+        time - TimeUnit.MINUTES.toSeconds(90),
+        time - TimeUnit.MINUTES.toSeconds(30));
     Admin.OfflinePushStatusInfo offlinePushStatusInfoWithoutWaitTimeElapsed = getOfflinePushStatusInfo(
         ExecutionStatus.COMPLETED.toString(),
         ExecutionStatus.COMPLETED.toString(),
-        time.getMilliseconds() - TimeUnit.MINUTES.toMillis(30),
-        time.getMilliseconds() - TimeUnit.MINUTES.toMillis(30));
+        time - TimeUnit.MINUTES.toSeconds(30),
+        time - TimeUnit.MINUTES.toSeconds(30));
     Admin.OfflinePushStatusInfo offlinePushStatusInfoWithOngoingPush = getOfflinePushStatusInfo(
         ExecutionStatus.STARTED.toString(),
         ExecutionStatus.COMPLETED.toString(),
-        time.getMilliseconds() - TimeUnit.MINUTES.toMillis(30),
-        time.getMilliseconds() - TimeUnit.MINUTES.toMillis(30));
+        time - TimeUnit.MINUTES.toSeconds(30),
+        time - TimeUnit.MINUTES.toSeconds(30));
 
     String kafkaTopicName1 = Version.composeKafkaTopic(storeName1, targetVersionNum);
     String kafkaTopicName2 = Version.composeKafkaTopic(storeName2, davinciVersionNum);
@@ -180,9 +180,10 @@ public class TestDeferredVersionSwapService {
     doReturn(offlinePushStatusInfoWithoutWaitTimeElapsed).when(admin)
         .getOffLinePushStatus(clusterName, kafkaTopicName3);
     doReturn(offlinePushStatusInfoWithOngoingPush).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName4);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
 
     DeferredVersionSwapService deferredVersionSwapService =
-        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, time);
+        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig);
 
     deferredVersionSwapService.startInner();
 

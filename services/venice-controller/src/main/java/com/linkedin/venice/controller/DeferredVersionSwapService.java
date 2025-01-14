@@ -3,13 +3,14 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.RegionUtils;
-import com.linkedin.venice.utils.SystemTime;
-import com.linkedin.venice.utils.Time;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -34,21 +35,12 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private final VeniceControllerMultiClusterConfig veniceControllerMultiClusterConfig;
   private final VeniceParentHelixAdmin veniceParentHelixAdmin;
   private final ScheduledExecutorService deferredVersionSwapExecutor = Executors.newSingleThreadScheduledExecutor();
-  private final Time time;
   private static final Logger LOGGER = LogManager.getLogger(DeferredVersionSwapService.class);
 
   public DeferredVersionSwapService(
-      VeniceParentHelixAdmin veniceHelixAdmin,
-      VeniceControllerMultiClusterConfig multiClusterConfig) {
-    this(veniceHelixAdmin, multiClusterConfig, new SystemTime());
-  }
-
-  protected DeferredVersionSwapService(
       VeniceParentHelixAdmin admin,
-      VeniceControllerMultiClusterConfig multiClusterConfig,
-      Time time) {
+      VeniceControllerMultiClusterConfig multiClusterConfig) {
     this.veniceParentHelixAdmin = admin;
-    this.time = time;
     this.allClusters = multiClusterConfig.getClusters();
     this.veniceControllerMultiClusterConfig = multiClusterConfig;
   }
@@ -91,14 +83,31 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     public void run() {
       while (!stop.get()) {
         for (String cluster: allClusters) {
+          if (!veniceParentHelixAdmin.isLeaderControllerFor(cluster)) {
+            continue;
+          }
+
           List<Store> stores = veniceParentHelixAdmin.getAllStores(cluster);
           for (Store store: stores) {
-            int targetVersion = store.getLargestUsedVersionNumber();
-            if (store.getVersion(targetVersion).getStatus() == VersionStatus.ONLINE) {
+
+            int targetVersionNum = store.getLargestUsedVersionNumber();
+            Version targetVersion = store.getVersion(targetVersionNum);
+            if (targetVersion == null) {
+              continue;
+            }
+
+            if (targetVersion.getStatus() == VersionStatus.ONLINE) {
+              LOGGER.info(
+                  "Skipping target region swap for store {} as target version {} is already online",
+                  store.getName(),
+                  targetVersionNum);
               continue;
             }
 
             if (StringUtils.isEmpty(store.getTargetSwapRegion())) {
+              LOGGER.info(
+                  "Skipping target region swap for store {} as target swap region is not enabled",
+                  store.getName());
               continue;
             }
 
@@ -107,14 +116,21 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             Set<String> targetRegions = RegionUtils.parseRegionsFilterList(store.getTargetSwapRegion());
             Set<String> remainingRegions = getRegionsForVersionSwap(coloToVersions, targetRegions);
 
-            StoreResponse targetRegionStore = getStoreForRegion(cluster, targetRegions, store.getName());
-            Optional<Version> version = targetRegionStore.getStore().getVersion(targetVersion);
+            StoreResponse targetRegionStoreResponse = getStoreForRegion(cluster, targetRegions, store.getName());
+            if (!StringUtils.isEmpty(targetRegionStoreResponse.getError())) {
+              LOGGER.info("Got error when fetching targetRegionStore: {}", targetRegionStoreResponse.getError());
+              continue;
+            }
+
+            StoreInfo targetRegionStore = targetRegionStoreResponse.getStore();
+            Optional<Version> version = targetRegionStore.getVersion(targetVersionNum);
             if (!version.isPresent()) {
               LOGGER.info(
                   "Unable to find version {} for store: {} in regions: {}",
-                  targetVersion,
+                  targetVersionNum,
                   store.getName(),
                   store.getTargetSwapRegion());
+              continue;
             }
 
             // Do not perform version swap for davinci stores
@@ -123,12 +139,12 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               LOGGER.info(
                   "Skipping version swap for store: {} on version: {} as it is davinci",
                   store.getName(),
-                  targetVersion);
+                  targetVersionNum);
               continue;
             }
 
             // Check that push is completed in target regions
-            String kafkaTopicName = Version.composeKafkaTopic(store.getName(), targetVersion);
+            String kafkaTopicName = Version.composeKafkaTopic(store.getName(), targetVersionNum);
             Admin.OfflinePushStatusInfo pushStatusInfo =
                 veniceParentHelixAdmin.getOffLinePushStatus(cluster, kafkaTopicName);
             boolean didPushCompleteInTargetRegions = true;
@@ -139,7 +155,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                 LOGGER.info(
                     "Skipping version swap for store: {} on version: {} as push is not complete in region {}",
                     store.getName(),
-                    targetVersion,
+                    targetVersionNum,
                     targetRegion);
               }
             }
@@ -149,12 +165,18 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             }
 
             // Check that waitTime has elapsed in target regions
-            boolean didWaitTimeElapseInTargetRegions = true;
+            boolean didWaitTimeElapseInTargetRegions = false;
             for (String targetRegion: targetRegions) {
               long completionTime = pushStatusInfo.getExtraInfoUpdateTimestamp().get(targetRegion);
-              long storeWaitTime = TimeUnit.MINUTES.toMillis(store.getTargetSwapRegionWaitTime());
-              if (!(completionTime + storeWaitTime <= time.getMilliseconds())) {
-                didWaitTimeElapseInTargetRegions = false;
+              long storeWaitTime = TimeUnit.MINUTES.toSeconds(store.getTargetSwapRegionWaitTime());
+              long currentTime = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
+              LOGGER.info(
+                  "completion time: {}, waitTime: {}, currentTime: {}",
+                  completionTime,
+                  storeWaitTime,
+                  currentTime);
+              if ((completionTime + storeWaitTime) <= currentTime) {
+                didWaitTimeElapseInTargetRegions = true;
               }
             }
 
@@ -162,7 +184,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               LOGGER.info(
                   "Skipping version swap for store: {} on version: {} as wait time: {} has not passed",
                   store.getName(),
-                  targetVersion,
+                  targetVersionNum,
                   store.getTargetSwapRegionWaitTime());
               continue;
             }
