@@ -16,7 +16,6 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.util.Utf8;
 
 
 /**
@@ -203,9 +202,6 @@ public class AvroToSQL {
             fieldType = field.schema().getTypes().get(avroFieldIndexToUnionBranchIndex[field.pos()]).getType();
           }
 
-          if (fieldValue instanceof Utf8) {
-            fieldValue = fieldValue.toString();
-          }
           processField(jdbcIndex, fieldType, fieldValue, preparedStatement, field.name());
         }
         preparedStatement.execute();
@@ -227,7 +223,7 @@ public class AvroToSQL {
         preparedStatement.setBytes(jdbcIndex, ByteUtils.extractByteArray((ByteBuffer) fieldValue));
         break;
       case STRING:
-        preparedStatement.setString(jdbcIndex, (String) fieldValue);
+        preparedStatement.setString(jdbcIndex, fieldValue.toString());
         break;
       case INT:
         preparedStatement.setInt(jdbcIndex, (int) fieldValue);

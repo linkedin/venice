@@ -486,7 +486,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // onStartVersionIngestion called here instead of run() because this needs to finish running
       // before bootstrapping starts
       long startTime = System.currentTimeMillis();
-      recordTransformer.onStartVersionIngestion(isCurrentVersion());
+      recordTransformer.onStartVersionIngestion(isCurrentVersion.getAsBoolean());
       long endTime = System.currentTimeMillis();
       versionedIngestionStats.recordTransformerLifecycleStartLatency(
           storeName,
