@@ -26,8 +26,7 @@ public class DuckDBDaVinciRecordTransformer extends DaVinciRecordTransformer<Str
   private static final String deleteStatementTemplate = "DELETE FROM %s WHERE %s = '%s';";
   private static final String createViewStatementTemplate =
       "CREATE OR REPLACE VIEW current_version AS SELECT * FROM %s;";
-  private static final String dropTableStatementTemplate =
-      "CREATE OR REPLACE VIEW current_version AS SELECT * FROM %s;";
+  private static final String dropTableStatementTemplate = "DROP TABLE %s;";
   private final String duckDBUrl;
   private final String versionTableName;
 
@@ -122,6 +121,7 @@ public class DuckDBDaVinciRecordTransformer extends DaVinciRecordTransformer<Str
         Statement stmt = connection.createStatement()) {
       // Swap to current version
       String currentVersionTableName = baseVersionTableName + currentVersion;
+      // ToDo: Make into a prepared statement
       String createViewStatement = String.format(createViewStatementTemplate, currentVersionTableName);
       stmt.execute(createViewStatement);
 
@@ -132,5 +132,9 @@ public class DuckDBDaVinciRecordTransformer extends DaVinciRecordTransformer<Str
     } catch (SQLException e) {
       throw new RuntimeException(e);
     }
+  }
+
+  public String getDuckDBUrl() {
+    return duckDBUrl;
   }
 }

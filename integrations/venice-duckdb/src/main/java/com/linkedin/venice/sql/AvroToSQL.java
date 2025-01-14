@@ -77,7 +77,7 @@ public class AvroToSQL {
       throw new IllegalArgumentException("Only Avro records can have a corresponding CREATE TABLE statement.");
     }
     StringBuffer stringBuffer = new StringBuffer();
-    stringBuffer.append("CREATE TABLE " + cleanTableName(tableName) + "(");
+    stringBuffer.append("CREATE TABLE IF NOT EXISTS " + cleanTableName(tableName) + "(");
     boolean firstColumn = true;
 
     for (Schema.Field field: avroSchema.getFields()) {
