@@ -13,7 +13,6 @@ import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.utils.IteratorUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
-import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.IOException;
 import java.util.Iterator;
@@ -179,19 +178,13 @@ public class VeniceReducer extends AbstractPartitionWriter
 
   // Visible for testing
   @Override
-  protected AbstractVeniceWriter<byte[], byte[], byte[]> createCompositeVeniceWriter(
-      VeniceWriterFactory factory,
-      VeniceWriter<byte[], byte[], byte[]> mainWriter,
-      String flatViewConfigMapString,
-      String topicName,
-      boolean chunkingEnabled,
-      boolean rmdChunkingEnabled) {
-    return super.createCompositeVeniceWriter(
-        factory,
-        mainWriter,
-        flatViewConfigMapString,
-        topicName,
-        chunkingEnabled,
-        rmdChunkingEnabled);
+  protected AbstractVeniceWriter<byte[], byte[], byte[]> createBasicVeniceWriter() {
+    return super.createBasicVeniceWriter();
+  }
+
+  // Visible for testing
+  @Override
+  protected void setVeniceWriterFactory(VeniceWriterFactory factory) {
+    super.setVeniceWriterFactory(factory);
   }
 }

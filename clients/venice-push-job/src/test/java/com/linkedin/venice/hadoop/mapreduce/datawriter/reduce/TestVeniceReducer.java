@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop.mapreduce.datawriter.reduce;
 
+import static com.linkedin.venice.ConfigKeys.PUSH_JOB_VIEW_CONFIGS;
 import static com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME;
 import static com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
@@ -7,6 +8,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DERIVED_SCHEMA_ID_P
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.STORAGE_QUOTA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyLong;
@@ -18,7 +20,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.RecordTooLargeException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -32,6 +33,7 @@ import com.linkedin.venice.hadoop.task.datawriter.AbstractPartitionWriter;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
@@ -631,10 +633,10 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
   }
 
   @Test
-  public void testCreateCompositeVeniceWriter() throws JsonProcessingException {
+  public void testCreateAndCloseCompositeVeniceWriter() throws IOException {
     VeniceReducer reducer = new VeniceReducer();
-    VeniceWriterFactory writerFactory = mock(VeniceWriterFactory.class);
-    VeniceWriter<byte[], byte[], byte[]> mainWriter = mock(VeniceWriter.class);
+    VeniceWriter mainWriter = mock(VeniceWriter.class);
+    VeniceWriter childWriter = mock(VeniceWriter.class);
     Map<String, ViewConfig> viewConfigMap = new HashMap<>();
     String view1Name = "view1";
     MaterializedViewParameters.Builder builder = new MaterializedViewParameters.Builder(view1Name);
@@ -649,21 +651,38 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     ViewConfigImpl viewConfig2 = new ViewConfigImpl(MaterializedView.class.getCanonicalName(), builder.build());
     viewConfigMap.put(view2Name, viewConfig2);
     String flatViewConfigMapString = ViewUtils.flatViewConfigMapString(viewConfigMap);
-    String topicName = "test_v1";
-    reducer.createCompositeVeniceWriter(writerFactory, mainWriter, flatViewConfigMapString, topicName, true, true);
+    Configuration configuration = getDefaultJobConfiguration(10);
+    configuration.setStrings(PUSH_JOB_VIEW_CONFIGS, flatViewConfigMapString);
+    reducer.configure(new JobConf(configuration));
+    VeniceWriterFactory writerFactory = mock(VeniceWriterFactory.class);
+    reducer.setVeniceWriterFactory(writerFactory);
+    when(writerFactory.createVeniceWriter(any())).thenReturn(mainWriter).thenReturn(childWriter);
+    reducer.setVeniceWriter(reducer.createBasicVeniceWriter());
     ArgumentCaptor<VeniceWriterOptions> vwOptionsCaptor = ArgumentCaptor.forClass(VeniceWriterOptions.class);
-    verify(writerFactory, times(2)).createVeniceWriter(vwOptionsCaptor.capture());
+    verify(writerFactory, times(3)).createVeniceWriter(vwOptionsCaptor.capture());
     Map<Integer, VeniceView> verifyPartitionToViewsMap = new HashMap<>();
+    String storeName = Version.parseStoreFromKafkaTopicName(TOPIC_NAME);
     verifyPartitionToViewsMap.put(
         6,
-        ViewUtils
-            .getVeniceView(viewConfig1.getViewClassName(), new Properties(), "test", viewConfig1.getViewParameters()));
+        ViewUtils.getVeniceView(
+            viewConfig1.getViewClassName(),
+            new Properties(),
+            storeName,
+            viewConfig1.getViewParameters()));
     verifyPartitionToViewsMap.put(
         12,
-        ViewUtils
-            .getVeniceView(viewConfig2.getViewClassName(), new Properties(), "test", viewConfig2.getViewParameters()));
+        ViewUtils.getVeniceView(
+            viewConfig2.getViewClassName(),
+            new Properties(),
+            storeName,
+            viewConfig2.getViewParameters()));
     for (VeniceWriterOptions options: vwOptionsCaptor.getAllValues()) {
       int partitionCount = options.getPartitionCount();
+      if (partitionCount == 10) {
+        // main writer
+        Assert.assertEquals(options.getTopicName(), TOPIC_NAME);
+        continue;
+      }
       Assert.assertTrue(verifyPartitionToViewsMap.containsKey(partitionCount));
       VeniceView veniceView = verifyPartitionToViewsMap.get(partitionCount);
       Assert.assertTrue(veniceView instanceof MaterializedView);
@@ -673,6 +692,12 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
           materializedView.getTopicNamesAndConfigsForVersion(1).keySet().stream().findAny().get());
       Assert.assertTrue(materializedView.getViewPartitioner() instanceof DefaultVenicePartitioner);
     }
+    reducer.close();
+    // All child writers and main writers should be flushed and closed
+    verify(mainWriter, times(1)).flush();
+    verify(childWriter, times(2)).flush();
+    verify(mainWriter, times(1)).close(anyBoolean());
+    verify(childWriter, times(2)).close(anyBoolean());
   }
 
   private Reporter createZeroCountReporterMock() {

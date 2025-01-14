@@ -41,6 +41,7 @@ import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
+import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -85,6 +86,7 @@ public abstract class AbstractPushMonitor
   private final StoreCleaner storeCleaner;
   private final AggPushHealthStats aggPushHealthStats;
   private final Map<String, OfflinePushStatus> topicToPushMap = new VeniceConcurrentHashMap<>();
+  private final Map<String, Long> topicToLeaderCompleteTimestampMap = new VeniceConcurrentHashMap<>();
   private RealTimeTopicSwitcher realTimeTopicSwitcher;
   private final ClusterLockManager clusterLockManager;
   private final String aggregateRealTimeSourceKafkaUrl;
@@ -189,6 +191,7 @@ public abstract class AbstractPushMonitor
               } else {
                 checkWhetherToStartEOPProcedures(offlinePushStatus);
               }
+              checkWhetherToStartLeaderCompletedProcedures(offlinePushStatus);
             } else {
               // In any case, we found the offline push status is STARTED, but the related version could not be found.
               // We only log it as cleaning up here was found to prematurely delete push jobs during controller failover
@@ -663,6 +666,7 @@ public abstract class AbstractPushMonitor
     String storeName = Version.parseStoreFromKafkaTopicName(offlinePushStatus.getKafkaTopic());
     try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
       topicToPushMap.remove(offlinePushStatus.getKafkaTopic());
+      topicToLeaderCompleteTimestampMap.remove(offlinePushStatus.getKafkaTopic());
       if (deletePushStatus) {
         offlinePushAccessor.deleteOfflinePushStatusAndItsPartitionStatuses(offlinePushStatus.getKafkaTopic());
       }
@@ -810,6 +814,7 @@ public abstract class AbstractPushMonitor
 
   protected void onPartitionStatusChange(OfflinePushStatus offlinePushStatus) {
     checkWhetherToStartEOPProcedures(offlinePushStatus);
+    checkWhetherToStartLeaderCompletedProcedures(offlinePushStatus);
   }
 
   protected DisableReplicaCallback getDisableReplicaCallback(String kafkaTopic) {
@@ -881,6 +886,7 @@ public abstract class AbstractPushMonitor
             // For all partitions, at least one replica has received the EOP. Check if it's time to start buffer replay.
             checkWhetherToStartEOPProcedures(pushStatus);
           }
+          checkWhetherToStartLeaderCompletedProcedures(pushStatus);
         }
       } else {
         LOGGER.info(
@@ -923,25 +929,9 @@ public abstract class AbstractPushMonitor
 
   protected void checkWhetherToStartEOPProcedures(OfflinePushStatus offlinePushStatus) {
     // As the outer method already locked on this instance, so this method is thread-safe.
-    String storeName = Version.parseStoreFromKafkaTopicName(offlinePushStatus.getKafkaTopic());
-    Store store = getReadWriteStoreRepository().getStore(storeName);
-    if (store == null) {
-      LOGGER
-          .info("Got a null store from metadataRepository for store name: '{}'. Will attempt a refresh().", storeName);
-      store = getReadWriteStoreRepository().refreshOneStore(storeName);
-      if (store == null) {
-        throw new IllegalStateException(
-            "checkHybridPushStatus could not find a store named '" + storeName
-                + "' in the metadataRepository, even after refresh()!");
-      } else {
-        LOGGER.info("metadataRepository.refresh() allowed us to retrieve store: '{}'!", storeName);
-      }
-    }
+    Store store = getStoreOrThrow(offlinePushStatus);
 
-    Version version = store.getVersion(Version.parseVersionFromKafkaTopicName(offlinePushStatus.getKafkaTopic()));
-    if (version == null) {
-      throw new IllegalStateException("Could not find Version object for: " + offlinePushStatus.getKafkaTopic());
-    }
+    Version version = getVersionOrThrow(store, offlinePushStatus.getKafkaTopic());
     Map<String, ViewConfig> viewConfigMap = version.getViewConfigs();
     if (!store.isHybrid() && (viewConfigMap == null || viewConfigMap.isEmpty())) {
       // The only procedures that may start after EOP is received in every partition are:
@@ -976,12 +966,12 @@ public abstract class AbstractPushMonitor
       if (isEOPReceivedInAllPartitions) {
         // Check whether to send EOP for materialized view topic(s)
         for (ViewConfig rawView: viewConfigMap.values()) {
-          VeniceView veniceView = ViewUtils.getVeniceView(
-              rawView.getViewClassName(),
-              new Properties(),
-              store.getName(),
-              rawView.getViewParameters());
-          if (veniceView instanceof MaterializedView) {
+          if (MaterializedView.class.getCanonicalName().equals(rawView.getViewClassName())) {
+            VeniceView veniceView = ViewUtils.getVeniceView(
+                rawView.getViewClassName(),
+                new Properties(),
+                store.getName(),
+                rawView.getViewParameters());
             MaterializedView materializedView = (MaterializedView) veniceView;
             for (String materializedViewTopicName: materializedView
                 .getTopicNamesAndConfigsForVersion(version.getNumber())
@@ -1010,6 +1000,86 @@ public abstract class AbstractPushMonitor
       handleTerminalOfflinePushUpdate(offlinePushStatus, new ExecutionStatusWithDetails(ERROR, newStatusDetails));
       LOGGER.error("{} for offlinePushStatus: {}", newStatusDetails, offlinePushStatus, e);
     }
+  }
+
+  /**
+   * For hybrid stores we use {@link com.linkedin.venice.writer.LeaderCompleteState} to prevent follower replicas from
+   * reporting COMPLETED prematurely. The same safeguard is needed for view topic consumers. Due to the obfuscated
+   * partition mapping between version topic leaders and view topic partitions we can only send LEADER_COMPLETED once
+   * all version topic partition leaders are completed. This is equivalent to at least one completed replica for all
+   * partitions.
+   */
+  protected void checkWhetherToStartLeaderCompletedProcedures(OfflinePushStatus offlinePushStatus) {
+    if (topicToLeaderCompleteTimestampMap.containsKey(offlinePushStatus.getKafkaTopic())) {
+      // We've sent the LeaderCompleteState for all view topics of this version topic already. Duplicate heartbeats are
+      // harmless, so we are only tracking it in memory (not across restarts) to avoid heartbeat spam
+      return;
+    }
+    Store store = getStoreOrThrow(offlinePushStatus);
+    Version version = getVersionOrThrow(store, offlinePushStatus.getKafkaTopic());
+    Map<String, ViewConfig> viewConfigMap = version.getViewConfigs();
+    if (!version.isHybrid() || viewConfigMap == null || viewConfigMap.isEmpty()) {
+      return;
+    }
+    if (offlinePushStatus.isLeaderCompletedInEveryPartition()) {
+      // broadcast heartbeat with LeaderCompleteState to view topic partitions
+      long heartbeatTimestamp = System.currentTimeMillis();
+      for (ViewConfig rawViewConfig: viewConfigMap.values()) {
+        if (MaterializedView.class.getCanonicalName().equals(rawViewConfig.getViewClassName())) {
+          VeniceView veniceView = ViewUtils.getVeniceView(
+              rawViewConfig.getViewClassName(),
+              new Properties(),
+              store.getName(),
+              rawViewConfig.getViewParameters());
+          MaterializedView materializedView = (MaterializedView) veniceView;
+          for (String materializedViewTopicName: materializedView.getTopicNamesAndConfigsForVersion(version.getNumber())
+              .keySet()) {
+            VeniceWriterOptions.Builder vwOptionsBuilder =
+                new VeniceWriterOptions.Builder(materializedViewTopicName).setUseKafkaKeySerializer(true)
+                    .setPartitionCount(materializedView.getViewPartitionCount());
+            try (VeniceWriter veniceWriter = veniceWriterFactory.createVeniceWriter(vwOptionsBuilder.build())) {
+              for (int p = 0; p < materializedView.getViewPartitionCount(); p++) {
+                veniceWriter.sendHeartbeat(
+                    materializedViewTopicName,
+                    p,
+                    null,
+                    VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER,
+                    true,
+                    LeaderCompleteState.getLeaderCompleteState(true),
+                    heartbeatTimestamp);
+              }
+            }
+          }
+        }
+      }
+      topicToLeaderCompleteTimestampMap.put(offlinePushStatus.getKafkaTopic(), heartbeatTimestamp);
+    }
+  }
+
+  private Store getStoreOrThrow(OfflinePushStatus offlinePushStatus) {
+    String storeName = Version.parseStoreFromKafkaTopicName(offlinePushStatus.getKafkaTopic());
+    Store store = getReadWriteStoreRepository().getStore(storeName);
+    if (store == null) {
+      LOGGER
+          .info("Got a null store from metadataRepository for store name: '{}'. Will attempt a refresh().", storeName);
+      store = getReadWriteStoreRepository().refreshOneStore(storeName);
+      if (store == null) {
+        throw new IllegalStateException(
+            "checkHybridPushStatus could not find a store named '" + storeName
+                + "' in the metadataRepository, even after refresh()!");
+      } else {
+        LOGGER.info("metadataRepository.refresh() allowed us to retrieve store: '{}'!", storeName);
+      }
+    }
+    return store;
+  }
+
+  private Version getVersionOrThrow(Store store, String topic) {
+    Version version = store.getVersion(Version.parseVersionFromKafkaTopicName(topic));
+    if (version == null) {
+      throw new IllegalStateException("Could not find Version object for: " + topic);
+    }
+    return version;
   }
 
   /**

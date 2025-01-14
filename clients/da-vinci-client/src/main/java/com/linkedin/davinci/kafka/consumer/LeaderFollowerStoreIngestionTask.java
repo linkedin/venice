@@ -110,6 +110,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.LongPredicate;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -2555,14 +2557,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              *
              * We want to ensure correct ordering for any SOS and EOS that we do decide to write to VT. This is done by
              * coordinating with the corresponding {@link PartitionConsumptionState#getLastVTProduceCallFuture}.
+             * However, this coordination is only needed if there are view writers. i.e. the VT writes and CM writes
+             * need to be in the same mode. Either both coordinate with lastVTProduceCallFuture or neither.
              */
             if (!consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
-
               final LeaderProducedRecordContext segmentCMLeaderProduceRecordContext = leaderProducedRecordContext;
-              CompletableFuture<Void> propagateSegmentCMWrite = new CompletableFuture<>();
-              partitionConsumptionState.getLastVTProduceCallFuture().whenCompleteAsync((value, exception) -> {
-                if (exception == null) {
-                  produceToLocalKafka(
+              maybeQueueCMWritesToVersionTopic(
+                  partitionConsumptionState,
+                  () -> produceToLocalKafka(
                       consumerRecord,
                       partitionConsumptionState,
                       segmentCMLeaderProduceRecordContext,
@@ -2577,38 +2579,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                       partition,
                       kafkaUrl,
                       kafkaClusterId,
-                      beforeProcessingPerRecordTimestampNs);
-                  propagateSegmentCMWrite.complete(null);
-                } else {
-                  VeniceException veniceException = new VeniceException(exception);
-                  this.setIngestionException(partitionConsumptionState.getPartition(), veniceException);
-                  propagateSegmentCMWrite.completeExceptionally(veniceException);
-                }
-              });
-              partitionConsumptionState.setLastVTProduceCallFuture(propagateSegmentCMWrite);
+                      beforeProcessingPerRecordTimestampNs));
             } else {
               if (controlMessageType == START_OF_SEGMENT
                   && Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
-                CompletableFuture<Void> propagateHeartbeatWrite = new CompletableFuture<>();
                 final LeaderProducedRecordContext heartbeatLeaderProducedRecordContext = leaderProducedRecordContext;
-                partitionConsumptionState.getLastVTProduceCallFuture().whenCompleteAsync((value, exception) -> {
-                  if (exception == null) {
-                    propagateHeartbeatFromUpstreamTopicToLocalVersionTopic(
+                maybeQueueCMWritesToVersionTopic(
+                    partitionConsumptionState,
+                    () -> propagateHeartbeatFromUpstreamTopicToLocalVersionTopic(
                         partitionConsumptionState,
                         consumerRecord,
                         heartbeatLeaderProducedRecordContext,
                         partition,
                         kafkaUrl,
                         kafkaClusterId,
-                        beforeProcessingPerRecordTimestampNs);
-                    propagateHeartbeatWrite.complete(null);
-                  } else {
-                    VeniceException veniceException = new VeniceException(exception);
-                    this.setIngestionException(partitionConsumptionState.getPartition(), veniceException);
-                    propagateHeartbeatWrite.completeExceptionally(veniceException);
-                  }
-                });
-                partitionConsumptionState.setLastVTProduceCallFuture(propagateHeartbeatWrite);
+                        beforeProcessingPerRecordTimestampNs));
               } else {
                 /**
                  * Based on current design handling this case (specially EOS) is tricky as we don't produce the SOS/EOS
@@ -3385,31 +3370,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return;
     }
     // Write to views
-    if (viewWriters != null && !viewWriters.isEmpty()) {
-      long preprocessingTime = System.currentTimeMillis();
-      CompletableFuture<Void> currentVersionTopicWrite = new CompletableFuture<>();
-      CompletableFuture[] viewWriterFutures =
-          processViewWriters(partitionConsumptionState, keyBytes, writeComputeResultWrapper);
-      hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
-      CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
-        hostLevelIngestionStats.recordViewProducerAckLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
-        if (exception == null) {
-          produceToLocalKafkaHelper(
+    if (hasViewWriters()) {
+      Put newPut = writeComputeResultWrapper.getNewPut();
+      queueUpVersionTopicWritesWithViewWriters(
+          partitionConsumptionState,
+          (viewWriter) -> viewWriter.processRecord(newPut.putValue, keyBytes, newPut.schemaId),
+          (pcs) -> produceToLocalKafkaHelper(
               consumerRecord,
-              partitionConsumptionState,
+              pcs,
               writeComputeResultWrapper,
               partition,
               kafkaUrl,
               kafkaClusterId,
-              beforeProcessingRecordTimestampNs);
-          currentVersionTopicWrite.complete(null);
-        } else {
-          VeniceException veniceException = new VeniceException(exception);
-          this.setIngestionException(partitionConsumptionState.getPartition(), veniceException);
-          currentVersionTopicWrite.completeExceptionally(veniceException);
-        }
-      });
-      partitionConsumptionState.setLastVTProduceCallFuture(currentVersionTopicWrite);
+              beforeProcessingRecordTimestampNs));
     } else {
       produceToLocalKafkaHelper(
           consumerRecord,
@@ -3976,21 +3949,33 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
-  CompletableFuture[] processViewWriters(
+  protected void queueUpVersionTopicWritesWithViewWriters(
       PartitionConsumptionState partitionConsumptionState,
-      byte[] keyBytes,
-      WriteComputeResultWrapper writeComputeResultWrapper) {
+      Function<VeniceViewWriter, CompletableFuture<PubSubProduceResult>> viewWriterRecordProcessor,
+      Consumer<PartitionConsumptionState> versionTopicWrite) {
+    long preprocessingTime = System.currentTimeMillis();
+    CompletableFuture<Void> currentVersionTopicWrite = new CompletableFuture<>();
     CompletableFuture[] viewWriterFutures = new CompletableFuture[this.viewWriters.size() + 1];
     int index = 0;
     // The first future is for the previous write to VT
     viewWriterFutures[index++] = partitionConsumptionState.getLastVTProduceCallFuture();
     for (VeniceViewWriter writer: viewWriters.values()) {
-      viewWriterFutures[index++] = writer.processRecord(
-          writeComputeResultWrapper.getNewPut().putValue,
-          keyBytes,
-          writeComputeResultWrapper.getNewPut().schemaId);
+      viewWriterFutures[index++] = viewWriterRecordProcessor.apply(writer);
     }
-    return viewWriterFutures;
+    hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
+    CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
+      hostLevelIngestionStats.recordViewProducerAckLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
+      if (exception == null) {
+        versionTopicWrite.accept(partitionConsumptionState);
+        currentVersionTopicWrite.complete(null);
+      } else {
+        VeniceException veniceException = new VeniceException(exception);
+        this.setIngestionException(partitionConsumptionState.getPartition(), veniceException);
+        currentVersionTopicWrite.completeExceptionally(veniceException);
+      }
+    });
+
+    partitionConsumptionState.setLastVTProduceCallFuture(currentVersionTopicWrite);
   }
 
   /**
@@ -4022,5 +4007,30 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private void checkAndWaitForLastVTProduceFuture(PartitionConsumptionState partitionConsumptionState)
       throws ExecutionException, InterruptedException {
     partitionConsumptionState.getLastVTProduceCallFuture().get();
+  }
+
+  protected boolean hasViewWriters() {
+    return viewWriters != null && !viewWriters.isEmpty();
+  }
+
+  private void maybeQueueCMWritesToVersionTopic(
+      PartitionConsumptionState partitionConsumptionState,
+      Runnable produceCall) {
+    if (hasViewWriters()) {
+      CompletableFuture<Void> propagateSegmentCMWrite = new CompletableFuture<>();
+      partitionConsumptionState.getLastVTProduceCallFuture().whenCompleteAsync((value, exception) -> {
+        if (exception == null) {
+          produceCall.run();
+          propagateSegmentCMWrite.complete(null);
+        } else {
+          VeniceException veniceException = new VeniceException(exception);
+          this.setIngestionException(partitionConsumptionState.getPartition(), veniceException);
+          propagateSegmentCMWrite.completeExceptionally(veniceException);
+        }
+      });
+      partitionConsumptionState.setLastVTProduceCallFuture(propagateSegmentCMWrite);
+    } else {
+      produceCall.run();
+    }
   }
 }

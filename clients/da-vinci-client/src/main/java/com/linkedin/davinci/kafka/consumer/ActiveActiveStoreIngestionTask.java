@@ -22,7 +22,6 @@ import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
-import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -68,7 +67,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
@@ -641,7 +639,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       // call in this context much less obtrusive, however, it implies that all views can only work for AA stores
 
       // Write to views
-      if (viewWriters != null && !this.viewWriters.isEmpty()) {
+      if (hasViewWriters()) {
         /**
          * The ordering guarantees we want is the following:
          *
@@ -649,32 +647,27 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
          * 2. Write to the VT only after we get the ack for all views AND the previous write to VT was queued into the
          *    producer (but not necessarily acked).
          */
-        long preprocessingTime = System.currentTimeMillis();
-        CompletableFuture<Void> currentVersionTopicWrite = new CompletableFuture();
-        CompletableFuture[] viewWriterFutures =
-            processViewWriters(partitionConsumptionState, keyBytes, mergeConflictResultWrapper);
-        hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
-        CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
-          hostLevelIngestionStats
-              .recordViewProducerAckLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
-          if (exception == null) {
-            producePutOrDeleteToKafka(
+        ByteBuffer oldValueBB = mergeConflictResultWrapper.getOldValueByteBufferProvider().get();
+        int oldValueSchemaId =
+            oldValueBB == null ? -1 : mergeConflictResultWrapper.getOldValueProvider().get().writerSchemaId();
+        queueUpVersionTopicWritesWithViewWriters(
+            partitionConsumptionState,
+            (viewWriter) -> viewWriter.processRecord(
+                mergeConflictResultWrapper.getUpdatedValueBytes(),
+                oldValueBB,
+                keyBytes,
+                mergeConflictResult.getValueSchemaId(),
+                oldValueSchemaId,
+                mergeConflictResult.getRmdRecord()),
+            (pcs) -> producePutOrDeleteToKafka(
                 mergeConflictResultWrapper,
-                partitionConsumptionState,
+                pcs,
                 keyBytes,
                 consumerRecord,
                 partition,
                 kafkaUrl,
                 kafkaClusterId,
-                beforeProcessingRecordTimestampNs);
-            currentVersionTopicWrite.complete(null);
-          } else {
-            VeniceException veniceException = new VeniceException(exception);
-            this.setIngestionException(partitionConsumptionState.getPartition(), veniceException);
-            currentVersionTopicWrite.completeExceptionally(veniceException);
-          }
-        });
-        partitionConsumptionState.setLastVTProduceCallFuture(currentVersionTopicWrite);
+                beforeProcessingRecordTimestampNs));
       } else {
         // This function may modify the original record in KME and it is unsafe to use the payload from KME directly
         // after
@@ -1426,30 +1419,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       }
     }
     return false;
-  }
-
-  CompletableFuture[] processViewWriters(
-      PartitionConsumptionState partitionConsumptionState,
-      byte[] keyBytes,
-      MergeConflictResultWrapper mergeConflictResultWrapper) {
-    CompletableFuture[] viewWriterFutures = new CompletableFuture[this.viewWriters.size() + 1];
-    MergeConflictResult mergeConflictResult = mergeConflictResultWrapper.getMergeConflictResult();
-    int index = 0;
-    // The first future is for the previous write to VT
-    viewWriterFutures[index++] = partitionConsumptionState.getLastVTProduceCallFuture();
-    ByteBuffer oldValueBB = mergeConflictResultWrapper.getOldValueByteBufferProvider().get();
-    int oldValueSchemaId =
-        oldValueBB == null ? -1 : mergeConflictResultWrapper.getOldValueProvider().get().writerSchemaId();
-    for (VeniceViewWriter writer: viewWriters.values()) {
-      viewWriterFutures[index++] = writer.processRecord(
-          mergeConflictResultWrapper.getUpdatedValueBytes(),
-          oldValueBB,
-          keyBytes,
-          mergeConflictResult.getValueSchemaId(),
-          oldValueSchemaId,
-          mergeConflictResult.getRmdRecord());
-    }
-    return viewWriterFutures;
   }
 
   Runnable buildRepairTask(

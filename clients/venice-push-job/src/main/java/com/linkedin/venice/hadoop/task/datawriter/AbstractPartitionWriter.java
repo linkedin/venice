@@ -35,6 +35,7 @@ import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
@@ -142,6 +143,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   private long lastTimeThroughputWasLoggedInNS = System.nanoTime();
   private long lastMessageCompletedCount = 0;
 
+  private Lazy<VeniceWriterFactory> veniceWriterFactory;
   private AbstractVeniceWriter<byte[], byte[], byte[]> veniceWriter = null;
   private VeniceWriter<byte[], byte[], byte[]> mainWriter = null;
   private VeniceWriter[] childWriters = null;
@@ -214,6 +216,11 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       }
     }
     updateExecutionTimeStatus(timeOfLastReduceFunctionStartInNS);
+  }
+
+  // For testing purpose
+  protected void setVeniceWriterFactory(VeniceWriterFactory factory) {
+    this.veniceWriterFactory = Lazy.of(() -> factory);
   }
 
   protected DataWriterTaskTracker getDataWriterTaskTracker() {
@@ -338,20 +345,10 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     dataWriterTaskTracker.trackRecordSentToPubSub();
   }
 
-  private AbstractVeniceWriter<byte[], byte[], byte[]> createBasicVeniceWriter() {
-    Properties writerProps = props.toProperties();
-    // Closing segments based on elapsed time should always be disabled in data writer compute jobs to prevent storage
-    // nodes from consuming out of order keys when speculative execution is enabled.
-    writerProps.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, -1);
-
+  protected AbstractVeniceWriter<byte[], byte[], byte[]> createBasicVeniceWriter() {
     EngineTaskConfigProvider engineTaskConfigProvider = getEngineTaskConfigProvider();
     Properties jobProps = engineTaskConfigProvider.getJobProps();
-
-    // Use the UUID bits created by the VPJ driver to build a producerGUID deterministically
-    writerProps.put(GuidUtils.GUID_GENERATOR_IMPLEMENTATION, GuidUtils.DETERMINISTIC_GUID_GENERATOR_IMPLEMENTATION);
-    writerProps.put(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, jobProps.getProperty(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS));
-    writerProps.put(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, jobProps.getProperty(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS));
-    VeniceWriterFactory veniceWriterFactoryFactory = new VeniceWriterFactory(writerProps);
+    VeniceWriterFactory veniceWriterFactoryFactory = veniceWriterFactory.get();
     boolean chunkingEnabled = props.getBoolean(VeniceWriter.ENABLE_CHUNKING, false);
     boolean rmdChunkingEnabled = props.getBoolean(VeniceWriter.ENABLE_RMD_CHUNKING, false);
     String maxRecordSizeBytesStr = (String) jobProps
@@ -384,8 +381,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     }
   }
 
-  // protected and package private for testing purposes
-  protected AbstractVeniceWriter<byte[], byte[], byte[]> createCompositeVeniceWriter(
+  private AbstractVeniceWriter<byte[], byte[], byte[]> createCompositeVeniceWriter(
       VeniceWriterFactory factory,
       VeniceWriter<byte[], byte[], byte[]> mainWriter,
       String flatViewConfigMapString,
@@ -522,6 +518,20 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         this.dataWriterTaskTracker.heartbeat();
       }
     }, 0, 5, TimeUnit.MINUTES);
+
+    veniceWriterFactory = Lazy.of(() -> {
+      Properties writerProps = this.props.toProperties();
+      // Closing segments based on elapsed time should always be disabled in data writer compute jobs to prevent storage
+      // nodes from consuming out of order keys when speculative execution is enabled.
+      writerProps.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, -1);
+      EngineTaskConfigProvider engineTaskConfigProvider = getEngineTaskConfigProvider();
+      Properties jobProps = engineTaskConfigProvider.getJobProps();
+      // Use the UUID bits created by the VPJ driver to build a producerGUID deterministically
+      writerProps.put(GuidUtils.GUID_GENERATOR_IMPLEMENTATION, GuidUtils.DETERMINISTIC_GUID_GENERATOR_IMPLEMENTATION);
+      writerProps.put(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, jobProps.getProperty(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS));
+      writerProps.put(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, jobProps.getProperty(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS));
+      return new VeniceWriterFactory(writerProps);
+    });
   }
 
   private void initStorageQuotaFields(VeniceProperties props) {

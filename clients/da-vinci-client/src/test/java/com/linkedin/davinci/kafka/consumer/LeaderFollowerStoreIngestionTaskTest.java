@@ -1,8 +1,8 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -17,12 +17,15 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
+import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
+import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -46,12 +49,18 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.writer.VeniceWriter;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
+import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
+import org.mockito.ArgumentCaptor;
+import org.mockito.internal.verification.VerificationModeFactory;
+import org.mockito.verification.Timeout;
 import org.testng.annotations.Test;
 
 
@@ -67,6 +76,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
   private VeniceStoreVersionConfig mockVeniceStoreVersionConfig;
 
   private VeniceViewWriterFactory mockVeniceViewWriterFactory;
+  private HostLevelIngestionStats hostLevelIngestionStats;
 
   @Test
   public void testCheckWhetherToCloseUnusedVeniceWriter() {
@@ -174,10 +184,14 @@ public class LeaderFollowerStoreIngestionTaskTest {
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
     doReturn(Object2IntMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterUrlToIdMap();
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    hostLevelIngestionStats = mock(HostLevelIngestionStats.class);
+    AggHostLevelIngestionStats aggHostLevelIngestionStats = mock(AggHostLevelIngestionStats.class);
+    doReturn(hostLevelIngestionStats).when(aggHostLevelIngestionStats).getStoreStats(storeName);
     StoreIngestionTaskFactory.Builder builder = TestUtils.getStoreIngestionTaskBuilder(storeName)
         .setServerConfig(mockVeniceServerConfig)
         .setPubSubTopicRepository(pubSubTopicRepository)
-        .setVeniceViewWriterFactory(mockVeniceViewWriterFactory);
+        .setVeniceViewWriterFactory(mockVeniceViewWriterFactory)
+        .setHostLevelIngestionStats(aggHostLevelIngestionStats);
     when(builder.getSchemaRepo().getKeySchema(storeName)).thenReturn(new SchemaEntry(1, "\"string\""));
     mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
     Version version = mockStore.getVersion(versionNumber);
@@ -258,7 +272,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   @Test
-  public void testProcessViewWriters() throws InterruptedException {
+  public void testQueueUpVersionTopicWritesWithViewWriters() throws InterruptedException {
     mockVeniceViewWriterFactory = mock(VeniceViewWriterFactory.class);
     Map<String, VeniceViewWriter> viewWriterMap = new HashMap<>();
     MaterializedViewWriter materializedViewWriter = mock(MaterializedViewWriter.class);
@@ -271,11 +285,30 @@ public class LeaderFollowerStoreIngestionTaskTest {
     Put put = new Put();
     put.schemaId = 1;
     when(mockResult.getNewPut()).thenReturn(put);
-    CompletableFuture[] futures =
-        leaderFollowerStoreIngestionTask.processViewWriters(mockPartitionConsumptionState, new byte[1], mockResult);
-    assertEquals(futures.length, 2);
+    AtomicBoolean writeToVersionTopic = new AtomicBoolean(false);
+    when(mockPartitionConsumptionState.getLastVTProduceCallFuture())
+        .thenReturn(CompletableFuture.completedFuture(null));
+    leaderFollowerStoreIngestionTask.queueUpVersionTopicWritesWithViewWriters(
+        mockPartitionConsumptionState,
+        (viewWriter) -> viewWriter.processRecord(mock(ByteBuffer.class), new byte[1], 1),
+        (pcs) -> writeToVersionTopic.set(true));
     verify(mockPartitionConsumptionState, times(1)).getLastVTProduceCallFuture();
+    ArgumentCaptor<CompletableFuture> vtWriteFutureCaptor = ArgumentCaptor.forClass(CompletableFuture.class);
+    verify(mockPartitionConsumptionState, times(1)).setLastVTProduceCallFuture(vtWriteFutureCaptor.capture());
     verify(materializedViewWriter, times(1)).processRecord(any(), any(), anyInt());
+    verify(hostLevelIngestionStats, times(1)).recordViewProducerLatency(anyDouble());
+    verify(hostLevelIngestionStats, never()).recordViewProducerAckLatency(anyDouble());
+    assertFalse(writeToVersionTopic.get());
+    assertFalse(vtWriteFutureCaptor.getValue().isDone());
+    assertFalse(vtWriteFutureCaptor.getValue().isCompletedExceptionally());
+    viewWriterFuture.complete(null);
+    TestUtils.waitForNonDeterministicAssertion(
+        1,
+        TimeUnit.SECONDS,
+        () -> assertTrue(vtWriteFutureCaptor.getValue().isDone()));
+    assertFalse(vtWriteFutureCaptor.getValue().isCompletedExceptionally());
+    assertTrue(writeToVersionTopic.get());
+    verify(hostLevelIngestionStats, times(1)).recordViewProducerAckLatency(anyDouble());
   }
 
   /**
@@ -284,7 +317,38 @@ public class LeaderFollowerStoreIngestionTaskTest {
    */
   @Test
   public void testControlMessagesAreInOrderWithPassthroughDIV() throws InterruptedException {
+    mockVeniceViewWriterFactory = mock(VeniceViewWriterFactory.class);
+    Map<String, VeniceViewWriter> viewWriterMap = new HashMap<>();
+    MaterializedViewWriter materializedViewWriter = mock(MaterializedViewWriter.class);
+    viewWriterMap.put("testView", materializedViewWriter);
+    when(mockVeniceViewWriterFactory.buildStoreViewWriters(any(), anyInt(), any())).thenReturn(viewWriterMap);
     setUp();
+    PubSubMessageProcessedResultWrapper firstCM = getMockMessage(1);
+    PubSubMessageProcessedResultWrapper secondCM = getMockMessage(2);
+    CompletableFuture<Void> lastVTWriteFuture = new CompletableFuture<>();
+    CompletableFuture<Void> nextVTWriteFuture = new CompletableFuture<>();
+    when(mockPartitionConsumptionState.getLastVTProduceCallFuture()).thenReturn(lastVTWriteFuture)
+        .thenReturn(nextVTWriteFuture);
+    VeniceWriter veniceWriter = mock(VeniceWriter.class);
+    doReturn(Lazy.of(() -> veniceWriter)).when(mockPartitionConsumptionState).getVeniceWriterLazyRef();
+    leaderFollowerStoreIngestionTask.delegateConsumerRecord(firstCM, 0, "testURL", 0, 0, 0);
+    leaderFollowerStoreIngestionTask.delegateConsumerRecord(secondCM, 0, "testURL", 0, 0, 0);
+    // The CM write should be queued but not executed yet since the previous VT write future is still incomplete
+    verify(veniceWriter, never()).put(any(), any(), any(), anyInt(), any());
+    lastVTWriteFuture.complete(null);
+    verify(veniceWriter, timeout(1000)).put(any(), any(), any(), anyInt(), any());
+    nextVTWriteFuture.complete(null);
+    // The CM should be written once the previous VT write is completed
+    ArgumentCaptor<KafkaMessageEnvelope> kafkaValueCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
+    verify(veniceWriter, new Timeout(1000, VerificationModeFactory.times(2)))
+        .put(any(), kafkaValueCaptor.capture(), any(), anyInt(), any());
+    int seqNumber = 1;
+    for (KafkaMessageEnvelope value: kafkaValueCaptor.getAllValues()) {
+      assertEquals(seqNumber++, value.getProducerMetadata().getMessageSequenceNumber());
+    }
+  }
+
+  private PubSubMessageProcessedResultWrapper getMockMessage(int seqNumber) {
     PubSubMessageProcessedResultWrapper pubSubMessageProcessedResultWrapper =
         mock(PubSubMessageProcessedResultWrapper.class);
     PubSubMessage pubSubMessage = mock(PubSubMessage.class);
@@ -293,6 +357,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(kafkaKey).when(pubSubMessage).getKey();
     KafkaMessageEnvelope kafkaValue = mock(KafkaMessageEnvelope.class);
     doReturn(MessageType.CONTROL_MESSAGE.getValue()).when(kafkaValue).getMessageType();
+    ProducerMetadata producerMetadata = mock(ProducerMetadata.class);
+    doReturn(seqNumber).when(producerMetadata).getMessageSequenceNumber();
+    doReturn(producerMetadata).when(kafkaValue).getProducerMetadata();
     doReturn(kafkaValue).when(pubSubMessage).getValue();
     doReturn(true).when(mockPartitionConsumptionState).consumeRemotely();
     doReturn(LeaderFollowerStateType.LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
@@ -306,19 +373,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(true).when(kafkaKey).isControlMessage();
     ControlMessage controlMessage = mock(ControlMessage.class);
     doReturn(controlMessage).when(kafkaValue).getPayloadUnion();
-    doReturn(ControlMessageType.END_OF_SEGMENT.getValue()).when(controlMessage).getControlMessageType();
-    doReturn(0L).when(pubSubMessage).getOffset();
-    CompletableFuture<Void> lastVTWriteFuture = new CompletableFuture<>();
-    doReturn(lastVTWriteFuture).when(mockPartitionConsumptionState).getLastVTProduceCallFuture();
-    VeniceWriter veniceWriter = mock(VeniceWriter.class);
-    doReturn(Lazy.of(() -> veniceWriter)).when(mockPartitionConsumptionState).getVeniceWriterLazyRef();
-
-    leaderFollowerStoreIngestionTask.delegateConsumerRecord(pubSubMessageProcessedResultWrapper, 0, "testURL", 0, 0, 0);
-    Thread.sleep(1000);
-    // The CM write should be queued but not executed yet since the previous VT write future is still incomplete
-    verify(veniceWriter, never()).put(eq(kafkaKey), eq(kafkaValue), any(), anyInt(), any());
-    lastVTWriteFuture.complete(null);
-    // The CM should be written once the previous VT write is completed
-    verify(veniceWriter, timeout(1000)).put(eq(kafkaKey), eq(kafkaValue), any(), anyInt(), any());
+    doReturn(ControlMessageType.START_OF_SEGMENT.getValue()).when(controlMessage).getControlMessageType();
+    doReturn((long) seqNumber).when(pubSubMessage).getOffset();
+    return pubSubMessageProcessedResultWrapper;
   }
 }
