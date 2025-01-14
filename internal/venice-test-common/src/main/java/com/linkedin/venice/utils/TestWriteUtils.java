@@ -497,7 +497,7 @@ public class TestWriteUtils {
     return user;
   }
 
-  private static Schema writeAvroFile(File parentDir, String fileName, Schema recordSchema, AvroFileWriter fileWriter)
+  public static Schema writeAvroFile(File parentDir, String fileName, Schema recordSchema, AvroFileWriter fileWriter)
       throws IOException {
     File file = new File(parentDir, fileName);
 
@@ -726,7 +726,7 @@ public class TestWriteUtils {
         throws IOException;
   }
 
-  private interface AvroFileWriter {
+  public interface AvroFileWriter {
     void write(Schema recordSchema, DataFileWriter writer) throws IOException;
   }
 

@@ -16,6 +16,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.util.Utf8;
 
 
 /**
@@ -200,6 +201,10 @@ public class AvroToSQL {
           if (fieldType == Schema.Type.UNION) {
             // Unions are handled via unpacking
             fieldType = field.schema().getTypes().get(avroFieldIndexToUnionBranchIndex[field.pos()]).getType();
+          }
+
+          if (fieldValue instanceof Utf8) {
+            fieldValue = fieldValue.toString();
           }
           processField(jdbcIndex, fieldType, fieldValue, preparedStatement, field.name());
         }
