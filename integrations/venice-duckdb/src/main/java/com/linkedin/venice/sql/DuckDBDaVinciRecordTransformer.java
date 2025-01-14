@@ -23,10 +23,10 @@ public class DuckDBDaVinciRecordTransformer extends DaVinciRecordTransformer<Str
   // ToDo: Don't hardcode the table name. Get it from the storeName
   private static final String baseVersionTableName = "my_table_v";
   private static final Set<String> primaryKeys = Collections.singleton("firstName");
-  private static final String deleteStatementTemplate = "DELETE FROM %s WHERE %s = '%s';";
+  private static final String deleteStatementTemplate = "DELETE FROM ? WHERE ? = ?;";
   private static final String createViewStatementTemplate =
-      "CREATE OR REPLACE VIEW current_version AS SELECT * FROM %s;";
-  private static final String dropTableStatementTemplate = "DROP TABLE %s;";
+      "CREATE OR REPLACE VIEW current_version AS SELECT * FROM ?;";
+  private static final String dropTableStatementTemplate = "DROP TABLE ?;";
   private final String duckDBUrl;
   private final String versionTableName;
 
@@ -86,11 +86,14 @@ public class DuckDBDaVinciRecordTransformer extends DaVinciRecordTransformer<Str
   @Override
   public void processDelete(Lazy<String> key) {
     // ToDo: Instead of creating a connection on every call, have a long-term connection. Maybe a connection pool?
-    try (Connection connection = DriverManager.getConnection(duckDBUrl);
-        Statement stmt = connection.createStatement()) {
-      // ToDo make delete non-hardcoded on primaryKey and make into a prepared statement
-      String sqlDelete = String.format(deleteStatementTemplate, versionTableName, "firstName", key.get());
-      stmt.execute(sqlDelete);
+    try (Connection connection = DriverManager.getConnection(duckDBUrl)) {
+      // ToDo make delete non-hardcoded on primaryKey
+      try (PreparedStatement stmt = connection.prepareStatement(deleteStatementTemplate)) {
+        stmt.setString(1, versionTableName);
+        stmt.setString(2, "firstName");
+        stmt.setString(1, key.get());
+        stmt.execute();
+      }
     } catch (SQLException e) {
       throw new RuntimeException(e);
     }
@@ -106,9 +109,10 @@ public class DuckDBDaVinciRecordTransformer extends DaVinciRecordTransformer<Str
       stmt.execute(createTableStatement);
 
       if (isCurrentVersion) {
-        // ToDo: Make into prepared statement
-        String createViewStatement = String.format(createViewStatementTemplate, versionTableName);
-        stmt.execute(createViewStatement);
+        try (PreparedStatement stmt1 = connection.prepareStatement(createViewStatementTemplate)) {
+          stmt1.setString(1, versionTableName);
+          stmt1.execute();
+        }
       }
     } catch (SQLException e) {
       throw new RuntimeException(e);
@@ -117,18 +121,19 @@ public class DuckDBDaVinciRecordTransformer extends DaVinciRecordTransformer<Str
 
   @Override
   public void onEndVersionIngestion(int currentVersion) {
-    try (Connection connection = DriverManager.getConnection(duckDBUrl);
-        Statement stmt = connection.createStatement()) {
+    try (Connection connection = DriverManager.getConnection(duckDBUrl)) {
       // Swap to current version
       String currentVersionTableName = baseVersionTableName + currentVersion;
-      // ToDo: Make into a prepared statement
-      String createViewStatement = String.format(createViewStatementTemplate, currentVersionTableName);
-      stmt.execute(createViewStatement);
+      try (PreparedStatement stmt = connection.prepareStatement(createViewStatementTemplate)) {
+        stmt.setString(1, currentVersionTableName);
+        stmt.execute();
+      }
 
-      // ToDo: Make into a prepared statement
       // Drop DuckDB table for storeVersion as it's retired
-      String deleteTableStatement = String.format(dropTableStatementTemplate, versionTableName);
-      stmt.execute(deleteTableStatement);
+      try (PreparedStatement stmt = connection.prepareStatement(dropTableStatementTemplate)) {
+        stmt.setString(1, versionTableName);
+        stmt.execute();
+      }
     } catch (SQLException e) {
       throw new RuntimeException(e);
     }
