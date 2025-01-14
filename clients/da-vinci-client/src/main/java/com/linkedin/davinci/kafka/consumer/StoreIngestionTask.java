@@ -2898,7 +2898,33 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /*
      * Notify the underlying store engine about starting batch push.
      */
-    beginBatchWrite(partition, startOfPush.sorted, partitionConsumptionState);
+    final boolean sorted;
+    if (serverConfig.getRocksDBServerConfig().isBlobFilesEnabled() && isHybridMode()) {
+      /**
+       * We would like to skip {@link com.linkedin.davinci.store.rocksdb.RocksDBSstFileWriter} for hybrid stores
+       * when RocksDB blob mode is enabled and here are the reasons:
+       * 1. Hybrid stores will use the same amount of MemTables eventually even not in batch processing phase.
+       * 2. SSTFileWriter + RocksDB blob mode will introduce additional space overhead in the following way:
+       *    a. SSTFileWriter doesn't support RocksDB blob mode, which means even with blob enabled, SSTFileWriter
+       *       will still write both key and value into the same SST file regardless of value size.
+       *    b. When RocksDB ingests the generated SST files, it will put them in the bottom level.
+       *    c. After finishing the batch portion, RocksDB won't use SSTFileWriter anymore and in the regular mode, when
+       *       RocksDB blob mode is enabled, RocksDB will store the value in blob files when the value size is
+       *       larger than the configured threshold, and this also means the LSM tree built by the real-time writes
+       *       will be much smaller as it contains keys and smaller values/value pointers.
+       *    d. As LSM tree is small, it is not easy to trigger a compaction in the bottom level (the bottom - 1 level
+       *       needs to keep enough data to trigger the bottom-level compaction), so the staled entries in the bottom
+       *       level will remain for a long time.
+       *    e. RocksDB blob config tuning won't affect the large bottom-level SST files.
+       * 3. If we disable SSTFileWriter for hybrid stores when RocksDB blob mode is enabled, all the writes will
+       *    go through MemTable and key/value separation logic will apply all the time, and blob related configs
+       *    will apply to all the writes.
+       */
+      sorted = false;
+    } else {
+      sorted = startOfPush.sorted;
+    }
+    beginBatchWrite(partition, sorted, partitionConsumptionState);
     partitionConsumptionState.setStartOfPushTimestamp(startOfPushKME.producerMetadata.messageTimestamp);
 
     ingestionNotificationDispatcher.reportStarted(partitionConsumptionState);
@@ -2906,7 +2932,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (previousStoreVersionState == null) {
         // No other partition of the same topic has started yet, let's initialize the StoreVersionState
         StoreVersionState newStoreVersionState = new StoreVersionState();
-        newStoreVersionState.sorted = startOfPush.sorted;
+        newStoreVersionState.sorted = sorted;
         newStoreVersionState.chunked = startOfPush.chunked;
         newStoreVersionState.compressionStrategy = startOfPush.compressionStrategy;
         newStoreVersionState.compressionDictionary = startOfPush.compressionDictionary;
@@ -2924,7 +2950,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             StoreVersionState.class.getSimpleName(),
             kafkaVersionTopic);
         return newStoreVersionState;
-      } else if (previousStoreVersionState.sorted != startOfPush.sorted) {
+      } else if (previousStoreVersionState.sorted != sorted) {
         // Something very wrong is going on ): ...
         throw new VeniceException(
             "Unexpected: received multiple " + ControlMessageType.START_OF_PUSH.name()
