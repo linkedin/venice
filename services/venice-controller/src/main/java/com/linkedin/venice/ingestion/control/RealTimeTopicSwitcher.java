@@ -4,6 +4,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPIC
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR_RT_TOPICS;
 import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
+import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.TOPIC_SWITCH;
 import static com.linkedin.venice.pubsub.PubSubConstants.DEFAULT_KAFKA_REPLICATION_FACTOR;
 
 import com.linkedin.venice.ConfigKeys;
@@ -114,9 +115,11 @@ public class RealTimeTopicSwitcher {
           .broadcastTopicSwitch(sourceClusters, realTimeTopic.getName(), rewindStartTimestamp, Collections.emptyMap());
     }
     LOGGER.info(
-        "Successfully sent TopicSwitch into '{}' instructing to switch to '{}' with a rewindStartTimestamp of {}.",
+        "Successfully sent {} into '{}' instructing to switch to {} at {} with a rewindStartTimestamp of {}.",
+        TOPIC_SWITCH,
         topicWhereToSendTheTopicSwitch,
         realTimeTopic,
+        remoteKafkaUrls,
         rewindStartTimestamp);
   }
 
@@ -135,19 +138,10 @@ public class RealTimeTopicSwitcher {
     Version version =
         store.getVersion(Version.parseVersionFromKafkaTopicName(topicWhereToSendTheTopicSwitch.getName()));
     /**
-     * TopicReplicator is used in child fabrics to create real-time (RT) topic when a child fabric
-     * is ready to start buffer replay but RT topic doesn't exist. This scenario could happen for a
-     * hybrid store when users haven't started any Samza job yet. In this case, RT topic should be
-     * created with proper retention time instead of the default 5 days retention.
-     *
-     * Potential race condition: If both rewind-time update operation and buffer-replay
-     * start at the same time, RT topic might not be created with the expected retention time,
-     * which can be fixed by sending another rewind-time update command.
-     *
-     * TODO: RT topic should be created in both parent and child fabrics when the store is converted to
-     *       hybrid (update store command handling). However, if a store is converted to hybrid when it
-     *       doesn't have any existing version or a correct storage quota, we cannot decide the partition
-     *       number for it.
+     * We create the real-time topics when creating hybrid version for the first time. This is to ensure that the
+     * real-time topics are created with the correct partition count. Here we'll only check retention time and update
+     * it if necessary.
+     * TODO: Remove topic creation logic from here once new code is deployed to all regions.
      */
     createRealTimeTopicIfNeeded(store, version, srcTopicName, hybridStoreConfig.get());
     if (version != null && version.isSeparateRealTimeTopicEnabled()) {
@@ -189,7 +183,6 @@ public class RealTimeTopicSwitcher {
         getTopicManager().updateTopicRetention(realTimeTopic, expectedRetentionTimeMs);
       }
     }
-
   }
 
   long getRewindStartTime(
@@ -301,7 +294,8 @@ public class RealTimeTopicSwitcher {
       remoteKafkaUrls.add(aggregateRealTimeSourceKafkaUrl);
     }
     LOGGER.info(
-        "Will send TopicSwitch into '{}' instructing to switch to '{}' with a rewindStartTimestamp of {}.",
+        "Will send {} into '{}' instructing to switch to '{}' with a rewindStartTimestamp of {}.",
+        TOPIC_SWITCH,
         topicWhereToSendTheTopicSwitch,
         realTimeTopic,
         rewindStartTimestamp);
