@@ -44,21 +44,8 @@ public class AvroToSQLTest {
       + "booleanFieldUnion2 BOOLEAN);";
 
   private static final String EXPECTED_UPSERT_STATEMENT_WITH_ALL_TYPES =
-      "INSERT INTO MyRecord VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
-          + "ON CONFLICT(intField) DO UPDATE SET " + "fixedField = EXCLUDED.fixedField, "
-          + "stringField = EXCLUDED.stringField, " + "bytesField = EXCLUDED.bytesField, "
-          + "longField = EXCLUDED.longField, " + "floatField = EXCLUDED.floatField, "
-          + "doubleField = EXCLUDED.doubleField, " + "booleanField = EXCLUDED.booleanField, "
-          + "fixedFieldUnion1 = EXCLUDED.fixedFieldUnion1, " + "fixedFieldUnion2 = EXCLUDED.fixedFieldUnion2, "
-          + "stringFieldUnion1 = EXCLUDED.stringFieldUnion1, " + "stringFieldUnion2 = EXCLUDED.stringFieldUnion2, "
-          + "bytesFieldUnion1 = EXCLUDED.bytesFieldUnion1, " + "bytesFieldUnion2 = EXCLUDED.bytesFieldUnion2, "
-          + "intFieldUnion1 = EXCLUDED.intFieldUnion1, " + "intFieldUnion2 = EXCLUDED.intFieldUnion2, "
-          + "longFieldUnion1 = EXCLUDED.longFieldUnion1, " + "longFieldUnion2 = EXCLUDED.longFieldUnion2, "
-          + "floatFieldUnion1 = EXCLUDED.floatFieldUnion1, " + "floatFieldUnion2 = EXCLUDED.floatFieldUnion2, "
-          + "doubleFieldUnion1 = EXCLUDED.doubleFieldUnion1, " + "doubleFieldUnion2 = EXCLUDED.doubleFieldUnion2, "
-          + "booleanFieldUnion1 = EXCLUDED.booleanFieldUnion1, " + "booleanFieldUnion2 = EXCLUDED.booleanFieldUnion2;";
+      "INSERT OR REPLACE INTO MyRecord VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
-  // "INSERT OR REPLACE INTO MyRecord(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
   @Test
   public void testValidCreateTable() {
     List<Schema.Field> allFields = getAllValidFields();
@@ -68,14 +55,22 @@ public class AvroToSQLTest {
         AvroToSQL.createTableStatement("MyRecord", schemaWithAllSupportedFieldTypes, Collections.emptySet(), FAIL);
     assertEquals(createTableStatementForAllFields, EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES);
 
-    // Primary keys
-    Set<String> primaryKeys = new HashSet<>();
-    primaryKeys.add("stringField");
-    String createTableWithPrimaryKey =
-        AvroToSQL.createTableStatement("MyRecord", schemaWithAllSupportedFieldTypes, primaryKeys, FAIL);
-    String expectedCreateTable = EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES
-        .replace("stringField VARCHAR", "stringField VARCHAR PRIMARY KEY");
+    // Single-column primary key
+    String createTableWithPrimaryKey = AvroToSQL
+        .createTableStatement("MyRecord", schemaWithAllSupportedFieldTypes, Collections.singleton("stringField"), FAIL);
+    String expectedCreateTable =
+        EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES.replace(");", ", PRIMARY KEY(stringField));");
     assertEquals(createTableWithPrimaryKey, expectedCreateTable);
+
+    // Composite primary key
+    Set<String> compositePrimaryKey = new HashSet<>();
+    compositePrimaryKey.add("stringField");
+    compositePrimaryKey.add("intField");
+    String createTableWithCompositePrimaryKey =
+        AvroToSQL.createTableStatement("MyRecord", schemaWithAllSupportedFieldTypes, compositePrimaryKey, FAIL);
+    String expectedCreateTableWithCompositePK =
+        EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES.replace(");", ", PRIMARY KEY(stringField, intField));");
+    assertEquals(createTableWithCompositePrimaryKey, expectedCreateTableWithCompositePK);
   }
 
   @Test
@@ -134,8 +129,7 @@ public class AvroToSQLTest {
     List<Schema.Field> allFields = getAllValidFields();
     Schema schemaWithAllSupportedFieldTypes = Schema.createRecord("MyRecord", "", "", false, allFields);
 
-    String upsertStatementForAllFields =
-        AvroToSQL.upsertStatement("MyRecord", schemaWithAllSupportedFieldTypes, Collections.singleton("intField"));
+    String upsertStatementForAllFields = AvroToSQL.upsertStatement("MyRecord", schemaWithAllSupportedFieldTypes);
     assertEquals(upsertStatementForAllFields, EXPECTED_UPSERT_STATEMENT_WITH_ALL_TYPES);
   }
 
@@ -193,7 +187,7 @@ public class AvroToSQLTest {
     String createTableStatement = AvroToSQL.createTableStatement("MyRecord", schema, Collections.emptySet(), SKIP);
     assertEquals(createTableStatement, EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES);
 
-    String upsertStatement = AvroToSQL.upsertStatement("MyRecord", schema, Collections.singleton("intField"));
+    String upsertStatement = AvroToSQL.upsertStatement("MyRecord", schema);
     assertEquals(upsertStatement, EXPECTED_UPSERT_STATEMENT_WITH_ALL_TYPES);
   }
 }

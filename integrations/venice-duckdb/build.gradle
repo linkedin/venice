@@ -4,6 +4,8 @@ dependencies {
   implementation libraries.duckdbJdbc
 
   implementation project(':internal:venice-client-common')
+
+  testImplementation project(':internal:venice-common')
 }
 
 checkerFramework {
