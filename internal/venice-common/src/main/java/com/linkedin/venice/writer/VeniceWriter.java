@@ -1898,7 +1898,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     if (isClosed) {
       CompletableFuture<PubSubProduceResult> future = new CompletableFuture<>();
       future.completedFuture(null);
-      logger.warn("VeniceWriter already closed for partition " + topicPartition.getTopicName());
+      logger.warn("VeniceWriter already closed for topic partition " + topicPartition);
       return future;
     }
     KafkaMessageEnvelope kafkaMessageEnvelope =
