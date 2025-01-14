@@ -1042,9 +1042,24 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public void deleteStore(
       String clusterName,
       String storeName,
+      boolean isAbortMigrationCleanup,
       int largestUsedVersionNumber,
       boolean waitOnRTTopicDeletion) {
-    deleteStore(clusterName, storeName, largestUsedVersionNumber, waitOnRTTopicDeletion, false);
+    deleteStore(
+        clusterName,
+        storeName,
+        largestUsedVersionNumber,
+        waitOnRTTopicDeletion,
+        false,
+        isAbortMigrationCleanup);
+  }
+
+  public void deleteStore(
+      String clusterName,
+      String storeName,
+      int largestUsedVersionNumber,
+      boolean waitOnRTTopicDeletion) {
+    deleteStore(clusterName, storeName, largestUsedVersionNumber, waitOnRTTopicDeletion, false, false);
   }
 
   private void deleteStore(
@@ -1052,7 +1067,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String storeName,
       int largestUsedVersionNumber,
       boolean waitOnRTTopicDeletion,
-      boolean isForcedDelete) {
+      boolean isForcedDelete,
+      boolean isAbortMigrationCleanup) {
     checkControllerLeadershipFor(clusterName);
     LOGGER.info("Start deleting store: {} in cluster {}", storeName, clusterName);
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
@@ -1067,8 +1083,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         storeRepository.updateStore(store);
       } catch (VeniceNoStoreException e) {
         // It's possible for a store to partially exist due to partial delete/creation failures.
-        LOGGER
-            .warn("Store object is missing for store: " + storeName + " will proceed with the rest of store deletion");
+        LOGGER.warn("Store object is missing for store: {} will proceed with the rest of store deletion", storeName);
+      }
+      if (isAbortMigrationCleanup && store != null && !store.isMigrating()) {
+        LOGGER.warn(
+            "Deletion of store: {} in cluster: {} was issued as part of abort migration resource cleanup, but the store's "
+                + "migrating flag is false. Please ensure the store's migrating flag is set to true in the destination "
+                + "cluster before issuing the delete command to prevent accidental deletion of shared resources.",
+            storeName,
+            clusterName);
+        return;
       }
       if (storeConfig != null) {
         setStoreConfigDeletingFlag(storeConfig, clusterName, storeName, store);
@@ -1084,7 +1108,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // Truncate all the version topics, this is a prerequisite to delete the RT topic
         truncateOldTopics(clusterName, store, true);
 
-        if (!store.isMigrating()) {
+        if (!store.isMigrating() && !isAbortMigrationCleanup) {
           // for RT topic block on deletion so that next create store does not see the lingering RT topic which could
           // have different partition count
           PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
@@ -1152,7 +1176,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           clusterName,
           currentlyDiscoveredClusterName);
     } else if (store != null && store.isMigrating()) {
-      // Cluster discovery is correct but store migration flag has not been set.
+      // Cluster discovery is correct but store migration flag has been set.
       // This is most likely a direct deletion command from admin-tool sent to the wrong cluster.
       // i.e. instead of using the proper --end-migration command, a --delete-store command was issued AND sent to the
       // wrong cluster
@@ -7707,7 +7731,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         deleteOneStoreVersion(clusterName, storeName.get(), versionNum.get(), true);
       } else {
         setStoreReadWriteability(clusterName, storeName.get(), false);
-        deleteStore(clusterName, storeName.get(), Store.IGNORE_VERSION, false, true);
+        deleteStore(clusterName, storeName.get(), Store.IGNORE_VERSION, false, true, false);
       }
     } else {
       try (AutoCloseableLock ignore = resources.getClusterLockManager().createClusterWriteLock()) {
@@ -7718,7 +7742,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             continue;
           }
           setStoreReadWriteability(clusterName, store.getName(), false);
-          deleteStore(clusterName, store.getName(), Store.IGNORE_VERSION, false, true);
+          deleteStore(clusterName, store.getName(), Store.IGNORE_VERSION, false, true, false);
         }
       }
     }

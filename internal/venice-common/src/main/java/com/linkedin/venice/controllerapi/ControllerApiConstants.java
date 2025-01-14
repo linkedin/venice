@@ -7,6 +7,7 @@ public class ControllerApiConstants {
   public static final String SOURCE_GRID_FABRIC = "source_grid_fabric";
   public static final String BATCH_JOB_HEARTBEAT_ENABLED = "batch_job_heartbeat_enabled";
 
+  public static final String IS_ABORT_MIGRATION_CLEANUP = "is_abort_migration_cleanup";
   public static final String NAME = "store_name";
   public static final String STORE_PARTITION = "store_partition";
   public static final String STORE_VERSION = "store_version";

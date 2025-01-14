@@ -897,6 +897,28 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
+  public void controllerClientCanNotDeleteStore() {
+    String storeName = Utils.getUniqueString("test-store-not-delete");
+    assertCommand(parentControllerClient.createNewStore(storeName, "owner", "\"string\"", "\"string\""));
+    VersionCreationResponse versionCreationResponse =
+        parentControllerClient.emptyPush(storeName, Utils.getUniqueString(storeName), 1024);
+    Assert.assertFalse(versionCreationResponse.isError(), versionCreationResponse.getError());
+    try {
+      parentControllerClient.enableStoreReads(storeName, false);
+      parentControllerClient.enableStoreWrites(storeName, false);
+
+      TrackableControllerResponse response = parentControllerClient.deleteStore(storeName, true);
+      Assert.assertTrue(response.isError(), response.getError());
+      Assert.assertEquals(response.getErrorType(), ErrorType.INVALID_CONFIG);
+      StoreResponse storeResponse = parentControllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError(), storeResponse.getError());
+      Assert.assertEquals(storeName, storeResponse.getStore().getName());
+    } finally {
+      deleteStore(storeName);
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientCanGetExecutionOfDeleteStore() {
     String clusterName = venice.getClusterNames()[0];
 

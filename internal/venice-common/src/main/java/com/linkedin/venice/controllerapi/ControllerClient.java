@@ -20,6 +20,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_B;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HEARTBEAT_TIMESTAMP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_VERSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_ABORT_MIGRATION_CLEANUP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_SYSTEM_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_WRITE_COMPUTE_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_LOG_COMPACTION_ENABLED;
@@ -601,7 +602,11 @@ public class ControllerClient implements Closeable {
   }
 
   public TrackableControllerResponse deleteStore(String storeName) {
-    QueryParams params = newParams().add(NAME, storeName);
+    return deleteStore(storeName, false);
+  }
+
+  public TrackableControllerResponse deleteStore(String storeName, boolean isAbortMigratingStore) {
+    QueryParams params = newParams().add(NAME, storeName).add(IS_ABORT_MIGRATION_CLEANUP, isAbortMigratingStore);
     return request(ControllerRoute.DELETE_STORE, params, TrackableControllerResponse.class);
   }
 

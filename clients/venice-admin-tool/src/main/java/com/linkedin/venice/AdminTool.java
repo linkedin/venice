@@ -2081,9 +2081,10 @@ public class AdminTool {
       throw new VeniceException("Source cluster and destination cluster cannot be the same!");
     }
     boolean terminate = false;
-
-    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl, sslFactory);
-    ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl, sslFactory);
+    ControllerClient srcControllerClient =
+        ControllerClient.constructClusterControllerClient(srcClusterName, veniceUrl, sslFactory);
+    ControllerClient destControllerClient =
+        ControllerClient.constructClusterControllerClient(destClusterName, veniceUrl, sslFactory);
     checkPreconditionForStoreMigration(srcControllerClient, destControllerClient);
 
     // Check arguments
@@ -2116,9 +2117,10 @@ public class AdminTool {
     // Reset original store, storeConfig, and cluster discovery
     if (promptsOverride.length > 1) {
       terminate = !promptsOverride[1];
+
     } else {
       terminate = !userGivesPermission(
-          "Next step is to reset store migration flag, storeConfig and cluster"
+          "Next step is to reset store migration flag, storeConfig and cluster "
               + "discovery mapping. Do you want to proceed?");
     }
     if (terminate) {
@@ -2157,7 +2159,7 @@ public class AdminTool {
           "Deleting cloned store " + storeName + " in " + destControllerClient.getLeaderControllerUrl() + " ...");
       destControllerClient
           .updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
-      TrackableControllerResponse deleteResponse = destControllerClient.deleteStore(storeName);
+      TrackableControllerResponse deleteResponse = destControllerClient.deleteStore(storeName, true);
       printObject(deleteResponse);
       if (deleteResponse.isError()) {
         System.err.println("ERROR: failed to delete store " + storeName + " in the dest cluster " + destClusterName);
@@ -2169,7 +2171,7 @@ public class AdminTool {
     }
   }
 
-  private static boolean userGivesPermission(String prompt) {
+  static boolean userGivesPermission(String prompt) {
     Console console = System.console();
     String response = console.readLine(prompt + " (y/n): ").toLowerCase();
     while (!response.equals("y") && !response.equals("n")) {
