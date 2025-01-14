@@ -266,7 +266,6 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
       Assert.assertTrue(veniceAdmin.getTopicManager().containsTopic(newRtTopic));
       veniceAdmin.deleteStore(clusterName, newStoreName, abort, Store.IGNORE_VERSION, false);
       Assert.assertNull(veniceAdmin.getStore(clusterName, newStoreName));
-
     } finally {
       veniceAdmin.deleteStore(clusterName, storeName, false, Store.IGNORE_VERSION, false);
     }

@@ -606,8 +606,8 @@ public class ControllerClient implements Closeable {
     return deleteStore(storeName, false);
   }
 
-  public TrackableControllerResponse deleteStore(String storeName, boolean isAbortMigratingStore) {
-    QueryParams params = newParams().add(NAME, storeName).add(IS_ABORT_MIGRATION_CLEANUP, isAbortMigratingStore);
+  public TrackableControllerResponse deleteStore(String storeName, boolean isAbortMigrationCleanup) {
+    QueryParams params = newParams().add(NAME, storeName).add(IS_ABORT_MIGRATION_CLEANUP, isAbortMigrationCleanup);
     return request(ControllerRoute.DELETE_STORE, params, TrackableControllerResponse.class);
   }
 

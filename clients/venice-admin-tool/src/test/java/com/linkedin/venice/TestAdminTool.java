@@ -193,9 +193,9 @@ public class TestAdminTool {
         Mockito.when(destControllerClient.getStore(storeName)).thenReturn(storeResponse);
         Mockito.when(destControllerClient.deleteStore(storeName, true)).thenReturn(new TrackableControllerResponse());
 
+        // Create two different controller clients for the source and destination clusters.
         controllerClientMockedStatic
-            .when(() -> ControllerClient.constructClusterControllerClient(eq(srcCluster), any(), any())) // make two
-                                                                                                         // clients
+            .when(() -> ControllerClient.constructClusterControllerClient(eq(srcCluster), any(), any()))
             .thenReturn(srcControllerClient);
         controllerClientMockedStatic
             .when(() -> ControllerClient.constructClusterControllerClient(eq(dstCluster), any(), any()))
@@ -206,14 +206,9 @@ public class TestAdminTool {
 
         AdminTool.abortMigration("http://localhost:7036", storeName, srcCluster, dstCluster, false, new boolean[0]);
         Mockito.verify(srcControllerClient, times(0)).discoverCluster(storeName);
-        Mockito.verify(srcControllerClient, times(0)).abortMigration(storeName, dstCluster); // verify dest client is
-                                                                                             // called with true flag
-                                                                                             // and store name as
-                                                                                             // deletestore method
-        Mockito.verify(destControllerClient, times(0)).deleteStore(storeName, true); // verify dest client is called
-                                                                                     // with true flag and store name as
-                                                                                     // deletestore method
-
+        Mockito.verify(srcControllerClient, times(0)).abortMigration(storeName, dstCluster);
+        // Verify that destControllerClient is NOT called with the true flag and storeName in the deleteStore method.
+        Mockito.verify(destControllerClient, times(0)).deleteStore(storeName, true);
         srcStoreInfo.setMigrating(true);
         storeResponse.setStore(srcStoreInfo);
         Mockito.when(srcControllerClient.getStore(storeName)).thenReturn(storeResponse);
@@ -228,13 +223,9 @@ public class TestAdminTool {
         adminToolMockedStatic.when(() -> AdminTool.userGivesPermission(promptDeleteStore)).thenReturn(true);
 
         AdminTool.abortMigration("http://localhost:7036", storeName, srcCluster, dstCluster, false, new boolean[0]);
-        Mockito.verify(srcControllerClient, times(1)).abortMigration(storeName, dstCluster); // verify dest client is
-                                                                                             // called with true flag
-                                                                                             // and store name as
-                                                                                             // deletestore method
-        Mockito.verify(destControllerClient, times(1)).deleteStore(storeName, true); // verify dest client is called
-                                                                                     // with true flag and store name as
-                                                                                     // deletestore method
+        Mockito.verify(srcControllerClient, times(1)).abortMigration(storeName, dstCluster);
+        // Verify that destControllerClient is called with the true flag and storeName in the deleteStore method once
+        Mockito.verify(destControllerClient, times(1)).deleteStore(storeName, true);
       }
     }
   }
