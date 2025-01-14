@@ -30,6 +30,8 @@ import org.testng.annotations.Test;
  * @author Antony T Curtis &lt;acurtis@linkedin.com&gt;
  */
 public class TestResourceRegistry {
+  private static final long DEFAULT_TIMEOUT = 90_000L;
+
   public static interface MockResource extends ShutdownableResource {
   }
 
@@ -153,34 +155,34 @@ public class TestResourceRegistry {
     Mockito.reset(factory1);
   }
 
-  @Test(groups = "unit", expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Factory<E> missing generic type")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT, expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Factory<E> missing generic type")
   public void testRegisterBadFactory() {
     Assert.assertNull(ResourceRegistry.registerFactory(BadFactory.class, Mockito.mock(BadFactory.class)));
   }
 
-  @Test(groups = "unit", expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*BadClass is not an interface.*")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT, expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*BadClass is not an interface.*")
   public void testRegisterBadClass() {
     Assert.assertNull(ResourceRegistry.registerFactory(BadClass.class, new BadClass()));
   }
 
-  @Test(groups = "unit", expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Factory should be an instance of the Factory class.")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT, expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Factory should be an instance of the Factory class.")
   @SuppressWarnings("unchecked")
   public void testRegisterBadMismatchFactory() {
     Assert.assertNull(
         ResourceRegistry.registerFactory((Class) EmptyFactory.class, (ResourceRegistry.Factory) new BadClass()));
   }
 
-  @Test(groups = "unit", expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*EmptyFactory does not declare any methods")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT, expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*EmptyFactory does not declare any methods")
   public void testRegisterEmptyFactory() {
     Assert.assertNull(ResourceRegistry.registerFactory(EmptyFactory.class, Mockito.mock(EmptyFactory.class)));
   }
 
-  @Test(groups = "unit", expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*InvalidFactory does not return a \\[.*MockResource\\] class")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT, expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*InvalidFactory does not return a \\[.*MockResource\\] class")
   public void testRegisterFactory() {
     Assert.assertNull(ResourceRegistry.registerFactory(InvalidFactory.class, Mockito.mock(InvalidFactory.class)));
   }
 
-  @Test(groups = "unit")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT)
   public void testRegisterRace() throws InterruptedException {
     final ResourceRegistry reg = new ResourceRegistry();
     try {
@@ -226,28 +228,28 @@ public class TestResourceRegistry {
     }
   }
 
-  @Test(groups = "unit", expectedExceptions = Error.class, expectedExceptionsMessageRegExp = "Bad foo always happens")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT, expectedExceptions = Error.class, expectedExceptionsMessageRegExp = "Bad foo always happens")
   public void testFactoryStaticError() {
     ResourceRegistry reg = new ResourceRegistry();
     FactoryStaticError factory = reg.factory(FactoryStaticError.class);
     Assert.fail("Should not get here: " + factory);
   }
 
-  @Test(groups = "unit", expectedExceptions = NumberFormatException.class)
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT, expectedExceptions = NumberFormatException.class)
   public void testFactoryStaticRuntimeException() {
     ResourceRegistry reg = new ResourceRegistry();
     FactoryStaticRuntimeException factory = reg.factory(FactoryStaticRuntimeException.class);
     Assert.fail("Should not get here: " + factory);
   }
 
-  @Test(groups = "unit", expectedExceptions = NullPointerException.class)
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT, expectedExceptions = NullPointerException.class)
   public void testFactoryNull() {
     ResourceRegistry reg = new ResourceRegistry();
     ResourceRegistry.Factory factory = reg.factory(null);
     Assert.fail("Should not get here: " + factory);
   }
 
-  @Test(groups = "unit")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT)
   public void testRegisterMockitoFactory1() throws InterruptedException, TimeoutException {
     Assert.assertSame(ResourceRegistry.registerFactory(MockFactory1.class, factory1), factory1);
     MockResource mockResource = Mockito.mock(MockResource.class);
@@ -321,7 +323,7 @@ public class TestResourceRegistry {
     }
   }
 
-  @Test(groups = "unit")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT)
   public void testRegisterMockitoFactory5() throws InterruptedException, TimeoutException {
     Assert.assertSame(ResourceRegistry.registerFactory(MockFactory5.class, factory5), factory5);
     MockResource2 mockResource2 = Mockito.mock(MockResource2.class);
@@ -379,7 +381,7 @@ public class TestResourceRegistry {
     }
   }
 
-  @Test(groups = "unit")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT)
   public void testRegisterMockitoFactory1BadWaitForShutdown() throws InterruptedException, TimeoutException {
     Assert.assertSame(ResourceRegistry.registerFactory(MockFactory1.class, factory1), factory1);
     MockResource mockResource = Mockito.mock(MockResource.class);
@@ -433,7 +435,7 @@ public class TestResourceRegistry {
     }
   }
 
-  @Test(groups = "unit")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT)
   public void testRegisterMockitoFactory1BadShutdown() throws InterruptedException, TimeoutException {
     Assert.assertSame(ResourceRegistry.registerFactory(MockFactory1.class, factory1), factory1);
     MockResource mockResource = Mockito.mock(MockResource.class);
@@ -478,7 +480,7 @@ public class TestResourceRegistry {
     }
   }
 
-  @Test(groups = "unit")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT)
   public void testRegisterMockitoFactory1Dormouse() throws InterruptedException, TimeoutException {
     Assert.assertSame(ResourceRegistry.registerFactory(MockFactory1.class, factory1), factory1);
     MockResource mockResource = Mockito.mock(MockResource.class);
@@ -523,7 +525,7 @@ public class TestResourceRegistry {
     }
   }
 
-  @Test(groups = "unit")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT)
   public void testRegisterMockitoFactory1Timeout() throws InterruptedException, TimeoutException {
     Assert.assertSame(ResourceRegistry.registerFactory(MockFactory1.class, factory1), factory1);
     MockResource mockResource = Mockito.mock(MockResource.class);
@@ -614,7 +616,7 @@ public class TestResourceRegistry {
     }
   }
 
-  @Test(groups = "unit")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT)
   public void testRemoveShutdownableResource() throws InterruptedException {
     ResourceRegistry reg = new ResourceRegistry();
     ShutdownableResource[] res = new ShutdownableResource[5];
@@ -673,7 +675,7 @@ public class TestResourceRegistry {
     Assert.assertEquals(latch[4].getCount(), 1);
   }
 
-  @Test(groups = "unit")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT)
   public void testRemoveShutdownable() throws InterruptedException {
     ResourceRegistry reg = new ResourceRegistry();
     Shutdownable[] res = new Shutdownable[4];
@@ -708,7 +710,7 @@ public class TestResourceRegistry {
     Assert.assertEquals(latch[3].getCount(), 0);
   }
 
-  @Test(groups = "unit")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT)
   public void testRemoveSyncShutdownable() throws InterruptedException {
     ResourceRegistry reg = new ResourceRegistry();
     SyncShutdownable[] res = new SyncShutdownable[4];
@@ -743,7 +745,7 @@ public class TestResourceRegistry {
     Assert.assertEquals(latch[3].getCount(), 0);
   }
 
-  @Test(groups = "unit")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT)
   public void testSortedShutdownCombinations() throws InterruptedException, TimeoutException {
     Assert.assertSame(ResourceRegistry.registerFactory(MockFactory1.class, factory1), factory1);
     MockResource[] mockResources = { Mockito.mock(MockResourceFirst.class), Mockito.mock(MockResource.class),
@@ -871,7 +873,7 @@ public class TestResourceRegistry {
     }
   }
 
-  @Test(groups = "unit")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT)
   public void testReRegisterInvalidFactory() {
     ReregisterFactory factory = Mockito.mock(ReregisterFactory.class);
     Assert.assertSame(ResourceRegistry.registerFactory(ReregisterFactory.class, factory), factory);
@@ -881,7 +883,7 @@ public class TestResourceRegistry {
     Assert.assertSame(ResourceRegistry.registerFactory(ReregisterFactory.class, factory), factory);
   }
 
-  @Test(groups = "unit", expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = "Factory not registered for interface.*")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT, expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = "Factory not registered for interface.*")
   public void testRunNotRegistered() {
     ResourceRegistry reg = new ResourceRegistry(false);
     try {
@@ -891,7 +893,7 @@ public class TestResourceRegistry {
     }
   }
 
-  @Test(groups = "unit")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT)
   public void testShutdownQuick() throws TimeoutException, InterruptedException {
     ResourceRegistry reg = new ResourceRegistry(false);
     Assert.assertFalse(reg.isShutdown());
@@ -903,7 +905,7 @@ public class TestResourceRegistry {
     }
   }
 
-  @Test(groups = "unit")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT)
   public void testToString() {
     ResourceRegistry reg = new ResourceRegistry();
     String str;
@@ -913,7 +915,7 @@ public class TestResourceRegistry {
     reg.shutdown();
   }
 
-  @Test(groups = "unit", expectedExceptions = IllegalStateException.class)
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT, expectedExceptions = IllegalStateException.class)
   public void testPrematureWaitForShutdown1() throws InterruptedException {
     ResourceRegistry reg = new ResourceRegistry();
     try {
@@ -923,7 +925,7 @@ public class TestResourceRegistry {
     }
   }
 
-  @Test(groups = "unit", expectedExceptions = IllegalStateException.class)
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT, expectedExceptions = IllegalStateException.class)
   public void testPrematureWaitForShutdown2() throws InterruptedException, TimeoutException {
     ResourceRegistry reg = new ResourceRegistry();
     try {
@@ -933,7 +935,7 @@ public class TestResourceRegistry {
     }
   }
 
-  @Test(groups = "unit")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT)
   public void testUnilateralGlobalShutdown() throws InterruptedException, TimeoutException {
     MockFactory2 factory = Mockito.mock(MockFactory2.class);
     Assert.assertSame(ResourceRegistry.registerFactory(MockFactory2.class, factory), factory);
@@ -1048,7 +1050,7 @@ public class TestResourceRegistry {
 
   }
 
-  @Test(groups = "unit")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT)
   public void testUnilateralGlobalShutdownInterruptable() throws InterruptedException, TimeoutException {
     MockFactory3 factory = Mockito.mock(MockFactory3.class);
     Assert.assertSame(ResourceRegistry.registerFactory(MockFactory3.class, factory), factory);
@@ -1157,7 +1159,7 @@ public class TestResourceRegistry {
     }
   }
 
-  @Test(groups = "unit")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT)
   public void testUnilateralGlobalShutdownDelay() throws InterruptedException, TimeoutException {
     MockFactory4 factory = Mockito.mock(MockFactory4.class);
     Assert.assertSame(ResourceRegistry.registerFactory(MockFactory4.class, factory), factory);
@@ -1263,7 +1265,7 @@ public class TestResourceRegistry {
     }
   }
 
-  @Test(groups = "unit")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT)
   public void testResourceGarbageCollection() throws InterruptedException, TimeoutException {
     try {
       MockFactoryGC factoryGC = Mockito.mock(MockFactoryGC.class);
@@ -1332,7 +1334,7 @@ public class TestResourceRegistry {
     }
   }
 
-  @Test(groups = "unit")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT)
   public void testWaitToStartShutdown() throws InterruptedException, TimeoutException, ExecutionException {
     final ResourceRegistry registry = new ResourceRegistry();
     final RunnableFuture<?> future = new FutureTask<Object>(new Callable<Object>() {
@@ -1357,7 +1359,7 @@ public class TestResourceRegistry {
     future.get(1, TimeUnit.MILLISECONDS);
   }
 
-  @Test(groups = "unit")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT)
   public void testWaitToStartShutdownTimeout() throws InterruptedException, TimeoutException, ExecutionException {
     final ResourceRegistry registry = new ResourceRegistry();
     final CountDownLatch startLatch = new CountDownLatch(2);
