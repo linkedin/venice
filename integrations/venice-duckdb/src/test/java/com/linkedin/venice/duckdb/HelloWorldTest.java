@@ -5,6 +5,8 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.utils.Utils;
+import java.io.File;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -164,16 +166,28 @@ public class HelloWorldTest {
 
   @DataProvider
   public Object[][] upsertFlavors() {
-    return new Object[][] { { "INSERT OR REPLACE INTO items VALUES (?, ?, ?)" }, {
-        "INSERT INTO items VALUES (?, ?, ?) ON CONFLICT DO UPDATE SET value = EXCLUDED.value, count = EXCLUDED.count" } };
+    String createTable1 = createTableStatement("items", true);
+    String createTable2 = "CREATE TABLE items (item VARCHAR, value DECIMAL(10, 2), count INTEGER, PRIMARY KEY (item))";
+    String createTable3 =
+        "CREATE TABLE items (item VARCHAR, value DECIMAL(10, 2), count INTEGER, PRIMARY KEY (item, value))";
+    String upsert1 = "INSERT OR REPLACE INTO items VALUES (?, ?, ?)";
+    String upsert2 =
+        "INSERT INTO items VALUES (?, ?, ?) ON CONFLICT DO UPDATE SET value = EXCLUDED.value, count = EXCLUDED.count";
+    String upsert3 = "INSERT INTO items VALUES (?, ?, ?) ON CONFLICT DO UPDATE SET count = EXCLUDED.count";
+    return new Object[][] { { createTable1, upsert1 }, //
+        { createTable1, upsert2 }, //
+        { createTable2, upsert1 }, //
+        { createTable2, upsert2 }, //
+        { createTable3, upsert1 }, //
+        { createTable3, upsert3 } };
   }
 
   @Test(dataProvider = "upsertFlavors")
-  public void testUpsertPreparedStatement(String upsert) throws SQLException {
+  public void testUpsertPreparedStatement(String createTable, String upsert) throws SQLException {
     try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
         Statement stmt = connection.createStatement()) {
       // create a table
-      stmt.execute(createTableStatement("items", true));
+      stmt.execute(createTable);
       // insert two items into the table
       stmt.execute(insertDataset1Statement("items"));
 
@@ -216,6 +230,32 @@ public class HelloWorldTest {
         appender.endRow();
       }
 
+      try (ResultSet rs = stmt.executeQuery("SELECT * FROM items")) {
+        assertValidityOfResultSet1(rs);
+      }
+    }
+  }
+
+  @Test
+  public void testPersistence() throws SQLException {
+    File tmpDir = Utils.getTempDataDirectory();
+    String connectionString = "jdbc:duckdb:" + tmpDir.getAbsolutePath() + "/foo.duckdb";
+    System.out.println(connectionString);
+    try (Connection connection = DriverManager.getConnection(connectionString);
+        Statement stmt = connection.createStatement()) {
+      // create a table
+      stmt.execute(createTableStatement("items", true));
+      // insert two items into the table
+      stmt.execute(insertDataset1Statement("items"));
+
+      try (ResultSet rs = stmt.executeQuery("SELECT * FROM items")) {
+        assertValidityOfResultSet1(rs);
+      }
+    }
+
+    try (Connection connection = DriverManager.getConnection(connectionString);
+        Statement stmt = connection.createStatement()) {
+      // Table and data should still be there even though we closed the DuckDBConnection
       try (ResultSet rs = stmt.executeQuery("SELECT * FROM items")) {
         assertValidityOfResultSet1(rs);
       }

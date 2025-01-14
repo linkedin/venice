@@ -9,10 +9,11 @@ import java.util.Collections;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
@@ -29,15 +30,8 @@ public class AvroToSQL {
 
   private static final Map<Schema.Type, JDBCType> AVRO_TO_JDBC_TYPE_MAPPING;
 
-  private static final Map<JDBCType, Consumer<PreparedStatement>> JDBC_TO_PREPARED_STATEMENT_FUNCTION_MAPPING;
-
-  /** Not sure if the reverse mapping will be needed. TODO: Decide whether to keep or remove. */
-  private static final Map<JDBCType, Schema.Type> JDBC_TO_AVRO_TYPE_MAPPING;
-
   static {
     Map<Schema.Type, JDBCType> avroToJdbc = new EnumMap(Schema.Type.class);
-    Map<JDBCType, Consumer<PreparedStatement>> jdbcToPreparedStatementFunction = new EnumMap(JDBCType.class);
-    Map<JDBCType, Schema.Type> jdbcToAvro = new EnumMap(JDBCType.class);
 
     // avroToJdbc.put(Schema.Type.UNION, JDBCType.?); // Unions need special handling, see below
     avroToJdbc.put(Schema.Type.FIXED, JDBCType.BINARY);
@@ -56,16 +50,7 @@ public class AvroToSQL {
     // avroToJdbc.put(Schema.Type.ARRAY, JDBCType.ARRAY);
     // avroToJdbc.put(Schema.Type.MAP, JDBCType.?);
 
-    for (Map.Entry<Schema.Type, JDBCType> entry: avroToJdbc.entrySet()) {
-      if (jdbcToAvro.put(entry.getValue(), entry.getKey()) != null) {
-        // There is already a mapping!
-        throw new IllegalStateException("There cannot be two mappings for: " + entry.getValue());
-      }
-    }
-
     AVRO_TO_JDBC_TYPE_MAPPING = Collections.unmodifiableMap(avroToJdbc);
-    JDBC_TO_PREPARED_STATEMENT_FUNCTION_MAPPING = Collections.unmodifiableMap(jdbcToPreparedStatementFunction);
-    JDBC_TO_AVRO_TYPE_MAPPING = Collections.unmodifiableMap(jdbcToAvro);
   }
 
   private AvroToSQL() {
@@ -79,18 +64,21 @@ public class AvroToSQL {
      */
   }
 
+  @Nonnull
   public static String createTableStatement(
-      String tableName,
-      Schema avroSchema,
-      Set<String> primaryKeyColumns,
-      UnsupportedTypeHandling unsupportedTypeHandling) {
+      @Nonnull String tableName,
+      @Nonnull Schema avroSchema,
+      @Nonnull Set<String> primaryKeyColumns,
+      @Nonnull UnsupportedTypeHandling unsupportedTypeHandling) {
+    Objects.requireNonNull(avroSchema);
+    Objects.requireNonNull(primaryKeyColumns);
+    Objects.requireNonNull(unsupportedTypeHandling);
     if (avroSchema.getType() != Schema.Type.RECORD) {
       throw new IllegalArgumentException("Only Avro records can have a corresponding CREATE TABLE statement.");
     }
     StringBuffer stringBuffer = new StringBuffer();
     stringBuffer.append("CREATE TABLE " + cleanTableName(tableName) + "(");
     boolean firstColumn = true;
-    boolean primaryKeyHasBeenSet = false;
 
     for (Schema.Field field: avroSchema.getFields()) {
       JDBCType correspondingType = getCorrespondingType(field);
@@ -103,6 +91,7 @@ public class AvroToSQL {
             Schema.Type fieldType = fieldSchema.getType();
             throw new IllegalArgumentException(fieldType + " is not supported!");
           default:
+            // Defensive code (unreachable)
             throw new IllegalStateException("Missing enum branch handling!");
         }
       }
@@ -114,24 +103,31 @@ public class AvroToSQL {
       }
 
       stringBuffer.append(cleanColumnName(field.name()) + " " + correspondingType.name());
+    }
 
-      if (primaryKeyColumns.contains(field.name())) {
-        if (primaryKeyHasBeenSet) {
-          stringBuffer.append(" UNIQUE");
+    firstColumn = true;
+    if (!primaryKeyColumns.isEmpty()) {
+      stringBuffer.append(", PRIMARY KEY(");
+      for (String pkColumn: primaryKeyColumns) {
+        if (firstColumn) {
+          firstColumn = false;
         } else {
-          primaryKeyHasBeenSet = true;
-          stringBuffer.append(" PRIMARY KEY");
+          stringBuffer.append(", ");
         }
+        stringBuffer.append(cleanColumnName(pkColumn));
       }
+      stringBuffer.append(")");
     }
     stringBuffer.append(");");
 
     return stringBuffer.toString();
   }
 
-  public static String upsertStatement(String tableName, Schema recordSchema, Set<String> primaryKeys) {
+  @Nonnull
+  public static String upsertStatement(@Nonnull String tableName, @Nonnull Schema recordSchema) {
+    Objects.requireNonNull(recordSchema);
     StringBuffer stringBuffer = new StringBuffer();
-    stringBuffer.append("INSERT INTO " + tableName + " VALUES (");
+    stringBuffer.append("INSERT OR REPLACE INTO " + cleanTableName(tableName) + " VALUES (");
     boolean firstColumn = true;
 
     for (Schema.Field field: recordSchema.getFields()) {
@@ -149,45 +145,14 @@ public class AvroToSQL {
 
       stringBuffer.append("?");
     }
-    stringBuffer.append(") ON CONFLICT(");
-
-    firstColumn = true;
-    for (String primaryKey: primaryKeys) {
-      if (firstColumn) {
-        firstColumn = false;
-      } else {
-        stringBuffer.append(", ");
-      }
-      stringBuffer.append(primaryKey);
-    }
-
-    stringBuffer.append(") DO UPDATE SET ");
-
-    firstColumn = true;
-    for (Schema.Field field: recordSchema.getFields()) {
-      JDBCType correspondingType = getCorrespondingType(field);
-      if (correspondingType == null) {
-        // Skipped field.
-        continue;
-      }
-      if (primaryKeys.contains(field.name())) {
-        continue;
-      }
-      if (firstColumn) {
-        firstColumn = false;
-      } else {
-        stringBuffer.append(", ");
-      }
-      String colName = cleanColumnName(field.name());
-      stringBuffer.append(colName + " = EXCLUDED." + colName);
-    }
-
-    stringBuffer.append(";");
+    stringBuffer.append(");");
 
     return stringBuffer.toString();
   }
 
-  public static BiConsumer<GenericRecord, PreparedStatement> upsertProcessor(String tableName, Schema recordSchema) {
+  @Nonnull
+  public static BiConsumer<GenericRecord, PreparedStatement> upsertProcessor(@Nonnull Schema recordSchema) {
+    Objects.requireNonNull(recordSchema);
     // N.B.: JDBC indices start at 1, not at 0;
     int index = 1;
     int[] avroFieldIndexToJdbcIndexMapping = new int[recordSchema.getFields().size()];
@@ -294,6 +259,7 @@ public class AvroToSQL {
     }
   }
 
+  @Nullable
   private static JDBCType getCorrespondingType(Schema.Field field) {
     Schema fieldSchema = field.schema();
     Schema.Type fieldType = fieldSchema.getType();
@@ -320,11 +286,16 @@ public class AvroToSQL {
   /**
    * This function should encapsulate the handling of any illegal characters (by either failing or converting them).
    */
-  private static String cleanTableName(String avroRecordName) {
-    return avroRecordName;
+  @Nonnull
+  private static String cleanTableName(@Nonnull String avroRecordName) {
+    return Objects.requireNonNull(avroRecordName);
   }
 
-  private static String cleanColumnName(String avroFieldName) {
-    return avroFieldName;
+  /**
+   * This function should encapsulate the handling of any illegal characters (by either failing or converting them).
+   */
+  @Nonnull
+  private static String cleanColumnName(@Nonnull String avroFieldName) {
+    return Objects.requireNonNull(avroFieldName);
   }
 }

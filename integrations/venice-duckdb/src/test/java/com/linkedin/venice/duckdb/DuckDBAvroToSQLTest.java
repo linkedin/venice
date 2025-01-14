@@ -17,6 +17,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
@@ -27,32 +28,36 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.IOUtils;
 import org.duckdb.DuckDBResultSet;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 public class DuckDBAvroToSQLTest {
-  @Test
-  public void test() throws SQLException, IOException {
+  @DataProvider
+  public Object[][] primaryKeyColumns() {
+    Set<String> compositePK = new HashSet<>();
+    compositePK.add("intField");
+    compositePK.add("longField");
+    return new Object[][] { { Collections.singleton("intField") }, { compositePK } };
+  }
+
+  @Test(dataProvider = "primaryKeyColumns")
+  public void testUpsert(Set<String> primaryKeyColumns) throws SQLException, IOException {
     List<Schema.Field> fields = AvroToSQLTest.getAllValidFields();
     Schema avroSchema = Schema.createRecord("MyRecord", "", "", false, fields);
-    Set<String> primaryKeyFields = new HashSet<>();
-    primaryKeyFields.add("intField");
-
-    // N.B.: Multiple primary/unique keys don't work so far... TODO: debug why
-    // primaryKeyFields.add("longField");
     try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
         Statement stmt = connection.createStatement()) {
       // create a table
       String tableName = "MyRecord_v1";
-      String createTableStatement = AvroToSQL.createTableStatement(tableName, avroSchema, primaryKeyFields, SKIP);
+      String createTableStatement = AvroToSQL.createTableStatement(tableName, avroSchema, primaryKeyColumns, SKIP);
       System.out.println(createTableStatement);
       stmt.execute(createTableStatement);
 
-      String upsertStatement = AvroToSQL.upsertStatement(tableName, avroSchema, primaryKeyFields);
+      String upsertStatement = AvroToSQL.upsertStatement(tableName, avroSchema);
       System.out.println(upsertStatement);
-      BiConsumer<GenericRecord, PreparedStatement> upsertProcessor = AvroToSQL.upsertProcessor(tableName, avroSchema);
+      BiConsumer<GenericRecord, PreparedStatement> upsertProcessor = AvroToSQL.upsertProcessor(avroSchema);
       for (int rewriteIteration = 0; rewriteIteration < 3; rewriteIteration++) {
-        List<GenericRecord> records = generateRecords(avroSchema);
+        List<GenericRecord> records = generateRecords(avroSchema, primaryKeyColumns);
         GenericRecord record;
         try (PreparedStatement preparedStatement = connection.prepareStatement(upsertStatement)) {
           for (int i = 0; i < records.size(); i++) {
@@ -104,7 +109,7 @@ public class DuckDBAvroToSQLTest {
     }
   }
 
-  private List<GenericRecord> generateRecords(Schema avroSchema) {
+  private List<GenericRecord> generateRecords(Schema avroSchema, Set<String> primaryKeyColumns) {
     List<GenericRecord> records = new ArrayList<>();
 
     GenericRecord record;
@@ -113,9 +118,17 @@ public class DuckDBAvroToSQLTest {
     for (int i = 0; i < 10; i++) {
       record = new GenericData.Record(avroSchema);
       for (Schema.Field field: avroSchema.getFields()) {
-        if (field.name().equals("intField")) {
-          // Primary key
-          fieldValue = i;
+        if (primaryKeyColumns.contains(field.name())) {
+          switch (field.schema().getType()) {
+            case INT:
+              fieldValue = i;
+              break;
+            case LONG:
+              fieldValue = (long) i;
+              break;
+            default:
+              throw new IllegalArgumentException("Only numeric PK columns are supported in this test.");
+          }
         } else {
           Schema fieldSchema = field.schema();
           if (fieldSchema.getType() == Schema.Type.UNION) {
