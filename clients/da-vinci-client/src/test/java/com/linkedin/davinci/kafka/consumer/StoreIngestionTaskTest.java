@@ -2462,7 +2462,6 @@ public abstract class StoreIngestionTaskTest {
     } finally {
       databaseSyncBytesIntervalForTransactionalMode = 1;
     }
-
   }
 
   @Test(dataProvider = "aaConfigProvider")
@@ -2498,6 +2497,48 @@ public abstract class StoreIngestionTaskTest {
       verify(mockAbstractStorageEngine, times(1)).endBatchWrite(transactionalPartitionConfig);
       assertTrue(storeIngestionTaskUnderTest.hasAllPartitionReportedCompleted());
     }, aaConfig);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testVeniceMessagesProcessingWithSortedInputWithBlobMode(boolean blobMode) throws Exception {
+    localVeniceWriter.broadcastStartOfPush(true, new HashMap<>());
+    PubSubProduceResult putMetadata =
+        (PubSubProduceResult) localVeniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID).get();
+    PubSubProduceResult deleteMetadata = (PubSubProduceResult) localVeniceWriter.delete(deleteKeyFoo, null).get();
+    localVeniceWriter.broadcastEndOfPush(new HashMap<>());
+
+    StoreIngestionTaskTestConfig testConfig = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
+      // Verify it retrieves the offset from the Offset Manager
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).getLastOffset(topic, PARTITION_FOO);
+
+      // Verify it commits the offset to Offset Manager after receiving EOP control message
+      OffsetRecord expectedOffsetRecordForDeleteMessage = getOffsetRecord(deleteMetadata.getOffset() + 1, true);
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS))
+          .put(topic, PARTITION_FOO, expectedOffsetRecordForDeleteMessage);
+      // Deferred write is not going to commit offset for every message, but will commit offset for every control
+      // message
+      // The following verification is for START_OF_PUSH control message
+      verify(mockStorageMetadataService, times(1))
+          .put(topic, PARTITION_FOO, getOffsetRecord(putMetadata.getOffset() - 1));
+      // Check database mode switches from deferred-write to transactional after EOP control message
+      StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
+      deferredWritePartitionConfig.setDeferredWrite(!blobMode);
+      verify(mockAbstractStorageEngine, times(1))
+          .beginBatchWrite(eq(deferredWritePartitionConfig), any(), eq(Optional.empty()));
+      StoragePartitionConfig transactionalPartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
+      verify(mockAbstractStorageEngine, times(1)).endBatchWrite(transactionalPartitionConfig);
+    }, null);
+    testConfig.setHybridStoreConfig(
+        Optional.of(
+            new HybridStoreConfigImpl(
+                10,
+                20,
+                HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
+                DataReplicationPolicy.NON_AGGREGATE,
+                BufferReplayPolicy.REWIND_FROM_EOP)));
+    testConfig.setExtraServerProperties(
+        Collections.singletonMap(RocksDBServerConfig.ROCKSDB_BLOB_FILES_ENABLED, Boolean.toString(blobMode)));
+    runTest(testConfig);
   }
 
   @Test(dataProvider = "aaConfigProvider")
