@@ -5,11 +5,9 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.*;
 import static com.linkedin.venice.utils.TestWriteUtils.*;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
 
-import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -18,7 +16,6 @@ import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.io.IOException;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -34,8 +31,6 @@ public class TestDeferredVersionSwap {
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 1;
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
-  private VeniceHelixAdmin veniceHelixAdmin;
-  private List<VeniceMultiClusterWrapper> childDatacenters;
   private static final String TARGET_REGION = "dc-0";
 
   private static final String[] CLUSTER_NAMES =
@@ -58,10 +53,6 @@ public class TestDeferredVersionSwap {
         Optional.of(controllerProps),
         Optional.of(controllerProps),
         Optional.of(serverProperties));
-
-    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
-    veniceHelixAdmin =
-        (VeniceHelixAdmin) childDatacenters.get(0).getControllers().values().iterator().next().getVeniceAdmin();
   }
 
   @AfterClass(alwaysRun = true)
