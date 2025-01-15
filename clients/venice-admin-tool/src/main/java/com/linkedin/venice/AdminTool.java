@@ -866,9 +866,12 @@ public class AdminTool {
     String task = getRequiredArgument(cmd, Arg.TASK_NAME, Command.CLUSTER_BATCH_TASK);
     String checkpointFile = getRequiredArgument(cmd, Arg.CHECKPOINT_FILE, Command.CLUSTER_BATCH_TASK);
     int parallelism = Integer.parseInt(getOptionalArgument(cmd, Arg.THREAD_COUNT, "1"));
-    System.out.println(
-        "[**** Cluster Command Params ****] Cluster: " + clusterName + ", Task: " + task + ", Checkpoint: "
-            + checkpointFile + ", Parallelism: " + parallelism);
+    LOGGER.info(
+        "[**** Cluster Command Params ****] Cluster: {}, Task: {}, Checkpoint: {}, Parallelism: {}",
+        clusterName,
+        task,
+        checkpointFile,
+        parallelism);
     // Create child data center controller client map.
     ChildAwareResponse childAwareResponse = controllerClient.listChildControllers(clusterName);
     Map<String, ControllerClient> controllerClientMap = getControllerClientMap(clusterName, childAwareResponse);
@@ -887,9 +890,9 @@ public class AdminTool {
     try {
       Path checkpointFilePath = Paths.get(checkpointFile);
       if (!Files.exists(checkpointFilePath.toAbsolutePath())) {
-        System.out.println(
-            "Checkpoint file path does not exist, will create a new checkpoint file: "
-                + checkpointFilePath.toAbsolutePath());
+        LOGGER.info(
+            "Checkpoint file path does not exist, will create a new checkpoint file: {}",
+            checkpointFilePath.toAbsolutePath());
       } else {
         List<String> fileLines = Files.readAllLines(checkpointFilePath);
         for (String line: fileLines) {
@@ -909,7 +912,7 @@ public class AdminTool {
         progressMap.entrySet().stream().filter(e -> !e.getValue()).map(Map.Entry::getKey).collect(Collectors.toList());
 
     // Validate task type. For now, we only has one task, if we have more task in the future, we can extend this logic.
-    Supplier<Function<String, Boolean>> functionSupplier;
+    Supplier<Function<String, Boolean>> functionSupplier = null;
     if (SystemStorePushTask.TASK_NAME.equals(task)) {
       String systemStoreType = getOptionalArgument(cmd, Arg.SYSTEM_STORE_TYPE);
       if (systemStoreType != null) {
@@ -925,8 +928,7 @@ public class AdminTool {
               clusterName,
               systemStoreType == null ? Optional.empty() : Optional.of(systemStoreType)));
     } else {
-      System.out.println("Undefined task: " + task);
-      return;
+      printErrAndExit("Undefined task: " + task);
     }
 
     // Create thread pool and start parallel processing.
@@ -940,9 +942,9 @@ public class AdminTool {
     for (int i = 0; i < parallelism; i++) {
       try {
         futureList.get(i).get();
-        System.out.println("Cluster task completed for thread : " + i);
+        LOGGER.info("Cluster task completed for thread : {}", i);
       } catch (InterruptedException | ExecutionException e) {
-        System.out.println(e.getMessage());
+        LOGGER.warn(e.getMessage());
         executorService.shutdownNow();
       }
     }

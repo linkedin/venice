@@ -116,7 +116,6 @@ public class SystemStorePushTask implements Function<String, Boolean> {
       }
 
       LOGGER.info("Aggregate largest version: {} for store: {}", largestUsedVersion, systemStoreName);
-      // largestUsedVersion = largestUsedVersion + 10;
       ControllerResponse controllerResponse = parentControllerClient
           .updateStore(systemStoreName, new UpdateStoreQueryParams().setLargestUsedVersionNumber(largestUsedVersion));
       if (controllerResponse.isError()) {
