@@ -14,8 +14,10 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.Utils;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
@@ -33,8 +35,7 @@ public class SystemStorePushTask implements Function<String, Boolean> {
   private static final int JOB_POLLING_RETRY_COUNT = 200;
   private static final int JOB_POLLING_RETRY_PERIOD_IN_SECONDS = 5;
   private static final String SYSTEM_STORE_PUSH_TASK_LOG_PREFIX = "[**** SYSTEM STORE PUSH ****]";
-  private static final List<VeniceSystemStoreType> SYSTEM_STORE_TYPE =
-      Arrays.asList(VeniceSystemStoreType.META_STORE, VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE);
+  private final List<VeniceSystemStoreType> systemStoreTypeList;
 
   private final ControllerClient parentControllerClient;
   private final String clusterName;
@@ -43,10 +44,17 @@ public class SystemStorePushTask implements Function<String, Boolean> {
   public SystemStorePushTask(
       ControllerClient parentControllerClient,
       Map<String, ControllerClient> controllerClientMap,
-      String clusterName) {
+      String clusterName,
+      Optional<String> systemStoreTypeFilter) {
     this.parentControllerClient = parentControllerClient;
     this.childControllerClientMap = controllerClientMap;
     this.clusterName = clusterName;
+    if (systemStoreTypeFilter.isPresent()) {
+      systemStoreTypeList = Collections.singletonList(VeniceSystemStoreType.valueOf(systemStoreTypeFilter.get()));
+    } else {
+      systemStoreTypeList =
+          Arrays.asList(VeniceSystemStoreType.META_STORE, VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE);
+    }
   }
 
   public Boolean apply(String storeName) {
@@ -64,7 +72,7 @@ public class SystemStorePushTask implements Function<String, Boolean> {
       return false;
     }
 
-    for (VeniceSystemStoreType type: SYSTEM_STORE_TYPE) {
+    for (VeniceSystemStoreType type: systemStoreTypeList) {
       String systemStoreName = type.getSystemStoreName(storeName);
       /**
        *  In current implementation, a push to system store will flip the flag to true, which can introduce unexpected

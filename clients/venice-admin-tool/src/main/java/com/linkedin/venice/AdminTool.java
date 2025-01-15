@@ -869,7 +869,6 @@ public class AdminTool {
     System.out.println(
         "[**** Cluster Command Params ****] Cluster: " + clusterName + ", Task: " + task + ", Checkpoint: "
             + checkpointFile + ", Parallelism: " + parallelism);
-
     // Create child data center controller client map.
     ChildAwareResponse childAwareResponse = controllerClient.listChildControllers(clusterName);
     Map<String, ControllerClient> controllerClientMap = getControllerClientMap(clusterName, childAwareResponse);
@@ -912,7 +911,19 @@ public class AdminTool {
     // Validate task type. For now, we only has one task, if we have more task in the future, we can extend this logic.
     Supplier<Function<String, Boolean>> functionSupplier;
     if (SystemStorePushTask.TASK_NAME.equals(task)) {
-      functionSupplier = () -> new SystemStorePushTask(controllerClient, controllerClientMap, clusterName);
+      String systemStoreType = getOptionalArgument(cmd, Arg.SYSTEM_STORE_TYPE);
+      if (systemStoreType != null) {
+        if (!(systemStoreType.equalsIgnoreCase(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.toString())
+            || systemStoreType.equalsIgnoreCase(VeniceSystemStoreType.META_STORE.toString()))) {
+          printErrAndExit("System store type: " + systemStoreType + " is not supported.");
+        }
+      }
+      System.out.println(
+          functionSupplier = () -> new SystemStorePushTask(
+              controllerClient,
+              controllerClientMap,
+              clusterName,
+              systemStoreType == null ? Optional.empty() : Optional.of(systemStoreType)));
     } else {
       System.out.println("Undefined task: " + task);
       return;
