@@ -18,8 +18,8 @@ import org.apache.logging.log4j.Logger;
  * This class is a simple runnable which keeps fetching task from list and execute the assigned task. The task fetching
  * and progress tracking / checkpointing is thread-safe, so it can be run in parallel.
  */
-public class ClusterTaskRunner implements Runnable {
-  private static final Logger LOGGER = LogManager.getLogger(ClusterTaskRunner.class);
+public class BatchMaintenanceTaskRunner implements Runnable {
+  private static final Logger LOGGER = LogManager.getLogger(BatchMaintenanceTaskRunner.class);
   private static final String TASK_LOG_PREFIX = "[**** TASK INFO ****]";
 
   private static final ReentrantLock LOCK = new ReentrantLock();
@@ -29,7 +29,7 @@ public class ClusterTaskRunner implements Runnable {
   private final Map<String, Boolean> progressMap;
   private final String checkpointFile;
 
-  public ClusterTaskRunner(
+  public BatchMaintenanceTaskRunner(
       Map<String, Boolean> progressMap,
       String checkpointFile,
       List<String> taskList,

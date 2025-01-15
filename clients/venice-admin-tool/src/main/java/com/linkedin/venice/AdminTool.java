@@ -935,9 +935,9 @@ public class AdminTool {
     ExecutorService executorService = Executors.newFixedThreadPool(parallelism);
     List<Future> futureList = new ArrayList<>();
     for (int i = 0; i < parallelism; i++) {
-      ClusterTaskRunner clusterTaskRunner =
-          new ClusterTaskRunner(progressMap, checkpointFile, taskList, functionSupplier.get());
-      futureList.add(executorService.submit(clusterTaskRunner));
+      BatchMaintenanceTaskRunner batchMaintenanceTaskRunner =
+          new BatchMaintenanceTaskRunner(progressMap, checkpointFile, taskList, functionSupplier.get());
+      futureList.add(executorService.submit(batchMaintenanceTaskRunner));
     }
     for (int i = 0; i < parallelism; i++) {
       try {
