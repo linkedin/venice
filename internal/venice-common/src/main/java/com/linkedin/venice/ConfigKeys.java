@@ -780,6 +780,9 @@ public class ConfigKeys {
   public static final String SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED =
       "server.db.read.only.for.batch.only.store.enabled";
   public static final String SERVER_RESET_ERROR_REPLICA_ENABLED = "server.reset.error.replica.enabled";
+
+  public static final String SERVER_ADAPTIVE_THROTTLER_ENABLED = "server.adaptive.throttler.enabled";
+
   /**
    * A list of fully-qualified class names of all stats classes that needs to be initialized in isolated ingestion process,
    * separated by comma. This config will help isolated ingestion process to register extra stats needed for monitoring,
