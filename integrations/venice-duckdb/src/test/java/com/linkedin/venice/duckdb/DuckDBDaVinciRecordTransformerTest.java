@@ -50,6 +50,7 @@ public class DuckDBDaVinciRecordTransformerTest {
         recordTransformerFunctionalInterface,
         GenericRecord.class,
         NAME_RECORD_V1_SCHEMA);
+    recordTransformerConfig.setKeySchema(SINGLE_FIELD_RECORD_SCHEMA);
     DuckDBDaVinciRecordTransformer recordTransformer =
         new DuckDBDaVinciRecordTransformer(storeVersion, recordTransformerConfig, false, tempDir);
 
@@ -100,6 +101,7 @@ public class DuckDBDaVinciRecordTransformerTest {
         recordTransformerFunctionalInterface,
         GenericRecord.class,
         NAME_RECORD_V1_SCHEMA);
+    recordTransformerConfig.setKeySchema(SINGLE_FIELD_RECORD_SCHEMA);
 
     DuckDBDaVinciRecordTransformer recordTransformer_v1 =
         new DuckDBDaVinciRecordTransformer(1, recordTransformerConfig, false, tempDir);
