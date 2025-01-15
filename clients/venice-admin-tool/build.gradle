@@ -44,6 +44,11 @@ jar {
   }
 }
 
+shadowJar {
+  // Enable merging service files from different dependencies. Required to make gRPC based clients work.
+  mergeServiceFiles()
+}
+
 ext {
   jacocoCoverageThreshold = 0.00
 }

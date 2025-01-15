@@ -26,18 +26,16 @@ public class VeniceGrpcServer {
   private final SSLFactory sslFactory;
   // protected for testing purposes
   protected ServerCredentials credentials;
+  boolean isSecure;
   private final Executor executor;
   private final VeniceGrpcServerConfig config;
 
   public VeniceGrpcServer(VeniceGrpcServerConfig config) {
-    port = config.getPort();
-    sslFactory = config.getSslFactory();
-    executor = config.getExecutor();
-
+    this.port = config.getPort();
+    this.sslFactory = config.getSslFactory();
+    this.executor = config.getExecutor();
     this.config = config;
-
     initServerCredentials();
-
     server = Grpc.newServerBuilderForPort(config.getPort(), credentials)
         .executor(executor) // TODO: experiment with different executors for best performance
         .addService(ServerInterceptors.intercept(config.getService(), config.getInterceptors()))
@@ -47,14 +45,16 @@ public class VeniceGrpcServer {
 
   private void initServerCredentials() {
     if (sslFactory == null && config.getCredentials() == null) {
-      LOGGER.info("Creating gRPC server with insecure credentials");
+      LOGGER.info("Creating gRPC server with insecure credentials on port: {}", port);
       credentials = InsecureServerCredentials.create();
+      isSecure = false;
       return;
     }
 
     if (config.getCredentials() != null) {
-      LOGGER.info("Creating gRPC server with custom credentials");
+      LOGGER.debug("Creating gRPC server with custom credentials");
       credentials = config.getCredentials();
+      isSecure = !(credentials instanceof InsecureServerCredentials);
       return;
     }
 
@@ -64,6 +64,7 @@ public class VeniceGrpcServer {
           .trustManager(GrpcUtils.getTrustManagers(sslFactory))
           .clientAuth(TlsServerCredentials.ClientAuth.REQUIRE)
           .build();
+      isSecure = !(credentials instanceof InsecureServerCredentials);
     } catch (UnrecoverableKeyException | KeyStoreException | CertificateException | IOException
         | NoSuchAlgorithmException e) {
       LOGGER.error("Failed to initialize secure server credentials for gRPC Server");
@@ -74,9 +75,14 @@ public class VeniceGrpcServer {
   public void start() throws VeniceException {
     try {
       server.start();
+      LOGGER.info(
+          "Started gRPC server for service: {} on port: {} isSecure: {}",
+          config.getService().getClass().getSimpleName(),
+          port,
+          isSecure());
     } catch (IOException exception) {
       LOGGER.error(
-          "Failed to start gRPC Server for service {} on port {}",
+          "Failed to start gRPC server for service: {} on port: {}",
           config.getService().getClass().getSimpleName(),
           port,
           exception);
@@ -84,17 +90,30 @@ public class VeniceGrpcServer {
     }
   }
 
-  public boolean isShutdown() {
-    return server.isShutdown();
+  public boolean isRunning() {
+    return !server.isShutdown();
   }
 
   public boolean isTerminated() {
     return server.isTerminated();
   }
 
+  private boolean isSecure() {
+    return isSecure;
+  }
+
   public void stop() {
+    LOGGER.info(
+        "Shutting down gRPC server for service: {} on port: {} isSecure: {}",
+        config.getService().getClass().getSimpleName(),
+        port,
+        isSecure());
     if (server != null && !server.isShutdown()) {
       server.shutdown();
     }
+  }
+
+  public Server getServer() {
+    return server;
   }
 }

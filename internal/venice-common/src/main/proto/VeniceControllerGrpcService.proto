@@ -1,0 +1,85 @@
+syntax = 'proto3';
+package com.linkedin.venice.protocols.controller;
+
+import "google/rpc/status.proto";
+import "google/rpc/error_details.proto";
+
+option java_multiple_files = true;
+
+
+service VeniceControllerGrpcService {
+  // ClusterDiscovery
+  rpc discoverClusterForStore(DiscoverClusterGrpcRequest) returns (DiscoverClusterGrpcResponse) {}
+
+  // ControllerRoutes
+  rpc getLeaderController(LeaderControllerGrpcRequest) returns (LeaderControllerGrpcResponse);
+
+  // CreateStore
+  rpc createStore(CreateStoreGrpcRequest) returns (CreateStoreGrpcResponse) {}
+}
+
+message DiscoverClusterGrpcRequest {
+  string storeName = 1;
+}
+
+message DiscoverClusterGrpcResponse {
+  string clusterName = 1;
+  string storeName = 2;
+  string d2Service = 3;
+  string serverD2Service = 4;
+  optional string zkAddress = 5;
+  optional string pubSubBootstrapServers = 6;
+}
+
+message ClusterStoreGrpcInfo {
+  string clusterName = 1;
+  string storeName = 2;
+}
+
+message CreateStoreGrpcRequest {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+  string keySchema = 2;
+  string valueSchema = 3;
+  optional string owner = 4;
+  optional bool isSystemStore = 5;
+  optional string accessPermission = 6;
+}
+
+message CreateStoreGrpcResponse {
+  ClusterStoreGrpcInfo clusterStoreInfo = 1;
+  string owner = 2;
+}
+
+enum ControllerGrpcErrorType {
+  UNKNOWN = 0;
+  INCORRECT_CONTROLLER = 1;
+  INVALID_SCHEMA = 2;
+  INVALID_CONFIG = 3;
+  STORE_NOT_FOUND = 4;
+  SCHEMA_NOT_FOUND = 5;
+  CONNECTION_ERROR = 6;
+  GENERAL_ERROR = 7;
+  BAD_REQUEST = 8;
+  CONCURRENT_BATCH_PUSH = 9;
+  RESOURCE_STILL_EXISTS = 10;
+}
+
+message VeniceControllerGrpcErrorInfo {
+  uint32 statusCode = 1;
+  string errorMessage = 2;
+  optional ControllerGrpcErrorType errorType = 3;
+  optional string clusterName = 4;
+  optional string storeName = 5;
+}
+
+message LeaderControllerGrpcRequest {
+  string clusterName = 1; // The cluster name
+}
+
+message LeaderControllerGrpcResponse {
+  string clusterName = 1;        // The cluster name
+  string httpUrl = 2;        // Leader controller URL
+  string httpsUrl = 3;       // SSL-enabled leader controller URL
+  string grpcUrl = 4;        // gRPC URL for leader controller
+  string secureGrpcUrl = 5;  // Secure gRPC URL for leader controller
+}
