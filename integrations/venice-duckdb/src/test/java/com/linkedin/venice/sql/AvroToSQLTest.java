@@ -53,23 +53,25 @@ public class AvroToSQLTest {
     // Single-column key (but without a PRIMARY KEY constraint)
     Schema singleColumnKey = Schema.createRecord("MyKey", "", "", false, Collections.singletonList(getKey1()));
 
-    String createTableWithoutPrimaryKey = AvroToSQL.createTableStatement(
+    TableDefinition tableDefinitionWithoutPrimaryKey = AvroToSQL.getTableDefinition(
         "MyRecord",
         singleColumnKey,
         schemaWithAllSupportedFieldTypes,
         Collections.emptySet(),
         FAIL,
         false);
+    String createTableWithoutPrimaryKey = SQLUtils.createTableStatement(tableDefinitionWithoutPrimaryKey);
     assertEquals(createTableWithoutPrimaryKey, EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES);
 
     // Single-column primary key
-    String createTableWithPrimaryKey = AvroToSQL.createTableStatement(
+    TableDefinition tableDefinitionWithPrimaryKey = AvroToSQL.getTableDefinition(
         "MyRecord",
         singleColumnKey,
         schemaWithAllSupportedFieldTypes,
         Collections.emptySet(),
         FAIL,
         true);
+    String createTableWithPrimaryKey = SQLUtils.createTableStatement(tableDefinitionWithPrimaryKey);
     String expectedCreateTable = EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES.replace(");", ", PRIMARY KEY(key1));");
     assertEquals(createTableWithPrimaryKey, expectedCreateTable);
 
@@ -79,13 +81,14 @@ public class AvroToSQLTest {
     compositeKeyFields.add(createSchemaField("key2", Schema.create(Schema.Type.LONG), "", null));
     Schema compositeKey = Schema.createRecord("MyKey", "", "", false, compositeKeyFields);
 
-    String createTableWithCompositePrimaryKey = AvroToSQL.createTableStatement(
+    TableDefinition tableDefinitionWithCompositePrimaryKey = AvroToSQL.getTableDefinition(
         "MyRecord",
         compositeKey,
         schemaWithAllSupportedFieldTypes,
         Collections.emptySet(),
         FAIL,
         true);
+    String createTableWithCompositePrimaryKey = SQLUtils.createTableStatement(tableDefinitionWithCompositePrimaryKey);
     String expectedCreateTableWithCompositePK =
         EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES.replace("key1 INTEGER", "key1 INTEGER, key2 BIGINT")
             .replace(");", ", PRIMARY KEY(key1, key2));");
@@ -98,13 +101,14 @@ public class AvroToSQLTest {
 
     assertThrows(
         IllegalArgumentException.class,
-        () -> AvroToSQL.createTableStatement(
-            "MyRecord",
-            Schema.create(Schema.Type.INT),
-            Schema.create(Schema.Type.INT),
-            Collections.emptySet(),
-            FAIL,
-            true));
+        () -> SQLUtils.createTableStatement(
+            AvroToSQL.getTableDefinition(
+                "MyRecord",
+                Schema.create(Schema.Type.INT),
+                Schema.create(Schema.Type.INT),
+                Collections.emptySet(),
+                FAIL,
+                true)));
 
     testSchemaWithInvalidType(
         createSchemaField(
@@ -216,11 +220,12 @@ public class AvroToSQLTest {
 
     assertThrows(
         IllegalArgumentException.class,
-        () -> AvroToSQL
-            .createTableStatement("MyRecord", singleColumnKey, valueSchema, Collections.emptySet(), FAIL, true));
+        () -> SQLUtils.createTableStatement(
+            AvroToSQL
+                .getTableDefinition("MyRecord", singleColumnKey, valueSchema, Collections.emptySet(), FAIL, true)));
 
-    String createTableStatement =
-        AvroToSQL.createTableStatement("MyRecord", singleColumnKey, valueSchema, Collections.emptySet(), SKIP, false);
+    String createTableStatement = SQLUtils.createTableStatement(
+        AvroToSQL.getTableDefinition("MyRecord", singleColumnKey, valueSchema, Collections.emptySet(), SKIP, false));
     assertEquals(createTableStatement, EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES);
 
     String upsertStatement =
