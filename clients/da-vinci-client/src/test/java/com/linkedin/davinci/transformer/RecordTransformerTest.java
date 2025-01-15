@@ -13,6 +13,8 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.client.DaVinciRecordTransformerUtility;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -40,8 +42,16 @@ public class RecordTransformerTest {
 
   @Test
   public void testRecordTransformer() {
+    DaVinciRecordTransformerFunctionalInterface recordTransformerFunctionalInterface =
+        (storeVersion, transformerConfig) -> new TestStringRecordTransformer(storeVersion, transformerConfig, false);
+    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
+        recordTransformerFunctionalInterface,
+        String.class,
+        Schema.create(Schema.Type.STRING));
+    recordTransformerConfig.setKeySchema(Schema.create(Schema.Type.INT));
+
     DaVinciRecordTransformer<Integer, String, String> recordTransformer =
-        new TestStringRecordTransformer(storeVersion, false);
+        recordTransformerConfig.getRecordTransformer(storeVersion);
     assertEquals(recordTransformer.getStoreVersion(), storeVersion);
 
     Schema keySchema = recordTransformer.getKeySchema();
@@ -72,8 +82,16 @@ public class RecordTransformerTest {
 
   @Test
   public void testOnRecovery() {
+    DaVinciRecordTransformerFunctionalInterface recordTransformerFunctionalInterface =
+        (storeVersion, transformerConfig) -> new TestStringRecordTransformer(storeVersion, transformerConfig, true);
+    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
+        recordTransformerFunctionalInterface,
+        String.class,
+        Schema.create(Schema.Type.STRING));
+    recordTransformerConfig.setKeySchema(Schema.create(Schema.Type.INT));
+
     DaVinciRecordTransformer<Integer, String, String> recordTransformer =
-        new TestStringRecordTransformer(storeVersion, true);
+        recordTransformerConfig.getRecordTransformer(storeVersion);
 
     AbstractStorageIterator iterator = mock(AbstractStorageIterator.class);
     when(iterator.isValid()).thenReturn(true).thenReturn(false);
@@ -99,9 +117,19 @@ public class RecordTransformerTest {
 
   @Test
   public void testBlockingRecordTransformer() {
-    DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(0, true);
-    recordTransformer =
-        new BlockingDaVinciRecordTransformer<>(recordTransformer, recordTransformer.getStoreRecordsInDaVinci());
+    DaVinciRecordTransformerFunctionalInterface recordTransformerFunctionalInterface =
+        (storeVersion, transformerConfig) -> new TestStringRecordTransformer(storeVersion, transformerConfig, true);
+    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
+        recordTransformerFunctionalInterface,
+        String.class,
+        Schema.create(Schema.Type.STRING));
+    recordTransformerConfig.setKeySchema(Schema.create(Schema.Type.INT));
+    DaVinciRecordTransformer<Integer, String, String> recordTransformer =
+        recordTransformerConfig.getRecordTransformer(storeVersion);
+    recordTransformer = new BlockingDaVinciRecordTransformer<>(
+        recordTransformer,
+        recordTransformerConfig,
+        recordTransformer.getStoreRecordsInDaVinci());
     recordTransformer.onStartVersionIngestion(true);
 
     assertTrue(recordTransformer.getStoreRecordsInDaVinci());

@@ -8,6 +8,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
 import org.apache.avro.Schema;
@@ -16,18 +17,11 @@ import org.testng.annotations.Test;
 
 public class DaVinciConfigTest {
   public class TestRecordTransformer extends DaVinciRecordTransformer<Integer, Integer, Integer> {
-    public TestRecordTransformer(int storeVersion, boolean storeRecordsInDaVinci) {
-      super(storeVersion, storeRecordsInDaVinci);
-    }
-
-    @Override
-    public Schema getKeySchema() {
-      return Schema.create(Schema.Type.INT);
-    }
-
-    @Override
-    public Schema getOutputValueSchema() {
-      return Schema.create(Schema.Type.INT);
+    public TestRecordTransformer(
+        int storeVersion,
+        DaVinciRecordTransformerConfig recordTransformerConfig,
+        boolean storeRecordsInDaVinci) {
+      super(storeVersion, recordTransformerConfig, storeRecordsInDaVinci);
     }
 
     @Override
@@ -45,10 +39,15 @@ public class DaVinciConfigTest {
   public void testRecordTransformerEnabled() {
     DaVinciConfig config = new DaVinciConfig();
     assertFalse(config.isRecordTransformerEnabled());
+
+    DaVinciRecordTransformerFunctionalInterface recordTransformerFunctionalInterface = (
+        storeVersion,
+        recordTransformerConfig) -> new TestRecordTransformer(storeVersion, recordTransformerConfig, true);
     DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-        (storeVersion) -> new TestRecordTransformer(storeVersion, true),
+        recordTransformerFunctionalInterface,
         Integer.class,
         Schema.create(Schema.Type.INT));
+    recordTransformerConfig.setKeySchema(Schema.create(Schema.Type.INT));
     config.setRecordTransformerConfig(recordTransformerConfig);
     assertTrue(config.isRecordTransformerEnabled());
   }
@@ -58,10 +57,15 @@ public class DaVinciConfigTest {
     Integer testStoreVersion = 1;
     DaVinciConfig config = new DaVinciConfig();
     assertNull(config.getRecordTransformer(testStoreVersion));
+
+    DaVinciRecordTransformerFunctionalInterface recordTransformerFunctionalInterface = (
+        storeVersion,
+        recordTransformerConfig) -> new TestRecordTransformer(storeVersion, recordTransformerConfig, true);
     DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-        (storeVersion) -> new TestRecordTransformer(storeVersion, true),
+        recordTransformerFunctionalInterface,
         Integer.class,
         Schema.create(Schema.Type.INT));
+    recordTransformerConfig.setKeySchema(Schema.create(Schema.Type.INT));
     config.setRecordTransformerConfig(recordTransformerConfig);
     assertNotNull(config.getRecordTransformer(testStoreVersion));
   }

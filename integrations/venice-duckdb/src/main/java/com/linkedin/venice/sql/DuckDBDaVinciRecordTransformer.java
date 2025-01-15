@@ -2,8 +2,8 @@ package com.linkedin.venice.sql;
 
 import static com.linkedin.venice.sql.AvroToSQL.UnsupportedTypeHandling.FAIL;
 
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.sql.Connection;
@@ -14,7 +14,6 @@ import java.sql.Statement;
 import java.util.Collections;
 import java.util.Set;
 import org.apache.avro.Schema;
-import org.apache.avro.SchemaBuilder;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -35,35 +34,14 @@ public class DuckDBDaVinciRecordTransformer
   private final Set<String> columnsToProject = Collections.emptySet();
 
   // TODO: Let key and value schemas get passed in during construction, then remove the hard-coded ones.
-  public DuckDBDaVinciRecordTransformer(int storeVersion, boolean storeRecordsInDaVinci, String baseDir) {
-    super(storeVersion, storeRecordsInDaVinci);
+  public DuckDBDaVinciRecordTransformer(
+      int storeVersion,
+      DaVinciRecordTransformerConfig recordTransformerConfig,
+      boolean storeRecordsInDaVinci,
+      String baseDir) {
+    super(storeVersion, recordTransformerConfig, storeRecordsInDaVinci);
     versionTableName = baseVersionTableName + storeVersion;
     duckDBUrl = "jdbc:duckdb:" + baseDir + "/" + duckDBFilePath;
-  }
-
-  @Override
-  public Schema getKeySchema() {
-    // TODO: Let key and value schemas get passed in during construction, then remove the hard-coded one here.
-    Schema.Field keyField =
-        AvroCompatibilityHelper.createSchemaField("key", Schema.create(Schema.Type.STRING), "", null);
-    return Schema.createRecord("SingleFieldRecord", "", "example.avro", false, Collections.singletonList(keyField));
-  }
-
-  @Override
-  public Schema getOutputValueSchema() {
-    // TODO: Let key and value schemas get passed in during construction, then remove the hard-coded one here.
-    return SchemaBuilder.record("nameRecord")
-        .namespace("example.avro")
-        .fields()
-        .name("firstName")
-        .type()
-        .stringType()
-        .stringDefault("")
-        .name("lastName")
-        .type()
-        .stringType()
-        .stringDefault("")
-        .endRecord();
   }
 
   @Override

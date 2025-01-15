@@ -6,5 +6,5 @@ package com.linkedin.davinci.client;
 
 @FunctionalInterface
 public interface DaVinciRecordTransformerFunctionalInterface {
-  DaVinciRecordTransformer apply(Integer storeVersion);
+  DaVinciRecordTransformer apply(Integer storeVersion, DaVinciRecordTransformerConfig recordTransformerConfig);
 }

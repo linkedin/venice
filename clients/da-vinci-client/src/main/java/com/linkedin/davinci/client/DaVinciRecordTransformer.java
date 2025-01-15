@@ -40,6 +40,13 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    */
   private final boolean storeRecordsInDaVinci;
 
+  /**
+   * A config containing necessary information required for DaVinciRecordTransformer
+   */
+  private final DaVinciRecordTransformerConfig recordTransformerConfig;
+  private final Schema outputValueSchema;
+  private final Schema keySchema;
+
   private final DaVinciRecordTransformerUtility<K, O> recordTransformerUtility;
 
   /**
@@ -47,25 +54,18 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    * @param storeRecordsInDaVinci set this to false if you intend to store records in a custom storage,
    *                              and not in the Da Vinci Client.
    */
-  public DaVinciRecordTransformer(int storeVersion, boolean storeRecordsInDaVinci) {
+  public DaVinciRecordTransformer(
+      int storeVersion,
+      DaVinciRecordTransformerConfig recordTransformerConfig,
+      boolean storeRecordsInDaVinci) {
     this.storeVersion = storeVersion;
+    this.recordTransformerConfig = recordTransformerConfig;
     this.storeRecordsInDaVinci = storeRecordsInDaVinci;
+
+    this.outputValueSchema = recordTransformerConfig.getOutputValueSchema();
+    this.keySchema = recordTransformerConfig.getKeySchema();
     this.recordTransformerUtility = new DaVinciRecordTransformerUtility<>(this);
   }
-
-  /**
-   * Returns the schema for the key used in {@link DaVinciClient}'s operations.
-   *
-   * @return a {@link Schema} corresponding to the type of {@link K}.
-   */
-  public abstract Schema getKeySchema();
-
-  /**
-   * Returns the schema for the output value used in {@link DaVinciClient}'s operations.
-   *
-   * @return a {@link Schema} corresponding to the type of {@link O}.
-   */
-  public abstract Schema getOutputValueSchema();
 
   /**
    * Implement this method to transform records before they are stored.
@@ -204,6 +204,24 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    */
   public final boolean getStoreRecordsInDaVinci() {
     return storeRecordsInDaVinci;
+  }
+
+  /**
+   * Returns the schema for the key used in {@link DaVinciClient}'s operations.
+   *
+   * @return a {@link Schema} corresponding to the type of {@link K}.
+   */
+  public final Schema getKeySchema() {
+    return keySchema;
+  }
+
+  /**
+   * Returns the schema for the output value used in {@link DaVinciClient}'s operations.
+   *
+   * @return a {@link Schema} corresponding to the type of {@link O}.
+   */
+  public final Schema getOutputValueSchema() {
+    return outputValueSchema;
   }
 
   /**

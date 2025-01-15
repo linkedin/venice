@@ -80,6 +80,7 @@ import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -657,7 +658,7 @@ public abstract class StoreIngestionTaskTest {
     private Optional<DiskUsage> diskUsageForTest = Optional.empty();
     private Map<String, Object> extraServerProperties = new HashMap<>();
     private Consumer<VeniceStoreVersionConfig> storeVersionConfigOverride = storeVersionConfigOverride -> {};
-    private DaVinciRecordTransformerFunctionalInterface recordTransformerFunction = null;
+    private DaVinciRecordTransformerConfig recordTransformerConfig = null;
     private OffsetRecord offsetRecord = null;
 
     public StoreIngestionTaskTestConfig(Set<Integer> partitions, Runnable assertions, AAConfig aaConfig) {
@@ -760,13 +761,13 @@ public abstract class StoreIngestionTaskTest {
       return this;
     }
 
-    public DaVinciRecordTransformerFunctionalInterface getRecordTransformerFunction() {
-      return recordTransformerFunction;
+    public DaVinciRecordTransformerConfig getRecordTransformerConfig() {
+      return recordTransformerConfig;
     }
 
-    public StoreIngestionTaskTestConfig setRecordTransformerFunction(
-        DaVinciRecordTransformerFunctionalInterface recordTransformerFunction) {
-      this.recordTransformerFunction = recordTransformerFunction;
+    public StoreIngestionTaskTestConfig setRecordTransformerConfig(
+        DaVinciRecordTransformerConfig recordTransformerConfig) {
+      this.recordTransformerConfig = recordTransformerConfig;
       return this;
     }
 
@@ -794,7 +795,7 @@ public abstract class StoreIngestionTaskTest {
         config.getAaConfig(),
         config.getExtraServerProperties(),
         config.getStoreVersionConfigOverride(),
-        config.getRecordTransformerFunction(),
+        config.getRecordTransformerConfig(),
         config.getOffsetRecord());
   }
 
@@ -829,7 +830,7 @@ public abstract class StoreIngestionTaskTest {
       AAConfig aaConfig,
       Map<String, Object> extraServerProperties,
       Consumer<VeniceStoreVersionConfig> storeVersionConfigOverride,
-      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
+      DaVinciRecordTransformerConfig recordTransformerConfig,
       OffsetRecord offsetRecord) throws Exception {
 
     int partitionCount = PARTITION_COUNT;
@@ -858,7 +859,7 @@ public abstract class StoreIngestionTaskTest {
         diskUsageForTest,
         extraServerProperties,
         false,
-        recordTransformerFunction,
+        recordTransformerConfig,
         offsetRecord).build();
 
     Properties kafkaProps = new Properties();
@@ -877,7 +878,7 @@ public abstract class StoreIngestionTaskTest {
             PARTITION_FOO,
             false,
             Optional.empty(),
-            recordTransformerFunction,
+            recordTransformerConfig,
             Lazy.of(() -> zkHelixAdmin)));
 
     Future testSubscribeTaskFuture = null;
@@ -996,10 +997,10 @@ public abstract class StoreIngestionTaskTest {
       Optional<DiskUsage> diskUsageForTest,
       Map<String, Object> extraServerProperties,
       Boolean isLiveConfigEnabled,
-      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
+      DaVinciRecordTransformerConfig recordTransformerConfig,
       OffsetRecord optionalOffsetRecord) {
 
-    if (recordTransformerFunction != null) {
+    if (recordTransformerConfig != null && recordTransformerConfig.getRecordTransformerFunction() != null) {
       doReturn(mockAbstractStorageEngine).when(mockStorageEngineRepository).getLocalStorageEngine(topic);
 
       AbstractStorageIterator iterator = mock(AbstractStorageIterator.class);
@@ -4841,7 +4842,14 @@ public abstract class StoreIngestionTaskTest {
         throw new VeniceException(e);
       }
     }, aaConfig);
-    config.setRecordTransformerFunction((storeVersion) -> new TestStringRecordTransformer(storeVersion, true));
+
+    DaVinciRecordTransformerFunctionalInterface recordTransformerFunctionalInterface =
+        (storeVersion, transformerConfig) -> new TestStringRecordTransformer(storeVersion, transformerConfig, true);
+    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
+        recordTransformerFunctionalInterface,
+        String.class,
+        Schema.create(Schema.Type.STRING));
+    config.setRecordTransformerConfig(recordTransformerConfig);
     runTest(config);
 
     // Transformer error should never be recorded
@@ -4906,7 +4914,14 @@ public abstract class StoreIngestionTaskTest {
       verify(mockVersionedStorageIngestionStats, timeout(1000))
           .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
     }, aaConfig);
-    config.setRecordTransformerFunction((storeVersion) -> new TestStringRecordTransformer(storeVersion, true));
+
+    DaVinciRecordTransformerFunctionalInterface recordTransformerFunctionalInterface =
+        (storeVersion, transformerConfig) -> new TestStringRecordTransformer(storeVersion, transformerConfig, true);
+    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
+        recordTransformerFunctionalInterface,
+        String.class,
+        Schema.create(Schema.Type.STRING));
+    config.setRecordTransformerConfig(recordTransformerConfig);
     runTest(config);
   }
 

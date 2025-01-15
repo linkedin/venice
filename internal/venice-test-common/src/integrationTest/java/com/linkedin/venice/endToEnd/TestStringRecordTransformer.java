@@ -1,29 +1,22 @@
 package com.linkedin.venice.endToEnd;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.HashMap;
 import java.util.Map;
-import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 
 
 public class TestStringRecordTransformer extends DaVinciRecordTransformer<Integer, String, String> {
   private final Map<Integer, String> inMemoryDB = new HashMap<>();
 
-  public TestStringRecordTransformer(int storeVersion, boolean storeRecordsInDaVinci) {
-    super(storeVersion, storeRecordsInDaVinci);
-  }
-
-  @Override
-  public Schema getKeySchema() {
-    return Schema.create(Schema.Type.INT);
-  }
-
-  @Override
-  public Schema getOutputValueSchema() {
-    return Schema.create(Schema.Type.STRING);
+  public TestStringRecordTransformer(
+      int storeVersion,
+      DaVinciRecordTransformerConfig recordTransformerConfig,
+      boolean storeRecordsInDaVinci) {
+    super(storeVersion, recordTransformerConfig, storeRecordsInDaVinci);
   }
 
   @Override

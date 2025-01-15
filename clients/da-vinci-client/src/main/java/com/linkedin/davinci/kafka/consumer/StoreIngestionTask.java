@@ -23,7 +23,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
-import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -371,7 +371,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int errorPartitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
-      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
+      DaVinciRecordTransformerConfig recordTransformerConfig,
       Queue<VeniceNotifier> notifiers,
       Lazy<ZKHelixAdmin> zkHelixAdmin) {
     this.storeVersionConfig = storeVersionConfig;
@@ -473,10 +473,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.chunkAssembler = new ChunkAssembler(storeName);
     this.cacheBackend = cacheBackend;
 
-    if (recordTransformerFunction != null) {
-      DaVinciRecordTransformer clientRecordTransformer = recordTransformerFunction.apply(versionNumber);
+    if (recordTransformerConfig != null && recordTransformerConfig.getRecordTransformerFunction() != null) {
+      SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
+      recordTransformerConfig.setKeySchema(keySchema.getSchema());
+      DaVinciRecordTransformer clientRecordTransformer =
+          recordTransformerConfig.getRecordTransformerFunction().apply(versionNumber, recordTransformerConfig);
       this.recordTransformer = new BlockingDaVinciRecordTransformer(
           clientRecordTransformer,
+          recordTransformerConfig,
           clientRecordTransformer.getStoreRecordsInDaVinci());
       versionedIngestionStats.registerTransformerLatencySensor(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleStartLatency(storeName, versionNumber);

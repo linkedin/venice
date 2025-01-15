@@ -3,7 +3,6 @@ package com.linkedin.davinci.client;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.concurrent.CountDownLatch;
-import org.apache.avro.Schema;
 
 
 /**
@@ -19,17 +18,12 @@ public class BlockingDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
   private final DaVinciRecordTransformer recordTransformer;
   private final CountDownLatch startLatch = new CountDownLatch(1);
 
-  public BlockingDaVinciRecordTransformer(DaVinciRecordTransformer recordTransformer, boolean storeRecordsInDaVinci) {
-    super(recordTransformer.getStoreVersion(), storeRecordsInDaVinci);
+  public BlockingDaVinciRecordTransformer(
+      DaVinciRecordTransformer recordTransformer,
+      DaVinciRecordTransformerConfig recordTransformerConfig,
+      boolean storeRecordsInDaVinci) {
+    super(recordTransformer.getStoreVersion(), recordTransformerConfig, storeRecordsInDaVinci);
     this.recordTransformer = recordTransformer;
-  }
-
-  public Schema getKeySchema() {
-    return this.recordTransformer.getKeySchema();
-  }
-
-  public Schema getOutputValueSchema() {
-    return this.recordTransformer.getOutputValueSchema();
   }
 
   public DaVinciRecordTransformerResult<O> transform(Lazy<K> key, Lazy<V> value) {

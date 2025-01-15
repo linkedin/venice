@@ -1,27 +1,20 @@
 package com.linkedin.venice.endToEnd;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
-import org.apache.avro.Schema;
 
 
 /**
  * Transforms int values to strings
  */
 public class TestIntToStringRecordTransformer extends DaVinciRecordTransformer<Integer, Integer, String> {
-  public TestIntToStringRecordTransformer(int storeVersion, boolean storeRecordsInDaVinci) {
-    super(storeVersion, storeRecordsInDaVinci);
-  }
-
-  @Override
-  public Schema getKeySchema() {
-    return Schema.create(Schema.Type.INT);
-  }
-
-  @Override
-  public Schema getOutputValueSchema() {
-    return Schema.create(Schema.Type.STRING);
+  public TestIntToStringRecordTransformer(
+      int storeVersion,
+      DaVinciRecordTransformerConfig recordTransformerConfig,
+      boolean storeRecordsInDaVinci) {
+    super(storeVersion, recordTransformerConfig, storeRecordsInDaVinci);
   }
 
   @Override

@@ -133,7 +133,11 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
         metricsRepository,
         backendConfig)) {
       DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-          (storeVersion) -> new DuckDBDaVinciRecordTransformer(storeVersion, false, tmpDir.getAbsolutePath()),
+          (storeVersion, transformerConfig) -> new DuckDBDaVinciRecordTransformer(
+              storeVersion,
+              transformerConfig,
+              false,
+              tmpDir.getAbsolutePath()),
           GenericRecord.class,
           NAME_RECORD_V1_SCHEMA);
       clientConfig.setRecordTransformerConfig(recordTransformerConfig);
