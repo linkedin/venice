@@ -1,8 +1,10 @@
 package com.linkedin.venice.sql;
 
-import static com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper.*;
-import static com.linkedin.venice.sql.AvroToSQL.UnsupportedTypeHandling.*;
-import static org.testng.Assert.*;
+import static com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper.createSchemaField;
+import static com.linkedin.venice.sql.AvroToSQL.UnsupportedTypeHandling.FAIL;
+import static com.linkedin.venice.sql.AvroToSQL.UnsupportedTypeHandling.SKIP;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertThrows;
 
 import java.util.ArrayList;
 import java.util.Collections;

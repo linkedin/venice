@@ -1,6 +1,6 @@
 package com.linkedin.venice.duckdb;
 
-import static com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper.*;
+import static com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper.createSchemaField;
 import static com.linkedin.venice.sql.AvroToSQL.UnsupportedTypeHandling.SKIP;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;

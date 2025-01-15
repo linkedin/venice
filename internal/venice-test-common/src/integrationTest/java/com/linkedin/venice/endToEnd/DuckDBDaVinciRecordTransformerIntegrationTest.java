@@ -12,8 +12,14 @@ import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
-import static com.linkedin.venice.utils.TestWriteUtils.*;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.*;
+import static com.linkedin.venice.utils.TestWriteUtils.DEFAULT_USER_DATA_RECORD_COUNT;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.SINGLE_FIELD_RECORD_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFile;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
