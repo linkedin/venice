@@ -5225,27 +5225,24 @@ public abstract class StoreIngestionTaskTest {
    * {@link StoreIngestionTask#reportError(String, int, Exception)} should be called in order to trigger a Helix
    * state transition without waiting 24+ hours for the Helix state transition timeout.
    */
-  @Test
+  @Test(timeOut = 30000)
   public void testProcessConsumerActionsError() throws Exception {
     runTest(Collections.singleton(PARTITION_FOO), () -> {
       // This is an actual exception thrown when deserializing a corrupted OffsetRecord
       String msg = "Received Magic Byte '6' which is not supported by InternalAvroSpecificSerializer. "
           + "The only supported Magic Byte for this implementation is '24'.";
       when(mockStorageMetadataService.getLastOffset(any(), anyInt())).thenThrow(new VeniceMessageException(msg));
-
-      for (int i = 0; i < StoreIngestionTask.MAX_CONSUMER_ACTION_ATTEMPTS; i++) {
-        try {
-          storeIngestionTaskUnderTest.processConsumerActions(storeAndVersionConfigsUnderTest.store);
-        } catch (InterruptedException e) {
-          throw new RuntimeException(e);
-        }
+      try {
+        storeIngestionTaskUnderTest.processConsumerActions(storeAndVersionConfigsUnderTest.store);
+      } catch (InterruptedException e) {
+        throw new RuntimeException(e);
       }
+      waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          () -> assertTrue(storeIngestionTaskUnderTest.consumerActionsQueue.isEmpty(), "Wait until CAQ is empty"));
       ArgumentCaptor<VeniceException> captor = ArgumentCaptor.forClass(VeniceException.class);
-      waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
-        assertTrue(storeIngestionTaskUnderTest.consumerActionsQueue.isEmpty(), "Wait for action processing");
-        verify(storeIngestionTaskUnderTest, atLeastOnce())
-            .reportError(anyString(), eq(PARTITION_FOO), captor.capture());
-      });
+      verify(storeIngestionTaskUnderTest, atLeastOnce()).reportError(anyString(), eq(PARTITION_FOO), captor.capture());
       assertTrue(captor.getValue().getMessage().endsWith(msg));
     }, AA_OFF);
   }

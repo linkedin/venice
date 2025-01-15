@@ -13,6 +13,7 @@ import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentControll
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.server.VeniceControllerGrpcServiceImpl;
 import com.linkedin.venice.controller.server.VeniceControllerRequestHandler;
+import com.linkedin.venice.controller.server.grpc.ControllerGrpcSslSessionInterceptor;
 import com.linkedin.venice.controller.server.grpc.ParentControllerRegionValidationInterceptor;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
@@ -296,6 +297,7 @@ public class VeniceController {
             .build());
 
     if (sslEnabled) {
+      interceptors.add(new ControllerGrpcSslSessionInterceptor());
       SSLFactory sslFactory = SslUtils.getSSLFactory(
           multiClusterConfigs.getSslConfig().get().getSslProperties(),
           multiClusterConfigs.getSslFactoryClassName());
