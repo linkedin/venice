@@ -64,12 +64,11 @@ public class VeniceControllerAccessManagerTest {
 
   @Test
   public void testHasAccessHandlesNullResource() {
-    String resourceName = null;
     X509Certificate mockCert = mock(X509Certificate.class);
 
     Exception e = expectThrows(
         NullPointerException.class,
-        () -> controllerAccessManager.hasAccess(resourceName, mockCert, Method.Write, "host", ""));
+        () -> controllerAccessManager.hasAccess(null, mockCert, Method.Write, "host", ""));
     assertTrue(e.getMessage().contains("Resource name is required to enforce ACL"));
   }
 
