@@ -9,9 +9,12 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
@@ -19,6 +22,7 @@ import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptio
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -28,6 +32,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -297,6 +302,62 @@ public class AdminToolE2ETest {
       validateStoreMigrationStatus(parentControllerClient, storeName, false, "parentController");
       validateStoreMigrationStatusAcrossChildRegions(storeName, clusterName, false);
     }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testCleanExecutionIds() throws Exception {
+    String storeName1 = Utils.getUniqueString("testCleanExecutionIds-1");
+    String storeName2 = Utils.getUniqueString("testCleanExecutionIds-2");
+    List<VeniceControllerWrapper> parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
+    String clusterName = clusterNames[0];
+    String parentControllerURLs =
+        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
+    ControllerClient childControllerClient = ControllerClient
+        .constructClusterControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+
+    createStore(parentControllerClient, childControllerClient, storeName1);
+    createStore(parentControllerClient, childControllerClient, storeName2);
+
+    String[] adminToolArgs = new String[] { "--url", childControllerClient.getLeaderControllerUrl(), "--cluster",
+        clusterName, "--clean-execution-ids" };
+
+    AdminTool.main(adminToolArgs);
+
+    UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams();
+    updateStoreParams.setEnableReads(false).setEnableWrites(false);
+    TestWriteUtils.updateStore(storeName1, parentControllerClient, updateStoreParams);
+    parentControllerClient.deleteStore(storeName1);
+    ControllerResponse deleteStoreResponse = parentControllerClient.retryableRequest(5, c -> c.deleteStore(storeName1));
+    Assert.assertFalse(
+        deleteStoreResponse.isError(),
+        "The DeleteStoreResponse returned an error: " + deleteStoreResponse.getError());
+
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      StoreResponse getStoreResponse = childControllerClient.getStore(storeName1);
+      Assert.assertEquals(getStoreResponse.getErrorType(), ErrorType.STORE_NOT_FOUND);
+    });
+
+    AdminTool.main(adminToolArgs);
+  }
+
+  private void createStore(
+      ControllerClient parentControllerClient,
+      ControllerClient childControllerClient,
+      String storeName) {
+    TestUtils.assertCommand(
+        parentControllerClient
+            .retryableRequest(5, c -> c.createNewStore(storeName, "test", "\"string\"", "\"string\"")));
+
+    TestUtils.assertCommand(
+        parentControllerClient
+            .retryableRequest(5, c -> c.emptyPush(storeName, Utils.getUniqueString("empty-push-1"), 1L)));
+
+    TestUtils.waitForNonDeterministicCompletion(
+        100,
+        TimeUnit.SECONDS,
+        () -> childControllerClient.getStore(storeName).getStore().getCurrentVersion() > 0);
+
   }
 
   private void validateStoreMigrationStatusAcrossChildRegions(

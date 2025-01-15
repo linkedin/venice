@@ -65,8 +65,11 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
+import com.linkedin.venice.controller.VeniceHelixAdmin;
+import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
+import com.linkedin.venice.controllerapi.CleanExecutionIdsResponse;
 import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
@@ -116,6 +119,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -257,6 +261,29 @@ public class StoresRoutes extends AbstractRoute {
           storeNameList[i] = selectedStoreList.get(i).getName();
         }
         veniceResponse.setStores(storeNameList);
+      }
+    };
+  }
+
+  public Route cleanExecutionIds(Admin admin) {
+    return new VeniceRouteHandler<CleanExecutionIdsResponse>(CleanExecutionIdsResponse.class) {
+      @Override
+      public void internalHandle(Request request, CleanExecutionIdsResponse veniceResponse) {
+        String cluster = request.queryParams(CLUSTER);
+        VeniceHelixAdmin veniceHelixAdmin;
+        if (admin instanceof VeniceParentHelixAdmin) {
+          veniceHelixAdmin = ((VeniceParentHelixAdmin) admin).getVeniceHelixAdmin();
+        } else {
+          veniceHelixAdmin = (VeniceHelixAdmin) admin;
+        }
+
+        Set<String> allStores =
+            veniceHelixAdmin.getAllStores(cluster).stream().map(Store::getName).collect(Collectors.toSet());
+        Pair<Map<String, Long>, Map<String, Long>> response =
+            veniceHelixAdmin.getExecutionIdAccessor().cleanExecutionIdMap(cluster, allStores);
+
+        veniceResponse.setCleanedExecutionIds(response.getLeft());
+        veniceResponse.setRemainingExecutionIds(response.getRight());
       }
     };
   }
@@ -512,7 +539,7 @@ public class StoresRoutes extends AbstractRoute {
   }
 
   /**
-   * @see Admin#deleteStore(String, String, int, boolean)
+   * @see Admin#deleteStore(String, String, boolean, int, boolean)
    */
   public Route deleteStore(Admin admin) {
     return new VeniceRouteHandler<TrackableControllerResponse>(TrackableControllerResponse.class) {
