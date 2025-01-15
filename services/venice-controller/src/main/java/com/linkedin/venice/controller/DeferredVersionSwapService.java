@@ -105,9 +105,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             }
 
             if (StringUtils.isEmpty(store.getTargetSwapRegion())) {
-              LOGGER.info(
-                  "Skipping target region swap for store {} as target swap region is not enabled",
-                  store.getName());
               continue;
             }
 
@@ -170,11 +167,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               long completionTime = pushStatusInfo.getExtraInfoUpdateTimestamp().get(targetRegion);
               long storeWaitTime = TimeUnit.MINUTES.toSeconds(store.getTargetSwapRegionWaitTime());
               long currentTime = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
-              LOGGER.info(
-                  "completion time: {}, waitTime: {}, currentTime: {}",
-                  completionTime,
-                  storeWaitTime,
-                  currentTime);
               if ((completionTime + storeWaitTime) <= currentTime) {
                 didWaitTimeElapseInTargetRegions = true;
               }
