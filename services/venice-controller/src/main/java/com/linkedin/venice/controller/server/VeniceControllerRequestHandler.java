@@ -27,10 +27,12 @@ public class VeniceControllerRequestHandler {
   public static final String DEFAULT_STORE_OWNER = "";
   private final Admin admin;
   private final boolean sslEnabled;
+  private final VeniceControllerAccessManager accessManager;
 
   public VeniceControllerRequestHandler(ControllerRequestHandlerDependencies dependencies) {
     this.admin = dependencies.getAdmin();
     this.sslEnabled = dependencies.isSslEnabled();
+    this.accessManager = dependencies.getControllerAccessManager();
   }
 
   // visibility: package-private
@@ -130,5 +132,9 @@ public class VeniceControllerRequestHandler {
 
     LOGGER.info("Successfully created store: {} in cluster: {}", storeName, clusterName);
     return responseBuilder.build();
+  }
+
+  public VeniceControllerAccessManager getControllerAccessManager() {
+    return accessManager;
   }
 }

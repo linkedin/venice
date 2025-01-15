@@ -22,9 +22,11 @@ public class VeniceControllerGrpcServiceImpl extends VeniceControllerGrpcService
   private static final Logger LOGGER = LogManager.getLogger(VeniceControllerGrpcServiceImpl.class);
 
   private final VeniceControllerRequestHandler requestHandler;
+  private final VeniceControllerAccessManager accessManager;
 
   public VeniceControllerGrpcServiceImpl(VeniceControllerRequestHandler requestHandler) {
     this.requestHandler = requestHandler;
+    this.accessManager = requestHandler.getControllerAccessManager();
   }
 
   @Override

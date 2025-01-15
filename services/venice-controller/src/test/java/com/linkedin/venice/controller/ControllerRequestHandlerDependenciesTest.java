@@ -10,6 +10,7 @@ import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.acl.NoOpDynamicAccessController;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -94,7 +95,8 @@ public class ControllerRequestHandlerDependenciesTest {
     assertFalse(dependencies.isSslEnabled());
     assertFalse(dependencies.isCheckReadMethodForKafka());
     assertNull(dependencies.getSslConfig());
-    assertNull(dependencies.getAccessController());
+    assertNotNull(dependencies.getAccessController());
+    assertTrue(dependencies.getAccessController() instanceof NoOpDynamicAccessController);
     assertTrue(dependencies.getDisabledRoutes().isEmpty());
     assertFalse(dependencies.isDisableParentRequestTopicForStreamPushes());
     assertNull(dependencies.getMetricsRepository());

@@ -76,6 +76,7 @@
       <Class name="com.linkedin.venice.router.api.TestHostFinder"/>
       <Class name="com.linkedin.davinci.StoreBackendTest"/>
       <Class name="com.linkedin.venice.memory.ClassSizeEstimatorTest"/>
+      <Class name="com.linkedin.venice.controller.server.VeniceControllerAccessManagerTest"/>
     </Or>
   </Match>
   <Match>
@@ -501,14 +502,14 @@
     <Or>
       <Class name="com.linkedin.venice.duckdb.HelloWorldTest"/>
       <Class name="com.linkedin.venice.duckdb.DuckDBAvroToSQLTest"/>
-      <Class name="com.linkedin.venice.sql.DuckDBDaVinciRecordTransformer"/>
+      <Class name="com.linkedin.venice.duckdb.DuckDBDaVinciRecordTransformer"/>
     </Or>
   </Match>
   <Match>
     <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING"/>
     <Or>
       <Class name="com.linkedin.venice.duckdb.DuckDBAvroToSQLTest"/>
-      <Class name="com.linkedin.venice.sql.DuckDBDaVinciRecordTransformer"/>
+      <Class name="com.linkedin.venice.duckdb.DuckDBDaVinciRecordTransformer"/>
     </Or>
   </Match>
 </FindBugsFilter>

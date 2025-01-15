@@ -1,10 +1,12 @@
-package com.linkedin.venice.sql;
+package com.linkedin.venice.duckdb;
 
 import static com.linkedin.venice.sql.AvroToSQL.UnsupportedTypeHandling.FAIL;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
+import com.linkedin.venice.sql.AvroToSQL;
+import com.linkedin.venice.sql.InsertProcessor;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.sql.Connection;
 import java.sql.DriverManager;
