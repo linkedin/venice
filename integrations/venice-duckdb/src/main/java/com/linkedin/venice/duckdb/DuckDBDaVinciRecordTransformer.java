@@ -31,7 +31,6 @@ public class DuckDBDaVinciRecordTransformer
   private static final String duckDBFilePath = "my_database.duckdb";
   // ToDo: Don't hardcode the table name. Get it from the storeName
   private static final String baseVersionTableName = "my_table_v";
-  private static final Set<String> primaryKeys = Collections.singleton("firstName");
   private static final String deleteStatementTemplate = "DELETE FROM %s WHERE %s = ?;";
   private static final String createViewStatementTemplate =
       "CREATE OR REPLACE VIEW current_version AS SELECT * FROM %s;";
@@ -135,7 +134,7 @@ public class DuckDBDaVinciRecordTransformer
         String createTableStatement = SQLUtils.createTableStatement(desiredTableDefinition);
         stmt.execute(createTableStatement);
       } else if (existingTableDefinition.equals(desiredTableDefinition)) {
-        LOGGER.info("Table '{}' found on disk and its schema is compatible. Will reuse.");
+        LOGGER.info("Table '{}' found on disk and its schema is compatible. Will reuse.", this.versionTableName);
       } else {
         // TODO: Handle the wiping and re-bootstrap automatically.
         throw new VeniceException(
