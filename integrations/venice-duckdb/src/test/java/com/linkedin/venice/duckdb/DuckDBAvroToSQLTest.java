@@ -1,5 +1,6 @@
 package com.linkedin.venice.duckdb;
 
+import static com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper.*;
 import static com.linkedin.venice.sql.AvroToSQL.UnsupportedTypeHandling.SKIP;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -7,6 +8,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.sql.AvroToSQL;
 import com.linkedin.venice.sql.AvroToSQLTest;
+import com.linkedin.venice.sql.InsertProcessor;
 import com.linkedin.venice.utils.ByteUtils;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -16,13 +18,14 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
-import java.util.function.BiConsumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -41,28 +44,45 @@ public class DuckDBAvroToSQLTest {
     return new Object[][] { { Collections.singleton("intField") }, { compositePK } };
   }
 
-  @Test(dataProvider = "primaryKeyColumns")
-  public void testUpsert(Set<String> primaryKeyColumns) throws SQLException, IOException {
+  @DataProvider
+  public Object[][] primaryKeySchemas() {
+    Schema singleColumnKey = Schema.createRecord(
+        "MyKey",
+        "",
+        "",
+        false,
+        Collections.singletonList(createSchemaField("key1", Schema.create(Schema.Type.INT), "", null)));
+    List<Schema.Field> compositeKeyFields = new ArrayList<>();
+    compositeKeyFields.add(createSchemaField("key1", Schema.create(Schema.Type.INT), "", null));
+    compositeKeyFields.add(createSchemaField("key2", Schema.create(Schema.Type.LONG), "", null));
+    Schema compositeKey = Schema.createRecord("MyKey", "", "", false, compositeKeyFields);
+    return new Object[][] { { singleColumnKey }, { compositeKey } };
+  }
+
+  @Test(dataProvider = "primaryKeySchemas")
+  public void testUpsert(Schema keySchema) throws SQLException, IOException {
     List<Schema.Field> fields = AvroToSQLTest.getAllValidFields();
-    Schema avroSchema = Schema.createRecord("MyRecord", "", "", false, fields);
+    Schema valueSchema = Schema.createRecord("MyRecord", "", "", false, fields);
     try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
         Statement stmt = connection.createStatement()) {
       // create a table
       String tableName = "MyRecord_v1";
-      String createTableStatement = AvroToSQL.createTableStatement(tableName, avroSchema, primaryKeyColumns, SKIP);
+      String createTableStatement =
+          AvroToSQL.createTableStatement(tableName, keySchema, valueSchema, Collections.emptySet(), SKIP, true);
       System.out.println(createTableStatement);
       stmt.execute(createTableStatement);
 
-      String upsertStatement = AvroToSQL.upsertStatement(tableName, avroSchema);
+      String upsertStatement = AvroToSQL.upsertStatement(tableName, keySchema, valueSchema, Collections.emptySet());
       System.out.println(upsertStatement);
-      BiConsumer<GenericRecord, PreparedStatement> upsertProcessor = AvroToSQL.upsertProcessor(avroSchema);
+      InsertProcessor upsertProcessor = AvroToSQL.upsertProcessor(keySchema, valueSchema, Collections.emptySet());
       for (int rewriteIteration = 0; rewriteIteration < 3; rewriteIteration++) {
-        List<GenericRecord> records = generateRecords(avroSchema, primaryKeyColumns);
-        GenericRecord record;
+        List<Map.Entry<GenericRecord, GenericRecord>> records = generateRecords(keySchema, valueSchema);
+        GenericRecord key, value;
         try (PreparedStatement preparedStatement = connection.prepareStatement(upsertStatement)) {
           for (int i = 0; i < records.size(); i++) {
-            record = records.get(i);
-            upsertProcessor.accept(record, preparedStatement);
+            key = records.get(i).getKey();
+            value = records.get(i).getValue();
+            upsertProcessor.process(key, value, preparedStatement);
           }
         }
 
@@ -74,31 +94,10 @@ public class DuckDBAvroToSQLTest {
                 "Rewrite iteration " + rewriteIteration + ". Expected a row at index " + j
                     + " after having inserted up to row " + recordCount);
 
-            record = records.get(j);
-            for (Schema.Field field: avroSchema.getFields()) {
-              Object result = rs.getObject(field.name());
-              if (result instanceof DuckDBResultSet.DuckDBBlobResult) {
-                DuckDBResultSet.DuckDBBlobResult duckDBBlobResult = (DuckDBResultSet.DuckDBBlobResult) result;
-                byte[] actual = IOUtils.toByteArray(duckDBBlobResult.getBinaryStream());
-                byte[] expected = ((ByteBuffer) record.get(field.pos())).array();
-                assertEquals(
-                    actual,
-                    expected,
-                    "Rewrite iteration " + rewriteIteration + ". Bytes not equals at row " + j + "! actual: "
-                        + ByteUtils.toHexString(actual) + ", wanted: " + ByteUtils.toHexString(expected));
-                // System.out.println("Rewrite iteration " + rewriteIteration + ". Row: " + j + ", field: " +
-                // field.name() + ", value: " + ByteUtils.toHexString(actual));
-              } else {
-                assertEquals(
-                    result,
-                    record.get(field.name()),
-                    "Rewrite iteration " + rewriteIteration + ". Field '" + field.name() + "' is not correct at row "
-                        + j + "!");
-                // System.out.println("Rewrite iteration " + rewriteIteration + ". Row: " + j + ", field: " +
-                // field.name() + ", value: " + result);
-              }
-            }
-
+            key = records.get(j).getKey();
+            value = records.get(j).getValue();
+            assertRecordValidity(keySchema, key, rs, j);
+            assertRecordValidity(valueSchema, value, rs, j);
             System.out.println("Rewrite iteration " + rewriteIteration + ". Successfully validated row " + j);
           }
           assertFalse(rs.next(), "Expected no more rows at index " + recordCount);
@@ -109,44 +108,73 @@ public class DuckDBAvroToSQLTest {
     }
   }
 
-  private List<GenericRecord> generateRecords(Schema avroSchema, Set<String> primaryKeyColumns) {
-    List<GenericRecord> records = new ArrayList<>();
+  private void assertRecordValidity(Schema schema, GenericRecord record, ResultSet rs, int j)
+      throws IOException, SQLException {
+    for (Schema.Field field: schema.getFields()) {
+      Object result = rs.getObject(field.name());
+      if (result instanceof DuckDBResultSet.DuckDBBlobResult) {
+        DuckDBResultSet.DuckDBBlobResult duckDBBlobResult = (DuckDBResultSet.DuckDBBlobResult) result;
+        byte[] actual = IOUtils.toByteArray(duckDBBlobResult.getBinaryStream());
+        byte[] expected = ((ByteBuffer) record.get(field.name())).array();
+        assertEquals(
+            actual,
+            expected,
+            ". Bytes not equals at row " + j + "! actual: " + ByteUtils.toHexString(actual) + ", wanted: "
+                + ByteUtils.toHexString(expected));
+        // System.out.println("Rewrite iteration " + rewriteIteration + ". Row: " + j + ", field: " +
+        // field.name() + ", value: " + ByteUtils.toHexString(actual));
+      } else {
+        assertEquals(
+            result,
+            record.get(field.name()),
+            ". Field '" + field.name() + "' is not correct at row " + j + "!");
+        // System.out.println("Rewrite iteration " + rewriteIteration + ". Row: " + j + ", field: " +
+        // field.name() + ", value: " + result);
+      }
+    }
 
-    GenericRecord record;
+  }
+
+  private List<Map.Entry<GenericRecord, GenericRecord>> generateRecords(Schema keySchema, Schema valueSchema) {
+    List<Map.Entry<GenericRecord, GenericRecord>> records = new ArrayList<>();
+
+    GenericRecord keyRecord, valueRecord;
     Object fieldValue;
     Random random = new Random();
     for (int i = 0; i < 10; i++) {
-      record = new GenericData.Record(avroSchema);
-      for (Schema.Field field: avroSchema.getFields()) {
-        if (primaryKeyColumns.contains(field.name())) {
-          switch (field.schema().getType()) {
-            case INT:
-              fieldValue = i;
-              break;
-            case LONG:
-              fieldValue = (long) i;
-              break;
-            default:
-              throw new IllegalArgumentException("Only numeric PK columns are supported in this test.");
-          }
-        } else {
-          Schema fieldSchema = field.schema();
-          if (fieldSchema.getType() == Schema.Type.UNION) {
-            Schema first = field.schema().getTypes().get(0);
-            Schema second = field.schema().getTypes().get(1);
-            if (first.getType() == Schema.Type.NULL) {
-              fieldSchema = second;
-            } else if (second.getType() == Schema.Type.NULL) {
-              fieldSchema = first;
-            } else {
-              throw new IllegalArgumentException("Unsupported union: " + field.schema());
-            }
-          }
-          fieldValue = randomValue(fieldSchema, random);
+      keyRecord = new GenericData.Record(keySchema);
+      for (Schema.Field field: keySchema.getFields()) {
+        switch (field.schema().getType()) {
+          case INT:
+            fieldValue = i;
+            break;
+          case LONG:
+            fieldValue = (long) i;
+            break;
+          default:
+            throw new IllegalArgumentException("Only numeric PK columns are supported in this test.");
         }
-        record.put(field.pos(), fieldValue);
+        keyRecord.put(field.pos(), fieldValue);
       }
-      records.add(record);
+
+      valueRecord = new GenericData.Record(valueSchema);
+      for (Schema.Field field: valueSchema.getFields()) {
+        Schema fieldSchema = field.schema();
+        if (fieldSchema.getType() == Schema.Type.UNION) {
+          Schema first = field.schema().getTypes().get(0);
+          Schema second = field.schema().getTypes().get(1);
+          if (first.getType() == Schema.Type.NULL) {
+            fieldSchema = second;
+          } else if (second.getType() == Schema.Type.NULL) {
+            fieldSchema = first;
+          } else {
+            throw new IllegalArgumentException("Unsupported union: " + field.schema());
+          }
+        }
+        fieldValue = randomValue(fieldSchema, random);
+        valueRecord.put(field.pos(), fieldValue);
+      }
+      records.add(new AbstractMap.SimpleEntry<>(keyRecord, valueRecord));
     }
 
     return records;

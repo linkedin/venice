@@ -2,6 +2,7 @@ package com.linkedin.venice.sql;
 
 import static com.linkedin.venice.sql.AvroToSQL.UnsupportedTypeHandling.FAIL;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -12,13 +13,13 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Collections;
 import java.util.Set;
-import java.util.function.BiConsumer;
 import org.apache.avro.Schema;
 import org.apache.avro.SchemaBuilder;
 import org.apache.avro.generic.GenericRecord;
 
 
-public class DuckDBDaVinciRecordTransformer extends DaVinciRecordTransformer<String, GenericRecord, GenericRecord> {
+public class DuckDBDaVinciRecordTransformer
+    extends DaVinciRecordTransformer<GenericRecord, GenericRecord, GenericRecord> {
   private static final String duckDBFilePath = "my_database.duckdb";
   // ToDo: Don't hardcode the table name. Get it from the storeName
   private static final String baseVersionTableName = "my_table_v";
@@ -30,6 +31,10 @@ public class DuckDBDaVinciRecordTransformer extends DaVinciRecordTransformer<Str
   private final String duckDBUrl;
   private final String versionTableName;
 
+  /** TODO: Make configurable */
+  private final Set<String> columnsToProject = Collections.emptySet();
+
+  // TODO: Let key and value schemas get passed in during construction, then remove the hard-coded ones.
   public DuckDBDaVinciRecordTransformer(int storeVersion, boolean storeRecordsInDaVinci, String baseDir) {
     super(storeVersion, storeRecordsInDaVinci);
     versionTableName = baseVersionTableName + storeVersion;
@@ -38,11 +43,15 @@ public class DuckDBDaVinciRecordTransformer extends DaVinciRecordTransformer<Str
 
   @Override
   public Schema getKeySchema() {
-    return Schema.create(Schema.Type.STRING);
+    // TODO: Let key and value schemas get passed in during construction, then remove the hard-coded one here.
+    Schema.Field keyField =
+        AvroCompatibilityHelper.createSchemaField("key", Schema.create(Schema.Type.STRING), "", null);
+    return Schema.createRecord("SingleFieldRecord", "", "example.avro", false, Collections.singletonList(keyField));
   }
 
   @Override
   public Schema getOutputValueSchema() {
+    // TODO: Let key and value schemas get passed in during construction, then remove the hard-coded one here.
     return SchemaBuilder.record("nameRecord")
         .namespace("example.avro")
         .fields()
@@ -58,23 +67,27 @@ public class DuckDBDaVinciRecordTransformer extends DaVinciRecordTransformer<Str
   }
 
   @Override
-  public DaVinciRecordTransformerResult<GenericRecord> transform(Lazy<String> key, Lazy<GenericRecord> value) {
+  public DaVinciRecordTransformerResult<GenericRecord> transform(Lazy<GenericRecord> key, Lazy<GenericRecord> value) {
     // Record transformation happens inside processPut as we need access to the connection object to create the prepared
     // statement
     return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.UNCHANGED);
   }
 
   @Override
-  public void processPut(Lazy<String> key, Lazy<GenericRecord> value) {
+  public void processPut(Lazy<GenericRecord> key, Lazy<GenericRecord> value) {
+    // TODO: Pre-allocate the upsert statement and everything that goes into it, as much as possible.
+    Schema keySchema = key.get().getSchema();
     Schema valueSchema = value.get().getSchema();
-    String upsertStatement = AvroToSQL.upsertStatement(versionTableName, valueSchema);
+    String upsertStatement = AvroToSQL.upsertStatement(versionTableName, keySchema, valueSchema, this.columnsToProject);
 
     // ToDo: Instead of creating a connection on every call, have a long-term connection. Maybe a connection pool?
     try (Connection connection = DriverManager.getConnection(duckDBUrl)) {
-      BiConsumer<GenericRecord, PreparedStatement> upsertProcessor = AvroToSQL.upsertProcessor(valueSchema);
+      // TODO: Pre-allocate the upsert processor as well
+      InsertProcessor upsertProcessor = AvroToSQL.upsertProcessor(keySchema, valueSchema, this.columnsToProject);
 
+      // TODO: Pre-allocate the prepared statement (consider thread-local if it's not thread safe)
       try (PreparedStatement preparedStatement = connection.prepareStatement(upsertStatement)) {
-        upsertProcessor.accept(value.get(), preparedStatement);
+        upsertProcessor.process(key.get(), value.get(), preparedStatement);
       }
     } catch (SQLException e) {
       throw new RuntimeException(e);
@@ -82,15 +95,15 @@ public class DuckDBDaVinciRecordTransformer extends DaVinciRecordTransformer<Str
   }
 
   @Override
-  public void processDelete(Lazy<String> key) {
+  public void processDelete(Lazy<GenericRecord> key) {
     // Unable to convert to prepared statement as table and column names can't be parameterized
     // ToDo make delete non-hardcoded on primaryKey
-    String deleteStatement = String.format(deleteStatementTemplate, versionTableName, "firstName");
+    String deleteStatement = String.format(deleteStatementTemplate, versionTableName, "key");
 
     // ToDo: Instead of creating a connection on every call, have a long-term connection. Maybe a connection pool?
     try (Connection connection = DriverManager.getConnection(duckDBUrl);
         PreparedStatement stmt = connection.prepareStatement(deleteStatement)) {
-      stmt.setString(1, key.get());
+      stmt.setString(1, key.get().get("key").toString());
       stmt.execute();
     } catch (SQLException e) {
       throw new RuntimeException(e);
@@ -101,8 +114,13 @@ public class DuckDBDaVinciRecordTransformer extends DaVinciRecordTransformer<Str
   public void onStartVersionIngestion(boolean isCurrentVersion) {
     try (Connection connection = DriverManager.getConnection(duckDBUrl);
         Statement stmt = connection.createStatement()) {
-      String createTableStatement =
-          AvroToSQL.createTableStatement(versionTableName, getOutputValueSchema(), primaryKeys, FAIL);
+      String createTableStatement = AvroToSQL.createTableStatement(
+          versionTableName,
+          getKeySchema(),
+          getOutputValueSchema(),
+          this.columnsToProject,
+          FAIL,
+          true);
       stmt.execute(createTableStatement);
 
       if (isCurrentVersion) {

@@ -1,21 +1,16 @@
 package com.linkedin.venice.sql;
 
-import com.linkedin.venice.utils.ByteUtils;
-import java.nio.ByteBuffer;
 import java.sql.JDBCType;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
 import java.util.Collections;
 import java.util.EnumMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.BiConsumer;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
 
 
 /**
@@ -64,23 +59,29 @@ public class AvroToSQL {
      */
   }
 
+  /**
+   * @param tableName the name of the table in the CREATE TABLE statement
+   * @param keySchema the Venice key schema
+   * @param valueSchema the Venice value schema
+   * @param columnsToProject if empty, then all columns are included, otherwise, only the specified ones
+   * @param unsupportedTypeHandling the policy of whether to skip or fail when encountering unsupported types
+   * @param primaryKey whether to define a PRIMARY KEY constraint on the table, including all key schema columns
+   * @return
+   */
   @Nonnull
   public static String createTableStatement(
       @Nonnull String tableName,
-      @Nonnull Schema avroSchema,
-      @Nonnull Set<String> primaryKeyColumns,
-      @Nonnull UnsupportedTypeHandling unsupportedTypeHandling) {
-    Objects.requireNonNull(avroSchema);
-    Objects.requireNonNull(primaryKeyColumns);
-    Objects.requireNonNull(unsupportedTypeHandling);
-    if (avroSchema.getType() != Schema.Type.RECORD) {
-      throw new IllegalArgumentException("Only Avro records can have a corresponding CREATE TABLE statement.");
-    }
+      @Nonnull Schema keySchema,
+      @Nonnull Schema valueSchema,
+      @Nonnull Set<String> columnsToProject,
+      @Nonnull UnsupportedTypeHandling unsupportedTypeHandling,
+      boolean primaryKey) {
+    Set<Schema.Field> allColumns = combineColumns(keySchema, valueSchema, columnsToProject);
     StringBuffer stringBuffer = new StringBuffer();
-    stringBuffer.append("CREATE TABLE IF NOT EXISTS " + cleanTableName(tableName) + "(");
+    stringBuffer.append("CREATE TABLE " + cleanTableName(tableName) + "(");
     boolean firstColumn = true;
 
-    for (Schema.Field field: avroSchema.getFields()) {
+    for (Schema.Field field: allColumns) {
       JDBCType correspondingType = getCorrespondingType(field);
       if (correspondingType == null) {
         switch (unsupportedTypeHandling) {
@@ -106,15 +107,15 @@ public class AvroToSQL {
     }
 
     firstColumn = true;
-    if (!primaryKeyColumns.isEmpty()) {
+    if (primaryKey) {
       stringBuffer.append(", PRIMARY KEY(");
-      for (String pkColumn: primaryKeyColumns) {
+      for (Schema.Field pkColumn: keySchema.getFields()) {
         if (firstColumn) {
           firstColumn = false;
         } else {
           stringBuffer.append(", ");
         }
-        stringBuffer.append(cleanColumnName(pkColumn));
+        stringBuffer.append(cleanColumnName(pkColumn.name()));
       }
       stringBuffer.append(")");
     }
@@ -124,13 +125,17 @@ public class AvroToSQL {
   }
 
   @Nonnull
-  public static String upsertStatement(@Nonnull String tableName, @Nonnull Schema recordSchema) {
-    Objects.requireNonNull(recordSchema);
+  public static String upsertStatement(
+      @Nonnull String tableName,
+      @Nonnull Schema keySchema,
+      @Nonnull Schema valueSchema,
+      @Nonnull Set<String> columnsToProject) {
+    Set<Schema.Field> allColumns = combineColumns(keySchema, valueSchema, columnsToProject);
     StringBuffer stringBuffer = new StringBuffer();
     stringBuffer.append("INSERT OR REPLACE INTO " + cleanTableName(tableName) + " VALUES (");
     boolean firstColumn = true;
 
-    for (Schema.Field field: recordSchema.getFields()) {
+    for (Schema.Field field: allColumns) {
       JDBCType correspondingType = getCorrespondingType(field);
       if (correspondingType == null) {
         // Skipped field.
@@ -151,117 +156,15 @@ public class AvroToSQL {
   }
 
   @Nonnull
-  public static BiConsumer<GenericRecord, PreparedStatement> upsertProcessor(@Nonnull Schema recordSchema) {
-    Objects.requireNonNull(recordSchema);
-    // N.B.: JDBC indices start at 1, not at 0;
-    int index = 1;
-    int[] avroFieldIndexToJdbcIndexMapping = new int[recordSchema.getFields().size()];
-    int[] avroFieldIndexToUnionBranchIndex = new int[recordSchema.getFields().size()];
-    JDBCType[] avroFieldIndexToCorrespondingType = new JDBCType[recordSchema.getFields().size()];
-    for (Schema.Field field: recordSchema.getFields()) {
-      JDBCType correspondingType = getCorrespondingType(field);
-      if (correspondingType == null) {
-        // Skipped field.
-        continue;
-      }
-      avroFieldIndexToJdbcIndexMapping[field.pos()] = index++;
-      avroFieldIndexToCorrespondingType[field.pos()] = correspondingType;
-      if (field.schema().getType() == Schema.Type.UNION) {
-        Schema fieldSchema = field.schema();
-        List<Schema> unionBranches = fieldSchema.getTypes();
-        if (unionBranches.get(0).getType() == Schema.Type.NULL) {
-          avroFieldIndexToUnionBranchIndex[field.pos()] = 1;
-        } else if (unionBranches.get(1).getType() == Schema.Type.NULL) {
-          avroFieldIndexToUnionBranchIndex[field.pos()] = 0;
-        } else {
-          throw new IllegalStateException("Should have skipped unsupported union: " + fieldSchema);
-        }
-      }
-    }
-    return (record, preparedStatement) -> {
-      try {
-        int jdbcIndex;
-        JDBCType jdbcType;
-        Object fieldValue;
-        Schema.Type fieldType;
-        for (Schema.Field field: record.getSchema().getFields()) {
-          jdbcIndex = avroFieldIndexToJdbcIndexMapping[field.pos()];
-          if (jdbcIndex == 0) {
-            // Skipped field.
-            continue;
-          }
-          fieldValue = record.get(field.pos());
-          if (fieldValue == null) {
-            jdbcType = avroFieldIndexToCorrespondingType[field.pos()];
-            preparedStatement.setNull(jdbcIndex, jdbcType.getVendorTypeNumber());
-            continue;
-          }
-          fieldType = field.schema().getType();
-          if (fieldType == Schema.Type.UNION) {
-            // Unions are handled via unpacking
-            fieldType = field.schema().getTypes().get(avroFieldIndexToUnionBranchIndex[field.pos()]).getType();
-          }
-
-          processField(jdbcIndex, fieldType, fieldValue, preparedStatement, field.name());
-        }
-        preparedStatement.execute();
-      } catch (SQLException e) {
-        throw new RuntimeException(e);
-      }
-    };
-  }
-
-  private static void processField(
-      int jdbcIndex,
-      @Nonnull Schema.Type fieldType,
-      @Nonnull Object fieldValue,
-      @Nonnull PreparedStatement preparedStatement,
-      @Nonnull String fieldName) throws SQLException {
-    switch (fieldType) {
-      case FIXED:
-      case BYTES:
-        preparedStatement.setBytes(jdbcIndex, ByteUtils.extractByteArray((ByteBuffer) fieldValue));
-        break;
-      case STRING:
-        preparedStatement.setString(jdbcIndex, fieldValue.toString());
-        break;
-      case INT:
-        preparedStatement.setInt(jdbcIndex, (int) fieldValue);
-        break;
-      case LONG:
-        preparedStatement.setLong(jdbcIndex, (long) fieldValue);
-        break;
-      case FLOAT:
-        preparedStatement.setFloat(jdbcIndex, (float) fieldValue);
-        break;
-      case DOUBLE:
-        preparedStatement.setDouble(jdbcIndex, (double) fieldValue);
-        break;
-      case BOOLEAN:
-        preparedStatement.setBoolean(jdbcIndex, (boolean) fieldValue);
-        break;
-      case NULL:
-        // Weird case... probably never comes into play?
-        preparedStatement.setNull(jdbcIndex, JDBCType.NULL.getVendorTypeNumber());
-        break;
-
-      case UNION:
-        // Defensive code. Unreachable.
-        throw new IllegalArgumentException(
-            "Unions should be unpacked by the calling function, but union field '" + fieldName + "' was passed in!");
-
-      // These types could be supported eventually, but for now aren't.
-      case RECORD:
-      case ENUM:
-      case ARRAY:
-      case MAP:
-      default:
-        throw new IllegalStateException("Should have skipped field '" + fieldName + "' but somehow didn't!");
-    }
+  public static InsertProcessor upsertProcessor(
+      @Nonnull Schema keySchema,
+      @Nonnull Schema valueSchema,
+      @Nonnull Set<String> columnsToProject) {
+    return new InsertProcessor(keySchema, valueSchema, columnsToProject);
   }
 
   @Nullable
-  private static JDBCType getCorrespondingType(Schema.Field field) {
+  static JDBCType getCorrespondingType(Schema.Field field) {
     Schema fieldSchema = field.schema();
     Schema.Type fieldType = fieldSchema.getType();
 
@@ -298,5 +201,34 @@ public class AvroToSQL {
   @Nonnull
   private static String cleanColumnName(@Nonnull String avroFieldName) {
     return Objects.requireNonNull(avroFieldName);
+  }
+
+  @Nonnull
+  static Set<Schema.Field> combineColumns(
+      @Nonnull Schema keySchema,
+      @Nonnull Schema valueSchema,
+      @Nonnull Set<String> columnsToProject) {
+    Objects.requireNonNull(keySchema);
+    Objects.requireNonNull(valueSchema);
+    Objects.requireNonNull(columnsToProject);
+    if (keySchema.getType() != Schema.Type.RECORD || valueSchema.getType() != Schema.Type.RECORD) {
+      // TODO: We can improve this to handle primitive types which aren't wrapped inside records.
+      throw new IllegalArgumentException("Only Avro records can have a corresponding CREATE TABLE statement.");
+    }
+    Set<Schema.Field> allColumns = new LinkedHashSet<>(keySchema.getFields().size() + valueSchema.getFields().size());
+    for (Schema.Field field: keySchema.getFields()) {
+      allColumns.add(field);
+    }
+    for (Schema.Field field: valueSchema.getFields()) {
+      if (columnsToProject.isEmpty() || columnsToProject.contains(field.name())) {
+        if (!allColumns.add(field)) {
+          throw new IllegalArgumentException(
+              "The value field '" + field.name() + "' is also present in the key schema! "
+                  + "Field names must not conflict across both key and value. "
+                  + "This can be side-stepped by populating the columnsToProject param to include only unique fields.");
+        }
+      }
+    }
+    return allColumns;
   }
 }

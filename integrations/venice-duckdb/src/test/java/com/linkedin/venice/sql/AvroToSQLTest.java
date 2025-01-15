@@ -1,22 +1,19 @@
 package com.linkedin.venice.sql;
 
-import static com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper.createSchemaField;
-import static com.linkedin.venice.sql.AvroToSQL.UnsupportedTypeHandling.FAIL;
-import static com.linkedin.venice.sql.AvroToSQL.UnsupportedTypeHandling.SKIP;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertThrows;
+import static com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper.*;
+import static com.linkedin.venice.sql.AvroToSQL.UnsupportedTypeHandling.*;
+import static org.testng.Assert.*;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import org.apache.avro.Schema;
 import org.testng.annotations.Test;
 
 
 public class AvroToSQLTest {
-  private static final String EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES = "CREATE TABLE IF NOT EXISTS MyRecord(" //
+  private static final String EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES = "CREATE TABLE MyRecord(" //
+      + "key1 INTEGER, " //
       + "fixedField BINARY, " //
       + "stringField VARCHAR, " //
       + "bytesField VARBINARY, "//
@@ -44,32 +41,52 @@ public class AvroToSQLTest {
       + "booleanFieldUnion2 BOOLEAN);";
 
   private static final String EXPECTED_UPSERT_STATEMENT_WITH_ALL_TYPES =
-      "INSERT OR REPLACE INTO MyRecord VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+      "INSERT OR REPLACE INTO MyRecord VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
   @Test
   public void testValidCreateTable() {
     List<Schema.Field> allFields = getAllValidFields();
     Schema schemaWithAllSupportedFieldTypes = Schema.createRecord("MyRecord", "", "", false, allFields);
 
-    String createTableStatementForAllFields =
-        AvroToSQL.createTableStatement("MyRecord", schemaWithAllSupportedFieldTypes, Collections.emptySet(), FAIL);
-    assertEquals(createTableStatementForAllFields, EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES);
+    // Single-column key (but without a PRIMARY KEY constraint)
+    Schema singleColumnKey = Schema.createRecord("MyKey", "", "", false, Collections.singletonList(getKey1()));
+
+    String createTableWithoutPrimaryKey = AvroToSQL.createTableStatement(
+        "MyRecord",
+        singleColumnKey,
+        schemaWithAllSupportedFieldTypes,
+        Collections.emptySet(),
+        FAIL,
+        false);
+    assertEquals(createTableWithoutPrimaryKey, EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES);
 
     // Single-column primary key
-    String createTableWithPrimaryKey = AvroToSQL
-        .createTableStatement("MyRecord", schemaWithAllSupportedFieldTypes, Collections.singleton("stringField"), FAIL);
-    String expectedCreateTable =
-        EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES.replace(");", ", PRIMARY KEY(stringField));");
+    String createTableWithPrimaryKey = AvroToSQL.createTableStatement(
+        "MyRecord",
+        singleColumnKey,
+        schemaWithAllSupportedFieldTypes,
+        Collections.emptySet(),
+        FAIL,
+        true);
+    String expectedCreateTable = EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES.replace(");", ", PRIMARY KEY(key1));");
     assertEquals(createTableWithPrimaryKey, expectedCreateTable);
 
     // Composite primary key
-    Set<String> compositePrimaryKey = new HashSet<>();
-    compositePrimaryKey.add("stringField");
-    compositePrimaryKey.add("intField");
-    String createTableWithCompositePrimaryKey =
-        AvroToSQL.createTableStatement("MyRecord", schemaWithAllSupportedFieldTypes, compositePrimaryKey, FAIL);
+    List<Schema.Field> compositeKeyFields = new ArrayList<>();
+    compositeKeyFields.add(getKey1());
+    compositeKeyFields.add(createSchemaField("key2", Schema.create(Schema.Type.LONG), "", null));
+    Schema compositeKey = Schema.createRecord("MyKey", "", "", false, compositeKeyFields);
+
+    String createTableWithCompositePrimaryKey = AvroToSQL.createTableStatement(
+        "MyRecord",
+        compositeKey,
+        schemaWithAllSupportedFieldTypes,
+        Collections.emptySet(),
+        FAIL,
+        true);
     String expectedCreateTableWithCompositePK =
-        EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES.replace(");", ", PRIMARY KEY(stringField, intField));");
+        EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES.replace("key1 INTEGER", "key1 INTEGER, key2 BIGINT")
+            .replace(");", ", PRIMARY KEY(key1, key2));");
     assertEquals(createTableWithCompositePrimaryKey, expectedCreateTableWithCompositePK);
   }
 
@@ -79,7 +96,13 @@ public class AvroToSQLTest {
 
     assertThrows(
         IllegalArgumentException.class,
-        () -> AvroToSQL.createTableStatement("MyRecord", Schema.create(Schema.Type.INT), Collections.emptySet(), FAIL));
+        () -> AvroToSQL.createTableStatement(
+            "MyRecord",
+            Schema.create(Schema.Type.INT),
+            Schema.create(Schema.Type.INT),
+            Collections.emptySet(),
+            FAIL,
+            true));
 
     testSchemaWithInvalidType(
         createSchemaField(
@@ -126,11 +149,18 @@ public class AvroToSQLTest {
 
   @Test
   public void testUpsertStatement() {
+    Schema singleColumnKey = Schema.createRecord("MyKey", "", "", false, Collections.singletonList(getKey1()));
+
     List<Schema.Field> allFields = getAllValidFields();
     Schema schemaWithAllSupportedFieldTypes = Schema.createRecord("MyRecord", "", "", false, allFields);
 
-    String upsertStatementForAllFields = AvroToSQL.upsertStatement("MyRecord", schemaWithAllSupportedFieldTypes);
+    String upsertStatementForAllFields = AvroToSQL
+        .upsertStatement("MyRecord", singleColumnKey, schemaWithAllSupportedFieldTypes, Collections.emptySet());
     assertEquals(upsertStatementForAllFields, EXPECTED_UPSERT_STATEMENT_WITH_ALL_TYPES);
+  }
+
+  private Schema.Field getKey1() {
+    return createSchemaField("key1", Schema.create(Schema.Type.INT), "", null);
   }
 
   public static List<Schema.Field> getAllValidFields() {
@@ -178,16 +208,21 @@ public class AvroToSQLTest {
     List<Schema.Field> allFields = getAllValidFields();
     allFields.add(invalidField);
 
-    Schema schema = Schema.createRecord("MyRecord", "", "", false, allFields);
+    Schema.Field keyField1 = createSchemaField("key1", Schema.create(Schema.Type.INT), "", null);
+    Schema singleColumnKey = Schema.createRecord("MyKey", "", "", false, Collections.singletonList(keyField1));
+    Schema valueSchema = Schema.createRecord("MyRecord", "", "", false, allFields);
 
     assertThrows(
         IllegalArgumentException.class,
-        () -> AvroToSQL.createTableStatement("MyRecord", schema, Collections.emptySet(), FAIL));
+        () -> AvroToSQL
+            .createTableStatement("MyRecord", singleColumnKey, valueSchema, Collections.emptySet(), FAIL, true));
 
-    String createTableStatement = AvroToSQL.createTableStatement("MyRecord", schema, Collections.emptySet(), SKIP);
+    String createTableStatement =
+        AvroToSQL.createTableStatement("MyRecord", singleColumnKey, valueSchema, Collections.emptySet(), SKIP, false);
     assertEquals(createTableStatement, EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES);
 
-    String upsertStatement = AvroToSQL.upsertStatement("MyRecord", schema);
+    String upsertStatement =
+        AvroToSQL.upsertStatement("MyRecord", singleColumnKey, valueSchema, Collections.emptySet());
     assertEquals(upsertStatement, EXPECTED_UPSERT_STATEMENT_WITH_ALL_TYPES);
   }
 }
