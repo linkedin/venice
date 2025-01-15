@@ -97,10 +97,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             }
 
             if (targetVersion.getStatus() != VersionStatus.STARTED) {
-              LOGGER.info(
-                  "Skipping target region swap for store {} as target version {} is already online",
-                  store.getName(),
-                  targetVersionNum);
               continue;
             }
 
