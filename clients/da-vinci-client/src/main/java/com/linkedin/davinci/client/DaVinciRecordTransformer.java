@@ -103,7 +103,7 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    *
    * By default, it performs no operation.
    */
-  public void onStartVersionIngestion() {
+  public void onStartVersionIngestion(boolean isCurrentVersion) {
     return;
   }
 
@@ -113,9 +113,11 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    *
    * By default, it performs no operation.
    */
-  public void onEndVersionIngestion() {
+  public void onEndVersionIngestion(int currentVersion) {
     return;
   }
+
+  // Final methods below
 
   /**
    * Transforms and processes the given record.

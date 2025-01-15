@@ -16,7 +16,7 @@ import org.testng.annotations.Test;
 
 
 public class AvroToSQLTest {
-  private static final String EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES = "CREATE TABLE MyRecord(" //
+  private static final String EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES = "CREATE TABLE IF NOT EXISTS MyRecord(" //
       + "fixedField BINARY, " //
       + "stringField VARCHAR, " //
       + "bytesField VARBINARY, "//

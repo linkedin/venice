@@ -77,7 +77,7 @@ public class AvroToSQL {
       throw new IllegalArgumentException("Only Avro records can have a corresponding CREATE TABLE statement.");
     }
     StringBuffer stringBuffer = new StringBuffer();
-    stringBuffer.append("CREATE TABLE " + cleanTableName(tableName) + "(");
+    stringBuffer.append("CREATE TABLE IF NOT EXISTS " + cleanTableName(tableName) + "(");
     boolean firstColumn = true;
 
     for (Schema.Field field: avroSchema.getFields()) {
@@ -201,6 +201,7 @@ public class AvroToSQL {
             // Unions are handled via unpacking
             fieldType = field.schema().getTypes().get(avroFieldIndexToUnionBranchIndex[field.pos()]).getType();
           }
+
           processField(jdbcIndex, fieldType, fieldValue, preparedStatement, field.name());
         }
         preparedStatement.execute();
@@ -222,7 +223,7 @@ public class AvroToSQL {
         preparedStatement.setBytes(jdbcIndex, ByteUtils.extractByteArray((ByteBuffer) fieldValue));
         break;
       case STRING:
-        preparedStatement.setString(jdbcIndex, (String) fieldValue);
+        preparedStatement.setString(jdbcIndex, fieldValue.toString());
         break;
       case INT:
         preparedStatement.setInt(jdbcIndex, (int) fieldValue);

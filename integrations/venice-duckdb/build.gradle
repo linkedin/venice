@@ -3,9 +3,10 @@ dependencies {
   implementation libraries.avroUtilCompatHelper
   implementation libraries.duckdbJdbc
 
+  implementation project(':clients:da-vinci-client')
   implementation project(':internal:venice-client-common')
 
-  testImplementation project(':internal:venice-common')
+  implementation project(':internal:venice-common')
 }
 
 checkerFramework {
