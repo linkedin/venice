@@ -1,6 +1,7 @@
-package com.linkedin.venice.sql;
+package com.linkedin.venice.duckdb;
 
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.SINGLE_FIELD_RECORD_SCHEMA;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
@@ -8,6 +9,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.client.DaVinciRecordTransformerUtility;
+import com.linkedin.venice.sql.DuckDBDaVinciRecordTransformer;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.File;
@@ -26,7 +28,6 @@ import org.testng.annotations.Test;
 
 public class DuckDBDaVinciRecordTransformerTest {
   static final int storeVersion = 1;
-  static final String tempDir = Utils.getTempDataDirectory().getAbsolutePath();
 
   @BeforeMethod
   @AfterClass
@@ -39,17 +40,20 @@ public class DuckDBDaVinciRecordTransformerTest {
 
   @Test
   public void testRecordTransformer() {
+    String tempDir = Utils.getTempDataDirectory().getAbsolutePath();
     DuckDBDaVinciRecordTransformer recordTransformer = new DuckDBDaVinciRecordTransformer(storeVersion, false, tempDir);
 
     Schema keySchema = recordTransformer.getKeySchema();
-    assertEquals(keySchema.getType(), Schema.Type.STRING);
+    assertEquals(keySchema.getType(), Schema.Type.RECORD);
 
     Schema outputValueSchema = recordTransformer.getOutputValueSchema();
     assertEquals(outputValueSchema.getType(), Schema.Type.RECORD);
 
     recordTransformer.onStartVersionIngestion(true);
 
-    Lazy<String> lazyKey = Lazy.of(() -> "key");
+    GenericRecord keyRecord = new GenericData.Record(SINGLE_FIELD_RECORD_SCHEMA);
+    keyRecord.put("key", "key");
+    Lazy<GenericRecord> lazyKey = Lazy.of(() -> keyRecord);
 
     GenericRecord valueRecord = new GenericData.Record(NAME_RECORD_V1_SCHEMA);
     valueRecord.put("firstName", "Duck");
@@ -69,7 +73,7 @@ public class DuckDBDaVinciRecordTransformerTest {
 
     int classHash = recordTransformer.getClassHash();
 
-    DaVinciRecordTransformerUtility<String, GenericRecord> recordTransformerUtility =
+    DaVinciRecordTransformerUtility<GenericRecord, GenericRecord> recordTransformerUtility =
         recordTransformer.getRecordTransformerUtility();
     assertTrue(recordTransformerUtility.hasTransformerLogicChanged(classHash));
     assertFalse(recordTransformerUtility.hasTransformerLogicChanged(classHash));
@@ -77,6 +81,7 @@ public class DuckDBDaVinciRecordTransformerTest {
 
   @Test
   public void testVersionSwap() throws SQLException {
+    String tempDir = Utils.getTempDataDirectory().getAbsolutePath();
     DuckDBDaVinciRecordTransformer recordTransformer_v1 = new DuckDBDaVinciRecordTransformer(1, false, tempDir);
     DuckDBDaVinciRecordTransformer recordTransformer_v2 = new DuckDBDaVinciRecordTransformer(2, false, tempDir);
 
@@ -85,7 +90,9 @@ public class DuckDBDaVinciRecordTransformerTest {
     recordTransformer_v1.onStartVersionIngestion(true);
     recordTransformer_v2.onStartVersionIngestion(false);
 
-    Lazy<String> lazyKey = Lazy.of(() -> "key");
+    GenericRecord keyRecord = new GenericData.Record(SINGLE_FIELD_RECORD_SCHEMA);
+    keyRecord.put("key", "key");
+    Lazy<GenericRecord> lazyKey = Lazy.of(() -> keyRecord);
 
     GenericRecord valueRecord_v1 = new GenericData.Record(NAME_RECORD_V1_SCHEMA);
     valueRecord_v1.put("firstName", "Duck");
@@ -103,8 +110,9 @@ public class DuckDBDaVinciRecordTransformerTest {
         Statement stmt = connection.createStatement()) {
       try (ResultSet rs = stmt.executeQuery("SELECT * FROM current_version")) {
         assertTrue(rs.next(), "There should be a first row!");
-        assertEquals(rs.getString(1), "Duck");
-        assertEquals(rs.getString(2), "Goose");
+        assertEquals(rs.getString("firstName"), "Duck");
+        assertEquals(rs.getString("lastName"), "Goose");
+        assertFalse(rs.next(), "There should be only one row!");
       }
 
       // Swap here
@@ -112,8 +120,9 @@ public class DuckDBDaVinciRecordTransformerTest {
 
       try (ResultSet rs = stmt.executeQuery("SELECT * FROM current_version")) {
         assertTrue(rs.next(), "There should be a first row!");
-        assertEquals(rs.getString(1), "Goose");
-        assertEquals(rs.getString(2), "Duck");
+        assertEquals(rs.getString("firstName"), "Goose");
+        assertEquals(rs.getString("lastName"), "Duck");
+        assertFalse(rs.next(), "There should be only one row!");
       }
     }
   }

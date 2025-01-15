@@ -266,9 +266,6 @@ task integrationTests_9999(type: Test) {
         excludeTestsMatching pattern
       }
     }
-
-    // There's an issue where it passes locally but not on the CI
-    excludeTestsMatching 'com.linkedin.venice.endToEnd.DuckDBDaVinciRecordTransformerTest'
   }
   beforeSuite { descriptor ->
     suiteStartTime = System.currentTimeMillis()

@@ -14,9 +14,11 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJ
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.DEFAULT_USER_DATA_RECORD_COUNT;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.SINGLE_FIELD_RECORD_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFile;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -37,8 +39,8 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.sql.DuckDBDaVinciRecordTransformer;
-import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.PushInputSchemaBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
@@ -54,6 +56,7 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -63,7 +66,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
-public class DuckDBDaVinciRecordTransformerTest {
+public class DuckDBDaVinciRecordTransformerIntegrationTest {
   private static final Logger LOGGER = LogManager.getLogger(DaVinciClientRecordTransformerTest.class);
   private static final int TEST_TIMEOUT = 120_000;
   private VeniceClusterWrapper cluster;
@@ -102,8 +105,17 @@ public class DuckDBDaVinciRecordTransformerTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
-  public void testRecordTransformer(DaVinciConfig clientConfig) throws Exception {
+  /**
+   * This test works on mac but fails on the CI, likely due to: https://github.com/duckdb/duckdb-java/issues/14
+   *
+   * There is a fix merged for this, but it has not been released yet.
+   *
+   * TODO: Re-enable once we can depend on a clean release.
+   */
+  @Test(timeOut = TEST_TIMEOUT, enabled = false)
+  public void testRecordTransformer() throws Exception {
+    DaVinciConfig clientConfig = new DaVinciConfig();
+
     File tmpDir = Utils.getTempDataDirectory();
     String storeName = Utils.getUniqueString("test-store");
     boolean pushStatusStoreEnabled = false;
@@ -157,7 +169,22 @@ public class DuckDBDaVinciRecordTransformerTest {
     File inputDir = getTempDataDirectory();
     Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {};
     Consumer<Properties> propertiesConsumer = properties -> {};
-    Schema valueSchema = writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
+    Schema pushRecordSchema = new PushInputSchemaBuilder().setKeySchema(SINGLE_FIELD_RECORD_SCHEMA)
+        .setValueSchema(NAME_RECORD_V1_SCHEMA)
+        .build();
+    String firstName = "first_name_";
+    String lastName = "last_name_";
+    Schema valueSchema = writeSimpleAvroFile(inputDir, pushRecordSchema, i -> {
+      GenericRecord keyValueRecord = new GenericData.Record(pushRecordSchema);
+      GenericRecord key = new GenericData.Record(SINGLE_FIELD_RECORD_SCHEMA);
+      key.put("key", i.toString());
+      keyValueRecord.put(DEFAULT_KEY_FIELD_PROP, key);
+      GenericRecord valueRecord = new GenericData.Record(NAME_RECORD_V1_SCHEMA);
+      valueRecord.put("firstName", firstName + i);
+      valueRecord.put("lastName", lastName + i);
+      keyValueRecord.put(DEFAULT_VALUE_FIELD_PROP, valueRecord); // Value
+      return keyValueRecord;
+    });
     String keySchemaStr = valueSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
 
     // Setup VPJ job properties.
