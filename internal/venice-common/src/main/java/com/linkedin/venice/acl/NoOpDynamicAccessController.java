@@ -6,8 +6,16 @@ import java.util.List;
 import java.util.Set;
 
 
+/**
+ * A no-op implementation of {@link DynamicAccessController}.
+ */
 public class NoOpDynamicAccessController implements DynamicAccessController {
   public static final String USER_UNKNOWN = "USER_UNKNOWN";
+
+  public static final NoOpDynamicAccessController INSTANCE = new NoOpDynamicAccessController();
+
+  private NoOpDynamicAccessController() {
+  }
 
   @Override
   public DynamicAccessController init(List<String> resources) {

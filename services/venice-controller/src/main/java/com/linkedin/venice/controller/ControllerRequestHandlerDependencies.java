@@ -2,6 +2,8 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.acl.NoOpDynamicAccessController;
+import com.linkedin.venice.controller.server.VeniceControllerAccessManager;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -9,12 +11,15 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
  * Dependencies for VeniceControllerRequestHandler
  */
 public class ControllerRequestHandlerDependencies {
+  private static final Logger LOGGER = LogManager.getLogger(ControllerRequestHandlerDependencies.class);
   private final Admin admin;
   private final boolean enforceSSL;
   private final boolean sslEnabled;
@@ -27,6 +32,7 @@ public class ControllerRequestHandlerDependencies {
   private final PubSubTopicRepository pubSubTopicRepository;
   private final MetricsRepository metricsRepository;
   private final VeniceProperties veniceProperties;
+  private final VeniceControllerAccessManager controllerAccessManager;
 
   private ControllerRequestHandlerDependencies(Builder builder) {
     this.admin = builder.admin;
@@ -41,6 +47,7 @@ public class ControllerRequestHandlerDependencies {
     this.pubSubTopicRepository = builder.pubSubTopicRepository;
     this.metricsRepository = builder.metricsRepository;
     this.veniceProperties = builder.veniceProperties;
+    this.controllerAccessManager = builder.controllerAccessManager;
   }
 
   public Admin getAdmin() {
@@ -91,6 +98,10 @@ public class ControllerRequestHandlerDependencies {
     return veniceProperties;
   }
 
+  public VeniceControllerAccessManager getControllerAccessManager() {
+    return controllerAccessManager;
+  }
+
   // Builder class for VeniceControllerRequestHandlerDependencies
   public static class Builder {
     private Admin admin;
@@ -105,6 +116,7 @@ public class ControllerRequestHandlerDependencies {
     private PubSubTopicRepository pubSubTopicRepository;
     private MetricsRepository metricsRepository;
     private VeniceProperties veniceProperties;
+    private VeniceControllerAccessManager controllerAccessManager;
 
     public Builder setAdmin(Admin admin) {
       this.admin = admin;
@@ -176,6 +188,16 @@ public class ControllerRequestHandlerDependencies {
       if (disabledRoutes == null) {
         disabledRoutes = Collections.emptyList();
       }
+      if (sslEnabled && sslConfig == null) {
+        throw new IllegalArgumentException("sslConfig is mandatory when sslEnabled is true");
+      }
+      if (accessController == null || !sslEnabled) {
+        String reason = (accessController == null ? "access controller is not configured" : "")
+            + (accessController == null && !sslEnabled ? " and " : "") + (!sslEnabled ? "SSL is disabled" : "");
+        LOGGER.info("Defaulting to NoOpDynamicAccessController because {}.", reason);
+        accessController = NoOpDynamicAccessController.INSTANCE;
+      }
+      controllerAccessManager = new VeniceControllerAccessManager(accessController);
     }
 
     public ControllerRequestHandlerDependencies build() {

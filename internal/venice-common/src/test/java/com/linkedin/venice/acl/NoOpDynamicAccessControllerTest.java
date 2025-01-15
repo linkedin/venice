@@ -20,7 +20,7 @@ public class NoOpDynamicAccessControllerTest {
 
   @BeforeMethod
   public void setUp() {
-    accessController = new NoOpDynamicAccessController();
+    accessController = NoOpDynamicAccessController.INSTANCE;
   }
 
   @Test
