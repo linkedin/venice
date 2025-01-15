@@ -261,6 +261,11 @@ public class AdminTool {
           storeResponse = queryStoreList(cmd);
           printObject(storeResponse);
           break;
+        case CLEAN_EXECUTION_IDS:
+          String cluster = getRequiredArgument(cmd, Arg.CLUSTER);
+          response = controllerClient.cleanExecutionIds(cluster);
+          printObject(response);
+          break;
         case DESCRIBE_STORE:
           storeName = getRequiredArgument(cmd, Arg.STORE, Command.DESCRIBE_STORE);
           for (String store: storeName.split(",")) {
