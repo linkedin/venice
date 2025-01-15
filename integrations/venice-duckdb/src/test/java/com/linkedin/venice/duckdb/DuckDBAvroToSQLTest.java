@@ -9,6 +9,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.sql.AvroToSQL;
 import com.linkedin.venice.sql.AvroToSQLTest;
 import com.linkedin.venice.sql.InsertProcessor;
+import com.linkedin.venice.sql.SQLUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -67,8 +68,8 @@ public class DuckDBAvroToSQLTest {
         Statement stmt = connection.createStatement()) {
       // create a table
       String tableName = "MyRecord_v1";
-      String createTableStatement =
-          AvroToSQL.createTableStatement(tableName, keySchema, valueSchema, Collections.emptySet(), SKIP, true);
+      String createTableStatement = SQLUtils.createTableStatement(
+          AvroToSQL.getTableDefinition(tableName, keySchema, valueSchema, Collections.emptySet(), SKIP, true));
       System.out.println(createTableStatement);
       stmt.execute(createTableStatement);
 

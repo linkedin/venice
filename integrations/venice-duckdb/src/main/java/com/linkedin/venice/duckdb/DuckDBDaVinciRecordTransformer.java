@@ -5,8 +5,11 @@ import static com.linkedin.venice.sql.AvroToSQL.UnsupportedTypeHandling.FAIL;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.sql.AvroToSQL;
 import com.linkedin.venice.sql.InsertProcessor;
+import com.linkedin.venice.sql.SQLUtils;
+import com.linkedin.venice.sql.TableDefinition;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -18,10 +21,13 @@ import java.util.Set;
 import org.apache.avro.Schema;
 import org.apache.avro.SchemaBuilder;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class DuckDBDaVinciRecordTransformer
     extends DaVinciRecordTransformer<GenericRecord, GenericRecord, GenericRecord> {
+  private static final Logger LOGGER = LogManager.getLogger(DuckDBDaVinciRecordTransformer.class);
   private static final String duckDBFilePath = "my_database.duckdb";
   // ToDo: Don't hardcode the table name. Get it from the storeName
   private static final String baseVersionTableName = "my_table_v";
@@ -116,14 +122,25 @@ public class DuckDBDaVinciRecordTransformer
   public void onStartVersionIngestion(boolean isCurrentVersion) {
     try (Connection connection = DriverManager.getConnection(duckDBUrl);
         Statement stmt = connection.createStatement()) {
-      String createTableStatement = AvroToSQL.createTableStatement(
-          versionTableName,
+      TableDefinition desiredTableDefinition = AvroToSQL.getTableDefinition(
+          this.versionTableName,
           getKeySchema(),
           getOutputValueSchema(),
           this.columnsToProject,
           FAIL,
           true);
-      stmt.execute(createTableStatement);
+      TableDefinition existingTableDefinition = SQLUtils.getTableDefinition(this.versionTableName, connection);
+      if (existingTableDefinition == null) {
+        LOGGER.info("Table '{}' not found on disk, will create it from scratch", this.versionTableName);
+        String createTableStatement = SQLUtils.createTableStatement(desiredTableDefinition);
+        stmt.execute(createTableStatement);
+      } else if (existingTableDefinition.equals(desiredTableDefinition)) {
+        LOGGER.info("Table '{}' found on disk and its schema is compatible. Will reuse.");
+      } else {
+        // TODO: Handle the wiping and re-bootstrap automatically.
+        throw new VeniceException(
+            "Table '" + this.versionTableName + "' found on disk, but its schema is incompatible. Please wipe.");
+      }
 
       if (isCurrentVersion) {
         // Unable to convert to prepared statement as table and column names can't be parameterized

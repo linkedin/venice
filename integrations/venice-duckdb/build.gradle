@@ -2,6 +2,7 @@ dependencies {
   implementation libraries.avro
   implementation libraries.avroUtilCompatHelper
   implementation libraries.duckdbJdbc
+  api libraries.log4j2api
 
   implementation project(':clients:da-vinci-client')
   implementation project(':internal:venice-client-common')
