@@ -101,18 +101,20 @@ public class DuckDBDaVinciRecordTransformerTest {
 
     try (Connection connection = DriverManager.getConnection(duckDBUrl);
         Statement stmt = connection.createStatement()) {
-      ResultSet rs = stmt.executeQuery("SELECT * FROM current_version");
-      assertTrue(rs.next(), "There should be a first row!");
-      assertEquals(rs.getString(1), "Duck");
-      assertEquals(rs.getString(2), "Goose");
+      try (ResultSet rs = stmt.executeQuery("SELECT * FROM current_version")) {
+        assertTrue(rs.next(), "There should be a first row!");
+        assertEquals(rs.getString(1), "Duck");
+        assertEquals(rs.getString(2), "Goose");
+      }
 
       // Swap here
       recordTransformer_v1.onEndVersionIngestion(2);
 
-      rs = stmt.executeQuery("SELECT * FROM current_version");
-      assertTrue(rs.next(), "There should be a first row!");
-      assertEquals(rs.getString(1), "Goose");
-      assertEquals(rs.getString(2), "Duck");
+      try (ResultSet rs = stmt.executeQuery("SELECT * FROM current_version")) {
+        assertTrue(rs.next(), "There should be a first row!");
+        assertEquals(rs.getString(1), "Goose");
+        assertEquals(rs.getString(2), "Duck");
+      }
     }
   }
 }

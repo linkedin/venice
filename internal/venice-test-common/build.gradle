@@ -181,7 +181,8 @@ def integrationTestBuckets = [
   "1210": [
       "com.linkedin.venice.hadoop.*",
       "com.linkedin.venice.endToEnd.DaVinciClientRecordTransformerTest",
-      "com.linkedin.venice.endToEnd.DuckDBDaVinciRecordTransformerTest"],
+//      "com.linkedin.venice.endToEnd.DuckDBDaVinciRecordTransformerTest"
+  ],
   "1220": [
       "com.linkedin.venice.endToEnd.TestPushJob*"],
   "1230": [

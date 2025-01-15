@@ -23,10 +23,10 @@ public class DuckDBDaVinciRecordTransformer extends DaVinciRecordTransformer<Str
   // ToDo: Don't hardcode the table name. Get it from the storeName
   private static final String baseVersionTableName = "my_table_v";
   private static final Set<String> primaryKeys = Collections.singleton("firstName");
-  private static final String deleteStatementTemplate = "DELETE FROM ? WHERE ? = ?;";
+  private static final String deleteStatementTemplate = "DELETE FROM %s WHERE %s = ?;";
   private static final String createViewStatementTemplate =
-      "CREATE OR REPLACE VIEW current_version AS SELECT * FROM ?;";
-  private static final String dropTableStatementTemplate = "DROP TABLE ?;";
+      "CREATE OR REPLACE VIEW current_version AS SELECT * FROM %s;";
+  private static final String dropTableStatementTemplate = "DROP TABLE %s;";
   private final String duckDBUrl;
   private final String versionTableName;
 
@@ -41,10 +41,9 @@ public class DuckDBDaVinciRecordTransformer extends DaVinciRecordTransformer<Str
     return Schema.create(Schema.Type.STRING);
   }
 
-  // ToDo: Put real schema
   @Override
   public Schema getOutputValueSchema() {
-    Schema valueSchema = SchemaBuilder.record("nameRecord")
+    return SchemaBuilder.record("nameRecord")
         .namespace("example.avro")
         .fields()
         .name("firstName")
@@ -56,7 +55,6 @@ public class DuckDBDaVinciRecordTransformer extends DaVinciRecordTransformer<Str
         .stringType()
         .stringDefault("")
         .endRecord();
-    return valueSchema;
   }
 
   @Override
@@ -85,15 +83,15 @@ public class DuckDBDaVinciRecordTransformer extends DaVinciRecordTransformer<Str
 
   @Override
   public void processDelete(Lazy<String> key) {
+    // Unable to convert to prepared statement as table and column names can't be parameterized
+    // ToDo make delete non-hardcoded on primaryKey
+    String deleteStatement = String.format(deleteStatementTemplate, versionTableName, "firstName");
+
     // ToDo: Instead of creating a connection on every call, have a long-term connection. Maybe a connection pool?
-    try (Connection connection = DriverManager.getConnection(duckDBUrl)) {
-      // ToDo make delete non-hardcoded on primaryKey
-      try (PreparedStatement stmt = connection.prepareStatement(deleteStatementTemplate)) {
-        stmt.setString(1, versionTableName);
-        stmt.setString(2, "firstName");
-        stmt.setString(1, key.get());
-        stmt.execute();
-      }
+    try (Connection connection = DriverManager.getConnection(duckDBUrl);
+        PreparedStatement stmt = connection.prepareStatement(deleteStatement)) {
+      stmt.setString(1, key.get());
+      stmt.execute();
     } catch (SQLException e) {
       throw new RuntimeException(e);
     }
@@ -103,16 +101,14 @@ public class DuckDBDaVinciRecordTransformer extends DaVinciRecordTransformer<Str
   public void onStartVersionIngestion(boolean isCurrentVersion) {
     try (Connection connection = DriverManager.getConnection(duckDBUrl);
         Statement stmt = connection.createStatement()) {
-      // ToDo: Make into prepared statement
       String createTableStatement =
           AvroToSQL.createTableStatement(versionTableName, getOutputValueSchema(), primaryKeys, FAIL);
       stmt.execute(createTableStatement);
 
       if (isCurrentVersion) {
-        try (PreparedStatement stmt1 = connection.prepareStatement(createViewStatementTemplate)) {
-          stmt1.setString(1, versionTableName);
-          stmt1.execute();
-        }
+        // Unable to convert to prepared statement as table and column names can't be parameterized
+        String createViewStatement = String.format(createViewStatementTemplate, versionTableName);
+        stmt.execute(createViewStatement);
       }
     } catch (SQLException e) {
       throw new RuntimeException(e);
@@ -121,19 +117,17 @@ public class DuckDBDaVinciRecordTransformer extends DaVinciRecordTransformer<Str
 
   @Override
   public void onEndVersionIngestion(int currentVersion) {
-    try (Connection connection = DriverManager.getConnection(duckDBUrl)) {
+    try (Connection connection = DriverManager.getConnection(duckDBUrl);
+        Statement stmt = connection.createStatement()) {
       // Swap to current version
       String currentVersionTableName = baseVersionTableName + currentVersion;
-      try (PreparedStatement stmt = connection.prepareStatement(createViewStatementTemplate)) {
-        stmt.setString(1, currentVersionTableName);
-        stmt.execute();
-      }
+      String createViewStatement = String.format(createViewStatementTemplate, currentVersionTableName);
+      stmt.execute(createViewStatement);
 
+      // Unable to convert to prepared statement as table and column names can't be parameterized
       // Drop DuckDB table for storeVersion as it's retired
-      try (PreparedStatement stmt = connection.prepareStatement(dropTableStatementTemplate)) {
-        stmt.setString(1, versionTableName);
-        stmt.execute();
-      }
+      String dropTableStatement = String.format(dropTableStatementTemplate, versionTableName);
+      stmt.execute(dropTableStatement);
     } catch (SQLException e) {
       throw new RuntimeException(e);
     }
