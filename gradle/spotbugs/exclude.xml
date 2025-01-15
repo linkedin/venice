@@ -501,14 +501,14 @@
     <Or>
       <Class name="com.linkedin.venice.duckdb.HelloWorldTest"/>
       <Class name="com.linkedin.venice.duckdb.DuckDBAvroToSQLTest"/>
-      <Class name="com.linkedin.venice.sql.DuckDBDaVinciRecordTransformer"/>
+      <Class name="com.linkedin.venice.duckdb.DuckDBDaVinciRecordTransformer"/>
     </Or>
   </Match>
   <Match>
     <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING"/>
     <Or>
       <Class name="com.linkedin.venice.duckdb.DuckDBAvroToSQLTest"/>
-      <Class name="com.linkedin.venice.sql.DuckDBDaVinciRecordTransformer"/>
+      <Class name="com.linkedin.venice.duckdb.DuckDBDaVinciRecordTransformer"/>
     </Or>
   </Match>
 </FindBugsFilter>
