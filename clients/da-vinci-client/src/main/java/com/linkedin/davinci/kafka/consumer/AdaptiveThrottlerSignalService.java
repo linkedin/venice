@@ -1,5 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.alpini.base.concurrency.Executors;
+import com.linkedin.alpini.base.concurrency.ScheduledExecutorService;
 import com.linkedin.davinci.stats.ingestion.heartbeat.AggregatedHeartbeatLagEntry;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -8,8 +10,6 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -17,14 +17,12 @@ import org.apache.logging.log4j.Logger;
  * based on new signal values.
  */
 public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
-  public static final int DEFAULT_THREAD_SLEEP_INTERVAL_SECONDS = 60;
   public static final double READ_LATENCY_P95_LIMIT = 2.0f;
   public static final long HEARTBEAT_LAG_LIMIT = TimeUnit.MINUTES.toMillis(10);
-  private static final Logger LOGGER = LogManager.getLogger(AdaptiveThrottlerSignalService.class);
   private final MetricsRepository metricsRepository;
   private final HeartbeatMonitoringService heartbeatMonitoringService;
   private final List<Long> throttlerList = new ArrayList<>();
-  private final Thread refreshThread;
+  private final ScheduledExecutorService updateService = Executors.newSingleThreadScheduledExecutor();
   private boolean singleGetLatencySignal = false;
   private boolean currentLeaderMaxHeartbeatLagSignal = false;
   private boolean currentFollowerMaxHeartbeatLagSignal = false;
@@ -36,7 +34,6 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
       HeartbeatMonitoringService heartbeatMonitoringService) {
     this.metricsRepository = metricsRepository;
     this.heartbeatMonitoringService = heartbeatMonitoringService;
-    this.refreshThread = new AdaptiveThrottlerRefreshThread();
   }
 
   public void registerThrottler() {
@@ -44,7 +41,7 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
   }
 
   public void refreshSignalAndThrottler() {
-    // Update all the singals in one shot;
+    // Update all the signals in one shot;
     updateReadLatencySignal();
     updateHeartbeatLatencySignal();
     // Update all the throttler
@@ -94,32 +91,12 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
 
   @Override
   public boolean startInner() throws Exception {
-    refreshThread.start();
+    updateService.scheduleAtFixedRate(this::refreshSignalAndThrottler, 1, 1, TimeUnit.MINUTES);
     return true;
   }
 
   @Override
   public void stopInner() throws Exception {
-    refreshThread.interrupt();
-  }
-
-  private class AdaptiveThrottlerRefreshThread extends Thread {
-    AdaptiveThrottlerRefreshThread() {
-      super("Adaptive-Throttler-Refresh-Service-Thread");
-    }
-
-    @Override
-    public void run() {
-      while (!Thread.interrupted()) {
-        refreshSignalAndThrottler();
-        try {
-          TimeUnit.SECONDS.sleep(DEFAULT_THREAD_SLEEP_INTERVAL_SECONDS);
-        } catch (InterruptedException e) {
-          // We've received an interrupt which is to be expected, so we'll just leave the loop and log
-          break;
-        }
-      }
-      LOGGER.info("AdaptiveThrottlerRefreshThread interrupted!  Shutting down...");
-    }
+    updateService.shutdownNow();
   }
 }
