@@ -19,10 +19,10 @@ public class DaVinciConfigTest {
     public TestRecordTransformer(
         int storeVersion,
         Schema keySchema,
-        Schema originalValueSchema,
+        Schema inputValueSchema,
         Schema outputValueSchema,
         boolean storeRecordsInDaVinci) {
-      super(storeVersion, keySchema, originalValueSchema, outputValueSchema, storeRecordsInDaVinci);
+      super(storeVersion, keySchema, inputValueSchema, outputValueSchema, storeRecordsInDaVinci);
     }
 
     @Override
@@ -42,11 +42,11 @@ public class DaVinciConfigTest {
     assertFalse(config.isRecordTransformerEnabled());
 
     DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-        (_storeVersion, _keySchema, _originalValueSchema, _outputValueSchema) -> new TestRecordTransformer(
-            _storeVersion,
-            _keySchema,
-            _originalValueSchema,
-            _outputValueSchema,
+        (storeVersion, keySchema, inputValueSchema, outputValueSchema) -> new TestRecordTransformer(
+            storeVersion,
+            keySchema,
+            inputValueSchema,
+            outputValueSchema,
             true),
         String.class,
         Schema.create(Schema.Type.INT));
@@ -60,11 +60,11 @@ public class DaVinciConfigTest {
     assertNull(config.getRecordTransformerConfig());
 
     DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-        (_storeVersion, _keySchema, _originalValueSchema, _outputValueSchema) -> new TestRecordTransformer(
-            _storeVersion,
-            _keySchema,
-            _originalValueSchema,
-            _outputValueSchema,
+        (storeVersion, keySchema, inputValueSchema, outputValueSchema) -> new TestRecordTransformer(
+            storeVersion,
+            keySchema,
+            inputValueSchema,
+            outputValueSchema,
             true),
         String.class,
         Schema.create(Schema.Type.INT));

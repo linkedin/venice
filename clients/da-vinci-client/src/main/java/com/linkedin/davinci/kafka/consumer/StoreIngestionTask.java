@@ -475,19 +475,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     if (recordTransformerConfig != null && recordTransformerConfig.getRecordTransformerFunction() != null) {
       Schema keySchema = schemaRepository.getKeySchema(storeName).getSchema();
-      // ToDo: Fetch latest value schema
+      Schema inputValueSchema = schemaRepository.getSupersetOrLatestValueSchema(storeName).getSchema();
+      Schema outputValueSchema = recordTransformerConfig.getOutputValueSchema();
+
       DaVinciRecordTransformer clientRecordTransformer = recordTransformerConfig.getRecordTransformerFunction()
-          .apply(
-              versionNumber,
-              keySchema,
-              recordTransformerConfig.getOutputValueSchema(),
-              recordTransformerConfig.getOutputValueSchema());
+          .apply(versionNumber, keySchema, inputValueSchema, outputValueSchema);
+
       this.recordTransformer = new BlockingDaVinciRecordTransformer(
           clientRecordTransformer,
           keySchema,
-          recordTransformerConfig.getOutputValueSchema(),
-          recordTransformerConfig.getOutputValueSchema(),
+          inputValueSchema,
+          outputValueSchema,
           clientRecordTransformer.getStoreRecordsInDaVinci());
+
       versionedIngestionStats.registerTransformerLatencySensor(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleStartLatency(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleEndLatency(storeName, versionNumber);

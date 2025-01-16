@@ -15,10 +15,10 @@ public class TestSkipResultRecordTransformer extends DaVinciRecordTransformer<In
   public TestSkipResultRecordTransformer(
       int storeVersion,
       Schema keySchema,
-      Schema originalValueSchema,
+      Schema inputValueSchema,
       Schema outputValueSchema,
       boolean storeRecordsInDaVinci) {
-    super(storeVersion, keySchema, originalValueSchema, outputValueSchema, storeRecordsInDaVinci);
+    super(storeVersion, keySchema, inputValueSchema, outputValueSchema, storeRecordsInDaVinci);
   }
 
   @Override

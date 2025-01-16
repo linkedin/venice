@@ -38,13 +38,13 @@ public class DuckDBDaVinciRecordTransformer
   public DuckDBDaVinciRecordTransformer(
       int storeVersion,
       Schema keySchema,
-      Schema originalValueSchema,
+      Schema inputValueSchema,
       Schema outputValueSchema,
       boolean storeRecordsInDaVinci,
       String baseDir,
       String storeNameWithoutVersionInfo,
       Set<String> columnsToProject) {
-    super(storeVersion, keySchema, originalValueSchema, outputValueSchema, storeRecordsInDaVinci);
+    super(storeVersion, keySchema, inputValueSchema, outputValueSchema, storeRecordsInDaVinci);
     this.storeNameWithoutVersionInfo = storeNameWithoutVersionInfo;
     this.versionTableName = buildStoreNameWithVersion(storeVersion);
     this.duckDBUrl = "jdbc:duckdb:" + baseDir + "/" + duckDBFilePath;

@@ -136,11 +136,11 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
         backendConfig)) {
       Set<String> columnsToProject = Collections.emptySet();
       DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-          (_storeVersion, _keySchema, _originalValueSchema, _outputValueSchema) -> new DuckDBDaVinciRecordTransformer(
-              _storeVersion,
-              _keySchema,
-              _originalValueSchema,
-              _outputValueSchema,
+          (storeVersion, keySchema, inputValueSchema, outputValueSchema) -> new DuckDBDaVinciRecordTransformer(
+              storeVersion,
+              keySchema,
+              inputValueSchema,
+              outputValueSchema,
               false,
               tmpDir.getAbsolutePath(),
               storeName,

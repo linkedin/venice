@@ -11,10 +11,10 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
   public TestStringRecordTransformer(
       int storeVersion,
       Schema keySchema,
-      Schema originalValueSchema,
+      Schema inputValueSchema,
       Schema outputValueSchema,
       boolean storeRecordsInDaVinci) {
-    super(storeVersion, keySchema, originalValueSchema, outputValueSchema, storeRecordsInDaVinci);
+    super(storeVersion, keySchema, inputValueSchema, outputValueSchema, storeRecordsInDaVinci);
   }
 
   @Override

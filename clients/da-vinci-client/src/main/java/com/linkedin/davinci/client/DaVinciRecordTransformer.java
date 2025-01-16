@@ -40,28 +40,42 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    */
   private final boolean storeRecordsInDaVinci;
 
+  /**
+   * The key schema, which is immutable.
+   */
   private final Schema keySchema;
-  private final Schema originalValueSchema;
+
+  /**
+   * The value schema before transformation, which is provided by the DaVinciClient.
+   */
+  private final Schema inputValueSchema;
+
+  /**
+   * The value schema after transformation, which is provided by the user.
+   */
   private final Schema outputValueSchema;
 
   private final DaVinciRecordTransformerUtility<K, O> recordTransformerUtility;
 
   /**
    * @param storeVersion the version of the store
+   * @param keySchema the key schema, which is immutable
+   * @param inputValueSchema the value schema before transformation
+   * @param outputValueSchema the value schema after transformation
    * @param storeRecordsInDaVinci set this to false if you intend to store records in a custom storage,
-   *                              and not in the Da Vinci Client.
+   *                              and not in the Da Vinci Client
    */
   public DaVinciRecordTransformer(
       int storeVersion,
       Schema keySchema,
-      Schema originalValueSchema,
+      Schema inputValueSchema,
       Schema outputValueSchema,
       boolean storeRecordsInDaVinci) {
     this.storeVersion = storeVersion;
     this.storeRecordsInDaVinci = storeRecordsInDaVinci;
     this.keySchema = keySchema;
-    // ToDo: Make use of originalValueSchema to support reader/writer schemas
-    this.originalValueSchema = originalValueSchema;
+    // ToDo: Make use of inputValueSchema to support reader/writer schemas
+    this.inputValueSchema = inputValueSchema;
     this.outputValueSchema = outputValueSchema;
     this.recordTransformerUtility = new DaVinciRecordTransformerUtility<>(this);
   }
@@ -215,12 +229,12 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
   }
 
   /**
-   * Returns the schema for the output value used in {@link DaVinciClient}'s operations.
+   * Returns the schema for the input value used in {@link DaVinciClient}'s operations.
    *
    * @return a {@link Schema} corresponding to the type of {@link V}.
    */
-  public final Schema getOriginalValueSchema() {
-    return originalValueSchema;
+  public final Schema getInputValueSchema() {
+    return inputValueSchema;
   }
 
   /**

@@ -24,9 +24,9 @@ import org.apache.avro.Schema;
  */
 public class DaVinciRecordTransformerUtility<K, O> {
   private final DaVinciRecordTransformer recordTransformer;
-  private AvroGenericDeserializer<K> keyDeserializer;
-  private AvroGenericDeserializer<O> outputValueDeserializer;
-  private AvroSerializer<O> outputValueSerializer;
+  private final AvroGenericDeserializer<K> keyDeserializer;
+  private final AvroGenericDeserializer<O> outputValueDeserializer;
+  private final AvroSerializer<O> outputValueSerializer;
 
   public DaVinciRecordTransformerUtility(DaVinciRecordTransformer recordTransformer) {
     this.recordTransformer = recordTransformer;
@@ -122,7 +122,7 @@ public class DaVinciRecordTransformerUtility<K, O> {
       for (iterator.seekToFirst(); iterator.isValid(); iterator.next()) {
         byte[] keyBytes = iterator.key();
         byte[] valueBytes = iterator.value();
-        Lazy<K> lazyKey = Lazy.of(() -> keyDeserializer.deserialize(ByteBuffer.wrap(keyBytes)));
+        Lazy<K> lazyKey = Lazy.of(() -> keyDeserializer.deserialize(keyBytes));
         Lazy<O> lazyValue = Lazy.of(() -> {
           ByteBuffer valueByteBuffer = ByteBuffer.wrap(valueBytes);
           // Skip schema id

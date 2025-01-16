@@ -22,15 +22,10 @@ public class BlockingDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
   public BlockingDaVinciRecordTransformer(
       DaVinciRecordTransformer recordTransformer,
       Schema keySchema,
-      Schema originalValueSchema,
+      Schema inputValueSchema,
       Schema outputValueSchema,
       boolean storeRecordsInDaVinci) {
-    super(
-        recordTransformer.getStoreVersion(),
-        keySchema,
-        originalValueSchema,
-        outputValueSchema,
-        storeRecordsInDaVinci);
+    super(recordTransformer.getStoreVersion(), keySchema, inputValueSchema, outputValueSchema, storeRecordsInDaVinci);
     this.recordTransformer = recordTransformer;
   }
 

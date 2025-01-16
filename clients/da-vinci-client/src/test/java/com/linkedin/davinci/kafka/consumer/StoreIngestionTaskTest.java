@@ -4813,14 +4813,14 @@ public abstract class StoreIngestionTaskTest {
     when(leaderProducedRecordContext.getValueUnion()).thenReturn(put);
     when(leaderProducedRecordContext.getKeyBytes()).thenReturn(putKeyFoo);
 
-    Schema keySchema = Schema.create(Schema.Type.INT);
+    Schema myKeySchema = Schema.create(Schema.Type.INT);
     SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
-    when(keySchemaEntry.getSchema()).thenReturn(keySchema);
+    when(keySchemaEntry.getSchema()).thenReturn(myKeySchema);
     when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
 
-    Schema valueSchema = Schema.create(Schema.Type.STRING);
+    Schema myValueSchema = Schema.create(Schema.Type.STRING);
     SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
-    when(valueSchemaEntry.getSchema()).thenReturn(valueSchema);
+    when(valueSchemaEntry.getSchema()).thenReturn(myValueSchema);
     when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
 
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
@@ -4843,11 +4843,11 @@ public abstract class StoreIngestionTaskTest {
     }, aaConfig);
 
     DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-        (_storeVersion, _keySchema, _originalValueSchema, _outputValueSchema) -> new TestStringRecordTransformer(
-            _storeVersion,
-            _keySchema,
-            _originalValueSchema,
-            _outputValueSchema,
+        (storeVersion, keySchema, inputValueSchema, outputValueSchema) -> new TestStringRecordTransformer(
+            storeVersion,
+            keySchema,
+            inputValueSchema,
+            outputValueSchema,
             true),
         String.class,
         Schema.create(Schema.Type.STRING));
@@ -4885,14 +4885,14 @@ public abstract class StoreIngestionTaskTest {
     when(leaderProducedRecordContext.getValueUnion()).thenReturn(put);
     when(leaderProducedRecordContext.getKeyBytes()).thenReturn(keyBytes);
 
-    Schema keySchema = Schema.create(Schema.Type.INT);
+    Schema myKeySchema = Schema.create(Schema.Type.INT);
     SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
-    when(keySchemaEntry.getSchema()).thenReturn(keySchema);
+    when(keySchemaEntry.getSchema()).thenReturn(myKeySchema);
     when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
 
-    Schema valueSchema = Schema.create(Schema.Type.INT);
+    Schema myValueSchema = Schema.create(Schema.Type.INT);
     SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
-    when(valueSchemaEntry.getSchema()).thenReturn(valueSchema);
+    when(valueSchemaEntry.getSchema()).thenReturn(myValueSchema);
     when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
 
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
@@ -4918,11 +4918,11 @@ public abstract class StoreIngestionTaskTest {
     }, aaConfig);
 
     DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-        (_storeVersion, _keySchema, _originalValueSchema, _outputValueSchema) -> new TestStringRecordTransformer(
-            _storeVersion,
-            _keySchema,
-            _originalValueSchema,
-            _outputValueSchema,
+        (storeVersion, keySchema, inputValueSchema, outputValueSchema) -> new TestStringRecordTransformer(
+            storeVersion,
+            keySchema,
+            inputValueSchema,
+            outputValueSchema,
             true),
         String.class,
         Schema.create(Schema.Type.STRING));
