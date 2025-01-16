@@ -1,35 +1,34 @@
-package com.linkedin.venice.duckdb;
+package com.linkedin.venice.sql;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.venice.utils.Utils;
-import java.io.File;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import org.duckdb.DuckDBAppender;
-import org.duckdb.DuckDBConnection;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 /**
- * The aim of this class is just to test DuckDB itself, without any Venice-ism involved.
+ * The aim of this class is just to test SQL engines, without any Venice-ism involved.
  */
-public class HelloWorldTest {
+public abstract class SQLHelloWorldTest {
+  protected abstract Connection getConnection() throws SQLException;
+
+  protected abstract String getConnectionStringToPersistentDB();
+
   /**
    * Adapted from: https://duckdb.org/docs/api/java.html#querying
    */
   @Test
   public void test() throws SQLException {
-    try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
-        Statement stmt = connection.createStatement()) {
+    try (Connection connection = getConnection(); Statement stmt = connection.createStatement()) {
       // create a table
       stmt.execute(createTableStatement("items", false));
       // insert two items into the table
@@ -53,8 +52,7 @@ public class HelloWorldTest {
    */
   @Test
   public void testVersionSwapViaTableRename() throws SQLException {
-    try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
-        Statement stmt = connection.createStatement()) {
+    try (Connection connection = getConnection(); Statement stmt = connection.createStatement()) {
       // create the current_version table
       stmt.execute(createTableStatement("current_version", false));
       // insert two items into the table
@@ -91,8 +89,7 @@ public class HelloWorldTest {
    */
   @Test
   public void testVersionSwapViaViewAlteration() throws SQLException {
-    try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
-        Statement stmt = connection.createStatement()) {
+    try (Connection connection = getConnection(); Statement stmt = connection.createStatement()) {
       // create the current_version table
       stmt.execute(createTableStatement("my_table_v1", false));
       // insert two items into the table
@@ -133,8 +130,7 @@ public class HelloWorldTest {
 
   @Test
   public void testPrimaryKey() throws SQLException {
-    try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
-        Statement stmt = connection.createStatement()) {
+    try (Connection connection = getConnection(); Statement stmt = connection.createStatement()) {
       // create a table
       stmt.execute(createTableStatement("items", true));
       // insert two items into the table
@@ -150,8 +146,7 @@ public class HelloWorldTest {
 
   @Test
   public void testUpsertStatement() throws SQLException {
-    try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
-        Statement stmt = connection.createStatement()) {
+    try (Connection connection = getConnection(); Statement stmt = connection.createStatement()) {
       // create a table
       stmt.execute(createTableStatement("items", true));
       // insert two items into the table
@@ -184,8 +179,7 @@ public class HelloWorldTest {
 
   @Test(dataProvider = "upsertFlavors")
   public void testUpsertPreparedStatement(String createTable, String upsert) throws SQLException {
-    try (Connection connection = DriverManager.getConnection("jdbc:duckdb:");
-        Statement stmt = connection.createStatement()) {
+    try (Connection connection = getConnection(); Statement stmt = connection.createStatement()) {
       // create a table
       stmt.execute(createTable);
       // insert two items into the table
@@ -210,36 +204,8 @@ public class HelloWorldTest {
   }
 
   @Test
-  public void testAppender() throws SQLException {
-    try (DuckDBConnection connection = (DuckDBConnection) DriverManager.getConnection("jdbc:duckdb:");
-        Statement stmt = connection.createStatement()) {
-      // create a table
-      stmt.execute(createTableStatement("items", true));
-      // insert two items into the table
-      try (DuckDBAppender appender = connection.createAppender(DuckDBConnection.DEFAULT_SCHEMA, "items")) {
-        appender.beginRow();
-        appender.append("jeans");
-        appender.append(20.0);
-        appender.append(1);
-        appender.endRow();
-
-        appender.beginRow();
-        appender.append("hammer");
-        appender.append(42.2);
-        appender.append(2);
-        appender.endRow();
-      }
-
-      try (ResultSet rs = stmt.executeQuery("SELECT * FROM items")) {
-        assertValidityOfResultSet1(rs);
-      }
-    }
-  }
-
-  @Test
   public void testPersistence() throws SQLException {
-    File tmpDir = Utils.getTempDataDirectory();
-    String connectionString = "jdbc:duckdb:" + tmpDir.getAbsolutePath() + "/foo.duckdb";
+    String connectionString = getConnectionStringToPersistentDB();
     System.out.println(connectionString);
     try (Connection connection = DriverManager.getConnection(connectionString);
         Statement stmt = connection.createStatement()) {
@@ -262,7 +228,7 @@ public class HelloWorldTest {
     }
   }
 
-  private String createTableStatement(String tableName, boolean primaryKey) {
+  protected String createTableStatement(String tableName, boolean primaryKey) {
     String pk = primaryKey ? " PRIMARY KEY" : "";
     return "CREATE TABLE " + tableName + " (item VARCHAR" + pk + ", value DECIMAL(10, 2), count INTEGER)";
   }
@@ -280,7 +246,7 @@ public class HelloWorldTest {
     return "INSERT" + orReplace + " INTO " + tableName + " VALUES ('jeans', 20.0, 2), ('t-shirt', 42.2, 1)";
   }
 
-  private void assertValidityOfResultSet1(ResultSet rs) throws SQLException {
+  protected void assertValidityOfResultSet1(ResultSet rs) throws SQLException {
     assertTrue(rs.next(), "There should be a first row!");
     assertEquals(rs.getString(1), "jeans");
     assertEquals(rs.getInt(3), 1);

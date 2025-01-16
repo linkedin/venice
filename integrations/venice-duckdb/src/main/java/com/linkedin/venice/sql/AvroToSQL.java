@@ -1,6 +1,7 @@
 package com.linkedin.venice.sql;
 
 import java.sql.JDBCType;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.LinkedHashSet;
@@ -26,7 +27,7 @@ public class AvroToSQL {
   private static final Map<Schema.Type, JDBCType> AVRO_TO_JDBC_TYPE_MAPPING;
 
   static {
-    Map<Schema.Type, JDBCType> avroToJdbc = new EnumMap(Schema.Type.class);
+    Map<Schema.Type, JDBCType> avroToJdbc = new EnumMap<>(Schema.Type.class);
 
     // avroToJdbc.put(Schema.Type.UNION, JDBCType.?); // Unions need special handling, see below
     avroToJdbc.put(Schema.Type.FIXED, JDBCType.BINARY);
@@ -59,29 +60,17 @@ public class AvroToSQL {
      */
   }
 
-  /**
-   * @param tableName the name of the table in the CREATE TABLE statement
-   * @param keySchema the Venice key schema
-   * @param valueSchema the Venice value schema
-   * @param columnsToProject if empty, then all columns are included, otherwise, only the specified ones
-   * @param unsupportedTypeHandling the policy of whether to skip or fail when encountering unsupported types
-   * @param primaryKey whether to define a PRIMARY KEY constraint on the table, including all key schema columns
-   * @return
-   */
   @Nonnull
-  public static String createTableStatement(
+  public static TableDefinition getTableDefinition(
       @Nonnull String tableName,
       @Nonnull Schema keySchema,
       @Nonnull Schema valueSchema,
       @Nonnull Set<String> columnsToProject,
       @Nonnull UnsupportedTypeHandling unsupportedTypeHandling,
       boolean primaryKey) {
-    Set<Schema.Field> allColumns = combineColumns(keySchema, valueSchema, columnsToProject);
-    StringBuffer stringBuffer = new StringBuffer();
-    stringBuffer.append("CREATE TABLE " + cleanTableName(tableName) + "(");
-    boolean firstColumn = true;
-
-    for (Schema.Field field: allColumns) {
+    List<ColumnDefinition> columnDefinitions = new ArrayList<>();
+    int jdbcIndex = 1;
+    for (Schema.Field field: combineColumns(keySchema, valueSchema, columnsToProject)) {
       JDBCType correspondingType = getCorrespondingType(field);
       if (correspondingType == null) {
         switch (unsupportedTypeHandling) {
@@ -97,31 +86,19 @@ public class AvroToSQL {
         }
       }
 
-      if (firstColumn) {
-        firstColumn = false;
-      } else {
-        stringBuffer.append(", ");
-      }
-
-      stringBuffer.append(cleanColumnName(field.name()) + " " + correspondingType.name());
+      boolean isPrimaryKey = primaryKey && keySchema.getFields().contains(field);
+      columnDefinitions.add(
+          new ColumnDefinition(
+              SQLUtils.cleanColumnName(field.name()),
+              correspondingType,
+              true, // TODO: plug nullability
+              isPrimaryKey ? IndexType.PRIMARY_KEY : null,
+              null, // TODO: plug default (if necessary)...
+              null,
+              jdbcIndex++));
     }
 
-    firstColumn = true;
-    if (primaryKey) {
-      stringBuffer.append(", PRIMARY KEY(");
-      for (Schema.Field pkColumn: keySchema.getFields()) {
-        if (firstColumn) {
-          firstColumn = false;
-        } else {
-          stringBuffer.append(", ");
-        }
-        stringBuffer.append(cleanColumnName(pkColumn.name()));
-      }
-      stringBuffer.append(")");
-    }
-    stringBuffer.append(");");
-
-    return stringBuffer.toString();
+    return new TableDefinition(tableName, columnDefinitions);
   }
 
   @Nonnull
@@ -132,7 +109,7 @@ public class AvroToSQL {
       @Nonnull Set<String> columnsToProject) {
     Set<Schema.Field> allColumns = combineColumns(keySchema, valueSchema, columnsToProject);
     StringBuffer stringBuffer = new StringBuffer();
-    stringBuffer.append("INSERT OR REPLACE INTO " + cleanTableName(tableName) + " VALUES (");
+    stringBuffer.append("INSERT OR REPLACE INTO " + SQLUtils.cleanTableName(tableName) + " VALUES (");
     boolean firstColumn = true;
 
     for (Schema.Field field: allColumns) {
@@ -187,22 +164,6 @@ public class AvroToSQL {
     return AVRO_TO_JDBC_TYPE_MAPPING.get(fieldType);
   }
 
-  /**
-   * This function should encapsulate the handling of any illegal characters (by either failing or converting them).
-   */
-  @Nonnull
-  private static String cleanTableName(@Nonnull String avroRecordName) {
-    return Objects.requireNonNull(avroRecordName);
-  }
-
-  /**
-   * This function should encapsulate the handling of any illegal characters (by either failing or converting them).
-   */
-  @Nonnull
-  private static String cleanColumnName(@Nonnull String avroFieldName) {
-    return Objects.requireNonNull(avroFieldName);
-  }
-
   @Nonnull
   static Set<Schema.Field> combineColumns(
       @Nonnull Schema keySchema,
@@ -216,9 +177,7 @@ public class AvroToSQL {
       throw new IllegalArgumentException("Only Avro records can have a corresponding CREATE TABLE statement.");
     }
     Set<Schema.Field> allColumns = new LinkedHashSet<>(keySchema.getFields().size() + valueSchema.getFields().size());
-    for (Schema.Field field: keySchema.getFields()) {
-      allColumns.add(field);
-    }
+    allColumns.addAll(keySchema.getFields());
     for (Schema.Field field: valueSchema.getFields()) {
       if (columnsToProject.isEmpty() || columnsToProject.contains(field.name())) {
         if (!allColumns.add(field)) {
