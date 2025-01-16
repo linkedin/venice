@@ -60,7 +60,6 @@ import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSe
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.SegmentStatus;
@@ -73,7 +72,6 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -81,7 +79,6 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.SimplePartitioner;
 import com.linkedin.venice.unit.kafka.consumer.MockInMemoryConsumer;
@@ -100,22 +97,25 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -123,7 +123,10 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.mockito.AdditionalAnswers;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
+import org.mockito.internal.verification.VerificationModeFactory;
+import org.mockito.verification.Timeout;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -235,10 +238,6 @@ public class AdminConsumptionTaskTest {
         new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
 
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-    PubSubMessageDeserializer pubSubMessageDeserializer = new PubSubMessageDeserializer(
-        new OptimizedKafkaValueSerializer(),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
 
     return new AdminConsumptionTask(
         clusterName,
@@ -255,7 +254,6 @@ public class AdminConsumptionTaskTest {
         adminConsumptionCycleTimeoutMs,
         maxWorkerThreadPoolSize,
         pubSubTopicRepository,
-        pubSubMessageDeserializer,
         "dc-0");
   }
 
@@ -1753,6 +1751,45 @@ public class AdminConsumptionTaskTest {
         false,
         0);
 
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+  }
+
+  /**
+   * In some edge cases the AdminExecutionTask may be slow or stuck and eventually timeout. We want to ensure the
+   * unprocessed admin messages are queued up again during the next cycle.
+   */
+  @Test(timeOut = TIMEOUT)
+  public void testTimedOutAdminExecutionTask() throws IOException, InterruptedException, ExecutionException {
+    ExecutorService mockExecutorService = mock(ExecutorService.class);
+    AdminConsumptionStats mockStats = mock(AdminConsumptionStats.class);
+    List<Future<Void>> results = new ArrayList<>();
+    Future<Void> mockFuture = mock(Future.class);
+    doThrow(new CancellationException("timed out")).when(mockFuture).get();
+    results.add(mockFuture);
+    doReturn(results).when(mockExecutorService).invokeAll(any(), anyLong(), any());
+    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false, mockStats, 100);
+    task.setAdminExecutionTaskExecutorService(mockExecutorService);
+    veniceWriter.put(
+        emptyKeyBytes,
+        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1L),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    executor.submit(task);
+    ArgumentCaptor<Collection<Callable<Void>>> tasksCaptor = ArgumentCaptor.forClass(Collection.class);
+    verify(mockExecutorService, new Timeout(5000, VerificationModeFactory.times(2)))
+        .invokeAll(tasksCaptor.capture(), anyLong(), any());
+    // The timed out or cancelled execution task should still be queued up again and again
+    for (Collection<Callable<Void>> tasks: tasksCaptor.getAllValues()) {
+      Assert.assertEquals(tasks.size(), 1);
+      Assert.assertTrue(tasks.iterator().next() instanceof AdminExecutionTask);
+      AdminExecutionTask adminExecutionTask = (AdminExecutionTask) tasks.iterator().next();
+      Assert.assertEquals(adminExecutionTask.getStoreName(), storeName);
+    }
+    verify(mockStats, atLeastOnce()).recordPendingAdminMessagesCount(1d);
+    verify(mockStats, atLeastOnce()).recordStoresWithPendingAdminMessagesCount(1d);
+    Assert.assertNotNull(task.getLastExceptionForStore(storeName));
+    Assert.assertTrue(task.getLastExceptionForStore(storeName).getMessage().contains("Could not finish processing"));
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
