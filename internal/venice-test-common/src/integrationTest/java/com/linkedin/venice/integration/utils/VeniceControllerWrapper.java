@@ -378,6 +378,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           .setD2Client(d2Client)
           .setRouterClientConfig(consumerClientConfig.orElse(null))
           .setExternalSupersetSchemaGenerator(supersetSchemaGenerator.orElse(null))
+          .setAccessController(options.getDynamicAccessController())
           .build();
       VeniceController veniceController = new VeniceController(ctx);
       return new VeniceControllerWrapper(

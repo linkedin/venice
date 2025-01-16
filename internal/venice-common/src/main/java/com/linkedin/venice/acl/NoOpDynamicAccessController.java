@@ -14,7 +14,7 @@ public class NoOpDynamicAccessController implements DynamicAccessController {
 
   public static final NoOpDynamicAccessController INSTANCE = new NoOpDynamicAccessController();
 
-  private NoOpDynamicAccessController() {
+  protected NoOpDynamicAccessController() {
   }
 
   @Override

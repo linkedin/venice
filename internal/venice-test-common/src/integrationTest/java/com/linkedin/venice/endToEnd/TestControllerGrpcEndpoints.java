@@ -3,8 +3,11 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_GRPC_SERVER_ENABLED;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 
+import com.linkedin.venice.acl.NoOpDynamicAccessController;
+import com.linkedin.venice.authorization.Method;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.grpc.GrpcUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -27,7 +30,12 @@ import io.grpc.ChannelCredentials;
 import io.grpc.Grpc;
 import io.grpc.InsecureChannelCredentials;
 import io.grpc.ManagedChannel;
+import io.grpc.StatusRuntimeException;
+import java.security.cert.X509Certificate;
 import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -36,15 +44,18 @@ import org.testng.annotations.Test;
 public class TestControllerGrpcEndpoints {
   private VeniceClusterWrapper veniceCluster;
   private SSLFactory sslFactory;
+  private MockDynamicAccessController mockDynamicAccessController;
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {
+    mockDynamicAccessController = new MockDynamicAccessController();
     sslFactory = SslUtils.getVeniceLocalSslFactory();
     Properties properties = new Properties();
     properties.put(CONTROLLER_GRPC_SERVER_ENABLED, true);
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfRouters(1)
         .numberOfServers(1)
+        .accessController(mockDynamicAccessController)
         .extraProperties(properties)
         .build();
     veniceCluster = ServiceFactory.getVeniceCluster(options);
@@ -123,15 +134,43 @@ public class TestControllerGrpcEndpoints {
         .setValueSchema("\"string\"")
         .build();
 
-    CreateStoreGrpcResponse response = blockingStub.createStore(createStoreGrpcRequest);
-    assertNotNull(response, "Response should not be null");
-    assertNotNull(response.getClusterStoreInfo(), "ClusterStoreInfo should not be null");
-    assertEquals(response.getClusterStoreInfo().getClusterName(), veniceCluster.getClusterName());
-    assertEquals(response.getClusterStoreInfo().getStoreName(), storeName);
+    // Case 1: User not in allowlist for the resource
+    mockDynamicAccessController.removeResourceFromAllowList(storeName);
+    assertFalse(
+        mockDynamicAccessController.isAllowlistUsers(null, storeName, Method.GET.name()),
+        "User should not be in allowlist");
+    StatusRuntimeException exception =
+        Assert.expectThrows(StatusRuntimeException.class, () -> blockingStub.createStore(createStoreGrpcRequest));
+    assertEquals(exception.getStatus().getCode(), io.grpc.Status.Code.PERMISSION_DENIED);
+
+    // Case 2: Allowlist user
+    mockDynamicAccessController.addResourceToAllowList(storeName);
+    CreateStoreGrpcResponse okResponse = blockingStub.createStore(createStoreGrpcRequest);
+    assertNotNull(okResponse, "Response should not be null");
+    assertNotNull(okResponse.getClusterStoreInfo(), "ClusterStoreInfo should not be null");
+    assertEquals(okResponse.getClusterStoreInfo().getClusterName(), veniceCluster.getClusterName());
+    assertEquals(okResponse.getClusterStoreInfo().getStoreName(), storeName);
 
     veniceCluster.useControllerClient(controllerClient -> {
       StoreResponse storeResponse = TestUtils.assertCommand(controllerClient.getStore(storeName));
       assertNotNull(storeResponse.getStore(), "Store should not be null");
     });
+  }
+
+  private static class MockDynamicAccessController extends NoOpDynamicAccessController {
+    private final Set<String> resourcesInAllowList = ConcurrentHashMap.newKeySet();
+
+    @Override
+    public boolean isAllowlistUsers(X509Certificate clientCert, String resource, String method) {
+      return resourcesInAllowList.contains(resource);
+    }
+
+    public void addResourceToAllowList(String resource) {
+      resourcesInAllowList.add(resource);
+    }
+
+    public void removeResourceFromAllowList(String resource) {
+      resourcesInAllowList.remove(resource);
+    }
   }
 }
