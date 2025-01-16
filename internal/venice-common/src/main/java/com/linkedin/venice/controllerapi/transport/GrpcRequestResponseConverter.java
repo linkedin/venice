@@ -33,7 +33,7 @@ public class GrpcRequestResponseConverter {
    *
    * @param code            The gRPC status code representing the error (e.g., {@link io.grpc.Status.Code}).
    * @param errorType       The specific controller error type represented by {@link ControllerGrpcErrorType}.
-   * @param e               The exception containing the error message.
+   * @param errorMessage    The error message to be included in the response.
    * @param clusterName     The name of the cluster associated with the error (can be null).
    * @param storeName       The name of the store associated with the error (can be null).
    * @param responseObserver The {@link StreamObserver} to send the error response back to the client.
@@ -62,14 +62,14 @@ public class GrpcRequestResponseConverter {
   public static void sendErrorResponse(
       Code code,
       ControllerGrpcErrorType errorType,
-      Exception e,
+      String errorMessage,
       String clusterName,
       String storeName,
       StreamObserver<?> responseObserver) {
     VeniceControllerGrpcErrorInfo.Builder errorInfoBuilder =
         VeniceControllerGrpcErrorInfo.newBuilder().setStatusCode(code.value()).setErrorType(errorType);
-    if (e.getMessage() != null) {
-      errorInfoBuilder.setErrorMessage(e.getMessage());
+    if (errorMessage != null) {
+      errorInfoBuilder.setErrorMessage(errorMessage);
     }
     if (clusterName != null) {
       errorInfoBuilder.setClusterName(clusterName);
@@ -83,6 +83,22 @@ public class GrpcRequestResponseConverter {
 
     // Send the error response
     responseObserver.onError(StatusProto.toStatusRuntimeException(status));
+  }
+
+  public static void sendErrorResponse(
+      Code code,
+      ControllerGrpcErrorType errorType,
+      Exception exception,
+      String clusterName,
+      String storeName,
+      StreamObserver<?> responseObserver) {
+    sendErrorResponse(
+        code,
+        errorType,
+        exception != null ? exception.getMessage() : "",
+        clusterName,
+        storeName,
+        responseObserver);
   }
 
   /**

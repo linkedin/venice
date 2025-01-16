@@ -1,9 +1,11 @@
 package com.linkedin.venice.controller.server;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -51,10 +53,13 @@ public class VeniceControllerGrpcServiceImplTest {
   private ManagedChannel grpcChannel;
   private VeniceControllerRequestHandler requestHandler;
   private VeniceControllerGrpcServiceBlockingStub blockingStub;
+  private VeniceControllerAccessManager controllerAccessManager;
 
   @BeforeMethod
   public void setUp() throws Exception {
     requestHandler = mock(VeniceControllerRequestHandler.class);
+    controllerAccessManager = mock(VeniceControllerAccessManager.class);
+    when(requestHandler.getControllerAccessManager()).thenReturn(controllerAccessManager);
 
     // Create a unique server name for the in-process server
     String serverName = InProcessServerBuilder.generateName();
@@ -185,6 +190,7 @@ public class VeniceControllerGrpcServiceImplTest {
 
   @Test
   public void testCreateStore() {
+    when(controllerAccessManager.isAllowListUser(anyString(), any())).thenReturn(true);
     CreateStoreGrpcResponse response = CreateStoreGrpcResponse.newBuilder()
         .setClusterStoreInfo(
             ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build())
@@ -232,5 +238,17 @@ public class VeniceControllerGrpcServiceImplTest {
     assertNotNull(errorInfo3, "Error info should not be null");
     assertEquals(errorInfo3.getErrorType(), ControllerGrpcErrorType.GENERAL_ERROR);
     assertTrue(errorInfo3.getErrorMessage().contains("Failed to create store"));
+
+    // Case 4: Permission denied
+    when(controllerAccessManager.isAllowListUser(anyString(), any())).thenReturn(false);
+    StatusRuntimeException e4 = expectThrows(StatusRuntimeException.class, () -> blockingStub.createStore(request));
+    assertNotNull(e4.getStatus(), "Status should not be null");
+    assertEquals(e4.getStatus().getCode(), Status.PERMISSION_DENIED.getCode());
+    VeniceControllerGrpcErrorInfo errorInfo4 = GrpcRequestResponseConverter.parseControllerGrpcError(e4);
+    assertNotNull(errorInfo4, "Error info should not be null");
+    assertEquals(errorInfo4.getErrorType(), ControllerGrpcErrorType.UNAUTHORIZED);
+    assertTrue(
+        errorInfo4.getErrorMessage().contains("Only admin users are allowed to run"),
+        "Acual: " + errorInfo4.getErrorMessage());
   }
 }

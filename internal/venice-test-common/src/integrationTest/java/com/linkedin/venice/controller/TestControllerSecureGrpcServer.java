@@ -1,9 +1,10 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.controller.server.grpc.ControllerGrpcSslSessionInterceptor.CLIENT_CERTIFICATE_CONTEXT_KEY;
+import static com.linkedin.venice.controller.server.grpc.ControllerGrpcSslSessionInterceptor.GRPC_CONTROLLER_CLIENT_DETAILS;
 import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.controller.server.grpc.ControllerGrpcSslSessionInterceptor;
+import com.linkedin.venice.controller.server.grpc.GrpcControllerClientDetails;
 import com.linkedin.venice.grpc.GrpcUtils;
 import com.linkedin.venice.grpc.VeniceGrpcServer;
 import com.linkedin.venice.grpc.VeniceGrpcServerConfig;
@@ -18,7 +19,6 @@ import io.grpc.ChannelCredentials;
 import io.grpc.Context;
 import io.grpc.Grpc;
 import io.grpc.ManagedChannel;
-import java.security.cert.X509Certificate;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -57,9 +57,12 @@ public class TestControllerSecureGrpcServer {
     public void discoverClusterForStore(
         DiscoverClusterGrpcRequest request,
         io.grpc.stub.StreamObserver<DiscoverClusterGrpcResponse> responseObserver) {
-      X509Certificate clientCert = CLIENT_CERTIFICATE_CONTEXT_KEY.get(Context.current());
-      if (clientCert == null) {
+      GrpcControllerClientDetails clientDetails = GRPC_CONTROLLER_CLIENT_DETAILS.get(Context.current());
+      if (clientDetails.getClientCertificate() == null) {
         throw new RuntimeException("Client cert is null");
+      }
+      if (clientDetails.getClientAddress() == null) {
+        throw new RuntimeException("Client address is null");
       }
       DiscoverClusterGrpcResponse discoverClusterGrpcResponse =
           DiscoverClusterGrpcResponse.newBuilder().setClusterName("test-cluster").build();
