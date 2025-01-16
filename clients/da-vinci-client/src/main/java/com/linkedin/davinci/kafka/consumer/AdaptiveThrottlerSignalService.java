@@ -58,8 +58,9 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
   void updateReadLatencySignal() {
     Metric hostSingleGetLatencyP99Metric = metricsRepository.getMetric(SINGLE_GET_LATENCY_P99_METRIC_NAME);
     if (hostSingleGetLatencyP99Metric != null) {
-      double hostSingleGetLatencyP99 = metricsRepository.getMetric(SINGLE_GET_LATENCY_P99_METRIC_NAME).value();
+      double hostSingleGetLatencyP99 = hostSingleGetLatencyP99Metric.value();
       singleGetLatencySignal = hostSingleGetLatencyP99 > singleGetLatencyP99Threshold;
+      LOGGER.info("Retrieved single get latency p99 value: {}", hostSingleGetLatencyP99);
     }
     LOGGER.info("Update read latency signal. singleGetLatency: {}", singleGetLatencySignal);
   }
