@@ -4822,6 +4822,7 @@ public abstract class StoreIngestionTaskTest {
     SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
     when(valueSchemaEntry.getSchema()).thenReturn(myValueSchema);
     when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
+    when(mockSchemaRepo.getSupersetOrLatestValueSchema(eq(storeNameWithoutVersionInfo))).thenReturn(valueSchemaEntry);
 
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
       TestUtils.waitForNonDeterministicAssertion(
@@ -4894,6 +4895,7 @@ public abstract class StoreIngestionTaskTest {
     SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
     when(valueSchemaEntry.getSchema()).thenReturn(myValueSchema);
     when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
+    when(mockSchemaRepo.getSupersetOrLatestValueSchema(eq(storeNameWithoutVersionInfo))).thenReturn(valueSchemaEntry);
 
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
       TestUtils.waitForNonDeterministicAssertion(
