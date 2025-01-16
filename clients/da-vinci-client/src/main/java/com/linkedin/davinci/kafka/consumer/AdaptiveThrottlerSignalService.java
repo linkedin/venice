@@ -10,6 +10,8 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -17,11 +19,12 @@ import java.util.concurrent.TimeUnit;
  * based on new signal values.
  */
 public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
+  private static final Logger LOGGER = LogManager.getLogger(AdaptiveThrottlerSignalService.class);
   public static final double READ_LATENCY_P95_LIMIT = 2.0f;
   public static final long HEARTBEAT_LAG_LIMIT = TimeUnit.MINUTES.toMillis(10);
   private final MetricsRepository metricsRepository;
   private final HeartbeatMonitoringService heartbeatMonitoringService;
-  private final List<Long> throttlerList = new ArrayList<>();
+  private final List<VeniceAdaptiveIngestionThrottler> throttlerList = new ArrayList<>();
   private final ScheduledExecutorService updateService = Executors.newSingleThreadScheduledExecutor();
   private boolean singleGetLatencySignal = false;
   private boolean currentLeaderMaxHeartbeatLagSignal = false;
@@ -36,8 +39,8 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
     this.heartbeatMonitoringService = heartbeatMonitoringService;
   }
 
-  public void registerThrottler() {
-    // TODO: Add the throttler into list.
+  public void registerThrottler(VeniceAdaptiveIngestionThrottler adaptiveIngestionThrottler) {
+    throttlerList.add(adaptiveIngestionThrottler);
   }
 
   public void refreshSignalAndThrottler() {
@@ -45,7 +48,7 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
     updateReadLatencySignal();
     updateHeartbeatLatencySignal();
     // Update all the throttler
-    // TODO: for each throttler, apply the signal();
+    throttlerList.forEach(VeniceAdaptiveIngestionThrottler::checkSignalAndAdjustThrottler);
   }
 
   void updateReadLatencySignal() {
@@ -55,6 +58,7 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
           metricsRepository.getMetric("total--success_request_latency.95thPercentile").value();
       singleGetLatencySignal = hostSingleGetLatencyP95 > READ_LATENCY_P95_LIMIT;
     }
+    LOGGER.info("Update read latency signal. singleGetLatency: {}", singleGetLatencySignal);
   }
 
   void updateHeartbeatLatencySignal() {
@@ -67,6 +71,13 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
         maxFollowerHeartbeatLag.getCurrentVersionHeartbeatLag() > HEARTBEAT_LAG_LIMIT;
     nonCurrentFollowerMaxHeartbeatLagSignal =
         maxFollowerHeartbeatLag.getNonCurrentVersionHeartbeatLag() > HEARTBEAT_LAG_LIMIT;
+    LOGGER.info(
+        "Update heartbeat signal. currentLeader: {}, currentFollower: {}, nonCurrentLeader: {}, nonCurrentFollower: {}",
+        currentLeaderMaxHeartbeatLagSignal,
+        currentFollowerMaxHeartbeatLagSignal,
+        nonCurrentLeaderMaxHeartbeatLagSignal,
+        nonCurrentFollowerMaxHeartbeatLagSignal);
+
   }
 
   public boolean isSingleGetLatencySignalActive() {
