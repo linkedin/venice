@@ -41,7 +41,7 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
   private final boolean storeRecordsInDaVinci;
 
   /**
-   * The key schema, which is immutable.
+   * The key schema, which is immutable inside DaVinciClient. Users can modify the key if they are storing records in an external storage engine, but this must be managed by the user.
    */
   private final Schema keySchema;
 
@@ -59,7 +59,7 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
 
   /**
    * @param storeVersion the version of the store
-   * @param keySchema the key schema, which is immutable
+   * @param keySchema the key schema, which is immutable inside DaVinciClient. Users can modify the key if they are storing records in an external storage engine, but this must be managed by the user
    * @param inputValueSchema the value schema before transformation
    * @param outputValueSchema the value schema after transformation
    * @param storeRecordsInDaVinci set this to false if you intend to store records in a custom storage,
