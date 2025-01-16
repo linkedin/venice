@@ -44,7 +44,7 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
     boosterSuppliers.add(supplier);
   }
 
-  private void checkSignalAndAdjustThrottler() {
+  public void checkSignalAndAdjustThrottler() {
     boolean hasLimitedRate = false;
     for (BooleanSupplier supplier: limiterSuppliers) {
       if (supplier.getAsBoolean()) {
@@ -66,5 +66,10 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
         }
       }
     }
+  }
+
+  // TEST
+  public int getCurrentThrottlerIndex() {
+    return currentThrottlerIndex;
   }
 }
