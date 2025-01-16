@@ -11,7 +11,7 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
   private final List<BooleanSupplier> limiterSuppliers = new ArrayList<>();
   private final List<BooleanSupplier> boosterSuppliers = new ArrayList<>();
 
-  private final int MAX_THROTTLERS = 7;
+  private final static int MAX_THROTTLERS = 7;
   private final List<EventThrottler> eventThrottlers = new ArrayList<>(MAX_THROTTLERS);
 
   private int currentThrottlerIndex = 3;
