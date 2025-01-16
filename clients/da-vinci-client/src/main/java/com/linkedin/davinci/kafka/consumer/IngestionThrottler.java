@@ -72,8 +72,6 @@ public class IngestionThrottler implements Closeable {
           "kafka_consumption_records_count");
       globalRecordAdaptiveIngestionThrottler
           .registerLimiterSignal(adaptiveThrottlerSignalService::isSingleGetLatencySignalActive);
-      globalRecordAdaptiveIngestionThrottler
-          .registerLimiterSignal(adaptiveThrottlerSignalService::isCurrentLeaderMaxHeartbeatLagSignalActive);
       adaptiveThrottlerSignalService.registerThrottler(globalRecordAdaptiveIngestionThrottler);
     } else {
       globalRecordAdaptiveIngestionThrottler = null;
