@@ -52,7 +52,9 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.Collections;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
@@ -117,7 +119,7 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
     DaVinciConfig clientConfig = new DaVinciConfig();
 
     File tmpDir = Utils.getTempDataDirectory();
-    String storeName = Utils.getUniqueString("test-store");
+    String storeName = Utils.getUniqueString("test_store");
     boolean pushStatusStoreEnabled = false;
     boolean chunkingEnabled = false;
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
@@ -132,6 +134,7 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
         backendConfig)) {
+      Set<String> columnsToProject = Collections.emptySet();
       DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
           (_storeVersion, _keySchema, _originalValueSchema, _outputValueSchema) -> new DuckDBDaVinciRecordTransformer(
               _storeVersion,
@@ -139,7 +142,9 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
               _originalValueSchema,
               _outputValueSchema,
               false,
-              tmpDir.getAbsolutePath()),
+              tmpDir.getAbsolutePath(),
+              storeName,
+              columnsToProject),
           GenericRecord.class,
           NAME_RECORD_V1_SCHEMA);
       clientConfig.setRecordTransformerConfig(recordTransformerConfig);

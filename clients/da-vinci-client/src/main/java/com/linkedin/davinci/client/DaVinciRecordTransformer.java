@@ -40,8 +40,9 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    */
   private final boolean storeRecordsInDaVinci;
 
-  private final Schema outputValueSchema;
   private final Schema keySchema;
+  private final Schema originalValueSchema;
+  private final Schema outputValueSchema;
 
   private final DaVinciRecordTransformerUtility<K, O> recordTransformerUtility;
 
@@ -59,6 +60,8 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
     this.storeVersion = storeVersion;
     this.storeRecordsInDaVinci = storeRecordsInDaVinci;
     this.keySchema = keySchema;
+    // ToDo: Make use of originalValueSchema to support reader/writer schemas
+    this.originalValueSchema = originalValueSchema;
     this.outputValueSchema = outputValueSchema;
     this.recordTransformerUtility = new DaVinciRecordTransformerUtility<>(this);
   }

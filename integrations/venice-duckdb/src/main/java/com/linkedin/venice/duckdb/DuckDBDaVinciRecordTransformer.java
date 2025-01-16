@@ -12,7 +12,6 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.Collections;
 import java.util.Set;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -21,29 +20,29 @@ import org.apache.avro.generic.GenericRecord;
 public class DuckDBDaVinciRecordTransformer
     extends DaVinciRecordTransformer<GenericRecord, GenericRecord, GenericRecord> {
   private static final String duckDBFilePath = "my_database.duckdb";
-  // ToDo: Don't hardcode the table name. Get it from the storeName
-  private static final String baseVersionTableName = "my_table_v";
   private static final String deleteStatementTemplate = "DELETE FROM %s WHERE %s = ?;";
   private static final String createViewStatementTemplate =
       "CREATE OR REPLACE VIEW current_version AS SELECT * FROM %s;";
   private static final String dropTableStatementTemplate = "DROP TABLE %s;";
-  private final String duckDBUrl;
+  private final String storeNameWithoutVersionInfo;
   private final String versionTableName;
+  private final String duckDBUrl;
+  private final Set<String> columnsToProject;
 
-  /** TODO: Make configurable */
-  private final Set<String> columnsToProject = Collections.emptySet();
-
-  // TODO: Let key and value schemas get passed in during construction, then remove the hard-coded ones.
   public DuckDBDaVinciRecordTransformer(
       int storeVersion,
       Schema keySchema,
       Schema originalValueSchema,
       Schema outputValueSchema,
       boolean storeRecordsInDaVinci,
-      String baseDir) {
+      String baseDir,
+      String storeNameWithoutVersionInfo,
+      Set<String> columnsToProject) {
     super(storeVersion, keySchema, originalValueSchema, outputValueSchema, storeRecordsInDaVinci);
-    versionTableName = baseVersionTableName + storeVersion;
-    duckDBUrl = "jdbc:duckdb:" + baseDir + "/" + duckDBFilePath;
+    this.storeNameWithoutVersionInfo = storeNameWithoutVersionInfo;
+    this.versionTableName = buildStoreNameWithVersion(storeVersion);
+    this.duckDBUrl = "jdbc:duckdb:" + baseDir + "/" + duckDBFilePath;
+    this.columnsToProject = columnsToProject;
   }
 
   @Override
@@ -118,7 +117,7 @@ public class DuckDBDaVinciRecordTransformer
     try (Connection connection = DriverManager.getConnection(duckDBUrl);
         Statement stmt = connection.createStatement()) {
       // Swap to current version
-      String currentVersionTableName = baseVersionTableName + currentVersion;
+      String currentVersionTableName = buildStoreNameWithVersion(currentVersion);
       String createViewStatement = String.format(createViewStatementTemplate, currentVersionTableName);
       stmt.execute(createViewStatement);
 
@@ -133,5 +132,9 @@ public class DuckDBDaVinciRecordTransformer
 
   public String getDuckDBUrl() {
     return duckDBUrl;
+  }
+
+  public String buildStoreNameWithVersion(int version) {
+    return storeNameWithoutVersionInfo + "_v" + version;
   }
 }

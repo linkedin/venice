@@ -17,6 +17,8 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Collections;
+import java.util.Set;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -27,6 +29,8 @@ import org.testng.annotations.Test;
 
 public class DuckDBDaVinciRecordTransformerTest {
   static final int storeVersion = 1;
+  static final String storeName = "test_store";
+  private final Set<String> columnsToProject = Collections.emptySet();
 
   @BeforeMethod
   @AfterClass
@@ -47,7 +51,9 @@ public class DuckDBDaVinciRecordTransformerTest {
         NAME_RECORD_V1_SCHEMA,
         NAME_RECORD_V1_SCHEMA,
         false,
-        tempDir);
+        tempDir,
+        storeName,
+        columnsToProject);
 
     Schema keySchema = recordTransformer.getKeySchema();
     assertEquals(keySchema.getType(), Schema.Type.RECORD);
@@ -95,14 +101,18 @@ public class DuckDBDaVinciRecordTransformerTest {
         NAME_RECORD_V1_SCHEMA,
         NAME_RECORD_V1_SCHEMA,
         false,
-        tempDir);
+        tempDir,
+        storeName,
+        columnsToProject);
     DuckDBDaVinciRecordTransformer recordTransformer_v2 = new DuckDBDaVinciRecordTransformer(
         2,
         SINGLE_FIELD_RECORD_SCHEMA,
         NAME_RECORD_V1_SCHEMA,
         NAME_RECORD_V1_SCHEMA,
         false,
-        tempDir);
+        tempDir,
+        storeName,
+        columnsToProject);
 
     String duckDBUrl = recordTransformer_v1.getDuckDBUrl();
 

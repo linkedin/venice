@@ -475,6 +475,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     if (recordTransformerConfig != null && recordTransformerConfig.getRecordTransformerFunction() != null) {
       Schema keySchema = schemaRepository.getKeySchema(storeName).getSchema();
+      // ToDo: Fetch latest value schema
       DaVinciRecordTransformer clientRecordTransformer = recordTransformerConfig.getRecordTransformerFunction()
           .apply(
               versionNumber,
