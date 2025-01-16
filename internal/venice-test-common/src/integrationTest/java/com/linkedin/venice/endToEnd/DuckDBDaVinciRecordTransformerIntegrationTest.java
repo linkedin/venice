@@ -43,6 +43,7 @@ import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.PushInputSchemaBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
@@ -68,7 +69,7 @@ import org.testng.annotations.Test;
 
 public class DuckDBDaVinciRecordTransformerIntegrationTest {
   private static final Logger LOGGER = LogManager.getLogger(DaVinciClientRecordTransformerTest.class);
-  private static final int TEST_TIMEOUT = 120_000;
+  private static final int TEST_TIMEOUT = 3 * Time.MS_PER_MINUTE;
   private VeniceClusterWrapper cluster;
   private D2Client d2Client;
 
@@ -112,7 +113,7 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
    *
    * TODO: Re-enable once we can depend on a clean release.
    */
-  @Test(timeOut = TEST_TIMEOUT, enabled = false)
+  @Test(timeOut = TEST_TIMEOUT)
   public void testRecordTransformer() throws Exception {
     DaVinciConfig clientConfig = new DaVinciConfig();
 

@@ -138,7 +138,10 @@ def integrationTestBuckets = [
   "1000": [
       "com.linkedin.davinci.*",
       "com.linkedin.venice.endToEnd.DaVinciClientDiskFullTest",
-      "com.linkedin.venice.endToEnd.DaVinciClientMemoryLimitTest"],
+      "com.linkedin.venice.endToEnd.DaVinciClientMemoryLimitTest",
+      "com.linkedin.venice.endToEnd.DaVinciClientRecordTransformerTest"],
+  "1001": [
+      "com.linkedin.venice.endToEnd.DuckDBDaVinciRecordTransformerIntegrationTest"],
   "1010": [
        "com.linkedin.venice.endToEnd.DaVinciClientTest"],
   "1020": [
@@ -179,8 +182,7 @@ def integrationTestBuckets = [
       "com.linkedin.venice.endToEnd.TestVson*",
       "com.linkedin.venice.endToEnd.Push*"],
   "1210": [
-      "com.linkedin.venice.hadoop.*",
-      "com.linkedin.venice.endToEnd.DaVinciClientRecordTransformerTest"],
+      "com.linkedin.venice.hadoop.*"],
   "1220": [
       "com.linkedin.venice.endToEnd.TestPushJob*"],
   "1230": [
