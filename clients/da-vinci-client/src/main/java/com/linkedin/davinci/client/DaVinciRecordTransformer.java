@@ -217,6 +217,15 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
   /**
    * Returns the schema for the output value used in {@link DaVinciClient}'s operations.
    *
+   * @return a {@link Schema} corresponding to the type of {@link V}.
+   */
+  public final Schema getOriginalValueSchema() {
+    return originalValueSchema;
+  }
+
+  /**
+   * Returns the schema for the output value used in {@link DaVinciClient}'s operations.
+   *
    * @return a {@link Schema} corresponding to the type of {@link O}.
    */
   public final Schema getOutputValueSchema() {
