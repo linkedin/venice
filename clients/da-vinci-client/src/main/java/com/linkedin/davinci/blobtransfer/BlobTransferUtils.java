@@ -22,6 +22,10 @@ public class BlobTransferUtils {
     FILE, METADATA
   }
 
+  public enum BlobTransferTableFormat {
+    PLAIN_TABLE, BLOCK_BASED_TABLE
+  }
+
   /**
    * Check if the HttpResponse message is for metadata.
    * @param msg the HttpResponse message

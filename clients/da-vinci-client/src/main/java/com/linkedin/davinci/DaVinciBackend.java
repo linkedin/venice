@@ -10,6 +10,7 @@ import static java.lang.Thread.currentThread;
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtil;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.StoreBackendConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -311,7 +312,10 @@ public class DaVinciBackend implements Closeable {
             backendConfig.getMaxConcurrentSnapshotUser(),
             backendConfig.getSnapshotRetentionTimeInMin(),
             backendConfig.getBlobTransferMaxTimeoutInMin(),
-            aggVersionedBlobTransferStats);
+            aggVersionedBlobTransferStats,
+            backendConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
+                ? BlobTransferTableFormat.PLAIN_TABLE
+                : BlobTransferTableFormat.BLOCK_BASED_TABLE);
       } else {
         aggVersionedBlobTransferStats = null;
         blobTransferManager = null;
