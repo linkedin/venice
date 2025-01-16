@@ -181,6 +181,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         mockPubSubClientsFactory,
         Optional.empty(),
         null,
+        null,
         null);
 
     String mockStoreName = "test";
@@ -265,6 +266,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         null,
         mockPubSubClientsFactory,
         Optional.empty(),
+        null,
         null,
         null);
     String topic1 = "test-store_v1";
@@ -355,6 +357,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         mockPubSubClientsFactory,
         Optional.empty(),
         null,
+        null,
         null);
     String topicName = "test-store_v1";
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
@@ -420,6 +423,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         null,
         mockPubSubClientsFactory,
         Optional.empty(),
+        null,
         null,
         null);
     String topicName = "test-store_v1";
