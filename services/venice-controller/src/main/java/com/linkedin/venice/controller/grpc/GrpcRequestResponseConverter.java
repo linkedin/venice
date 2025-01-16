@@ -1,4 +1,4 @@
-package com.linkedin.venice.controllerapi.transport;
+package com.linkedin.venice.controller.grpc;
 
 import com.google.protobuf.Any;
 import com.linkedin.venice.client.exceptions.VeniceClientException;

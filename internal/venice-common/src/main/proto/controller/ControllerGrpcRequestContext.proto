@@ -1,0 +1,36 @@
+syntax = 'proto3';
+package com.linkedin.venice.protocols.controller;
+
+import "google/rpc/status.proto";
+import "google/rpc/error_details.proto";
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+
+message ClusterStoreGrpcInfo {
+  string clusterName = 1;
+  string storeName = 2;
+}
+
+enum ControllerGrpcErrorType {
+  UNKNOWN = 0;
+  INCORRECT_CONTROLLER = 1;
+  INVALID_SCHEMA = 2;
+  INVALID_CONFIG = 3;
+  STORE_NOT_FOUND = 4;
+  SCHEMA_NOT_FOUND = 5;
+  CONNECTION_ERROR = 6;
+  GENERAL_ERROR = 7;
+  BAD_REQUEST = 8;
+  CONCURRENT_BATCH_PUSH = 9;
+  RESOURCE_STILL_EXISTS = 10;
+  UNAUTHORIZED = 11;
+}
+
+message VeniceControllerGrpcErrorInfo {
+  uint32 statusCode = 1;
+  string errorMessage = 2;
+  optional ControllerGrpcErrorType errorType = 3;
+  optional string clusterName = 4;
+  optional string storeName = 5;
+}

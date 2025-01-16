@@ -2,11 +2,13 @@ package com.linkedin.venice.grpc;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.security.SSLFactory;
+import io.grpc.BindableService;
 import io.grpc.Grpc;
 import io.grpc.InsecureServerCredentials;
 import io.grpc.Server;
+import io.grpc.ServerBuilder;
 import io.grpc.ServerCredentials;
-import io.grpc.ServerInterceptors;
+import io.grpc.ServerInterceptor;
 import io.grpc.TlsServerCredentials;
 import io.grpc.protobuf.services.ProtoReflectionService;
 import java.io.IOException;
@@ -14,6 +16,7 @@ import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
+import java.util.List;
 import java.util.concurrent.Executor;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -36,11 +39,19 @@ public class VeniceGrpcServer {
     this.executor = config.getExecutor();
     this.config = config;
     initServerCredentials();
-    server = Grpc.newServerBuilderForPort(config.getPort(), credentials)
-        .executor(executor) // TODO: experiment with different executors for best performance
-        .addService(ServerInterceptors.intercept(config.getService(), config.getInterceptors()))
-        .addService(ProtoReflectionService.newInstance())
-        .build();
+    ServerBuilder<?> serverBuilder = Grpc.newServerBuilderForPort(port, credentials)
+        .executor(executor)
+        .addService(ProtoReflectionService.newInstance());
+
+    List<BindableService> services = config.getServices();
+    for (BindableService service: services) {
+      serverBuilder.addService(service);
+    }
+    List<? extends ServerInterceptor> interceptors = config.getInterceptors();
+    for (ServerInterceptor interceptor: interceptors) {
+      serverBuilder.intercept(interceptor);
+    }
+    server = serverBuilder.build();
   }
 
   private void initServerCredentials() {
@@ -76,16 +87,12 @@ public class VeniceGrpcServer {
     try {
       server.start();
       LOGGER.info(
-          "Started gRPC server for service: {} on port: {} isSecure: {}",
-          config.getService().getClass().getSimpleName(),
+          "Started gRPC server for services: {} on port: {} isSecure: {}",
+          config.getServices(),
           port,
           isSecure());
     } catch (IOException exception) {
-      LOGGER.error(
-          "Failed to start gRPC server for service: {} on port: {}",
-          config.getService().getClass().getSimpleName(),
-          port,
-          exception);
+      LOGGER.error("Failed to start gRPC server for services: {} on port: {}", config.getServices(), port, exception);
       throw new VeniceException("Unable to start gRPC server", exception);
     }
   }
@@ -104,8 +111,8 @@ public class VeniceGrpcServer {
 
   public void stop() {
     LOGGER.info(
-        "Shutting down gRPC server for service: {} on port: {} isSecure: {}",
-        config.getService().getClass().getSimpleName(),
+        "Shutting down gRPC server for services: {} on port: {} isSecure: {}",
+        config.getServices(),
         port,
         isSecure());
     if (server != null && !server.isShutdown()) {

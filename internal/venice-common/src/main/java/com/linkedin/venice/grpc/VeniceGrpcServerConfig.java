@@ -4,6 +4,7 @@ import com.linkedin.venice.security.SSLFactory;
 import io.grpc.BindableService;
 import io.grpc.ServerCredentials;
 import io.grpc.ServerInterceptor;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Executor;
@@ -13,7 +14,7 @@ import java.util.concurrent.Executors;
 public class VeniceGrpcServerConfig {
   private final int port;
   private final ServerCredentials credentials;
-  private final BindableService service;
+  private final List<BindableService> services;
   private final List<? extends ServerInterceptor> interceptors;
   private final SSLFactory sslFactory;
   private final Executor executor;
@@ -21,7 +22,7 @@ public class VeniceGrpcServerConfig {
   private VeniceGrpcServerConfig(Builder builder) {
     port = builder.port;
     credentials = builder.credentials;
-    service = builder.service;
+    services = builder.services;
     interceptors = builder.interceptors;
     sslFactory = builder.sslFactory;
     executor = builder.executor;
@@ -39,8 +40,8 @@ public class VeniceGrpcServerConfig {
     return executor;
   }
 
-  public BindableService getService() {
-    return service;
+  public List<BindableService> getServices() {
+    return services;
   }
 
   public List<? extends ServerInterceptor> getInterceptors() {
@@ -53,13 +54,13 @@ public class VeniceGrpcServerConfig {
 
   @Override
   public String toString() {
-    return "VeniceGrpcServerConfig{" + "port=" + port + ", service=" + service + "}";
+    return "VeniceGrpcServerConfig{" + "port=" + port + ", services=" + services + "}";
   }
 
   public static class Builder {
     private Integer port;
     private ServerCredentials credentials;
-    private BindableService service;
+    private final List<BindableService> services = new ArrayList<>(4);
     private List<? extends ServerInterceptor> interceptors;
     private SSLFactory sslFactory;
     private int numThreads;
@@ -75,8 +76,13 @@ public class VeniceGrpcServerConfig {
       return this;
     }
 
-    public Builder setService(BindableService service) {
-      this.service = service;
+    public Builder addService(BindableService service) {
+      this.services.add(service);
+      return this;
+    }
+
+    public Builder setServices(List<BindableService> services) {
+      this.services.addAll(services);
       return this;
     }
 
@@ -114,8 +120,8 @@ public class VeniceGrpcServerConfig {
       if (port == null) {
         throw new IllegalArgumentException("Port value is required to create the gRPC server but was not provided.");
       }
-      if (service == null) {
-        throw new IllegalArgumentException("A non-null gRPC service instance is required to create the server.");
+      if (services.isEmpty()) {
+        throw new IllegalArgumentException("Service value is required to create the gRPC server but was not provided.");
       }
       if (numThreads <= 0 && executor == null) {
         throw new IllegalArgumentException(
