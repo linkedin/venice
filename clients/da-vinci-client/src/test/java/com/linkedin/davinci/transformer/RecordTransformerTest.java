@@ -107,7 +107,7 @@ public class RecordTransformerTest {
     Schema valueSchema = Schema.create(Schema.Type.STRING);
 
     DaVinciRecordTransformer<Integer, String, String> recordTransformer =
-        new TestStringRecordTransformer(storeVersion, keySchema, valueSchema, valueSchema, false);
+        new TestStringRecordTransformer(storeVersion, keySchema, valueSchema, valueSchema, true);
     assertEquals(recordTransformer.getStoreVersion(), storeVersion);
 
     recordTransformer = new BlockingDaVinciRecordTransformer<>(
