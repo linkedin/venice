@@ -399,14 +399,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         for (Map.Entry<Integer, Map<String, HeartbeatTimeStampEntry>> partition: version.getValue().entrySet()) {
           for (Map.Entry<String, HeartbeatTimeStampEntry> region: partition.getValue().entrySet()) {
             long heartbeatTs = region.getValue().timestamp;
-            // TODO: Should we consider catch-up lag?
-            /*
-            // For follower lag, we don't consider catching-up lag.
-            if (!isLeaderLag && !region.getValue().readyToServe) {
-              continue;
-            }
-             */
-
             if (currentVersion == version.getKey()) {
               minHeartbeatTimestampForCurrentVersion = Math.min(minHeartbeatTimestampForCurrentVersion, heartbeatTs);
             } else {

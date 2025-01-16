@@ -33,7 +33,6 @@ public class IngestionThrottler implements Closeable {
   private final static TimeUnit CURRENT_VERSION_BOOTSTRAPPING_DEFAULT_CHECK_TIMEUNIT = TimeUnit.SECONDS;
 
   private final ScheduledExecutorService eventThrottlerUpdateService;
-  private final AdaptiveThrottlerSignalService adaptiveThrottlerSignalService;
 
   private volatile EventThrottler finalRecordThrottler;
   private volatile EventThrottler finalBandwidthThrottler;
@@ -62,28 +61,30 @@ public class IngestionThrottler implements Closeable {
       int checkInterval,
       TimeUnit checkTimeUnit,
       AdaptiveThrottlerSignalService adaptiveThrottlerSignalService) {
-    this.adaptiveThrottlerSignalService = adaptiveThrottlerSignalService;
-    EventThrottler regularRecordThrottler;
+    VeniceAdaptiveIngestionThrottler globalRecordAdaptiveIngestionThrottler;
+    EventThrottler globalRecordThrottler;
     if (serverConfig.isAdaptiveThrottlerEnabled()) {
-      VeniceAdaptiveIngestionThrottler adaptiveIngestionThrottler = new VeniceAdaptiveIngestionThrottler(
+      globalRecordThrottler = null;
+      globalRecordAdaptiveIngestionThrottler = new VeniceAdaptiveIngestionThrottler(
           serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
           serverConfig.getKafkaFetchQuotaRecordPerSecond(),
           serverConfig.getKafkaFetchQuotaTimeWindow(),
           "kafka_consumption_records_count");
-      adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isSingleGetLatencySignalActive);
-      adaptiveIngestionThrottler
+      globalRecordAdaptiveIngestionThrottler
+          .registerLimiterSignal(adaptiveThrottlerSignalService::isSingleGetLatencySignalActive);
+      globalRecordAdaptiveIngestionThrottler
           .registerLimiterSignal(adaptiveThrottlerSignalService::isCurrentLeaderMaxHeartbeatLagSignalActive);
-      adaptiveThrottlerSignalService.registerThrottler(adaptiveIngestionThrottler);
-      regularRecordThrottler = adaptiveIngestionThrottler;
+      adaptiveThrottlerSignalService.registerThrottler(globalRecordAdaptiveIngestionThrottler);
     } else {
-      regularRecordThrottler = new EventThrottler(
+      globalRecordAdaptiveIngestionThrottler = null;
+      globalRecordThrottler = new EventThrottler(
           serverConfig.getKafkaFetchQuotaRecordPerSecond(),
           serverConfig.getKafkaFetchQuotaTimeWindow(),
           "kafka_consumption_records_count",
           false,
           EventThrottler.BLOCK_STRATEGY);
     }
-    EventThrottler regularBandwidthThrottler = new EventThrottler(
+    EventThrottler globalBandwidthThrottler = new EventThrottler(
         serverConfig.getKafkaFetchQuotaBytesPerSecond(),
         serverConfig.getKafkaFetchQuotaTimeWindow(),
         "kafka_consumption_bandwidth",
@@ -175,8 +176,10 @@ public class IngestionThrottler implements Closeable {
           this.isUsingSpeedupThrottler = true;
         } else if (!hasCurrentVersionBootstrapping && isUsingSpeedupThrottler) {
           LOGGER.info("There is no active current version bootstrapping, so switch to regular throttler");
-          this.finalRecordThrottler = regularRecordThrottler;
-          this.finalBandwidthThrottler = regularBandwidthThrottler;
+          this.finalRecordThrottler = serverConfig.isAdaptiveThrottlerEnabled()
+              ? globalRecordAdaptiveIngestionThrottler
+              : globalRecordThrottler;
+          this.finalBandwidthThrottler = globalBandwidthThrottler;
           this.isUsingSpeedupThrottler = false;
         }
 
@@ -188,8 +191,8 @@ public class IngestionThrottler implements Closeable {
       this.eventThrottlerUpdateService = null;
     }
 
-    this.finalRecordThrottler = regularRecordThrottler;
-    this.finalBandwidthThrottler = regularBandwidthThrottler;
+    this.finalRecordThrottler = globalRecordThrottler;
+    this.finalBandwidthThrottler = globalBandwidthThrottler;
   }
 
   public void maybeThrottleRecordRate(ConsumerPoolType poolType, int count) {
