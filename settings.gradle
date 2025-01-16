@@ -6,6 +6,10 @@ pluginManagement {
       url  "https://linkedin.jfrog.io/artifactory/open-source"
     }
     gradlePluginPortal()
+    maven {
+      // Needed for DuckDB SNAPSHOT. TODO: Remove when the real release is published!
+      url = uri('https://oss.sonatype.org/content/repositories/snapshots/')
+    }
   }
 }
 
