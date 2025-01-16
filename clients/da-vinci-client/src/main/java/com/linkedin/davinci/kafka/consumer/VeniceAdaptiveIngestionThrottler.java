@@ -64,7 +64,10 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
         if (currentThrottlerIndex > 0) {
           currentThrottlerIndex--;
         }
-        LOGGER.info("Found active limiter signal, adjusting throttler index to {}", currentThrottlerIndex);
+        LOGGER.info(
+            "Found active limiter signal, adjusting throttler index to: {} with throttle rate: {}",
+            currentThrottlerIndex,
+            eventThrottlers.get(currentThrottlerIndex).getMaxRatePerSecond());
       }
     }
     // If any limiter signal is true do not booster the throttler
@@ -89,7 +92,10 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
         if (currentThrottlerIndex < MAX_THROTTLERS - 1) {
           currentThrottlerIndex++;
         }
-        LOGGER.info("Reach max signal idle count, adjusting throttler index to {}", currentThrottlerIndex);
+        LOGGER.info(
+            "Reach max signal idle count, adjusting throttler index to: {} with throttle rate: {}",
+            currentThrottlerIndex,
+            eventThrottlers.get(currentThrottlerIndex).getMaxRatePerSecond());
         signalIdleCount = 0;
       }
     }
