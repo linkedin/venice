@@ -63,14 +63,18 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
 
   void updateHeartbeatLatencySignal() {
     AggregatedHeartbeatLagEntry maxLeaderHeartbeatLag = heartbeatMonitoringService.getMaxLeaderHeartbeatLag();
-    currentLeaderMaxHeartbeatLagSignal = maxLeaderHeartbeatLag.getCurrentVersionHeartbeatLag() > HEARTBEAT_LAG_LIMIT;
-    nonCurrentLeaderMaxHeartbeatLagSignal =
-        maxLeaderHeartbeatLag.getNonCurrentVersionHeartbeatLag() > HEARTBEAT_LAG_LIMIT;
+    if (maxLeaderHeartbeatLag != null) {
+      currentLeaderMaxHeartbeatLagSignal = maxLeaderHeartbeatLag.getCurrentVersionHeartbeatLag() > HEARTBEAT_LAG_LIMIT;
+      nonCurrentLeaderMaxHeartbeatLagSignal =
+          maxLeaderHeartbeatLag.getNonCurrentVersionHeartbeatLag() > HEARTBEAT_LAG_LIMIT;
+    }
     AggregatedHeartbeatLagEntry maxFollowerHeartbeatLag = heartbeatMonitoringService.getMaxFollowerHeartbeatLag();
-    currentFollowerMaxHeartbeatLagSignal =
-        maxFollowerHeartbeatLag.getCurrentVersionHeartbeatLag() > HEARTBEAT_LAG_LIMIT;
-    nonCurrentFollowerMaxHeartbeatLagSignal =
-        maxFollowerHeartbeatLag.getNonCurrentVersionHeartbeatLag() > HEARTBEAT_LAG_LIMIT;
+    if (maxFollowerHeartbeatLag != null) {
+      currentFollowerMaxHeartbeatLagSignal =
+          maxFollowerHeartbeatLag.getCurrentVersionHeartbeatLag() > HEARTBEAT_LAG_LIMIT;
+      nonCurrentFollowerMaxHeartbeatLagSignal =
+          maxFollowerHeartbeatLag.getNonCurrentVersionHeartbeatLag() > HEARTBEAT_LAG_LIMIT;
+    }
     LOGGER.info(
         "Update heartbeat signal. currentLeader: {}, currentFollower: {}, nonCurrentLeader: {}, nonCurrentFollower: {}",
         currentLeaderMaxHeartbeatLagSignal,
@@ -109,5 +113,9 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
   @Override
   public void stopInner() throws Exception {
     updateService.shutdownNow();
+  }
+
+  List<VeniceAdaptiveIngestionThrottler> getThrottlerList() {
+    return throttlerList;
   }
 }
