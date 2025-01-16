@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.davinci.kafka.consumer.AdaptiveThrottlerSignalService.SINGLE_GET_LATENCY_P99_METRIC_NAME;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
@@ -28,8 +29,8 @@ public class AdaptiveThrottlerSingalServiceTest {
     // Single Get Signal
     Assert.assertFalse(adaptiveThrottlerSignalService.isSingleGetLatencySignalActive());
     Metric singleGetMetric = mock(Metric.class);
-    when(singleGetMetric.value()).thenReturn(5.0d);
-    when(metricsRepository.getMetric("total--success_request_latency.95thPercentile")).thenReturn(singleGetMetric);
+    when(singleGetMetric.value()).thenReturn(20.0d);
+    when(metricsRepository.getMetric(SINGLE_GET_LATENCY_P99_METRIC_NAME)).thenReturn(singleGetMetric);
     adaptiveThrottlerSignalService.refreshSignalAndThrottler();
     Assert.assertTrue(adaptiveThrottlerSignalService.isSingleGetLatencySignalActive());
     when(singleGetMetric.value()).thenReturn(1.0d);

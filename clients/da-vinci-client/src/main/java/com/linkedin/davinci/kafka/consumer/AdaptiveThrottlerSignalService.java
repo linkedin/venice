@@ -20,9 +20,9 @@ import org.apache.logging.log4j.Logger;
  * based on new signal values.
  */
 public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
-  private static final Logger LOGGER = LogManager.getLogger(AdaptiveThrottlerSignalService.class);
   public static final long HEARTBEAT_LAG_LIMIT = TimeUnit.MINUTES.toMillis(10);
-  private static final String SINGLE_GET_LATENCY_P99_METRIC_NAME = "total--success_request_latency.99thPercentile";
+  public static final String SINGLE_GET_LATENCY_P99_METRIC_NAME = ".total--success_request_latency.99thPercentile";
+  private static final Logger LOGGER = LogManager.getLogger(AdaptiveThrottlerSignalService.class);
   private final double singleGetLatencyP99Threshold;
   private final MetricsRepository metricsRepository;
   private final HeartbeatMonitoringService heartbeatMonitoringService;
