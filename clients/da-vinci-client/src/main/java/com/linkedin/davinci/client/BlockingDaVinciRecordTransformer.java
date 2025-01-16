@@ -19,17 +19,14 @@ public class BlockingDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
   private final DaVinciRecordTransformer recordTransformer;
   private final CountDownLatch startLatch = new CountDownLatch(1);
 
-  public BlockingDaVinciRecordTransformer(DaVinciRecordTransformer recordTransformer, boolean storeRecordsInDaVinci) {
-    super(recordTransformer.getStoreVersion(), storeRecordsInDaVinci);
+  public BlockingDaVinciRecordTransformer(
+      DaVinciRecordTransformer recordTransformer,
+      Schema keySchema,
+      Schema inputValueSchema,
+      Schema outputValueSchema,
+      boolean storeRecordsInDaVinci) {
+    super(recordTransformer.getStoreVersion(), keySchema, inputValueSchema, outputValueSchema, storeRecordsInDaVinci);
     this.recordTransformer = recordTransformer;
-  }
-
-  public Schema getKeySchema() {
-    return this.recordTransformer.getKeySchema();
-  }
-
-  public Schema getOutputValueSchema() {
-    return this.recordTransformer.getOutputValueSchema();
   }
 
   public DaVinciRecordTransformerResult<O> transform(Lazy<K> key, Lazy<V> value) {

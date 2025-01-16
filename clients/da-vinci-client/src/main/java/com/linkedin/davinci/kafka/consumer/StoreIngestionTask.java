@@ -23,7 +23,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
-import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -371,7 +371,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int errorPartitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
-      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
+      DaVinciRecordTransformerConfig recordTransformerConfig,
       Queue<VeniceNotifier> notifiers,
       Lazy<ZKHelixAdmin> zkHelixAdmin) {
     this.storeVersionConfig = storeVersionConfig;
@@ -473,11 +473,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.chunkAssembler = new ChunkAssembler(storeName);
     this.cacheBackend = cacheBackend;
 
-    if (recordTransformerFunction != null) {
-      DaVinciRecordTransformer clientRecordTransformer = recordTransformerFunction.apply(versionNumber);
+    if (recordTransformerConfig != null && recordTransformerConfig.getRecordTransformerFunction() != null) {
+      Schema keySchema = schemaRepository.getKeySchema(storeName).getSchema();
+      Schema inputValueSchema = schemaRepository.getSupersetOrLatestValueSchema(storeName).getSchema();
+      Schema outputValueSchema = recordTransformerConfig.getOutputValueSchema();
+
+      DaVinciRecordTransformer clientRecordTransformer = recordTransformerConfig.getRecordTransformerFunction()
+          .apply(versionNumber, keySchema, inputValueSchema, outputValueSchema);
+
       this.recordTransformer = new BlockingDaVinciRecordTransformer(
           clientRecordTransformer,
+          keySchema,
+          inputValueSchema,
+          outputValueSchema,
           clientRecordTransformer.getStoreRecordsInDaVinci());
+
       versionedIngestionStats.registerTransformerLatencySensor(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleStartLatency(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleEndLatency(storeName, versionNumber);

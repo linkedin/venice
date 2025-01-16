@@ -732,7 +732,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
       Optional<ObjectCacheConfig> cacheConfig,
-      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction) {
+      DaVinciRecordTransformerConfig recordTransformerConfig) {
     synchronized (AvroGenericDaVinciClient.class) {
       if (daVinciBackend == null) {
         logger
@@ -744,7 +744,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
                 managedClients,
                 icProvider,
                 cacheConfig,
-                recordTransformerFunction),
+                recordTransformerConfig),
             backend -> {
               // Ensure that existing backend is fully closed before a new one can be created.
               synchronized (AvroGenericDaVinciClient.class) {
@@ -782,13 +782,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     logger.info("Starting client, storeName=" + getStoreName());
     VeniceConfigLoader configLoader = buildVeniceConfig();
     Optional<ObjectCacheConfig> cacheConfig = Optional.ofNullable(daVinciConfig.getCacheConfig());
-    initBackend(
-        clientConfig,
-        configLoader,
-        managedClients,
-        icProvider,
-        cacheConfig,
-        daVinciConfig.getRecordTransformerFunction());
+    initBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig, recordTransformerConfig);
 
     try {
       getBackend().verifyCacheConfigEquality(daVinciConfig.getCacheConfig(), getStoreName());
