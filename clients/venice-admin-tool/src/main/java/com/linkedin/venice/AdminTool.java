@@ -595,7 +595,7 @@ public class AdminTool {
           dumpHostHeartbeat(cmd);
           break;
         case CLUSTER_BATCH_TASK:
-          runClusterCommand(cmd);
+          clusterBatchTask(cmd);
           break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
@@ -861,7 +861,7 @@ public class AdminTool {
     printObject(response);
   }
 
-  private static void runClusterCommand(CommandLine cmd) {
+  private static void clusterBatchTask(CommandLine cmd) {
     String clusterName = getRequiredArgument(cmd, Arg.CLUSTER, Command.CLUSTER_BATCH_TASK);
     String task = getRequiredArgument(cmd, Arg.TASK_NAME, Command.CLUSTER_BATCH_TASK);
     String checkpointFile = getRequiredArgument(cmd, Arg.CHECKPOINT_FILE, Command.CLUSTER_BATCH_TASK);
