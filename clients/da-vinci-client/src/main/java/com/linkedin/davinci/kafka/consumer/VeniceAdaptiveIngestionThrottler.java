@@ -82,7 +82,10 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
         if (currentThrottlerIndex < MAX_THROTTLERS - 1) {
           currentThrottlerIndex++;
         }
-        LOGGER.info("Found active booster signal, adjusting throttler index to {}", currentThrottlerIndex);
+        LOGGER.info(
+            "Found active booster signal, adjusting throttler index to: {} with throttle rate: {}",
+            currentThrottlerIndex,
+            eventThrottlers.get(currentThrottlerIndex).getMaxRatePerSecond());
       }
     }
     if (isSignalIdle) {
