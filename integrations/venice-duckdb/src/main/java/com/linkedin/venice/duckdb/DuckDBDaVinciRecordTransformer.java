@@ -138,10 +138,14 @@ public class DuckDBDaVinciRecordTransformer
       String createViewStatement = String.format(createViewStatementTemplate, currentVersionTableName);
       stmt.execute(createViewStatement);
 
-      // Unable to convert to prepared statement as table and column names can't be parameterized
-      // Drop DuckDB table for storeVersion as it's retired
-      String dropTableStatement = String.format(dropTableStatementTemplate, versionTableName);
-      stmt.execute(dropTableStatement);
+      if (currentVersion != getStoreVersion()) {
+        // Only drop non-current versions, e.g., the backup version getting retired.
+
+        // Unable to convert to prepared statement as table and column names can't be parameterized
+        // Drop DuckDB table for storeVersion as it's retired
+        String dropTableStatement = String.format(dropTableStatementTemplate, versionTableName);
+        stmt.execute(dropTableStatement);
+      }
     } catch (SQLException e) {
       throw new RuntimeException(e);
     }

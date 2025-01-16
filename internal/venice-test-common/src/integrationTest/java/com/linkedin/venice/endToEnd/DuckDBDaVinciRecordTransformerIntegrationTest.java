@@ -52,6 +52,7 @@ import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Collections;
 import java.util.Properties;
@@ -129,6 +130,7 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
 
     VeniceProperties backendConfig = buildRecordTransformerBackendConfig(pushStatusStoreEnabled);
     MetricsRepository metricsRepository = new MetricsRepository();
+    String duckDBUrl = "jdbc:duckdb:" + tmpDir.getAbsolutePath() + "/my_database.duckdb";
 
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
         d2Client,
@@ -155,20 +157,24 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
 
       clientWithRecordTransformer.subscribeAll().get();
 
-      String duckDBUrl = "jdbc:duckdb:" + tmpDir.getAbsolutePath() + "/my_database.duckdb";
-      try (Connection connection = DriverManager.getConnection(duckDBUrl);
-          Statement stmt = connection.createStatement()) {
-
-        try (ResultSet rs = stmt.executeQuery("SELECT * FROM current_version")) {
-          int rowCount = 0;
-          while (rs.next()) {
-            rowCount++;
-          }
-          assertEquals(rowCount, DEFAULT_USER_DATA_RECORD_COUNT);
-        }
-      }
+      assertRowCount(duckDBUrl, "subscribeAll() finishes!");
 
       clientWithRecordTransformer.unsubscribeAll();
+    }
+
+    assertRowCount(duckDBUrl, "DVC gets closed!");
+  }
+
+  private void assertRowCount(String duckDBUrl, String assertionErrorMsg) throws SQLException {
+    try (Connection connection = DriverManager.getConnection(duckDBUrl);
+        Statement statement = connection.createStatement();
+        ResultSet rs = statement.executeQuery("SELECT count(*) FROM current_version")) {
+      assertTrue(rs.next());
+      int rowCount = rs.getInt(1);
+      assertEquals(
+          rowCount,
+          DEFAULT_USER_DATA_RECORD_COUNT,
+          "The DB should contain " + DEFAULT_USER_DATA_RECORD_COUNT + " right after " + assertionErrorMsg);
     }
   }
 
