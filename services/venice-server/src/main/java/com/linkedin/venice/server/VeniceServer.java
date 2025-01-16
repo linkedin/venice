@@ -379,7 +379,7 @@ public class VeniceServer {
     this.adaptiveThrottlerSignalService = null;
     if (serverConfig.isAdaptiveThrottlerEnabled()) {
       adaptiveThrottlerSignalService =
-          new AdaptiveThrottlerSignalService(metricsRepository, heartbeatMonitoringService);
+          new AdaptiveThrottlerSignalService(serverConfig, metricsRepository, heartbeatMonitoringService);
       services.add(adaptiveThrottlerSignalService);
     }
     // create and add KafkaSimpleConsumerService

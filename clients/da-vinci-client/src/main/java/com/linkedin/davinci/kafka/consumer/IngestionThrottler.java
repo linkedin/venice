@@ -63,12 +63,26 @@ public class IngestionThrottler implements Closeable {
       TimeUnit checkTimeUnit,
       AdaptiveThrottlerSignalService adaptiveThrottlerSignalService) {
     this.adaptiveThrottlerSignalService = adaptiveThrottlerSignalService;
-    EventThrottler regularRecordThrottler = new EventThrottler(
-        serverConfig.getKafkaFetchQuotaRecordPerSecond(),
-        serverConfig.getKafkaFetchQuotaTimeWindow(),
-        "kafka_consumption_records_count",
-        false,
-        EventThrottler.BLOCK_STRATEGY);
+    EventThrottler regularRecordThrottler;
+    if (serverConfig.isAdaptiveThrottlerEnabled()) {
+      VeniceAdaptiveIngestionThrottler adaptiveIngestionThrottler = new VeniceAdaptiveIngestionThrottler(
+          serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
+          serverConfig.getKafkaFetchQuotaRecordPerSecond(),
+          serverConfig.getKafkaFetchQuotaTimeWindow(),
+          "kafka_consumption_records_count");
+      adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isSingleGetLatencySignalActive);
+      adaptiveIngestionThrottler
+          .registerLimiterSignal(adaptiveThrottlerSignalService::isCurrentLeaderMaxHeartbeatLagSignalActive);
+      adaptiveThrottlerSignalService.registerThrottler(adaptiveIngestionThrottler);
+      regularRecordThrottler = adaptiveIngestionThrottler;
+    } else {
+      regularRecordThrottler = new EventThrottler(
+          serverConfig.getKafkaFetchQuotaRecordPerSecond(),
+          serverConfig.getKafkaFetchQuotaTimeWindow(),
+          "kafka_consumption_records_count",
+          false,
+          EventThrottler.BLOCK_STRATEGY);
+    }
     EventThrottler regularBandwidthThrottler = new EventThrottler(
         serverConfig.getKafkaFetchQuotaBytesPerSecond(),
         serverConfig.getKafkaFetchQuotaTimeWindow(),
@@ -108,59 +122,22 @@ public class IngestionThrottler implements Closeable {
             "current_version_non_aa_wc_leader_records_count",
             false,
             EventThrottler.BLOCK_STRATEGY));
-    if (serverConfig.isAdaptiveThrottlerEnabled()) {
-      VeniceAdaptiveIngestionThrottler nonCurrentVersionAaWcLeaderAdaptiveIngestionThrottler =
-          new VeniceAdaptiveIngestionThrottler(
-              serverConfig.getNonCurrentVersionAAWCLeaderQuotaRecordsPerSecond(),
-              serverConfig.getKafkaFetchQuotaTimeWindow(),
-              "non_current_version_aa_wc_leader_records_count");
-      nonCurrentVersionAaWcLeaderAdaptiveIngestionThrottler
-          .registerLimiterSignal(adaptiveThrottlerSignalService::isSingleGetLatencySignalActive);
-      nonCurrentVersionAaWcLeaderAdaptiveIngestionThrottler
-          .registerLimiterSignal(adaptiveThrottlerSignalService::isCurrentLeaderMaxHeartbeatLagSignalActive);
-      nonCurrentVersionAaWcLeaderAdaptiveIngestionThrottler
-          .registerLimiterSignal(adaptiveThrottlerSignalService::isCurrentFollowerMaxHeartbeatLagSignalActive);
-      nonCurrentVersionAaWcLeaderAdaptiveIngestionThrottler
-          .registerBoosterSignal(adaptiveThrottlerSignalService::isNonCurrentLeaderMaxHeartbeatLagSignalActive);
-      adaptiveThrottlerSignalService.registerThrottler(nonCurrentVersionAaWcLeaderAdaptiveIngestionThrottler);
-      this.poolTypeRecordThrottlerMap.put(
-          ConsumerPoolType.NON_CURRENT_VERSION_AA_WC_LEADER_POOL,
-          nonCurrentVersionAaWcLeaderAdaptiveIngestionThrottler);
-      VeniceAdaptiveIngestionThrottler nonCurrentVersionNonAaWcLeaderAdaptiveIngestionThrottler =
-          new VeniceAdaptiveIngestionThrottler(
-              serverConfig.getNonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond(),
-              serverConfig.getKafkaFetchQuotaTimeWindow(),
-              "non_current_version_non_aa_wc_leader_records_count");
-      nonCurrentVersionNonAaWcLeaderAdaptiveIngestionThrottler
-          .registerLimiterSignal(adaptiveThrottlerSignalService::isSingleGetLatencySignalActive);
-      nonCurrentVersionNonAaWcLeaderAdaptiveIngestionThrottler
-          .registerLimiterSignal(adaptiveThrottlerSignalService::isCurrentLeaderMaxHeartbeatLagSignalActive);
-      nonCurrentVersionNonAaWcLeaderAdaptiveIngestionThrottler
-          .registerLimiterSignal(adaptiveThrottlerSignalService::isCurrentFollowerMaxHeartbeatLagSignalActive);
-      nonCurrentVersionNonAaWcLeaderAdaptiveIngestionThrottler
-          .registerBoosterSignal(adaptiveThrottlerSignalService::isNonCurrentFollowerMaxHeartbeatLagSignalActive);
-      adaptiveThrottlerSignalService.registerThrottler(nonCurrentVersionNonAaWcLeaderAdaptiveIngestionThrottler);
-      this.poolTypeRecordThrottlerMap.put(
-          ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
-          nonCurrentVersionNonAaWcLeaderAdaptiveIngestionThrottler);
-    } else {
-      this.poolTypeRecordThrottlerMap.put(
-          ConsumerPoolType.NON_CURRENT_VERSION_AA_WC_LEADER_POOL,
-          new EventThrottler(
-              serverConfig.getNonCurrentVersionAAWCLeaderQuotaRecordsPerSecond(),
-              serverConfig.getKafkaFetchQuotaTimeWindow(),
-              "non_current_version_aa_wc_leader_records_count",
-              false,
-              EventThrottler.BLOCK_STRATEGY));
-      this.poolTypeRecordThrottlerMap.put(
-          ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
-          new EventThrottler(
-              serverConfig.getNonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond(),
-              serverConfig.getKafkaFetchQuotaTimeWindow(),
-              "non_current_version_non_aa_wc_leader_records_count",
-              false,
-              EventThrottler.BLOCK_STRATEGY));
-    }
+    this.poolTypeRecordThrottlerMap.put(
+        ConsumerPoolType.NON_CURRENT_VERSION_AA_WC_LEADER_POOL,
+        new EventThrottler(
+            serverConfig.getNonCurrentVersionAAWCLeaderQuotaRecordsPerSecond(),
+            serverConfig.getKafkaFetchQuotaTimeWindow(),
+            "non_current_version_aa_wc_leader_records_count",
+            false,
+            EventThrottler.BLOCK_STRATEGY));
+    this.poolTypeRecordThrottlerMap.put(
+        ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
+        new EventThrottler(
+            serverConfig.getNonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond(),
+            serverConfig.getKafkaFetchQuotaTimeWindow(),
+            "non_current_version_non_aa_wc_leader_records_count",
+            false,
+            EventThrottler.BLOCK_STRATEGY));
 
     if (isDaVinciClient && serverConfig.isDaVinciCurrentVersionBootstrappingSpeedupEnabled()) {
       EventThrottler speedupRecordThrottler = new EventThrottler(

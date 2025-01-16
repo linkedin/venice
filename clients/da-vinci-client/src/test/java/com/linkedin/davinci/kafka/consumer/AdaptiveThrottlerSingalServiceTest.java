@@ -4,6 +4,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.ingestion.heartbeat.AggregatedHeartbeatLagEntry;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import io.tehuti.Metric;
@@ -19,8 +20,10 @@ public class AdaptiveThrottlerSingalServiceTest {
   public void testUpdateSignal() {
     MetricsRepository metricsRepository = mock(MetricsRepository.class);
     HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+    VeniceServerConfig veniceServerConfig = mock(VeniceServerConfig.class);
+    when(veniceServerConfig.getAdaptiveThrottlerSingleGetLatencyThreshold()).thenReturn(10d);
     AdaptiveThrottlerSignalService adaptiveThrottlerSignalService =
-        new AdaptiveThrottlerSignalService(metricsRepository, heartbeatMonitoringService);
+        new AdaptiveThrottlerSignalService(veniceServerConfig, metricsRepository, heartbeatMonitoringService);
 
     // Single Get Signal
     Assert.assertFalse(adaptiveThrottlerSignalService.isSingleGetLatencySignalActive());
@@ -55,8 +58,10 @@ public class AdaptiveThrottlerSingalServiceTest {
   public void testRegisterThrottler() {
     MetricsRepository metricsRepository = mock(MetricsRepository.class);
     HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+    VeniceServerConfig veniceServerConfig = mock(VeniceServerConfig.class);
+    when(veniceServerConfig.getAdaptiveThrottlerSingleGetLatencyThreshold()).thenReturn(10d);
     AdaptiveThrottlerSignalService adaptiveThrottlerSignalService =
-        new AdaptiveThrottlerSignalService(metricsRepository, heartbeatMonitoringService);
+        new AdaptiveThrottlerSignalService(veniceServerConfig, metricsRepository, heartbeatMonitoringService);
     VeniceAdaptiveIngestionThrottler adaptiveIngestionThrottler = mock(VeniceAdaptiveIngestionThrottler.class);
     adaptiveThrottlerSignalService.registerThrottler(adaptiveIngestionThrottler);
     Assert.assertEquals(adaptiveThrottlerSignalService.getThrottlerList().size(), 1);

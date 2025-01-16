@@ -2,6 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.alpini.base.concurrency.ScheduledExecutorService;
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.ingestion.heartbeat.AggregatedHeartbeatLagEntry;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -20,8 +21,9 @@ import org.apache.logging.log4j.Logger;
  */
 public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(AdaptiveThrottlerSignalService.class);
-  public static final double READ_LATENCY_P95_LIMIT = 2.0f;
   public static final long HEARTBEAT_LAG_LIMIT = TimeUnit.MINUTES.toMillis(10);
+  private static final String SINGLE_GET_LATENCY_P99_METRIC_NAME = "total--success_request_latency.99thPercentile";
+  private final double singleGetLatencyP99Threshold;
   private final MetricsRepository metricsRepository;
   private final HeartbeatMonitoringService heartbeatMonitoringService;
   private final List<VeniceAdaptiveIngestionThrottler> throttlerList = new ArrayList<>();
@@ -33,8 +35,10 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
   private boolean nonCurrentFollowerMaxHeartbeatLagSignal = false;
 
   public AdaptiveThrottlerSignalService(
+      VeniceServerConfig veniceServerConfig,
       MetricsRepository metricsRepository,
       HeartbeatMonitoringService heartbeatMonitoringService) {
+    this.singleGetLatencyP99Threshold = veniceServerConfig.getAdaptiveThrottlerSingleGetLatencyThreshold();
     this.metricsRepository = metricsRepository;
     this.heartbeatMonitoringService = heartbeatMonitoringService;
   }
@@ -52,11 +56,10 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
   }
 
   void updateReadLatencySignal() {
-    Metric hostSingleGetLatencyP95Metric = metricsRepository.getMetric("total--success_request_latency.95thPercentile");
-    if (hostSingleGetLatencyP95Metric != null) {
-      double hostSingleGetLatencyP95 =
-          metricsRepository.getMetric("total--success_request_latency.95thPercentile").value();
-      singleGetLatencySignal = hostSingleGetLatencyP95 > READ_LATENCY_P95_LIMIT;
+    Metric hostSingleGetLatencyP99Metric = metricsRepository.getMetric(SINGLE_GET_LATENCY_P99_METRIC_NAME);
+    if (hostSingleGetLatencyP99Metric != null) {
+      double hostSingleGetLatencyP99 = metricsRepository.getMetric(SINGLE_GET_LATENCY_P99_METRIC_NAME).value();
+      singleGetLatencySignal = hostSingleGetLatencyP99 > singleGetLatencyP99Threshold;
     }
     LOGGER.info("Update read latency signal. singleGetLatency: {}", singleGetLatencySignal);
   }
