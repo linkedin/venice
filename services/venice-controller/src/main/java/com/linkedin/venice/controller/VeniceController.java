@@ -13,6 +13,7 @@ import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentControll
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.server.VeniceControllerGrpcServiceImpl;
 import com.linkedin.venice.controller.server.VeniceControllerRequestHandler;
+import com.linkedin.venice.controller.server.grpc.ControllerGrpcAuditLoggingInterceptor;
 import com.linkedin.venice.controller.server.grpc.ControllerGrpcSslSessionInterceptor;
 import com.linkedin.venice.controller.server.grpc.ParentControllerRegionValidationInterceptor;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
@@ -279,7 +280,8 @@ public class VeniceController {
     LOGGER.info("Initializing gRPC server as it is enabled for the controller...");
     ParentControllerRegionValidationInterceptor parentControllerRegionValidationInterceptor =
         new ParentControllerRegionValidationInterceptor(controllerService.getVeniceHelixAdmin());
-    List<ServerInterceptor> interceptors = new ArrayList<>(2);
+    List<ServerInterceptor> interceptors = new ArrayList<>(4);
+    interceptors.add(new ControllerGrpcAuditLoggingInterceptor());
     interceptors.add(parentControllerRegionValidationInterceptor);
 
     VeniceControllerGrpcServiceImpl grpcService = new VeniceControllerGrpcServiceImpl(unsecureRequestHandler);
