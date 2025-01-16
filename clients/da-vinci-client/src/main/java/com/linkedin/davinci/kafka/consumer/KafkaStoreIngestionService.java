@@ -191,6 +191,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private KafkaValueSerializer kafkaValueSerializer;
   private final IngestionThrottler ingestionThrottler;
   private final ExecutorService aaWCWorkLoadProcessingThreadPool;
+  private final AdaptiveThrottlerSignalService adaptiveThrottlerSignalService;
 
   private VeniceServerConfig serverConfig;
 
@@ -219,7 +220,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       PubSubClientsFactory pubSubClientsFactory,
       Optional<SSLFactory> sslFactory,
       HeartbeatMonitoringService heartbeatMonitoringService,
-      Lazy<ZKHelixAdmin> zkHelixAdmin) {
+      Lazy<ZKHelixAdmin> zkHelixAdmin,
+      AdaptiveThrottlerSignalService adaptiveThrottlerSignalService) {
     this.storageService = storageService;
     this.cacheBackend = cacheBackend;
     this.recordTransformerConfig = recordTransformerConfig;
@@ -243,11 +245,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         new VeniceWriterFactory(veniceWriterProperties, producerAdapterFactory, metricsRepository);
     VeniceWriterFactory veniceWriterFactoryForMetaStoreWriter =
         new VeniceWriterFactory(veniceWriterProperties, producerAdapterFactory, null);
-
+    this.adaptiveThrottlerSignalService = adaptiveThrottlerSignalService;
     this.ingestionThrottler = new IngestionThrottler(
         isDaVinciClient,
         serverConfig,
-        () -> Collections.unmodifiableMap(topicNameToIngestionTaskMap));
+        () -> Collections.unmodifiableMap(topicNameToIngestionTaskMap),
+        adaptiveThrottlerSignalService);
 
     final Map<String, EventThrottler> kafkaUrlToRecordsThrottler;
     if (liveClusterConfigRepository != null) {

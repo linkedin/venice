@@ -9,6 +9,7 @@ import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.helix.HelixParticipationService;
+import com.linkedin.davinci.kafka.consumer.AdaptiveThrottlerSignalService;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
@@ -119,6 +120,7 @@ public class VeniceServer {
   private ICProvider icProvider;
   StorageEngineBackedCompressorFactory compressorFactory;
   private HeartbeatMonitoringService heartbeatMonitoringService;
+  private AdaptiveThrottlerSignalService adaptiveThrottlerSignalService;
   private ServerReadMetadataRepository serverReadMetadataRepository;
   private BlobTransferManager<Void> blobTransferManager;
   private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
@@ -375,6 +377,12 @@ public class VeniceServer {
     services.add(heartbeatMonitoringService);
 
     this.zkHelixAdmin = Lazy.of(() -> new ZKHelixAdmin(serverConfig.getZookeeperAddress()));
+    this.adaptiveThrottlerSignalService = null;
+    if (serverConfig.isAdaptiveThrottlerEnabled()) {
+      adaptiveThrottlerSignalService =
+          new AdaptiveThrottlerSignalService(serverConfig, metricsRepository, heartbeatMonitoringService);
+      services.add(adaptiveThrottlerSignalService);
+    }
     // create and add KafkaSimpleConsumerService
     this.kafkaStoreIngestionService = new KafkaStoreIngestionService(
         storageService,
@@ -399,7 +407,8 @@ public class VeniceServer {
         pubSubClientsFactory,
         sslFactory,
         heartbeatMonitoringService,
-        zkHelixAdmin);
+        zkHelixAdmin,
+        adaptiveThrottlerSignalService);
 
     this.diskHealthCheckService = new DiskHealthCheckService(
         serverConfig.isDiskHealthCheckServiceEnabled(),
