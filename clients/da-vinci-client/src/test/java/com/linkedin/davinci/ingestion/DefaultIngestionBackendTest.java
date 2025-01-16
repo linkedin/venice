@@ -1,5 +1,6 @@
 package com.linkedin.davinci.ingestion;
 
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.any;
@@ -21,6 +22,7 @@ import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -32,6 +34,7 @@ import java.io.InputStream;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -72,6 +75,7 @@ public class DefaultIngestionBackendTest {
   private static final String STORE_NAME = "testStore";
   private static final String STORE_VERSION = "store_v1";
   private static final String BASE_DIR = "mockBaseDir";
+  private static final BlobTransferTableFormat BLOB_TRANSFER_FORMAT = BlobTransferTableFormat.BLOCK_BASED_TABLE;
 
   @BeforeMethod
   public void setUp() {
@@ -108,12 +112,15 @@ public class DefaultIngestionBackendTest {
   public void testStartConsumptionWithBlobTransfer() {
     when(store.isBlobTransferEnabled()).thenReturn(true);
     when(store.isHybrid()).thenReturn(true);
-    when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION)))
+    when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT)))
         .thenReturn(CompletableFuture.completedFuture(null));
     when(veniceServerConfig.getRocksDBPath()).thenReturn(BASE_DIR);
+    RocksDBServerConfig rocksDBServerConfig = Mockito.mock(RocksDBServerConfig.class);
+    when(rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()).thenReturn(false);
+    when(veniceServerConfig.getRocksDBServerConfig()).thenReturn(rocksDBServerConfig);
 
     ingestionBackend.startConsumption(storeConfig, PARTITION);
-    verify(blobTransferManager).get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION));
+    verify(blobTransferManager).get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT));
     verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
     verify(aggVersionedBlobTransferStats)
         .recordBlobTransferResponsesBasedOnBoostrapStatus(eq(STORE_NAME), eq(VERSION_NUMBER), eq(true));
@@ -125,10 +132,12 @@ public class DefaultIngestionBackendTest {
     when(store.isHybrid()).thenReturn(false);
     CompletableFuture<InputStream> errorFuture = new CompletableFuture<>();
     errorFuture.completeExceptionally(new VenicePeersNotFoundException("No peers found"));
-    when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION))).thenReturn(errorFuture);
+    when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT)))
+        .thenReturn(errorFuture);
 
     CompletableFuture<Void> future =
-        ingestionBackend.bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, 100L).toCompletableFuture();
+        ingestionBackend.bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, BLOB_TRANSFER_FORMAT, 100L)
+            .toCompletableFuture();
     assertTrue(future.isDone());
     verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
     verify(aggVersionedBlobTransferStats)
@@ -146,12 +155,15 @@ public class DefaultIngestionBackendTest {
     when(store.isBlobTransferEnabled()).thenReturn(true);
     when(store.isHybrid()).thenReturn(false);
     CompletableFuture<InputStream> future = new CompletableFuture<>();
-    when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION))).thenReturn(future);
+    when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT)))
+        .thenReturn(future);
 
     CompletableFuture<Void> result =
-        ingestionBackend.bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, laggingThreshold).toCompletableFuture();
+        ingestionBackend.bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, BLOB_TRANSFER_FORMAT, laggingThreshold)
+            .toCompletableFuture();
     assertTrue(result.isDone());
-    verify(blobTransferManager, never()).get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION));
+    verify(blobTransferManager, never())
+        .get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT));
     verify(aggVersionedBlobTransferStats, never()).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
     verify(aggVersionedBlobTransferStats, never())
         .recordBlobTransferResponsesBasedOnBoostrapStatus(eq(STORE_NAME), eq(VERSION_NUMBER), eq(false));

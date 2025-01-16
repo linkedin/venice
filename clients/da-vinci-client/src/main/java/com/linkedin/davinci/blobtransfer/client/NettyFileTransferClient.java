@@ -1,5 +1,6 @@
 package com.linkedin.davinci.blobtransfer.client;
 
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import io.netty.bootstrap.Bootstrap;
@@ -52,7 +53,12 @@ public class NettyFileTransferClient {
     });
   }
 
-  public CompletionStage<InputStream> get(String host, String storeName, int version, int partition) {
+  public CompletionStage<InputStream> get(
+      String host,
+      String storeName,
+      int version,
+      int partition,
+      BlobTransferTableFormat requestedTableFormat) {
     CompletionStage<InputStream> inputStream = new CompletableFuture<>();
     try {
       // Connects to the remote host
@@ -64,10 +70,24 @@ public class NettyFileTransferClient {
       ch.pipeline()
           .addLast(new IdleStateHandler(0, 0, 60))
           .addLast(new MetadataAggregator(MAX_METADATA_CONTENT_LENGTH))
-          .addLast(new P2PFileTransferClientHandler(baseDir, inputStream, storeName, version, partition))
-          .addLast(new P2PMetadataTransferHandler(storageMetadataService, baseDir, storeName, version, partition));
+          .addLast(
+              new P2PFileTransferClientHandler(
+                  baseDir,
+                  inputStream,
+                  storeName,
+                  version,
+                  partition,
+                  requestedTableFormat))
+          .addLast(
+              new P2PMetadataTransferHandler(
+                  storageMetadataService,
+                  baseDir,
+                  storeName,
+                  version,
+                  partition,
+                  requestedTableFormat));
       // Send a GET request
-      ch.writeAndFlush(prepareRequest(storeName, version, partition));
+      ch.writeAndFlush(prepareRequest(storeName, version, partition, requestedTableFormat));
     } catch (Exception e) {
       if (!inputStream.toCompletableFuture().isCompletedExceptionally()) {
         inputStream.toCompletableFuture().completeExceptionally(e);
@@ -80,11 +100,15 @@ public class NettyFileTransferClient {
     workerGroup.shutdownGracefully();
   }
 
-  private FullHttpRequest prepareRequest(String storeName, int version, int partition) {
+  private FullHttpRequest prepareRequest(
+      String storeName,
+      int version,
+      int partition,
+      BlobTransferTableFormat requestTableFormat) {
     return new DefaultFullHttpRequest(
         HttpVersion.HTTP_1_1,
         HttpMethod.GET,
-        String.format("/%s/%d/%d", storeName, version, partition));
+        String.format("/%s/%d/%d/%s", storeName, version, partition, requestTableFormat.name()));
   }
 
   /**
