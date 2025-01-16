@@ -2456,14 +2456,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // Construct Kafka topics
     // TODO: Today we only have support for creating Kafka topics as a resource for a given view, but later we would
     // like to add support for potentially other resource types (maybe helix RG's as an example?)
-    Map<String, VeniceProperties> topicNamesAndConfigs = new HashMap<>();
-    for (ViewConfig rawView: viewConfigs.values()) {
-      VeniceView adminView =
-          ViewUtils.getVeniceView(rawView.getViewClassName(), params, store.getName(), rawView.getViewParameters());
-      topicNamesAndConfigs.putAll(adminView.getTopicNamesAndConfigsForVersion(version.getNumber()));
-    }
+    Map<String, VeniceProperties> viewTopicNamesAndConfigs =
+        ViewUtils.getViewTopicsAndConfigs(viewConfigs.values(), params, store.getName(), version.getNumber());
     TopicManager topicManager = getTopicManager();
-    for (Map.Entry<String, VeniceProperties> topicNameAndConfigs: topicNamesAndConfigs.entrySet()) {
+    for (Map.Entry<String, VeniceProperties> topicNameAndConfigs: viewTopicNamesAndConfigs.entrySet()) {
       String materializedViewTopicName = topicNameAndConfigs.getKey();
       PubSubTopic kafkaTopic = pubSubTopicRepository.getTopic(materializedViewTopicName);
       VeniceProperties kafkaTopicConfigs = topicNameAndConfigs.getValue();
@@ -3951,43 +3947,29 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     ReadWriteStoreRepository storeRepository = resources.getStoreMetadataRepository();
     Store store = storeRepository.getStore(storeName);
     if (store.isHybrid() && clusterConfig.isKafkaLogCompactionForHybridStoresEnabled()) {
-      PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, versionNumber));
+      PubSubTopic versionTopic =
+          getPubSubTopicRepository().getTopic(Version.composeKafkaTopic(storeName, versionNumber));
       long minCompactionLagSeconds = store.getMinCompactionLagSeconds();
       long expectedMinCompactionLagMs =
           minCompactionLagSeconds > 0 ? minCompactionLagSeconds * Time.MS_PER_SECOND : minCompactionLagSeconds;
       long maxCompactionLagSeconds = store.getMaxCompactionLagSeconds();
       long expectedMaxCompactionLagMs =
           maxCompactionLagSeconds > 0 ? maxCompactionLagSeconds * Time.MS_PER_SECOND : maxCompactionLagSeconds;
-      getTopicManager().updateTopicCompactionPolicy(
-          versionTopic,
+      Consumer<PubSubTopic> updateTopicCompaction = (topic) -> getTopicManager().updateTopicCompactionPolicy(
+          topic,
           true,
           expectedMinCompactionLagMs,
           expectedMaxCompactionLagMs > 0 ? Optional.of(expectedMaxCompactionLagMs) : Optional.empty());
+      updateTopicCompaction.accept(versionTopic);
 
-      // Compaction settings should also be applied to corresponding materialized view topics
+      // Compaction settings should also be applied to corresponding view topics
       Map<String, ViewConfig> viewConfigs = store.getVersionOrThrow(versionNumber).getViewConfigs();
       if (viewConfigs != null && !viewConfigs.isEmpty()) {
-        Set<String> viewTopicsToUpdate = new HashSet<>();
-        for (ViewConfig rawViewConfig: viewConfigs.values()) {
-          if (MaterializedView.class.getCanonicalName().equals(rawViewConfig.getViewClassName())) {
-            viewTopicsToUpdate.addAll(
-                ViewUtils
-                    .getVeniceView(
-                        rawViewConfig.getViewClassName(),
-                        new Properties(),
-                        storeName,
-                        rawViewConfig.getViewParameters())
-                    .getTopicNamesAndConfigsForVersion(versionNumber)
-                    .keySet());
-          }
-        }
-        for (String topic: viewTopicsToUpdate) {
-          PubSubTopic viewTopic = pubSubTopicRepository.getTopic(topic);
-          getTopicManager().updateTopicCompactionPolicy(
-              viewTopic,
-              true,
-              expectedMinCompactionLagMs,
-              expectedMaxCompactionLagMs > 0 ? Optional.of(expectedMaxCompactionLagMs) : Optional.empty());
+        Map<String, VeniceProperties> viewTopicNamesAndConfigs =
+            ViewUtils.getViewTopicsAndConfigs(viewConfigs.values(), new Properties(), storeName, versionNumber);
+        for (String topic: viewTopicNamesAndConfigs.keySet()) {
+          PubSubTopic viewTopic = getPubSubTopicRepository().getTopic(topic);
+          updateTopicCompaction.accept(viewTopic);
         }
       }
     }

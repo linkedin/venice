@@ -469,24 +469,6 @@ public class OfflinePushStatus {
     return isReady;
   }
 
-  public boolean isLeaderCompletedInEveryPartition() {
-    boolean isLeaderCompleted = true;
-    for (PartitionStatus partitionStatus: getPartitionStatuses()) {
-      boolean proceedToNextPartition = false;
-      for (ReplicaStatus replicaStatus: partitionStatus.getReplicaStatuses()) {
-        if (replicaStatus.getCurrentStatus() == COMPLETED) {
-          proceedToNextPartition = true;
-          break;
-        }
-      }
-      if (!proceedToNextPartition) {
-        isLeaderCompleted = false;
-        break;
-      }
-    }
-    return isLeaderCompleted;
-  }
-
   public Map<String, String> getPushProperties() {
     return pushProperties;
   }

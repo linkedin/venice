@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.ReflectUtils;
+import com.linkedin.venice.utils.VeniceProperties;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -52,5 +54,19 @@ public class ViewUtils {
       viewConfigMap.put(entry.getKey(), mapper.readValue(entry.getValue(), ViewConfig.class));
     }
     return viewConfigMap;
+  }
+
+  public static Map<String, VeniceProperties> getViewTopicsAndConfigs(
+      Collection<ViewConfig> viewConfigs,
+      Properties veniceViewProperties,
+      String storeName,
+      int version) {
+    Map<String, VeniceProperties> viewTopicNamesAndConfigs = new HashMap<>();
+    for (ViewConfig rawView: viewConfigs) {
+      VeniceView veniceView =
+          getVeniceView(rawView.getViewClassName(), veniceViewProperties, storeName, rawView.getViewParameters());
+      viewTopicNamesAndConfigs.putAll(veniceView.getTopicNamesAndConfigsForVersion(version));
+    }
+    return viewTopicNamesAndConfigs;
   }
 }

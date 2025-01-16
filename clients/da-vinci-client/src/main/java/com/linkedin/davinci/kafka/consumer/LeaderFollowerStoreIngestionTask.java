@@ -110,7 +110,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.LongPredicate;
 import java.util.function.Predicate;
@@ -3369,29 +3368,23 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (msgType.equals(UPDATE) && writeComputeResultWrapper.isSkipProduce()) {
       return;
     }
+    Runnable produceToVersionTopic = () -> produceToLocalKafkaHelper(
+        consumerRecord,
+        partitionConsumptionState,
+        writeComputeResultWrapper,
+        partition,
+        kafkaUrl,
+        kafkaClusterId,
+        beforeProcessingRecordTimestampNs);
     // Write to views
     if (hasViewWriters()) {
       Put newPut = writeComputeResultWrapper.getNewPut();
       queueUpVersionTopicWritesWithViewWriters(
           partitionConsumptionState,
           (viewWriter) -> viewWriter.processRecord(newPut.putValue, keyBytes, newPut.schemaId),
-          (pcs) -> produceToLocalKafkaHelper(
-              consumerRecord,
-              pcs,
-              writeComputeResultWrapper,
-              partition,
-              kafkaUrl,
-              kafkaClusterId,
-              beforeProcessingRecordTimestampNs));
+          produceToVersionTopic);
     } else {
-      produceToLocalKafkaHelper(
-          consumerRecord,
-          partitionConsumptionState,
-          writeComputeResultWrapper,
-          partition,
-          kafkaUrl,
-          kafkaClusterId,
-          beforeProcessingRecordTimestampNs);
+      produceToVersionTopic.run();
     }
   }
 
@@ -3952,7 +3945,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected void queueUpVersionTopicWritesWithViewWriters(
       PartitionConsumptionState partitionConsumptionState,
       Function<VeniceViewWriter, CompletableFuture<PubSubProduceResult>> viewWriterRecordProcessor,
-      Consumer<PartitionConsumptionState> versionTopicWrite) {
+      Runnable versionTopicWrite) {
     long preprocessingTime = System.currentTimeMillis();
     CompletableFuture<Void> currentVersionTopicWrite = new CompletableFuture<>();
     CompletableFuture[] viewWriterFutures = new CompletableFuture[this.viewWriters.size() + 1];
@@ -3966,7 +3959,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
       hostLevelIngestionStats.recordViewProducerAckLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
       if (exception == null) {
-        versionTopicWrite.accept(partitionConsumptionState);
+        versionTopicWrite.run();
         currentVersionTopicWrite.complete(null);
       } else {
         VeniceException veniceException = new VeniceException(exception);

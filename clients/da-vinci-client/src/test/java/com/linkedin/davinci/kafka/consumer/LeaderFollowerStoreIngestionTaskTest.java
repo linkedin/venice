@@ -291,7 +291,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     leaderFollowerStoreIngestionTask.queueUpVersionTopicWritesWithViewWriters(
         mockPartitionConsumptionState,
         (viewWriter) -> viewWriter.processRecord(mock(ByteBuffer.class), new byte[1], 1),
-        (pcs) -> writeToVersionTopic.set(true));
+        () -> writeToVersionTopic.set(true));
     verify(mockPartitionConsumptionState, times(1)).getLastVTProduceCallFuture();
     ArgumentCaptor<CompletableFuture> vtWriteFutureCaptor = ArgumentCaptor.forClass(CompletableFuture.class);
     verify(mockPartitionConsumptionState, times(1)).setLastVTProduceCallFuture(vtWriteFutureCaptor.capture());

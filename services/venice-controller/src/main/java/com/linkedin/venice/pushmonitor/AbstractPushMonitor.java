@@ -41,7 +41,6 @@ import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
-import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -191,7 +190,6 @@ public abstract class AbstractPushMonitor
               } else {
                 checkWhetherToStartEOPProcedures(offlinePushStatus);
               }
-              checkWhetherToStartLeaderCompletedProcedures(offlinePushStatus);
             } else {
               // In any case, we found the offline push status is STARTED, but the related version could not be found.
               // We only log it as cleaning up here was found to prematurely delete push jobs during controller failover
@@ -814,7 +812,6 @@ public abstract class AbstractPushMonitor
 
   protected void onPartitionStatusChange(OfflinePushStatus offlinePushStatus) {
     checkWhetherToStartEOPProcedures(offlinePushStatus);
-    checkWhetherToStartLeaderCompletedProcedures(offlinePushStatus);
   }
 
   protected DisableReplicaCallback getDisableReplicaCallback(String kafkaTopic) {
@@ -886,7 +883,6 @@ public abstract class AbstractPushMonitor
             // For all partitions, at least one replica has received the EOP. Check if it's time to start buffer replay.
             checkWhetherToStartEOPProcedures(pushStatus);
           }
-          checkWhetherToStartLeaderCompletedProcedures(pushStatus);
         }
       } else {
         LOGGER.info(
@@ -999,60 +995,6 @@ public abstract class AbstractPushMonitor
       String newStatusDetails = "Failed to start EOP procedures";
       handleTerminalOfflinePushUpdate(offlinePushStatus, new ExecutionStatusWithDetails(ERROR, newStatusDetails));
       LOGGER.error("{} for offlinePushStatus: {}", newStatusDetails, offlinePushStatus, e);
-    }
-  }
-
-  /**
-   * For hybrid stores we use {@link com.linkedin.venice.writer.LeaderCompleteState} to prevent follower replicas from
-   * reporting COMPLETED prematurely. The same safeguard is needed for view topic consumers. Due to the obfuscated
-   * partition mapping between version topic leaders and view topic partitions we can only send LEADER_COMPLETED once
-   * all version topic partition leaders are completed. This is equivalent to at least one completed replica for all
-   * partitions.
-   */
-  protected void checkWhetherToStartLeaderCompletedProcedures(OfflinePushStatus offlinePushStatus) {
-    if (topicToLeaderCompleteTimestampMap.containsKey(offlinePushStatus.getKafkaTopic())) {
-      // We've sent the LeaderCompleteState for all view topics of this version topic already. Duplicate heartbeats are
-      // harmless, so we are only tracking it in memory (not across restarts) to avoid heartbeat spam
-      return;
-    }
-    Store store = getStoreOrThrow(offlinePushStatus);
-    Version version = getVersionOrThrow(store, offlinePushStatus.getKafkaTopic());
-    Map<String, ViewConfig> viewConfigMap = version.getViewConfigs();
-    if (!version.isHybrid() || viewConfigMap == null || viewConfigMap.isEmpty()) {
-      return;
-    }
-    if (offlinePushStatus.isLeaderCompletedInEveryPartition()) {
-      // broadcast heartbeat with LeaderCompleteState to view topic partitions
-      long heartbeatTimestamp = System.currentTimeMillis();
-      for (ViewConfig rawViewConfig: viewConfigMap.values()) {
-        if (MaterializedView.class.getCanonicalName().equals(rawViewConfig.getViewClassName())) {
-          VeniceView veniceView = ViewUtils.getVeniceView(
-              rawViewConfig.getViewClassName(),
-              new Properties(),
-              store.getName(),
-              rawViewConfig.getViewParameters());
-          MaterializedView materializedView = (MaterializedView) veniceView;
-          for (String materializedViewTopicName: materializedView.getTopicNamesAndConfigsForVersion(version.getNumber())
-              .keySet()) {
-            VeniceWriterOptions.Builder vwOptionsBuilder =
-                new VeniceWriterOptions.Builder(materializedViewTopicName).setUseKafkaKeySerializer(true)
-                    .setPartitionCount(materializedView.getViewPartitionCount());
-            try (VeniceWriter veniceWriter = veniceWriterFactory.createVeniceWriter(vwOptionsBuilder.build())) {
-              for (int p = 0; p < materializedView.getViewPartitionCount(); p++) {
-                veniceWriter.sendHeartbeat(
-                    materializedViewTopicName,
-                    p,
-                    null,
-                    VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER,
-                    true,
-                    LeaderCompleteState.getLeaderCompleteState(true),
-                    heartbeatTimestamp);
-              }
-            }
-          }
-        }
-      }
-      topicToLeaderCompleteTimestampMap.put(offlinePushStatus.getKafkaTopic(), heartbeatTimestamp);
     }
   }
 

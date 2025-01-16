@@ -10,7 +10,7 @@ import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
-import java.util.function.Function;
+import java.util.function.BiFunction;
 
 
 /**
@@ -25,8 +25,6 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
   private final VeniceWriter<K, V, U> mainWriter;
   private final VeniceWriter<K, V, U>[] childWriters;
   private final PubSubProducerCallback childCallback;
-
-  private CompletableFuture<PubSubProduceResult> lastWriteFuture = CompletableFuture.completedFuture(null);
 
   public CompositeVeniceWriter(
       String topicName,
@@ -51,8 +49,9 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
       int valueSchemaId,
       PubSubProducerCallback callback) {
     return compositeOperation(
-        (writer) -> writer.put(key, value, valueSchemaId, childCallback),
-        (writer) -> writer.put(key, value, valueSchemaId, callback));
+        (writer, writeCallback) -> writer.put(key, value, valueSchemaId, writeCallback),
+        childCallback,
+        callback);
   }
 
   @Override
@@ -63,22 +62,16 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
       PubSubProducerCallback callback,
       PutMetadata putMetadata) {
     return compositeOperation(
-        (writer) -> writer.put(
+        (writer, writeCallback) -> writer.put(
             key,
             value,
             valueSchemaId,
-            childCallback,
+            writeCallback,
             DEFAULT_LEADER_METADATA_WRAPPER,
             APP_DEFAULT_LOGICAL_TS,
             putMetadata),
-        (writer) -> writer.put(
-            key,
-            value,
-            valueSchemaId,
-            callback,
-            DEFAULT_LEADER_METADATA_WRAPPER,
-            APP_DEFAULT_LOGICAL_TS,
-            putMetadata));
+        childCallback,
+        callback);
   }
 
   @Override
@@ -87,8 +80,9 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
       PubSubProducerCallback callback,
       DeleteMetadata deleteMetadata) {
     return compositeOperation(
-        (writer) -> writer.delete(key, callback, deleteMetadata),
-        (writer) -> writer.delete(key, callback, deleteMetadata));
+        (writer, writeCallback) -> writer.delete(key, writeCallback, deleteMetadata),
+        childCallback,
+        callback);
   }
 
   /**
@@ -112,12 +106,6 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
       writer.flush();
     }
     mainWriter.flush();
-    try {
-      // wait for queued writes to be executed
-      lastWriteFuture.get();
-    } catch (Exception e) {
-      throw new VeniceException("Exception caught while waiting for queued writes to complete", e);
-    }
   }
 
   @Override
@@ -131,29 +119,29 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
    * completes the mainWriterOp.
    */
   private CompletableFuture<PubSubProduceResult> compositeOperation(
-      Function<VeniceWriter<K, V, U>, CompletableFuture<PubSubProduceResult>> childWriterOp,
-      Function<VeniceWriter<K, V, U>, CompletableFuture<PubSubProduceResult>> mainWriterOp) {
+      BiFunction<VeniceWriter<K, V, U>, PubSubProducerCallback, CompletableFuture<PubSubProduceResult>> writerOperation,
+      PubSubProducerCallback childWriterCallback,
+      PubSubProducerCallback mainWriterCallback) {
     CompletableFuture<PubSubProduceResult> finalFuture = new CompletableFuture<>();
-    CompletableFuture[] childFutures = new CompletableFuture[childWriters.length + 1];
+    CompletableFuture<PubSubProduceResult>[] writeFutures = new CompletableFuture[childWriters.length + 1];
     int index = 0;
-    childFutures[index++] = lastWriteFuture;
+    writeFutures[index++] = writerOperation.apply(mainWriter, mainWriterCallback);
     for (VeniceWriter<K, V, U> writer: childWriters) {
-      childFutures[index++] = childWriterOp.apply(writer);
+      writeFutures[index++] = writerOperation.apply(writer, childWriterCallback);
     }
-    CompletableFuture.allOf(childFutures).whenCompleteAsync((ignored, childException) -> {
-      if (childException == null) {
-        mainWriterOp.apply(mainWriter).whenCompleteAsync((result, mainWriterException) -> {
-          if (mainWriterException == null) {
-            finalFuture.complete(result);
-          } else {
-            finalFuture.completeExceptionally(new VeniceException(mainWriterException));
-          }
-        });
+    CompletableFuture.allOf(writeFutures).whenCompleteAsync((ignored, writeException) -> {
+      if (writeException == null) {
+        try {
+          finalFuture.complete(writeFutures[0].get());
+        } catch (Exception e) {
+          // This shouldn't be possible since we already checked for exception earlier
+          finalFuture.completeExceptionally(
+              new IllegalStateException("CompletableFuture get() throwing exception unexpectedly"));
+        }
       } else {
-        finalFuture.completeExceptionally(new VeniceException(childException));
+        finalFuture.completeExceptionally(new VeniceException(writeException));
       }
     });
-    lastWriteFuture = finalFuture;
     return finalFuture;
   }
 }

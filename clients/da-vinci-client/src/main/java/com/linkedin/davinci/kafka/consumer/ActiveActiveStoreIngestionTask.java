@@ -639,6 +639,15 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       // call in this context much less obtrusive, however, it implies that all views can only work for AA stores
 
       // Write to views
+      Runnable produceToVersionTopic = () -> producePutOrDeleteToKafka(
+          mergeConflictResultWrapper,
+          partitionConsumptionState,
+          keyBytes,
+          consumerRecord,
+          partition,
+          kafkaUrl,
+          kafkaClusterId,
+          beforeProcessingRecordTimestampNs);
       if (hasViewWriters()) {
         /**
          * The ordering guarantees we want is the following:
@@ -659,28 +668,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                 mergeConflictResult.getValueSchemaId(),
                 oldValueSchemaId,
                 mergeConflictResult.getRmdRecord()),
-            (pcs) -> producePutOrDeleteToKafka(
-                mergeConflictResultWrapper,
-                pcs,
-                keyBytes,
-                consumerRecord,
-                partition,
-                kafkaUrl,
-                kafkaClusterId,
-                beforeProcessingRecordTimestampNs));
+            produceToVersionTopic);
       } else {
         // This function may modify the original record in KME and it is unsafe to use the payload from KME directly
-        // after
-        // this call.
-        producePutOrDeleteToKafka(
-            mergeConflictResultWrapper,
-            partitionConsumptionState,
-            keyBytes,
-            consumerRecord,
-            partition,
-            kafkaUrl,
-            kafkaClusterId,
-            beforeProcessingRecordTimestampNs);
+        // after this call.
+        produceToVersionTopic.run();
       }
     }
   }
