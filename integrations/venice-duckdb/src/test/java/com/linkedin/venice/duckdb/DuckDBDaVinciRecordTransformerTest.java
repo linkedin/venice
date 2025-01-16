@@ -7,8 +7,6 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
-import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.client.DaVinciRecordTransformerUtility;
 import com.linkedin.venice.utils.Utils;
@@ -43,16 +41,13 @@ public class DuckDBDaVinciRecordTransformerTest {
   public void testRecordTransformer() {
     String tempDir = Utils.getTempDataDirectory().getAbsolutePath();
 
-    DaVinciRecordTransformerFunctionalInterface recordTransformerFunctionalInterface = (
+    DuckDBDaVinciRecordTransformer recordTransformer = new DuckDBDaVinciRecordTransformer(
         storeVersion,
-        transformerConfig) -> new DuckDBDaVinciRecordTransformer(storeVersion, transformerConfig, false, tempDir);
-    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-        recordTransformerFunctionalInterface,
-        GenericRecord.class,
-        NAME_RECORD_V1_SCHEMA);
-    recordTransformerConfig.setKeySchema(SINGLE_FIELD_RECORD_SCHEMA);
-    DuckDBDaVinciRecordTransformer recordTransformer =
-        new DuckDBDaVinciRecordTransformer(storeVersion, recordTransformerConfig, false, tempDir);
+        SINGLE_FIELD_RECORD_SCHEMA,
+        NAME_RECORD_V1_SCHEMA,
+        NAME_RECORD_V1_SCHEMA,
+        false,
+        tempDir);
 
     Schema keySchema = recordTransformer.getKeySchema();
     assertEquals(keySchema.getType(), Schema.Type.RECORD);
@@ -94,19 +89,20 @@ public class DuckDBDaVinciRecordTransformerTest {
   public void testVersionSwap() throws SQLException {
     String tempDir = Utils.getTempDataDirectory().getAbsolutePath();
 
-    DaVinciRecordTransformerFunctionalInterface recordTransformerFunctionalInterface = (
-        storeVersion,
-        transformerConfig) -> new DuckDBDaVinciRecordTransformer(storeVersion, transformerConfig, false, tempDir);
-    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-        recordTransformerFunctionalInterface,
-        GenericRecord.class,
-        NAME_RECORD_V1_SCHEMA);
-    recordTransformerConfig.setKeySchema(SINGLE_FIELD_RECORD_SCHEMA);
-
-    DuckDBDaVinciRecordTransformer recordTransformer_v1 =
-        new DuckDBDaVinciRecordTransformer(1, recordTransformerConfig, false, tempDir);
-    DuckDBDaVinciRecordTransformer recordTransformer_v2 =
-        new DuckDBDaVinciRecordTransformer(2, recordTransformerConfig, false, tempDir);
+    DuckDBDaVinciRecordTransformer recordTransformer_v1 = new DuckDBDaVinciRecordTransformer(
+        1,
+        SINGLE_FIELD_RECORD_SCHEMA,
+        NAME_RECORD_V1_SCHEMA,
+        NAME_RECORD_V1_SCHEMA,
+        false,
+        tempDir);
+    DuckDBDaVinciRecordTransformer recordTransformer_v2 = new DuckDBDaVinciRecordTransformer(
+        2,
+        SINGLE_FIELD_RECORD_SCHEMA,
+        NAME_RECORD_V1_SCHEMA,
+        NAME_RECORD_V1_SCHEMA,
+        false,
+        tempDir);
 
     String duckDBUrl = recordTransformer_v1.getDuckDBUrl();
 

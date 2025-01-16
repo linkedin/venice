@@ -1,11 +1,11 @@
 package com.linkedin.venice.endToEnd;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
-import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.HashMap;
 import java.util.Map;
+import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 
 
@@ -14,9 +14,11 @@ public class TestSkipResultRecordTransformer extends DaVinciRecordTransformer<In
 
   public TestSkipResultRecordTransformer(
       int storeVersion,
-      DaVinciRecordTransformerConfig recordTransformerConfig,
+      Schema keySchema,
+      Schema originalValueSchema,
+      Schema outputValueSchema,
       boolean storeRecordsInDaVinci) {
-    super(storeVersion, recordTransformerConfig, storeRecordsInDaVinci);
+    super(storeVersion, keySchema, originalValueSchema, outputValueSchema, storeRecordsInDaVinci);
   }
 
   @Override

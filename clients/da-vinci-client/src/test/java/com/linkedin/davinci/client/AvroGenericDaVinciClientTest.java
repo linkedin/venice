@@ -60,11 +60,13 @@ public class AvroGenericDaVinciClientTest {
       daVinciConfig = new DaVinciConfig();
     }
 
-    DaVinciRecordTransformerFunctionalInterface recordTransformerFunctionalInterface = (
-        storeVersion,
-        recordTransformerConfig) -> new TestStringRecordTransformer(storeVersion, recordTransformerConfig, true);
     DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-        recordTransformerFunctionalInterface,
+        (_storeVersion, _keySchema, _originalValueSchema, _outputValueSchema) -> new TestStringRecordTransformer(
+            _storeVersion,
+            _keySchema,
+            _originalValueSchema,
+            _outputValueSchema,
+            true),
         String.class,
         Schema.create(Schema.Type.STRING));
     daVinciConfig.setRecordTransformerConfig(recordTransformerConfig);

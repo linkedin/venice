@@ -26,7 +26,6 @@ import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
-import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
@@ -116,10 +115,13 @@ public class DaVinciClientRecordTransformerTest {
         metricsRepository,
         backendConfig)) {
 
-      DaVinciRecordTransformerFunctionalInterface recordTransformerFunctionalInterface =
-          (storeVersion, transformerConfig) -> new TestStringRecordTransformer(storeVersion, transformerConfig, true);
       DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-          recordTransformerFunctionalInterface,
+          (_storeVersion, _keySchema, _originalValueSchema, _outputValueSchema) -> new TestStringRecordTransformer(
+              _storeVersion,
+              _keySchema,
+              _originalValueSchema,
+              _outputValueSchema,
+              true),
           String.class,
           Schema.create(Schema.Type.STRING));
       clientConfig.setRecordTransformerConfig(recordTransformerConfig);
@@ -159,11 +161,13 @@ public class DaVinciClientRecordTransformerTest {
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
         backendConfig)) {
-      DaVinciRecordTransformerFunctionalInterface recordTransformerFunctionalInterface = (
-          storeVersion,
-          transformerConfig) -> new TestIntToStringRecordTransformer(storeVersion, transformerConfig, true);
       DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-          recordTransformerFunctionalInterface,
+          (_storeVersion, _keySchema, _originalValueSchema, _outputValueSchema) -> new TestIntToStringRecordTransformer(
+              _storeVersion,
+              _keySchema,
+              _originalValueSchema,
+              _outputValueSchema,
+              true),
           String.class,
           Schema.create(Schema.Type.STRING));
       clientConfig.setRecordTransformerConfig(recordTransformerConfig);
@@ -206,17 +210,17 @@ public class DaVinciClientRecordTransformerTest {
         metricsRepository,
         backendConfig)) {
 
-      DaVinciRecordTransformerFunctionalInterface recordTransformerFunctionalInterface =
-          (storeVersion, transformerConfig) -> new TestStringRecordTransformer(storeVersion, transformerConfig, true);
-      DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-          recordTransformerFunctionalInterface,
-          String.class,
-          Schema.create(Schema.Type.STRING));
-      recordTransformerConfig.setKeySchema(Schema.create(Schema.Type.INT));
-      clientConfig.setRecordTransformerConfig(recordTransformerConfig);
+      Schema keySchema = Schema.create(Schema.Type.INT);
+      Schema valueSchema = Schema.create(Schema.Type.STRING);
 
       TestStringRecordTransformer recordTransformer =
-          (TestStringRecordTransformer) recordTransformerConfig.getRecordTransformer(1);
+          new TestStringRecordTransformer(1, keySchema, valueSchema, valueSchema, true);
+
+      DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
+          (_storeVersion, _keySchema, _originalValueSchema, _outputValueSchema) -> recordTransformer,
+          String.class,
+          Schema.create(Schema.Type.STRING));
+      clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
       DaVinciClient<Integer, Object> clientWithRecordTransformer =
           factory.getAndStartGenericAvroClient(storeName, clientConfig);
@@ -285,17 +289,17 @@ public class DaVinciClientRecordTransformerTest {
         metricsRepository,
         backendConfig)) {
 
-      DaVinciRecordTransformerFunctionalInterface recordTransformerFunctionalInterface =
-          (storeVersion, transformerConfig) -> new TestStringRecordTransformer(storeVersion, transformerConfig, true);
-      DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-          recordTransformerFunctionalInterface,
-          String.class,
-          Schema.create(Schema.Type.STRING));
-      recordTransformerConfig.setKeySchema(Schema.create(Schema.Type.INT));
-      clientConfig.setRecordTransformerConfig(recordTransformerConfig);
+      Schema keySchema = Schema.create(Schema.Type.INT);
+      Schema valueSchema = Schema.create(Schema.Type.STRING);
 
       TestStringRecordTransformer recordTransformer =
-          (TestStringRecordTransformer) recordTransformerConfig.getRecordTransformer(1);
+          new TestStringRecordTransformer(1, keySchema, valueSchema, valueSchema, true);
+
+      DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
+          (_storeVersion, _keySchema, _originalValueSchema, _outputValueSchema) -> recordTransformer,
+          String.class,
+          Schema.create(Schema.Type.STRING));
+      clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
       DaVinciClient<Integer, String> clientWithRecordTransformer =
           factory.getAndStartGenericAvroClient(storeName, clientConfig);
@@ -349,17 +353,17 @@ public class DaVinciClientRecordTransformerTest {
     VeniceProperties backendConfig = buildRecordTransformerBackendConfig(pushStatusStoreEnabled);
     MetricsRepository metricsRepository = new MetricsRepository();
 
-    DaVinciRecordTransformerFunctionalInterface recordTransformerFunctionalInterface =
-        (storeVersion, transformerConfig) -> new TestStringRecordTransformer(storeVersion, transformerConfig, false);
-    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-        recordTransformerFunctionalInterface,
-        String.class,
-        Schema.create(Schema.Type.STRING));
-    recordTransformerConfig.setKeySchema(Schema.create(Schema.Type.INT));
-    clientConfig.setRecordTransformerConfig(recordTransformerConfig);
+    Schema keySchema = Schema.create(Schema.Type.INT);
+    Schema valueSchema = Schema.create(Schema.Type.STRING);
 
     TestStringRecordTransformer recordTransformer =
-        (TestStringRecordTransformer) recordTransformerConfig.getRecordTransformer(1);
+        new TestStringRecordTransformer(1, keySchema, valueSchema, valueSchema, false);
+
+    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
+        (_storeVersion, _keySchema, _originalValueSchema, _outputValueSchema) -> recordTransformer,
+        String.class,
+        Schema.create(Schema.Type.STRING));
+    clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
         d2Client,
@@ -398,17 +402,17 @@ public class DaVinciClientRecordTransformerTest {
     VeniceProperties backendConfig = buildRecordTransformerBackendConfig(pushStatusStoreEnabled);
     MetricsRepository metricsRepository = new MetricsRepository();
 
-    DaVinciRecordTransformerFunctionalInterface recordTransformerFunctionalInterface =
-        (storeVersion, transformerConfig) -> new TestSkipResultRecordTransformer(storeVersion, transformerConfig, true);
-    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-        recordTransformerFunctionalInterface,
-        String.class,
-        Schema.create(Schema.Type.STRING));
-    recordTransformerConfig.setKeySchema(Schema.create(Schema.Type.INT));
-    clientConfig.setRecordTransformerConfig(recordTransformerConfig);
+    Schema keySchema = Schema.create(Schema.Type.INT);
+    Schema valueSchema = Schema.create(Schema.Type.STRING);
 
     TestSkipResultRecordTransformer recordTransformer =
-        (TestSkipResultRecordTransformer) recordTransformerConfig.getRecordTransformer(1);
+        new TestSkipResultRecordTransformer(1, keySchema, valueSchema, valueSchema, true);
+
+    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
+        (_storeVersion, _keySchema, _originalValueSchema, _outputValueSchema) -> recordTransformer,
+        String.class,
+        Schema.create(Schema.Type.STRING));
+    clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
         d2Client,
@@ -447,11 +451,17 @@ public class DaVinciClientRecordTransformerTest {
     VeniceProperties backendConfig = buildRecordTransformerBackendConfig(pushStatusStoreEnabled);
     MetricsRepository metricsRepository = new MetricsRepository();
 
-    DaVinciRecordTransformerFunctionalInterface recordTransformerFunctionalInterface = (
-        storeVersion,
-        transformerConfig) -> new TestUnchangedResultRecordTransformer(storeVersion, transformerConfig, true);
     DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-        recordTransformerFunctionalInterface,
+        (
+            _storeVersion,
+            _keySchema,
+            _originalValueSchema,
+            _outputValueSchema) -> new TestUnchangedResultRecordTransformer(
+                _storeVersion,
+                _keySchema,
+                _originalValueSchema,
+                _outputValueSchema,
+                true),
         String.class,
         Schema.create(Schema.Type.STRING));
     clientConfig.setRecordTransformerConfig(recordTransformerConfig);

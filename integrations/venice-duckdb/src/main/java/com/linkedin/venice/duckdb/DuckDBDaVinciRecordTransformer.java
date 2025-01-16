@@ -3,7 +3,6 @@ package com.linkedin.venice.duckdb;
 import static com.linkedin.venice.sql.AvroToSQL.UnsupportedTypeHandling.FAIL;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
-import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.sql.AvroToSQL;
 import com.linkedin.venice.sql.InsertProcessor;
@@ -24,7 +23,6 @@ public class DuckDBDaVinciRecordTransformer
   private static final String duckDBFilePath = "my_database.duckdb";
   // ToDo: Don't hardcode the table name. Get it from the storeName
   private static final String baseVersionTableName = "my_table_v";
-  private static final Set<String> primaryKeys = Collections.singleton("firstName");
   private static final String deleteStatementTemplate = "DELETE FROM %s WHERE %s = ?;";
   private static final String createViewStatementTemplate =
       "CREATE OR REPLACE VIEW current_version AS SELECT * FROM %s;";
@@ -38,10 +36,12 @@ public class DuckDBDaVinciRecordTransformer
   // TODO: Let key and value schemas get passed in during construction, then remove the hard-coded ones.
   public DuckDBDaVinciRecordTransformer(
       int storeVersion,
-      DaVinciRecordTransformerConfig recordTransformerConfig,
+      Schema keySchema,
+      Schema originalValueSchema,
+      Schema outputValueSchema,
       boolean storeRecordsInDaVinci,
       String baseDir) {
-    super(storeVersion, recordTransformerConfig, storeRecordsInDaVinci);
+    super(storeVersion, keySchema, originalValueSchema, outputValueSchema, storeRecordsInDaVinci);
     versionTableName = baseVersionTableName + storeVersion;
     duckDBUrl = "jdbc:duckdb:" + baseDir + "/" + duckDBFilePath;
   }

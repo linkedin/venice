@@ -1,9 +1,9 @@
 package com.linkedin.venice.endToEnd;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
-import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
+import org.apache.avro.Schema;
 
 
 /**
@@ -12,9 +12,11 @@ import com.linkedin.venice.utils.lazy.Lazy;
 public class TestIntToStringRecordTransformer extends DaVinciRecordTransformer<Integer, Integer, String> {
   public TestIntToStringRecordTransformer(
       int storeVersion,
-      DaVinciRecordTransformerConfig recordTransformerConfig,
+      Schema keySchema,
+      Schema originalValueSchema,
+      Schema outputValueSchema,
       boolean storeRecordsInDaVinci) {
-    super(storeVersion, recordTransformerConfig, storeRecordsInDaVinci);
+    super(storeVersion, keySchema, originalValueSchema, outputValueSchema, storeRecordsInDaVinci);
   }
 
   @Override

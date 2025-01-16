@@ -40,10 +40,6 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    */
   private final boolean storeRecordsInDaVinci;
 
-  /**
-   * A config containing necessary information required for DaVinciRecordTransformer
-   */
-  private final DaVinciRecordTransformerConfig recordTransformerConfig;
   private final Schema outputValueSchema;
   private final Schema keySchema;
 
@@ -56,14 +52,14 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    */
   public DaVinciRecordTransformer(
       int storeVersion,
-      DaVinciRecordTransformerConfig recordTransformerConfig,
+      Schema keySchema,
+      Schema originalValueSchema,
+      Schema outputValueSchema,
       boolean storeRecordsInDaVinci) {
     this.storeVersion = storeVersion;
-    this.recordTransformerConfig = recordTransformerConfig;
     this.storeRecordsInDaVinci = storeRecordsInDaVinci;
-
-    this.outputValueSchema = recordTransformerConfig.getOutputValueSchema();
-    this.keySchema = recordTransformerConfig.getKeySchema();
+    this.keySchema = keySchema;
+    this.outputValueSchema = outputValueSchema;
     this.recordTransformerUtility = new DaVinciRecordTransformerUtility<>(this);
   }
 

@@ -1,17 +1,20 @@
 package com.linkedin.venice.endToEnd;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
-import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
+import org.apache.avro.Schema;
 
 
 public class TestUnchangedResultRecordTransformer extends DaVinciRecordTransformer<Integer, String, String> {
   public TestUnchangedResultRecordTransformer(
       int storeVersion,
-      DaVinciRecordTransformerConfig recordTransformerConfig,
+
+      Schema keySchema,
+      Schema originalValueSchema,
+      Schema outputValueSchema,
       boolean storeRecordsInDaVinci) {
-    super(storeVersion, recordTransformerConfig, storeRecordsInDaVinci);
+    super(storeVersion, keySchema, originalValueSchema, outputValueSchema, storeRecordsInDaVinci);
   }
 
   @Override

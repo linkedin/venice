@@ -1,10 +1,17 @@
 package com.linkedin.davinci.client;
 
+import org.apache.avro.Schema;
+
+
 /**
  * This describes the implementation for the functional interface of {@link DaVinciRecordTransformer}
  */
 
 @FunctionalInterface
 public interface DaVinciRecordTransformerFunctionalInterface {
-  DaVinciRecordTransformer apply(Integer storeVersion, DaVinciRecordTransformerConfig recordTransformerConfig);
+  DaVinciRecordTransformer apply(
+      Integer storeVersion,
+      Schema keySchema,
+      Schema originalValueSchema,
+      Schema outputValueSchema);
 }

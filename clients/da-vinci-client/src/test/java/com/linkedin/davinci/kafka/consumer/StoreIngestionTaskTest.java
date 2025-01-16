@@ -81,7 +81,6 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
-import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -4843,10 +4842,13 @@ public abstract class StoreIngestionTaskTest {
       }
     }, aaConfig);
 
-    DaVinciRecordTransformerFunctionalInterface recordTransformerFunctionalInterface =
-        (storeVersion, transformerConfig) -> new TestStringRecordTransformer(storeVersion, transformerConfig, true);
     DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-        recordTransformerFunctionalInterface,
+        (_storeVersion, _keySchema, _originalValueSchema, _outputValueSchema) -> new TestStringRecordTransformer(
+            _storeVersion,
+            _keySchema,
+            _originalValueSchema,
+            _outputValueSchema,
+            true),
         String.class,
         Schema.create(Schema.Type.STRING));
     config.setRecordTransformerConfig(recordTransformerConfig);
@@ -4915,10 +4917,13 @@ public abstract class StoreIngestionTaskTest {
           .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
     }, aaConfig);
 
-    DaVinciRecordTransformerFunctionalInterface recordTransformerFunctionalInterface =
-        (storeVersion, transformerConfig) -> new TestStringRecordTransformer(storeVersion, transformerConfig, true);
     DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-        recordTransformerFunctionalInterface,
+        (_storeVersion, _keySchema, _originalValueSchema, _outputValueSchema) -> new TestStringRecordTransformer(
+            _storeVersion,
+            _keySchema,
+            _originalValueSchema,
+            _outputValueSchema,
+            true),
         String.class,
         Schema.create(Schema.Type.STRING));
     config.setRecordTransformerConfig(recordTransformerConfig);

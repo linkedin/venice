@@ -11,8 +11,6 @@ public class DaVinciRecordTransformerConfig {
   private final Class outputValueClass;
   private final Schema outputValueSchema;
 
-  private Schema keySchema;
-
   /**
    * @param recordTransformerFunction the functional interface for creating a {@link DaVinciRecordTransformer}
    * @param outputValueClass the class of the output value
@@ -35,14 +33,6 @@ public class DaVinciRecordTransformerConfig {
   }
 
   /**
-   * @param storeVersion the store version
-   * @return a new {@link DaVinciRecordTransformer}
-   */
-  public DaVinciRecordTransformer getRecordTransformer(Integer storeVersion) {
-    return recordTransformerFunction.apply(storeVersion, this);
-  }
-
-  /**
    * @return {@link #outputValueClass}
    */
   public Class getOutputValueClass() {
@@ -54,16 +44,5 @@ public class DaVinciRecordTransformerConfig {
    */
   public Schema getOutputValueSchema() {
     return outputValueSchema;
-  }
-
-  public void setKeySchema(Schema keySchema) {
-    this.keySchema = keySchema;
-  }
-
-  /**
-   * @return {@link #keySchema}
-   */
-  public Schema getKeySchema() {
-    return keySchema;
   }
 }
