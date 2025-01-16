@@ -6,6 +6,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.grpc.GrpcUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -18,8 +19,11 @@ import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcServiceGrpc.VeniceControllerGrpcServiceBlockingStub;
+import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import io.grpc.ChannelCredentials;
 import io.grpc.Grpc;
 import io.grpc.InsecureChannelCredentials;
 import io.grpc.ManagedChannel;
@@ -31,9 +35,11 @@ import org.testng.annotations.Test;
 
 public class TestControllerGrpcEndpoints {
   private VeniceClusterWrapper veniceCluster;
+  private SSLFactory sslFactory;
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {
+    sslFactory = SslUtils.getVeniceLocalSslFactory();
     Properties properties = new Properties();
     properties.put(CONTROLLER_GRPC_SERVER_ENABLED, true);
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
@@ -96,5 +102,36 @@ public class TestControllerGrpcEndpoints {
     assertNotNull(discoverClusterGrpcResponse, "Response should not be null");
     assertEquals(discoverClusterGrpcResponse.getStoreName(), storeName);
     assertEquals(discoverClusterGrpcResponse.getClusterName(), veniceCluster.getClusterName());
+  }
+
+  @Test
+  public void testCreateStoreOverSecureGrpcChannel() {
+    String storeName = Utils.getUniqueString("test_grpc_store");
+    String controllerSecureGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerSecureGrpcUrl();
+    ChannelCredentials credentials = GrpcUtils.buildChannelCredentials(sslFactory);
+    ManagedChannel channel = Grpc.newChannelBuilder(controllerSecureGrpcUrl, credentials).build();
+    VeniceControllerGrpcServiceBlockingStub blockingStub = VeniceControllerGrpcServiceGrpc.newBlockingStub(channel);
+
+    CreateStoreGrpcRequest createStoreGrpcRequest = CreateStoreGrpcRequest.newBuilder()
+        .setClusterStoreInfo(
+            ClusterStoreGrpcInfo.newBuilder()
+                .setClusterName(veniceCluster.getClusterName())
+                .setStoreName(storeName)
+                .build())
+        .setOwner("owner")
+        .setKeySchema(DEFAULT_KEY_SCHEMA)
+        .setValueSchema("\"string\"")
+        .build();
+
+    CreateStoreGrpcResponse response = blockingStub.createStore(createStoreGrpcRequest);
+    assertNotNull(response, "Response should not be null");
+    assertNotNull(response.getClusterStoreInfo(), "ClusterStoreInfo should not be null");
+    assertEquals(response.getClusterStoreInfo().getClusterName(), veniceCluster.getClusterName());
+    assertEquals(response.getClusterStoreInfo().getStoreName(), storeName);
+
+    veniceCluster.useControllerClient(controllerClient -> {
+      StoreResponse storeResponse = TestUtils.assertCommand(controllerClient.getStore(storeName));
+      assertNotNull(storeResponse.getStore(), "Store should not be null");
+    });
   }
 }
