@@ -445,7 +445,7 @@ subprojects {
     }
 
     retry {
-      maxRetries = 4 // 5 attempts in total
+      maxRetries = 0 // 5 attempts in total
       maxFailures = 100
       failOnPassedAfterRetry = false
     }

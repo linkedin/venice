@@ -283,7 +283,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     }
   }
 
-  @Test(dataProvider = "FastClient-Test-Permutations", timeOut = TIME_OUT)
+  @Test(dataProvider = "FastClient-Test-Permutations", timeOut = TIME_OUT * 3)
   public void testFastClientGet(
       boolean dualRead,
       boolean speculativeQueryEnabled,

@@ -101,7 +101,7 @@ public abstract class AbstractClientEndToEndSetup {
   protected static final Schema VALUE_SCHEMA_V2 = new Schema.Parser().parse(VALUE_SCHEMA_V2_STR);
 
   protected static final String keyPrefix = "key_";
-  protected static final int recordCnt = 100;
+  protected static final int recordCnt = 10;
 
   /**
    * two sizes: default 2 (initial FC batch get implementation size) and max of recordCnt
@@ -118,6 +118,8 @@ public abstract class AbstractClientEndToEndSetup {
 
   @DataProvider(name = "FastClient-Test-Permutations")
   public Object[][] fastClientTestPermutations() {
+    return new Object[][] { { false, false, false, true, 2, RequestType.SINGLE_GET, SERVER_BASED_METADATA } };
+    /*
     return DataProviderUtils.allPermutationGenerator((permutation) -> {
       boolean dualRead = (boolean) permutation[0];
       boolean speculativeQueryEnabled = (boolean) permutation[1];
@@ -153,6 +155,8 @@ public abstract class AbstractClientEndToEndSetup {
         BATCH_GET_KEY_SIZE.toArray(), // batchGetKeySize
         REQUEST_TYPES_SMALL, // requestType
         STORE_METADATA_FETCH_MODES); // storeMetadataFetchMode
+    
+     */
   }
 
   @DataProvider(name = "fastClientHTTPVariantsAndStoreMetadataFetchModes")

@@ -73,6 +73,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -459,6 +460,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
   }
 
   public CompletableFuture<ReadResponse> handleSingleGetRequest(GetRouterRequest request) {
+
+    Utils.sleep(10000); // sleep for 10s.
     final int queueLen = this.executor.getQueue().size();
     final long preSubmissionTimeNs = System.nanoTime();
     return CompletableFuture.supplyAsync(() -> {
