@@ -394,6 +394,14 @@ public abstract class KafkaStoreIngestionServiceTest {
     Assert.assertNotNull(newStoreIngestionTask);
     Assert.assertNotEquals(storeIngestionTask, newStoreIngestionTask);
     assertEquals(newStoreIngestionTask.getStorageEngine(), storageEngine2);
+
+    // Mimic a graceful shutdown timeout
+    kafkaStoreIngestionService.startConsumption(new VeniceStoreVersionConfig(topicName, veniceProperties), 0);
+    StoreIngestionTask shutdownTimeoutTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
+    // Initialize the latch forcefully to mimic task is running
+    shutdownTimeoutTask.getGracefulShutdownLatch().get();
+    // Graceful shutdown wait should time out
+    Assert.assertFalse(shutdownTimeoutTask.shutdownAndWait(1));
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
