@@ -63,6 +63,9 @@ public class IngestionThrottler implements Closeable {
       AdaptiveThrottlerSignalService adaptiveThrottlerSignalService) {
     VeniceAdaptiveIngestionThrottler globalRecordAdaptiveIngestionThrottler;
     EventThrottler globalRecordThrottler;
+    EventThrottler globalBandwidthThrottler;
+    VeniceAdaptiveIngestionThrottler globalBandwidthAdaptiveIngestionThrottler;
+
     if (serverConfig.isAdaptiveThrottlerEnabled()) {
       globalRecordThrottler = null;
       globalRecordAdaptiveIngestionThrottler = new VeniceAdaptiveIngestionThrottler(
@@ -73,6 +76,15 @@ public class IngestionThrottler implements Closeable {
       globalRecordAdaptiveIngestionThrottler
           .registerLimiterSignal(adaptiveThrottlerSignalService::isSingleGetLatencySignalActive);
       adaptiveThrottlerSignalService.registerThrottler(globalRecordAdaptiveIngestionThrottler);
+      globalBandwidthThrottler = null;
+      globalBandwidthAdaptiveIngestionThrottler = new VeniceAdaptiveIngestionThrottler(
+          serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
+          serverConfig.getKafkaFetchQuotaBytesPerSecond(),
+          serverConfig.getKafkaFetchQuotaTimeWindow(),
+          "kafka_consumption_bandwidth");
+      globalBandwidthAdaptiveIngestionThrottler
+          .registerLimiterSignal(adaptiveThrottlerSignalService::isSingleGetLatencySignalActive);
+      adaptiveThrottlerSignalService.registerThrottler(globalBandwidthAdaptiveIngestionThrottler);
     } else {
       globalRecordAdaptiveIngestionThrottler = null;
       globalRecordThrottler = new EventThrottler(
@@ -81,13 +93,14 @@ public class IngestionThrottler implements Closeable {
           "kafka_consumption_records_count",
           false,
           EventThrottler.BLOCK_STRATEGY);
+      globalBandwidthAdaptiveIngestionThrottler = null;
+      globalBandwidthThrottler = new EventThrottler(
+          serverConfig.getKafkaFetchQuotaBytesPerSecond(),
+          serverConfig.getKafkaFetchQuotaTimeWindow(),
+          "kafka_consumption_bandwidth",
+          false,
+          EventThrottler.BLOCK_STRATEGY);
     }
-    EventThrottler globalBandwidthThrottler = new EventThrottler(
-        serverConfig.getKafkaFetchQuotaBytesPerSecond(),
-        serverConfig.getKafkaFetchQuotaTimeWindow(),
-        "kafka_consumption_bandwidth",
-        false,
-        EventThrottler.BLOCK_STRATEGY);
     this.poolTypeRecordThrottlerMap = new VeniceConcurrentHashMap<>();
     this.poolTypeRecordThrottlerMap.put(
         ConsumerPoolType.AA_WC_LEADER_POOL,
@@ -177,7 +190,9 @@ public class IngestionThrottler implements Closeable {
           this.finalRecordThrottler = serverConfig.isAdaptiveThrottlerEnabled()
               ? globalRecordAdaptiveIngestionThrottler
               : globalRecordThrottler;
-          this.finalBandwidthThrottler = globalBandwidthThrottler;
+          this.finalBandwidthThrottler = serverConfig.isAdaptiveThrottlerEnabled()
+              ? globalBandwidthAdaptiveIngestionThrottler
+              : globalBandwidthThrottler;
           this.isUsingSpeedupThrottler = false;
         }
 
