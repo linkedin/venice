@@ -8,13 +8,14 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
+import com.linkedin.venice.controller.grpc.server.interceptor.ControllerGrpcAuditLoggingInterceptor;
+import com.linkedin.venice.controller.grpc.server.interceptor.ControllerGrpcSslSessionInterceptor;
+import com.linkedin.venice.controller.grpc.server.interceptor.ParentControllerRegionValidationInterceptor;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.server.VeniceControllerGrpcServiceImpl;
 import com.linkedin.venice.controller.server.VeniceControllerRequestHandler;
-import com.linkedin.venice.controller.server.grpc.ControllerGrpcSslSessionInterceptor;
-import com.linkedin.venice.controller.server.grpc.ParentControllerRegionValidationInterceptor;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controller.systemstore.SystemStoreRepairService;
@@ -279,7 +280,8 @@ public class VeniceController {
     LOGGER.info("Initializing gRPC server as it is enabled for the controller...");
     ParentControllerRegionValidationInterceptor parentControllerRegionValidationInterceptor =
         new ParentControllerRegionValidationInterceptor(controllerService.getVeniceHelixAdmin());
-    List<ServerInterceptor> interceptors = new ArrayList<>(2);
+    List<ServerInterceptor> interceptors = new ArrayList<>(4);
+    interceptors.add(new ControllerGrpcAuditLoggingInterceptor());
     interceptors.add(parentControllerRegionValidationInterceptor);
 
     VeniceControllerGrpcServiceImpl grpcService = new VeniceControllerGrpcServiceImpl(unsecureRequestHandler);

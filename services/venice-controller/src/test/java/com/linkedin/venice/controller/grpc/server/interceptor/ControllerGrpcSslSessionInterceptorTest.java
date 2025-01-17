@@ -1,4 +1,4 @@
-package com.linkedin.venice.controller.server.grpc;
+package com.linkedin.venice.controller.grpc.server.interceptor;
 
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doThrow;

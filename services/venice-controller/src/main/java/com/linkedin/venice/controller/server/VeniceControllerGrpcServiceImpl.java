@@ -1,9 +1,9 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.controller.grpc.ControllerGrpcConstants.GRPC_CONTROLLER_CLIENT_DETAILS;
 import static com.linkedin.venice.controller.server.VeniceRouteHandler.ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX;
-import static com.linkedin.venice.controller.server.grpc.ControllerGrpcSslSessionInterceptor.GRPC_CONTROLLER_CLIENT_DETAILS;
 
-import com.linkedin.venice.controller.server.grpc.GrpcControllerClientDetails;
+import com.linkedin.venice.controller.grpc.server.GrpcControllerClientDetails;
 import com.linkedin.venice.controllerapi.transport.GrpcRequestResponseConverter;
 import com.linkedin.venice.protocols.controller.ControllerGrpcErrorType;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;

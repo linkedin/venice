@@ -1,5 +1,7 @@
-package com.linkedin.venice.controller.server.grpc;
+package com.linkedin.venice.controller.grpc.server.interceptor;
 
+import com.linkedin.venice.controller.grpc.ControllerGrpcConstants;
+import com.linkedin.venice.controller.grpc.server.GrpcControllerClientDetails;
 import com.linkedin.venice.grpc.GrpcUtils;
 import com.linkedin.venice.protocols.controller.ControllerGrpcErrorType;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcErrorInfo;
@@ -38,9 +40,6 @@ import org.apache.logging.log4j.Logger;
  */
 public class ControllerGrpcSslSessionInterceptor implements ServerInterceptor {
   private static final Logger LOGGER = LogManager.getLogger(ControllerGrpcSslSessionInterceptor.class);
-  protected static final String UNKNOWN_REMOTE_ADDRESS = "unknown";
-  public static final Context.Key<GrpcControllerClientDetails> GRPC_CONTROLLER_CLIENT_DETAILS =
-      Context.key("controller-client-details");
 
   protected static final VeniceControllerGrpcErrorInfo NON_SSL_ERROR_INFO = VeniceControllerGrpcErrorInfo.newBuilder()
       .setStatusCode(Status.UNAUTHENTICATED.getCode().value())
@@ -101,7 +100,9 @@ public class ControllerGrpcSslSessionInterceptor implements ServerInterceptor {
 
     // Create a new context with SSL-related attributes
     Context context = Context.current()
-        .withValue(GRPC_CONTROLLER_CLIENT_DETAILS, new GrpcControllerClientDetails(clientCert, remoteAddressStr));
+        .withValue(
+            ControllerGrpcConstants.GRPC_CONTROLLER_CLIENT_DETAILS,
+            new GrpcControllerClientDetails(clientCert, remoteAddressStr));
 
     // Proceed with the call
     return Contexts.interceptCall(context, serverCall, metadata, serverCallHandler);
@@ -115,7 +116,7 @@ public class ControllerGrpcSslSessionInterceptor implements ServerInterceptor {
    */
   private String getRemoteAddress(ServerCall<?, ?> serverCall) {
     SocketAddress remoteAddress = serverCall.getAttributes().get(Grpc.TRANSPORT_ATTR_REMOTE_ADDR);
-    return remoteAddress != null ? remoteAddress.toString() : UNKNOWN_REMOTE_ADDRESS;
+    return remoteAddress != null ? remoteAddress.toString() : ControllerGrpcConstants.UNKNOWN_REMOTE_ADDRESS;
   }
 
   /**
