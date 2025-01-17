@@ -1,4 +1,4 @@
-package com.linkedin.venice.controller.server.grpc;
+package com.linkedin.venice.controller.grpc.server.interceptor;
 
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.eq;
@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 
+import com.linkedin.venice.controller.grpc.ControllerGrpcConstants;
 import io.grpc.Attributes;
 import io.grpc.Grpc;
 import io.grpc.Metadata;
@@ -60,8 +61,8 @@ public class ControllerGrpcAuditLoggingInterceptorTest {
         .set(Grpc.TRANSPORT_ATTR_REMOTE_ADDR, clientAddr)
         .build();
     when(mockServerCall.getAttributes()).thenReturn(attributes);
-    mockMetadata.put(ControllerGrpcAuditLoggingInterceptor.CLUSTER_NAME_METADATA_KEY, "TestCluster");
-    mockMetadata.put(ControllerGrpcAuditLoggingInterceptor.STORE_NAME_METADATA_KEY, "TestStore");
+    mockMetadata.put(ControllerGrpcConstants.CLUSTER_NAME_METADATA_KEY, "TestCluster");
+    mockMetadata.put(ControllerGrpcConstants.STORE_NAME_METADATA_KEY, "TestStore");
 
     // Invoke the interceptor
     interceptor.interceptCall(mockServerCall, mockMetadata, mockHandler);
@@ -101,8 +102,8 @@ public class ControllerGrpcAuditLoggingInterceptorTest {
         .build();
     when(mockServerCall.getAttributes()).thenReturn(attributes);
 
-    mockMetadata.put(ControllerGrpcAuditLoggingInterceptor.CLUSTER_NAME_METADATA_KEY, "TestCluster");
-    mockMetadata.put(ControllerGrpcAuditLoggingInterceptor.STORE_NAME_METADATA_KEY, "TestStore");
+    mockMetadata.put(ControllerGrpcConstants.CLUSTER_NAME_METADATA_KEY, "TestCluster");
+    mockMetadata.put(ControllerGrpcConstants.STORE_NAME_METADATA_KEY, "TestStore");
 
     // Mock ServerCallHandler to return a dummy Listener
     ServerCall.Listener<String> mockListener = mock(ServerCall.Listener.class);

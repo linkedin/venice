@@ -1,10 +1,10 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.controller.server.grpc.ControllerGrpcSslSessionInterceptor.GRPC_CONTROLLER_CLIENT_DETAILS;
+import static com.linkedin.venice.controller.grpc.ControllerGrpcConstants.GRPC_CONTROLLER_CLIENT_DETAILS;
 import static org.testng.Assert.assertEquals;
 
-import com.linkedin.venice.controller.server.grpc.ControllerGrpcSslSessionInterceptor;
-import com.linkedin.venice.controller.server.grpc.GrpcControllerClientDetails;
+import com.linkedin.venice.controller.grpc.server.GrpcControllerClientDetails;
+import com.linkedin.venice.controller.grpc.server.interceptor.ControllerGrpcSslSessionInterceptor;
 import com.linkedin.venice.grpc.GrpcUtils;
 import com.linkedin.venice.grpc.VeniceGrpcServer;
 import com.linkedin.venice.grpc.VeniceGrpcServerConfig;

@@ -1,4 +1,4 @@
-package com.linkedin.venice.controller.server.grpc;
+package com.linkedin.venice.controller.grpc.server;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;

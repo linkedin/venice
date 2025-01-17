@@ -1,5 +1,6 @@
-package com.linkedin.venice.controller.server.grpc;
+package com.linkedin.venice.controller.grpc.server.interceptor;
 
+import com.linkedin.venice.controller.grpc.ControllerGrpcConstants;
 import com.linkedin.venice.utils.LatencyUtils;
 import io.grpc.ForwardingServerCall.SimpleForwardingServerCall;
 import io.grpc.Grpc;
@@ -23,11 +24,6 @@ import org.apache.logging.log4j.Logger;
  */
 public class ControllerGrpcAuditLoggingInterceptor implements ServerInterceptor {
   private static final Logger LOGGER = LogManager.getLogger(ControllerGrpcAuditLoggingInterceptor.class);
-  private static final String UNKNOWN_ADDR = "UNKNOWN";
-  public static final Metadata.Key<String> CLUSTER_NAME_METADATA_KEY =
-      Metadata.Key.of("cluster-name", Metadata.ASCII_STRING_MARSHALLER);
-  public static final Metadata.Key<String> STORE_NAME_METADATA_KEY =
-      Metadata.Key.of("store-name", Metadata.ASCII_STRING_MARSHALLER);
 
   @Override
   public <ReqT, RespT> ServerCall.Listener<ReqT> interceptCall(
@@ -39,8 +35,8 @@ public class ControllerGrpcAuditLoggingInterceptor implements ServerInterceptor 
     String apiName = serverCall.getMethodDescriptor().getBareMethodName();
     String serverAddr = getAddress(serverCall.getAttributes().get(Grpc.TRANSPORT_ATTR_LOCAL_ADDR));
     String clientAddr = getAddress(serverCall.getAttributes().get(Grpc.TRANSPORT_ATTR_REMOTE_ADDR));
-    String clusterName = headers.get(CLUSTER_NAME_METADATA_KEY);
-    String storeName = headers.get(STORE_NAME_METADATA_KEY);
+    String clusterName = headers.get(ControllerGrpcConstants.CLUSTER_NAME_METADATA_KEY);
+    String storeName = headers.get(ControllerGrpcConstants.STORE_NAME_METADATA_KEY);
 
     LOGGER.info(
         "[AUDIT][gRPC][IN] api={}, serverAddr={}, clientAddr={}, clusterName={}, storeName={}",
@@ -76,6 +72,6 @@ public class ControllerGrpcAuditLoggingInterceptor implements ServerInterceptor 
   }
 
   private String getAddress(SocketAddress address) {
-    return address != null ? address.toString() : UNKNOWN_ADDR;
+    return address != null ? address.toString() : ControllerGrpcConstants.UNKNOWN_REMOTE_ADDRESS;
   }
 }

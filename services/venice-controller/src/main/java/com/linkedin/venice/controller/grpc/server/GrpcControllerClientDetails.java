@@ -1,4 +1,4 @@
-package com.linkedin.venice.controller.server.grpc;
+package com.linkedin.venice.controller.grpc.server;
 
 import java.security.cert.X509Certificate;
 
