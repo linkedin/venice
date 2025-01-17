@@ -356,7 +356,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected final ExecutorService parallelProcessingThreadPool;
 
-  protected final CountDownLatch gracefulShutdownLatch = new CountDownLatch(1);
+  protected Lazy<CountDownLatch> gracefulShutdownLatch = Lazy.of(() -> new CountDownLatch(1));
   protected Lazy<ZKHelixAdmin> zkHelixAdmin;
   protected final String hostName;
 
@@ -1628,6 +1628,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   @Override
   public void run() {
+    CountDownLatch shutdownLatch = gracefulShutdownLatch.get();
     boolean doFlush = true;
     try {
       // Update thread name to include topic to make it easy debugging
@@ -1695,7 +1696,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         CompletableFuture.allOf(shutdownFutures.toArray(new CompletableFuture[0])).get(60, SECONDS);
       }
       // Release the latch after all the shutdown completes in DVC/Server.
-      getGracefulShutdownLatch().countDown();
+      shutdownLatch.countDown();
     } catch (VeniceIngestionTaskKilledException e) {
       LOGGER.info("{} has been killed.", ingestionTaskName);
       ingestionNotificationDispatcher.reportKilled(partitionConsumptionStateMap.values(), e);
@@ -4098,16 +4099,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * This method is a blocking call to wait for {@link StoreIngestionTask} for fully shutdown in the given time.
    * @param waitTime Maximum wait time for the shutdown operation.
+   * @return whether able to gracefully shut down within the waitTime
    */
-  public void shutdownAndWait(int waitTime) {
+  public boolean shutdownAndWait(int waitTime) {
     long startTimeInMs = System.currentTimeMillis();
+    boolean timelyShutDown = true;
     close();
     try {
-      if (!getGracefulShutdownLatch().await(waitTime, SECONDS)) {
+      if (getGracefulShutdownLatch().isPresent() && !getGracefulShutdownLatch().get().await(waitTime, SECONDS)) {
         LOGGER.warn(
             "Unable to shutdown ingestion task of topic: {} gracefully in {}ms",
             kafkaVersionTopic,
             SECONDS.toMillis(waitTime));
+        timelyShutDown = false;
       } else {
         LOGGER.info(
             "Ingestion task of topic: {} is shutdown in {}ms",
@@ -4117,6 +4121,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     } catch (Exception e) {
       LOGGER.error("Caught exception while waiting for ingestion task of topic: {} shutdown.", kafkaVersionTopic);
     }
+    return timelyShutDown;
   }
 
   /**
@@ -4622,7 +4627,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return kafkaClusterUrlResolver;
   }
 
-  CountDownLatch getGracefulShutdownLatch() {
+  Lazy<CountDownLatch> getGracefulShutdownLatch() {
     return gracefulShutdownLatch;
   }
 
