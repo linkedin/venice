@@ -75,7 +75,6 @@ dependencies {
   implementation project(':internal:alpini:netty4:alpini-netty4-base')
   implementation project(':internal:alpini:router:alpini-router-api')
   implementation project(':internal:alpini:router:alpini-router-base')
-  implementation project(':integrations:venice-duckdb')
 
   implementation('org.apache.helix:helix-core:1.4.1:jdk8') {
     exclude group: 'org.apache.helix'
@@ -140,8 +139,6 @@ def integrationTestBuckets = [
       "com.linkedin.venice.endToEnd.DaVinciClientDiskFullTest",
       "com.linkedin.venice.endToEnd.DaVinciClientMemoryLimitTest",
       "com.linkedin.venice.endToEnd.DaVinciClientRecordTransformerTest"],
-  "1001": [
-      "com.linkedin.venice.endToEnd.DuckDBDaVinciRecordTransformerIntegrationTest"],
   "1010": [
        "com.linkedin.venice.endToEnd.DaVinciClientTest"],
   "1020": [
