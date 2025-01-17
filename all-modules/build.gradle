@@ -2,7 +2,8 @@
 // via transitive dependencies instead of enumerating all modules individually.
 dependencies {
   rootProject.subprojects.each { subproject ->
-    if (subproject.path != project.path && subproject.subprojects.isEmpty()) {
+    // Excluding venice-duckdb as it's experimental and causes build issues
+    if (subproject.path != project.path && subproject.subprojects.isEmpty() && subproject.path != ':venice-duckdb') {
       implementation project(subproject.path)
     }
   }
