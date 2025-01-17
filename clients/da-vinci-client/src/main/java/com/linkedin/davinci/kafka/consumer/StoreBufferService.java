@@ -65,6 +65,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
   private final boolean isSorted;
 
+  private volatile boolean isStarted = false;
+
   public StoreBufferService(
       int drainerNum,
       long bufferCapacityPerDrainer,
@@ -308,12 +310,14 @@ public class StoreBufferService extends AbstractStoreBufferService {
       drainerList.add(drainer);
     }
     this.executorService.shutdown();
+    isStarted = true;
     return true;
   }
 
   @Override
   public void stopInner() throws Exception {
     // Graceful shutdown
+    isStarted = false;
     drainerList.forEach(drainer -> drainer.stop());
     if (this.executorService != null) {
       this.executorService.shutdownNow();
@@ -343,6 +347,10 @@ public class StoreBufferService extends AbstractStoreBufferService {
   public long getMaxMemoryUsagePerDrainer() {
     long maxUsage = 0;
     boolean slowDrainerExists = false;
+
+    if (!isStarted) {
+      return maxUsage;
+    }
 
     for (MemoryBoundBlockingQueue<QueueNode> queue: blockingQueueArr) {
       maxUsage = Math.max(maxUsage, queue.getMemoryUsage());

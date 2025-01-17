@@ -9,11 +9,11 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.metadata.response.StorePropertiesResponseRecord;
+import com.linkedin.venice.schema.SchemaData;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.systemstore.schemas.StoreClusterConfig;
-import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
-import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -22,11 +22,13 @@ import org.apache.avro.Schema;
 
 
 public class RequestBasedMetaRepository extends NativeMetadataRepository {
-  // storeName -> storePropertiesResponseRecord
-  private final Map<String, StorePropertiesResponseRecord> storePropertiesRecordMap = new VeniceConcurrentHashMap<>();
 
-  private final Map<String, D2TransportClient> d2TransportClientMap = new VeniceConcurrentHashMap<>(); // cluster ->
-                                                                                                       // client
+  // cluster -> client
+  private final Map<String, D2TransportClient> d2TransportClientMap = new VeniceConcurrentHashMap<>();
+
+  // storeName -> T
+  private final Map<String, SchemaData> storeSchemaMap = new VeniceConcurrentHashMap<>();
+
   private final D2TransportClient d2DiscoveryTransportClient;
   private D2ServiceDiscovery d2ServiceDiscovery;
 
@@ -40,7 +42,10 @@ public class RequestBasedMetaRepository extends NativeMetadataRepository {
   @Override
   public void clear() {
     super.clear();
-    storePropertiesRecordMap.clear();
+
+    // Clear cache
+    d2TransportClientMap.clear();
+    storeSchemaMap.clear();
   }
 
   @Override
@@ -64,31 +69,32 @@ public class RequestBasedMetaRepository extends NativeMetadataRepository {
   }
 
   @Override
-  protected StoreMetaValue getStoreMetaValue(String storeName, StoreMetaKey key) { // TODO PRANAV what is key for?
-    System.out.println("HERE HERE HERE getStoreMetaValue - Key: " + key);
-    if (storePropertiesRecordMap.containsKey(storeName)) {
-      return storePropertiesRecordMap.get(storeName).storeMetaValue;
+  protected SchemaData getSchemaData(String storeName) {
+    if (!storeSchemaMap.containsKey(storeName)) {
+      // Cache miss
+      fetchAndCacheStorePropertiesResponseRecord(storeName);
     }
 
-    // Cache miss, fetch store
-    StorePropertiesResponseRecord record = fetchAndCacheStorePropertiesResponseRecord(storeName);
-    return record.storeMetaValue;
+    return storeSchemaMap.get(storeName);
   }
 
   private StorePropertiesResponseRecord fetchAndCacheStorePropertiesResponseRecord(String storeName) {
 
     // Request
-    // TODO PRANAV lastKnownSchemaId param
+    int maxValueSchemaId = getMaxValueSchemaId(storeName);
     D2TransportClient d2TransportClient = getD2TransportClient(storeName);
     String requestBasedStorePropertiesURL = QueryAction.STORE_PROPERTIES.toString().toLowerCase() + "/" + storeName;
+    if (maxValueSchemaId > SchemaData.UNKNOWN_SCHEMA_ID) {
+      requestBasedStorePropertiesURL += "/" + maxValueSchemaId;
+    }
+
     TransportClientResponse response;
     try {
       response = d2TransportClient.get(requestBasedStorePropertiesURL).get();
     } catch (Exception e) {
       throw new RuntimeException(
-          "Encountered exception while trying to send store properties request to: " + requestBasedStorePropertiesURL
-              + "/" + requestBasedStorePropertiesURL,
-          e);
+          "Encountered exception while trying to send store properties request to " + requestBasedStorePropertiesURL
+              + ": " + e);
     }
 
     // Deserialize
@@ -98,7 +104,7 @@ public class RequestBasedMetaRepository extends NativeMetadataRepository {
     StorePropertiesResponseRecord record = recordDeserializer.deserialize(response.getBody());
 
     // Cache
-    storePropertiesRecordMap.put(storeName, record);
+    cacheStoreSchema(storeName, record);
 
     return record;
   }
@@ -114,6 +120,35 @@ public class RequestBasedMetaRepository extends NativeMetadataRepository {
       D2TransportClient d2TransportClient = new D2TransportClient(serverD2ServiceName, clientConfig.getD2Client());
       d2TransportClientMap.put(serverD2ServiceName, d2TransportClient);
       return d2TransportClient;
+    }
+  }
+
+  private int getMaxValueSchemaId(String storeName) {
+    if (!schemaMap.containsKey(storeName)) {
+      return SchemaData.UNKNOWN_SCHEMA_ID;
+    }
+    return schemaMap.get(storeName).getMaxValueSchemaId();
+  }
+
+  private void cacheStoreSchema(String storeName, StorePropertiesResponseRecord record) {
+
+    if (!storeSchemaMap.containsKey(storeName)) {
+      // New schema data
+      Map.Entry<CharSequence, CharSequence> keySchemaEntry =
+          record.getStoreMetaValue().getStoreKeySchemas().getKeySchemaMap().entrySet().iterator().next();
+      SchemaData schemaData = new SchemaData(
+          storeName,
+          new SchemaEntry(Integer.parseInt(keySchemaEntry.getKey().toString()), keySchemaEntry.getValue().toString()));
+      storeSchemaMap.put(storeName, schemaData);
+    }
+
+    // Store Value Schemas
+    for (Map.Entry<CharSequence, CharSequence> entry: record.getStoreMetaValue()
+        .getStoreValueSchemas()
+        .getValueSchemaMap()
+        .entrySet()) {
+      storeSchemaMap.get(storeName)
+          .addValueSchema(new SchemaEntry(Integer.parseInt(entry.getKey().toString()), entry.getValue().toString()));
     }
   }
 }

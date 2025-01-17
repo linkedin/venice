@@ -12,6 +12,7 @@ import static com.linkedin.davinci.validation.KafkaDataIntegrityValidator.DISABL
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
+import static com.linkedin.venice.pubsub.PubSubConstants.UNKNOWN_LATEST_OFFSET;
 import static com.linkedin.venice.utils.Utils.FATAL_DATA_VALIDATION_ERROR;
 import static com.linkedin.venice.utils.Utils.getReplicaId;
 import static java.util.Comparator.comparingInt;
@@ -22,7 +23,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
-import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -253,7 +254,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final Optional<HybridStoreConfig> hybridStoreConfig;
   protected final Consumer<DataValidationException> divErrorMetricCallback;
   private final ExecutorService missingSOPCheckExecutor = Executors.newSingleThreadExecutor();
-  private final VeniceStoreVersionConfig storeConfig;
+  private final VeniceStoreVersionConfig storeVersionConfig;
   protected final long readCycleDelayMs;
   protected final long emptyPollSleepMs;
 
@@ -366,25 +367,27 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       Version version,
       Properties kafkaConsumerProperties,
       BooleanSupplier isCurrentVersion,
-      VeniceStoreVersionConfig storeConfig,
+      VeniceStoreVersionConfig storeVersionConfig,
       int errorPartitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
-      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
+      DaVinciRecordTransformerConfig recordTransformerConfig,
       Queue<VeniceNotifier> notifiers,
       Lazy<ZKHelixAdmin> zkHelixAdmin) {
-    this.storeConfig = storeConfig;
-    this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
-    this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
-    this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
-    this.databaseSyncBytesIntervalForDeferredWriteMode = storeConfig.getDatabaseSyncBytesIntervalForDeferredWriteMode();
+    this.storeVersionConfig = storeVersionConfig;
+    this.readCycleDelayMs = storeVersionConfig.getKafkaReadCycleDelayMs();
+    this.emptyPollSleepMs = storeVersionConfig.getKafkaEmptyPollSleepMs();
+    this.databaseSyncBytesIntervalForTransactionalMode =
+        storeVersionConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
+    this.databaseSyncBytesIntervalForDeferredWriteMode =
+        storeVersionConfig.getDatabaseSyncBytesIntervalForDeferredWriteMode();
     this.kafkaProps = kafkaConsumerProperties;
     this.storageService = storageService;
     this.storageEngineRepository = builder.getStorageEngineRepository();
     this.storageMetadataService = builder.getStorageMetadataService();
     this.storeRepository = builder.getMetadataRepo();
     this.schemaRepository = builder.getSchemaRepo();
-    this.kafkaVersionTopic = storeConfig.getStoreVersionName();
+    this.kafkaVersionTopic = storeVersionConfig.getStoreVersionName();
     this.pubSubTopicRepository = builder.getPubSubTopicRepository();
     this.versionTopic = pubSubTopicRepository.getTopic(kafkaVersionTopic);
     this.storeName = versionTopic.getStoreName();
@@ -414,13 +417,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         new KafkaDataIntegrityValidator(this.kafkaVersionTopic, DISABLED, producerStateMaxAgeMs);
     this.ingestionTaskName = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
     this.topicManagerRepository = builder.getTopicManagerRepository();
-    this.readOnlyForBatchOnlyStoreEnabled = storeConfig.isReadOnlyForBatchOnlyStoreEnabled();
+    this.readOnlyForBatchOnlyStoreEnabled = storeVersionConfig.isReadOnlyForBatchOnlyStoreEnabled();
     this.hostLevelIngestionStats = builder.getIngestionStats().getStoreStats(storeName);
     this.versionedDIVStats = builder.getVersionedDIVStats();
     this.versionedIngestionStats = builder.getVersionedStorageIngestionStats();
     this.isRunning = new AtomicBoolean(true);
     this.emitMetrics = new AtomicBoolean(true);
-    this.resetErrorReplicaEnabled = storeConfig.isResetErrorReplicaEnabled();
+    this.resetErrorReplicaEnabled = storeVersionConfig.isResetErrorReplicaEnabled();
 
     this.storeBufferService = builder.getStoreBufferService();
     this.isCurrentVersion = isCurrentVersion;
@@ -470,11 +473,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.chunkAssembler = new ChunkAssembler(storeName);
     this.cacheBackend = cacheBackend;
 
-    if (recordTransformerFunction != null) {
-      DaVinciRecordTransformer clientRecordTransformer = recordTransformerFunction.apply(versionNumber);
+    if (recordTransformerConfig != null && recordTransformerConfig.getRecordTransformerFunction() != null) {
+      Schema keySchema = schemaRepository.getKeySchema(storeName).getSchema();
+      Schema inputValueSchema = schemaRepository.getSupersetOrLatestValueSchema(storeName).getSchema();
+      Schema outputValueSchema = recordTransformerConfig.getOutputValueSchema();
+
+      DaVinciRecordTransformer clientRecordTransformer = recordTransformerConfig.getRecordTransformerFunction()
+          .apply(versionNumber, keySchema, inputValueSchema, outputValueSchema);
+
       this.recordTransformer = new BlockingDaVinciRecordTransformer(
           clientRecordTransformer,
+          keySchema,
+          inputValueSchema,
+          outputValueSchema,
           clientRecordTransformer.getStoreRecordsInDaVinci());
+
       versionedIngestionStats.registerTransformerLatencySensor(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleStartLatency(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleEndLatency(storeName, versionNumber);
@@ -483,7 +496,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // onStartVersionIngestion called here instead of run() because this needs to finish running
       // before bootstrapping starts
       long startTime = System.currentTimeMillis();
-      recordTransformer.onStartVersionIngestion();
+      recordTransformer.onStartVersionIngestion(isCurrentVersion.getAsBoolean());
       long endTime = System.currentTimeMillis();
       versionedIngestionStats.recordTransformerLifecycleStartLatency(
           storeName,
@@ -543,7 +556,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     this.batchReportIncPushStatusEnabled = !isDaVinciClient && serverConfig.getBatchReportEOIPEnabled();
     this.parallelProcessingThreadPool = builder.getAAWCWorkLoadProcessingThreadPool();
-    this.hostName = Utils.getHostName() + "_" + storeConfig.getListenerPort();
+    this.hostName = Utils.getHostName() + "_" + storeVersionConfig.getListenerPort();
     this.zkHelixAdmin = zkHelixAdmin;
   }
 
@@ -689,7 +702,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private void dropPartitionSynchronously(PubSubTopicPartition topicPartition) {
     LOGGER.info("{} Dropping partition: {}", ingestionTaskName, topicPartition);
     int partition = topicPartition.getPartitionNumber();
-    this.storageService.dropStorePartition(storeConfig, partition, true);
+    this.storageService.dropStorePartition(storeVersionConfig, partition, true);
     LOGGER.info("{} Dropped partition: {}", ingestionTaskName, topicPartition);
   }
 
@@ -2344,16 +2357,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * written to, the end offset is 0.
    */
   protected long getTopicPartitionEndOffSet(String kafkaUrl, PubSubTopic pubSubTopic, int partition) {
-    long offsetFromConsumer = aggKafkaConsumerService
-        .getLatestOffsetBasedOnMetrics(kafkaUrl, versionTopic, new PubSubTopicPartitionImpl(pubSubTopic, partition));
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopic, partition);
+    long offsetFromConsumer =
+        aggKafkaConsumerService.getLatestOffsetBasedOnMetrics(kafkaUrl, versionTopic, topicPartition);
     if (offsetFromConsumer >= 0) {
       return offsetFromConsumer;
     }
     try {
       return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
         long offset = getTopicManager(kafkaUrl).getLatestOffsetCachedNonBlocking(pubSubTopic, partition);
-        if (offset == -1) {
-          throw new VeniceException("Found latest offset -1");
+        if (offset == UNKNOWN_LATEST_OFFSET) {
+          throw new VeniceException("Latest offset is unknown. Check if the topic: " + topicPartition + " exists.");
         }
         return offset;
       },
@@ -2894,7 +2908,33 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /*
      * Notify the underlying store engine about starting batch push.
      */
-    beginBatchWrite(partition, startOfPush.sorted, partitionConsumptionState);
+    final boolean sorted;
+    if (serverConfig.getRocksDBServerConfig().isBlobFilesEnabled() && isHybridMode()) {
+      /**
+       * We would like to skip {@link com.linkedin.davinci.store.rocksdb.RocksDBSstFileWriter} for hybrid stores
+       * when RocksDB blob mode is enabled and here are the reasons:
+       * 1. Hybrid stores will use the same amount of MemTables eventually even not in batch processing phase.
+       * 2. SSTFileWriter + RocksDB blob mode will introduce additional space overhead in the following way:
+       *    a. SSTFileWriter doesn't support RocksDB blob mode, which means even with blob enabled, SSTFileWriter
+       *       will still write both key and value into the same SST file regardless of value size.
+       *    b. When RocksDB ingests the generated SST files, it will put them in the bottom level.
+       *    c. After finishing the batch portion, RocksDB won't use SSTFileWriter anymore and in the regular mode, when
+       *       RocksDB blob mode is enabled, RocksDB will store the value in blob files when the value size is
+       *       larger than the configured threshold, and this also means the LSM tree built by the real-time writes
+       *       will be much smaller as it contains keys and smaller values/value pointers.
+       *    d. As LSM tree is small, it is not easy to trigger a compaction in the bottom level (the bottom - 1 level
+       *       needs to keep enough data to trigger the bottom-level compaction), so the staled entries in the bottom
+       *       level will remain for a long time.
+       *    e. RocksDB blob config tuning won't affect the large bottom-level SST files.
+       * 3. If we disable SSTFileWriter for hybrid stores when RocksDB blob mode is enabled, all the writes will
+       *    go through MemTable and key/value separation logic will apply all the time, and blob related configs
+       *    will apply to all the writes.
+       */
+      sorted = false;
+    } else {
+      sorted = startOfPush.sorted;
+    }
+    beginBatchWrite(partition, sorted, partitionConsumptionState);
     partitionConsumptionState.setStartOfPushTimestamp(startOfPushKME.producerMetadata.messageTimestamp);
 
     ingestionNotificationDispatcher.reportStarted(partitionConsumptionState);
@@ -2902,7 +2942,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (previousStoreVersionState == null) {
         // No other partition of the same topic has started yet, let's initialize the StoreVersionState
         StoreVersionState newStoreVersionState = new StoreVersionState();
-        newStoreVersionState.sorted = startOfPush.sorted;
+        newStoreVersionState.sorted = sorted;
         newStoreVersionState.chunked = startOfPush.chunked;
         newStoreVersionState.compressionStrategy = startOfPush.compressionStrategy;
         newStoreVersionState.compressionDictionary = startOfPush.compressionDictionary;
@@ -2920,7 +2960,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             StoreVersionState.class.getSimpleName(),
             kafkaVersionTopic);
         return newStoreVersionState;
-      } else if (previousStoreVersionState.sorted != startOfPush.sorted) {
+      } else if (previousStoreVersionState.sorted != sorted) {
         // Something very wrong is going on ): ...
         throw new VeniceException(
             "Unexpected: received multiple " + ControlMessageType.START_OF_PUSH.name()
@@ -2979,7 +3019,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /**
      * Generate snapshot after batch write is done.
      */
-    if (storeConfig.isBlobTransferEnabled()) {
+    if (storeVersionConfig.isBlobTransferEnabled() && serverConfig.isBlobTransferManagerEnabled()) {
       storageEngine.createSnapshot(storagePartitionConfig);
     }
 
@@ -3101,6 +3141,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         processEndOfIncrementalPush(controlMessage, partitionConsumptionState);
         break;
       case TOPIC_SWITCH:
+        TopicSwitch topicSwitch = (TopicSwitch) controlMessage.controlMessageUnion;
+        LOGGER.info(
+            "Received {} control message. Replica: {}, Offset: {} NewSource: {}",
+            type.name(),
+            partitionConsumptionState.getReplicaId(),
+            offset,
+            topicSwitch.getSourceKafkaServers());
         checkReadyToServeAfterProcess =
             processTopicSwitch(controlMessage, partition, offset, partitionConsumptionState);
         break;
@@ -4037,7 +4084,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     if (recordTransformer != null) {
       long startTime = System.currentTimeMillis();
-      recordTransformer.onEndVersionIngestion();
+      Store store = storeRepository.getStoreOrThrow(storeName);
+      recordTransformer.onEndVersionIngestion(store.getCurrentVersion());
       long endTime = System.currentTimeMillis();
       versionedIngestionStats.recordTransformerLifecycleEndLatency(
           storeName,

@@ -1,7 +1,6 @@
 package com.linkedin.venice.router;
 
-import static com.linkedin.venice.ConfigKeys.ROUTER_ENABLE_READ_THROTTLING;
-import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
+import static com.linkedin.venice.ConfigKeys.*;
 import static org.testng.Assert.assertEquals;
 
 import com.linkedin.d2.balancer.D2Client;
@@ -16,6 +15,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
@@ -83,8 +83,17 @@ public class TestRetryQuotaRejection {
     extraProperties.put(ConfigKeys.ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT);
     extraProperties.put(ROUTER_ENABLE_READ_THROTTLING, false);
     extraProperties.put(SERVER_QUOTA_ENFORCEMENT_ENABLED, "true");
+    extraProperties.put(PARTICIPANT_MESSAGE_STORE_ENABLED, "false");
 
-    veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 2, 2, 100, true, false, extraProperties);
+    veniceCluster = ServiceFactory.getVeniceCluster(
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+            .numberOfServers(1)
+            .numberOfRouters(2)
+            .replicationFactor(2)
+            .partitionSize(100)
+            .sslToStorageNodes(true)
+            .extraProperties(extraProperties)
+            .build());
     Properties serverProperties = new Properties();
     Properties serverFeatureProperties = new Properties();
     serverFeatureProperties.put(VeniceServerWrapper.SERVER_ENABLE_SSL, "true");

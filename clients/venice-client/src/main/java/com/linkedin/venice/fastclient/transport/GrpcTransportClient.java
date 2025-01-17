@@ -21,10 +21,8 @@ import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.grpc.ChannelCredentials;
 import io.grpc.Grpc;
-import io.grpc.InsecureChannelCredentials;
 import io.grpc.ManagedChannel;
 import io.grpc.Status;
-import io.grpc.TlsChannelCredentials;
 import io.grpc.stub.StreamObserver;
 import java.io.IOException;
 import java.util.Arrays;
@@ -74,7 +72,7 @@ public class GrpcTransportClient extends InternalTransportClient {
     this.port = port;
     this.serverGrpcChannels = new VeniceConcurrentHashMap<>();
     this.stubCache = new VeniceConcurrentHashMap<>();
-    this.channelCredentials = buildChannelCredentials(sslFactory);
+    this.channelCredentials = GrpcUtils.buildChannelCredentials(sslFactory);
   }
 
   @Override
@@ -97,25 +95,6 @@ public class GrpcTransportClient extends InternalTransportClient {
     }
 
     r2TransportClientForNonStorageOps.close();
-  }
-
-  @VisibleForTesting
-  ChannelCredentials buildChannelCredentials(SSLFactory sslFactory) {
-    // TODO: Evaluate if this needs to fail instead since it depends on plain text support on server
-    if (sslFactory == null) {
-      return InsecureChannelCredentials.create();
-    }
-
-    try {
-      TlsChannelCredentials.Builder tlsBuilder = TlsChannelCredentials.newBuilder()
-          .keyManager(GrpcUtils.getKeyManagers(sslFactory))
-          .trustManager(GrpcUtils.getTrustManagers(sslFactory));
-      return tlsBuilder.build();
-    } catch (Exception e) {
-      throw new VeniceClientException(
-          "Failed to initialize SSL channel credentials for Venice gRPC Transport Client",
-          e);
-    }
   }
 
   @VisibleForTesting

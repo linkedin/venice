@@ -226,7 +226,10 @@ public enum Arg {
   SYSTEM_STORE_TYPE(
       "system-store-type", "sst", true,
       "Type of system store to backfill. Supported types are davinci_push_status_store and meta_store"
-  ), RETRY("retry", "r", false, "Retry this operation"),
+  ), TASK_NAME("task-name", "tn", true, "Name of the task for cluster command. Supported command [PushSystemStore]."),
+  CHECKPOINT_FILE("checkpoint-file", "cf", true, "Checkpoint file path for cluster command."),
+  THREAD_COUNT("thread-count", "tc", true, "Number of threads to execute. 1 if not specified"),
+  RETRY("retry", "r", false, "Retry this operation"),
   DISABLE_LOG("disable-log", "dl", false, "Disable logs from internal classes. Only print command output on console"),
   STORE_VIEW_CONFIGS(
       "storage-view-configs", "svc", true,

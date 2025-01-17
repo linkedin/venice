@@ -10,18 +10,13 @@ import org.apache.avro.Schema;
  * Transforms int values to strings
  */
 public class TestIntToStringRecordTransformer extends DaVinciRecordTransformer<Integer, Integer, String> {
-  public TestIntToStringRecordTransformer(int storeVersion, boolean storeRecordsInDaVinci) {
-    super(storeVersion, storeRecordsInDaVinci);
-  }
-
-  @Override
-  public Schema getKeySchema() {
-    return Schema.create(Schema.Type.INT);
-  }
-
-  @Override
-  public Schema getOutputValueSchema() {
-    return Schema.create(Schema.Type.STRING);
+  public TestIntToStringRecordTransformer(
+      int storeVersion,
+      Schema keySchema,
+      Schema inputValueSchema,
+      Schema outputValueSchema,
+      boolean storeRecordsInDaVinci) {
+    super(storeVersion, keySchema, inputValueSchema, outputValueSchema, storeRecordsInDaVinci);
   }
 
   @Override

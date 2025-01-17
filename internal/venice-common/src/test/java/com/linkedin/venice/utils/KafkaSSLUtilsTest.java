@@ -1,6 +1,7 @@
 package com.linkedin.venice.utils;
 
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import org.testng.annotations.Test;

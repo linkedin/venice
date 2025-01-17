@@ -13,7 +13,6 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
-import com.google.gson.Gson;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.repository.NativeMetadataRepository;
 import com.linkedin.davinci.repository.RequestBasedMetaRepository;
@@ -40,6 +39,7 @@ import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.system.store.MetaStoreDataType;
@@ -289,7 +289,6 @@ public class MetaSystemStoreTest {
     }
   }
 
-  // TODO PRANAV TEST
   @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testRequestBasedMetaStoreBasedRepository() throws InterruptedException {
     String regularVeniceStoreName = Utils.getUniqueString("venice_store");
@@ -433,15 +432,13 @@ public class MetaSystemStoreTest {
     expectThrows(VeniceNoStoreException.class, () -> nativeMetadataRepository.getStoreOrThrow("Non-existing-store"));
     expectThrows(VeniceNoStoreException.class, () -> nativeMetadataRepository.subscribe("Non-existing-store"));
     nativeMetadataRepository.subscribe(regularVeniceStoreName);
-    Store store = new ReadOnlyStore(nativeMetadataRepository.getStore(regularVeniceStoreName));
-    Store controllerStore = new ReadOnlyStore(
-        veniceLocalCluster.getLeaderVeniceController().getVeniceAdmin().getStore(clusterName, regularVeniceStoreName));
-    // TODO PRANAV this is failing, stores are not exaclty the same
-    // Strings are CharSeqs in actual store
-    System.out.println(new Gson().toJson(store));
-    System.out.println("=======================");
-    System.out.println(new Gson().toJson(controllerStore));
-    // assertEquals(store, controllerStore);
+    Store store = normalizeStore(new ReadOnlyStore(nativeMetadataRepository.getStore(regularVeniceStoreName)));
+    Store controllerStore = normalizeStore(
+        new ReadOnlyStore(
+            veniceLocalCluster.getLeaderVeniceController()
+                .getVeniceAdmin()
+                .getStore(clusterName, regularVeniceStoreName)));
+    assertEquals(store.toString(), controllerStore.toString());
     SchemaEntry keySchema = nativeMetadataRepository.getKeySchema(regularVeniceStoreName);
     SchemaEntry controllerKeySchema = veniceLocalCluster.getLeaderVeniceController()
         .getVeniceAdmin()
@@ -491,6 +488,10 @@ public class MetaSystemStoreTest {
     });
   }
 
+  private Store normalizeStore(ReadOnlyStore store) {
+    return new ReadOnlyStore(new ZKStore(store.cloneStoreProperties()));
+  }
+
   private void createStoreAndMaterializeMetaSystemStore(String storeName) {
     createStoreAndMaterializeMetaSystemStore(storeName, VALUE_SCHEMA_1);
   }
@@ -498,7 +499,6 @@ public class MetaSystemStoreTest {
   private void createStoreAndMaterializeMetaSystemStore(String storeName, String valueSchema) {
     // Verify and create Venice regular store if it doesn't exist.
     if (parentControllerClient.getStore(storeName).getStore() == null) {
-      // Flaky?
       NewStoreResponse resp =
           parentControllerClient.createNewStore(storeName, "test_owner", INT_KEY_SCHEMA, valueSchema);
       if (resp.isError()) {

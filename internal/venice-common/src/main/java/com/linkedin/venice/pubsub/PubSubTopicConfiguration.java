@@ -6,7 +6,7 @@ import java.util.Optional;
 /**
  * Represents a {@link com.linkedin.venice.pubsub.api.PubSubTopic} configuration.
  */
-public class PubSubTopicConfiguration {
+public class PubSubTopicConfiguration implements Cloneable {
   Optional<Long> retentionInMs;
   boolean isLogCompacted;
   Long minLogCompactionLagMs;
@@ -102,5 +102,10 @@ public class PubSubTopicConfiguration {
         minInSyncReplicas.isPresent() ? minInSyncReplicas.get() : "not set",
         minLogCompactionLagMs,
         maxLogCompactionLagMs.isPresent() ? maxLogCompactionLagMs.get() : " not set");
+  }
+
+  @Override
+  public PubSubTopicConfiguration clone() throws CloneNotSupportedException {
+    return (PubSubTopicConfiguration) super.clone();
   }
 }

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.blobtransfer.BlobTransferPartitionMetadata;
 import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -41,9 +42,10 @@ public class P2PMetadataTransferHandler extends SimpleChannelInboundHandler<Full
       String baseDir,
       String storeName,
       int version,
-      int partition) {
+      int partition,
+      BlobTransferTableFormat tableFormat) {
     this.storageMetadataService = storageMetadataService;
-    this.payload = new BlobTransferPayload(baseDir, storeName, version, partition);
+    this.payload = new BlobTransferPayload(baseDir, storeName, version, partition, tableFormat);
   }
 
   @Override

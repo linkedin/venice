@@ -13,7 +13,7 @@ Follow this guide to set up a multi-datacenter venice cluster using docker image
 provided by Venice team.
 
 
-#### Step 1: Install and set up Docker Engine
+#### Step 1: Install and set up Docker Engine and docker-compose
     Follow https://docs.docker.com/engine/install/ to install docker and start docker engine
 
 

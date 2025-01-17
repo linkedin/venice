@@ -9,7 +9,8 @@ import static java.lang.Thread.currentThread;
 
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtil;
-import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.StoreBackendConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -121,7 +122,7 @@ public class DaVinciBackend implements Closeable {
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
       Optional<ObjectCacheConfig> cacheConfig,
-      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction) {
+      DaVinciRecordTransformerConfig recordTransformerConfig) {
     LOGGER.info("Creating Da Vinci backend with managed clients: {}", managedClients);
     try {
       VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
@@ -270,13 +271,14 @@ public class DaVinciBackend implements Closeable {
           false,
           compressorFactory,
           cacheBackend,
-          recordTransformerFunction,
+          recordTransformerConfig,
           true,
           // TODO: consider how/if a repair task would be valid for Davinci users?
           null,
           pubSubClientsFactory,
           Optional.empty(),
           // TODO: It would be good to monitor heartbeats like this from davinci, but needs some work
+          null,
           null,
           null);
 
@@ -293,7 +295,7 @@ public class DaVinciBackend implements Closeable {
       }
 
       if (backendConfig.isBlobTransferManagerEnabled()) {
-        if (recordTransformerFunction != null) {
+        if (recordTransformerConfig != null) {
           throw new VeniceException("DaVinciRecordTransformer doesn't support blob transfer.");
         }
 
@@ -311,7 +313,10 @@ public class DaVinciBackend implements Closeable {
             backendConfig.getMaxConcurrentSnapshotUser(),
             backendConfig.getSnapshotRetentionTimeInMin(),
             backendConfig.getBlobTransferMaxTimeoutInMin(),
-            aggVersionedBlobTransferStats);
+            aggVersionedBlobTransferStats,
+            backendConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
+                ? BlobTransferTableFormat.PLAIN_TABLE
+                : BlobTransferTableFormat.BLOCK_BASED_TABLE);
       } else {
         aggVersionedBlobTransferStats = null;
         blobTransferManager = null;

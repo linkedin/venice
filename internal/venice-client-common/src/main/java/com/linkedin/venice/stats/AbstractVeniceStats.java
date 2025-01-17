@@ -136,7 +136,7 @@ public class AbstractVeniceStats {
               }
             }
           } else {
-            String metricName = sensorFullName + "." + metricNameSuffix(stat);
+            String metricName = getMetricFullName(sensor, stat);
             if (metricsRepository.getMetric(metricName) == null) {
               sensor.add(metricName, stat, config);
             }
@@ -145,6 +145,10 @@ public class AbstractVeniceStats {
       }
       return sensor;
     });
+  }
+
+  protected String getMetricFullName(Sensor sensor, MeasurableStat stat) {
+    return sensor.name() + "." + metricNameSuffix(stat);
   }
 
   /**

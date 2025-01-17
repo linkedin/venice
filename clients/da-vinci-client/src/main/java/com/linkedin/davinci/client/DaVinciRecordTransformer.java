@@ -40,32 +40,45 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    */
   private final boolean storeRecordsInDaVinci;
 
+  /**
+   * The key schema, which is immutable inside DaVinciClient. Users can modify the key if they are storing records in an external storage engine, but this must be managed by the user.
+   */
+  private final Schema keySchema;
+
+  /**
+   * The value schema before transformation, which is provided by the DaVinciClient.
+   */
+  private final Schema inputValueSchema;
+
+  /**
+   * The value schema after transformation, which is provided by the user.
+   */
+  private final Schema outputValueSchema;
+
   private final DaVinciRecordTransformerUtility<K, O> recordTransformerUtility;
 
   /**
    * @param storeVersion the version of the store
+   * @param keySchema the key schema, which is immutable inside DaVinciClient. Users can modify the key if they are storing records in an external storage engine, but this must be managed by the user
+   * @param inputValueSchema the value schema before transformation
+   * @param outputValueSchema the value schema after transformation
    * @param storeRecordsInDaVinci set this to false if you intend to store records in a custom storage,
-   *                              and not in the Da Vinci Client.
+   *                              and not in the Da Vinci Client
    */
-  public DaVinciRecordTransformer(int storeVersion, boolean storeRecordsInDaVinci) {
+  public DaVinciRecordTransformer(
+      int storeVersion,
+      Schema keySchema,
+      Schema inputValueSchema,
+      Schema outputValueSchema,
+      boolean storeRecordsInDaVinci) {
     this.storeVersion = storeVersion;
     this.storeRecordsInDaVinci = storeRecordsInDaVinci;
+    this.keySchema = keySchema;
+    // ToDo: Make use of inputValueSchema to support reader/writer schemas
+    this.inputValueSchema = inputValueSchema;
+    this.outputValueSchema = outputValueSchema;
     this.recordTransformerUtility = new DaVinciRecordTransformerUtility<>(this);
   }
-
-  /**
-   * Returns the schema for the key used in {@link DaVinciClient}'s operations.
-   *
-   * @return a {@link Schema} corresponding to the type of {@link K}.
-   */
-  public abstract Schema getKeySchema();
-
-  /**
-   * Returns the schema for the output value used in {@link DaVinciClient}'s operations.
-   *
-   * @return a {@link Schema} corresponding to the type of {@link O}.
-   */
-  public abstract Schema getOutputValueSchema();
 
   /**
    * Implement this method to transform records before they are stored.
@@ -103,7 +116,7 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    *
    * By default, it performs no operation.
    */
-  public void onStartVersionIngestion() {
+  public void onStartVersionIngestion(boolean isCurrentVersion) {
     return;
   }
 
@@ -113,9 +126,11 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    *
    * By default, it performs no operation.
    */
-  public void onEndVersionIngestion() {
+  public void onEndVersionIngestion(int currentVersion) {
     return;
   }
+
+  // Final methods below
 
   /**
    * Transforms and processes the given record.
@@ -202,6 +217,33 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    */
   public final boolean getStoreRecordsInDaVinci() {
     return storeRecordsInDaVinci;
+  }
+
+  /**
+   * Returns the schema for the key used in {@link DaVinciClient}'s operations.
+   *
+   * @return a {@link Schema} corresponding to the type of {@link K}.
+   */
+  public final Schema getKeySchema() {
+    return keySchema;
+  }
+
+  /**
+   * Returns the schema for the input value used in {@link DaVinciClient}'s operations.
+   *
+   * @return a {@link Schema} corresponding to the type of {@link V}.
+   */
+  public final Schema getInputValueSchema() {
+    return inputValueSchema;
+  }
+
+  /**
+   * Returns the schema for the output value used in {@link DaVinciClient}'s operations.
+   *
+   * @return a {@link Schema} corresponding to the type of {@link O}.
+   */
+  public final Schema getOutputValueSchema() {
+    return outputValueSchema;
   }
 
   /**

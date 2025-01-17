@@ -6,6 +6,7 @@ import com.linkedin.venice.authorization.Method;
 import com.linkedin.venice.authorization.Permission;
 import com.linkedin.venice.authorization.Resource;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreName;
 import com.linkedin.venice.pushstatus.PushStatusKey;
 import com.linkedin.venice.pushstatus.PushStatusValue;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -164,7 +165,7 @@ public enum VeniceSystemStoreType {
    */
   public AclBinding generateSystemStoreAclBinding(AclBinding regularStoreAclBinding) {
     String regularStoreName = regularStoreAclBinding.getResource().getName();
-    if (!Store.isValidStoreName(regularStoreName)) {
+    if (!StoreName.isValidStoreName(regularStoreName)) {
       throw new UnsupportedOperationException(
           "Cannot generate system store AclBinding for a non-store resource: " + regularStoreName);
     }

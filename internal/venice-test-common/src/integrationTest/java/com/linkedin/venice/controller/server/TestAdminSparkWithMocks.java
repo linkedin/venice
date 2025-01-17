@@ -1,14 +1,17 @@
 package com.linkedin.venice.controller.server;
 
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
 
+import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
 import com.linkedin.venice.controller.ParentControllerRegionState;
-import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -24,11 +27,11 @@ import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.SslUtils;
-import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -43,6 +46,7 @@ import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.message.BasicNameValuePair;
 import org.mockito.Mockito;
 import org.testng.Assert;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -52,10 +56,20 @@ import org.testng.annotations.Test;
  * verifying any state changes that would be triggered by the admin.
  */
 public class TestAdminSparkWithMocks {
+  private VeniceControllerRequestHandler requestHandler;
+  private Admin admin;
+
+  @BeforeMethod(alwaysRun = true)
+  public void setUp() {
+    admin = Mockito.mock(Admin.class);
+    ControllerRequestHandlerDependencies dependencies = mock(ControllerRequestHandlerDependencies.class);
+    doReturn(admin).when(dependencies).getAdmin();
+    requestHandler = new VeniceControllerRequestHandler(dependencies);
+  }
+
   @Test
-  public void testGetRealTimeTopicUsesAdmin() throws Exception {
+  public void testGetRealTimeTopicForStreamPushJobUsesAdmin() throws Exception {
     // setup server with mock admin, note returns topic "store_rt"
-    VeniceHelixAdmin admin = Mockito.mock(VeniceHelixAdmin.class);
     Store mockStore = new ZKStore(
         "store",
         "owner",
@@ -72,17 +86,28 @@ public class TestAdminSparkWithMocks {
             HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
             DataReplicationPolicy.NON_AGGREGATE,
             BufferReplayPolicy.REWIND_FROM_EOP));
+    Version hybridVersion = new VersionImpl("store", 1, "pushJobId-1234", 33);
+    hybridVersion.setHybridStoreConfig(mockStore.getHybridStoreConfig());
+    hybridVersion.setStatus(VersionStatus.ONLINE);
+    mockStore.addVersion(hybridVersion);
+
+    // check store partition count is different from hybrid version partition count so that we can verify the
+    // partition count is updated to the hybrid version partition count in response
+    Assert.assertNotEquals(mockStore.getPartitionCount(), hybridVersion.getPartitionCount());
+
     doReturn(mockStore).when(admin).getStore(anyString(), anyString());
     doReturn(true).when(admin).isLeaderControllerFor(anyString());
     doReturn(1).when(admin).getReplicationFactor(anyString(), anyString());
     doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString());
     doReturn("kafka-bootstrap").when(admin).getKafkaBootstrapServers(anyBoolean());
-    doReturn("store_rt").when(admin).getRealTimeTopic(anyString(), anyString());
-    doReturn("store_rt").when(admin).getRealTimeTopic(anyString(), any(Store.class));
+    doReturn(hybridVersion).when(admin).getReferenceVersionForStreamingWrites(anyString(), anyString(), any());
     // Add a banned route not relevant to the test just to make sure theres coverage for unbanned routes still be
     // accessible
-    AdminSparkServer server =
-        ServiceFactory.getMockAdminSparkServer(admin, "clustername", Arrays.asList(ControllerRoute.ADD_DERIVED_SCHEMA));
+    AdminSparkServer server = ServiceFactory.getMockAdminSparkServer(
+        admin,
+        "clustername",
+        Arrays.asList(ControllerRoute.ADD_DERIVED_SCHEMA),
+        requestHandler);
     int port = server.getPort();
 
     // build request
@@ -110,6 +135,7 @@ public class TestAdminSparkWithMocks {
     // verify response, note we expect same topic, "store_rt"
     Assert.assertFalse(responseObject.isError(), "unexpected error: " + responseObject.getError());
     Assert.assertEquals(responseObject.getKafkaTopic(), "store_rt");
+    Assert.assertEquals(responseObject.getPartitions(), hybridVersion.getPartitionCount());
 
     server.stop();
   }
@@ -117,7 +143,6 @@ public class TestAdminSparkWithMocks {
   @Test
   public void testBannedRoutesAreRejected() throws Exception {
     // setup server with mock admin, note returns topic "store_rt"
-    VeniceHelixAdmin admin = Mockito.mock(VeniceHelixAdmin.class);
     Store mockStore = new ZKStore(
         "store",
         "owner",
@@ -139,10 +164,8 @@ public class TestAdminSparkWithMocks {
     doReturn(1).when(admin).getReplicationFactor(anyString(), anyString());
     doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString());
     doReturn("kafka-bootstrap").when(admin).getKafkaBootstrapServers(anyBoolean());
-    doReturn("store_rt").when(admin).getRealTimeTopic(anyString(), anyString());
-    doReturn("store_rt").when(admin).getRealTimeTopic(anyString(), any(Store.class));
-    AdminSparkServer server =
-        ServiceFactory.getMockAdminSparkServer(admin, "clustername", Arrays.asList(ControllerRoute.REQUEST_TOPIC));
+    AdminSparkServer server = ServiceFactory
+        .getMockAdminSparkServer(admin, "clustername", Arrays.asList(ControllerRoute.REQUEST_TOPIC), requestHandler);
     int port = server.getPort();
 
     // build request
@@ -189,7 +212,6 @@ public class TestAdminSparkWithMocks {
     Optional<String> optionalemergencySourceRegion = Optional.empty();
     Optional<String> optionalSourceGridSourceFabric = Optional.empty();
 
-    VeniceHelixAdmin admin = Mockito.mock(VeniceHelixAdmin.class);
     Store mockStore = new ZKStore(
         storeName,
         "owner",
@@ -217,8 +239,6 @@ public class TestAdminSparkWithMocks {
     doReturn(corpRegionKafka).when(admin).getKafkaBootstrapServers(anyBoolean());
     doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(anyString());
     doReturn(true).when(admin).isActiveActiveReplicationEnabledInAllRegion(clusterName, storeName, false);
-    doReturn(Utils.getRealTimeTopicName(mockStore)).when(admin).getRealTimeTopic(anyString(), anyString());
-    doReturn(Utils.getRealTimeTopicName(mockStore)).when(admin).getRealTimeTopic(anyString(), any(Store.class));
     doReturn(corpRegionKafka).when(admin).getNativeReplicationKafkaBootstrapServerAddress(corpRegion);
     doReturn(emergencySourceRegionKafka).when(admin)
         .getNativeReplicationKafkaBootstrapServerAddress(emergencySourceRegion);
@@ -265,8 +285,11 @@ public class TestAdminSparkWithMocks {
 
     // Add a banned route not relevant to the test just to make sure theres coverage for unbanned routes still be
     // accessible
-    AdminSparkServer server =
-        ServiceFactory.getMockAdminSparkServer(admin, "clustername", Arrays.asList(ControllerRoute.ADD_DERIVED_SCHEMA));
+    AdminSparkServer server = ServiceFactory.getMockAdminSparkServer(
+        admin,
+        "clustername",
+        Arrays.asList(ControllerRoute.ADD_DERIVED_SCHEMA),
+        requestHandler);
     int port = server.getPort();
     final HttpPost post = new HttpPost("http://localhost:" + port + ControllerRoute.REQUEST_TOPIC.getPath());
     post.setEntity(new UrlEncodedFormEntity(params));
@@ -303,7 +326,6 @@ public class TestAdminSparkWithMocks {
   public void testSamzaReplicationPolicyMode(boolean samzaPolicy, boolean storePolicy, boolean aaEnabled)
       throws Exception {
     // setup server with mock admin, note returns topic "store_rt"
-    VeniceHelixAdmin admin = Mockito.mock(VeniceHelixAdmin.class);
     Store mockStore = new ZKStore(
         "store",
         "owner",
@@ -330,22 +352,29 @@ public class TestAdminSparkWithMocks {
               DataReplicationPolicy.NON_AGGREGATE,
               BufferReplayPolicy.REWIND_FROM_EOP));
     }
+    Version hybridVersion = new VersionImpl("store", 1, "pushJobId-1234", 33);
+    hybridVersion.setHybridStoreConfig(mockStore.getHybridStoreConfig());
+    hybridVersion.setStatus(VersionStatus.ONLINE);
+    mockStore.addVersion(hybridVersion);
+
     doReturn(mockStore).when(admin).getStore(anyString(), anyString());
     doReturn(true).when(admin).isLeaderControllerFor(anyString());
     doReturn(1).when(admin).getReplicationFactor(anyString(), anyString());
     doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString());
     doReturn("kafka-bootstrap").when(admin).getKafkaBootstrapServers(anyBoolean());
-    doReturn("store_rt").when(admin).getRealTimeTopic(anyString(), anyString());
-    doReturn("store_rt").when(admin).getRealTimeTopic(anyString(), any(Store.class));
+    doReturn(hybridVersion).when(admin).getReferenceVersionForStreamingWrites(anyString(), anyString(), anyString());
     doReturn(samzaPolicy).when(admin).isParent();
     doReturn(ParentControllerRegionState.ACTIVE).when(admin).getParentControllerRegionState();
     doReturn(aaEnabled).when(admin).isActiveActiveReplicationEnabledInAllRegion(anyString(), anyString(), eq(true));
     mockStore.setActiveActiveReplicationEnabled(aaEnabled);
 
-    // Add a banned route not relevant to the test just to make sure theres coverage for unbanned routes still be
+    // Add a banned route not relevant to the test just to make sure there is coverage for unbanned routes still be
     // accessible
-    AdminSparkServer server =
-        ServiceFactory.getMockAdminSparkServer(admin, "clustername", Arrays.asList(ControllerRoute.ADD_DERIVED_SCHEMA));
+    AdminSparkServer server = ServiceFactory.getMockAdminSparkServer(
+        admin,
+        "clustername",
+        Arrays.asList(ControllerRoute.ADD_DERIVED_SCHEMA),
+        requestHandler);
     int port = server.getPort();
 
     // build request

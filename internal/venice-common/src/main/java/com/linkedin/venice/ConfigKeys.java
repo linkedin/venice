@@ -225,6 +225,27 @@ public class ConfigKeys {
   // What tags to assign to a controller instance
   public static final String CONTROLLER_INSTANCE_TAG_LIST = "controller.instance.tag.list";
 
+  /**
+   * Whether to enable gRPC server in controller or not.
+   */
+  public static final String CONTROLLER_GRPC_SERVER_ENABLED = "controller.grpc.server.enabled";
+
+  /**
+   * A port for the controller to listen on for incoming requests. On this port, the controller will
+   * server non-ssl requests.
+   */
+  public static final String CONTROLLER_ADMIN_GRPC_PORT = "controller.admin.grpc.port";
+  /**
+   * A port for the controller to listen on for incoming requests. On this port, the controller will
+   * only serve ssl requests.
+   */
+  public static final String CONTROLLER_ADMIN_SECURE_GRPC_PORT = "controller.admin.secure.grpc.port";
+
+  /**
+   * Number of threads to use for the gRPC server in controller.
+   */
+  public static final String CONTROLLER_GRPC_SERVER_THREAD_COUNT = "controller.grpc.server.thread.count";
+
   /** List of forbidden admin paths */
   public static final String CONTROLLER_DISABLED_ROUTES = "controller.cluster.disabled.routes";
 
@@ -759,6 +780,13 @@ public class ConfigKeys {
   public static final String SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED =
       "server.db.read.only.for.batch.only.store.enabled";
   public static final String SERVER_RESET_ERROR_REPLICA_ENABLED = "server.reset.error.replica.enabled";
+
+  public static final String SERVER_ADAPTIVE_THROTTLER_ENABLED = "server.adaptive.throttler.enabled";
+  public static final String SERVER_ADAPTIVE_THROTTLER_SIGNAL_IDLE_THRESHOLD =
+      "server.adaptive.throttler.signal.idle.threshold";
+  public static final String SERVER_ADAPTIVE_THROTTLER_SINGLE_GET_LATENCY_THRESHOLD =
+      "server.adaptive.throttler.single.get.latency.threshold";
+
   /**
    * A list of fully-qualified class names of all stats classes that needs to be initialized in isolated ingestion process,
    * separated by comma. This config will help isolated ingestion process to register extra stats needed for monitoring,
@@ -2351,4 +2379,7 @@ public class ConfigKeys {
 
   public static final String SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP =
       "server.delete.unassigned.partitions.on.startup";
+
+  public static final String CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE =
+      "controller.enable.hybrid.store.partition.count.update";
 }

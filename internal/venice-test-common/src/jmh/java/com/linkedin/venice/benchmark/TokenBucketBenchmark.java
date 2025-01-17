@@ -1,6 +1,6 @@
 package com.linkedin.venice.benchmark;
 
-import static java.util.concurrent.TimeUnit.*;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.linkedin.venice.throttle.TokenBucket;
 import java.text.DecimalFormat;

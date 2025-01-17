@@ -40,15 +40,15 @@ public class RecordTransformerTest {
 
   @Test
   public void testRecordTransformer() {
+    Schema keySchema = Schema.create(Schema.Type.INT);
+    Schema valueSchema = Schema.create(Schema.Type.STRING);
+
     DaVinciRecordTransformer<Integer, String, String> recordTransformer =
-        new TestStringRecordTransformer(storeVersion, false);
+        new TestStringRecordTransformer(storeVersion, keySchema, valueSchema, valueSchema, false);
     assertEquals(recordTransformer.getStoreVersion(), storeVersion);
 
-    Schema keySchema = recordTransformer.getKeySchema();
-    assertEquals(keySchema.getType(), Schema.Type.INT);
-
-    Schema outputValueSchema = recordTransformer.getOutputValueSchema();
-    assertEquals(outputValueSchema.getType(), Schema.Type.STRING);
+    assertEquals(recordTransformer.getKeySchema().getType(), Schema.Type.INT);
+    assertEquals(recordTransformer.getOutputValueSchema().getType(), Schema.Type.STRING);
 
     Lazy<Integer> lazyKey = Lazy.of(() -> 42);
     Lazy<String> lazyValue = Lazy.of(() -> "SampleValue");
@@ -72,8 +72,12 @@ public class RecordTransformerTest {
 
   @Test
   public void testOnRecovery() {
+    Schema keySchema = Schema.create(Schema.Type.INT);
+    Schema valueSchema = Schema.create(Schema.Type.STRING);
+
     DaVinciRecordTransformer<Integer, String, String> recordTransformer =
-        new TestStringRecordTransformer(storeVersion, true);
+        new TestStringRecordTransformer(storeVersion, keySchema, valueSchema, valueSchema, true);
+    assertEquals(recordTransformer.getStoreVersion(), storeVersion);
 
     AbstractStorageIterator iterator = mock(AbstractStorageIterator.class);
     when(iterator.isValid()).thenReturn(true).thenReturn(false);
@@ -99,18 +103,26 @@ public class RecordTransformerTest {
 
   @Test
   public void testBlockingRecordTransformer() {
-    DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(0, true);
-    recordTransformer =
-        new BlockingDaVinciRecordTransformer<>(recordTransformer, recordTransformer.getStoreRecordsInDaVinci());
-    recordTransformer.onStartVersionIngestion();
+    Schema keySchema = Schema.create(Schema.Type.INT);
+    Schema valueSchema = Schema.create(Schema.Type.STRING);
+
+    DaVinciRecordTransformer<Integer, String, String> recordTransformer =
+        new TestStringRecordTransformer(storeVersion, keySchema, valueSchema, valueSchema, true);
+    assertEquals(recordTransformer.getStoreVersion(), storeVersion);
+
+    recordTransformer = new BlockingDaVinciRecordTransformer<>(
+        recordTransformer,
+        keySchema,
+        valueSchema,
+        valueSchema,
+        recordTransformer.getStoreRecordsInDaVinci());
+    recordTransformer.onStartVersionIngestion(true);
 
     assertTrue(recordTransformer.getStoreRecordsInDaVinci());
 
-    Schema keySchema = recordTransformer.getKeySchema();
-    assertEquals(keySchema.getType(), Schema.Type.INT);
+    assertEquals(recordTransformer.getKeySchema().getType(), Schema.Type.INT);
 
-    Schema outputValueSchema = recordTransformer.getOutputValueSchema();
-    assertEquals(outputValueSchema.getType(), Schema.Type.STRING);
+    assertEquals(recordTransformer.getOutputValueSchema().getType(), Schema.Type.STRING);
 
     Lazy<Integer> lazyKey = Lazy.of(() -> 42);
     Lazy<String> lazyValue = Lazy.of(() -> "SampleValue");
@@ -120,7 +132,7 @@ public class RecordTransformerTest {
 
     recordTransformer.processDelete(lazyKey);
 
-    recordTransformer.onEndVersionIngestion();
+    recordTransformer.onEndVersionIngestion(2);
   }
 
 }

@@ -6,6 +6,10 @@ pluginManagement {
       url  "https://linkedin.jfrog.io/artifactory/open-source"
     }
     gradlePluginPortal()
+    maven {
+      // Needed for DuckDB SNAPSHOT. TODO: Remove when the real release is published!
+      url = uri('https://oss.sonatype.org/content/repositories/snapshots/')
+    }
   }
 }
 
@@ -65,6 +69,7 @@ include 'internal:alpini:router:alpini-router-impl'
 
 // 3rd-party system integration modules
 include 'integrations:venice-beam'
+include 'integrations:venice-duckdb'
 include 'integrations:venice-pulsar'
 include 'integrations:venice-samza'
 

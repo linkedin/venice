@@ -10,9 +10,9 @@ plugins {
   id 'maven-publish'
   id 'com.diffplug.spotless' version '6.12.0'
   id 'com.dorongold.task-tree' version '2.1.0'
-  id 'com.github.johnrengelman.shadow' version '6.1.0' apply false
+  id 'com.github.johnrengelman.shadow' version '7.1.2' apply false
   id 'com.github.spotbugs' version '4.8.0' apply false
-  id 'org.gradle.test-retry' version '1.5.0' apply false
+  id 'org.gradle.test-retry' version '1.6.0' apply false
   id 'com.form.diff-coverage' version '0.9.5' apply false
   id 'me.champeau.jmh' version '0.6.7' apply false
   id 'io.github.lhotari.gradle-nar-plugin' version '0.5.1' apply false
@@ -82,12 +82,14 @@ ext.libraries = [
     commonsLang: 'commons-lang:commons-lang:2.6',
     conscrypt: 'org.conscrypt:conscrypt-openjdk-uber:2.5.2',
     d2: "com.linkedin.pegasus:d2:${pegasusVersion}",
+    duckdbJdbc: "org.duckdb:duckdb_jdbc:1.2.0-20250116.012809-118", // TODO: Remove SNAPSHOT when the real release is published!
     failsafe: 'net.jodah:failsafe:2.4.0',
     fastUtil: 'it.unimi.dsi:fastutil:8.3.0',
     grpcNettyShaded: "io.grpc:grpc-netty-shaded:${grpcVersion}",
     grpcProtobuf: "io.grpc:grpc-protobuf:${grpcVersion}",
     grpcServices: "io.grpc:grpc-services:${grpcVersion}",
     grpcStub: "io.grpc:grpc-stub:${grpcVersion}",
+    grpcTesting: "io.grpc:grpc-testing:${grpcVersion}",
     hadoopCommon: "org.apache.hadoop:hadoop-common:${hadoopVersion}",
     hadoopHdfs: "org.apache.hadoop:hadoop-hdfs:${hadoopVersion}",
     httpAsyncClient: 'org.apache.httpcomponents:httpasyncclient:4.1.5',
@@ -116,6 +118,11 @@ ext.libraries = [
     mapreduceClientJobClient: "org.apache.hadoop:hadoop-mapreduce-client-jobclient:${hadoopVersion}",
     mockito: 'org.mockito:mockito-core:4.11.0',
     netty: 'io.netty:netty-all:4.1.74.Final',
+    opentelemetryApi: "io.opentelemetry:opentelemetry-api:${openTelemetryVersion}",
+    opentelemetrySdk: "io.opentelemetry:opentelemetry-sdk:${openTelemetryVersion}",
+    opentelemetryExporterLogging: "io.opentelemetry:opentelemetry-exporter-logging:${openTelemetryVersion}",
+    opentelemetryExporterOtlp: "io.opentelemetry:opentelemetry-exporter-otlp:${openTelemetryVersion}",
+    opentelemetryExporterCommon: "io.opentelemetry:opentelemetry-exporter-common:${openTelemetryVersion}",
     oss: 'org.sonatype.oss:oss-parent:7',
     pulsarClient: "${pulsarGroup}:pulsar-client:${pulsarVersion}",
     pulsarIoCore: "${pulsarGroup}:pulsar-io-core:${pulsarVersion}",
@@ -142,12 +149,7 @@ ext.libraries = [
     xerces: 'xerces:xercesImpl:2.9.1',
     zkclient: 'com.101tec:zkclient:0.7', // For Kafka AdminUtils
     zookeeper: 'org.apache.zookeeper:zookeeper:3.6.3',
-    zstd: 'com.github.luben:zstd-jni:1.5.2-3',
-    opentelemetryApi: "io.opentelemetry:opentelemetry-api:${openTelemetryVersion}",
-    opentelemetrySdk: "io.opentelemetry:opentelemetry-sdk:${openTelemetryVersion}",
-    opentelemetryExporterLogging: "io.opentelemetry:opentelemetry-exporter-logging:${openTelemetryVersion}",
-    opentelemetryExporterOtlp: "io.opentelemetry:opentelemetry-exporter-otlp:${openTelemetryVersion}",
-    opentelemetryExporterCommon: "io.opentelemetry:opentelemetry-exporter-common:${openTelemetryVersion}"
+    zstd: 'com.github.luben:zstd-jni:1.5.2-3'
 ]
 
 group = 'com.linkedin.venice'
@@ -188,9 +190,14 @@ subprojects {
 
   def isLeafSubModule = project.childProjects.isEmpty()
 
+  // We consider a sub-module to be a "proto module" if it has any proto schemas defined under the right path.
+  def protoDir = new File(project.projectDir, "src/main/proto");
+  def isProtoModule = protoDir != null && protoDir.list() != null && protoDir.list().size() != 0
+
   apply {
     plugin 'idea'
     plugin 'java-library'
+    plugin 'com.form.diff-coverage'
     plugin 'com.github.spotbugs'
     plugin 'org.gradle.test-retry'
     plugin 'org.checkerframework'
@@ -199,8 +206,9 @@ subprojects {
   if (isLeafSubModule) {
     apply {
       plugin 'jacoco'
-      plugin 'com.form.diff-coverage'
-      plugin 'com.google.protobuf'
+      if (isProtoModule) {
+        plugin 'com.google.protobuf'
+      }
     }
   }
 
@@ -218,7 +226,7 @@ subprojects {
     //withJavadocJar()
   }
 
-  if (isLeafSubModule) {
+  if (isLeafSubModule && isProtoModule) {
     protobuf {
       protoc {
         artifact = 'com.google.protobuf:protoc:' + protobufVersion
@@ -498,10 +506,6 @@ subprojects {
         xml.enabled = true
         html.enabled = true
       }
-
-      doLast {
-        parseJacocoXml("$buildDir/reports/jacoco/test/jacocoTestReport.xml")
-      }
     }
 
     afterEvaluate {
@@ -516,6 +520,12 @@ subprojects {
               counter = 'BRANCH'
               value = 'COVEREDRATIO'
               minimum = threshold
+            }
+            // Ignore generate files
+            afterEvaluate {
+              classDirectories.setFrom(files(classDirectories.files.collect { fileTree(dir: it, exclude: [
+                  '**/com/linkedin/venice/protocols/**',
+              ])}))
             }
           }
         }
@@ -579,6 +589,13 @@ subprojects {
   // Only publish artifacts for projects that are at the leaf level
   if (isLeafSubModule) {
     publishing.configureArtifactPublishing(project, testJar)
+  }
+}
+
+// 2nd round of subprojects configuration... the 1st round must be fully done for all submodules for this one to work.
+subprojects {
+  task recursiveDiffCoverage {
+    dependsOn subprojects.diffCoverage
   }
 }
 

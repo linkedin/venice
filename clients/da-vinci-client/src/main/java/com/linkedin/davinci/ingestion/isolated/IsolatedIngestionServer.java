@@ -717,6 +717,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         pubSubClientsFactory,
         sslFactory,
         null,
+        null,
         null);
     storeIngestionService.start();
     storeIngestionService.addIngestionNotifier(new IsolatedIngestionNotifier(this));

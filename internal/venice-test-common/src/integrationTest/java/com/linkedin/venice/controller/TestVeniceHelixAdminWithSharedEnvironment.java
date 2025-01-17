@@ -11,9 +11,12 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeException;
@@ -71,6 +74,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
@@ -641,34 +645,46 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   }
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
-  public void testGetRealTimeTopic() {
+  public void testEnsureRealTimeTopicExistsForUserSystemStores() {
     String storeName = Utils.getUniqueString("store");
+    String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
 
-    // Must not be able to get a real time topic until the store is created
-    Assert.assertThrows(VeniceNoStoreException.class, () -> veniceAdmin.getRealTimeTopic(clusterName, storeName));
+    Exception notSystemStoreException = Assert.expectThrows(
+        VeniceNoStoreException.class,
+        () -> veniceAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, metaStoreName));
+    assertTrue(
+        notSystemStoreException.getMessage().contains("does not exist in"),
+        "Got unexpected error message: " + notSystemStoreException.getMessage());
 
     veniceAdmin.createStore(clusterName, storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
-    Store store = veniceAdmin.getStore(clusterName, storeName);
+    Store userStore = veniceAdmin.getStore(clusterName, storeName);
+    assertNotNull(userStore, "User store should be created and not null");
     veniceAdmin.updateStore(
         clusterName,
         storeName,
-        new UpdateStoreQueryParams().setHybridRewindSeconds(25L).setHybridOffsetLagThreshold(100L)); // make store
-                                                                                                     // hybrid
+        new UpdateStoreQueryParams().setHybridRewindSeconds(25L).setHybridOffsetLagThreshold(100L));
 
-    try {
-      veniceAdmin.getRealTimeTopic(clusterName, storeName);
-      Assert.fail("Must not be able to get a real time topic until the store is initialized with a version");
-    } catch (VeniceException e) {
-      Assert.assertTrue(
-          e.getMessage().contains("is not initialized with a version"),
-          "Got unexpected error message: " + e.getMessage());
-    }
+    Exception exception = Assert.expectThrows(
+        VeniceException.class,
+        () -> veniceAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, storeName));
+    assertTrue(
+        exception.getMessage().contains("not a user system store"),
+        "Got unexpected error message: " + notSystemStoreException.getMessage());
 
-    int partitions = 2; // TODO verify partition count for RT topic.
-    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), partitions, 1);
+    String pushStatusStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
+    Store pushStatusStore = veniceAdmin.getStore(clusterName, pushStatusStoreName);
+    PubSubTopic pushStatusRealTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(pushStatusStore));
+    assertNotNull(pushStatusStore, "Push status store should not be created yet");
+    TestUtils.waitForNonDeterministicCompletion(
+        30,
+        TimeUnit.SECONDS,
+        () -> !veniceAdmin.getTopicManager().containsTopic(pushStatusRealTimeTopic));
 
-    String rtTopic = veniceAdmin.getRealTimeTopic(clusterName, storeName);
-    Assert.assertEquals(rtTopic, Utils.getRealTimeTopicName(store));
+    veniceAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, pushStatusStoreName);
+    TestUtils.waitForNonDeterministicCompletion(
+        30,
+        TimeUnit.SECONDS,
+        () -> veniceAdmin.getTopicManager().containsTopic(pushStatusRealTimeTopic));
   }
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
@@ -1679,29 +1695,33 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         new UpdateStoreQueryParams().setHybridOffsetLagThreshold(1)
             .setHybridRewindSeconds(0)
             .setIncrementalPushEnabled(true));
-    veniceAdmin.incrementVersionIdempotent(
+    Version version = veniceAdmin.incrementVersionIdempotent(
         clusterName,
         incrementalAndHybridEnabledStoreName,
         Version.guidBasedDummyPushId(),
         1,
         1);
-    String rtTopic = veniceAdmin.getRealTimeTopic(clusterName, incrementalAndHybridEnabledStoreName);
     TestUtils.waitForNonDeterministicCompletion(
         TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,
         TimeUnit.MILLISECONDS,
         () -> veniceAdmin.getCurrentVersion(clusterName, incrementalAndHybridEnabledStoreName) == 1);
+    PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(version));
+    TestUtils.waitForNonDeterministicCompletion(
+        TOTAL_TIMEOUT_FOR_LONG_TEST_MS,
+        TimeUnit.MILLISECONDS,
+        () -> veniceAdmin.getTopicManager().containsTopic(rtTopic));
 
     // For incremental push policy INCREMENTAL_PUSH_SAME_AS_REAL_TIME, incremental push should succeed even if version
     // topic is truncated
     veniceAdmin.truncateKafkaTopic(Version.composeKafkaTopic(incrementalAndHybridEnabledStoreName, 1));
-    veniceAdmin.getIncrementalPushVersion(clusterName, incrementalAndHybridEnabledStoreName);
+    veniceAdmin.getIncrementalPushVersion(clusterName, incrementalAndHybridEnabledStoreName, "test-job-1");
 
     // For incremental push policy INCREMENTAL_PUSH_SAME_AS_REAL_TIME, incremental push should fail if rt topic is
     // truncated
-    veniceAdmin.truncateKafkaTopic(rtTopic);
+    veniceAdmin.truncateKafkaTopic(rtTopic.getName());
     Assert.assertThrows(
         VeniceException.class,
-        () -> veniceAdmin.getIncrementalPushVersion(clusterName, incrementalAndHybridEnabledStoreName));
+        () -> veniceAdmin.getIncrementalPushVersion(clusterName, incrementalAndHybridEnabledStoreName, "test-job-1"));
   }
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
@@ -1863,8 +1883,21 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isSeparateRealTimeTopicEnabled());
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).getVersion(1).isSeparateRealTimeTopicEnabled());
 
-    String rtTopic = veniceAdmin.getRealTimeTopic(clusterName, storeName);
-    String incrementalPushRealTimeTopic = veniceAdmin.getSeparateRealTimeTopic(clusterName, storeName);
+    Store store = Objects.requireNonNull(veniceAdmin.getStore(clusterName, storeName), "Store should not be null");
+
+    String rtTopic = Utils.getRealTimeTopicName(store);
+    PubSubTopic rtPubSubTopic = pubSubTopicRepository.getTopic(rtTopic);
+    String incrementalPushRealTimeTopic = Version.composeSeparateRealTimeTopic(storeName);
+    PubSubTopic incrementalPushRealTimePubSubTopic = pubSubTopicRepository.getTopic(incrementalPushRealTimeTopic);
+    TestUtils.waitForNonDeterministicCompletion(
+        TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,
+        TimeUnit.MILLISECONDS,
+        () -> veniceAdmin.getTopicManager().containsTopic(rtPubSubTopic));
+    TestUtils.waitForNonDeterministicCompletion(
+        TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,
+        TimeUnit.MILLISECONDS,
+        () -> veniceAdmin.getTopicManager().containsTopic(incrementalPushRealTimePubSubTopic));
+
     Assert.assertFalse(veniceAdmin.isTopicTruncated(rtTopic));
     Assert.assertFalse(veniceAdmin.isTopicTruncated(incrementalPushRealTimeTopic));
     veniceAdmin.updateStore(

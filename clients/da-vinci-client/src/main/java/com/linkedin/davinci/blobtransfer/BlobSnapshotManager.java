@@ -63,6 +63,7 @@ public class BlobSnapshotManager {
   private final StorageMetadataService storageMetadataService;
   private final int maxConcurrentUsers;
   private final long snapshotRetentionTimeInMillis;
+  private final BlobTransferUtils.BlobTransferTableFormat blobTransferTableFormat;
   private final Lock lock = new ReentrantLock();
 
   /**
@@ -73,13 +74,14 @@ public class BlobSnapshotManager {
       StorageEngineRepository storageEngineRepository,
       StorageMetadataService storageMetadataService,
       int maxConcurrentUsers,
-      int snapshotRetentionTimeInMin) {
+      int snapshotRetentionTimeInMin,
+      BlobTransferUtils.BlobTransferTableFormat transferTableFormat) {
     this.readOnlyStoreRepository = readOnlyStoreRepository;
     this.storageEngineRepository = storageEngineRepository;
     this.storageMetadataService = storageMetadataService;
     this.maxConcurrentUsers = maxConcurrentUsers;
     this.snapshotRetentionTimeInMillis = TimeUnit.MINUTES.toMillis(snapshotRetentionTimeInMin);
-
+    this.blobTransferTableFormat = transferTableFormat;
     this.concurrentSnapshotUsers = new VeniceConcurrentHashMap<>();
     this.snapshotTimestamps = new VeniceConcurrentHashMap<>();
     this.snapshotMetadataRecords = new VeniceConcurrentHashMap<>();
@@ -99,7 +101,8 @@ public class BlobSnapshotManager {
         storageEngineRepository,
         storageMetadataService,
         DEFAULT_MAX_CONCURRENT_USERS,
-        DEFAULT_SNAPSHOT_RETENTION_TIME_IN_MIN);
+        DEFAULT_SNAPSHOT_RETENTION_TIME_IN_MIN,
+        BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE);
   }
 
   /**
@@ -363,5 +366,13 @@ public class BlobSnapshotManager {
         blobTransferRequest.getPartition(),
         offsetRecordByte,
         storeVersionStateByte);
+  }
+
+  /**
+   * Get the current snapshot format, which is a config value.
+   * @return the transfer table format, BLOCK_BASED_TABLE or PLAIN_TABLE.
+   */
+  public BlobTransferUtils.BlobTransferTableFormat getBlobTransferTableFormat() {
+    return this.blobTransferTableFormat;
   }
 }

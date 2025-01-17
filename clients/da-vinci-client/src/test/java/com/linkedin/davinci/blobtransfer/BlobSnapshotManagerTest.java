@@ -1,5 +1,6 @@
 package com.linkedin.davinci.blobtransfer;
 
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
@@ -54,8 +55,12 @@ public class BlobSnapshotManagerTest {
       new BlobTransferPartitionMetadata();
   private static final String DB_DIR = BASE_PATH + "/" + STORE_NAME + "_v" + VERSION_ID + "/"
       + RocksDBUtils.getPartitionDbName(STORE_NAME + "_v" + VERSION_ID, PARTITION_ID);
-  private static final BlobTransferPayload blobTransferPayload =
-      new BlobTransferPayload(BASE_PATH, STORE_NAME, VERSION_ID, PARTITION_ID);
+  private static final BlobTransferPayload blobTransferPayload = new BlobTransferPayload(
+      BASE_PATH,
+      STORE_NAME,
+      VERSION_ID,
+      PARTITION_ID,
+      BlobTransferTableFormat.BLOCK_BASED_TABLE);
 
   @Test(timeOut = TIMEOUT)
   public void testHybridSnapshot() {

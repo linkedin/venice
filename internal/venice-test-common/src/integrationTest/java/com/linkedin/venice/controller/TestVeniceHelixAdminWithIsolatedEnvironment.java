@@ -131,7 +131,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     Assert.assertEquals(
         veniceAdmin.getLeaderController(clusterName).getNodeId(),
         Utils.getHelixNodeIdentifier(controllerConfig.getAdminHostname(), controllerConfig.getAdminPort()));
-    // Create a new controller and test getLeaderController again.
+    // Create a new controller and test getLeaderControllerDetails again.
     int newAdminPort = controllerConfig.getAdminPort() - 10;
     PropertyBuilder builder = new PropertyBuilder().put(controllerProps.toProperties()).put("admin.port", newAdminPort);
     VeniceProperties newControllerProps = builder.build();

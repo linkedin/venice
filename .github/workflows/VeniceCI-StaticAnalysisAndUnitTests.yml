@@ -67,46 +67,66 @@ jobs:
    uses: ./.github/workflows/UnitTests-core.yml
    with:
     artifact_suffix: clients
-    arg: :clients:venice-admin-tool:jacocoTestCoverageVerification :clients:venice-admin-tool:diffCoverage
-      :clients:venice-producer:jacocoTestCoverageVerification :clients:venice-producer:diffCoverage
-      :integrations:venice-pulsar:jacocoTestCoverageVerification :integrations:venice-pulsar:diffCoverage
-      :clients:venice-client:jacocoTestCoverageVerification :clients:venice-client:diffCoverage
-      :clients:venice-push-job:jacocoTestCoverageVerification :clients:venice-push-job:diffCoverage
-      :integrations:venice-samza:jacocoTestCoverageVerification :integrations:venice-samza:diffCoverage
-      :clients:venice-thin-client:jacocoTestCoverageVerification :clients:venice-thin-client:diffCoverage --continue
+    arg:
+     # Cannot use :clients:recursiveDiffCoverage because that would include DVC, and we want this one to run in server...
+     :clients:venice-admin-tool:diffCoverage
+     :clients:venice-producer:diffCoverage
+     :clients:venice-client:diffCoverage
+     :clients:venice-push-job:diffCoverage
+     :clients:venice-thin-client:diffCoverage 
+     --continue
+
+  Integrations:
+    uses: ./.github/workflows/UnitTests-core.yml
+    with:
+      artifact_suffix: integrations
+      arg:
+       :integrations:recursiveDiffCoverage
+       --continue
 
   Internal:
    uses: ./.github/workflows/UnitTests-core.yml
    with:
     artifact_suffix: internal
-    arg: :internal:venice-client-common:jacocoTestCoverageVerification :internal:venice-client-common:diffCoverage
-     :internal:venice-common:jacocoTestCoverageVerification :internal:venice-common:diffCoverage
-     :internal:venice-jdk-compatibility-test:jacocoTestCoverageVerification :internal:venice-jdk-compatibility-test:diffCoverage
-     :internal:venice-test-common:jacocoTestCoverageVerification :internal:venice-test-common:diffCoverage --continue
-
+    arg:
+     # Cannot use :internal:recursiveDiffCoverage because that would include the avro compat test, and we want this one to run in the Compatibility group (TODO: move it out of internal?)...
+     :internal:venice-client-common:diffCoverage
+     :internal:venice-common:diffCoverage
+     :internal:venice-jdk-compatibility-test:diffCoverage
+     :internal:venice-test-common:diffCoverage 
+      --continue
 
   Controller:
    uses: ./.github/workflows/UnitTests-core.yml
    with:
     artifact_suffix: controller
-    arg: :services:venice-controller:jacocoTestCoverageVerification :services:venice-controller:diffCoverage --continue
+    arg:
+     :services:venice-controller:diffCoverage 
+     --continue
+
   Server:
    uses: ./.github/workflows/UnitTests-core.yml
    with:
     artifact_suffix: server
-    arg: :clients:da-vinci-client:jacocoTestCoverageVerification :clients:da-vinci-client:diffCoverage
-     :services:venice-server:jacocoTestCoverageVerification :services:venice-server:diffCoverage --continue
+    arg:
+     :clients:da-vinci-client:diffCoverage
+     :services:venice-server:diffCoverage 
+     --continue
+
   Router:
    uses: ./.github/workflows/UnitTests-core.yml
    with:
     artifact_suffix: router
-    arg: :services:venice-router:jacocoTestCoverageVerification :services:venice-router:diffCoverage --continue
+    arg:
+     :services:venice-router:diffCoverage
+     alpiniUnitTest
+     --continue
 
   StaticAnalysisAndUnitTestsCompletionCheck:
     strategy:
       fail-fast: false
     runs-on: ubuntu-latest
-    needs: [ValidateGradleWrapper, StaticAnalysis, Clients, Internal, Controller, Server, Router]
+    needs: [ValidateGradleWrapper, StaticAnalysis, Clients, Integrations, Internal, Controller, Server, Router]
     timeout-minutes: 120
     if: success() || failure()  # Always run this job, regardless of previous job status
     steps:
@@ -126,6 +146,10 @@ jobs:
          fi
          if [ "${{ needs.Internal.result }}" != "success" ]; then
            echo "Internal module unit tests failed."
+           exit 1
+         fi
+         if [ "${{ needs.Integrations.result }}" != "success" ]; then
+           echo "Integrations module unit tests failed."
            exit 1
          fi
          if [ "${{ needs.Controller.result }}" != "success" ]; then

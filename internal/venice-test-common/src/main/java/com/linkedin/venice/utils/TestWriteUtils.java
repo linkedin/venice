@@ -48,6 +48,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileWriter;
 import org.apache.avro.generic.GenericData;
@@ -80,6 +81,10 @@ public class TestWriteUtils {
       AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/User.avsc"));
   public static final Schema USER_WITH_DEFAULT_SCHEMA =
       AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/UserWithDefault.avsc"));
+
+  public static final Schema SINGLE_FIELD_RECORD_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/SingleFieldRecord.avsc"));
+
   public static final Schema SIMPLE_USER_WITH_DEFAULT_SCHEMA =
       AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/SimpleUserWithDefault.avsc"));
   public static final Schema USER_WITH_FLOAT_ARRAY_SCHEMA =
@@ -353,17 +358,27 @@ public class TestWriteUtils {
   }
 
   public static Schema writeSimpleAvroFileWithStringToNameRecordV1Schema(File parentDir) throws IOException {
-    return writeAvroFile(parentDir, "string2record.avro", STRING_TO_NAME_RECORD_V1_SCHEMA, (recordSchema, writer) -> {
-      String firstName = "first_name_";
-      String lastName = "last_name_";
+    String firstName = "first_name_";
+    String lastName = "last_name_";
+
+    return writeSimpleAvroFile(parentDir, STRING_TO_NAME_RECORD_V1_SCHEMA, i -> {
+      GenericRecord keyValueRecord = new GenericData.Record(STRING_TO_NAME_RECORD_V1_SCHEMA);
+      keyValueRecord.put(DEFAULT_KEY_FIELD_PROP, String.valueOf(i)); // Key
+      GenericRecord valueRecord = new GenericData.Record(NAME_RECORD_V1_SCHEMA);
+      valueRecord.put("firstName", firstName + i);
+      valueRecord.put("lastName", lastName + i);
+      keyValueRecord.put(DEFAULT_VALUE_FIELD_PROP, valueRecord); // Value
+      return keyValueRecord;
+    });
+  }
+
+  public static Schema writeSimpleAvroFile(
+      File parentDir,
+      Schema schema,
+      Function<Integer, GenericRecord> recordProvider) throws IOException {
+    return writeAvroFile(parentDir, "string2record.avro", schema, (recordSchema, writer) -> {
       for (int i = 1; i <= DEFAULT_USER_DATA_RECORD_COUNT; ++i) {
-        GenericRecord keyValueRecord = new GenericData.Record(recordSchema);
-        keyValueRecord.put(DEFAULT_KEY_FIELD_PROP, String.valueOf(i)); // Key
-        GenericRecord valueRecord = new GenericData.Record(NAME_RECORD_V1_SCHEMA);
-        valueRecord.put("firstName", firstName + i);
-        valueRecord.put("lastName", lastName + i);
-        keyValueRecord.put(DEFAULT_VALUE_FIELD_PROP, valueRecord); // Value
-        writer.append(keyValueRecord);
+        writer.append(recordProvider.apply(i));
       }
     });
   }

@@ -33,14 +33,6 @@ public class DaVinciRecordTransformerConfig {
   }
 
   /**
-   * @param storeVersion the store version
-   * @return a new {@link DaVinciRecordTransformer}
-   */
-  public DaVinciRecordTransformer getRecordTransformer(Integer storeVersion) {
-    return recordTransformerFunction.apply(storeVersion);
-  }
-
-  /**
    * @return {@link #outputValueClass}
    */
   public Class getOutputValueClass() {
@@ -53,5 +45,4 @@ public class DaVinciRecordTransformerConfig {
   public Schema getOutputValueSchema() {
     return outputValueSchema;
   }
-
 }
