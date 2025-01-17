@@ -116,7 +116,7 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
    *
    * TODO: Re-enable once we can depend on a clean release.
    */
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT, enabled = false)
   public void testRecordTransformer() throws Exception {
     DaVinciConfig clientConfig = new DaVinciConfig();
 
