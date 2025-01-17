@@ -70,8 +70,16 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
+/**
+ * On DuckDB 1.1.3, this test works on mac but fails on the CI, likely due to: https://github.com/duckdb/duckdb-java/issues/14
+ *
+ * With a more recent snapshot release, where the above issue is fixed and merged, it works in both environments.
+ *
+ * Once there is an official release containing this fix, we could consider moving the integration tests back to
+ * venice-test-common.
+ */
 public class DuckDBDaVinciRecordTransformerIntegrationTest {
-  private static final Logger LOGGER = LogManager.getLogger(DaVinciClientRecordTransformerTest.class);
+  private static final Logger LOGGER = LogManager.getLogger(DuckDBDaVinciRecordTransformerIntegrationTest.class);
   private static final int TEST_TIMEOUT = 3 * Time.MS_PER_MINUTE;
   private VeniceClusterWrapper cluster;
   private D2Client d2Client;
@@ -109,14 +117,7 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
     }
   }
 
-  /**
-   * This test works on mac but fails on the CI, likely due to: https://github.com/duckdb/duckdb-java/issues/14
-   *
-   * There is a fix merged for this, but it has not been released yet.
-   *
-   * TODO: Re-enable once we can depend on a clean release.
-   */
-  @Test(timeOut = TEST_TIMEOUT, enabled = false)
+  @Test(timeOut = TEST_TIMEOUT)
   public void testRecordTransformer() throws Exception {
     DaVinciConfig clientConfig = new DaVinciConfig();
 
