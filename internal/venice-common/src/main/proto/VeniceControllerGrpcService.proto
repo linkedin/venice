@@ -62,6 +62,7 @@ enum ControllerGrpcErrorType {
   BAD_REQUEST = 8;
   CONCURRENT_BATCH_PUSH = 9;
   RESOURCE_STILL_EXISTS = 10;
+  UNAUTHORIZED = 11;
 }
 
 message VeniceControllerGrpcErrorInfo {

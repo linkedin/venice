@@ -10,6 +10,7 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARTITION_SIZE_BYTES;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_REPLICATION_FACTOR;
 
+import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AuthorizerService;
 import java.util.Arrays;
 import java.util.Map;
@@ -38,6 +39,7 @@ public class VeniceControllerCreateOptions {
   private final Properties extraProperties;
   private final AuthorizerService authorizerService;
   private final String regionName;
+  private final DynamicAccessController dynamicAccessController;
 
   private VeniceControllerCreateOptions(Builder builder) {
     multiRegion = builder.multiRegion;
@@ -59,6 +61,7 @@ public class VeniceControllerCreateOptions {
     authorizerService = builder.authorizerService;
     isParent = builder.childControllers != null && builder.childControllers.length != 0;
     regionName = builder.regionName;
+    dynamicAccessController = builder.dynamicAccessController;
   }
 
   @Override
@@ -201,6 +204,10 @@ public class VeniceControllerCreateOptions {
     return authorizerService;
   }
 
+  public DynamicAccessController getDynamicAccessController() {
+    return dynamicAccessController;
+  }
+
   public String getRegionName() {
     return regionName;
   }
@@ -224,6 +231,7 @@ public class VeniceControllerCreateOptions {
     private Properties extraProperties = new Properties();
     private AuthorizerService authorizerService;
     private String regionName;
+    private DynamicAccessController dynamicAccessController;
 
     public Builder(String[] clusterNames, ZkServerWrapper zkServer, PubSubBrokerWrapper kafkaBroker) {
       this.clusterNames = Objects.requireNonNull(clusterNames, "clusterNames cannot be null when creating controller");
@@ -312,6 +320,11 @@ public class VeniceControllerCreateOptions {
 
     public Builder regionName(String regionName) {
       this.regionName = regionName;
+      return this;
+    }
+
+    public Builder dynamicAccessController(DynamicAccessController dynamicAccessController) {
+      this.dynamicAccessController = dynamicAccessController;
       return this;
     }
 

@@ -236,6 +236,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
                 .d2Enabled(true)
                 .regionName(options.getRegionName())
                 .extraProperties(options.getExtraProperties())
+                .dynamicAccessController(options.getAccessController())
                 .build());
         LOGGER.info(
             "[{}][{}] Created child controller on port {}",

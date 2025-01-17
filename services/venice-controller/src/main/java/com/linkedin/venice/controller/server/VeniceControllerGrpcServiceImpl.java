@@ -1,5 +1,9 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.controller.server.VeniceRouteHandler.ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX;
+import static com.linkedin.venice.controller.server.grpc.ControllerGrpcSslSessionInterceptor.GRPC_CONTROLLER_CLIENT_DETAILS;
+
+import com.linkedin.venice.controller.server.grpc.GrpcControllerClientDetails;
 import com.linkedin.venice.controllerapi.transport.GrpcRequestResponseConverter;
 import com.linkedin.venice.protocols.controller.ControllerGrpcErrorType;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
@@ -8,7 +12,9 @@ import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
+import com.linkedin.venice.protocols.controller.VeniceControllerGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcServiceGrpc.VeniceControllerGrpcServiceImplBase;
+import io.grpc.Context;
 import io.grpc.Status.Code;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -27,6 +33,19 @@ public class VeniceControllerGrpcServiceImpl extends VeniceControllerGrpcService
   public VeniceControllerGrpcServiceImpl(VeniceControllerRequestHandler requestHandler) {
     this.requestHandler = requestHandler;
     this.accessManager = requestHandler.getControllerAccessManager();
+  }
+
+  protected GrpcControllerClientDetails getClientDetails(Context context) {
+    GrpcControllerClientDetails clientDetails = GRPC_CONTROLLER_CLIENT_DETAILS.get(context);
+    if (clientDetails == null) {
+      clientDetails = GrpcControllerClientDetails.UNDEFINED_CLIENT_DETAILS;
+    }
+    return clientDetails;
+  }
+
+  public boolean isAllowListUser(String resourceName, Context context) {
+    GrpcControllerClientDetails clientDetails = getClientDetails(context);
+    return accessManager.isAllowListUser(resourceName, clientDetails.getClientCertificate());
   }
 
   @Override
@@ -97,7 +116,17 @@ public class VeniceControllerGrpcServiceImpl extends VeniceControllerGrpcService
     String storeName = grpcRequest.getClusterStoreInfo().getStoreName();
     LOGGER.info("Received gRPC request to create store: {} in cluster: {}", storeName, clusterName);
     try {
-      // TODO (sushantmane) : Add the ACL check for allowlist users here
+      if (!isAllowListUser(storeName, Context.current())) {
+        GrpcRequestResponseConverter.sendErrorResponse(
+            Code.PERMISSION_DENIED,
+            ControllerGrpcErrorType.UNAUTHORIZED,
+            ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX
+                + VeniceControllerGrpcServiceGrpc.getCreateStoreMethod().getFullMethodName(),
+            clusterName,
+            storeName,
+            responseObserver);
+        return;
+      }
       responseObserver.onNext(requestHandler.createStore(grpcRequest));
       responseObserver.onCompleted();
     } catch (IllegalArgumentException e) {

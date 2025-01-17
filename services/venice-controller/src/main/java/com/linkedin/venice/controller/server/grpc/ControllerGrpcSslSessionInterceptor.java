@@ -39,10 +39,8 @@ import org.apache.logging.log4j.Logger;
 public class ControllerGrpcSslSessionInterceptor implements ServerInterceptor {
   private static final Logger LOGGER = LogManager.getLogger(ControllerGrpcSslSessionInterceptor.class);
   protected static final String UNKNOWN_REMOTE_ADDRESS = "unknown";
-
-  public static final Context.Key<X509Certificate> CLIENT_CERTIFICATE_CONTEXT_KEY =
-      Context.key("controller-client-certificate");
-  public static final Context.Key<String> CLIENT_ADDRESS_CONTEXT_KEY = Context.key("controller-client-address");
+  public static final Context.Key<GrpcControllerClientDetails> GRPC_CONTROLLER_CLIENT_DETAILS =
+      Context.key("controller-client-details");
 
   protected static final VeniceControllerGrpcErrorInfo NON_SSL_ERROR_INFO = VeniceControllerGrpcErrorInfo.newBuilder()
       .setStatusCode(Status.UNAUTHENTICATED.getCode().value())
@@ -102,7 +100,8 @@ public class ControllerGrpcSslSessionInterceptor implements ServerInterceptor {
     }
 
     // Create a new context with SSL-related attributes
-    Context context = updateAndGetContext(clientCert, remoteAddressStr);
+    Context context = Context.current()
+        .withValue(GRPC_CONTROLLER_CLIENT_DETAILS, new GrpcControllerClientDetails(clientCert, remoteAddressStr));
 
     // Proceed with the call
     return Contexts.interceptCall(context, serverCall, metadata, serverCallHandler);
@@ -147,18 +146,5 @@ public class ControllerGrpcSslSessionInterceptor implements ServerInterceptor {
       LOGGER.error("Failed to extract client certificate", e);
       return null;
     }
-  }
-
-  /**
-   * Updates the gRPC context of the current scope by adding SSL-related attributes.
-   *
-   * @param clientCert The client certificate.
-   * @param remoteAddressStr The remote address as a string.
-   * @return The new context.
-   */
-  private Context updateAndGetContext(X509Certificate clientCert, String remoteAddressStr) {
-    return Context.current()
-        .withValue(CLIENT_CERTIFICATE_CONTEXT_KEY, clientCert)
-        .withValue(CLIENT_ADDRESS_CONTEXT_KEY, remoteAddressStr);
   }
 }
