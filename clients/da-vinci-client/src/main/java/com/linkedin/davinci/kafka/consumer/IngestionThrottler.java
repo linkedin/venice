@@ -187,12 +187,8 @@ public class IngestionThrottler implements Closeable {
           this.isUsingSpeedupThrottler = true;
         } else if (!hasCurrentVersionBootstrapping && isUsingSpeedupThrottler) {
           LOGGER.info("There is no active current version bootstrapping, so switch to regular throttler");
-          this.finalRecordThrottler = serverConfig.isAdaptiveThrottlerEnabled()
-              ? globalRecordAdaptiveIngestionThrottler
-              : globalRecordThrottler;
-          this.finalBandwidthThrottler = serverConfig.isAdaptiveThrottlerEnabled()
-              ? globalBandwidthAdaptiveIngestionThrottler
-              : globalBandwidthThrottler;
+          this.finalRecordThrottler = globalRecordThrottler;
+          this.finalBandwidthThrottler = globalBandwidthThrottler;
           this.isUsingSpeedupThrottler = false;
         }
 
@@ -204,8 +200,11 @@ public class IngestionThrottler implements Closeable {
       this.eventThrottlerUpdateService = null;
     }
 
-    this.finalRecordThrottler = globalRecordThrottler;
-    this.finalBandwidthThrottler = globalBandwidthThrottler;
+    this.finalRecordThrottler =
+        serverConfig.isAdaptiveThrottlerEnabled() ? globalRecordAdaptiveIngestionThrottler : globalRecordThrottler;
+    this.finalBandwidthThrottler = serverConfig.isAdaptiveThrottlerEnabled()
+        ? globalBandwidthAdaptiveIngestionThrottler
+        : globalBandwidthThrottler;
   }
 
   public void maybeThrottleRecordRate(ConsumerPoolType poolType, int count) {
