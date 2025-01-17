@@ -762,14 +762,13 @@ public class PartialUpdateTest {
           parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
       assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
 
-      VersionCreationResponse response =
-          TestUtils.assertCommand(parentControllerClient.emptyPush(storeName, "test_push_id", 1000));
+      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
       assertEquals(response.getVersion(), 1);
       assertFalse(response.isError(), "Empty push to parent colo should succeed");
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 1),
           parentControllerClient,
-          60,
+          30,
           TimeUnit.SECONDS);
       assertTrue(parentControllerClient.getStore(storeName).getStore().isRmdChunkingEnabled());
       assertTrue(parentControllerClient.getStore(storeName).getStore().getVersion(1).get().isRmdChunkingEnabled());
