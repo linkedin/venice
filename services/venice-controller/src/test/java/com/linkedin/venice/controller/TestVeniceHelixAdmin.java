@@ -31,12 +31,16 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.Version.PushType;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.meta.ViewConfig;
+import com.linkedin.venice.meta.ViewConfigImpl;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -44,6 +48,8 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
+import com.linkedin.venice.views.MaterializedView;
+import com.linkedin.venice.views.ViewUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -52,6 +58,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
@@ -887,5 +894,65 @@ public class TestVeniceHelixAdmin {
     assertTrue(
         storeSetupValidationException.getMessage().contains("Store setup validation failed"),
         "Actual message: " + storeSetupValidationException.getMessage());
+  }
+
+  @Test
+  public void testCleanupWhenPushCompleteWithViewConfigs() {
+    String clusterName = "test-cluster";
+    String storeName = "test-store";
+    String viewName = "testMaterializedView";
+    int versionNumber = 1;
+    String versionTopicName = Version.composeKafkaTopic(storeName, versionNumber);
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    doCallRealMethod().when(veniceHelixAdmin).topicCleanupWhenPushComplete(anyString(), anyString(), anyInt());
+
+    // Configure view configs
+    MaterializedViewParameters.Builder viewParamsBuilder = new MaterializedViewParameters.Builder(viewName);
+    viewParamsBuilder.setPartitionCount(6);
+    viewParamsBuilder.setPartitioner(DefaultVenicePartitioner.class.getCanonicalName());
+    Map<String, String> viewParamsMap = viewParamsBuilder.build();
+    ViewConfig viewConfig = new ViewConfigImpl(MaterializedView.class.getCanonicalName(), viewParamsMap);
+    String viewTopicName = ViewUtils
+        .getVeniceView(viewConfig.getViewClassName(), new Properties(), storeName, viewConfig.getViewParameters())
+        .getTopicNamesAndConfigsForVersion(versionNumber)
+        .keySet()
+        .iterator()
+        .next();
+
+    // Configure mocks
+    HelixVeniceClusterResources mockClusterResource = mock(HelixVeniceClusterResources.class);
+    doReturn(mockClusterResource).when(veniceHelixAdmin).getHelixVeniceClusterResources(clusterName);
+    VeniceControllerClusterConfig mockClusterConfig = mock(VeniceControllerClusterConfig.class);
+    doReturn(true).when(mockClusterConfig).isKafkaLogCompactionForHybridStoresEnabled();
+    doReturn(mockClusterConfig).when(mockClusterResource).getConfig();
+    ReadWriteStoreRepository mockStoreRepo = mock(ReadWriteStoreRepository.class);
+    doReturn(mockStoreRepo).when(mockClusterResource).getStoreMetadataRepository();
+    Store store = mock(Store.class);
+    doReturn(true).when(store).isHybrid();
+    doReturn(store).when(mockStoreRepo).getStore(storeName);
+    TopicManager mockTopicManager = mock(TopicManager.class);
+    doReturn(mockTopicManager).when(veniceHelixAdmin).getTopicManager();
+    PubSubTopicRepository mockPubSubRepo = mock(PubSubTopicRepository.class);
+    doReturn(mockPubSubRepo).when(veniceHelixAdmin).getPubSubTopicRepository();
+    PubSubTopic versionTopic = mock(PubSubTopic.class);
+    doReturn(versionTopicName).when(versionTopic).getName();
+    doReturn(versionTopic).when(mockPubSubRepo).getTopic(versionTopicName);
+    PubSubTopic viewTopic = mock(PubSubTopic.class);
+    doReturn(viewTopicName).when(viewTopic).getName();
+    doReturn(viewTopic).when(mockPubSubRepo).getTopic(viewTopicName);
+    Version version = mock(Version.class);
+    doReturn(Collections.singletonMap(viewName, viewConfig)).when(version).getViewConfigs();
+    doReturn(version).when(store).getVersionOrThrow(versionNumber);
+
+    veniceHelixAdmin.topicCleanupWhenPushComplete(clusterName, storeName, versionNumber);
+    ArgumentCaptor<PubSubTopic> pubSubTopicArgumentCaptor = ArgumentCaptor.forClass(PubSubTopic.class);
+    verify(mockTopicManager, times(2))
+        .updateTopicCompactionPolicy(pubSubTopicArgumentCaptor.capture(), anyBoolean(), anyLong(), any());
+    List<String> expectedUpdateCompactionTopics = Arrays.asList(versionTopicName, viewTopicName);
+    List<PubSubTopic> pubSubTopics = pubSubTopicArgumentCaptor.getAllValues();
+    assertEquals(pubSubTopics.size(), expectedUpdateCompactionTopics.size());
+    for (int i = 0; i < pubSubTopics.size(); i++) {
+      assertEquals(pubSubTopics.get(i).getName(), expectedUpdateCompactionTopics.get(i));
+    }
   }
 }

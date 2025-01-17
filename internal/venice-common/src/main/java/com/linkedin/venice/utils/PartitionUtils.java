@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PartitionerConfig;
@@ -7,6 +8,7 @@ import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import java.util.Map;
 import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
@@ -93,6 +95,20 @@ public class PartitionUtils {
       params.putAll(config.getPartitionerParams());
     }
     return getVenicePartitioner(config.getPartitionerClass(), new VeniceProperties(params));
+  }
+
+  public static VenicePartitioner getVenicePartitioner(String partitionerClass, String partitionerParamsString) {
+    Properties params = new Properties();
+    if (partitionerParamsString != null) {
+      Map<String, String> partitionerParamsMap = null;
+      try {
+        partitionerParamsMap = ObjectMapperFactory.getInstance().readValue(partitionerParamsString, Map.class);
+      } catch (JsonProcessingException e) {
+        throw new VeniceException("Invalid partitioner params string: " + partitionerParamsString, e);
+      }
+      params.putAll(partitionerParamsMap);
+    }
+    return getVenicePartitioner(partitionerClass, new VeniceProperties(params), null);
   }
 
   public static VenicePartitioner getVenicePartitioner(String partitionerClass, VeniceProperties params) {

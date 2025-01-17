@@ -48,6 +48,7 @@ import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
@@ -882,6 +883,9 @@ public class TestVenicePushJobCheckpoints {
     when(storeResponse.getStore()).thenReturn(storeInfo);
     when(storeInfo.getCompressionStrategy()).thenReturn(
         CompressionStrategy.valueOf(props.getProperty(COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.toString())));
+    Version version = mock(Version.class);
+    when(version.getViewConfigs()).thenReturn(Collections.emptyMap());
+    when(storeInfo.getVersion(anyInt())).thenReturn(Optional.of(version));
 
     SchemaResponse keySchemaResponse = mock(SchemaResponse.class);
     when(keySchemaResponse.isError()).thenReturn(false);

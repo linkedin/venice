@@ -84,7 +84,7 @@ public enum ControlMessageType implements VeniceEnumValue {
   }
 
   public static ControlMessageType valueOf(ControlMessage controlMessage) {
-    return valueOf(controlMessage.controlMessageType);
+    return valueOf(controlMessage.getControlMessageType());
   }
 
   public int getShallowClassOverhead() {

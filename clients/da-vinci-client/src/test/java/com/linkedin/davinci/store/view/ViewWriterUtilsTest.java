@@ -4,6 +4,8 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
@@ -28,6 +30,8 @@ public class ViewWriterUtilsTest {
   @Test
   public void testGetVeniceViewWriter() {
     Store mockStore = Mockito.mock(Store.class);
+    Version version = new VersionImpl("test-store", 1, "dummyPushId");
+    Mockito.when(mockStore.getVersionOrThrow(1)).thenReturn(version);
     VeniceProperties props = VeniceProperties.empty();
     Object2IntMap<String> urlMappingMap = new Object2IntOpenHashMap<>();
     CompletableFuture<PubSubProduceResult> mockFuture = Mockito.mock(CompletableFuture.class);
@@ -49,12 +53,13 @@ public class ViewWriterUtilsTest {
     VeniceView veniceView = ViewUtils.getVeniceView(
         ChangeCaptureView.class.getCanonicalName(),
         mockVeniceConfigLoader.getCombinedProperties().toProperties(),
-        mockStore,
+        "test-store",
         Collections.EMPTY_MAP);
     VeniceViewWriter viewWriter = ViewWriterUtils.getVeniceViewWriter(
         ChangeCaptureView.class.getCanonicalName(),
         mockVeniceConfigLoader,
         mockStore,
+        1,
         SCHEMA,
         Collections.EMPTY_MAP);
 

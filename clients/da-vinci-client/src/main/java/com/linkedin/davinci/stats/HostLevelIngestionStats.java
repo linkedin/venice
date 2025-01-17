@@ -67,6 +67,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final Sensor resubscriptionFailureSensor;
 
   private final Sensor viewProducerLatencySensor;
+  private final Sensor viewProducerAckLatencySensor;
   /**
    * Sensors for emitting if/when we detect DCR violations (such as a backwards timestamp or receding offset vector)
    */
@@ -311,6 +312,12 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         () -> totalStats.viewProducerLatencySensor,
         avgAndMax());
 
+    this.viewProducerAckLatencySensor = registerPerStoreAndTotalSensor(
+        "total_view_writer_ack_latency",
+        totalStats,
+        () -> totalStats.viewProducerAckLatencySensor,
+        avgAndMax());
+
     registerSensor(
         "storage_quota_used",
         new AsyncGauge((ignored, ignored2) -> hybridQuotaUsageGauge, "storage_quota_used"));
@@ -511,6 +518,10 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordViewProducerLatency(double latency) {
     viewProducerLatencySensor.record(latency);
+  }
+
+  public void recordViewProducerAckLatency(double latency) {
+    viewProducerAckLatencySensor.record(latency);
   }
 
   public void recordUnexpectedMessage() {

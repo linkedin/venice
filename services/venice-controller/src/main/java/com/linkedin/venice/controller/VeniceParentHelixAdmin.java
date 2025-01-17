@@ -75,7 +75,6 @@ import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.BATCH_JOB_HEARTBEAT;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PUSH_JOB_DETAILS;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -185,6 +184,7 @@ import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RegionPushDetails;
@@ -199,7 +199,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
-import com.linkedin.venice.meta.ViewParameterKeys;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -2850,32 +2849,25 @@ public class VeniceParentHelixAdmin implements Admin {
             String.format("Materialized View name cannot contain version separator: %s", VERSION_SEPARATOR));
       }
       Map<String, String> viewParams = viewConfig.getViewParameters();
-      viewParams.put(ViewParameterKeys.MATERIALIZED_VIEW_NAME.name(), viewName);
-      if (!viewParams.containsKey(ViewParameterKeys.MATERIALIZED_VIEW_PARTITIONER.name())) {
-        viewParams.put(
-            ViewParameterKeys.MATERIALIZED_VIEW_PARTITIONER.name(),
-            store.getPartitionerConfig().getPartitionerClass());
+      MaterializedViewParameters.Builder decoratedViewParamBuilder =
+          new MaterializedViewParameters.Builder(viewName, viewParams);
+      if (!viewParams.containsKey(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITIONER.name())) {
+        decoratedViewParamBuilder.setPartitioner(store.getPartitionerConfig().getPartitionerClass());
         if (!store.getPartitionerConfig().getPartitionerParams().isEmpty()) {
-          try {
-            viewParams.put(
-                ViewParameterKeys.MATERIALIZED_VIEW_PARTITIONER_PARAMS.name(),
-                ObjectMapperFactory.getInstance()
-                    .writeValueAsString(store.getPartitionerConfig().getPartitionerParams()));
-          } catch (JsonProcessingException e) {
-            throw new VeniceException("Failed to convert store partitioner params to string", e);
-          }
+          decoratedViewParamBuilder.setPartitionerParams(store.getPartitionerConfig().getPartitionerParams());
         }
       }
-      if (!viewParams.containsKey(ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name())) {
-        viewParams.put(
-            ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name(),
-            Integer.toString(store.getPartitionCount()));
+      if (!viewParams.containsKey(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name())) {
+        decoratedViewParamBuilder.setPartitionCount(store.getPartitionCount());
       }
-      viewConfig.setViewParameters(viewParams);
+      viewConfig.setViewParameters(decoratedViewParamBuilder.build());
     }
-    VeniceView view =
-        ViewUtils.getVeniceView(viewConfig.getViewClassName(), new Properties(), store, viewConfig.getViewParameters());
-    view.validateConfigs();
+    VeniceView view = ViewUtils.getVeniceView(
+        viewConfig.getViewClassName(),
+        new Properties(),
+        store.getName(),
+        viewConfig.getViewParameters());
+    view.validateConfigs(store);
     return viewConfig;
   }
 

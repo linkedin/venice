@@ -18,6 +18,7 @@ public class ChangeCaptureViewTest {
   public void testValidateConfigs() {
     Properties props = new Properties();
     Map<String, String> viewParams = new HashMap<>();
+    String storeName = "test-store";
     Store NonChunkedStore = Mockito.mock(Store.class);
     Mockito.when(NonChunkedStore.isChunkingEnabled()).thenReturn(false);
     Store NonAAStore = Mockito.mock(Store.class);
@@ -26,10 +27,10 @@ public class ChangeCaptureViewTest {
     Mockito.when(AAChunkedStore.isChunkingEnabled()).thenReturn(true);
     Mockito.when(AAChunkedStore.isActiveActiveReplicationEnabled()).thenReturn(true);
 
-    Assert.assertThrows(() -> new ChangeCaptureView(props, NonChunkedStore, viewParams).validateConfigs());
-    Assert.assertThrows(() -> new ChangeCaptureView(props, NonAAStore, viewParams).validateConfigs());
+    Assert.assertThrows(() -> new ChangeCaptureView(props, storeName, viewParams).validateConfigs(NonChunkedStore));
+    Assert.assertThrows(() -> new ChangeCaptureView(props, storeName, viewParams).validateConfigs(NonAAStore));
     // Should now throw
-    new ChangeCaptureView(props, AAChunkedStore, viewParams).validateConfigs();
+    new ChangeCaptureView(props, storeName, viewParams).validateConfigs(AAChunkedStore);
   }
 
   @Test
@@ -38,7 +39,7 @@ public class ChangeCaptureViewTest {
     int version = 3;
     Store testStore = Mockito.mock(Store.class);
     Mockito.when(testStore.getName()).thenReturn(storeName);
-    ChangeCaptureView changeCaptureView = new ChangeCaptureView(new Properties(), testStore, new HashMap<>());
+    ChangeCaptureView changeCaptureView = new ChangeCaptureView(new Properties(), storeName, new HashMap<>());
     Map<String, VeniceProperties> changeCaptureViewTopicMap =
         changeCaptureView.getTopicNamesAndConfigsForVersion(version);
     assertEquals(changeCaptureViewTopicMap.size(), 1);

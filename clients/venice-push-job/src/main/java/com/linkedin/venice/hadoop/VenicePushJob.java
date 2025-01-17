@@ -131,6 +131,7 @@ import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -154,6 +155,8 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.views.MaterializedView;
+import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -173,6 +176,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.mapred.AvroJob;
 import org.apache.commons.lang.StringUtils;
@@ -819,6 +823,8 @@ public class VenicePushJob implements AutoCloseable {
         getVeniceWriter(pushJobSetting)
             .broadcastEndOfIncrementalPush(pushJobSetting.incrementalPushVersion, Collections.emptyMap());
       } else {
+        // Populate any view configs to job properties
+        configureJobPropertiesWithMaterializedViewConfigs();
         if (pushJobSetting.sendControlMessagesDirectly) {
           getVeniceWriter(pushJobSetting).broadcastStartOfPush(
               SORTED,
@@ -1044,6 +1050,30 @@ public class VenicePushJob implements AutoCloseable {
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INPUT_DATA_SCHEMA_VALIDATION_FAILED);
         throw new VeniceException(looseValidationException);
       }
+    }
+  }
+
+  private void configureJobPropertiesWithMaterializedViewConfigs() {
+    try {
+      // For now, we only perform view topic writes for basic batch push and re-push. No incremental pushes.
+      if (pushJobSetting.isIncrementalPush) {
+        return;
+      }
+      StoreResponse storeResponse = ControllerClient.retryableRequest(
+          controllerClient,
+          pushJobSetting.controllerRetries,
+          c -> c.getStore(pushJobSetting.storeName));
+      Map<String, ViewConfig> viewConfigMap =
+          storeResponse.getStore().getVersion(pushJobSetting.version).get().getViewConfigs();
+      viewConfigMap = viewConfigMap.entrySet()
+          .stream()
+          .filter(vc -> Objects.equals(vc.getValue().getViewClassName(), MaterializedView.class.getCanonicalName()))
+          .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+      if (!viewConfigMap.isEmpty()) {
+        pushJobSetting.materializedViewConfigFlatMap = ViewUtils.flatViewConfigMapString(viewConfigMap);
+      }
+    } catch (Exception e) {
+      throw new VeniceException("Failed to configure job properties with view configs", e);
     }
   }
 

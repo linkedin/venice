@@ -219,6 +219,7 @@ import com.linkedin.venice.utils.concurrent.ConcurrencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -2446,25 +2447,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @param store the store to create these resources for
    * @param version the store version to create these resources for
    */
-  private void constructViewResources(Properties params, Store store, int version) {
-    Map<String, ViewConfig> viewConfigs = store.getViewConfigs();
+  private void constructViewResources(Properties params, Store store, Version version, String compressionDictionary) {
+    Map<String, ViewConfig> viewConfigs = version.getViewConfigs();
     if (viewConfigs == null || viewConfigs.isEmpty()) {
       return;
     }
 
     // Construct Kafka topics
     // TODO: Today we only have support for creating Kafka topics as a resource for a given view, but later we would
-    // like
-    // to add support for potentially other resource types (maybe helix RG's as an example?)
-    Map<String, VeniceProperties> topicNamesAndConfigs = new HashMap<>();
-    for (ViewConfig rawView: viewConfigs.values()) {
-      VeniceView adminView =
-          ViewUtils.getVeniceView(rawView.getViewClassName(), params, store, rawView.getViewParameters());
-      topicNamesAndConfigs.putAll(adminView.getTopicNamesAndConfigsForVersion(version));
-    }
+    // like to add support for potentially other resource types (maybe helix RG's as an example?)
+    Map<String, VeniceProperties> viewTopicNamesAndConfigs =
+        ViewUtils.getViewTopicsAndConfigs(viewConfigs.values(), params, store.getName(), version.getNumber());
     TopicManager topicManager = getTopicManager();
-    for (Map.Entry<String, VeniceProperties> topicNameAndConfigs: topicNamesAndConfigs.entrySet()) {
-      PubSubTopic kafkaTopic = pubSubTopicRepository.getTopic(topicNameAndConfigs.getKey());
+    for (Map.Entry<String, VeniceProperties> topicNameAndConfigs: viewTopicNamesAndConfigs.entrySet()) {
+      String materializedViewTopicName = topicNameAndConfigs.getKey();
+      PubSubTopic kafkaTopic = pubSubTopicRepository.getTopic(materializedViewTopicName);
       VeniceProperties kafkaTopicConfigs = topicNameAndConfigs.getValue();
       topicManager.createTopic(
           kafkaTopic,
@@ -2474,11 +2471,31 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           kafkaTopicConfigs.getBoolean(LOG_COMPACTION_ENABLED),
           kafkaTopicConfigs.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS),
           kafkaTopicConfigs.getBoolean(USE_FAST_KAFKA_OPERATION_TIMEOUT));
+      if (topicNameAndConfigs.getKey().endsWith(MaterializedView.MATERIALIZED_VIEW_TOPIC_SUFFIX)) {
+        // Send SOP CM to materialized view topic with sorted flag equal to false due to reshuffle
+        VeniceWriterOptions.Builder vwOptionsBuilder =
+            new VeniceWriterOptions.Builder(materializedViewTopicName).setUseKafkaKeySerializer(true)
+                .setPartitionCount(kafkaTopicConfigs.getInt(PARTITION_COUNT));
+        ByteBuffer compressionDictBuffer = null;
+        if (compressionDictionary != null) {
+          compressionDictBuffer = ByteBuffer.wrap(EncodingUtils.base64DecodeFromString(compressionDictionary));
+        } else if (version.getCompressionStrategy().equals(CompressionStrategy.ZSTD_WITH_DICT)) {
+          compressionDictBuffer = emptyPushZSTDDictionary.get();
+        }
+        try (VeniceWriter veniceWriter = getVeniceWriterFactory().createVeniceWriter(vwOptionsBuilder.build())) {
+          veniceWriter.broadcastStartOfPush(
+              false,
+              version.isChunkingEnabled(),
+              version.getCompressionStrategy(),
+              Optional.ofNullable(compressionDictBuffer),
+              Collections.emptyMap());
+        }
+      }
     }
   }
 
-  private void cleanUpViewResources(Properties params, Store store, int version) {
-    Map<String, ViewConfig> viewConfigs = store.getViewConfigs();
+  private void cleanUpViewResources(Properties params, Store store, Version version) {
+    Map<String, ViewConfig> viewConfigs = version.getViewConfigs();
     if (viewConfigs == null || viewConfigs.isEmpty()) {
       return;
     }
@@ -2489,12 +2506,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Map<String, VeniceProperties> topicNamesAndConfigs = new HashMap<>();
     for (ViewConfig rawView: viewConfigs.values()) {
       VeniceView adminView =
-          ViewUtils.getVeniceView(rawView.getViewClassName(), params, store, rawView.getViewParameters());
-      topicNamesAndConfigs.putAll(adminView.getTopicNamesAndConfigsForVersion(version));
+          ViewUtils.getVeniceView(rawView.getViewClassName(), params, store.getName(), rawView.getViewParameters());
+      topicNamesAndConfigs.putAll(adminView.getTopicNamesAndConfigsForVersion(version.getNumber()));
     }
     Set<String> versionTopicsToDelete = topicNamesAndConfigs.keySet()
         .stream()
-        .filter(t -> VeniceView.parseVersionFromViewTopic(t) == version)
+        .filter(t -> VeniceView.parseVersionFromViewTopic(t) == version.getNumber())
         .collect(Collectors.toSet());
     for (String topic: versionTopicsToDelete) {
       truncateKafkaTopic(topic);
@@ -2806,16 +2823,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               version.setTargetSwapRegion(targetedRegions);
             }
 
-            Properties veniceViewProperties = new Properties();
-            veniceViewProperties.put(PARTITION_COUNT, numberOfPartitions);
-            veniceViewProperties.put(USE_FAST_KAFKA_OPERATION_TIMEOUT, useFastKafkaOperationTimeout);
-            veniceViewProperties.putAll(clusterConfig.getProps().toProperties());
-            veniceViewProperties.put(LOG_COMPACTION_ENABLED, false);
-            veniceViewProperties.put(KAFKA_REPLICATION_FACTOR, clusterConfig.getKafkaReplicationFactor());
-            veniceViewProperties.put(ETERNAL_TOPIC_RETENTION_ENABLED, true);
-
-            constructViewResources(veniceViewProperties, store, version.getNumber());
-
             repository.updateStore(store);
             if (isRealTimeTopicRequired(store, version)) {
               createOrUpdateRealTimeTopics(clusterName, store, version);
@@ -2844,12 +2851,25 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                   useFastKafkaOperationTimeout);
             }
 
+            // We shouldn't need to create view resources in parent fabric
+            if (!multiClusterConfigs.isParent()) {
+              Properties veniceViewProperties = new Properties();
+              veniceViewProperties.put(PARTITION_COUNT, numberOfPartitions);
+              veniceViewProperties.put(USE_FAST_KAFKA_OPERATION_TIMEOUT, useFastKafkaOperationTimeout);
+              veniceViewProperties.putAll(clusterConfig.getProps().toProperties());
+              veniceViewProperties.put(LOG_COMPACTION_ENABLED, false);
+              veniceViewProperties.put(KAFKA_REPLICATION_FACTOR, clusterConfig.getKafkaReplicationFactor());
+              veniceViewProperties.put(ETERNAL_TOPIC_RETENTION_ENABLED, true);
+
+              constructViewResources(veniceViewProperties, store, version, compressionDictionary);
+            }
+
             if (sendStartOfPush) {
               ByteBuffer compressionDictionaryBuffer = null;
               if (compressionDictionary != null) {
                 compressionDictionaryBuffer =
                     ByteBuffer.wrap(EncodingUtils.base64DecodeFromString(compressionDictionary));
-              } else if (store.getCompressionStrategy().equals(CompressionStrategy.ZSTD_WITH_DICT)) {
+              } else if (version.getCompressionStrategy().equals(CompressionStrategy.ZSTD_WITH_DICT)) {
                 // This compression strategy needs a dictionary even if there is no input data,
                 // so we generate a dictionary based on synthetic data. This is done in vpj driver
                 // as well, but this code will be triggered in cases like Samza batch push job
@@ -2857,28 +2877,27 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 compressionDictionaryBuffer = emptyPushZSTDDictionary.get();
               }
 
-              final Version finalVersion = version;
               VeniceWriter veniceWriter = null;
               try {
                 VeniceWriterOptions.Builder vwOptionsBuilder =
-                    new VeniceWriterOptions.Builder(finalVersion.kafkaTopicName()).setUseKafkaKeySerializer(true)
+                    new VeniceWriterOptions.Builder(version.kafkaTopicName()).setUseKafkaKeySerializer(true)
                         .setPartitionCount(numberOfPartitions);
-                if (multiClusterConfigs.isParent() && finalVersion.isNativeReplicationEnabled()) {
+                if (multiClusterConfigs.isParent() && version.isNativeReplicationEnabled()) {
                   // Produce directly into one of the child fabric
-                  vwOptionsBuilder.setBrokerAddress(finalVersion.getPushStreamSourceAddress());
+                  vwOptionsBuilder.setBrokerAddress(version.getPushStreamSourceAddress());
                 }
                 veniceWriter = getVeniceWriterFactory().createVeniceWriter(vwOptionsBuilder.build());
                 veniceWriter.broadcastStartOfPush(
                     sorted,
-                    finalVersion.isChunkingEnabled(),
-                    finalVersion.getCompressionStrategy(),
+                    version.isChunkingEnabled(),
+                    version.getCompressionStrategy(),
                     Optional.ofNullable(compressionDictionaryBuffer),
                     Collections.emptyMap());
                 if (pushType.isStreamReprocessing()) {
                   // Send TS message to version topic to inform leader to switch to the stream reprocessing topic
                   veniceWriter.broadcastTopicSwitch(
                       Collections.singletonList(getKafkaBootstrapServers(isSslToKafka())),
-                      Version.composeStreamReprocessingTopic(finalVersion.getStoreName(), finalVersion.getNumber()),
+                      Version.composeStreamReprocessingTopic(version.getStoreName(), version.getNumber()),
                       -1L, // -1 indicates rewinding from the beginning of the source topic
                       new HashMap<>());
                 }
@@ -3742,7 +3761,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           if (deletedVersion.get().getPushType().isStreamReprocessing()) {
             truncateKafkaTopic(Version.composeStreamReprocessingTopic(storeName, versionNumber));
           }
-          cleanUpViewResources(new Properties(), store, deletedVersion.get().getNumber());
+          cleanUpViewResources(new Properties(), store, deletedVersion.get());
         }
         if (store.isDaVinciPushStatusStoreEnabled() && !isParent()) {
           ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -3928,18 +3947,31 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     ReadWriteStoreRepository storeRepository = resources.getStoreMetadataRepository();
     Store store = storeRepository.getStore(storeName);
     if (store.isHybrid() && clusterConfig.isKafkaLogCompactionForHybridStoresEnabled()) {
-      PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, versionNumber));
+      PubSubTopic versionTopic =
+          getPubSubTopicRepository().getTopic(Version.composeKafkaTopic(storeName, versionNumber));
       long minCompactionLagSeconds = store.getMinCompactionLagSeconds();
       long expectedMinCompactionLagMs =
           minCompactionLagSeconds > 0 ? minCompactionLagSeconds * Time.MS_PER_SECOND : minCompactionLagSeconds;
       long maxCompactionLagSeconds = store.getMaxCompactionLagSeconds();
       long expectedMaxCompactionLagMs =
           maxCompactionLagSeconds > 0 ? maxCompactionLagSeconds * Time.MS_PER_SECOND : maxCompactionLagSeconds;
-      getTopicManager().updateTopicCompactionPolicy(
-          versionTopic,
+      Consumer<PubSubTopic> updateTopicCompaction = (topic) -> getTopicManager().updateTopicCompactionPolicy(
+          topic,
           true,
           expectedMinCompactionLagMs,
           expectedMaxCompactionLagMs > 0 ? Optional.of(expectedMaxCompactionLagMs) : Optional.empty());
+      updateTopicCompaction.accept(versionTopic);
+
+      // Compaction settings should also be applied to corresponding view topics
+      Map<String, ViewConfig> viewConfigs = store.getVersionOrThrow(versionNumber).getViewConfigs();
+      if (viewConfigs != null && !viewConfigs.isEmpty()) {
+        Map<String, VeniceProperties> viewTopicNamesAndConfigs =
+            ViewUtils.getViewTopicsAndConfigs(viewConfigs.values(), new Properties(), storeName, versionNumber);
+        for (String topic: viewTopicNamesAndConfigs.keySet()) {
+          PubSubTopic viewTopic = getPubSubTopicRepository().getTopic(topic);
+          updateTopicCompaction.accept(viewTopic);
+        }
+      }
     }
   }
 
