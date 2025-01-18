@@ -12,6 +12,7 @@ import com.linkedin.davinci.client.DaVinciRecordTransformerUtility;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.File;
+import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -42,10 +43,10 @@ public class DuckDBDaVinciRecordTransformerTest {
   }
 
   @Test
-  public void testRecordTransformer() {
+  public void testRecordTransformer() throws IOException {
     String tempDir = Utils.getTempDataDirectory().getAbsolutePath();
 
-    DuckDBDaVinciRecordTransformer recordTransformer = new DuckDBDaVinciRecordTransformer(
+    try (DuckDBDaVinciRecordTransformer recordTransformer = new DuckDBDaVinciRecordTransformer(
         storeVersion,
         SINGLE_FIELD_RECORD_SCHEMA,
         NAME_RECORD_V1_SCHEMA,
@@ -53,42 +54,44 @@ public class DuckDBDaVinciRecordTransformerTest {
         false,
         tempDir,
         storeName,
-        columnsToProject);
+        columnsToProject)) {
+      assertTrue(recordTransformer.useUniformInputValueSchema());
 
-    Schema keySchema = recordTransformer.getKeySchema();
-    assertEquals(keySchema.getType(), Schema.Type.RECORD);
+      Schema keySchema = recordTransformer.getKeySchema();
+      assertEquals(keySchema.getType(), Schema.Type.RECORD);
 
-    Schema outputValueSchema = recordTransformer.getOutputValueSchema();
-    assertEquals(outputValueSchema.getType(), Schema.Type.RECORD);
+      Schema outputValueSchema = recordTransformer.getOutputValueSchema();
+      assertEquals(outputValueSchema.getType(), Schema.Type.RECORD);
 
-    recordTransformer.onStartVersionIngestion(true);
+      recordTransformer.onStartVersionIngestion(true);
 
-    GenericRecord keyRecord = new GenericData.Record(SINGLE_FIELD_RECORD_SCHEMA);
-    keyRecord.put("key", "key");
-    Lazy<GenericRecord> lazyKey = Lazy.of(() -> keyRecord);
+      GenericRecord keyRecord = new GenericData.Record(SINGLE_FIELD_RECORD_SCHEMA);
+      keyRecord.put("key", "key");
+      Lazy<GenericRecord> lazyKey = Lazy.of(() -> keyRecord);
 
-    GenericRecord valueRecord = new GenericData.Record(NAME_RECORD_V1_SCHEMA);
-    valueRecord.put("firstName", "Duck");
-    valueRecord.put("lastName", "Goose");
-    Lazy<GenericRecord> lazyValue = Lazy.of(() -> valueRecord);
+      GenericRecord valueRecord = new GenericData.Record(NAME_RECORD_V1_SCHEMA);
+      valueRecord.put("firstName", "Duck");
+      valueRecord.put("lastName", "Goose");
+      Lazy<GenericRecord> lazyValue = Lazy.of(() -> valueRecord);
 
-    DaVinciRecordTransformerResult<GenericRecord> transformerResult = recordTransformer.transform(lazyKey, lazyValue);
-    recordTransformer.processPut(lazyKey, lazyValue);
-    assertEquals(transformerResult.getResult(), DaVinciRecordTransformerResult.Result.UNCHANGED);
-    // Result will be empty when it's UNCHANGED
-    assertNull(transformerResult.getValue());
-    assertNull(recordTransformer.transformAndProcessPut(lazyKey, lazyValue));
+      DaVinciRecordTransformerResult<GenericRecord> transformerResult = recordTransformer.transform(lazyKey, lazyValue);
+      recordTransformer.processPut(lazyKey, lazyValue);
+      assertEquals(transformerResult.getResult(), DaVinciRecordTransformerResult.Result.UNCHANGED);
+      // Result will be empty when it's UNCHANGED
+      assertNull(transformerResult.getValue());
+      assertNull(recordTransformer.transformAndProcessPut(lazyKey, lazyValue));
 
-    recordTransformer.processDelete(lazyKey);
+      recordTransformer.processDelete(lazyKey);
 
-    assertFalse(recordTransformer.getStoreRecordsInDaVinci());
+      assertFalse(recordTransformer.getStoreRecordsInDaVinci());
 
-    int classHash = recordTransformer.getClassHash();
+      int classHash = recordTransformer.getClassHash();
 
-    DaVinciRecordTransformerUtility<GenericRecord, GenericRecord> recordTransformerUtility =
-        recordTransformer.getRecordTransformerUtility();
-    assertTrue(recordTransformerUtility.hasTransformerLogicChanged(classHash));
-    assertFalse(recordTransformerUtility.hasTransformerLogicChanged(classHash));
+      DaVinciRecordTransformerUtility<GenericRecord, GenericRecord> recordTransformerUtility =
+          recordTransformer.getRecordTransformerUtility();
+      assertTrue(recordTransformerUtility.hasTransformerLogicChanged(classHash));
+      assertFalse(recordTransformerUtility.hasTransformerLogicChanged(classHash));
+    }
   }
 
   @Test

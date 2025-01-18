@@ -3,6 +3,7 @@ package com.linkedin.venice.endToEnd;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
+import java.io.IOException;
 import org.apache.avro.Schema;
 
 
@@ -29,5 +30,10 @@ public class TestIntToStringRecordTransformer extends DaVinciRecordTransformer<I
   @Override
   public void processPut(Lazy<Integer> key, Lazy<String> value) {
     return;
+  }
+
+  @Override
+  public void close() throws IOException {
+
   }
 }
