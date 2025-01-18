@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.grpc;
 
 import com.google.protobuf.Any;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.controllerapi.AdminCommandExecutionStatus;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.ControllerGrpcErrorType;
@@ -10,6 +11,8 @@ import io.grpc.Status.Code;
 import io.grpc.StatusRuntimeException;
 import io.grpc.protobuf.StatusProto;
 import io.grpc.stub.StreamObserver;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 
 public class GrpcRequestResponseConverter {
@@ -140,4 +143,35 @@ public class GrpcRequestResponseConverter {
     }
     throw new VeniceClientException("An unknown gRPC error occurred. Error code: " + Code.UNKNOWN.name());
   }
+
+  /**
+   * Converts a gRPC map with string statuses to a ConcurrentHashMap with AdminCommandExecutionStatus.
+   *
+   * @param grpcMap Map with keys as fabric names and values as string statuses.
+   * @return A ConcurrentHashMap with keys as fabric names and values as AdminCommandExecutionStatus.
+   */
+  public static ConcurrentHashMap<String, AdminCommandExecutionStatus> toExecutionStatusMap(
+      Map<String, String> grpcMap) {
+    ConcurrentHashMap<String, AdminCommandExecutionStatus> executionStatusMap = new ConcurrentHashMap<>(grpcMap.size());
+    for (Map.Entry<String, String> entry: grpcMap.entrySet()) {
+      executionStatusMap.put(entry.getKey(), AdminCommandExecutionStatus.valueOf(entry.getValue()));
+    }
+    return executionStatusMap;
+  }
+
+  /**
+   * Converts a ConcurrentHashMap with AdminCommandExecutionStatus to a map with string statuses.
+   *
+   * @param executionStatusMap ConcurrentHashMap with keys as fabric names and values as AdminCommandExecutionStatus.
+   * @return A Map with keys as fabric names and values as string statuses.
+   */
+  public static Map<String, String> toGrpcExecutionStatusMap(
+      Map<String, AdminCommandExecutionStatus> executionStatusMap) {
+    ConcurrentHashMap<String, String> grpcMap = new ConcurrentHashMap<>(executionStatusMap.size());
+    for (Map.Entry<String, AdminCommandExecutionStatus> entry: executionStatusMap.entrySet()) {
+      grpcMap.put(entry.getKey(), entry.getValue().name());
+    }
+    return grpcMap;
+  }
+
 }
