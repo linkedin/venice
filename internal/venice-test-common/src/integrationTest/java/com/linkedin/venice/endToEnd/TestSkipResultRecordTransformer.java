@@ -3,6 +3,7 @@ package com.linkedin.venice.endToEnd;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.avro.Schema;
@@ -55,4 +56,8 @@ public class TestSkipResultRecordTransformer extends DaVinciRecordTransformer<In
     inMemoryDB.put(key, value);
   }
 
+  @Override
+  public void close() throws IOException {
+
+  }
 }

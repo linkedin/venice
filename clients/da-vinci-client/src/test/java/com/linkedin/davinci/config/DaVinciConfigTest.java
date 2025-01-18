@@ -10,6 +10,7 @@ import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
+import java.io.IOException;
 import org.apache.avro.Schema;
 import org.testng.annotations.Test;
 
@@ -33,6 +34,11 @@ public class DaVinciConfigTest {
     @Override
     public void processPut(Lazy<Integer> key, Lazy<Integer> value) {
       return;
+    }
+
+    @Override
+    public void close() throws IOException {
+
     }
   }
 

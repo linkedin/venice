@@ -320,6 +320,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected final ChunkAssembler chunkAssembler;
   private final Optional<ObjectCacheBackend> cacheBackend;
+  private final Schema recordTransformerInputValueSchema;
+  private final AvroGenericDeserializer recordTransformerKeyDeserializer;
+  private final SparseConcurrentList<AvroGenericDeserializer> recordTransformerDeserializersByPutSchemaId;
   private DaVinciRecordTransformer recordTransformer;
 
   protected final String localKafkaServer;
@@ -475,18 +478,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     if (recordTransformerConfig != null && recordTransformerConfig.getRecordTransformerFunction() != null) {
       Schema keySchema = schemaRepository.getKeySchema(storeName).getSchema();
-      Schema inputValueSchema = schemaRepository.getSupersetOrLatestValueSchema(storeName).getSchema();
+      this.recordTransformerKeyDeserializer = new AvroGenericDeserializer(keySchema, keySchema);
+      this.recordTransformerInputValueSchema = schemaRepository.getSupersetOrLatestValueSchema(storeName).getSchema();
       Schema outputValueSchema = recordTransformerConfig.getOutputValueSchema();
 
       DaVinciRecordTransformer clientRecordTransformer = recordTransformerConfig.getRecordTransformerFunction()
-          .apply(versionNumber, keySchema, inputValueSchema, outputValueSchema);
+          .apply(versionNumber, keySchema, this.recordTransformerInputValueSchema, outputValueSchema);
 
       this.recordTransformer = new BlockingDaVinciRecordTransformer(
           clientRecordTransformer,
           keySchema,
-          inputValueSchema,
+          this.recordTransformerInputValueSchema,
           outputValueSchema,
           clientRecordTransformer.getStoreRecordsInDaVinci());
+      this.recordTransformerDeserializersByPutSchemaId = new SparseConcurrentList<>();
 
       versionedIngestionStats.registerTransformerLatencySensor(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleStartLatency(storeName, versionNumber);
@@ -503,6 +508,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           versionNumber,
           LatencyUtils.getElapsedTimeFromMsToMs(startTime),
           endTime);
+    } else {
+      this.recordTransformerKeyDeserializer = null;
+      this.recordTransformerInputValueSchema = null;
+      this.recordTransformerDeserializersByPutSchemaId = null;
     }
 
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
@@ -3703,15 +3712,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
 
         // Check if put.getSchemaId is positive, if not default to 1
+        // TODO: Write a test for chunked records... it does not seem right to transform negative schemas IDs into 1
         int putSchemaId = put.getSchemaId() > 0 ? put.getSchemaId() : 1;
 
         if (recordTransformer != null) {
           long recordTransformerStartTime = System.currentTimeMillis();
           ByteBuffer valueBytes = put.getPutValue();
-          Schema valueSchema = schemaRepository.getValueSchema(storeName, putSchemaId).getSchema();
-          Lazy<RecordDeserializer> recordDeserializer =
-              Lazy.of(() -> new AvroGenericDeserializer<>(valueSchema, valueSchema));
-
           ByteBuffer assembledObject = chunkAssembler.bufferAndAssembleRecord(
               consumerRecord.getTopicPartition(),
               putSchemaId,
@@ -3726,12 +3732,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             return 0;
           }
 
-          SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
-          Lazy<Object> lazyKey = Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
+          Lazy<Object> lazyKey = Lazy.of(() -> this.recordTransformerKeyDeserializer.deserialize(keyBytes));
           Lazy<Object> lazyValue = Lazy.of(() -> {
             try {
               ByteBuffer decompressedAssembledObject = compressor.get().decompress(assembledObject);
-              return recordDeserializer.get().deserialize(decompressedAssembledObject);
+
+              RecordDeserializer recordDeserializer =
+                  this.recordTransformerDeserializersByPutSchemaId.computeIfAbsent(putSchemaId, i -> {
+                    Schema valueSchema = schemaRepository.getValueSchema(storeName, putSchemaId).getSchema();
+                    if (this.recordTransformer.useUniformInputValueSchema()) {
+                      return new AvroGenericDeserializer<>(valueSchema, this.recordTransformerInputValueSchema);
+                    } else {
+                      return new AvroGenericDeserializer<>(valueSchema, valueSchema);
+                    }
+                  });
+
+              return recordDeserializer.deserialize(decompressedAssembledObject);
             } catch (IOException e) {
               throw new RuntimeException(e);
             }
@@ -3801,8 +3817,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
 
         if (recordTransformer != null) {
-          SchemaEntry keySchema = schemaRepository.getKeySchema(storeName);
-          Lazy<Object> lazyKey = Lazy.of(() -> deserializeAvroObjectAndReturn(ByteBuffer.wrap(keyBytes), keySchema));
+          Lazy<Object> lazyKey = Lazy.of(() -> this.recordTransformerKeyDeserializer.deserialize(keyBytes));
           recordTransformer.processDelete(lazyKey);
 
           // This is called here after processDelete because if the user stores their data somewhere other than
@@ -4027,10 +4042,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private Object deserializeAvroObjectAndReturn(ByteBuffer input, SchemaEntry schemaEntry) {
-    return new AvroGenericDeserializer<>(schemaEntry.getSchema(), schemaEntry.getSchema()).deserialize(input);
-  }
-
   private void maybeCloseInactiveIngestionTask() {
     LOGGER.warn("{} Has expired due to not being subscribed to any partitions for too long.", ingestionTaskName);
     if (!consumerActionsQueue.isEmpty()) {
@@ -4096,6 +4107,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           versionNumber,
           LatencyUtils.getElapsedTimeFromMsToMs(startTime),
           endTime);
+      Utils.closeQuietlyWithErrorLogged(this.recordTransformer);
     }
   }
 

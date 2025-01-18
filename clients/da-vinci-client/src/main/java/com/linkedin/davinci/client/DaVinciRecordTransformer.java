@@ -5,6 +5,7 @@ import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.lazy.Lazy;
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -29,7 +30,7 @@ import org.objectweb.asm.ClassReader;
  * @param <O> the type of the output value
  */
 @Experimental
-public abstract class DaVinciRecordTransformer<K, V, O> {
+public abstract class DaVinciRecordTransformer<K, V, O> implements Closeable {
   /**
    * Version of the store of when the transformer is initialized.
    */
@@ -128,6 +129,10 @@ public abstract class DaVinciRecordTransformer<K, V, O> {
    */
   public void onEndVersionIngestion(int currentVersion) {
     return;
+  }
+
+  public boolean useUniformInputValueSchema() {
+    return false;
   }
 
   // Final methods below

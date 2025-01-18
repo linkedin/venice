@@ -2,6 +2,7 @@ package com.linkedin.davinci.client;
 
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.utils.lazy.Lazy;
+import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
 import org.apache.avro.Schema;
 
@@ -55,5 +56,10 @@ public class BlockingDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
 
   public void onEndVersionIngestion(int currentVersion) {
     this.recordTransformer.onEndVersionIngestion(currentVersion);
+  }
+
+  @Override
+  public void close() throws IOException {
+    this.recordTransformer.close();
   }
 }

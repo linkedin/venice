@@ -3,6 +3,7 @@ package com.linkedin.davinci.transformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
+import java.io.IOException;
 import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 
@@ -36,5 +37,10 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
   @Override
   public void processPut(Lazy<Integer> key, Lazy<String> value) {
     return;
+  }
+
+  @Override
+  public void close() throws IOException {
+
   }
 }
