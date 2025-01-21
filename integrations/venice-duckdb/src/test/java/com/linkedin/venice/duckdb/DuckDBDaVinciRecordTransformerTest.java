@@ -1,6 +1,8 @@
 package com.linkedin.venice.duckdb;
 
-import static com.linkedin.venice.utils.TestWriteUtils.*;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.SIMPLE_USER_WITH_DEFAULT_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.SINGLE_FIELD_RECORD_SCHEMA;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
@@ -202,6 +204,7 @@ public class DuckDBDaVinciRecordTransformerTest {
         Statement stmt = connection.createStatement()) {
       try (ResultSet rs = stmt.executeQuery("SELECT * FROM " + store1)) {
         assertTrue(rs.next(), "There should be a first row!");
+        assertEquals(rs.getString("key"), "key");
         assertEquals(rs.getString("firstName"), "Duck");
         assertEquals(rs.getString("lastName"), "Goose");
         assertFalse(rs.next(), "There should be only one row!");
@@ -225,6 +228,7 @@ public class DuckDBDaVinciRecordTransformerTest {
         Statement stmt = connection.createStatement()) {
       try (ResultSet rs = stmt.executeQuery("SELECT * FROM " + store1)) {
         assertTrue(rs.next(), "There should be a first row!");
+        assertEquals(rs.getString("key"), "key");
         assertEquals(rs.getString("firstName"), "Duck");
         assertEquals(rs.getString("lastName"), "Goose");
         assertFalse(rs.next(), "There should be only one row!");
@@ -232,8 +236,25 @@ public class DuckDBDaVinciRecordTransformerTest {
 
       try (ResultSet rs = stmt.executeQuery("SELECT * FROM " + store2)) {
         assertTrue(rs.next(), "There should be a first row!");
+        assertEquals(rs.getString("key"), "key");
+        assertEquals(rs.getString("value"), "value");
         assertEquals(rs.getString("firstName"), "Duck2");
         assertEquals(rs.getString("lastName"), "Goose2");
+        assertFalse(rs.next(), "There should be only one row!");
+      }
+
+      try (ResultSet rs = stmt.executeQuery(
+          "SELECT s1.key AS s1key, s1.firstName AS s1FirstName, s1.lastName AS s1LastName, "
+              + "s2.key AS s2key, s2.value AS s2value, s2.firstName AS s2FirstName, s2.lastName AS s2LastName "
+              + "FROM " + store1 + " s1 JOIN " + store2 + " s2 ON s1.key = s2.key")) {
+        assertTrue(rs.next(), "There should be a first row!");
+        assertEquals(rs.getString("s1key"), "key");
+        assertEquals(rs.getString("s1FirstName"), "Duck");
+        assertEquals(rs.getString("s1LastName"), "Goose");
+        assertEquals(rs.getString("s2key"), "key");
+        assertEquals(rs.getString("s2value"), "value");
+        assertEquals(rs.getString("s2FirstName"), "Duck2");
+        assertEquals(rs.getString("s2LastName"), "Goose2");
         assertFalse(rs.next(), "There should be only one row!");
       }
     }
