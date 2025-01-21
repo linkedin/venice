@@ -13,7 +13,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_MAX_POLL_RECORDS_CONFIG;
 import static java.lang.Thread.currentThread;
 import static java.lang.Thread.sleep;
 
-import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -177,7 +177,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   // source. This could be a view of the data, or in our case a cache, or both potentially.
   private final Optional<ObjectCacheBackend> cacheBackend;
 
-  private final DaVinciRecordTransformerFunctionalInterface recordTransformerFunction;
+  private final DaVinciRecordTransformerConfig recordTransformerConfig;
 
   private final PubSubProducerAdapterFactory producerAdapterFactory;
 
@@ -191,6 +191,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private KafkaValueSerializer kafkaValueSerializer;
   private final IngestionThrottler ingestionThrottler;
   private final ExecutorService aaWCWorkLoadProcessingThreadPool;
+  private final AdaptiveThrottlerSignalService adaptiveThrottlerSignalService;
 
   private VeniceServerConfig serverConfig;
 
@@ -213,16 +214,17 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       boolean isIsolatedIngestion,
       StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ObjectCacheBackend> cacheBackend,
-      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
+      DaVinciRecordTransformerConfig recordTransformerConfig,
       boolean isDaVinciClient,
       RemoteIngestionRepairService remoteIngestionRepairService,
       PubSubClientsFactory pubSubClientsFactory,
       Optional<SSLFactory> sslFactory,
       HeartbeatMonitoringService heartbeatMonitoringService,
-      Lazy<ZKHelixAdmin> zkHelixAdmin) {
+      Lazy<ZKHelixAdmin> zkHelixAdmin,
+      AdaptiveThrottlerSignalService adaptiveThrottlerSignalService) {
     this.storageService = storageService;
     this.cacheBackend = cacheBackend;
-    this.recordTransformerFunction = recordTransformerFunction;
+    this.recordTransformerConfig = recordTransformerConfig;
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
     this.topicNameToIngestionTaskMap = new ConcurrentSkipListMap<>();
@@ -243,11 +245,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         new VeniceWriterFactory(veniceWriterProperties, producerAdapterFactory, metricsRepository);
     VeniceWriterFactory veniceWriterFactoryForMetaStoreWriter =
         new VeniceWriterFactory(veniceWriterProperties, producerAdapterFactory, null);
-
+    this.adaptiveThrottlerSignalService = adaptiveThrottlerSignalService;
     this.ingestionThrottler = new IngestionThrottler(
         isDaVinciClient,
         serverConfig,
-        () -> Collections.unmodifiableMap(topicNameToIngestionTaskMap));
+        () -> Collections.unmodifiableMap(topicNameToIngestionTaskMap),
+        adaptiveThrottlerSignalService);
 
     final Map<String, EventThrottler> kafkaUrlToRecordsThrottler;
     if (liveClusterConfigRepository != null) {
@@ -535,7 +538,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         partitionId,
         isIsolatedIngestion,
         cacheBackend,
-        recordTransformerFunction,
+        recordTransformerConfig,
         zkHelixAdmin);
   }
 

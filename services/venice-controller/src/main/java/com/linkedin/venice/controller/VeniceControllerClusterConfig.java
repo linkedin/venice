@@ -26,6 +26,8 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.CONCURRENT_INIT_ROUTINES_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADMIN_GRPC_PORT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADMIN_SECURE_GRPC_PORT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS;
@@ -47,6 +49,8 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLE_PARENT_TOPIC_TRU
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_EARLY_DELETE_BACKUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_DISABLED_REPLICA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENFORCE_SSL;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_GRPC_SERVER_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_GRPC_SERVER_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_ID;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME;
@@ -234,6 +238,8 @@ public class VeniceControllerClusterConfig {
   private final String adminHostname;
   private final int adminPort;
   private final int adminSecurePort;
+  private final int adminGrpcPort;
+  private final int adminSecureGrpcPort;
   private final int controllerClusterReplica;
   // Name of the Helix cluster for controllers
   private final String controllerClusterName;
@@ -291,6 +297,8 @@ public class VeniceControllerClusterConfig {
   private final boolean backupVersionRetentionBasedCleanupEnabled;
   private final boolean backupVersionMetadataFetchBasedCleanupEnabled;
 
+  private final boolean grpcServerEnabled;
+  private final int grpcServerThreadCount;
   private final boolean enforceSSLOnly;
   private final long terminalStateTopicCheckerDelayMs;
   private final List<ControllerRoute> disabledRoutes;
@@ -659,6 +667,12 @@ public class VeniceControllerClusterConfig {
     this.adminPort = props.getInt(ADMIN_PORT);
     this.adminHostname = props.getString(ADMIN_HOSTNAME, Utils::getHostName);
     this.adminSecurePort = props.getInt(ADMIN_SECURE_PORT);
+    this.adminGrpcPort = props.getInt(CONTROLLER_ADMIN_GRPC_PORT, -1);
+    this.adminSecureGrpcPort = props.getInt(CONTROLLER_ADMIN_SECURE_GRPC_PORT, -1);
+    this.grpcServerEnabled = props.getBoolean(CONTROLLER_GRPC_SERVER_ENABLED, false);
+    this.grpcServerThreadCount =
+        props.getInt(CONTROLLER_GRPC_SERVER_THREAD_COUNT, Runtime.getRuntime().availableProcessors());
+
     /**
      * Override the config to false if the "Read" method check is not working as expected.
      */
@@ -856,8 +870,8 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED, false);
     this.backupVersionMetadataFetchBasedCleanupEnabled =
         props.getBoolean(CONTROLLER_BACKUP_VERSION_METADATA_FETCH_BASED_CLEANUP_ENABLED, false);
-    this.enforceSSLOnly = props.getBoolean(CONTROLLER_ENFORCE_SSL, false); // By default, allow both secure and insecure
-                                                                           // routes
+    // By default, allow both secure and insecure routes
+    this.enforceSSLOnly = props.getBoolean(CONTROLLER_ENFORCE_SSL, false);
     this.terminalStateTopicCheckerDelayMs =
         props.getLong(TERMINAL_STATE_TOPIC_CHECK_DELAY_MS, TimeUnit.MINUTES.toMillis(10));
     this.disableParentTopicTruncationUponCompletion =
@@ -1230,6 +1244,14 @@ public class VeniceControllerClusterConfig {
     return adminSecurePort;
   }
 
+  public int getAdminGrpcPort() {
+    return adminGrpcPort;
+  }
+
+  public int getAdminSecureGrpcPort() {
+    return adminSecureGrpcPort;
+  }
+
   public boolean adminCheckReadMethodForKafka() {
     return adminCheckReadMethodForKafka;
   }
@@ -1474,6 +1496,14 @@ public class VeniceControllerClusterConfig {
 
   public boolean isControllerEnforceSSLOnly() {
     return enforceSSLOnly;
+  }
+
+  public boolean isGrpcServerEnabled() {
+    return grpcServerEnabled;
+  }
+
+  public int getGrpcServerThreadCount() {
+    return grpcServerThreadCount;
   }
 
   public long getTerminalStateTopicCheckerDelayMs() {

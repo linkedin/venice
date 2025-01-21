@@ -26,7 +26,9 @@ import org.testng.annotations.Test;
  */
 @Test(singleThreaded = true)
 public class TestTimeScheduledThreadPoolExecutor {
-  @Test(groups = "unit")
+  private static final long DEFAULT_TIMEOUT = 90_000L;
+
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT)
   public void testQueueDrain() throws Exception {
     BlockingQueue<Runnable> queue = new TimeScheduledThreadPoolExecutor.DelayedWorkQueue();
     try {
@@ -83,7 +85,7 @@ public class TestTimeScheduledThreadPoolExecutor {
     }
   }
 
-  @Test(groups = "unit")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT)
   public void testQueueTimeSkip() throws Exception {
     BlockingQueue<Runnable> queue = new TimeScheduledThreadPoolExecutor.DelayedWorkQueue();
     try {
@@ -117,7 +119,7 @@ public class TestTimeScheduledThreadPoolExecutor {
     }
   }
 
-  @Test(groups = "unit")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT)
   public void testQueueLongTimeSkip() throws Exception {
     BlockingQueue<Runnable> queue = new TimeScheduledThreadPoolExecutor.DelayedWorkQueue();
     AtomicBoolean shutdown = new AtomicBoolean();
@@ -166,7 +168,7 @@ public class TestTimeScheduledThreadPoolExecutor {
     }
   }
 
-  @Test(groups = "unit")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT)
   public void testShutdown() throws InterruptedException {
     TimeScheduledThreadPoolExecutor executor = new TimeScheduledThreadPoolExecutor(1);
     Runnable mock = Mockito.mock(Runnable.class);
@@ -217,7 +219,7 @@ public class TestTimeScheduledThreadPoolExecutor {
     }
   }
 
-  @Test(groups = "unit")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT)
   public void testBasicTimeSkip() throws InterruptedException {
     ScheduledExecutorService executor = new TimeScheduledThreadPoolExecutor(1);
     try {
@@ -249,7 +251,7 @@ public class TestTimeScheduledThreadPoolExecutor {
     }
   }
 
-  @Test(groups = "unit")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT)
   public void testLongTimeSkip() throws InterruptedException {
     ScheduledExecutorService executor = new TimeScheduledThreadPoolExecutor(1);
     Thread timeWarp = new Thread(() -> {
@@ -362,7 +364,7 @@ public class TestTimeScheduledThreadPoolExecutor {
     }
   }
 
-  @Test(groups = "unit", dataProvider = "testCombo1")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT, dataProvider = "testCombo1")
   public void testScheduleTimeOverflow1(int nowHow, int thenHow) throws InterruptedException {
     final TimeScheduledThreadPoolExecutor pool = new TimeScheduledThreadPoolExecutor(1);
     try {
@@ -397,7 +399,7 @@ public class TestTimeScheduledThreadPoolExecutor {
     }
   }
 
-  @Test(groups = "unit", dataProvider = "testCombo2")
+  @Test(groups = "unit", timeOut = DEFAULT_TIMEOUT, dataProvider = "testCombo2")
   public void testScheduleTimeOverflow2(int nowHow) throws InterruptedException {
     final int nowHowCopy = nowHow;
     final TimeScheduledThreadPoolExecutor pool = new TimeScheduledThreadPoolExecutor(1);

@@ -371,6 +371,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     options.setMaxOpenFiles(rocksDBServerConfig.getMaxOpenFiles());
     options.setTargetFileSizeBase(rocksDBServerConfig.getTargetFileSizeInBytes());
     options.setMaxFileOpeningThreads(rocksDBServerConfig.getMaxFileOpeningThreads());
+    options.setMinWriteBufferNumberToMerge(rocksDBServerConfig.getRocksDBMinWriteBufferNumberToMerge());
 
     /**
      * Disable the stat dump threads, which will create excessive threads, which will eventually crash

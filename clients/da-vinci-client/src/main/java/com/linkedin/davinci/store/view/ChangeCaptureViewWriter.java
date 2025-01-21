@@ -8,18 +8,14 @@ import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.client.change.capture.protocol.ValueBytes;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
-import com.linkedin.venice.meta.PartitionerConfig;
-import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.schema.rmd.RmdUtils;
-import com.linkedin.venice.serialization.VeniceKafkaSerializer;
-import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
-import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -43,17 +39,23 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
   private final int maxColoIdValue;
 
   private final PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
+  private final String changeCaptureTopicName;
 
   public ChangeCaptureViewWriter(
       VeniceConfigLoader props,
-      Store store,
+      Version version,
       Schema keySchema,
       Map<String, String> extraViewParameters) {
-    super(props, store, keySchema, extraViewParameters);
-    internalView = new ChangeCaptureView(props.getCombinedProperties().toProperties(), store, extraViewParameters);
+    super(props, version, keySchema, extraViewParameters);
+    internalView = new ChangeCaptureView(
+        props.getCombinedProperties().toProperties(),
+        version.getStoreName(),
+        extraViewParameters);
     kafkaClusterUrlToIdMap = props.getVeniceServerConfig().getKafkaClusterUrlToIdMap();
     pubSubProducerAdapterFactory = props.getVeniceServerConfig().getPubSubClientsFactory().getProducerAdapterFactory();
     maxColoIdValue = kafkaClusterUrlToIdMap.values().stream().max(Integer::compareTo).orElse(-1);
+    changeCaptureTopicName =
+        this.getTopicNamesAndConfigsForVersion(version.getNumber()).keySet().stream().findAny().get();
   }
 
   @Override
@@ -61,7 +63,6 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
       ByteBuffer newValue,
       ByteBuffer oldValue,
       byte[] key,
-      int version,
       int newValueSchemaId,
       int oldValueSchemaId,
       GenericRecord replicationMetadataRecord) {
@@ -75,18 +76,25 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     recordChangeEvent.replicationCheckpointVector = RmdUtils.extractOffsetVectorFromRmd(replicationMetadataRecord);
 
     if (veniceWriter == null) {
-      initializeVeniceWriter(version);
+      initializeVeniceWriter();
     }
     // TODO: RecordChangeEvent isn't versioned today.
     return veniceWriter.put(key, recordChangeEvent, 1);
   }
 
   @Override
+  public CompletableFuture<PubSubProduceResult> processRecord(ByteBuffer newValue, byte[] key, int newValueSchemaId) {
+    // No op
+    return CompletableFuture.completedFuture(null);
+  }
+
+  @Override
   public void processControlMessage(
+      KafkaKey kafkaKey,
+      KafkaMessageEnvelope kafkaMessageEnvelope,
       ControlMessage controlMessage,
       int partition,
-      PartitionConsumptionState partitionConsumptionState,
-      int version) {
+      PartitionConsumptionState partitionConsumptionState) {
 
     // We only care (for now) about version swap control Messages
     if (!(controlMessage.getControlMessageUnion() instanceof VersionSwap)) {
@@ -102,7 +110,8 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     VersionSwap versionSwapMessage = (VersionSwap) controlMessage.getControlMessageUnion();
 
     // Only the version we're transiting FROM needs to populate the topic switch message into the change capture topic
-    if (Version.parseVersionFromVersionTopicName(versionSwapMessage.oldServingVersionTopic.toString()) != version) {
+    if (Version
+        .parseVersionFromVersionTopicName(versionSwapMessage.oldServingVersionTopic.toString()) != versionNumber) {
       return;
     }
 
@@ -122,7 +131,7 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
 
     // Write the message on veniceWriter to the change capture topic
     if (veniceWriter == null) {
-      initializeVeniceWriter(version);
+      initializeVeniceWriter();
     }
 
     veniceWriter.sendControlMessage(
@@ -156,35 +165,16 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     this.veniceWriter = veniceWriter;
   }
 
-  VeniceWriterOptions buildWriterOptions(int version) {
-    String changeCaptureTopicName = this.getTopicNamesAndConfigsForVersion(version).keySet().stream().findAny().get();
-
-    // Build key/value Serializers for the kafka producer
-    VeniceWriterOptions.Builder configBuilder = new VeniceWriterOptions.Builder(changeCaptureTopicName);
-    VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(RecordChangeEvent.getClassSchema());
-    configBuilder.setValueSerializer(valueSerializer);
-
-    // Set writer properties based on the store version config
-    Version storeVersionConfig = store.getVersionOrThrow(version);
-    PartitionerConfig partitionerConfig = storeVersionConfig.getPartitionerConfig();
-
-    if (partitionerConfig != null) {
-      // TODO: It would make sense to give the option to set a different partitioner for this view. Might
-      // want to consider adding it as a param available to this view type.
-      VenicePartitioner venicePartitioner = PartitionUtils.getVenicePartitioner(partitionerConfig);
-      configBuilder.setPartitioner(venicePartitioner);
-    }
-
-    configBuilder.setChunkingEnabled(storeVersionConfig.isChunkingEnabled());
-    return configBuilder.build();
+  VeniceWriterOptions buildWriterOptions() {
+    return internalView.getWriterOptionsBuilder(changeCaptureTopicName, version).build();
   }
 
-  synchronized private void initializeVeniceWriter(int version) {
+  synchronized private void initializeVeniceWriter() {
     if (veniceWriter != null) {
       return;
     }
-    veniceWriter = new VeniceWriterFactory(props, pubSubProducerAdapterFactory, null)
-        .createVeniceWriter(buildWriterOptions(version));
+    veniceWriter =
+        new VeniceWriterFactory(props, pubSubProducerAdapterFactory, null).createVeniceWriter(buildWriterOptions());
   }
 
   private ValueBytes constructValueBytes(ByteBuffer value, int schemaId) {

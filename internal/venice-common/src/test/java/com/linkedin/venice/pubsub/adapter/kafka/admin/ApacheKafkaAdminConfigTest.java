@@ -1,6 +1,6 @@
 package com.linkedin.venice.pubsub.adapter.kafka.admin;
 
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.VeniceProperties;

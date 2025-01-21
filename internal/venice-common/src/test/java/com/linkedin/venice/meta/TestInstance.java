@@ -23,4 +23,17 @@ public class TestInstance {
     Assert.assertEquals(host.getHost(), "localhost");
     Assert.assertEquals(host.getPort(), 1234);
   }
+
+  @Test
+  public void testInstanceWithGrpcAddress() {
+    Instance nonGrpcInstance = new Instance("localhost_1234", "localhost", 1234);
+    Assert.assertEquals(nonGrpcInstance.getGrpcSslPort(), -1);
+    Assert.assertEquals(nonGrpcInstance.getGrpcPort(), -1);
+
+    Instance grpcInstance = new Instance("localhost_1234", "localhost", 1234, 1235, 1236);
+    Assert.assertEquals(grpcInstance.getGrpcPort(), 1235);
+    Assert.assertEquals(grpcInstance.getGrpcSslPort(), 1236);
+    Assert.assertEquals(grpcInstance.getGrpcUrl(), "localhost:1235");
+    Assert.assertEquals(grpcInstance.getGrpcSslUrl(), "localhost:1236");
+  }
 }

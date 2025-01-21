@@ -24,12 +24,18 @@ import org.apache.avro.Schema;
  */
 public class DaVinciRecordTransformerUtility<K, O> {
   private final DaVinciRecordTransformer recordTransformer;
-  private AvroGenericDeserializer<K> keyDeserializer;
-  private AvroGenericDeserializer<O> outputValueDeserializer;
-  private AvroSerializer<O> outputValueSerializer;
+  private final AvroGenericDeserializer<K> keyDeserializer;
+  private final AvroGenericDeserializer<O> outputValueDeserializer;
+  private final AvroSerializer<O> outputValueSerializer;
 
   public DaVinciRecordTransformerUtility(DaVinciRecordTransformer recordTransformer) {
     this.recordTransformer = recordTransformer;
+
+    Schema keySchema = recordTransformer.getKeySchema();
+    Schema outputValueSchema = recordTransformer.getOutputValueSchema();
+    this.keyDeserializer = new AvroGenericDeserializer<>(keySchema, keySchema);
+    this.outputValueDeserializer = new AvroGenericDeserializer<>(outputValueSchema, outputValueSchema);
+    this.outputValueSerializer = new AvroSerializer<>(outputValueSchema);
   }
 
   /**
@@ -40,7 +46,7 @@ public class DaVinciRecordTransformerUtility<K, O> {
    * @return a ByteBuffer containing the schema ID followed by the serialized and compressed value
    */
   public final ByteBuffer prependSchemaIdToHeader(O value, int schemaId, VeniceCompressor compressor) {
-    byte[] serializedValue = getOutputValueSerializer().serialize(value);
+    byte[] serializedValue = outputValueSerializer.serialize(value);
     byte[] compressedValue;
     try {
       compressedValue = compressor.compress(serializedValue);
@@ -116,7 +122,7 @@ public class DaVinciRecordTransformerUtility<K, O> {
       for (iterator.seekToFirst(); iterator.isValid(); iterator.next()) {
         byte[] keyBytes = iterator.key();
         byte[] valueBytes = iterator.value();
-        Lazy<K> lazyKey = Lazy.of(() -> getKeyDeserializer().deserialize(ByteBuffer.wrap(keyBytes)));
+        Lazy<K> lazyKey = Lazy.of(() -> keyDeserializer.deserialize(keyBytes));
         Lazy<O> lazyValue = Lazy.of(() -> {
           ByteBuffer valueByteBuffer = ByteBuffer.wrap(valueBytes);
           // Skip schema id
@@ -127,35 +133,11 @@ public class DaVinciRecordTransformerUtility<K, O> {
           } catch (IOException e) {
             throw new RuntimeException(e);
           }
-          return getOutputValueDeserializer().deserialize(decompressedValueBytes);
+          return outputValueDeserializer.deserialize(decompressedValueBytes);
         });
 
         recordTransformer.processPut(lazyKey, lazyValue);
       }
     }
-  }
-
-  public AvroGenericDeserializer<K> getKeyDeserializer() {
-    if (keyDeserializer == null) {
-      Schema keySchema = recordTransformer.getKeySchema();
-      keyDeserializer = new AvroGenericDeserializer<>(keySchema, keySchema);
-    }
-    return keyDeserializer;
-  }
-
-  public AvroGenericDeserializer<O> getOutputValueDeserializer() {
-    if (outputValueDeserializer == null) {
-      Schema outputValueSchema = recordTransformer.getOutputValueSchema();
-      outputValueDeserializer = new AvroGenericDeserializer<>(outputValueSchema, outputValueSchema);
-    }
-    return outputValueDeserializer;
-  }
-
-  public AvroSerializer<O> getOutputValueSerializer() {
-    if (outputValueSerializer == null) {
-      Schema outputValueSchema = recordTransformer.getOutputValueSchema();
-      outputValueSerializer = new AvroSerializer<>(outputValueSchema);
-    }
-    return outputValueSerializer;
   }
 }

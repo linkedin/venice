@@ -56,9 +56,10 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
       CompletionStage<InputStream> inputStreamFuture,
       String storeName,
       int version,
-      int partition) {
+      int partition,
+      BlobTransferUtils.BlobTransferTableFormat tableFormat) {
     this.inputStreamFuture = inputStreamFuture;
-    this.payload = new BlobTransferPayload(baseDir, storeName, version, partition);
+    this.payload = new BlobTransferPayload(baseDir, storeName, version, partition, tableFormat);
   }
 
   @Override

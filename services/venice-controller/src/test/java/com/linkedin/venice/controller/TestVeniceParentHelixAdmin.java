@@ -58,6 +58,7 @@ import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
+import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
@@ -70,7 +71,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfigImpl;
-import com.linkedin.venice.meta.ViewParameterKeys;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.InvalidKeySchemaPartitioner;
@@ -1999,7 +1999,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     String viewString = String.format(
         rePartitionViewConfigString,
         MaterializedView.class.getCanonicalName(),
-        ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name(),
+        MaterializedViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name(),
         rePartitionViewPartitionCount);
 
     // Invalid re-partition view name
@@ -2016,13 +2016,14 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertTrue(updateStore.getViews().containsKey(rePartitionViewName));
     Map<String, CharSequence> rePartitionViewParameters =
         updateStore.getViews().get(rePartitionViewName).viewParameters;
-    Assert.assertNotNull(rePartitionViewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_NAME.name()));
+    Assert.assertNotNull(rePartitionViewParameters.get(MaterializedViewParameters.MATERIALIZED_VIEW_NAME.name()));
     Assert.assertEquals(
-        rePartitionViewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_NAME.name()).toString(),
+        rePartitionViewParameters.get(MaterializedViewParameters.MATERIALIZED_VIEW_NAME.name()).toString(),
         rePartitionViewName);
     Assert.assertEquals(
         Integer.parseInt(
-            rePartitionViewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name()).toString()),
+            rePartitionViewParameters.get(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name())
+                .toString()),
         rePartitionViewPartitionCount);
   }
 
@@ -2058,7 +2059,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     int rePartitionViewPartitionCount = 10;
     Map<String, String> viewClassParams = new HashMap<>();
     viewClassParams.put(
-        ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name(),
+        MaterializedViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name(),
         Integer.toString(rePartitionViewPartitionCount));
 
     // Invalid re-partition view name
@@ -2083,13 +2084,14 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertTrue(updateStore.getViews().containsKey(rePartitionViewName));
     Map<String, CharSequence> rePartitionViewParameters =
         updateStore.getViews().get(rePartitionViewName).viewParameters;
-    Assert.assertNotNull(rePartitionViewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_NAME.name()));
+    Assert.assertNotNull(rePartitionViewParameters.get(MaterializedViewParameters.MATERIALIZED_VIEW_NAME.name()));
     Assert.assertEquals(
-        rePartitionViewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_NAME.name()).toString(),
+        rePartitionViewParameters.get(MaterializedViewParameters.MATERIALIZED_VIEW_NAME.name()).toString(),
         rePartitionViewName);
     Assert.assertEquals(
         Integer.parseInt(
-            rePartitionViewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name()).toString()),
+            rePartitionViewParameters.get(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name())
+                .toString()),
         rePartitionViewPartitionCount);
   }
 

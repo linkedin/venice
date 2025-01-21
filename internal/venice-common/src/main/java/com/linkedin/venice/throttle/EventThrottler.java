@@ -54,6 +54,10 @@ public class EventThrottler implements VeniceRateLimiter {
   // Used only to compare if the new quota requests are different from the existing quota.
   private long quota = -1;
 
+  public EventThrottler() {
+    this(1, DEFAULT_CHECK_INTERVAL_MS, null, false, BLOCK_STRATEGY);
+  }
+
   /**
    * @param maxRatePerSecond Maximum rate that this throttler should allow (-1 is unlimited)
    */

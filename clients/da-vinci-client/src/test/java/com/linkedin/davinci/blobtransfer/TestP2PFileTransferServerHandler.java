@@ -90,12 +90,15 @@ public class TestP2PFileTransferServerHandler {
     Assert.assertEquals(response.status().code(), 405);
   }
 
+  /**
+   * Testing the method is GET, but uri format is invalid
+   */
   @Test
   public void testRejectInvalidPath() {
     FullHttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/test");
     ch.writeInbound(request);
     FullHttpResponse response = ch.readOutbound();
-    Assert.assertEquals(response.status().code(), 400);
+    Assert.assertEquals(response.status().code(), 500);
   }
 
   @Test
@@ -109,7 +112,36 @@ public class TestP2PFileTransferServerHandler {
     offsetRecord.setOffsetLag(1000L);
     Mockito.doReturn(offsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
 
-    FullHttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10");
+    FullHttpRequest request =
+        new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10/BLOCK_BASED_TABLE");
+    ch.writeInbound(request);
+    FullHttpResponse response = ch.readOutbound();
+    Assert.assertEquals(response.status().code(), 404);
+    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0);
+  }
+
+  /**
+   * Sending request for plain table format, but the snapshot manager is use the block based format.
+   */
+  @Test
+  public void testRejectNotMatchFormat() throws IOException {
+    // prepare the file request
+    Path snapshotDir = Paths.get(RocksDBUtils.composeSnapshotDir(baseDir.toString(), "myStore_v1", 10));
+    Files.createDirectories(snapshotDir);
+    Path file1 = snapshotDir.resolve("file1");
+    Files.write(file1.toAbsolutePath(), "hello".getBytes());
+
+    // prepare response from metadata service for the metadata preparation
+    StoreVersionState storeVersionState = new StoreVersionState();
+    Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());
+    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+    offsetRecord.setOffsetLag(1000L);
+    Mockito.doReturn(offsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+
+    FullHttpRequest request =
+        new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10/PLAIN_TABLE");
     ch.writeInbound(request);
     FullHttpResponse response = ch.readOutbound();
     Assert.assertEquals(response.status().code(), 404);
@@ -130,7 +162,8 @@ public class TestP2PFileTransferServerHandler {
     // create an empty snapshot dir
     Path snapshotDir = Paths.get(RocksDBUtils.composeSnapshotDir(baseDir.toString(), "myStore_v1", 10));
     Files.createDirectories(snapshotDir);
-    FullHttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10");
+    FullHttpRequest request =
+        new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10/BLOCK_BASED_TABLE");
 
     ch.writeInbound(request);
     FullHttpResponse response = ch.readOutbound();
@@ -164,7 +197,8 @@ public class TestP2PFileTransferServerHandler {
     Path file1 = snapshotDir.resolve("file1");
     Files.write(file1.toAbsolutePath(), "hello".getBytes());
     String file1ChecksumHeader = BlobTransferUtils.generateFileChecksum(file1);
-    FullHttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10");
+    FullHttpRequest request =
+        new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10/BLOCK_BASED_TABLE");
 
     ch.writeInbound(request);
 
@@ -225,7 +259,8 @@ public class TestP2PFileTransferServerHandler {
     Files.write(file2.toAbsolutePath(), "world".getBytes());
     String file2ChecksumHeader = BlobTransferUtils.generateFileChecksum(file2);
 
-    FullHttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10");
+    FullHttpRequest request =
+        new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10/BLOCK_BASED_TABLE");
     Set<String> fileNames = new HashSet<>();
     Set<String> fileChecksums = new HashSet<>();
     // the order of file transfer is not guaranteed so put them into a set and remove them one by one
@@ -303,7 +338,8 @@ public class TestP2PFileTransferServerHandler {
     Files.createDirectories(snapshotDir);
     Path file1 = snapshotDir.resolve("file1");
     Files.write(file1.toAbsolutePath(), "hello".getBytes());
-    FullHttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10");
+    FullHttpRequest request =
+        new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10/BLOCK_BASED_TABLE");
 
     ch.writeInbound(request);
 

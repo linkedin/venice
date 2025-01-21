@@ -1,6 +1,7 @@
 package com.linkedin.venice.router.stats;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.tehuti.MockTehutiReporter;

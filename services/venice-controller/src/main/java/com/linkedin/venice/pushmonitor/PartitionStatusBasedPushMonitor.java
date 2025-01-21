@@ -11,6 +11,7 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.List;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -38,7 +39,8 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
       HelixAdminClient helixAdminClient,
       VeniceControllerClusterConfig controllerConfig,
       PushStatusStoreReader pushStatusStoreReader,
-      DisabledPartitionStats disabledPartitionStats) {
+      DisabledPartitionStats disabledPartitionStats,
+      VeniceWriterFactory veniceWriterFactory) {
     super(
         clusterName,
         offlinePushAccessor,
@@ -53,7 +55,8 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
         helixAdminClient,
         controllerConfig,
         pushStatusStoreReader,
-        disabledPartitionStats);
+        disabledPartitionStats,
+        veniceWriterFactory);
   }
 
   @Override

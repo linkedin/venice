@@ -72,7 +72,8 @@ public class TestP2PFileTransferClientHandler {
             inputStreamFuture,
             TEST_STORE,
             TEST_VERSION,
-            TEST_PARTITION));
+            TEST_PARTITION,
+            BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE));
 
     clientMetadataHandler = Mockito.spy(
         new P2PMetadataTransferHandler(
@@ -80,7 +81,8 @@ public class TestP2PFileTransferClientHandler {
             baseDir.toString(),
             TEST_STORE,
             TEST_VERSION,
-            TEST_PARTITION));
+            TEST_PARTITION,
+            BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE));
 
     Mockito.doNothing().when(clientMetadataHandler).updateStorePartitionMetadata(Mockito.any(), Mockito.any());
 
@@ -216,7 +218,12 @@ public class TestP2PFileTransferClientHandler {
     inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
 
     // verify the content is written to the disk
-    BlobTransferPayload payload = new BlobTransferPayload(baseDir.toString(), TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    BlobTransferPayload payload = new BlobTransferPayload(
+        baseDir.toString(),
+        TEST_STORE,
+        TEST_VERSION,
+        TEST_PARTITION,
+        BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE);
     Path dest = Paths.get(payload.getPartitionDir());
     Assert.assertTrue(Files.exists(dest));
     Assert.assertTrue(Files.isDirectory(dest));
@@ -259,7 +266,12 @@ public class TestP2PFileTransferClientHandler {
     inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
 
     // verify the content is written to the disk
-    BlobTransferPayload payload = new BlobTransferPayload(baseDir.toString(), TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    BlobTransferPayload payload = new BlobTransferPayload(
+        baseDir.toString(),
+        TEST_STORE,
+        TEST_VERSION,
+        TEST_PARTITION,
+        BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE);
     Path dest = Paths.get(payload.getPartitionDir());
     Assert.assertTrue(Files.exists(dest));
     Assert.assertTrue(Files.isDirectory(dest));
@@ -381,7 +393,12 @@ public class TestP2PFileTransferClientHandler {
     inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
 
     // Verify the files are written to disk
-    BlobTransferPayload payload = new BlobTransferPayload(baseDir.toString(), TEST_STORE, TEST_VERSION, TEST_PARTITION);
+    BlobTransferPayload payload = new BlobTransferPayload(
+        baseDir.toString(),
+        TEST_STORE,
+        TEST_VERSION,
+        TEST_PARTITION,
+        BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE);
     Path dest = Paths.get(payload.getPartitionDir());
     Assert.assertTrue(Files.exists(dest));
     Assert.assertTrue(Files.isDirectory(dest));

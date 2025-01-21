@@ -3,23 +3,19 @@ package com.linkedin.davinci.transformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
+import java.io.IOException;
 import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 
 
 public class TestStringRecordTransformer extends DaVinciRecordTransformer<Integer, String, String> {
-  public TestStringRecordTransformer(int storeVersion, boolean storeRecordsInDaVinci) {
-    super(storeVersion, storeRecordsInDaVinci);
-  }
-
-  @Override
-  public Schema getKeySchema() {
-    return Schema.create(Schema.Type.INT);
-  }
-
-  @Override
-  public Schema getOutputValueSchema() {
-    return Schema.create(Schema.Type.STRING);
+  public TestStringRecordTransformer(
+      int storeVersion,
+      Schema keySchema,
+      Schema inputValueSchema,
+      Schema outputValueSchema,
+      boolean storeRecordsInDaVinci) {
+    super(storeVersion, keySchema, inputValueSchema, outputValueSchema, storeRecordsInDaVinci);
   }
 
   @Override
@@ -41,5 +37,10 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
   @Override
   public void processPut(Lazy<Integer> key, Lazy<String> value) {
     return;
+  }
+
+  @Override
+  public void close() throws IOException {
+
   }
 }

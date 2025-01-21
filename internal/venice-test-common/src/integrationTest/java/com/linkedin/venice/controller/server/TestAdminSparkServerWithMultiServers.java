@@ -254,7 +254,9 @@ public class TestAdminSparkServerWithMultiServers {
         controllerClient.updateStore(
             storeName,
             new UpdateStoreQueryParams().setHybridRewindSeconds(1000).setHybridOffsetLagThreshold(1000));
-        controllerClient.emptyPush(storeName, Utils.getUniqueString("emptyPushId"), 10000);
+        TestUtils.assertCommand(
+            controllerClient
+                .sendEmptyPushAndWait(storeName, Utils.getUniqueString("emptyPushId"), 10000, TEST_TIMEOUT));
       }
 
       // Both

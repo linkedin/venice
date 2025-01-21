@@ -41,7 +41,8 @@ public class BlobTransferUtil {
       int maxConcurrentSnapshotUser,
       int snapshotRetentionTimeInMin,
       int blobTransferMaxTimeoutInMin,
-      AggVersionedBlobTransferStats aggVersionedBlobTransferStats) {
+      AggVersionedBlobTransferStats aggVersionedBlobTransferStats,
+      BlobTransferUtils.BlobTransferTableFormat transferSnapshotTableFormat) {
     return getP2PBlobTransferManagerForDVCAndStart(
         p2pTransferPort,
         p2pTransferPort,
@@ -53,7 +54,8 @@ public class BlobTransferUtil {
         maxConcurrentSnapshotUser,
         snapshotRetentionTimeInMin,
         blobTransferMaxTimeoutInMin,
-        aggVersionedBlobTransferStats);
+        aggVersionedBlobTransferStats,
+        transferSnapshotTableFormat);
   }
 
   public static BlobTransferManager<Void> getP2PBlobTransferManagerForDVCAndStart(
@@ -67,14 +69,16 @@ public class BlobTransferUtil {
       int maxConcurrentSnapshotUser,
       int snapshotRetentionTimeInMin,
       int blobTransferMaxTimeoutInMin,
-      AggVersionedBlobTransferStats aggVersionedBlobTransferStats) {
+      AggVersionedBlobTransferStats aggVersionedBlobTransferStats,
+      BlobTransferUtils.BlobTransferTableFormat transferSnapshotTableFormat) {
     try {
       BlobSnapshotManager blobSnapshotManager = new BlobSnapshotManager(
           readOnlyStoreRepository,
           storageEngineRepository,
           storageMetadataService,
           maxConcurrentSnapshotUser,
-          snapshotRetentionTimeInMin);
+          snapshotRetentionTimeInMin,
+          transferSnapshotTableFormat);
       AbstractAvroStoreClient storeClient =
           new AvroGenericStoreClientImpl<>(getTransportClient(clientConfig), false, clientConfig);
       BlobTransferManager<Void> manager = new NettyP2PBlobTransferManager(
@@ -111,14 +115,16 @@ public class BlobTransferUtil {
       int maxConcurrentSnapshotUser,
       int snapshotRetentionTimeInMin,
       int blobTransferMaxTimeoutInMin,
-      AggVersionedBlobTransferStats aggVersionedBlobTransferStats) {
+      AggVersionedBlobTransferStats aggVersionedBlobTransferStats,
+      BlobTransferUtils.BlobTransferTableFormat transferSnapshotTableFormat) {
     try {
       BlobSnapshotManager blobSnapshotManager = new BlobSnapshotManager(
           readOnlyStoreRepository,
           storageEngineRepository,
           storageMetadataService,
           maxConcurrentSnapshotUser,
-          snapshotRetentionTimeInMin);
+          snapshotRetentionTimeInMin,
+          transferSnapshotTableFormat);
       BlobTransferManager<Void> manager = new NettyP2PBlobTransferManager(
           new P2PBlobTransferService(p2pTransferServerPort, baseDir, blobTransferMaxTimeoutInMin, blobSnapshotManager),
           new NettyFileTransferClient(p2pTransferClientPort, baseDir, storageMetadataService),

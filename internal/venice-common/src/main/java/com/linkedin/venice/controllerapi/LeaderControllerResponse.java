@@ -5,6 +5,8 @@ public class LeaderControllerResponse
   private String cluster;
   private String url;
   private String secureUrl = null;
+  private String grpcUrl = null;
+  private String secureGrpcUrl = null;
 
   public String getCluster() {
     return cluster;
@@ -28,5 +30,21 @@ public class LeaderControllerResponse
 
   public void setSecureUrl(String url) {
     this.secureUrl = url;
+  }
+
+  public void setGrpcUrl(String url) {
+    this.grpcUrl = url;
+  }
+
+  public String getGrpcUrl() {
+    return grpcUrl;
+  }
+
+  public void setSecureGrpcUrl(String url) {
+    this.secureGrpcUrl = url;
+  }
+
+  public String getSecureGrpcUrl() {
+    return secureGrpcUrl;
   }
 }

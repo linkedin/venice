@@ -66,7 +66,8 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
         helixAdminClient,
         getMockControllerConfig(),
         null,
-        mock(DisabledPartitionStats.class));
+        mock(DisabledPartitionStats.class),
+        getMockVeniceWriterFactory());
   }
 
   @Override
@@ -85,7 +86,8 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
         mock(HelixAdminClient.class),
         getMockControllerConfig(),
         null,
-        mock(DisabledPartitionStats.class));
+        mock(DisabledPartitionStats.class),
+        getMockVeniceWriterFactory());
   }
 
   @Test
@@ -230,6 +232,7 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
     offlinePushStatus.setPartitionStatus(partitionStatus);
     CachedReadOnlyStoreRepository readOnlyStoreRepository = mock(CachedReadOnlyStoreRepository.class);
     doReturn(Collections.singletonList(store)).when(readOnlyStoreRepository).getAllStores();
+    doReturn(store).when(getMockStoreRepo()).getStore(store.getName());
     AbstractPushMonitor pushMonitor = getPushMonitor(new MockStoreCleaner(clusterLockManager));
     Map<String, List<String>> map = new HashMap<>();
     String kafkaTopic = Version.composeKafkaTopic(store.getName(), 1);
