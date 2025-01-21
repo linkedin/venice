@@ -89,6 +89,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
           List<Store> stores = veniceParentHelixAdmin.getAllStores(cluster);
           for (Store store: stores) {
+            if (StringUtils.isEmpty(store.getTargetSwapRegion())) {
+              continue;
+            }
 
             int targetVersionNum = store.getLargestUsedVersionNumber();
             Version targetVersion = store.getVersion(targetVersionNum);
@@ -97,10 +100,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             }
 
             if (targetVersion.getStatus() != VersionStatus.STARTED) {
-              continue;
-            }
-
-            if (StringUtils.isEmpty(store.getTargetSwapRegion())) {
               continue;
             }
 
