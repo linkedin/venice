@@ -1,7 +1,6 @@
 package com.linkedin.venice.duckdb;
 
-import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
-import static com.linkedin.venice.utils.TestWriteUtils.SINGLE_FIELD_RECORD_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.*;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
@@ -140,7 +139,7 @@ public class DuckDBDaVinciRecordTransformerTest {
 
     try (Connection connection = DriverManager.getConnection(duckDBUrl);
         Statement stmt = connection.createStatement()) {
-      try (ResultSet rs = stmt.executeQuery("SELECT * FROM current_version")) {
+      try (ResultSet rs = stmt.executeQuery("SELECT * FROM " + storeName)) {
         assertTrue(rs.next(), "There should be a first row!");
         assertEquals(rs.getString("firstName"), "Duck");
         assertEquals(rs.getString("lastName"), "Goose");
@@ -150,10 +149,91 @@ public class DuckDBDaVinciRecordTransformerTest {
       // Swap here
       recordTransformer_v1.onEndVersionIngestion(2);
 
-      try (ResultSet rs = stmt.executeQuery("SELECT * FROM current_version")) {
+      try (ResultSet rs = stmt.executeQuery("SELECT * FROM " + storeName)) {
         assertTrue(rs.next(), "There should be a first row!");
         assertEquals(rs.getString("firstName"), "Goose");
         assertEquals(rs.getString("lastName"), "Duck");
+        assertFalse(rs.next(), "There should be only one row!");
+      }
+    }
+  }
+
+  @Test
+  public void testTwoTablesConcurrently() throws SQLException {
+    String tempDir = Utils.getTempDataDirectory().getAbsolutePath();
+
+    String store1 = "store1";
+    String store2 = "store2";
+
+    DuckDBDaVinciRecordTransformer recordTransformerForStore1 = new DuckDBDaVinciRecordTransformer(
+        1,
+        SINGLE_FIELD_RECORD_SCHEMA,
+        NAME_RECORD_V1_SCHEMA,
+        NAME_RECORD_V1_SCHEMA,
+        false,
+        tempDir,
+        store1,
+        columnsToProject);
+    DuckDBDaVinciRecordTransformer recordTransformerForStore2 = new DuckDBDaVinciRecordTransformer(
+        1,
+        SIMPLE_USER_WITH_DEFAULT_SCHEMA,
+        NAME_RECORD_V1_SCHEMA,
+        NAME_RECORD_V1_SCHEMA,
+        false,
+        tempDir,
+        store2,
+        columnsToProject);
+
+    String duckDBUrl = recordTransformerForStore1.getDuckDBUrl();
+
+    recordTransformerForStore1.onStartVersionIngestion(true);
+
+    GenericRecord keyRecord = new GenericData.Record(SINGLE_FIELD_RECORD_SCHEMA);
+    keyRecord.put("key", "key");
+    Lazy<GenericRecord> lazyKey = Lazy.of(() -> keyRecord);
+
+    GenericRecord valueRecordForStore1 = new GenericData.Record(NAME_RECORD_V1_SCHEMA);
+    valueRecordForStore1.put("firstName", "Duck");
+    valueRecordForStore1.put("lastName", "Goose");
+    Lazy<GenericRecord> lazyValue = Lazy.of(() -> valueRecordForStore1);
+    recordTransformerForStore1.processPut(lazyKey, lazyValue);
+
+    try (Connection connection = DriverManager.getConnection(duckDBUrl);
+        Statement stmt = connection.createStatement()) {
+      try (ResultSet rs = stmt.executeQuery("SELECT * FROM " + store1)) {
+        assertTrue(rs.next(), "There should be a first row!");
+        assertEquals(rs.getString("firstName"), "Duck");
+        assertEquals(rs.getString("lastName"), "Goose");
+        assertFalse(rs.next(), "There should be only one row!");
+      }
+    }
+
+    recordTransformerForStore2.onStartVersionIngestion(true);
+
+    GenericRecord keyRecordForStore2 = new GenericData.Record(SIMPLE_USER_WITH_DEFAULT_SCHEMA);
+    keyRecordForStore2.put("key", "key");
+    keyRecordForStore2.put("value", "value");
+    Lazy<GenericRecord> lazyKeyForStore2 = Lazy.of(() -> keyRecordForStore2);
+
+    GenericRecord valueRecordForStore2 = new GenericData.Record(NAME_RECORD_V1_SCHEMA);
+    valueRecordForStore2.put("firstName", "Duck2");
+    valueRecordForStore2.put("lastName", "Goose2");
+    Lazy<GenericRecord> lazyValueForStore2 = Lazy.of(() -> valueRecordForStore2);
+    recordTransformerForStore2.processPut(lazyKeyForStore2, lazyValueForStore2);
+
+    try (Connection connection = DriverManager.getConnection(duckDBUrl);
+        Statement stmt = connection.createStatement()) {
+      try (ResultSet rs = stmt.executeQuery("SELECT * FROM " + store1)) {
+        assertTrue(rs.next(), "There should be a first row!");
+        assertEquals(rs.getString("firstName"), "Duck");
+        assertEquals(rs.getString("lastName"), "Goose");
+        assertFalse(rs.next(), "There should be only one row!");
+      }
+
+      try (ResultSet rs = stmt.executeQuery("SELECT * FROM " + store2)) {
+        assertTrue(rs.next(), "There should be a first row!");
+        assertEquals(rs.getString("firstName"), "Duck2");
+        assertEquals(rs.getString("lastName"), "Goose2");
         assertFalse(rs.next(), "There should be only one row!");
       }
     }

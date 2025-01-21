@@ -504,6 +504,8 @@
       <Class name="com.linkedin.venice.duckdb.DuckDBHelloWorldTest"/>
       <Class name="com.linkedin.venice.duckdb.DuckDBAvroToSQLTest"/>
       <Class name="com.linkedin.venice.duckdb.DuckDBDaVinciRecordTransformer"/>
+      <Class name="com.linkedin.venice.duckdb.DuckDBDaVinciRecordTransformerTest"/>
+      <Class name="com.linkedin.venice.endToEnd.DuckDBDaVinciRecordTransformerIntegrationTest"/>
       <Class name="com.linkedin.venice.sql.SQLHelloWorldTest"/>
       <Class name="com.linkedin.venice.sql.SQLUtilsTest"/>
       <Class name="com.linkedin.venice.sql.SQLUtils"/>

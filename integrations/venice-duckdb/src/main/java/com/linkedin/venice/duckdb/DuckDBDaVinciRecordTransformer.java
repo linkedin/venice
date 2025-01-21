@@ -29,8 +29,7 @@ public class DuckDBDaVinciRecordTransformer
   private static final Logger LOGGER = LogManager.getLogger(DuckDBDaVinciRecordTransformer.class);
   private static final String duckDBFilePath = "my_database.duckdb";
   private static final String deleteStatementTemplate = "DELETE FROM %s WHERE %s = ?;";
-  private static final String createViewStatementTemplate =
-      "CREATE OR REPLACE VIEW current_version AS SELECT * FROM %s;";
+  private static final String createViewStatementTemplate = "CREATE OR REPLACE VIEW %s AS SELECT * FROM %s;";
   private static final String dropTableStatementTemplate = "DROP TABLE %s;";
   private final String storeNameWithoutVersionInfo;
   private final String versionTableName;
@@ -132,7 +131,8 @@ public class DuckDBDaVinciRecordTransformer
 
       if (isCurrentVersion) {
         // Unable to convert to prepared statement as table and column names can't be parameterized
-        String createViewStatement = String.format(createViewStatementTemplate, versionTableName);
+        String createViewStatement =
+            String.format(createViewStatementTemplate, storeNameWithoutVersionInfo, versionTableName);
         stmt.execute(createViewStatement);
       }
     } catch (SQLException e) {
@@ -146,7 +146,8 @@ public class DuckDBDaVinciRecordTransformer
         Statement stmt = connection.createStatement()) {
       // Swap to current version
       String currentVersionTableName = buildStoreNameWithVersion(currentVersion);
-      String createViewStatement = String.format(createViewStatementTemplate, currentVersionTableName);
+      String createViewStatement =
+          String.format(createViewStatementTemplate, storeNameWithoutVersionInfo, currentVersionTableName);
       stmt.execute(createViewStatement);
 
       if (currentVersion != getStoreVersion()) {
