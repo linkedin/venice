@@ -59,7 +59,7 @@ public class TestKafkaInputDictTrainer {
     KafkaInputFormat mockFormat = mock(KafkaInputFormat.class);
     PubSubTopicPartition topicPartition =
         new PubSubTopicPartitionImpl(PUB_SUB_TOPIC_REPOSITORY.getTopic("test_topic"), 0);
-    InputSplit[] splits = new KafkaInputSplit[] { new KafkaInputSplit(PUB_SUB_TOPIC_REPOSITORY, topicPartition, 0, 0) };
+    InputSplit[] splits = new KafkaInputSplit[] { new KafkaInputSplit(topicPartition, 0, 0) };
     doReturn(splits).when(mockFormat).getSplitsByRecordsPerSplit(any(), anyLong());
     RecordReader<KafkaInputMapperKey, KafkaInputMapperValue> mockRecordReader = mock(RecordReader.class);
     doReturn(false).when(mockRecordReader).next(any(), any());
@@ -152,8 +152,8 @@ public class TestKafkaInputDictTrainer {
     KafkaInputFormat mockFormat = mock(KafkaInputFormat.class);
     PubSubTopicPartition topicPartition =
         new PubSubTopicPartitionImpl(PUB_SUB_TOPIC_REPOSITORY.getTopic("test_topic"), 0);
-    InputSplit[] splits = new KafkaInputSplit[] { new KafkaInputSplit(PUB_SUB_TOPIC_REPOSITORY, topicPartition, 0, 2),
-        new KafkaInputSplit(PUB_SUB_TOPIC_REPOSITORY, topicPartition, 0, 2) };
+    InputSplit[] splits =
+        new KafkaInputSplit[] { new KafkaInputSplit(topicPartition, 0, 2), new KafkaInputSplit(topicPartition, 0, 2) };
     doReturn(splits).when(mockFormat).getSplitsByRecordsPerSplit(any(), anyLong());
 
     // Return 3 records
@@ -205,8 +205,8 @@ public class TestKafkaInputDictTrainer {
     KafkaInputFormat mockFormat = mock(KafkaInputFormat.class);
     PubSubTopicPartition topicPartition =
         new PubSubTopicPartitionImpl(PUB_SUB_TOPIC_REPOSITORY.getTopic("test_topic"), 0);
-    InputSplit[] splits = new KafkaInputSplit[] { new KafkaInputSplit(PUB_SUB_TOPIC_REPOSITORY, topicPartition, 0, 2),
-        new KafkaInputSplit(PUB_SUB_TOPIC_REPOSITORY, topicPartition, 0, 2) };
+    InputSplit[] splits =
+        new KafkaInputSplit[] { new KafkaInputSplit(topicPartition, 0, 2), new KafkaInputSplit(topicPartition, 0, 2) };
     doReturn(splits).when(mockFormat).getSplitsByRecordsPerSplit(any(), anyLong());
 
     // Return 3 records
@@ -257,8 +257,8 @@ public class TestKafkaInputDictTrainer {
     KafkaInputFormat mockFormat = mock(KafkaInputFormat.class);
     PubSubTopicPartition topicPartition =
         new PubSubTopicPartitionImpl(PUB_SUB_TOPIC_REPOSITORY.getTopic("test_topic"), 0);
-    InputSplit[] splits = new KafkaInputSplit[] { new KafkaInputSplit(PUB_SUB_TOPIC_REPOSITORY, topicPartition, 0, 2),
-        new KafkaInputSplit(PUB_SUB_TOPIC_REPOSITORY, topicPartition, 0, 2) };
+    InputSplit[] splits =
+        new KafkaInputSplit[] { new KafkaInputSplit(topicPartition, 0, 2), new KafkaInputSplit(topicPartition, 0, 2) };
     doReturn(splits).when(mockFormat).getSplitsByRecordsPerSplit(any(), anyLong());
 
     // Return 3 records

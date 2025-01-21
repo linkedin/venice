@@ -93,7 +93,7 @@ public class TestKafkaInputRecordReader {
     conf.set(KAFKA_INPUT_TOPIC, topic);
 
     try (KafkaInputRecordReader reader =
-        new KafkaInputRecordReader(new KafkaInputSplit(pubSubTopicRepository, topicPartition, 0, 102), conf, null)) {
+        new KafkaInputRecordReader(new KafkaInputSplit(topicPartition, 0, 102), conf, null)) {
       for (int i = 0; i < 100; ++i) {
         KafkaInputMapperKey key = new KafkaInputMapperKey();
         KafkaInputMapperValue value = new KafkaInputMapperValue();
@@ -116,7 +116,7 @@ public class TestKafkaInputRecordReader {
     conf.set(KAFKA_INPUT_TOPIC, topic);
     conf.set(KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());
     try (KafkaInputRecordReader reader =
-        new KafkaInputRecordReader(new KafkaInputSplit(pubSubTopicRepository, topicPartition, 0, 102), conf, null)) {
+        new KafkaInputRecordReader(new KafkaInputSplit(topicPartition, 0, 102), conf, null)) {
       for (int i = 0; i < 100; ++i) {
         KafkaInputMapperKey key = new KafkaInputMapperKey();
         KafkaInputMapperValue value = new KafkaInputMapperValue();
@@ -145,7 +145,7 @@ public class TestKafkaInputRecordReader {
     conf.set(KAFKA_INPUT_TOPIC, topic);
     conf.set(KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());
     try (KafkaInputRecordReader reader =
-        new KafkaInputRecordReader(new KafkaInputSplit(pubSubTopicRepository, topicPartition, 0, 102), conf, null)) {
+        new KafkaInputRecordReader(new KafkaInputSplit(topicPartition, 0, 102), conf, null)) {
       for (int i = 0; i < 100; ++i) {
         KafkaInputMapperKey key = new KafkaInputMapperKey();
         KafkaInputMapperValue value = new KafkaInputMapperValue();
