@@ -435,12 +435,14 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     @Override
     public void run() {
       while (!Thread.interrupted()) {
-        record();
         try {
+          record();
           TimeUnit.SECONDS.sleep(DEFAULT_REPORTER_THREAD_SLEEP_INTERVAL_SECONDS);
         } catch (InterruptedException e) {
           // We've received an interrupt which is to be expected, so we'll just leave the loop and log
           break;
+        } catch (Exception e) {
+          LOGGER.error("Received exception from Ingestion-Heartbeat-Reporter-Service-Thread", e);
         }
       }
       LOGGER.info("Heartbeat lag metric reporting thread interrupted!  Shutting down...");
@@ -455,12 +457,14 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     @Override
     public void run() {
       while (!Thread.interrupted()) {
-        checkAndMaybeLogHeartbeatDelay();
         try {
+          checkAndMaybeLogHeartbeatDelay();
           TimeUnit.SECONDS.sleep(DEFAULT_LAG_LOGGING_THREAD_SLEEP_INTERVAL_SECONDS);
         } catch (InterruptedException e) {
           // We've received an interrupt which is to be expected, so we'll just leave the loop and log
           break;
+        } catch (Exception e) {
+          LOGGER.error("Received exception from Ingestion-Heartbeat-Lag-Logging-Service-Thread", e);
         }
       }
       LOGGER.info("Heartbeat lag logging thread interrupted!  Shutting down...");
