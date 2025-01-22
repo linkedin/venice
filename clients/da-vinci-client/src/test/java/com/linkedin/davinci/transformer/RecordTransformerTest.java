@@ -23,11 +23,8 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.lazy.Lazy;
-import java.io.File;
 import java.util.Optional;
 import org.apache.avro.Schema;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -36,15 +33,6 @@ public class RecordTransformerTest {
   static final int partitionId = 0;
   static final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
       AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-
-  @BeforeMethod
-  @AfterClass
-  public void deleteClassHash() {
-    File file = new File(String.format("./classHash-%d.txt", storeVersion));
-    if (file.exists()) {
-      assertTrue(file.delete());
-    }
-  }
 
   @Test
   public void testRecordTransformer() {

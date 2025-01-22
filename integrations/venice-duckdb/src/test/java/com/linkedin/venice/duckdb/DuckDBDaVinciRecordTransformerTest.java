@@ -19,7 +19,6 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
-import java.io.File;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -32,8 +31,6 @@ import java.util.Set;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -44,15 +41,6 @@ public class DuckDBDaVinciRecordTransformerTest {
       AvroProtocolDefinition.PARTITION_STATE.getSerializer();
   static final String storeName = "test_store";
   private final Set<String> columnsToProject = Collections.emptySet();
-
-  @BeforeMethod
-  @AfterClass
-  public void deleteClassHash() {
-    File file = new File(String.format("./classHash-%d.txt", storeVersion));
-    if (file.exists()) {
-      assertTrue(file.delete());
-    }
-  }
 
   @Test
   public void testRecordTransformer() throws IOException {

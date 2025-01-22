@@ -66,7 +66,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -105,16 +104,6 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
       D2ClientUtils.shutdownClient(d2Client);
     }
     Utils.closeQuietlyWithErrorLogged(cluster);
-  }
-
-  @BeforeMethod
-  @AfterClass
-  public void deleteClassHash() {
-    int storeVersion = 1;
-    File file = new File(String.format("./classHash-%d.txt", storeVersion));
-    if (file.exists()) {
-      assertTrue(file.delete());
-    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
