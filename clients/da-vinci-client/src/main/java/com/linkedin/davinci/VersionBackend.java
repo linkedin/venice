@@ -15,6 +15,7 @@ import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.ComputeUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.IngestionMode;
+import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
@@ -107,7 +108,15 @@ public class VersionBackend {
         .getInt(PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS, DEFAULT_PUSH_STATUS_HEARTBEAT_INTERVAL_IN_SECONDS);
     this.stopConsumptionTimeoutInSeconds =
         backend.getConfigLoader().getCombinedProperties().getInt(SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS, 60);
-    this.storeDeserializerCache = backend.getStoreOrThrow(store.getName()).getStoreDeserializerCache();
+    if (version instanceof ReadOnlyStore.ReadOnlyMaterializedViewVersion) {
+      ReadOnlyStore.ReadOnlyMaterializedViewVersion materializedViewVersion =
+          (ReadOnlyStore.ReadOnlyMaterializedViewVersion) version;
+      this.storeDeserializerCache =
+          backend.getStoreOrThrow(store.getName(), materializedViewVersion.getMaterializedViewName())
+              .getStoreDeserializerCache();
+    } else {
+      this.storeDeserializerCache = backend.getStoreOrThrow(store.getName()).getStoreDeserializerCache();
+    }
     this.compressor = Lazy.of(
         () -> backend.getCompressorFactory()
             .getCompressor(

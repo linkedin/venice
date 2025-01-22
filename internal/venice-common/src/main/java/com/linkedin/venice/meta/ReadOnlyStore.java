@@ -3,6 +3,7 @@ package com.linkedin.venice.meta;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.systemstore.schemas.DataRecoveryConfig;
 import com.linkedin.venice.systemstore.schemas.StoreETLConfig;
 import com.linkedin.venice.systemstore.schemas.StoreHybridConfig;
@@ -11,12 +12,18 @@ import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import com.linkedin.venice.systemstore.schemas.StoreViewConfig;
 import com.linkedin.venice.systemstore.schemas.SystemStoreProperties;
+import com.linkedin.venice.views.MaterializedView;
+import com.linkedin.venice.views.VeniceView;
+import com.linkedin.venice.views.ViewUtils;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Properties;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -306,7 +313,7 @@ public class ReadOnlyStore implements Store {
    * A read-only wrapper of {@link Version}
    */
   public static class ReadOnlyVersion implements Version {
-    private final Version delegate;
+    protected final Version delegate;
 
     public ReadOnlyVersion(Version delegate) {
       this.delegate = delegate;
@@ -687,6 +694,85 @@ public class ReadOnlyStore implements Store {
       }
       ReadOnlyVersion version = (ReadOnlyVersion) o;
       return this.delegate.equals(version.delegate);
+    }
+  }
+
+  /**
+   * A read only {@link Version} representation of a materialized view for consumers (e.g. DVC client). Any view
+   * specific version properties will be overwritten here and provided by the corresponding {@link MaterializedView}.
+   */
+  public static class ReadOnlyMaterializedViewVersion extends ReadOnlyVersion {
+    private static final String CONSTRUCTOR_ERROR_MESSAGE = "Cannot construct materialized view version because ";
+    private final MaterializedView materializedView;
+    private final String materializedViewTopicName;
+
+    public ReadOnlyMaterializedViewVersion(Version delegate, ViewConfig viewConfig) {
+      super(delegate);
+      if (delegate.isHybrid()) {
+        throw new UnsupportedOperationException(CONSTRUCTOR_ERROR_MESSAGE + "hybrid store view is not supported yet");
+      }
+      if (delegate.isChunkingEnabled()) {
+        // TODO despite writers are configured properly the read path with chunking enabled needs some fixing
+        throw new UnsupportedOperationException(CONSTRUCTOR_ERROR_MESSAGE + "chunking is not supported yet");
+      }
+      if (viewConfig == null) {
+        throw new VeniceException(CONSTRUCTOR_ERROR_MESSAGE + "provided viewConfig is null");
+      }
+      VeniceView veniceView = ViewUtils.getVeniceView(
+          viewConfig.getViewClassName(),
+          new Properties(),
+          delegate.getStoreName(),
+          viewConfig.getViewParameters());
+      if (!(veniceView instanceof MaterializedView)) {
+        throw new VeniceException(
+            CONSTRUCTOR_ERROR_MESSAGE + viewConfig.getViewClassName() + " is not a "
+                + MaterializedView.class.getCanonicalName());
+      }
+      this.materializedView = (MaterializedView) veniceView;
+      Optional<String> optionalMaterializedViewTopicName =
+          materializedView.getTopicNamesAndConfigsForVersion(delegate.getNumber()).keySet().stream().findAny();
+      if (!optionalMaterializedViewTopicName.isPresent()) {
+        throw new VeniceException(
+            CONSTRUCTOR_ERROR_MESSAGE + "view topic map is empty for view: " + materializedView.getViewName()
+                + ", version: " + delegate.getNumber());
+      }
+      this.materializedViewTopicName = optionalMaterializedViewTopicName.get();
+    }
+
+    public String getMaterializedViewName() {
+      return materializedView.getViewName();
+    }
+
+    @Override
+    public int getPartitionCount() {
+      return materializedView.getViewPartitionCount();
+    }
+
+    @Override
+    public String kafkaTopicName() {
+      return materializedViewTopicName;
+    }
+
+    @Override
+    public PartitionerConfig getPartitionerConfig() {
+      return materializedView.getPartitionerConfig();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) {
+        return true;
+      }
+      if (o == null || getClass() != o.getClass()) {
+        return false;
+      }
+      ReadOnlyMaterializedViewVersion version = (ReadOnlyMaterializedViewVersion) o;
+      return this.delegate.equals(version.delegate) && this.materializedView.equals(version.materializedView);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(delegate, materializedView);
     }
   }
 

@@ -103,6 +103,7 @@ public class DaVinciBackend implements Closeable {
   private final KafkaStoreIngestionService ingestionService;
   private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
   private final Map<String, StoreBackend> storeByNameMap = new VeniceConcurrentHashMap<>();
+  private final Map<String, Map<String, StoreBackend>> storeByNameByViewNameMap = new VeniceConcurrentHashMap<>();
   private final Map<String, VersionBackend> versionByTopicMap = new VeniceConcurrentHashMap<>();
   private final StorageMetadataService storageMetadataService;
   private final PushStatusStoreWriter pushStatusStoreWriter;
@@ -508,6 +509,11 @@ public class DaVinciBackend implements Closeable {
        */
       storeBackendCloseExecutor.submit(storeBackend::close);
     }
+    for (Map<String, StoreBackend> storeViewMap: storeByNameByViewNameMap.values()) {
+      for (StoreBackend storeViewBackend: storeViewMap.values()) {
+        storeBackendCloseExecutor.submit(storeViewBackend::close);
+      }
+    }
     storeBackendCloseExecutor.shutdown();
     try {
       storeBackendCloseExecutor.awaitTermination(60, TimeUnit.SECONDS);
@@ -515,6 +521,7 @@ public class DaVinciBackend implements Closeable {
       currentThread().interrupt();
     }
     storeByNameMap.clear();
+    storeByNameByViewNameMap.clear();
     versionByTopicMap.clear();
     compressorFactory.close();
     executor.shutdown();
@@ -558,6 +565,12 @@ public class DaVinciBackend implements Closeable {
 
   public StoreBackend getStoreOrThrow(String storeName) {
     return storeByNameMap.computeIfAbsent(storeName, s -> new StoreBackend(this, s));
+  }
+
+  public StoreBackend getStoreOrThrow(String storeName, String viewName) {
+    Map<String, StoreBackend> storeViewMap =
+        storeByNameByViewNameMap.computeIfAbsent(storeName, s -> new VeniceConcurrentHashMap<>());
+    return storeViewMap.computeIfAbsent(viewName, v -> new StoreViewBackend(this, storeName, v));
   }
 
   ScheduledExecutorService getExecutor() {
@@ -646,6 +659,12 @@ public class DaVinciBackend implements Closeable {
     if (storeBackend != null) {
       storeBackend.delete();
     }
+    Map<String, StoreBackend> storeViewMap = storeByNameByViewNameMap.remove(storeName);
+    if (storeViewMap != null) {
+      for (StoreBackend storeViewBackend: storeViewMap.values()) {
+        storeViewBackend.delete();
+      }
+    }
   }
 
   protected final boolean isIsolatedIngestion() {
@@ -709,6 +728,12 @@ public class DaVinciBackend implements Closeable {
       StoreBackend storeBackend = storeByNameMap.get(store.getName());
       if (storeBackend != null) {
         DaVinciBackend.this.handleStoreChanged(storeBackend);
+      }
+      Map<String, StoreBackend> storeViewMap = storeByNameByViewNameMap.get(store.getName());
+      if (storeViewMap != null) {
+        for (StoreBackend storeViewBackend: storeViewMap.values()) {
+          DaVinciBackend.this.handleStoreChanged(storeViewBackend);
+        }
       }
     }
 

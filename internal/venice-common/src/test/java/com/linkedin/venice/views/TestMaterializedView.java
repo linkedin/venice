@@ -100,6 +100,9 @@ public class TestMaterializedView {
       assertTrue(VeniceView.isViewTopic(viewTopic));
       assertEquals(VeniceView.parseStoreFromViewTopic(viewTopic), storeName);
       assertEquals(VeniceView.parseVersionFromViewTopic(viewTopic), version);
+      assertEquals(
+          VeniceView.parseStoreAndViewFromViewTopic(viewTopic),
+          storeName + VeniceView.VIEW_TOPIC_SEPARATOR + rePartitionViewName);
     }
   }
 

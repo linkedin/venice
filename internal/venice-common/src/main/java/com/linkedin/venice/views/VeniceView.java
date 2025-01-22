@@ -109,4 +109,19 @@ public abstract class VeniceView {
     int versionEndIndex = versionStartIndex + topicName.substring(versionStartIndex).indexOf(VIEW_TOPIC_SEPARATOR);
     return Integer.parseInt(topicName.substring(versionStartIndex, versionEndIndex));
   }
+
+  /**
+   * @param topicName for the view topic
+   * @return the corresponding store name and view name for the given view topic in a single string.
+   */
+  public static String parseStoreAndViewFromViewTopic(String topicName) {
+    String storeName = parseStoreFromViewTopic(topicName);
+    int viewTopicSuffixIndex = topicName.lastIndexOf(VIEW_TOPIC_SEPARATOR);
+    int viewNameStartIndex = topicName.substring(0, viewTopicSuffixIndex).lastIndexOf(VIEW_TOPIC_SEPARATOR);
+    return storeName + topicName.substring(viewNameStartIndex, viewTopicSuffixIndex);
+  }
+
+  public static String getStoreAndViewName(String storeName, String viewName) {
+    return storeName + VIEW_TOPIC_SEPARATOR + viewName;
+  }
 }

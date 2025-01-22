@@ -174,7 +174,11 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       AbstractAvroChunkingAdapter<V> chunkingAdapter,
       Runnable preValidation,
       Executor readChunkExecutorForLargeRequest) {
-    logger.info("Creating client, storeName={}, daVinciConfig={}", clientConfig.getStoreName(), daVinciConfig);
+    logger.info(
+        "Creating client, storeName={}, viewName={}, daVinciConfig={}",
+        clientConfig.getStoreName(),
+        clientConfig.getViewName(),
+        daVinciConfig);
     this.daVinciConfig = daVinciConfig;
     this.clientConfig = clientConfig;
     this.backendConfig = backendConfig;
@@ -779,7 +783,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     if (isReady()) {
       return;
     }
-    logger.info("Starting client, storeName=" + getStoreName());
+    logger.info("Starting client, storeName={}, viewName={}", getStoreName(), clientConfig.getViewName());
     VeniceConfigLoader configLoader = buildVeniceConfig();
     Optional<ObjectCacheConfig> cacheConfig = Optional.ofNullable(daVinciConfig.getCacheConfig());
     initBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig, recordTransformerConfig);
@@ -790,8 +794,11 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       if (daVinciConfig.isCacheEnabled()) {
         cacheBackend = getBackend().getObjectCache();
       }
-
-      storeBackend = getBackend().getStoreOrThrow(getStoreName());
+      if (clientConfig.getViewName() != null) {
+        storeBackend = getBackend().getStoreOrThrow(getStoreName(), clientConfig.getViewName());
+      } else {
+        storeBackend = getBackend().getStoreOrThrow(getStoreName());
+      }
       if (managedClients.isPresent()) {
         storeBackend.setManaged(daVinciConfig.isManaged());
       }

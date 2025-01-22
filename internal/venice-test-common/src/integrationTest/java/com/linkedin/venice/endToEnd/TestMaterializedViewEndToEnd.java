@@ -2,7 +2,12 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
+import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
+import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
+import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
+import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
+import static com.linkedin.venice.utils.TestWriteUtils.DEFAULT_USER_DATA_VALUE_PREFIX;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.views.MaterializedView.MATERIALIZED_VIEW_TOPIC_SUFFIX;
 import static com.linkedin.venice.views.VeniceView.VIEW_TOPIC_SEPARATOR;
@@ -10,32 +15,48 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_P
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
+import static org.testng.Assert.assertNotNull;
 
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.davinci.client.DaVinciClient;
+import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.MaterializedViewParameters;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.views.MaterializedView;
+import com.linkedin.venice.views.VeniceView;
+import io.tehuti.Metric;
+import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2LongMap;
 import java.io.File;
 import java.io.IOException;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
@@ -142,6 +163,107 @@ public class TestMaterializedViewEndToEnd {
       String rePushVersionTopicName = Version.composeKafkaTopic(storeName, 2);
       validateViewTopicAndVersionTopic(rePushViewTopicName, rePushVersionTopicName, 6, 3, 100);
     }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testBatchOnlyMaterializedViewDVCConsumer() throws IOException, ExecutionException, InterruptedException {
+    // Create a batch only store with materialized view and run batch push job with 100 records
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("batchStore");
+    Properties props =
+        TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(false)
+        .setChunkingEnabled(false)
+        .setNativeReplicationEnabled(true)
+        .setNativeReplicationSourceFabric(childDatacenters.get(0).getRegionName())
+        .setPartitionCount(3);
+    String testViewName = "MaterializedViewTest";
+    try (ControllerClient controllerClient =
+        IntegrationTestPushUtils.createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms)) {
+      MaterializedViewParameters.Builder viewParamBuilder =
+          new MaterializedViewParameters.Builder(testViewName).setPartitionCount(1);
+      UpdateStoreQueryParams updateViewParam = new UpdateStoreQueryParams().setViewName(testViewName)
+          .setViewClassName(MaterializedView.class.getCanonicalName())
+          .setViewClassParams(viewParamBuilder.build());
+      controllerClient
+          .retryableRequest(5, controllerClient1 -> controllerClient.updateStore(storeName, updateViewParam));
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
+        Map<String, ViewConfig> viewConfigMap = controllerClient.getStore(storeName).getStore().getViewConfigs();
+        Assert.assertEquals(viewConfigMap.size(), 1);
+        Assert.assertEquals(
+            viewConfigMap.get(testViewName).getViewClassName(),
+            MaterializedView.class.getCanonicalName());
+      });
+    }
+    TestWriteUtils.runPushJob("Run push job", props);
+    // Start a DVC client that's subscribed to partition 0 of the store's materialized view. The DVC client should
+    // contain all data records.
+    VeniceProperties backendConfig =
+        new PropertyBuilder().put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
+            .put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
+            .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+            .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
+            .build();
+    DaVinciConfig daVinciConfig = new DaVinciConfig();
+    // Use non-source fabric region to also verify NR for materialized view.
+    D2Client daVinciD2 = D2TestUtils
+        .getAndStartD2Client(multiRegionMultiClusterWrapper.getChildRegions().get(1).getZkServerWrapper().getAddress());
+    MetricsRepository dvcMetricsRepo = new MetricsRepository();
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+        daVinciD2,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        dvcMetricsRepo,
+        backendConfig)) {
+      // Ensure compatibility of store and view DVC clients since it's possible for the same JVM to subscribe to a store
+      // and its view(s).
+      DaVinciClient<String, Object> storeClient = factory.getAndStartGenericAvroClient(storeName, daVinciConfig);
+      storeClient.subscribeAll().get();
+      // writeSimpleAvroFileWithStringToStringSchema writes input starting at 1 and stops with <= recordCount (100)
+      for (int i = 1; i <= 100; i++) {
+        Assert.assertEquals(storeClient.get(Integer.toString(i)).get().toString(), DEFAULT_USER_DATA_VALUE_PREFIX + i);
+      }
+      DaVinciClient<String, Object> viewClient =
+          factory.getAndStartGenericAvroClient(storeName, testViewName, daVinciConfig);
+      viewClient.subscribe(Collections.singleton(0)).get();
+      Assert.assertEquals(
+          getMetric(
+              dvcMetricsRepo,
+              "current_version_number.Gauge",
+              VeniceView.getStoreAndViewName(storeName, testViewName)),
+          (double) 1);
+      for (int i = 1; i <= 100; i++) {
+        Assert.assertEquals(viewClient.get(Integer.toString(i)).get().toString(), DEFAULT_USER_DATA_VALUE_PREFIX + i);
+      }
+      // Perform another push with 200 keys to verify future version ingestion and version swap
+      File newPushInputDir = getTempDataDirectory();
+      TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(newPushInputDir, 200);
+      String newPushInputDirPath = "file:" + newPushInputDir.getAbsolutePath();
+      Properties newPushProps =
+          TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), newPushInputDirPath, storeName);
+      TestWriteUtils.runPushJob("Run another push job", newPushProps);
+      Assert.assertEquals(
+          getMetric(
+              dvcMetricsRepo,
+              "current_version_number.Gauge",
+              VeniceView.getStoreAndViewName(storeName, testViewName)),
+          (double) 2);
+      // The materialized view DVC client should be able to read all the keys from the new push
+      for (int i = 1; i <= 200; i++) {
+        Assert.assertEquals(viewClient.get(Integer.toString(i)).get().toString(), DEFAULT_USER_DATA_VALUE_PREFIX + i);
+      }
+    } finally {
+      D2ClientUtils.shutdownClient(daVinciD2);
+    }
+  }
+
+  private double getMetric(MetricsRepository metricsRepository, String metricName, String storeName) {
+    Metric metric = metricsRepository.getMetric("." + storeName + "--" + metricName);
+    assertNotNull(metric, "Expected metric " + metricName + " not found.");
+    return metric.value();
   }
 
   private void validateViewTopicAndVersionTopic(

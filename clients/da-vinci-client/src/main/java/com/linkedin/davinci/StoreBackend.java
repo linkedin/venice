@@ -9,6 +9,7 @@ import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.ConcurrentRef;
 import com.linkedin.venice.utils.ReferenceCounted;
+import com.linkedin.venice.views.VeniceView;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
@@ -19,7 +20,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class StoreBackend {
-  private static final Logger LOGGER = LogManager.getLogger(StoreBackend.class);
+  protected static final Logger LOGGER = LogManager.getLogger(StoreBackend.class);
 
   private final DaVinciBackend backend;
   private final String storeName;
@@ -32,13 +33,14 @@ public class StoreBackend {
   private VersionBackend daVinciCurrentVersion;
   private VersionBackend daVinciFutureVersion;
 
-  StoreBackend(DaVinciBackend backend, String storeName) {
-    LOGGER.info("Opening local store {}", storeName);
+  StoreBackend(DaVinciBackend backend, String storeName, String viewName) {
+    String storeViewName = viewName == null ? storeName : VeniceView.getStoreAndViewName(storeName, viewName);
+    LOGGER.info("Opening local store {}", storeViewName);
     this.backend = backend;
     this.storeName = storeName;
     this.config =
         new StoreBackendConfig(backend.getConfigLoader().getVeniceServerConfig().getDataBasePath(), storeName);
-    this.stats = new StoreBackendStats(backend.getMetricsRepository(), storeName);
+    this.stats = new StoreBackendStats(backend.getMetricsRepository(), storeViewName);
     this.storeDeserializerCache = new AvroStoreDeserializerCache(backend.getSchemaRepository(), storeName, true);
     try {
       backend.getStoreRepository().subscribe(storeName);
@@ -50,14 +52,18 @@ public class StoreBackend {
     this.config.store();
   }
 
+  StoreBackend(DaVinciBackend backend, String storeName) {
+    this(backend, storeName, null);
+  }
+
   synchronized void close() {
     if (subscription.isEmpty()) {
-      LOGGER.info("Closing empty local store {}", storeName);
+      LOGGER.info("Closing empty local store {}", getStoreName());
       delete();
       return;
     }
 
-    LOGGER.info("Closing local store {}", storeName);
+    LOGGER.info("Closing local store {}", getStoreName());
     subscription.clear();
     daVinciCurrentVersionRef.clear();
 
@@ -77,7 +83,7 @@ public class StoreBackend {
   }
 
   synchronized void delete() {
-    LOGGER.info("Deleting local store {}", storeName);
+    LOGGER.info("Deleting local store {}", getStoreName());
     config.delete();
     subscription.clear();
     daVinciCurrentVersionRef.clear();
@@ -128,14 +134,22 @@ public class StoreBackend {
     return subscribe(partitions, Optional.empty());
   }
 
+  protected Version getCurrentVersion() {
+    return backend.getVeniceCurrentVersion(storeName);
+  }
+
+  protected Version getLatestNonFaultyVersion() {
+    return backend.getVeniceLatestNonFaultyVersion(storeName, faultyVersionSet);
+  }
+
   synchronized CompletableFuture<Void> subscribe(
       ComplementSet<Integer> partitions,
       Optional<Version> bootstrapVersion) {
     if (daVinciCurrentVersion == null) {
       setDaVinciCurrentVersion(new VersionBackend(backend, bootstrapVersion.orElseGet(() -> {
-        Version version = backend.getVeniceCurrentVersion(storeName);
+        Version version = getCurrentVersion();
         if (version == null) {
-          version = backend.getVeniceLatestNonFaultyVersion(storeName, faultyVersionSet);
+          version = getLatestNonFaultyVersion();
         }
         if (version == null) {
           throw new VeniceException("Cannot subscribe to an empty store, storeName=" + storeName);
@@ -149,7 +163,7 @@ public class StoreBackend {
               + ", desiredVersion=" + bootstrapVersion.get().kafkaTopicName());
     }
 
-    LOGGER.info("Subscribing to partitions {} of store {}", partitions, storeName);
+    LOGGER.info("Subscribing to partitions {} of store {}", partitions, getStoreName());
     if (subscription.isEmpty() && !partitions.isEmpty()) {
       // Recreate store config that was potentially deleted by unsubscribe.
       config.store();
@@ -184,7 +198,7 @@ public class StoreBackend {
   }
 
   public synchronized void unsubscribe(ComplementSet<Integer> partitions) {
-    LOGGER.info("Unsubscribing from partitions {} of {}", partitions, storeName);
+    LOGGER.info("Unsubscribing from partitions {} of {}", partitions, getStoreName());
     subscription.removeAll(partitions);
 
     if (daVinciCurrentVersion != null) {
@@ -209,7 +223,7 @@ public class StoreBackend {
         version.delete();
       }
     }
-    LOGGER.info("Finished the unsubscription from partitions {} of {}", partitions, storeName);
+    LOGGER.info("Finished the unsubscription from partitions {} of {}", partitions, getStoreName());
 
   }
 
@@ -218,9 +232,9 @@ public class StoreBackend {
       return;
     }
 
-    Version veniceCurrentVersion = backend.getVeniceCurrentVersion(storeName);
+    Version veniceCurrentVersion = getCurrentVersion();
     // Latest non-faulty store version in Venice store.
-    Version veniceLatestVersion = backend.getVeniceLatestNonFaultyVersion(storeName, faultyVersionSet);
+    Version veniceLatestVersion = getLatestNonFaultyVersion();
     Version targetVersion;
     // Make sure current version in the store config has highest priority.
     if (veniceCurrentVersion != null
@@ -246,7 +260,7 @@ public class StoreBackend {
    * failure.
    */
   synchronized void validateDaVinciAndVeniceCurrentVersion() {
-    Version veniceCurrentVersion = backend.getVeniceCurrentVersion(storeName);
+    Version veniceCurrentVersion = getCurrentVersion();
     if (veniceCurrentVersion != null && daVinciCurrentVersion != null) {
       if (veniceCurrentVersion.getNumber() > daVinciCurrentVersion.getVersion().getNumber()
           && faultyVersionSet.contains(veniceCurrentVersion.getNumber())) {
@@ -294,7 +308,7 @@ public class StoreBackend {
   synchronized void trySwapDaVinciCurrentVersion(Throwable failure) {
     if (daVinciFutureVersion != null) {
       // Fetch current version from store config.
-      Version veniceCurrentVersion = backend.getVeniceCurrentVersion(storeName);
+      Version veniceCurrentVersion = getCurrentVersion();
       if (veniceCurrentVersion == null) {
         LOGGER.warn("Failed to retrieve current version of store: " + storeName);
         return;
@@ -364,5 +378,9 @@ public class StoreBackend {
 
   public StoreDeserializerCache getStoreDeserializerCache() {
     return storeDeserializerCache;
+  }
+
+  protected String getStoreName() {
+    return storeName;
   }
 }

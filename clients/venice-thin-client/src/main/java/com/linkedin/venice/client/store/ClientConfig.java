@@ -33,6 +33,7 @@ public class ClientConfig<T extends SpecificRecord> {
   private String statsPrefix;
   private Class<T> specificValueClass = null;
   private boolean isVsonClient = false;
+  private String viewName;
 
   // D2 specific settings
   private boolean isD2Routing = false;
@@ -92,6 +93,7 @@ public class ClientConfig<T extends SpecificRecord> {
 
         // Basic settings
         .setStoreName(config.getStoreName())
+        .setViewName(config.getViewName())
         .setVeniceURL(config.getVeniceURL())
         .setSpecificValueClass(config.getSpecificValueClass())
         .setVsonClient(config.isVsonClient())
@@ -146,6 +148,15 @@ public class ClientConfig<T extends SpecificRecord> {
 
   public ClientConfig<T> setStoreName(String storeName) {
     this.storeName = storeName;
+    return this;
+  }
+
+  public String getViewName() {
+    return viewName;
+  }
+
+  public ClientConfig<T> setViewName(String viewName) {
+    this.viewName = viewName;
     return this;
   }
 
