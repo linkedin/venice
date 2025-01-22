@@ -1087,7 +1087,8 @@ public class DaVinciClientTest {
         "true",
         Integer.toString(port1),
         Integer.toString(port2),
-        StorageClass.DISK.toString());
+        StorageClass.DISK.toString(),
+        "false");
     // Sleep long enough so the forked Da Vinci app process can finish ingestion.
     Thread.sleep(60000);
     IsolatedIngestionUtils.executeShellCommand("kill " + forkedDaVinciUserApp.pid());
@@ -1162,7 +1163,8 @@ public class DaVinciClientTest {
         "false",
         Integer.toString(port1),
         Integer.toString(port2),
-        StorageClass.DISK.toString());
+        StorageClass.DISK.toString(),
+        "false");
 
     // Wait for the first DaVinci Client to complete ingestion
     Thread.sleep(60000);
@@ -1230,7 +1232,8 @@ public class DaVinciClientTest {
         "false",
         Integer.toString(port1),
         Integer.toString(port2),
-        storageClass);
+        storageClass,
+        "false");
 
     // Wait for the first DaVinci Client to complete ingestion
     Thread.sleep(60000);
