@@ -13,10 +13,11 @@ import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import it.unimi.dsi.fastutil.ints.IntSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 
@@ -55,6 +56,9 @@ public class VenicePartitionFinder implements PartitionFinder<RouterKey> {
 
   @Override
   public int findPartitionNumber(RouterKey partitionKey, int numPartitions, String storeName, int versionNumber) {
+    if (partitionKey.hasPartitionId()) {
+      return partitionKey.getPartitionId();
+    }
     return findPartitioner(storeName, versionNumber).getPartitionId(partitionKey.getKeyBuffer(), numPartitions);
   }
 
@@ -106,15 +110,17 @@ public class VenicePartitionFinder implements PartitionFinder<RouterKey> {
     @Override
     public void handleStoreChanged(Store store) {
       String storeName = store.getName();
-      Set<Integer> upToDateVersionsSet =
-          store.getVersions().stream().map(Version::getNumber).collect(Collectors.toSet());
+      IntSet upToDateVersionsSet = store.getVersionNumbers();
 
       // remove out dated versions (if any) from the map
-      if (storeByVersionByPartitionerMap.containsKey(storeName)) {
-        Map<Integer, VenicePartitioner> versionByPartitionerMap = storeByVersionByPartitionerMap.get(storeName);
-        for (Integer candidateVersion: versionByPartitionerMap.keySet()) {
+      Map<Integer, VenicePartitioner> versionByPartitionerMap = storeByVersionByPartitionerMap.get(storeName);
+      if (versionByPartitionerMap != null) {
+        Iterator<Integer> candidateVersionIterator = versionByPartitionerMap.keySet().iterator();
+        Integer candidateVersion;
+        while (candidateVersionIterator.hasNext()) {
+          candidateVersion = candidateVersionIterator.next();
           if (!upToDateVersionsSet.contains(candidateVersion)) {
-            versionByPartitionerMap.remove(candidateVersion);
+            candidateVersionIterator.remove();
           }
         }
       }

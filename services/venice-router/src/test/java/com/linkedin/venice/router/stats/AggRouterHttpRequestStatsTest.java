@@ -76,7 +76,7 @@ public class AggRouterHttpRequestStatsTest {
         true);
 
     for (int i = 1; i <= 100; i += 1) {
-      stats.recordKeySize("store1", i);
+      stats.recordKeySize(i);
       stats.recordResponseSize("store1", i);
     }
 
