@@ -90,6 +90,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_P
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.PushJobCheckpoints;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -239,6 +240,7 @@ public class VenicePushJob implements AutoCloseable {
 
   // Mutable state
   private ControllerClient controllerClient;
+  private ControllerClient pushJobDetailsSystemStoreControllerClient;
   private ControllerClient kmeSchemaSystemStoreControllerClient;
   private ControllerClient livenessHeartbeatStoreControllerClient;
   private RunningJob runningJob;
@@ -1400,6 +1402,18 @@ public class VenicePushJob implements AutoCloseable {
       LOGGER.info("Controller client has already been initialized");
     }
 
+    if (pushJobDetailsSystemStoreControllerClient == null && pushJobSetting.multiRegion) {
+      pushJobDetailsSystemStoreControllerClient = getControllerClient(
+          VeniceSystemStoreUtils.getPushJobDetailsStoreName(),
+          pushJobSetting.d2Routing,
+          pushJobSetting.childControllerRegionD2ZkHosts,
+          controllerD2ZkHost,
+          sslFactory,
+          pushJobSetting.controllerRetries);
+    } else {
+      LOGGER.info("Push Job details system store child region controller client has already been initialized");
+    }
+
     if (kmeSchemaSystemStoreControllerClient == null) {
       kmeSchemaSystemStoreControllerClient = getControllerClient(
           AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName(),
@@ -1868,11 +1882,23 @@ public class VenicePushJob implements AutoCloseable {
     updatePushJobDetailsWithConfigs();
     updatePushJobDetailsWithLivenessHeartbeatException();
 
+    /**
+     *  This logic is added to migrate push job details system store from Aggregate mode to Active/Active mode.
+     *  If it is multi-region, it will dual write push job details to parent RT and child region RT.
+     *  If it is single-region, it will only write push job details to child region RT.
+     */
+    sendPushJobDetails(controllerClient);
+    if (pushJobDetailsSystemStoreControllerClient != null) {
+      sendPushJobDetails(pushJobDetailsSystemStoreControllerClient);
+    }
+  }
+
+  private void sendPushJobDetails(ControllerClient client) {
     // send push job details to controller
     try {
       pushJobDetails.reportTimestamp = System.currentTimeMillis();
       int version = pushJobSetting.version <= 0 ? UNCREATED_VERSION_NUMBER : pushJobSetting.version;
-      ControllerResponse response = controllerClient.sendPushJobDetails(
+      ControllerResponse response = client.sendPushJobDetails(
           pushJobSetting.storeName,
           version,
           pushJobDetailsSerializer.serialize(null, pushJobDetails));
