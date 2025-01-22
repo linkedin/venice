@@ -650,7 +650,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     int partitionNumber = topicPartition.getPartitionNumber();
 
     if (recordTransformer != null) {
-      recordTransformer.onRecovery(storageEngine, partitionNumber, compressor);
+      recordTransformer.onRecovery(storageEngine, partitionNumber, partitionStateSerializer, compressor);
     }
 
     partitionToPendingConsumerActionCountMap.computeIfAbsent(partitionNumber, x -> new AtomicInteger(0))

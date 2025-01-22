@@ -186,6 +186,15 @@
         "avro.java.string": "String"
       },
       "default": {}
+    },
+    {
+      "name": "recordTransformerClassHash",
+      "doc": "An integer hash code used by the DaVinciRecordTransformer to detect changes to the user's class during bootstrapping.",
+      "type": [
+        "null",
+        "int"
+      ],
+      "default": null
     }
   ]
 }

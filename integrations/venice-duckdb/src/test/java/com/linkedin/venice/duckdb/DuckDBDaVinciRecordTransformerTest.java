@@ -3,6 +3,8 @@ package com.linkedin.venice.duckdb;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.SIMPLE_USER_WITH_DEFAULT_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.SINGLE_FIELD_RECORD_SCHEMA;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
@@ -10,6 +12,11 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.client.DaVinciRecordTransformerUtility;
+import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.File;
@@ -20,6 +27,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Collections;
+import java.util.Optional;
 import java.util.Set;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -31,6 +39,9 @@ import org.testng.annotations.Test;
 
 public class DuckDBDaVinciRecordTransformerTest {
   static final int storeVersion = 1;
+  static final int partitionId = 0;
+  static final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+      AvroProtocolDefinition.PARTITION_STATE.getSerializer();
   static final String storeName = "test_store";
   private final Set<String> columnsToProject = Collections.emptySet();
 
@@ -90,8 +101,17 @@ public class DuckDBDaVinciRecordTransformerTest {
 
       DaVinciRecordTransformerUtility<GenericRecord, GenericRecord> recordTransformerUtility =
           recordTransformer.getRecordTransformerUtility();
-      assertTrue(recordTransformerUtility.hasTransformerLogicChanged(classHash));
-      assertFalse(recordTransformerUtility.hasTransformerLogicChanged(classHash));
+      AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
+
+      OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+      when(storageEngine.getPartitionOffset(partitionId)).thenReturn(Optional.of(offsetRecord));
+
+      assertTrue(
+          recordTransformerUtility
+              .hasTransformerLogicChanged(storageEngine, partitionId, partitionStateSerializer, classHash));
+      assertFalse(
+          recordTransformerUtility
+              .hasTransformerLogicChanged(storageEngine, partitionId, partitionStateSerializer, classHash));
     }
   }
 

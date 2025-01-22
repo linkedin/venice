@@ -23,5 +23,3 @@ _site/
 Gemfile.lock
 .bundles_cache
 docs/vendor/
-clients/da-vinci-client/classHash*.txt
-integrations/venice-duckdb/classHash*.txt
