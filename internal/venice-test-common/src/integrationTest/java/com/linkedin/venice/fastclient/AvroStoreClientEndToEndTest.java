@@ -299,9 +299,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
             .setSpeculativeQueryEnabled(speculativeQueryEnabled)
-            .setDualReadEnabled(dualRead)
-            // this needs to be revisited to see how much this should be set. Current default is 50.
-            .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt);
+            .setDualReadEnabled(dualRead);
     // Test HAR algorithm in this test.
     Set<String> harClusters = new HashSet<>();
     harClusters.add(veniceCluster.getServerD2ServiceName());
@@ -372,7 +370,6 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       } else {
         fastClientStatsValidation = metricsRepository -> validateSingleGetMetrics(metricsRepository, false);
       }
-
       runTest(
           clientConfigBuilder,
           requestType,
@@ -382,7 +379,6 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
           thinClientMetricsRepository,
           dualRead ? Optional.of(genericVsonThinClient) : Optional.empty(),
           storeMetadataFetchMode);
-
     } finally {
       if (genericThinClient != null) {
         genericThinClient.close();

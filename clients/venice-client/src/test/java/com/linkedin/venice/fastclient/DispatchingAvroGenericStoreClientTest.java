@@ -31,6 +31,8 @@ import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
+import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
+import com.linkedin.venice.fastclient.meta.InstanceHealthMonitorConfig;
 import com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.transport.TransportClientResponseForRoute;
@@ -154,23 +156,26 @@ public class DispatchingAvroGenericStoreClientTest {
    * @param transportClientPartialIncomplete responds correct value for the 1st key and not do anything for 2nd key
    * @param mockTransportClient mock the transport client to be able to respond with the actual values or exception.
    *                            If not, the hosts won't be reachable as it's not setup to be reachable.
-   * @param routingLeakedRequestCleanupThresholdMS time to set routingLeakedRequestCleanupThresholdMS client config.
+   * @param routingRequestDefaultTimeOutMS time to set routingRequestDefaultTimeOutMS client config.
    */
   private void setUpClient(
       boolean transportClientThrowsException,
       boolean transportClientThrowsPartialException,
       boolean transportClientPartialIncomplete,
       boolean mockTransportClient,
-      long routingLeakedRequestCleanupThresholdMS) throws InterruptedException {
+      long routingRequestDefaultTimeOutMS) throws InterruptedException {
 
     clientConfigBuilder = new ClientConfig.ClientConfigBuilder<>().setStoreName(STORE_NAME)
         .setR2Client(getMockR2Client(false))
         .setD2Client(mock(D2Client.class))
         .setClusterDiscoveryD2Service("test_server_discovery")
         .setMetadataRefreshIntervalInSeconds(1L)
-        .setRoutingLeakedRequestCleanupThresholdMS(routingLeakedRequestCleanupThresholdMS)
-        .setRoutingPendingRequestCounterInstanceBlockThreshold(1);
-
+        .setInstanceHealthMonitor(
+            new InstanceHealthMonitor(
+                InstanceHealthMonitorConfig.builder()
+                    .setRoutingRequestDefaultTimeoutMS(routingRequestDefaultTimeOutMS)
+                    .setRoutingPendingRequestCounterInstanceBlockThreshold(1)
+                    .build()));
     MetricsRepository metricsRepository = new MetricsRepository();
     metrics = metricsRepository.metrics();
 
