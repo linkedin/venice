@@ -8,10 +8,13 @@ import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.task.ReporterBackedMapReduceDataWriterTaskTracker;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerContext;
@@ -30,7 +33,6 @@ import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RecordReader;
 import org.apache.hadoop.mapred.Reporter;
-import org.apache.kafka.common.TopicPartition;
 
 
 /**
@@ -49,7 +51,7 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
   public static final long DEFAULT_KAFKA_INPUT_MAX_RECORDS_PER_MAPPER = 5000000L;
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
-  protected Map<TopicPartition, Long> getLatestOffsets(JobConf config) {
+  protected Map<PubSubTopicPartition, Long> getLatestOffsets(JobConf config) {
     VeniceProperties consumerProperties = KafkaInputUtils.getConsumerProperties(config);
     TopicManagerContext topicManagerContext =
         new TopicManagerContext.Builder().setPubSubPropertiesSupplier(k -> consumerProperties)
@@ -61,16 +63,16 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
             .build();
     try (TopicManager topicManager =
         new TopicManagerRepository(topicManagerContext, config.get(KAFKA_INPUT_BROKER_URL)).getLocalTopicManager()) {
-      String topic = config.get(KAFKA_INPUT_TOPIC);
-
+      PubSubTopic topic = pubSubTopicRepository.getTopic(config.get(KAFKA_INPUT_TOPIC));
       Map<Integer, Long> latestOffsets = RetryUtils.executeWithMaxAttempt(
-          () -> topicManager.getTopicLatestOffsets(pubSubTopicRepository.getTopic(topic)),
+          () -> topicManager.getTopicLatestOffsets(topic),
           10,
           Duration.ofMinutes(1),
           Arrays.asList(PubSubOpTimeoutException.class));
-      Map<TopicPartition, Long> partitionOffsetMap = new HashMap<>(latestOffsets.size());
+      Map<PubSubTopicPartition, Long> partitionOffsetMap = new HashMap<>(latestOffsets.size());
       latestOffsets.forEach(
-          (partitionId, latestOffset) -> partitionOffsetMap.put(new TopicPartition(topic, partitionId), latestOffset));
+          (partitionId, latestOffset) -> partitionOffsetMap
+              .put(new PubSubTopicPartitionImpl(topic, partitionId), latestOffset));
       return partitionOffsetMap;
     }
   }
@@ -92,7 +94,7 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
   }
 
   public InputSplit[] getSplitsByRecordsPerSplit(JobConf job, long maxRecordsPerSplit) {
-    Map<TopicPartition, Long> latestOffsets = getLatestOffsets(job);
+    Map<PubSubTopicPartition, Long> latestOffsets = getLatestOffsets(job);
     List<InputSplit> splits = new LinkedList<>();
     latestOffsets.forEach((topicPartition, end) -> {
 
@@ -103,7 +105,7 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
       long splitStart = 0;
       while (splitStart < end) {
         long splitEnd = Math.min(splitStart + maxRecordsPerSplit, end);
-        splits.add(new KafkaInputSplit(topicPartition.topic(), topicPartition.partition(), splitStart, splitEnd));
+        splits.add(new KafkaInputSplit(pubSubTopicRepository, topicPartition, splitStart, splitEnd));
         splitStart = splitEnd;
       }
     });
