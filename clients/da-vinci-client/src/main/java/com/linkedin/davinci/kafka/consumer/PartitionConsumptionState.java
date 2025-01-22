@@ -65,6 +65,10 @@ public class PartitionConsumptionState {
 
   private CompletableFuture<Void> lastVTProduceCallFuture;
 
+  enum LatchStatus {
+    NONE, LATCH_CREATED, LATCH_RELEASED
+  }
+
   /**
    * Only used in L/F model. Check if the partition has released the latch.
    * In L/F ingestion task, Optionally, the state model holds a latch that
@@ -74,9 +78,7 @@ public class PartitionConsumptionState {
    * See {@link LeaderFollowerPartitionStateModel} for the
    * details why we need latch for certain resources.
    */
-  private boolean isLatchReleased = false;
-
-  private boolean isLatchCreated = false;
+  private LatchStatus latchStatus = LatchStatus.NONE;
 
   /**
    * This future is completed in drainer thread after persisting the associated record and offset to DB.
@@ -336,19 +338,21 @@ public class PartitionConsumptionState {
   }
 
   public boolean isLatchCreated() {
-    return isLatchCreated;
+    return latchStatus == LatchStatus.LATCH_CREATED || latchStatus == LatchStatus.LATCH_RELEASED;
   }
 
   public void recordLatchCreation() {
-    this.isLatchCreated = true;
+    if (this.latchStatus == LatchStatus.NONE) {
+      this.latchStatus = LatchStatus.LATCH_CREATED;
+    }
   }
 
   public boolean isLatchReleased() {
-    return isLatchReleased;
+    return latchStatus == LatchStatus.LATCH_RELEASED;
   }
 
   public void releaseLatch() {
-    this.isLatchReleased = true;
+    this.latchStatus = LatchStatus.LATCH_RELEASED;
   }
 
   public void errorReported() {
