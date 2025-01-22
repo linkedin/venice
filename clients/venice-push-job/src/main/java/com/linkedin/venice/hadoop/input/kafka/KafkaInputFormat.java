@@ -105,7 +105,7 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
       long splitStart = 0;
       while (splitStart < end) {
         long splitEnd = Math.min(splitStart + maxRecordsPerSplit, end);
-        splits.add(new KafkaInputSplit(topicPartition, splitStart, splitEnd));
+        splits.add(new KafkaInputSplit(pubSubTopicRepository, topicPartition, splitStart, splitEnd));
         splitStart = splitEnd;
       }
     });

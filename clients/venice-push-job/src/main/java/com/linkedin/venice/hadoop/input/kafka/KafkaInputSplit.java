@@ -20,7 +20,7 @@ public class KafkaInputSplit implements InputSplit {
   private long startingOffset;
   private long endingOffset;
   private PubSubTopicPartition topicPartition;
-  private final PubSubTopicRepository topicRepository = new PubSubTopicRepository();
+  private PubSubTopicRepository topicRepository;
 
   /**
    * Nullary Constructor for creating the instance inside the Mapper instance.
@@ -29,14 +29,19 @@ public class KafkaInputSplit implements InputSplit {
   }
 
   /**
-   * Constructs an input split for the provided {@param topic} and {@param partition} restricting data to be between the
-   * {@param startingOffset} and {@param endingOffset}
+   * Constructs an input split for the provided {@param topic} and {@param partition} restricting data to be between
+   * the {@param startingOffset} and {@param endingOffset}
    *
-   * @param topicPartition the topic-partition for the split
+   * @param topicPartition  the topic-partition for the split
    * @param startingOffset the start of the split
    * @param endingOffset   the end of the split
    */
-  public KafkaInputSplit(PubSubTopicPartition topicPartition, long startingOffset, long endingOffset) {
+  public KafkaInputSplit(
+      PubSubTopicRepository topicRepository,
+      PubSubTopicPartition topicPartition,
+      long startingOffset,
+      long endingOffset) {
+    this.topicRepository = topicRepository;
     this.startingOffset = startingOffset;
     this.endingOffset = endingOffset;
     this.topicPartition = topicPartition;
