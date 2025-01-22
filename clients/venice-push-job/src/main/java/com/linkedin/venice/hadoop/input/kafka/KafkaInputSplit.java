@@ -20,12 +20,13 @@ public class KafkaInputSplit implements InputSplit {
   private long startingOffset;
   private long endingOffset;
   private PubSubTopicPartition topicPartition;
-  private PubSubTopicRepository topicRepository;
+  private final PubSubTopicRepository topicRepository;
 
   /**
    * Nullary Constructor for creating the instance inside the Mapper instance.
    */
   public KafkaInputSplit() {
+    topicRepository = new PubSubTopicRepository();
   }
 
   /**
