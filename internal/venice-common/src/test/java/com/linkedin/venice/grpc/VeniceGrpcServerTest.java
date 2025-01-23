@@ -25,7 +25,7 @@ public class VeniceGrpcServerTest {
   @BeforeMethod
   void setUp() {
     serverConfig = new VeniceGrpcServerConfig.Builder().setPort(TestUtils.getFreePort())
-        .setService(new VeniceControllerGrpcServiceTestImpl())
+        .addService(new VeniceControllerGrpcServiceTestImpl())
         .setNumThreads(NUM_THREADS);
   }
 

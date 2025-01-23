@@ -8,6 +8,7 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
+import com.linkedin.venice.controller.grpc.server.StoreGrpcServiceImpl;
 import com.linkedin.venice.controller.grpc.server.interceptor.ControllerGrpcAuditLoggingInterceptor;
 import com.linkedin.venice.controller.grpc.server.interceptor.ControllerGrpcSslSessionInterceptor;
 import com.linkedin.venice.controller.grpc.server.interceptor.ParentControllerRegionValidationInterceptor;
@@ -285,6 +286,9 @@ public class VeniceController {
     interceptors.add(parentControllerRegionValidationInterceptor);
 
     VeniceControllerGrpcServiceImpl grpcService = new VeniceControllerGrpcServiceImpl(unsecureRequestHandler);
+    StoreGrpcServiceImpl storeAclGrpcServiceGrpc = new StoreGrpcServiceImpl(
+        unsecureRequestHandler.getStoreRequestHandler(),
+        unsecureRequestHandler.getControllerAccessManager());
     grpcExecutor = ThreadPoolFactory.createThreadPool(
         multiClusterConfigs.getGrpcServerThreadCount(),
         CONTROLLER_GRPC_SERVER_THREAD_NAME,
@@ -293,7 +297,8 @@ public class VeniceController {
 
     adminGrpcServer = new VeniceGrpcServer(
         new VeniceGrpcServerConfig.Builder().setPort(multiClusterConfigs.getAdminGrpcPort())
-            .setService(grpcService)
+            .addService(grpcService)
+            .addService(storeAclGrpcServiceGrpc)
             .setExecutor(grpcExecutor)
             .setInterceptors(interceptors)
             .build());
@@ -304,9 +309,13 @@ public class VeniceController {
           multiClusterConfigs.getSslConfig().get().getSslProperties(),
           multiClusterConfigs.getSslFactoryClassName());
       VeniceControllerGrpcServiceImpl secureGrpcService = new VeniceControllerGrpcServiceImpl(secureRequestHandler);
+      StoreGrpcServiceImpl secureStoreAclGrpcService = new StoreGrpcServiceImpl(
+          secureRequestHandler.getStoreRequestHandler(),
+          secureRequestHandler.getControllerAccessManager());
       adminSecureGrpcServer = new VeniceGrpcServer(
           new VeniceGrpcServerConfig.Builder().setPort(multiClusterConfigs.getAdminSecureGrpcPort())
-              .setService(secureGrpcService)
+              .addService(secureGrpcService)
+              .addService(secureStoreAclGrpcService)
               .setExecutor(grpcExecutor)
               .setSslFactory(sslFactory)
               .setInterceptors(interceptors)

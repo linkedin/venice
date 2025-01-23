@@ -1,0 +1,61 @@
+syntax = 'proto3';
+package com.linkedin.venice.protocols.controller;
+
+
+import "controller/ControllerGrpcRequestContext.proto";
+
+option java_multiple_files = true;
+
+service StoreGrpcService {
+  rpc createStore(CreateStoreGrpcRequest) returns (CreateStoreGrpcResponse);
+  rpc updateAclForStore(UpdateAclForStoreGrpcRequest) returns (UpdateAclForStoreGrpcResponse);
+  rpc getAclForStore(GetAclForStoreGrpcRequest) returns (GetAclForStoreGrpcResponse);
+  rpc deleteAclForStore(DeleteAclForStoreGrpcRequest) returns (DeleteAclForStoreGrpcResponse);
+  rpc checkResourceCleanupForStoreCreation(ClusterStoreGrpcInfo) returns (ResourceCleanupCheckGrpcResponse) {}
+}
+
+message CreateStoreGrpcRequest {
+  ClusterStoreGrpcInfo storeInfo = 1;
+  string keySchema = 2;
+  string valueSchema = 3;
+  optional string owner = 4;
+  optional bool isSystemStore = 5;
+  optional string accessPermission = 6;
+}
+
+message CreateStoreGrpcResponse {
+  ClusterStoreGrpcInfo storeInfo = 1;
+  string owner = 2;
+}
+
+message UpdateAclForStoreGrpcRequest {
+  ClusterStoreGrpcInfo storeInfo = 1;
+  string accessPermissions = 3;
+}
+
+message UpdateAclForStoreGrpcResponse {
+  ClusterStoreGrpcInfo storeInfo = 1;
+}
+
+message GetAclForStoreGrpcRequest {
+  ClusterStoreGrpcInfo storeInfo = 1;
+}
+
+message GetAclForStoreGrpcResponse {
+  ClusterStoreGrpcInfo storeInfo = 1;
+  string accessPermissions = 2;
+}
+
+message DeleteAclForStoreGrpcRequest {
+  ClusterStoreGrpcInfo storeInfo = 1;
+}
+
+message DeleteAclForStoreGrpcResponse {
+  ClusterStoreGrpcInfo storeInfo = 1;
+}
+
+message ResourceCleanupCheckGrpcResponse {
+  ClusterStoreGrpcInfo storeInfo = 1;
+  bool hasLingeringResources = 2;
+  optional string description = 3;
+}

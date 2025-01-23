@@ -366,12 +366,14 @@ public class AdminSparkServer extends AbstractVeniceService {
         new VeniceParentControllerRegionStateHandler(admin, createVersion.addVersionAndStartIngestion(admin)));
     httpService.post(
         NEW_STORE.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, createStoreRoute.createStore(admin, requestHandler)));
+        new VeniceParentControllerRegionStateHandler(
+            admin,
+            createStoreRoute.createStore(admin, requestHandler.getStoreRequestHandler())));
     httpService.get(
         CHECK_RESOURCE_CLEANUP_FOR_STORE_CREATION.getPath(),
         new VeniceParentControllerRegionStateHandler(
             admin,
-            createStoreRoute.checkResourceCleanupForStoreCreation(admin)));
+            createStoreRoute.checkResourceCleanupForStoreCreation(admin, requestHandler.getStoreRequestHandler())));
     httpService.post(
         DELETE_STORE.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.deleteStore(admin)));
@@ -555,13 +557,19 @@ public class AdminSparkServer extends AbstractVeniceService {
             storesRoutes.enableActiveActiveReplicationForCluster(admin)));
     httpService.post(
         UPDATE_ACL.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, createStoreRoute.updateAclForStore(admin)));
+        new VeniceParentControllerRegionStateHandler(
+            admin,
+            createStoreRoute.updateAclForStore(admin, requestHandler.getStoreRequestHandler())));
     httpService.get(
         GET_ACL.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, createStoreRoute.getAclForStore(admin)));
+        new VeniceParentControllerRegionStateHandler(
+            admin,
+            createStoreRoute.getAclForStore(admin, requestHandler.getStoreRequestHandler())));
     httpService.get(
         DELETE_ACL.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, createStoreRoute.deleteAclForStore(admin)));
+        new VeniceParentControllerRegionStateHandler(
+            admin,
+            createStoreRoute.deleteAclForStore(admin, requestHandler.getStoreRequestHandler())));
     httpService.get(
         GET_DELETABLE_STORE_TOPICS.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getDeletableStoreTopics(admin)));
