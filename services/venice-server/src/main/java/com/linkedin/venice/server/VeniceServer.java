@@ -15,6 +15,7 @@ import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
 import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
+import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
@@ -369,11 +370,15 @@ public class VeniceServer {
       return true;
     });
 
+    HeartbeatMonitoringServiceStats heartbeatMonitoringServiceStats =
+        new HeartbeatMonitoringServiceStats(metricsRepository, clusterConfig.getClusterName());
+
     heartbeatMonitoringService = new HeartbeatMonitoringService(
         metricsRepository,
         metadataRepo,
         serverConfig.getRegionNames(),
-        serverConfig.getRegionName());
+        serverConfig.getRegionName(),
+        null);
     services.add(heartbeatMonitoringService);
 
     this.zkHelixAdmin = Lazy.of(() -> new ZKHelixAdmin(serverConfig.getZookeeperAddress()));

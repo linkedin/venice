@@ -2,6 +2,7 @@ package com.linkedin.davinci.stats.ingestion.heartbeat;
 
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.ReplicaHeartbeatInfo;
+import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -54,13 +55,15 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   // store -> version -> partition -> region -> (timestamp, RTS)
   private final Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> followerHeartbeatTimeStamps;
   private final Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> leaderHeartbeatTimeStamps;
-  HeartbeatVersionedStats versionStatsReporter;
+  private final HeartbeatVersionedStats versionStatsReporter;
+  private final HeartbeatMonitoringServiceStats heartbeatMonitoringServiceStats;
 
   public HeartbeatMonitoringService(
       MetricsRepository metricsRepository,
       ReadOnlyStoreRepository metadataRepository,
       Set<String> regionNames,
-      String localRegionName) {
+      String localRegionName,
+      HeartbeatMonitoringServiceStats heartbeatMonitoringServiceStats) {
     this.regionNames = regionNames.stream().filter(x -> !Utils.isSeparateTopicRegion(x)).collect(Collectors.toSet());
     this.localRegionName = localRegionName;
     this.reportingThread = new HeartbeatReporterThread();
@@ -78,6 +81,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
             regionNames),
         leaderHeartbeatTimeStamps,
         followerHeartbeatTimeStamps);
+    this.heartbeatMonitoringServiceStats = heartbeatMonitoringServiceStats;
   }
 
   private synchronized void initializeEntry(
@@ -443,6 +447,9 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
           break;
         } catch (Exception e) {
           LOGGER.error("Received exception from Ingestion-Heartbeat-Reporter-Service-Thread", e);
+          heartbeatMonitoringServiceStats.recordHeartbeatExceptionCountSensor();
+        } catch (Throwable throwable) {
+          LOGGER.error("Received exception from Ingestion-Heartbeat-Reporter-Service-Thread", throwable);
         }
       }
       LOGGER.info("Heartbeat lag metric reporting thread interrupted!  Shutting down...");
@@ -465,6 +472,10 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
           break;
         } catch (Exception e) {
           LOGGER.error("Received exception from Ingestion-Heartbeat-Lag-Logging-Service-Thread", e);
+          heartbeatMonitoringServiceStats.recordHeartbeatExceptionCountSensor();
+        } catch (Throwable throwable) {
+          LOGGER
+              .error("Received non-exception throwable from Ingestion-Heartbeat-Lag-Logging-Service-Thread", throwable);
         }
       }
       LOGGER.info("Heartbeat lag logging thread interrupted!  Shutting down...");
