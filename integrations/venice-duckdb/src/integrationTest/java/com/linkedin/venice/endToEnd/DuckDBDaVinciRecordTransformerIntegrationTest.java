@@ -37,6 +37,7 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.duckdb.DuckDBDaVinciRecordTransformer;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -91,20 +92,24 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
     clusterConfig.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     clusterConfig.put(PUSH_STATUS_STORE_ENABLED, true);
     clusterConfig.put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 3);
-    cluster = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 100, false, false, clusterConfig);
-    d2Client = new D2ClientBuilder().setZkHosts(cluster.getZk().getAddress())
+    this.cluster = ServiceFactory.getVeniceCluster(
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+            .numberOfServers(2)
+            .numberOfRouters(1)
+            .replicationFactor(2)
+            .extraProperties(clusterConfig)
+            .build());
+    this.d2Client = new D2ClientBuilder().setZkHosts(this.cluster.getZk().getAddress())
         .setZkSessionTimeout(3, TimeUnit.SECONDS)
         .setZkStartupTimeout(3, TimeUnit.SECONDS)
         .build();
-    D2ClientUtils.startClient(d2Client);
+    D2ClientUtils.startClient(this.d2Client);
   }
 
   @AfterClass
   public void cleanUp() {
-    if (d2Client != null) {
-      D2ClientUtils.shutdownClient(d2Client);
-    }
-    Utils.closeQuietlyWithErrorLogged(cluster);
+    D2ClientUtils.shutdownClient(this.d2Client);
+    Utils.closeQuietlyWithErrorLogged(this.cluster);
   }
 
   @BeforeMethod

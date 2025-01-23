@@ -8,7 +8,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.sql.AvroToSQL;
 import com.linkedin.venice.sql.AvroToSQLTest;
-import com.linkedin.venice.sql.InsertProcessor;
+import com.linkedin.venice.sql.PreparedStatementProcessor;
 import com.linkedin.venice.sql.SQLUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import java.io.IOException;
@@ -75,7 +75,8 @@ public class DuckDBAvroToSQLTest {
 
       String upsertStatement = AvroToSQL.upsertStatement(tableName, keySchema, valueSchema, Collections.emptySet());
       System.out.println(upsertStatement);
-      InsertProcessor upsertProcessor = AvroToSQL.upsertProcessor(keySchema, valueSchema, Collections.emptySet());
+      PreparedStatementProcessor upsertProcessor =
+          AvroToSQL.upsertProcessor(keySchema, valueSchema, Collections.emptySet());
       for (int rewriteIteration = 0; rewriteIteration < 3; rewriteIteration++) {
         List<Map.Entry<GenericRecord, GenericRecord>> records = generateRecords(keySchema, valueSchema);
         GenericRecord key, value;
