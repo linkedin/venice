@@ -440,6 +440,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     public void run() {
       while (!Thread.interrupted()) {
         try {
+          heartbeatMonitoringServiceStats.recordReporterHeartbeat();
           record();
           TimeUnit.SECONDS.sleep(DEFAULT_REPORTER_THREAD_SLEEP_INTERVAL_SECONDS);
         } catch (InterruptedException e) {
@@ -447,7 +448,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
           break;
         } catch (Exception e) {
           LOGGER.error("Received exception from Ingestion-Heartbeat-Reporter-Service-Thread", e);
-          heartbeatMonitoringServiceStats.recordHeartbeatExceptionCountSensor();
+          heartbeatMonitoringServiceStats.recordHeartbeatExceptionCount();
         } catch (Throwable throwable) {
           LOGGER.error("Received exception from Ingestion-Heartbeat-Reporter-Service-Thread", throwable);
         }
@@ -465,6 +466,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     public void run() {
       while (!Thread.interrupted()) {
         try {
+          heartbeatMonitoringServiceStats.recordLoggerHeartbeat();
           checkAndMaybeLogHeartbeatDelay();
           TimeUnit.SECONDS.sleep(DEFAULT_LAG_LOGGING_THREAD_SLEEP_INTERVAL_SECONDS);
         } catch (InterruptedException e) {
@@ -472,7 +474,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
           break;
         } catch (Exception e) {
           LOGGER.error("Received exception from Ingestion-Heartbeat-Lag-Logging-Service-Thread", e);
-          heartbeatMonitoringServiceStats.recordHeartbeatExceptionCountSensor();
+          heartbeatMonitoringServiceStats.recordHeartbeatExceptionCount();
         } catch (Throwable throwable) {
           LOGGER
               .error("Received non-exception throwable from Ingestion-Heartbeat-Lag-Logging-Service-Thread", throwable);
