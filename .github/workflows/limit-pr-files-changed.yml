@@ -1,0 +1,70 @@
+name: Enforce Max Lines Changed Per File
+
+on:
+  pull_request:
+    paths:
+      - '**/*.java'  # Monitor changes to Java files only
+
+jobs:
+  enforce-lines-changed:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Get PR Metadata
+        id: pr_details
+        uses: actions-ecosystem/action-get-PR@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check for Override Keyword
+        id: check_override
+        run: |
+          # Define the keyword for override
+          OVERRIDE_KEYWORD="override"
+          
+          # Check PR title and body for the keyword
+          if echo "${{ steps.pr_details.outputs.title }}${{ steps.pr_details.outputs.body }}" | grep -iq "$OVERRIDE_KEYWORD"; then
+            echo "Override keyword found. Skipping validation."
+            echo "override=true" >> $GITHUB_OUTPUT
+          else
+            echo "override=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Calculate Lines Changed Per File
+        id: lines_changed_per_file
+        run: |
+          # Define the maximum allowed lines changed per file
+          MAX_LINES=500
+
+          # Get the diff of the PR and process each file
+          EXCEEDED=false
+          while IFS=$'\t' read -r added removed file; do
+          # Skip test files
+          if [[ "$file" == *Test.java ]]; then
+            echo "Skipping test file: $file"
+            continue
+          fi
+
+          # Calculate total lines changed for the file
+          TOTAL=$((added + removed))
+          echo "File: $file, Lines Changed: $TOTAL"
+
+          # Check if the total exceeds the max allowed
+          if [ "$TOTAL" -gt "$MAX_LINES" ]; then
+            echo "File $file exceeds the maximum allowed lines changed ($TOTAL > $MAX_LINES)"
+            EXCEEDED=true
+          fi
+          done < <(git diff --numstat origin/main | grep '\.java$')
+
+          # Fail if any file exceeded the limit
+          if [ "$EXCEEDED" = true ]; then
+            echo "Some files exceed the maximum allowed lines changed ($MAX_LINES)."
+            exit 1
+          fi
+
+      - name: Notify
+        if: failure()
+        run: |
+          echo "One or more files in the PR exceed the maximum allowed lines changed. Please review and adjust your changes to your files."
