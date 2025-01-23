@@ -378,7 +378,7 @@ public class VeniceServer {
         metadataRepo,
         serverConfig.getRegionNames(),
         serverConfig.getRegionName(),
-        null);
+        heartbeatMonitoringServiceStats);
     services.add(heartbeatMonitoringService);
 
     this.zkHelixAdmin = Lazy.of(() -> new ZKHelixAdmin(serverConfig.getZookeeperAddress()));
