@@ -3,8 +3,6 @@ package com.linkedin.venice.duckdb;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.SIMPLE_USER_WITH_DEFAULT_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.SINGLE_FIELD_RECORD_SCHEMA;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
@@ -12,7 +10,6 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.client.DaVinciRecordTransformerUtility;
-import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -26,7 +23,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Collections;
-import java.util.Optional;
 import java.util.Set;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -89,17 +85,13 @@ public class DuckDBDaVinciRecordTransformerTest {
 
       DaVinciRecordTransformerUtility<GenericRecord, GenericRecord> recordTransformerUtility =
           recordTransformer.getRecordTransformerUtility();
-      AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
-
       OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
-      when(storageEngine.getPartitionOffset(partitionId)).thenReturn(Optional.of(offsetRecord));
 
-      assertTrue(
-          recordTransformerUtility
-              .hasTransformerLogicChanged(storageEngine, partitionId, partitionStateSerializer, classHash));
-      assertFalse(
-          recordTransformerUtility
-              .hasTransformerLogicChanged(storageEngine, partitionId, partitionStateSerializer, classHash));
+      assertTrue(recordTransformerUtility.hasTransformerLogicChanged(classHash, offsetRecord));
+
+      offsetRecord.setRecordTransformerClassHash(classHash);
+
+      assertFalse(recordTransformerUtility.hasTransformerLogicChanged(classHash, offsetRecord));
     }
   }
 

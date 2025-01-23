@@ -12,7 +12,6 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_I
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
@@ -502,13 +501,14 @@ public class DaVinciClientRecordTransformerTest {
     String storeName = Utils.getUniqueString("test-store");
     DaVinciConfig clientConfig = new DaVinciConfig();
 
+    Schema myKeySchema = Schema.create(Schema.Type.INT);
+    Schema myValueSchema = Schema.create(Schema.Type.STRING);
+
+    TestStringRecordTransformer recordTransformer =
+        new TestStringRecordTransformer(1, myKeySchema, myValueSchema, myValueSchema, true);
+
     DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-        (storeVersion, keySchema, inputValueSchema, outputValueSchema) -> new TestStringRecordTransformer(
-            storeVersion,
-            keySchema,
-            inputValueSchema,
-            outputValueSchema,
-            true),
+        (storeVersion, keySchema, inputValueSchema, outputValueSchema) -> recordTransformer,
         String.class,
         Schema.create(Schema.Type.STRING));
     clientConfig.setRecordTransformerConfig(recordTransformerConfig);
@@ -539,7 +539,6 @@ public class DaVinciClientRecordTransformerTest {
 
     PropertyBuilder configBuilder = new PropertyBuilder().put(PERSISTENCE_TYPE, ROCKS_DB)
         .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false")
-        .put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true")
         .put(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "3000")
         .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
@@ -565,11 +564,15 @@ public class DaVinciClientRecordTransformerTest {
         Assert.assertTrue(Files.exists(Paths.get(snapshotPath)));
       }
 
+      // All of the records should have already been transformed due to blob transfer
+      assertEquals(recordTransformer.getTransformInvocationCount(), 0);
+
       // Test single-get access
       for (int k = 1; k <= DEFAULT_USER_DATA_RECORD_COUNT; ++k) {
         Object valueObj = client2.get(k).get();
         String expectedValue = "name " + k + "Transformed";
         assertEquals(valueObj.toString(), expectedValue);
+        assertEquals(recordTransformer.get(k), expectedValue);
       }
     }
   }

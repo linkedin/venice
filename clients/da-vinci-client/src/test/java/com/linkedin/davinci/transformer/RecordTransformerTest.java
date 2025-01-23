@@ -62,17 +62,13 @@ public class RecordTransformerTest {
 
     DaVinciRecordTransformerUtility<Integer, String> recordTransformerUtility =
         recordTransformer.getRecordTransformerUtility();
-    AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
-
     OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
-    when(storageEngine.getPartitionOffset(partitionId)).thenReturn(Optional.of(offsetRecord));
 
-    assertTrue(
-        recordTransformerUtility
-            .hasTransformerLogicChanged(storageEngine, partitionId, partitionStateSerializer, classHash));
-    assertFalse(
-        recordTransformerUtility
-            .hasTransformerLogicChanged(storageEngine, partitionId, partitionStateSerializer, classHash));
+    assertTrue(recordTransformerUtility.hasTransformerLogicChanged(classHash, offsetRecord));
+
+    offsetRecord.setRecordTransformerClassHash(classHash);
+
+    assertFalse(recordTransformerUtility.hasTransformerLogicChanged(classHash, offsetRecord));
   }
 
   @Test

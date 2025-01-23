@@ -12,6 +12,7 @@ import org.apache.avro.util.Utf8;
 
 public class TestStringRecordTransformer extends DaVinciRecordTransformer<Integer, String, String> {
   private final Map<Integer, String> inMemoryDB = new HashMap<>();
+  private int transformInvocationCount = 0;
 
   public TestStringRecordTransformer(
       int storeVersion,
@@ -26,6 +27,7 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
   public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<String> value) {
     String valueStr = convertUtf8ToString(value.get());
     String transformedValue = valueStr + "Transformed";
+    transformInvocationCount++;
     return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.TRANSFORMED, transformedValue);
   }
 
@@ -60,6 +62,10 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
 
   public void put(Integer key, String value) {
     inMemoryDB.put(key, value);
+  }
+
+  public int getTransformInvocationCount() {
+    return transformInvocationCount;
   }
 
   @Override

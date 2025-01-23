@@ -11,7 +11,6 @@ import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Objects;
 import java.util.Optional;
 import org.apache.avro.Schema;
 
@@ -80,21 +79,12 @@ public class DaVinciRecordTransformerUtility<K, O> {
   /**
    * @return true if transformer logic has changed since the last time the class was loaded
    */
-  public boolean hasTransformerLogicChanged(
-      AbstractStorageEngine storageEngine,
-      int partitionId,
-      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
-      int currentClassHash) {
-    Optional<OffsetRecord> optionalOffsetRecord = storageEngine.getPartitionOffset(partitionId);
-    OffsetRecord offsetRecord = optionalOffsetRecord.orElseGet(() -> new OffsetRecord(partitionStateSerializer));
+  public boolean hasTransformerLogicChanged(int currentClassHash, OffsetRecord offsetRecord) {
     Integer persistedClassHash = offsetRecord.getRecordTransformerClassHash();
 
-    if (Objects.equals(persistedClassHash, currentClassHash)) {
+    if (persistedClassHash != null && persistedClassHash == currentClassHash) {
       return false;
     }
-
-    offsetRecord.setRecordTransformerClassHash(currentClassHash);
-    storageEngine.putPartitionOffset(partitionId, offsetRecord);
     return true;
   }
 
@@ -107,12 +97,19 @@ public class DaVinciRecordTransformerUtility<K, O> {
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       Lazy<VeniceCompressor> compressor) {
     int classHash = recordTransformer.getClassHash();
-    boolean transformerLogicChanged =
-        hasTransformerLogicChanged(storageEngine, partitionId, partitionStateSerializer, classHash);
+    Optional<OffsetRecord> optionalOffsetRecord = storageEngine.getPartitionOffset(partitionId);
+    OffsetRecord offsetRecord = optionalOffsetRecord.orElseGet(() -> new OffsetRecord(partitionStateSerializer));
+
+    boolean transformerLogicChanged = hasTransformerLogicChanged(classHash, offsetRecord);
 
     if (!recordTransformer.getStoreRecordsInDaVinci() || transformerLogicChanged) {
       // Bootstrap from VT
       storageEngine.clearPartitionOffset(partitionId);
+
+      // Offset record is deleted, so create a new one and persist it
+      offsetRecord = new OffsetRecord(partitionStateSerializer);
+      offsetRecord.setRecordTransformerClassHash(classHash);
+      storageEngine.putPartitionOffset(partitionId, offsetRecord);
     } else {
       // Bootstrap from local storage
       AbstractStorageIterator iterator = storageEngine.getIterator(partitionId);

@@ -323,7 +323,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final Schema recordTransformerInputValueSchema;
   private final AvroGenericDeserializer recordTransformerKeyDeserializer;
   private final SparseConcurrentList<AvroGenericDeserializer> recordTransformerDeserializersByPutSchemaId;
-  private DaVinciRecordTransformer recordTransformer;
+  private BlockingDaVinciRecordTransformer recordTransformer;
 
   protected final String localKafkaServer;
   protected final int localKafkaClusterId;
@@ -493,6 +493,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           clientRecordTransformer.getStoreRecordsInDaVinci());
       this.recordTransformerDeserializersByPutSchemaId = new SparseConcurrentList<>();
 
+      // LOGGER.info("DVRT Class Hash: " + this.recordTransformer.getClassHash());
+
       versionedIngestionStats.registerTransformerLatencySensor(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleStartLatency(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleEndLatency(storeName, versionNumber);
@@ -650,7 +652,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     int partitionNumber = topicPartition.getPartitionNumber();
 
     if (recordTransformer != null) {
-      recordTransformer.onRecovery(storageEngine, partitionNumber, partitionStateSerializer, compressor);
+      // recordTransformer.onRecovery(storageEngine, partitionNumber, partitionStateSerializer, compressor);
+      recordTransformer.internalOnRecovery(storageEngine, partitionNumber, partitionStateSerializer, compressor);
     }
 
     partitionToPendingConsumerActionCountMap.computeIfAbsent(partitionNumber, x -> new AtomicInteger(0))
