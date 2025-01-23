@@ -3661,9 +3661,9 @@ public class VeniceParentHelixAdmin implements Admin {
         Store parentStore = repository.getStore(storeName);
         Version version = parentStore.getVersion(versionNum);
         boolean isDeferredSwap = version != null && version.isVersionSwapDeferred();
-        if (!isDeferredSwap) {
-          // targetedRegions is non-empty for target region push of batch store
-          boolean isTargetRegionPush = !StringUtils.isEmpty(targetedRegions);
+        // targetedRegions is non-empty for target region push of batch store
+        boolean isTargetRegionPush = !StringUtils.isEmpty(targetedRegions);
+        if (!isDeferredSwap || isDeferredSwap && isTargetRegionPush) {
           Version storeVersion = parentStore.getVersion(versionNum);
           boolean isVersionPushed = storeVersion != null && storeVersion.getStatus().equals(PUSHED);
           boolean isHybridStore = storeVersion != null && storeVersion.getHybridStoreConfig() != null;
@@ -3683,13 +3683,26 @@ public class VeniceParentHelixAdmin implements Admin {
                 currentReturnStatus,
                 currentReturnStatusDetails);
           }
-          // status PUSHED is set when batch store's target region push is completed, but other region are yet to
-          // complete
-          if (isTargetRegionPush && !isVersionPushed) {
-            parentStore.updateVersionStatus(versionNum, PUSHED);
-            repository.updateStore(parentStore);
-          } else { // status ONLINE is set when all region finishes ingestion for either regular or target region push.
+
+          /**
+           * Check if the latest version is online and is completed in all regions.
+           * If it is online in all regions, set parent version status to ONLINE
+           * Otherwise, set parent version status to PUSHED
+           */
+          Map<String, Integer> currentVersionsToColo = getCurrentVersionsForMultiColos(clusterName, storeName);
+          int latestVersionNum = parentStore.getLargestUsedVersionNumber();
+          boolean isLatestVersionOnlineInAllRegions = true;
+          for (String region: currentVersionsToColo.keySet()) {
+            if (currentVersionsToColo.get(region) != latestVersionNum) {
+              isLatestVersionOnlineInAllRegions = false;
+            }
+          }
+
+          if (isLatestVersionOnlineInAllRegions) {
             parentStore.updateVersionStatus(versionNum, ONLINE);
+            repository.updateStore(parentStore);
+          } else {
+            parentStore.updateVersionStatus(versionNum, PUSHED);
             repository.updateStore(parentStore);
           }
         }

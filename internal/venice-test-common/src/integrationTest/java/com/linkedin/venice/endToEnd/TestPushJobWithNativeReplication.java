@@ -30,14 +30,7 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRe
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.*;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 
@@ -77,6 +70,7 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -794,6 +788,11 @@ public class TestPushJobWithNativeReplication {
             });
           }
 
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+            StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
+            Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.ONLINE);
+          });
+
           // start target version push with deferred swap
           props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
           try (VenicePushJob job = new VenicePushJob("Test target region push w. deferred version swap", props)) {
@@ -812,6 +811,52 @@ public class TestPushJobWithNativeReplication {
               });
             });
           }
+
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+            StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
+            Assert.assertEquals(parentStore.getVersion(2).get().getStatus(), VersionStatus.PUSHED);
+          });
+        });
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testParentVersionStatusForDeferredSwap() throws Exception {
+    motherOfAllTests(
+        "testTargetRegionPushWithDeferredVersionSwap",
+        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
+        100,
+        (parentControllerClient, clusterName, storeName, props, inputDir) -> {
+
+          // Test a regular push job
+          try (VenicePushJob job = new VenicePushJob("Test regular push job", props)) {
+            job.run();
+
+            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+              for (int version: parentControllerClient.getStore(storeName)
+                  .getStore()
+                  .getColoToCurrentVersions()
+                  .values()) {
+                Assert.assertEquals(version, 1);
+              }
+            });
+          }
+
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+            StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
+            Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.ONLINE);
+          });
+
+          // Test a target region push job w/ deferred version swap
+          props.put(DEFER_VERSION_SWAP, true);
+          try (VenicePushJob job = new VenicePushJob("Test deferred version swap", props)) {
+            job.run();
+          }
+
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+            StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
+            Assert.assertEquals(parentStore.getVersion(2).get().getStatus(), VersionStatus.STARTED);
+          });
         });
   }
 
