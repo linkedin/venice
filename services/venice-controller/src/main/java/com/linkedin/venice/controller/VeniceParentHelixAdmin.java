@@ -3663,7 +3663,7 @@ public class VeniceParentHelixAdmin implements Admin {
         boolean isDeferredSwap = version != null && version.isVersionSwapDeferred();
         // targetedRegions is non-empty for target region push of batch store
         boolean isTargetRegionPush = !StringUtils.isEmpty(targetedRegions);
-        if (!isDeferredSwap || isDeferredSwap && isTargetRegionPush) {
+        if (!isDeferredSwap || isTargetRegionPush) {
           Version storeVersion = parentStore.getVersion(versionNum);
           boolean isVersionPushed = storeVersion != null && storeVersion.getStatus().equals(PUSHED);
           boolean isHybridStore = storeVersion != null && storeVersion.getHybridStoreConfig() != null;
@@ -3692,8 +3692,8 @@ public class VeniceParentHelixAdmin implements Admin {
           Map<String, Integer> currentVersionsToColo = getCurrentVersionsForMultiColos(clusterName, storeName);
           int latestVersionNum = parentStore.getLargestUsedVersionNumber();
           boolean isLatestVersionOnlineInAllRegions = true;
-          for (String region: currentVersionsToColo.keySet()) {
-            if (currentVersionsToColo.get(region) != latestVersionNum) {
+          for (Map.Entry<String, Integer> entry: currentVersionsToColo.entrySet()) {
+            if (currentVersionsToColo.get(entry.getKey()) != latestVersionNum) {
               isLatestVersionOnlineInAllRegions = false;
             }
           }
