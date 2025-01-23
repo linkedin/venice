@@ -42,7 +42,7 @@ jobs:
           EXCEEDED=false
           while IFS=$'\t' read -r added removed file; do
           # Skip test files
-          if [[ "$file" == *Test.java ]]; then
+          if [[ "${file,,}" == *test.java ]]; then
             echo "Skipping test file: $file"
             continue
           fi
