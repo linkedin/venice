@@ -493,8 +493,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           clientRecordTransformer.getStoreRecordsInDaVinci());
       this.recordTransformerDeserializersByPutSchemaId = new SparseConcurrentList<>();
 
-      // LOGGER.info("DVRT Class Hash: " + this.recordTransformer.getClassHash());
-
       versionedIngestionStats.registerTransformerLatencySensor(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleStartLatency(storeName, versionNumber);
       versionedIngestionStats.registerTransformerLifecycleEndLatency(storeName, versionNumber);
@@ -652,7 +650,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     int partitionNumber = topicPartition.getPartitionNumber();
 
     if (recordTransformer != null) {
-      // recordTransformer.onRecovery(storageEngine, partitionNumber, partitionStateSerializer, compressor);
       recordTransformer.internalOnRecovery(storageEngine, partitionNumber, partitionStateSerializer, compressor);
     }
 
