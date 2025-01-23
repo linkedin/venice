@@ -4,13 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.reset;
-import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
@@ -59,7 +53,7 @@ public class VeniceLeaderFollowerStateModelTest extends
   public void testOnBecomeFollowerFromOffline() throws Exception {
     // if the resource is not the current serving version, latch is not placed.
     Version version = new VersionImpl("mockStore.getName()", 2, "");
-    when(mockStore.getVersion(Mockito.anyInt())).thenReturn(version);
+    when(mockStore.getVersion(anyInt())).thenReturn(version);
     when(mockStore.getCurrentVersion()).thenReturn(2);
     testStateModel.onBecomeStandbyFromOffline(mockMessage, mockContext);
     verify(mockNotifier, never()).waitConsumptionCompleted(
@@ -67,6 +61,7 @@ public class VeniceLeaderFollowerStateModelTest extends
         testPartition,
         Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS,
         mockStoreIngestionService);
+    verify(mockStoreIngestionService, never()).recordLatchCreation(anyString(), anyInt());
 
     when(mockSystemStore.getCurrentVersion()).thenReturn(2);
     testStateModel.onBecomeStandbyFromOffline(mockSystemStoreMessage, mockContext);
@@ -75,6 +70,7 @@ public class VeniceLeaderFollowerStateModelTest extends
         testPartition,
         Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS,
         mockStoreIngestionService);
+    verify(mockStoreIngestionService, never()).recordLatchCreation(anyString(), anyInt());
 
     // When serving current version system store, it should have latch in place.
     when(mockSystemStore.getCurrentVersion()).thenReturn(1);
@@ -84,6 +80,7 @@ public class VeniceLeaderFollowerStateModelTest extends
         testPartition,
         Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS,
         mockStoreIngestionService);
+    verify(mockStoreIngestionService, times(1)).recordLatchCreation(anyString(), anyInt());
 
     when(mockStore.getCurrentVersion()).thenReturn(1);
     testStateModel.onBecomeStandbyFromOffline(mockMessage, mockContext);
@@ -93,6 +90,7 @@ public class VeniceLeaderFollowerStateModelTest extends
         testPartition,
         Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS,
         mockStoreIngestionService);
+    verify(mockStoreIngestionService, times(2)).recordLatchCreation(anyString(), anyInt());
   }
 
   @Test

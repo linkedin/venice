@@ -735,7 +735,7 @@ class TopicMetadataFetcher implements Closeable {
         cache.remove(key);
 
         T cachedContents = (cachedValue != null) ? cachedValue.getValue() : null;
-        LOGGER.error("Failed to update cachedValue for key: {} cachedValue: {}", key, cachedContents, throwable);
+        LOGGER.warn("Failed to update cachedValue for key: {} cachedValue: {}", key, cachedContents, throwable);
         return;
       }
       putLatestValueInCache(key, value, cache);
