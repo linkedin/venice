@@ -1,5 +1,6 @@
 package com.linkedin.venice.fastclient.meta;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
@@ -38,6 +39,8 @@ public class HelixScatterGatherRoutingStrategyTest {
   @BeforeMethod
   public void setUp() {
     instanceHealthMonitor = mock(InstanceHealthMonitor.class);
+    doReturn(false).when(instanceHealthMonitor).isInstanceBlocked(any());
+    doReturn(true).when(instanceHealthMonitor).isInstanceHealthy(any());
   }
 
   public void runTest(List<String> replicas, long requestId, int requiredReplicaCount, List<String> expectedReplicas) {

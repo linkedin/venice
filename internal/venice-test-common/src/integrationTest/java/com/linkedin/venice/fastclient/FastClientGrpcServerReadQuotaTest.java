@@ -7,6 +7,8 @@ import static org.testng.Assert.fail;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
+import com.linkedin.venice.fastclient.meta.InstanceHealthMonitorConfig;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.utils.SslUtils;
@@ -35,7 +37,13 @@ public class FastClientGrpcServerReadQuotaTest extends AbstractClientEndToEndSet
             .setR2Client(r2Client)
             .setUseGrpc(true)
             .setGrpcClientConfig(grpcClientConfig)
-            .setSpeculativeQueryEnabled(false);
+            .setSpeculativeQueryEnabled(false)
+            .setInstanceHealthMonitor(
+                new InstanceHealthMonitor(
+                    InstanceHealthMonitorConfig.builder()
+                        .setClient(r2Client)
+                        .setRoutingRequestDefaultTimeoutMS(10000)
+                        .build()));
 
     AvroGenericStoreClient<String, GenericRecord> genericFastClient = getGenericFastClient(
         clientConfigBuilder,
