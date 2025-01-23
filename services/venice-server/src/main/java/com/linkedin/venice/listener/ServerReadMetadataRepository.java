@@ -180,7 +180,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
         for (Map.Entry<CharSequence, CharSequence> entry: valueSchemas.entrySet()) {
           int schemaId = Integer.parseInt(entry.getKey().toString());
           if (schemaId > largestKnownSchemaId.get()) {
-            storeValueSchemas.put(schemaId, entry.getValue());
+            storeValueSchemas.valueSchemaMap.put(Integer.toString(schemaId), entry.getValue());
           }
         }
       } else {
