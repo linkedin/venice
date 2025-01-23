@@ -11,6 +11,7 @@ import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.fastclient.transport.R2TransportClient;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.concurrent.ChainedCompletableFuture;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
@@ -40,6 +41,8 @@ import org.apache.logging.log4j.Logger;
  * 5. Fast Client won't send user requests to the blocked instances and unhealthy instances.
  */
 public class InstanceHealthMonitor implements Closeable {
+  private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
   private static final Logger LOGGER = LogManager.getLogger(InstanceHealthMonitor.class);
   private final InstanceHealthMonitorConfig config;
 
@@ -165,12 +168,13 @@ public class InstanceHealthMonitor implements Closeable {
           /** Using a special http status to indicate the timed out request */
           () -> {
             transportFuture.completeExceptionally(new VeniceClientHttpException("Request timed out", SC_GONE));
-            // TODO: maybe remove this log as the logging frequency can be high
-            LOGGER.warn(
-                "Request to instance: {} timed out after {} ms, will start sending heart-beat to this"
-                    + " instance to check whether it is healthy or not",
+            String logMessage = String.format(
+                "Request to instance: %s timed out after %d ms, will start sending heart-beat to this instance to check whether it is healthy or not",
                 instance,
                 config.getRoutingRequestDefaultTimeoutMS());
+            if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(logMessage)) {
+              LOGGER.warn(logMessage);
+            }
             suspiciousInstanceSet.add(instance);
           },
           config.getRoutingRequestDefaultTimeoutMS(),

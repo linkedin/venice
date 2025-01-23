@@ -60,7 +60,7 @@ public class InstanceHealthMonitorConfig {
 
     private long routingTimedOutRequestCounterResetDelayMS = 10000; // 10s
 
-    private long heartBeatIntervalSeconds = 60;
+    private long heartBeatIntervalSeconds = 30;
     private long heartBeatRequestTimeoutMS = 10000;
 
     private Client client;
