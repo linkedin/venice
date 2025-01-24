@@ -5,11 +5,13 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.adapter.kafka.TopicPartitionsOffsetsTracker;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
@@ -29,6 +31,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import javax.annotation.Nonnull;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -88,8 +91,9 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   /**
-   * Subscribe to a topic-partition if not already subscribed. If the topic-partition is already subscribed, this
-   * method is a no-op. This method requires the topic-partition to exist.
+   * Subscribes to a topic-partition if not already subscribed. If the topic-partition is already subscribed,
+   * this method is a no-op.
+   *
    * @param pubSubTopicPartition the topic-partition to subscribe to
    * @param lastReadOffset the last read offset for the topic-partition
    * @throws IllegalArgumentException if the topic-partition is null or the partition number is negative
@@ -97,45 +101,88 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
    */
   @Override
   public void subscribe(PubSubTopicPartition pubSubTopicPartition, long lastReadOffset) {
-    String topic = pubSubTopicPartition.getPubSubTopic().getName();
-    int partition = pubSubTopicPartition.getPartitionNumber();
-    TopicPartition topicPartition = new TopicPartition(topic, partition);
-    Set<TopicPartition> topicPartitionSet = kafkaConsumer.assignment();
-    if (topicPartitionSet.contains(topicPartition)) {
-      LOGGER.warn("Already subscribed to topic-partition:{}, ignoring subscription request", pubSubTopicPartition);
+    subscribe(
+        pubSubTopicPartition,
+        (lastReadOffset <= OffsetRecord.LOWEST_OFFSET)
+            ? PubSubPosition.EARLIEST
+            : new ApacheKafkaOffsetPosition(lastReadOffset));
+  }
+
+  /**
+   * Subscribes to a topic-partition if not already subscribed. If the topic-partition is already subscribed,
+   * this method is a no-op.
+   *
+   * @param pubSubTopicPartition the topic-partition to subscribe to
+   * @param lastReadPubSubPosition the last known position for the topic-partition
+   * @throws IllegalArgumentException if lastReadPubSubPosition is invalid
+   * @throws PubSubTopicDoesNotExistException if the topic does not exist
+   */
+  @Override
+  public void subscribe(
+      @Nonnull PubSubTopicPartition pubSubTopicPartition,
+      @Nonnull PubSubPosition lastReadPubSubPosition) {
+    if (lastReadPubSubPosition == null) {
+      LOGGER
+          .error("Failed to subscribe to topic-partition: {} because last read position is null", pubSubTopicPartition);
+      throw new IllegalArgumentException("Last read position cannot be null");
+    }
+    if (lastReadPubSubPosition != PubSubPosition.EARLIEST && lastReadPubSubPosition != PubSubPosition.LATEST
+        && !(lastReadPubSubPosition instanceof ApacheKafkaOffsetPosition)) {
+      LOGGER.error(
+          "Failed to subscribe to topic-partition: {} because last read position type: {} is not supported with consumer type: {}",
+          pubSubTopicPartition,
+          lastReadPubSubPosition.getClass().getName(),
+          ApacheKafkaConsumerAdapter.class.getName());
+      throw new IllegalArgumentException(
+          "Last read position must be an instance of " + ApacheKafkaOffsetPosition.class.getName() + " as consumer is "
+              + ApacheKafkaConsumerAdapter.class.getName() + " but it is "
+              + lastReadPubSubPosition.getClass().getName());
+    }
+
+    TopicPartition topicPartition = toKafkaTopicPartition(pubSubTopicPartition);
+    if (kafkaConsumer.assignment().contains(topicPartition)) {
+      LOGGER.warn(
+          "Already subscribed to topic-partition:{}, ignoring subscription request with position: {}",
+          pubSubTopicPartition,
+          lastReadPubSubPosition);
       return;
     }
 
-    // Check if the topic-partition exists
+    validateTopicExistence(pubSubTopicPartition);
+
+    List<TopicPartition> topicPartitionList = new ArrayList<>(kafkaConsumer.assignment());
+    topicPartitionList.add(topicPartition);
+    kafkaConsumer.assign(topicPartitionList);
+
+    String logMessage;
+    if (lastReadPubSubPosition == PubSubPosition.EARLIEST) {
+      kafkaConsumer.seekToBeginning(Collections.singletonList(topicPartition));
+      logMessage = PubSubPosition.EARLIEST.toString();
+    } else if (lastReadPubSubPosition == PubSubPosition.LATEST) {
+      kafkaConsumer.seekToEnd(Collections.singletonList(topicPartition));
+      logMessage = PubSubPosition.LATEST.toString();
+    } else {
+      ApacheKafkaOffsetPosition kafkaOffsetPosition = (ApacheKafkaOffsetPosition) lastReadPubSubPosition;
+      long consumptionStartOffset = kafkaOffsetPosition.getOffset() + 1;
+      kafkaConsumer.seek(topicPartition, consumptionStartOffset);
+      logMessage = "" + consumptionStartOffset;
+    }
+    assignments.put(topicPartition, pubSubTopicPartition);
+    LOGGER.info("Subscribed to topic-partition: {} from position: {}", pubSubTopicPartition, logMessage);
+
+    assignments.put(topicPartition, pubSubTopicPartition);
+    LOGGER.info("Subscribed to topic-partition: {} from position: {}", pubSubTopicPartition, lastReadPubSubPosition);
+  }
+
+  private TopicPartition toKafkaTopicPartition(PubSubTopicPartition topicPartition) {
+    return new TopicPartition(topicPartition.getPubSubTopic().getName(), topicPartition.getPartitionNumber());
+  }
+
+  private void validateTopicExistence(PubSubTopicPartition pubSubTopicPartition) {
     if (config.shouldCheckTopicExistenceBeforeConsuming() && !isValidTopicPartition(pubSubTopicPartition)) {
       LOGGER.error("Cannot subscribe to topic-partition: {} because it does not exist", pubSubTopicPartition);
       throw new PubSubTopicDoesNotExistException(pubSubTopicPartition.getPubSubTopic());
     }
-
-    List<TopicPartition> topicPartitionList = new ArrayList<>(topicPartitionSet);
-    topicPartitionList.add(topicPartition);
-    kafkaConsumer.assign(topicPartitionList); // add the topic-partition to the subscription
-    // Use the last read offset to seek to the next offset to read.
-    long consumptionStartOffset = lastReadOffset <= OffsetRecord.LOWEST_OFFSET ? 0 : lastReadOffset + 1;
-    if (lastReadOffset <= OffsetRecord.LOWEST_OFFSET) {
-      if (lastReadOffset < OffsetRecord.LOWEST_OFFSET) {
-        LOGGER.warn(
-            "Last read offset: {} for topic-partition: {} is less than the lowest offset: {}, seeking to beginning."
-                + " This may indicate an off-by-one error.",
-            lastReadOffset,
-            pubSubTopicPartition,
-            OffsetRecord.LOWEST_OFFSET);
-      }
-      kafkaConsumer.seekToBeginning(Collections.singletonList(topicPartition));
-    } else {
-      kafkaConsumer.seek(topicPartition, consumptionStartOffset);
-    }
-    assignments.put(topicPartition, pubSubTopicPartition);
-    LOGGER.info(
-        "Subscribed to topic-partition: {} at offset: {} and last read offset was: {}",
-        pubSubTopicPartition,
-        consumptionStartOffset,
-        lastReadOffset);
   }
 
   // visible for testing
@@ -357,11 +404,34 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     return topicPartitionsOffsetsTracker != null ? topicPartitionsOffsetsTracker.getOffsetLag(topic, partition) : -1;
   }
 
+  /**
+   * Returns the latest offset for the given topic-partition. The latest offsets are derived from the lag metric
+   * and may be outdated or imprecise.
+   *
+   * @param pubSubTopicPartition the topic-partition for which the latest offset is requested
+   * @return the latest offset, or -1 if tracking is unavailable
+   */
   @Override
   public long getLatestOffset(PubSubTopicPartition pubSubTopicPartition) {
     String topic = pubSubTopicPartition.getPubSubTopic().getName();
     int partition = pubSubTopicPartition.getPartitionNumber();
     return topicPartitionsOffsetsTracker != null ? topicPartitionsOffsetsTracker.getEndOffset(topic, partition) : -1;
+  }
+
+  /**
+   * Returns the latest position for the given topic-partition. The latest offsets are derived from the lag metric
+   * and may be outdated or imprecise.
+   *
+   * @param pubSubTopicPartition the topic-partition for which the latest position is requested
+   * @return the latest position as a {@link PubSubPosition}, or {@link PubSubPosition#LATEST} if tracking is unavailable
+   */
+  @Override
+  public PubSubPosition getLatestPosition(PubSubTopicPartition pubSubTopicPartition) {
+    return topicPartitionsOffsetsTracker != null
+        ? new ApacheKafkaOffsetPosition(
+            topicPartitionsOffsetsTracker
+                .getEndOffset(pubSubTopicPartition.getTopicName(), pubSubTopicPartition.getPartitionNumber()))
+        : PubSubPosition.LATEST;
   }
 
   /**
@@ -397,6 +467,11 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   @Override
+  public PubSubPosition positionForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout) {
+    throw new UnsupportedOperationException("positionForTime is not supported in Apache Kafka consumer");
+  }
+
+  @Override
   public Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
     try {
       TopicPartition topicPartition = new TopicPartition(
@@ -424,6 +499,11 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   @Override
+  public PubSubPosition positionForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
+    return null;
+  }
+
+  @Override
   public Long beginningOffset(PubSubTopicPartition pubSubTopicPartition, Duration timeout) {
     TopicPartition kafkaTp =
         new TopicPartition(pubSubTopicPartition.getPubSubTopic().getName(), pubSubTopicPartition.getPartitionNumber());
@@ -434,6 +514,11 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     } catch (Exception e) {
       throw new PubSubClientException("Exception while getting beginning offset for " + kafkaTp, e);
     }
+  }
+
+  @Override
+  public PubSubPosition beginningPosition(PubSubTopicPartition pubSubTopicPartition, Duration timeout) {
+    return null;
   }
 
   @Override
@@ -462,6 +547,13 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   @Override
+  public Map<PubSubTopicPartition, PubSubPosition> endPositions(
+      Collection<PubSubTopicPartition> partitions,
+      Duration timeout) {
+    throw new UnsupportedOperationException("endPositions is not supported in Apache Kafka consumer");
+  }
+
+  @Override
   public Long endOffset(PubSubTopicPartition pubSubTopicPartition) {
     try {
       TopicPartition topicPartition = new TopicPartition(
@@ -479,6 +571,11 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     } catch (Exception e) {
       throw new PubSubClientException("Failed to fetch end offset for " + pubSubTopicPartition, e);
     }
+  }
+
+  @Override
+  public PubSubPosition endPosition(PubSubTopicPartition pubSubTopicPartition) {
+    return null;
   }
 
   /**
