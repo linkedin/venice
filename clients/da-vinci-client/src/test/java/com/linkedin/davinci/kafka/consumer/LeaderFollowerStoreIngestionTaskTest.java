@@ -66,7 +66,7 @@ import org.testng.annotations.Test;
 
 public class LeaderFollowerStoreIngestionTaskTest {
   Store mockStore;
-  private LeaderFollowerStoreIngestionTask ingestionTask;
+  private LeaderFollowerStoreIngestionTask leaderFollowerStoreIngestionTask;
   private PartitionConsumptionState mockPartitionConsumptionState;
   private PubSubTopicPartition mockTopicPartition;
   private ConsumerAction mockConsumerAction;
@@ -255,19 +255,19 @@ public class LeaderFollowerStoreIngestionTaskTest {
     when(mockPartitionConsumptionState.getVeniceWriterLazyRef()).thenReturn(null);
     when(mockPartitionConsumptionState.getLeaderFollowerState()).thenReturn(LeaderFollowerStateType.LEADER);
 
-    ingestionTask.processConsumerAction(mockConsumerAction, mockStore);
+    leaderFollowerStoreIngestionTask.processConsumerAction(mockConsumerAction, mockStore);
     verify(mockPartitionConsumptionState, times(1)).setLeaderFollowerState(LeaderFollowerStateType.STANDBY);
 
     // case 2: VeniceWriter is set, but not initialized, closePartition is not invoked.
     VeniceWriter mockWriter = mock(VeniceWriter.class);
     Lazy<VeniceWriter<byte[], byte[], byte[]>> lazyMockWriter = Lazy.of(() -> mockWriter);
     when(mockPartitionConsumptionState.getVeniceWriterLazyRef()).thenReturn(lazyMockWriter);
-    ingestionTask.processConsumerAction(mockConsumerAction, mockStore);
+    leaderFollowerStoreIngestionTask.processConsumerAction(mockConsumerAction, mockStore);
     verify(mockWriter, times(0)).closePartition(0);
 
     // case 3: VeniceWriter is set and initialized. closePartition is invoked once.
     lazyMockWriter.get();
-    ingestionTask.processConsumerAction(mockConsumerAction, mockStore);
+    leaderFollowerStoreIngestionTask.processConsumerAction(mockConsumerAction, mockStore);
     verify(mockWriter, times(1)).closePartition(0);
   }
 
