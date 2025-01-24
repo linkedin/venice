@@ -98,6 +98,7 @@ public class RecordTransformerTest {
     reset(storageEngine);
 
     offsetRecord.setRecordTransformerClassHash(recordTransformer.getClassHash());
+    assertEquals((int) offsetRecord.getRecordTransformerClassHash(), recordTransformer.getClassHash());
     when(storageEngine.getPartitionOffset(partitionId)).thenReturn(Optional.of(offsetRecord));
 
     // Execute the onRecovery method again to test the case where the classHash exists
