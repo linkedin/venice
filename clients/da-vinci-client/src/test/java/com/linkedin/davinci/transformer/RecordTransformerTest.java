@@ -97,6 +97,7 @@ public class RecordTransformerTest {
     // Reset the mock to clear previous interactions
     reset(storageEngine);
 
+    offsetRecord.setRecordTransformerClassHash(recordTransformer.getClassHash());
     when(storageEngine.getPartitionOffset(partitionId)).thenReturn(Optional.of(offsetRecord));
 
     // Execute the onRecovery method again to test the case where the classHash exists
