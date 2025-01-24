@@ -3438,7 +3438,6 @@ public abstract class StoreIngestionTaskTest {
     endOffset =
         storeIngestionTaskUnderTest.getTopicPartitionEndOffSet(localKafkaConsumerService.kafkaUrl, pubSubTopic, 0);
     assertEquals(endOffset, 0L);
-
   }
 
   @DataProvider
@@ -5436,6 +5435,47 @@ public abstract class StoreIngestionTaskTest {
     } else {
       verify(mockDeepCopyStorageEngine, never()).createSnapshot(any());
     }
+  }
+
+  /**
+   * Test that {@link LeaderFollowerStoreIngestionTask#reportIfCatchUpVersionTopicOffset(PartitionConsumptionState)}
+   * only executes if the latch was created and not released. Previously, it would not check if the latch was created.
+   * Latch creation is at the start of ingestion {@link LeaderFollowerPartitionStateModel#onBecomeStandbyFromOffline}
+   * only if the version is current, but {@link LeaderFollowerPartitionStateModel} is not tested in this unit test.
+   */
+  @Test
+  public void testReportIfCatchUpVersionTopicOffset() throws Exception {
+    // Push a key-value pair to kick start the SIT and populate the PCS data structure
+    localVeniceWriter.broadcastStartOfPush(new HashMap<>());
+    localVeniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, PUT_KEY_FOO_TIMESTAMP, null).get();
+    localVeniceWriter.broadcastEndOfPush(new HashMap<>());
+
+    runTest(Collections.singleton(PARTITION_FOO), () -> {
+      // Wait for a real PCS to be populated after topic subscription in processCommonConsumerAction()
+      verify(mockStoreIngestionStats, timeout(TEST_TIMEOUT_MS).times(1)).recordTotalRecordsConsumed();
+
+      // Intentionally use a mock PCS with a different partition to avoid the SIT test interfering with the test
+      PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+      final int P = PARTITION_BAR;
+      when(pcs.getPartition()).thenReturn(P);
+
+      // Case 1: Latch was not created or released, so reportIfCatchUpVersionTopicOffset() shouldn't do anything
+      when(pcs.isEndOfPushReceived()).thenReturn(true);
+      when(pcs.isLatchCreated()).thenReturn(false);
+      when(pcs.isLatchReleased()).thenReturn(false);
+      storeIngestionTaskUnderTest.reportIfCatchUpVersionTopicOffset(pcs);
+      verify(storeIngestionTaskUnderTest, never()).measureLagWithCallToPubSub(anyString(), any(), eq(P), anyLong());
+
+      // Case 2: Latch was created, so reportIfCatchUpVersionTopicOffset() should execute
+      when(pcs.isLatchCreated()).thenReturn(true);
+      storeIngestionTaskUnderTest.reportIfCatchUpVersionTopicOffset(pcs);
+      verify(storeIngestionTaskUnderTest, times(1)).measureLagWithCallToPubSub(anyString(), any(), eq(P), anyLong());
+
+      // Case 3: Latch was created and released, so reportIfCatchUpVersionTopicOffset() shouldn't do anything
+      when(pcs.isLatchReleased()).thenReturn(true);
+      storeIngestionTaskUnderTest.reportIfCatchUpVersionTopicOffset(pcs);
+      verify(storeIngestionTaskUnderTest, times(1)).measureLagWithCallToPubSub(anyString(), any(), eq(P), anyLong());
+    }, AA_OFF);
   }
 
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(

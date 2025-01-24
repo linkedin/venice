@@ -65,6 +65,9 @@ public class PartitionConsumptionState {
 
   private CompletableFuture<Void> lastVTProduceCallFuture;
 
+  /**
+   * State machine that can only transition to CREATED if NONE, and transition to RELEASED if CREATED.
+   */
   enum LatchStatus {
     NONE, LATCH_CREATED, LATCH_RELEASED
   }
@@ -352,7 +355,9 @@ public class PartitionConsumptionState {
   }
 
   public void releaseLatch() {
-    this.latchStatus = LatchStatus.LATCH_RELEASED;
+    if (this.latchStatus == LatchStatus.LATCH_CREATED) {
+      this.latchStatus = LatchStatus.LATCH_RELEASED;
+    }
   }
 
   public void errorReported() {
