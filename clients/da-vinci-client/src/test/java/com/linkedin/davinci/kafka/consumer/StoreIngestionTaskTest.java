@@ -11,6 +11,7 @@ import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.NodeTyp
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.NodeType.LEADER;
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.SortedInput.SORTED;
 import static com.linkedin.davinci.store.AbstractStorageEngine.StoragePartitionAdjustmentTrigger.PREPARE_FOR_READ;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS;
 import static com.linkedin.venice.ConfigKeys.HYBRID_QUOTA_ENFORCEMENT_ENABLED;
@@ -27,6 +28,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_LOCAL_CONSUMER_CONFIG_PREFIX
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_CONSUMER_CONFIG_PREFIX;
+import static com.linkedin.venice.ConfigKeys.SERVER_RESET_ERROR_REPLICA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
@@ -46,6 +48,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -77,7 +80,7 @@ import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
-import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -346,6 +349,7 @@ public abstract class StoreIngestionTaskTest {
   private List<Object[]> mockNotifierError;
   private StorageMetadataService mockStorageMetadataService;
   private AbstractStorageEngine mockAbstractStorageEngine;
+  private DeepCopyStorageEngine mockDeepCopyStorageEngine;
   private IngestionThrottler mockIngestionThrottler;
   private Map<String, EventThrottler> kafkaUrlToRecordsThrottler;
   private KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler;
@@ -384,6 +388,8 @@ public abstract class StoreIngestionTaskTest {
   private PubSubTopicPartition barTopicPartition;
 
   private Runnable runnableForKillNonCurrentVersion;
+
+  private ZKHelixAdmin zkHelixAdmin;
 
   private static final int PARTITION_COUNT = 10;
   private static final Set<Integer> ALL_PARTITIONS = new HashSet<>();
@@ -651,7 +657,7 @@ public abstract class StoreIngestionTaskTest {
     private Optional<DiskUsage> diskUsageForTest = Optional.empty();
     private Map<String, Object> extraServerProperties = new HashMap<>();
     private Consumer<VeniceStoreVersionConfig> storeVersionConfigOverride = storeVersionConfigOverride -> {};
-    private DaVinciRecordTransformerFunctionalInterface recordTransformerFunction = null;
+    private DaVinciRecordTransformerConfig recordTransformerConfig = null;
     private OffsetRecord offsetRecord = null;
 
     public StoreIngestionTaskTestConfig(Set<Integer> partitions, Runnable assertions, AAConfig aaConfig) {
@@ -754,13 +760,13 @@ public abstract class StoreIngestionTaskTest {
       return this;
     }
 
-    public DaVinciRecordTransformerFunctionalInterface getRecordTransformerFunction() {
-      return recordTransformerFunction;
+    public DaVinciRecordTransformerConfig getRecordTransformerConfig() {
+      return recordTransformerConfig;
     }
 
-    public StoreIngestionTaskTestConfig setRecordTransformerFunction(
-        DaVinciRecordTransformerFunctionalInterface recordTransformerFunction) {
-      this.recordTransformerFunction = recordTransformerFunction;
+    public StoreIngestionTaskTestConfig setRecordTransformerConfig(
+        DaVinciRecordTransformerConfig recordTransformerConfig) {
+      this.recordTransformerConfig = recordTransformerConfig;
       return this;
     }
 
@@ -788,7 +794,7 @@ public abstract class StoreIngestionTaskTest {
         config.getAaConfig(),
         config.getExtraServerProperties(),
         config.getStoreVersionConfigOverride(),
-        config.getRecordTransformerFunction(),
+        config.getRecordTransformerConfig(),
         config.getOffsetRecord());
   }
 
@@ -823,7 +829,7 @@ public abstract class StoreIngestionTaskTest {
       AAConfig aaConfig,
       Map<String, Object> extraServerProperties,
       Consumer<VeniceStoreVersionConfig> storeVersionConfigOverride,
-      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
+      DaVinciRecordTransformerConfig recordTransformerConfig,
       OffsetRecord offsetRecord) throws Exception {
 
     int partitionCount = PARTITION_COUNT;
@@ -852,12 +858,14 @@ public abstract class StoreIngestionTaskTest {
         diskUsageForTest,
         extraServerProperties,
         false,
-        recordTransformerFunction,
+        recordTransformerConfig,
         offsetRecord).build();
 
     Properties kafkaProps = new Properties();
     kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
 
+    zkHelixAdmin = mock(ZKHelixAdmin.class);
+    doNothing().when(zkHelixAdmin).setPartitionsToError(anyString(), anyString(), anyString(), anyList());
     storeIngestionTaskUnderTest = spy(
         ingestionTaskFactory.getNewIngestionTask(
             storageService,
@@ -869,8 +877,8 @@ public abstract class StoreIngestionTaskTest {
             PARTITION_FOO,
             false,
             Optional.empty(),
-            recordTransformerFunction,
-            Lazy.of(() -> mock(ZKHelixAdmin.class))));
+            recordTransformerConfig,
+            Lazy.of(() -> zkHelixAdmin)));
 
     Future testSubscribeTaskFuture = null;
     try {
@@ -988,10 +996,10 @@ public abstract class StoreIngestionTaskTest {
       Optional<DiskUsage> diskUsageForTest,
       Map<String, Object> extraServerProperties,
       Boolean isLiveConfigEnabled,
-      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
+      DaVinciRecordTransformerConfig recordTransformerConfig,
       OffsetRecord optionalOffsetRecord) {
 
-    if (recordTransformerFunction != null) {
+    if (recordTransformerConfig != null && recordTransformerConfig.getRecordTransformerFunction() != null) {
       doReturn(mockAbstractStorageEngine).when(mockStorageEngineRepository).getLocalStorageEngine(topic);
 
       AbstractStorageIterator iterator = mock(AbstractStorageIterator.class);
@@ -1001,8 +1009,9 @@ public abstract class StoreIngestionTaskTest {
       when(mockAbstractStorageEngine.getIterator(anyInt())).thenReturn(iterator);
 
     } else {
-      doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStorageEngineRepository)
-          .getLocalStorageEngine(topic);
+      mockDeepCopyStorageEngine = spy(new DeepCopyStorageEngine(mockAbstractStorageEngine));
+      doReturn(mockDeepCopyStorageEngine).when(mockStorageEngineRepository).getLocalStorageEngine(topic);
+      doNothing().when(mockDeepCopyStorageEngine).createSnapshot(any());
     }
 
     inMemoryLocalKafkaConsumer =
@@ -2323,6 +2332,7 @@ public abstract class StoreIngestionTaskTest {
         });
 
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(relevantPartitions, () -> {
+      Utils.sleep(1000);
       // Verify that all partitions reported success.
       maxOffsetPerPartition.entrySet()
           .stream()
@@ -2452,7 +2462,6 @@ public abstract class StoreIngestionTaskTest {
     } finally {
       databaseSyncBytesIntervalForTransactionalMode = 1;
     }
-
   }
 
   @Test(dataProvider = "aaConfigProvider")
@@ -2488,6 +2497,48 @@ public abstract class StoreIngestionTaskTest {
       verify(mockAbstractStorageEngine, times(1)).endBatchWrite(transactionalPartitionConfig);
       assertTrue(storeIngestionTaskUnderTest.hasAllPartitionReportedCompleted());
     }, aaConfig);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testVeniceMessagesProcessingWithSortedInputWithBlobMode(boolean blobMode) throws Exception {
+    localVeniceWriter.broadcastStartOfPush(true, new HashMap<>());
+    PubSubProduceResult putMetadata =
+        (PubSubProduceResult) localVeniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID).get();
+    PubSubProduceResult deleteMetadata = (PubSubProduceResult) localVeniceWriter.delete(deleteKeyFoo, null).get();
+    localVeniceWriter.broadcastEndOfPush(new HashMap<>());
+
+    StoreIngestionTaskTestConfig testConfig = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
+      // Verify it retrieves the offset from the Offset Manager
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).getLastOffset(topic, PARTITION_FOO);
+
+      // Verify it commits the offset to Offset Manager after receiving EOP control message
+      OffsetRecord expectedOffsetRecordForDeleteMessage = getOffsetRecord(deleteMetadata.getOffset() + 1, true);
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS))
+          .put(topic, PARTITION_FOO, expectedOffsetRecordForDeleteMessage);
+      // Deferred write is not going to commit offset for every message, but will commit offset for every control
+      // message
+      // The following verification is for START_OF_PUSH control message
+      verify(mockStorageMetadataService, times(1))
+          .put(topic, PARTITION_FOO, getOffsetRecord(putMetadata.getOffset() - 1));
+      // Check database mode switches from deferred-write to transactional after EOP control message
+      StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
+      deferredWritePartitionConfig.setDeferredWrite(!blobMode);
+      verify(mockAbstractStorageEngine, times(1))
+          .beginBatchWrite(eq(deferredWritePartitionConfig), any(), eq(Optional.empty()));
+      StoragePartitionConfig transactionalPartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
+      verify(mockAbstractStorageEngine, times(1)).endBatchWrite(transactionalPartitionConfig);
+    }, null);
+    testConfig.setHybridStoreConfig(
+        Optional.of(
+            new HybridStoreConfigImpl(
+                10,
+                20,
+                HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
+                DataReplicationPolicy.NON_AGGREGATE,
+                BufferReplayPolicy.REWIND_FROM_EOP)));
+    testConfig.setExtraServerProperties(
+        Collections.singletonMap(RocksDBServerConfig.ROCKSDB_BLOB_FILES_ENABLED, Boolean.toString(blobMode)));
+    runTest(testConfig);
   }
 
   @Test(dataProvider = "aaConfigProvider")
@@ -2829,6 +2880,7 @@ public abstract class StoreIngestionTaskTest {
     propertyBuilder.put(SERVER_INGESTION_HEARTBEAT_INTERVAL_MS, 1000);
     propertyBuilder.put(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS, 1000);
     propertyBuilder.put(SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED, true);
+    propertyBuilder.put(SERVER_RESET_ERROR_REPLICA_ENABLED, true);
     extraProperties.forEach(propertyBuilder::put);
 
     Map<String, Map<String, String>> kafkaClusterMap = new HashMap<>();
@@ -3683,16 +3735,20 @@ public abstract class StoreIngestionTaskTest {
 
   @DataProvider
   public static Object[][] testProcessTopicSwitchProvider() {
-    return new Object[][] { { LEADER }, { DA_VINCI } };
+    return DataProviderUtils.allPermutationGenerator(new NodeType[] { DA_VINCI, LEADER }, DataProviderUtils.BOOLEAN);
   }
 
   @Test(dataProvider = "testProcessTopicSwitchProvider")
-  public void testProcessTopicSwitch(NodeType nodeType) {
+  public void testProcessTopicSwitch(NodeType nodeType, boolean isAggregateMode) {
     VenicePartitioner partitioner = getVenicePartitioner();
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
     partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
-    HybridStoreConfig hybridStoreConfig =
-        new HybridStoreConfigImpl(100, 100, 100, DataReplicationPolicy.AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP);
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
+        100,
+        100,
+        100,
+        isAggregateMode ? DataReplicationPolicy.AGGREGATE : DataReplicationPolicy.NON_AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_EOP);
     MockStoreVersionConfigs storeAndVersionConfigs =
         setupStoreAndVersionMocks(2, partitionerConfig, Optional.of(hybridStoreConfig), false, true, AA_OFF);
     StorageService storageService = mock(StorageService.class);
@@ -3740,7 +3796,8 @@ public abstract class StoreIngestionTaskTest {
     doReturn(mockOffsetRecord).when(mockPcs).getOffsetRecord();
     doReturn(PARTITION_FOO).when(mockPcs).getPartition();
     doReturn(PARTITION_FOO).when(mockPcs).getPartition();
-    storeIngestionTaskUnderTest.processTopicSwitch(controlMessage, PARTITION_FOO, 10, mockPcs);
+    boolean result = storeIngestionTaskUnderTest.processTopicSwitch(controlMessage, PARTITION_FOO, 10, mockPcs);
+    Assert.assertEquals(isAggregateMode, result);
     verify(mockTopicManagerRemoteKafka, never()).getOffsetByTime(any(), anyLong());
     verify(mockOffsetRecord, never()).setLeaderUpstreamOffset(anyString(), anyLong());
   }
@@ -4370,8 +4427,7 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test
-  public void testIngestionTaskForCurrentVersionShouldTryToKillOngoingPushWhenEncounteringMemoryLimitException()
-      throws Exception {
+  public void testIngestionTaskCurrentVersionKillOngoingPushOnMemoryLimitException() throws Exception {
     doThrow(new MemoryLimitExhaustedException("mock exception")).doNothing()
         .when(mockAbstractStorageEngine)
         .put(anyInt(), any(), (ByteBuffer) any());
@@ -4388,6 +4444,30 @@ public abstract class StoreIngestionTaskTest {
       verify(mockLogNotifier, timeout(1000)).completed(anyString(), eq(PARTITION_FOO), anyLong(), anyString());
       verify(runnableForKillNonCurrentVersion, times(1)).run();
     }, AA_OFF);
+  }
+
+  @Test
+  public void testIngestionTaskForCurrentVersionResetException() throws Exception {
+    doThrow(new VeniceException("mock exception")).doNothing()
+        .when(mockAbstractStorageEngine)
+        .put(anyInt(), any(), (ByteBuffer) any());
+    isCurrentVersion = () -> true;
+
+    localVeniceWriter.broadcastStartOfPush(new HashMap<>());
+    localVeniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, PUT_KEY_FOO_TIMESTAMP, null).get();
+    localVeniceWriter.broadcastEndOfPush(new HashMap<>());
+
+    StoreIngestionTaskTestConfig testConfig =
+        new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
+          // pcs.completionReported();
+          verify(mockAbstractStorageEngine, timeout(10000).times(1)).put(eq(PARTITION_FOO), any(), (ByteBuffer) any());
+          Utils.sleep(1000);
+          verify(zkHelixAdmin, atLeast(1)).setPartitionsToError(anyString(), anyString(), anyString(), anyList());
+        }, AA_OFF);
+    testConfig.setStoreVersionConfigOverride(configOverride -> {
+      doReturn(true).when(configOverride).isResetErrorReplicaEnabled();
+    });
+    runTest(testConfig);
   }
 
   @Test
@@ -4733,15 +4813,16 @@ public abstract class StoreIngestionTaskTest {
     when(leaderProducedRecordContext.getValueUnion()).thenReturn(put);
     when(leaderProducedRecordContext.getKeyBytes()).thenReturn(putKeyFoo);
 
-    Schema keySchema = Schema.create(Schema.Type.INT);
+    Schema myKeySchema = Schema.create(Schema.Type.INT);
     SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
-    when(keySchemaEntry.getSchema()).thenReturn(keySchema);
+    when(keySchemaEntry.getSchema()).thenReturn(myKeySchema);
     when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
 
-    Schema valueSchema = Schema.create(Schema.Type.STRING);
+    Schema myValueSchema = Schema.create(Schema.Type.STRING);
     SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
-    when(valueSchemaEntry.getSchema()).thenReturn(valueSchema);
+    when(valueSchemaEntry.getSchema()).thenReturn(myValueSchema);
     when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
+    when(mockSchemaRepo.getSupersetOrLatestValueSchema(eq(storeNameWithoutVersionInfo))).thenReturn(valueSchemaEntry);
 
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
       TestUtils.waitForNonDeterministicAssertion(
@@ -4761,7 +4842,17 @@ public abstract class StoreIngestionTaskTest {
         throw new VeniceException(e);
       }
     }, aaConfig);
-    config.setRecordTransformerFunction((storeVersion) -> new TestStringRecordTransformer(storeVersion, true));
+
+    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
+        (storeVersion, keySchema, inputValueSchema, outputValueSchema) -> new TestStringRecordTransformer(
+            storeVersion,
+            keySchema,
+            inputValueSchema,
+            outputValueSchema,
+            true),
+        String.class,
+        Schema.create(Schema.Type.STRING));
+    config.setRecordTransformerConfig(recordTransformerConfig);
     runTest(config);
 
     // Transformer error should never be recorded
@@ -4795,15 +4886,16 @@ public abstract class StoreIngestionTaskTest {
     when(leaderProducedRecordContext.getValueUnion()).thenReturn(put);
     when(leaderProducedRecordContext.getKeyBytes()).thenReturn(keyBytes);
 
-    Schema keySchema = Schema.create(Schema.Type.INT);
+    Schema myKeySchema = Schema.create(Schema.Type.INT);
     SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
-    when(keySchemaEntry.getSchema()).thenReturn(keySchema);
+    when(keySchemaEntry.getSchema()).thenReturn(myKeySchema);
     when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
 
-    Schema valueSchema = Schema.create(Schema.Type.INT);
+    Schema myValueSchema = Schema.create(Schema.Type.INT);
     SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
-    when(valueSchemaEntry.getSchema()).thenReturn(valueSchema);
+    when(valueSchemaEntry.getSchema()).thenReturn(myValueSchema);
     when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
+    when(mockSchemaRepo.getSupersetOrLatestValueSchema(eq(storeNameWithoutVersionInfo))).thenReturn(valueSchemaEntry);
 
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
       TestUtils.waitForNonDeterministicAssertion(
@@ -4826,7 +4918,17 @@ public abstract class StoreIngestionTaskTest {
       verify(mockVersionedStorageIngestionStats, timeout(1000))
           .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
     }, aaConfig);
-    config.setRecordTransformerFunction((storeVersion) -> new TestStringRecordTransformer(storeVersion, true));
+
+    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
+        (storeVersion, keySchema, inputValueSchema, outputValueSchema) -> new TestStringRecordTransformer(
+            storeVersion,
+            keySchema,
+            inputValueSchema,
+            outputValueSchema,
+            true),
+        String.class,
+        Schema.create(Schema.Type.STRING));
+    config.setRecordTransformerConfig(recordTransformerConfig);
     runTest(config);
   }
 
@@ -5145,21 +5247,22 @@ public abstract class StoreIngestionTaskTest {
    * {@link StoreIngestionTask#reportError(String, int, Exception)} should be called in order to trigger a Helix
    * state transition without waiting 24+ hours for the Helix state transition timeout.
    */
-  @Test
+  @Test(timeOut = 30000)
   public void testProcessConsumerActionsError() throws Exception {
     runTest(Collections.singleton(PARTITION_FOO), () -> {
       // This is an actual exception thrown when deserializing a corrupted OffsetRecord
       String msg = "Received Magic Byte '6' which is not supported by InternalAvroSpecificSerializer. "
           + "The only supported Magic Byte for this implementation is '24'.";
-      doThrow(new VeniceMessageException(msg)).when(mockStorageMetadataService).getLastOffset(any(), anyInt());
-
-      for (int i = 0; i < StoreIngestionTask.MAX_CONSUMER_ACTION_ATTEMPTS; i++) {
-        try {
-          storeIngestionTaskUnderTest.processConsumerActions(storeAndVersionConfigsUnderTest.store);
-        } catch (InterruptedException e) {
-          throw new RuntimeException(e);
-        }
+      when(mockStorageMetadataService.getLastOffset(any(), anyInt())).thenThrow(new VeniceMessageException(msg));
+      try {
+        storeIngestionTaskUnderTest.processConsumerActions(storeAndVersionConfigsUnderTest.store);
+      } catch (InterruptedException e) {
+        throw new RuntimeException(e);
       }
+      waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          () -> assertTrue(storeIngestionTaskUnderTest.consumerActionsQueue.isEmpty(), "Wait until CAQ is empty"));
       ArgumentCaptor<VeniceException> captor = ArgumentCaptor.forClass(VeniceException.class);
       verify(storeIngestionTaskUnderTest, atLeastOnce()).reportError(anyString(), eq(PARTITION_FOO), captor.capture());
       assertTrue(captor.getValue().getMessage().endsWith(msg));
@@ -5247,6 +5350,92 @@ public abstract class StoreIngestionTaskTest {
     verify(storeIngestionTask, times(1)).consumerUnSubscribeForStateTransition(separateRealTimeTopic, pcs);
     storeIngestionTask.unsubscribeFromTopic(versionTopic, pcs);
     verify(storeIngestionTask, times(2)).consumerUnSubscribeForStateTransition(versionTopic, pcs);
+  }
+
+  @Test(timeOut = 10 * Time.MS_PER_SECOND)
+  public void testStoreIngestionInternalClose() throws Exception {
+    AtomicReference<CompletableFuture<Void>> dropPartitionFuture = new AtomicReference<>();
+    StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
+      dropPartitionFuture.set(storeIngestionTaskUnderTest.dropStoragePartitionGracefully(fooTopicPartition));
+    }, AA_OFF);
+    // Mock out processConsumerActions to ensure the consumer action queue is not processed
+    config.setBeforeStartingConsumption(() -> {
+      try {
+        doNothing().when(storeIngestionTaskUnderTest).processConsumerActions(any());
+      } catch (InterruptedException e) {
+        // ignored
+      }
+    });
+    runTest(config);
+    // The drop partition consumer action should still be handled as part of internalClose
+    dropPartitionFuture.get().get();
+  }
+
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "Two-True-and-False")
+  public void testSnapshotGenerationConditions(boolean isBlobTransferEnabled, boolean blobTransferManagerEnabled) {
+    Map<String, Object> serverProperties = new HashMap<>();
+    serverProperties.put(BLOB_TRANSFER_MANAGER_ENABLED, blobTransferManagerEnabled);
+
+    Version version = mock(Version.class);
+    doReturn(1).when(version).getPartitionCount();
+    doReturn(VersionStatus.STARTED).when(version).getStatus();
+    doReturn(true).when(version).isNativeReplicationEnabled();
+    DataRecoveryVersionConfig dataRecoveryVersionConfig = new DataRecoveryVersionConfigImpl("dc-0", false, 1);
+    doReturn(dataRecoveryVersionConfig).when(version).getDataRecoveryVersionConfig();
+
+    StorageService storageService = mock(StorageService.class);
+    Store store = mock(Store.class);
+
+    doReturn(version).when(store).getVersion(eq(1));
+
+    VeniceStoreVersionConfig storeConfig = mock(VeniceStoreVersionConfig.class);
+    doReturn(isBlobTransferEnabled).when(storeConfig).isBlobTransferEnabled();
+    doReturn(topic).when(storeConfig).getStoreVersionName();
+
+    StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(
+        new RandomPollStrategy(),
+        Utils.setOf(PARTITION_FOO),
+        Optional.empty(),
+        serverProperties,
+        true,
+        null,
+        null).build();
+
+    doReturn(Version.parseStoreFromVersionTopic(topic)).when(store).getName();
+    storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
+        storageService,
+        store,
+        version,
+        new Properties(),
+        isCurrentVersion,
+        storeConfig,
+        1,
+        false,
+        Optional.empty(),
+        null,
+        null);
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(pubSubTopic).when(offsetRecord).getLeaderTopic(any());
+    doReturn(false).when(offsetRecord).isEndOfPushReceived();
+    doReturn(100L).when(offsetRecord).getOffsetLag();
+    PartitionConsumptionState partitionConsumptionState =
+        new PartitionConsumptionState(Utils.getReplicaId(pubSubTopic, 0), 0, offsetRecord, true);
+
+    KafkaMessageEnvelope kafkaMessageEnvelope = spy(Mockito.mock(KafkaMessageEnvelope.class));
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.producerGUID = GuidUtils.getGuidFromCharSequence("test_guid");
+    producerMetadata.messageTimestamp = 1000L;
+    kafkaMessageEnvelope.producerMetadata = producerMetadata;
+
+    // action
+    storeIngestionTaskUnderTest
+        .processEndOfPush(kafkaMessageEnvelope, 1, offsetRecord.getOffsetLag(), partitionConsumptionState);
+    // verify
+    if (isBlobTransferEnabled && blobTransferManagerEnabled) {
+      verify(mockDeepCopyStorageEngine).createSnapshot(any());
+    } else {
+      verify(mockDeepCopyStorageEngine, never()).createSnapshot(any());
+    }
   }
 
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(

@@ -1,43 +1,51 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 import org.apache.hadoop.mapred.InputSplit;
-import org.apache.kafka.common.TopicPartition;
 
 
 /**
  * We borrowed some idea from the open-sourced attic-crunch lib:
  * https://github.com/apache/attic-crunch/blob/master/crunch-kafka/src/main/java/org/apache/crunch/kafka/record/KafkaInputSplit.java
  *
- * InputSplit that represent retrieving data from a single {@link TopicPartition} between the specified start
+ * InputSplit that represent retrieving data from a single {@link PubSubTopicPartition} between the specified start
  * and end offsets.
  */
 public class KafkaInputSplit implements InputSplit {
   private long startingOffset;
   private long endingOffset;
-  private TopicPartition topicPartition;
+  private PubSubTopicPartition topicPartition;
+  private final PubSubTopicRepository topicRepository;
 
   /**
    * Nullary Constructor for creating the instance inside the Mapper instance.
    */
   public KafkaInputSplit() {
+    topicRepository = new PubSubTopicRepository();
   }
 
   /**
    * Constructs an input split for the provided {@param topic} and {@param partition} restricting data to be between
    * the {@param startingOffset} and {@param endingOffset}
    *
-   * @param topic          the topic for the split
-   * @param partition      the partition for the topic
+   * @param topicPartition  the topic-partition for the split
    * @param startingOffset the start of the split
    * @param endingOffset   the end of the split
    */
-  public KafkaInputSplit(String topic, int partition, long startingOffset, long endingOffset) {
+  public KafkaInputSplit(
+      PubSubTopicRepository topicRepository,
+      PubSubTopicPartition topicPartition,
+      long startingOffset,
+      long endingOffset) {
+    this.topicRepository = topicRepository;
     this.startingOffset = startingOffset;
     this.endingOffset = endingOffset;
-    topicPartition = new TopicPartition(topic, partition);
+    this.topicPartition = topicPartition;
   }
 
   @Override
@@ -57,7 +65,7 @@ public class KafkaInputSplit implements InputSplit {
    *
    * @return the topic and partition for the split
    */
-  public TopicPartition getTopicPartition() {
+  public PubSubTopicPartition getTopicPartition() {
     return topicPartition;
   }
 
@@ -81,8 +89,8 @@ public class KafkaInputSplit implements InputSplit {
 
   @Override
   public void write(DataOutput dataOutput) throws IOException {
-    dataOutput.writeUTF(topicPartition.topic());
-    dataOutput.writeInt(topicPartition.partition());
+    dataOutput.writeUTF(topicPartition.getTopicName());
+    dataOutput.writeInt(topicPartition.getPartitionNumber());
     dataOutput.writeLong(startingOffset);
     dataOutput.writeLong(endingOffset);
   }
@@ -94,7 +102,7 @@ public class KafkaInputSplit implements InputSplit {
     startingOffset = dataInput.readLong();
     endingOffset = dataInput.readLong();
 
-    topicPartition = new TopicPartition(topic, partition);
+    topicPartition = new PubSubTopicPartitionImpl(topicRepository.getTopic(topic), partition);
   }
 
   @Override

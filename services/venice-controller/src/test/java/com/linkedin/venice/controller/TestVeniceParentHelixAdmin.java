@@ -59,6 +59,7 @@ import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
+import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
@@ -71,7 +72,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfigImpl;
-import com.linkedin.venice.meta.ViewParameterKeys;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.InvalidKeySchemaPartitioner;
@@ -1751,8 +1751,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
 
-    UpdateStoreQueryParams storeQueryParams1 =
-        new UpdateStoreQueryParams().setIncrementalPushEnabled(true).setBlobTransferEnabled(true);
+    UpdateStoreQueryParams storeQueryParams1 = new UpdateStoreQueryParams().setBlobTransferEnabled(true);
     parentAdmin.initStorageCluster(clusterName);
     parentAdmin.updateStore(clusterName, storeName, storeQueryParams1);
 
@@ -1772,7 +1771,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertEquals(adminMessage.operationType, AdminMessageType.UPDATE_STORE.getValue());
 
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
-    assertEquals(updateStore.incrementalPushEnabled, true);
     Assert.assertTrue(updateStore.blobTransferEnabled);
 
     long readQuota = 100L;
@@ -2002,7 +2000,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     String viewString = String.format(
         rePartitionViewConfigString,
         MaterializedView.class.getCanonicalName(),
-        ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name(),
+        MaterializedViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name(),
         rePartitionViewPartitionCount);
 
     // Invalid re-partition view name
@@ -2019,13 +2017,14 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertTrue(updateStore.getViews().containsKey(rePartitionViewName));
     Map<String, CharSequence> rePartitionViewParameters =
         updateStore.getViews().get(rePartitionViewName).viewParameters;
-    Assert.assertNotNull(rePartitionViewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_NAME.name()));
+    Assert.assertNotNull(rePartitionViewParameters.get(MaterializedViewParameters.MATERIALIZED_VIEW_NAME.name()));
     Assert.assertEquals(
-        rePartitionViewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_NAME.name()).toString(),
+        rePartitionViewParameters.get(MaterializedViewParameters.MATERIALIZED_VIEW_NAME.name()).toString(),
         rePartitionViewName);
     Assert.assertEquals(
         Integer.parseInt(
-            rePartitionViewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name()).toString()),
+            rePartitionViewParameters.get(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name())
+                .toString()),
         rePartitionViewPartitionCount);
   }
 
@@ -2061,7 +2060,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     int rePartitionViewPartitionCount = 10;
     Map<String, String> viewClassParams = new HashMap<>();
     viewClassParams.put(
-        ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name(),
+        MaterializedViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name(),
         Integer.toString(rePartitionViewPartitionCount));
 
     // Invalid re-partition view name
@@ -2086,13 +2085,14 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertTrue(updateStore.getViews().containsKey(rePartitionViewName));
     Map<String, CharSequence> rePartitionViewParameters =
         updateStore.getViews().get(rePartitionViewName).viewParameters;
-    Assert.assertNotNull(rePartitionViewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_NAME.name()));
+    Assert.assertNotNull(rePartitionViewParameters.get(MaterializedViewParameters.MATERIALIZED_VIEW_NAME.name()));
     Assert.assertEquals(
-        rePartitionViewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_NAME.name()).toString(),
+        rePartitionViewParameters.get(MaterializedViewParameters.MATERIALIZED_VIEW_NAME.name()).toString(),
         rePartitionViewName);
     Assert.assertEquals(
         Integer.parseInt(
-            rePartitionViewParameters.get(ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name()).toString()),
+            rePartitionViewParameters.get(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name())
+                .toString()),
         rePartitionViewPartitionCount);
   }
 
@@ -2682,8 +2682,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         () -> parentAdmin.deleteAclForStore(clusterName, storeName));
   }
 
-  @Test
-  public void testHybridAndIncrementalUpdateStoreCommands() {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testHybridAndIncrementalUpdateStoreCommands(boolean aaEnabled) {
     String storeName = Utils.getUniqueString("testUpdateStore");
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
@@ -2720,6 +2720,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertEquals(updateStore.hybridStoreConfig.offsetLagThresholdToGoOnline, 20000);
     assertEquals(updateStore.hybridStoreConfig.rewindTimeInSeconds, 60);
 
+    store.setActiveActiveReplicationEnabled(aaEnabled);
     store.setHybridStoreConfig(
         new HybridStoreConfigImpl(
             60,
@@ -2728,10 +2729,15 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             DataReplicationPolicy.NON_AGGREGATE,
             BufferReplayPolicy.REWIND_FROM_EOP));
     // Incremental push can be enabled on a hybrid store, default inc push policy is inc push to RT now
-    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
-
-    // veniceWriter.put will be called again for the second update store command
-    verify(veniceWriter, times(2)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    if (aaEnabled) {
+      parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+      // veniceWriter.put will be called again for the second update store command
+      verify(veniceWriter, times(2)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    } else {
+      assertThrows(
+          () -> parentAdmin
+              .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true)));
+    }
   }
 
   @Test

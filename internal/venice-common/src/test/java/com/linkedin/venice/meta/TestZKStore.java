@@ -1,9 +1,11 @@
 package com.linkedin.venice.meta;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
@@ -14,8 +16,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -24,8 +24,6 @@ import org.testng.annotations.Test;
  * Test cases for Venice Store.
  */
 public class TestZKStore {
-  private static final Logger LOGGER = LogManager.getLogger(TestZKStore.class);
-
   @Test
   public void testVersionsAreAddedInOrdered() {
     Store s = TestUtils.createTestStore("s1", "owner", System.currentTimeMillis());
@@ -313,44 +311,50 @@ public class TestZKStore {
   public void testAddVersion() {
     String storeName = Utils.getUniqueString("store");
     Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
-    assertNull(store.getVersion(2));
-    assertThrows(StoreVersionNotFoundException.class, () -> store.getVersionOrThrow(2));
-    assertNull(store.getVersion(5));
-    assertThrows(StoreVersionNotFoundException.class, () -> store.getVersionOrThrow(5));
-    assertNull(store.getVersion(6));
-    assertThrows(StoreVersionNotFoundException.class, () -> store.getVersionOrThrow(6));
-    assertEquals(store.getVersions().size(), 0);
+    assertMissingVersion(store, 2, 5, 6);
+    assertVersionCount(store, 0);
+
     store.addVersion(new VersionImpl(storeName, 5));
-    assertNull(store.getVersion(2));
-    assertThrows(StoreVersionNotFoundException.class, () -> store.getVersionOrThrow(2));
-    assertNotNull(store.getVersion(5));
-    assertEquals(store.getVersionOrThrow(5).getNumber(), 5);
-    assertNull(store.getVersion(6));
-    assertThrows(StoreVersionNotFoundException.class, () -> store.getVersionOrThrow(6));
-    assertEquals(store.getVersions().size(), 1);
+    assertMissingVersion(store, 2, 6);
+    assertPresentVersion(store, 5);
+    assertVersionCount(store, 1);
     // largest used version is 5
     assertEquals(store.peekNextVersion().getNumber(), 6);
+
     store.addVersion(new VersionImpl(storeName, 2));
-    assertNotNull(store.getVersion(2));
-    assertEquals(store.getVersionOrThrow(2).getNumber(), 2);
-    assertNotNull(store.getVersion(5));
-    assertEquals(store.getVersionOrThrow(5).getNumber(), 5);
-    assertNull(store.getVersion(6));
-    assertThrows(StoreVersionNotFoundException.class, () -> store.getVersionOrThrow(6));
-    assertEquals(store.getVersions().size(), 2);
+    assertMissingVersion(store, 6);
+    assertPresentVersion(store, 2, 5);
+    assertVersionCount(store, 2);
     // largest used version is still 5
     Assert.assertEquals(store.peekNextVersion().getNumber(), 6);
+
     Version version = new VersionImpl(store.getName(), store.getLargestUsedVersionNumber() + 1, "pushJobId");
     Assert.assertEquals(version.getNumber(), 6);
     store.addVersion(version);
     Assert.assertEquals(store.peekNextVersion().getNumber(), 7);
-    assertNotNull(store.getVersion(2));
-    assertEquals(store.getVersionOrThrow(2).getNumber(), 2);
-    assertNotNull(store.getVersion(5));
-    assertEquals(store.getVersionOrThrow(5).getNumber(), 5);
-    assertNotNull(store.getVersion(6));
-    assertEquals(store.getVersionOrThrow(6).getNumber(), 6);
-    assertEquals(store.getVersions().size(), 3);
+    assertPresentVersion(store, 2, 5, 6);
+    assertVersionCount(store, 3);
+  }
+
+  private void assertMissingVersion(Store store, int... versionNumbers) {
+    for (int versionNumber: versionNumbers) {
+      assertNull(store.getVersion(versionNumber));
+      assertThrows(StoreVersionNotFoundException.class, () -> store.getVersionOrThrow(versionNumber));
+      assertFalse(store.getVersionNumbers().contains(versionNumber));
+    }
+  }
+
+  private void assertPresentVersion(Store store, int... versionNumbers) {
+    for (int versionNumber: versionNumbers) {
+      assertNotNull(store.getVersion(versionNumber));
+      assertEquals(store.getVersionOrThrow(versionNumber).getNumber(), versionNumber);
+      assertTrue(store.getVersionNumbers().contains(versionNumber));
+    }
+  }
+
+  private void assertVersionCount(Store store, int versionCount) {
+    assertEquals(store.getVersions().size(), versionCount);
+    assertEquals(store.getVersionNumbers().size(), versionCount);
   }
 
   @Test
@@ -375,10 +379,10 @@ public class TestZKStore {
     List<String> valid = Arrays.asList("foo", "Bar", "foo_bar", "foo-bar", "f00Bar");
     List<String> invalid = Arrays.asList("foo bar", "foo.bar", " foo", ".bar", "!", "@", "#", "$", "%");
     for (String name: valid) {
-      Assert.assertTrue(Store.isValidStoreName(name));
+      Assert.assertTrue(StoreName.isValidStoreName(name));
     }
     for (String name: invalid) {
-      Assert.assertFalse(Store.isValidStoreName(name));
+      Assert.assertFalse(StoreName.isValidStoreName(name));
     }
   }
 
@@ -393,34 +397,6 @@ public class TestZKStore {
         ReadStrategy.ANY_OF_ONLINE,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
         1);
-  }
-
-  /**
-   * We're not relying on push ID uniqueness.  We can reenable this test if we start relying on (and enforcing) push ID uniqueness
-   */
-  @Test(groups = { "flaky" })
-  public void cannotAddDifferentVersionsWithSamePushId() {
-    String storeName = "storeName";
-    Store store = new ZKStore(
-        storeName,
-        "owner",
-        System.currentTimeMillis(),
-        PersistenceType.IN_MEMORY,
-        RoutingStrategy.CONSISTENT_HASH,
-        ReadStrategy.ANY_OF_ONLINE,
-        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
-        1);
-    String duplicatePushJobId = "pushId";
-    Version versionOne = new VersionImpl(storeName, 1, duplicatePushJobId);
-    store.addVersion(versionOne);
-    Version versionTwo = new VersionImpl(storeName, 2, duplicatePushJobId);
-    try {
-      store.addVersion(versionTwo);
-      Assert.fail("Store must not allow adding a new version with same pushId");
-    } catch (Exception e) {
-      // expected
-      LOGGER.info("Expected exception: {}", e.getLocalizedMessage());
-    }
   }
 
   @Test

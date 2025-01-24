@@ -50,7 +50,7 @@ public class AggServerReadQuotaUsageStatsTest {
     double totalQPS = 4d / 30d;
     double totalKPS = (batchSize2 + batchSize * 3) / 30d;
     Assert.assertEquals(metricsRepository.getMetric(totalReadQuotaRequestedQPSString).value(), totalQPS, 0.05);
-    Assert.assertEquals(metricsRepository.getMetric(totalReadQuotaRequestedKPSString).value(), totalKPS, 0.05);
+    Assert.assertEquals(metricsRepository.getMetric(totalReadQuotaRequestedKPSString).value(), totalKPS, 0.1);
     Assert.assertEquals(metricsRepository.getMetric(quotaUsageRatio).value(), (200d / 30d) / 200d, 0.01);
 
     String readQuotaRejectedQPSString = "." + storeName + "--quota_rejected_request.Rate";

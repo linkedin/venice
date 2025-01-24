@@ -229,6 +229,11 @@ public class VeniceChangelogConsumerImplTest {
 
     Set<Integer> partitionSet = new HashSet<>();
     partitionSet.add(0);
+
+    // try and do it with an empty set, this should complete immediately
+    veniceChangelogConsumer.seekToEndOfPush(Collections.emptySet()).get();
+    Mockito.verifyNoInteractions(mockInternalSeekConsumer);
+
     veniceChangelogConsumer.seekToEndOfPush(partitionSet).get();
 
     Mockito.verify(mockInternalSeekConsumer).subscribe(partitionSet);

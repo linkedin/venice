@@ -31,8 +31,12 @@ public class VeniceLeaderFollowerStateModelTest extends
 
   @Override
   protected LeaderFollowerPartitionStateModel getParticipantStateModel() {
-    HeartbeatMonitoringService heartbeatMonitoringService =
-        new HeartbeatMonitoringService(new MetricsRepository(), mockReadOnlyStoreRepository, new HashSet<>(), "local");
+    HeartbeatMonitoringService heartbeatMonitoringService = new HeartbeatMonitoringService(
+        new MetricsRepository(),
+        mockReadOnlyStoreRepository,
+        new HashSet<>(),
+        "local",
+        null);
     spyHeartbeatMonitoringService = spy(heartbeatMonitoringService);
     return new LeaderFollowerPartitionStateModel(
         mockIngestionBackend,

@@ -1,0 +1,10 @@
+{
+  "type" : "record",
+  "name" : "SingleFieldRecord",
+  "namespace" : "example.avro",
+  "fields" : [ {
+    "name" : "key",
+    "type" : "string",
+    "default" : ""
+  } ]
+}

@@ -127,20 +127,6 @@ public class DaVinciConfig {
     return recordTransformerConfig;
   }
 
-  public DaVinciRecordTransformer getRecordTransformer(Integer storeVersion) {
-    if (recordTransformerConfig == null) {
-      return null;
-    }
-    return recordTransformerConfig.getRecordTransformer(storeVersion);
-  }
-
-  public DaVinciRecordTransformerFunctionalInterface getRecordTransformerFunction() {
-    if (recordTransformerConfig == null) {
-      return null;
-    }
-    return recordTransformerConfig.getRecordTransformerFunction();
-  }
-
   public boolean isReadMetricsEnabled() {
     return readMetricsEnabled;
   }

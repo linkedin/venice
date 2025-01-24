@@ -8,12 +8,15 @@ import static org.mockito.Mockito.when;
 import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.alpini.router.api.RouterException;
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.meta.NameRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.router.RouterRetryConfig;
 import com.linkedin.venice.router.RouterThrottleHandler;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.VenicePartitionFinder;
+import com.linkedin.venice.router.api.VeniceResponseDecompressor;
 import com.linkedin.venice.router.exception.VeniceKeyCountLimitException;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
@@ -38,6 +41,8 @@ import org.testng.annotations.Test;
 public class TestVeniceMultiGetPath {
   private final RetryManager disabledRetryManager =
       new RetryManager(new VeniceMetricsRepository(), "disabled-test-retry-manager", 0, 0, null);
+
+  private final NameRepository nameRepository = new NameRepository();
 
   public TestVeniceMultiGetPath() {
   }
@@ -113,18 +118,20 @@ public class TestVeniceMultiGetPath {
     BasicFullHttpRequest request = getMultiGetHttpRequest(resourceName, keys, Optional.empty());
     request.attr(RouterThrottleHandler.THROTTLE_HANDLER_BYTE_ATTRIBUTE_KEY)
         .set(multiGetRequestSerializer.serializeObjects(keys));
+    RouterRetryConfig retryConfig = mock(RouterRetryConfig.class);
+    when(retryConfig.isSmartLongTailRetryEnabled()).thenReturn(false);
+    when(retryConfig.getSmartLongTailRetryAbortThresholdMs()).thenReturn(-1);
+    when(retryConfig.getLongTailRetryMaxRouteForMultiKeyReq()).thenReturn(1);
     new VeniceMultiGetPath(
-        storeName,
-        version,
-        resourceName,
+        nameRepository.getStoreVersionName(resourceName),
         request,
         getVenicePartitionFinder(-1),
         3,
-        false,
-        -1,
-        null,
-        1,
-        disabledRetryManager);
+        mock(AggRouterHttpRequestStats.class),
+        retryConfig,
+        disabledRetryManager,
+        mock(VeniceResponseDecompressor.class),
+        null);
   }
 
   @Test(expectedExceptions = RouterException.class, expectedExceptionsMessageRegExp = ".*but received.*")
@@ -142,18 +149,21 @@ public class TestVeniceMultiGetPath {
         keys,
         Optional.of(VeniceMultiGetPath.EXPECTED_PROTOCOL.getProtocolVersion() + 1));
 
+    RouterRetryConfig retryConfig = mock(RouterRetryConfig.class);
+    when(retryConfig.isSmartLongTailRetryEnabled()).thenReturn(false);
+    when(retryConfig.getSmartLongTailRetryAbortThresholdMs()).thenReturn(-1);
+    when(retryConfig.getLongTailRetryMaxRouteForMultiKeyReq()).thenReturn(1);
+
     new VeniceMultiGetPath(
-        storeName,
-        version,
-        resourceName,
+        nameRepository.getStoreVersionName(resourceName),
         request,
         getVenicePartitionFinder(-1),
         3,
-        false,
-        -1,
-        null,
-        1,
-        disabledRetryManager);
+        mock(AggRouterHttpRequestStats.class),
+        retryConfig,
+        disabledRetryManager,
+        mock(VeniceResponseDecompressor.class),
+        null);
   }
 
   @Test
@@ -172,36 +182,37 @@ public class TestVeniceMultiGetPath {
     BasicFullHttpRequest request = getMultiGetHttpRequest(resourceName, keys, Optional.empty());
     request.attr(RouterThrottleHandler.THROTTLE_HANDLER_BYTE_ATTRIBUTE_KEY)
         .set(multiGetRequestSerializer.serializeObjects(keys));
+    RouterRetryConfig retryConfig = mock(RouterRetryConfig.class);
+    when(retryConfig.isSmartLongTailRetryEnabled()).thenReturn(false);
+    when(retryConfig.getSmartLongTailRetryAbortThresholdMs()).thenReturn(-1);
+    when(retryConfig.getLongTailRetryMaxRouteForMultiKeyReq()).thenReturn(1);
     VenicePath path = new VeniceMultiGetPath(
-        storeName,
-        version,
-        resourceName,
+        nameRepository.getStoreVersionName(resourceName),
         request,
         getVenicePartitionFinder(-1),
         10,
-        false,
-        -1,
-        null,
-        1,
-        disabledRetryManager);
+        mock(AggRouterHttpRequestStats.class),
+        retryConfig,
+        disabledRetryManager,
+        mock(VeniceResponseDecompressor.class),
+        null);
     Assert.assertTrue(path.isLongTailRetryAllowedForNewRequest());
     Assert.assertFalse(path.isLongTailRetryAllowedForNewRequest());
 
     request = getMultiGetHttpRequest(resourceName, keys, Optional.empty());
     request.attr(RouterThrottleHandler.THROTTLE_HANDLER_BYTE_ATTRIBUTE_KEY)
         .set(multiGetRequestSerializer.serializeObjects(keys));
+    when(retryConfig.getLongTailRetryMaxRouteForMultiKeyReq()).thenReturn(-1);
     path = new VeniceMultiGetPath(
-        storeName,
-        version,
-        resourceName,
+        nameRepository.getStoreVersionName(resourceName),
         request,
         getVenicePartitionFinder(-1),
         10,
-        false,
-        -1,
-        null,
-        -1,
-        disabledRetryManager);
+        mock(AggRouterHttpRequestStats.class),
+        retryConfig,
+        disabledRetryManager,
+        mock(VeniceResponseDecompressor.class),
+        null);
     Assert.assertTrue(path.isLongTailRetryAllowedForNewRequest());
     Assert.assertTrue(path.isLongTailRetryAllowedForNewRequest());
   }

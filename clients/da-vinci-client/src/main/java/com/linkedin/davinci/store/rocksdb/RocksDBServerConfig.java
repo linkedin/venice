@@ -98,6 +98,9 @@ public class RocksDBServerConfig {
    * Max memtable count per database;
    */
   public static final String ROCKSDB_MAX_MEMTABLE_COUNT = "rocksdb.max.memtable.count";
+
+  public static final String ROCKSDB_MIN_WRITE_BUFFER_NUMBER_TO_MERGE = "rocksdb.min.write.buffer.number.to.merge";
+
   /**
    * Max total WAL log size per database;
    */
@@ -253,6 +256,8 @@ public class RocksDBServerConfig {
 
   private final long rocksDBMemtableSizeInBytes;
   private final int rocksDBMaxMemtableCount;
+
+  private final int rocksDBMinWriteBufferNumberToMerge;
   private final long rocksDBMaxTotalWalSizeInBytes;
 
   private final long rocksDBMaxBytesForLevelBase;
@@ -351,6 +356,7 @@ public class RocksDBServerConfig {
 
     this.rocksDBMemtableSizeInBytes = props.getSizeInBytes(ROCKSDB_MEMTABLE_SIZE_IN_BYTES, 32 * 1024 * 1024L); // 32MB
     this.rocksDBMaxMemtableCount = props.getInt(ROCKSDB_MAX_MEMTABLE_COUNT, 2);
+    this.rocksDBMinWriteBufferNumberToMerge = props.getInt(ROCKSDB_MIN_WRITE_BUFFER_NUMBER_TO_MERGE, 1);
     /**
      * Default: 0 means letting RocksDB to decide the proper WAL size.
      * Here is the related docs in RocksDB C++ lib:
@@ -540,6 +546,10 @@ public class RocksDBServerConfig {
 
   public int getRocksDBMaxMemtableCount() {
     return rocksDBMaxMemtableCount;
+  }
+
+  public int getRocksDBMinWriteBufferNumberToMerge() {
+    return rocksDBMinWriteBufferNumberToMerge;
   }
 
   public long getRocksDBMaxTotalWalSizeInBytes() {

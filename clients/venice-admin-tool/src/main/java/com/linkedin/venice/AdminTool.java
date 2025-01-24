@@ -88,6 +88,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
+import com.linkedin.venice.metadata.response.StorePropertiesResponseRecord;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -116,6 +117,7 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import java.io.BufferedReader;
 import java.io.Console;
@@ -124,6 +126,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -142,6 +145,10 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.StringJoiner;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -557,6 +564,9 @@ public class AdminTool {
         case REQUEST_BASED_METADATA:
           getRequestBasedMetadata(cmd);
           break;
+        case REQUEST_BASED_STORE_PROPERTIES:
+          getRequestBasedStoreProperties(cmd);
+          break;
         case DUMP_INGESTION_STATE:
           dumpIngestionState(cmd);
           break;
@@ -583,6 +593,9 @@ public class AdminTool {
           break;
         case DUMP_HOST_HEARTBEAT:
           dumpHostHeartbeat(cmd);
+          break;
+        case CLUSTER_BATCH_TASK:
+          clusterBatchTask(cmd);
           break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
@@ -846,6 +859,96 @@ public class AdminTool {
     verifyStoreExistence(store, true);
     TrackableControllerResponse response = controllerClient.deleteStore(store);
     printObject(response);
+  }
+
+  private static void clusterBatchTask(CommandLine cmd) {
+    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER, Command.CLUSTER_BATCH_TASK);
+    String task = getRequiredArgument(cmd, Arg.TASK_NAME, Command.CLUSTER_BATCH_TASK);
+    String checkpointFile = getRequiredArgument(cmd, Arg.CHECKPOINT_FILE, Command.CLUSTER_BATCH_TASK);
+    int parallelism = Integer.parseInt(getOptionalArgument(cmd, Arg.THREAD_COUNT, "1"));
+    LOGGER.info(
+        "[**** Cluster Command Params ****] Cluster: {}, Task: {}, Checkpoint: {}, Parallelism: {}",
+        clusterName,
+        task,
+        checkpointFile,
+        parallelism);
+    // Create child data center controller client map.
+    ChildAwareResponse childAwareResponse = controllerClient.listChildControllers(clusterName);
+    Map<String, ControllerClient> controllerClientMap = getControllerClientMap(clusterName, childAwareResponse);
+
+    // Fetch list cluster store list from parent region.
+    Map<String, Boolean> progressMap = new VeniceConcurrentHashMap<>();
+    MultiStoreResponse clusterStoreResponse = controllerClient.queryStoreList(false);
+    if (clusterStoreResponse.isError()) {
+      throw new VeniceException("Unable to fetch cluster store list: " + clusterStoreResponse.getError());
+    }
+    for (String storeName: clusterStoreResponse.getStores()) {
+      progressMap.put(storeName, Boolean.FALSE);
+    }
+
+    // Load progress from checkpoint file. If file does not exist, it will create new one during checkpointing.
+    try {
+      Path checkpointFilePath = Paths.get(checkpointFile);
+      if (!Files.exists(checkpointFilePath.toAbsolutePath())) {
+        LOGGER.info(
+            "Checkpoint file path does not exist, will create a new checkpoint file: {}",
+            checkpointFilePath.toAbsolutePath());
+      } else {
+        List<String> fileLines = Files.readAllLines(checkpointFilePath);
+        for (String line: fileLines) {
+          String storeName = line.split(",")[0];
+          // For now, it is boolean to start with, we can add more states to support retry.
+          boolean status = false;
+          if (line.split(",").length > 1) {
+            status = Boolean.parseBoolean(line.split(",")[1]);
+          }
+          progressMap.put(storeName, status);
+        }
+      }
+    } catch (IOException e) {
+      throw new VeniceException(e);
+    }
+    List<String> taskList =
+        progressMap.entrySet().stream().filter(e -> !e.getValue()).map(Map.Entry::getKey).collect(Collectors.toList());
+
+    // Validate task type. For now, we only has one task, if we have more task in the future, we can extend this logic.
+    Supplier<Function<String, Boolean>> functionSupplier = null;
+    if (SystemStorePushTask.TASK_NAME.equals(task)) {
+      String systemStoreType = getOptionalArgument(cmd, Arg.SYSTEM_STORE_TYPE);
+      if (systemStoreType != null) {
+        if (!(systemStoreType.equalsIgnoreCase(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.toString())
+            || systemStoreType.equalsIgnoreCase(VeniceSystemStoreType.META_STORE.toString()))) {
+          printErrAndExit("System store type: " + systemStoreType + " is not supported.");
+        }
+      }
+      System.out.println(
+          functionSupplier = () -> new SystemStorePushTask(
+              controllerClient,
+              controllerClientMap,
+              clusterName,
+              systemStoreType == null ? Optional.empty() : Optional.of(systemStoreType)));
+    } else {
+      printErrAndExit("Undefined task: " + task);
+    }
+
+    // Create thread pool and start parallel processing.
+    ExecutorService executorService = Executors.newFixedThreadPool(parallelism);
+    List<Future> futureList = new ArrayList<>();
+    for (int i = 0; i < parallelism; i++) {
+      BatchMaintenanceTaskRunner batchMaintenanceTaskRunner =
+          new BatchMaintenanceTaskRunner(progressMap, checkpointFile, taskList, functionSupplier.get());
+      futureList.add(executorService.submit(batchMaintenanceTaskRunner));
+    }
+    for (int i = 0; i < parallelism; i++) {
+      try {
+        futureList.get(i).get();
+        LOGGER.info("Cluster task completed for thread : {}", i);
+      } catch (InterruptedException | ExecutionException e) {
+        LOGGER.warn(e.getMessage());
+        executorService.shutdownNow();
+      }
+    }
+    executorService.shutdownNow();
   }
 
   private static void backfillSystemStores(CommandLine cmd) {
@@ -3069,6 +3172,27 @@ public class AdminTool {
     }
   }
 
+  private static void getRequestBasedStoreProperties(CommandLine cmd) throws JsonProcessingException {
+    String url = getRequiredArgument(cmd, Arg.URL);
+    String serverUrl = getRequiredArgument(cmd, Arg.SERVER_URL);
+    String storeName = getRequiredArgument(cmd, Arg.STORE);
+    TransportClient transportClient = null;
+    try {
+      transportClient = getTransportClientForServer(storeName, serverUrl);
+      getAndPrintRequestBasedStoreProperties(
+          transportClient,
+          () -> ControllerClientFactory.discoverAndConstructControllerClient(
+              AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE.getSystemStoreName(),
+              url,
+              sslFactory,
+              1),
+          serverUrl,
+          storeName);
+    } finally {
+      Utils.closeQuietlyWithErrorLogged(transportClient);
+    }
+  }
+
   private static TransportClient getTransportClientForServer(String storeName, String serverUrl) {
     ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(serverUrl);
     if (clientConfig.isHttps()) {
@@ -3281,6 +3405,45 @@ public class AdminTool {
     // Using the jsonWriter to print Avro objects directly does not handle the collection types (List and Map) well.
     // Use the Avro record's toString() instead and pretty print it.
     Object printObject = ObjectMapperFactory.getInstance().readValue(metadataResponse.toString(), Object.class);
+    System.out.println(jsonWriter.writeValueAsString(printObject));
+  }
+
+  static void getAndPrintRequestBasedStoreProperties(
+      TransportClient transportClient,
+      Supplier<ControllerClient> controllerClientSupplier,
+      String serverUrl,
+      String storeName) throws JsonProcessingException {
+    String requestBasedStorePropertiesURL = QueryAction.STORE_PROPERTIES.toString().toLowerCase() + "/" + storeName;
+    byte[] body;
+    int writerSchemaId;
+    try {
+      TransportClientResponse transportClientResponse = transportClient.get(requestBasedStorePropertiesURL).get();
+      writerSchemaId = transportClientResponse.getSchemaId();
+      body = transportClientResponse.getBody();
+    } catch (Exception e) {
+      throw new VeniceException(
+          "Encountered exception while trying to send store properties request to: " + serverUrl + "/"
+              + requestBasedStorePropertiesURL,
+          e);
+    }
+    Schema writerSchema;
+    if (writerSchemaId != AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE.getCurrentProtocolVersion()) {
+      SchemaResponse schemaResponse = controllerClientSupplier.get()
+          .getValueSchema(AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE.getSystemStoreName(), writerSchemaId);
+      if (schemaResponse.isError()) {
+        throw new VeniceException(
+            "Failed to fetch store properties response schema from controller, error: " + schemaResponse.getError());
+      }
+      writerSchema = parseSchemaFromJSONLooseValidation(schemaResponse.getSchemaStr());
+    } else {
+      writerSchema = StorePropertiesResponseRecord.SCHEMA$;
+    }
+    RecordDeserializer<GenericRecord> storePropertiesResponseDeserializer =
+        FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema, writerSchema);
+    GenericRecord storePropertiesResponse = storePropertiesResponseDeserializer.deserialize(body);
+    // Using the jsonWriter to print Avro objects directly does not handle the collection types (List and Map) well.
+    // Use the Avro record's toString() instead and pretty print it.
+    Object printObject = ObjectMapperFactory.getInstance().readValue(storePropertiesResponse.toString(), Object.class);
     System.out.println(jsonWriter.writeValueAsString(printObject));
   }
 

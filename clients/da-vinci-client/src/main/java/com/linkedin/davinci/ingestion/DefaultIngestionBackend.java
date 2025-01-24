@@ -1,6 +1,7 @@
 package com.linkedin.davinci.ingestion;
 
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
@@ -82,10 +83,17 @@ public class DefaultIngestionBackend implements IngestionBackend {
       runnable.run();
     } else {
       storageService.openStore(storeConfig, svsSupplier);
+
+      BlobTransferTableFormat requestTableFormat =
+          serverConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
+              ? BlobTransferTableFormat.PLAIN_TABLE
+              : BlobTransferTableFormat.BLOCK_BASED_TABLE;
+
       CompletionStage<Void> bootstrapFuture = bootstrapFromBlobs(
           storeAndVersion.getFirst(),
           storeAndVersion.getSecond().getNumber(),
           partition,
+          requestTableFormat,
           serverConfig.getBlobTransferDisabledOffsetLagThreshold());
 
       bootstrapFuture.whenComplete((result, throwable) -> {
@@ -103,6 +111,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
       Store store,
       int versionNumber,
       int partitionId,
+      BlobTransferTableFormat tableFormat,
       long blobTransferDisabledOffsetLagThreshold) {
     if (!store.isBlobTransferEnabled() || blobTransferManager == null) {
       return CompletableFuture.completedFuture(null);
@@ -115,19 +124,23 @@ public class DefaultIngestionBackend implements IngestionBackend {
     }
 
     String storeName = store.getName();
-    return blobTransferManager.get(storeName, versionNumber, partitionId).handle((inputStream, throwable) -> {
-      updateBlobTransferResponseStats(throwable == null, storeName, versionNumber);
-      if (throwable != null) {
-        LOGGER.error(
-            "Failed to bootstrap partition {} from blobs transfer for store {} with exception {}",
-            partitionId,
-            storeName,
-            throwable);
-      } else {
-        LOGGER.info("Successfully bootstrapped partition {} from blobs transfer for store {}", partitionId, storeName);
-      }
-      return null;
-    });
+    return blobTransferManager.get(storeName, versionNumber, partitionId, tableFormat)
+        .handle((inputStream, throwable) -> {
+          updateBlobTransferResponseStats(throwable == null, storeName, versionNumber);
+          if (throwable != null) {
+            LOGGER.error(
+                "Failed to bootstrap partition {} from blobs transfer for store {} with exception {}",
+                partitionId,
+                storeName,
+                throwable);
+          } else {
+            LOGGER.info(
+                "Successfully bootstrapped partition {} from blobs transfer for store {}",
+                partitionId,
+                storeName);
+          }
+          return null;
+        });
   }
 
   /**

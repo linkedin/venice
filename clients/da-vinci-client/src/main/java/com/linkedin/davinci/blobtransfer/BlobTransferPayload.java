@@ -3,6 +3,7 @@ package com.linkedin.davinci.blobtransfer;
 import static com.linkedin.venice.store.rocksdb.RocksDBUtils.composePartitionDbDir;
 import static com.linkedin.venice.store.rocksdb.RocksDBUtils.composeSnapshotDir;
 
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.venice.utils.Utils;
 
 
@@ -14,12 +15,19 @@ public class BlobTransferPayload {
   private final String topicName;
   private final String partitionDir;
   private final String storeName;
+  private final BlobTransferTableFormat requestTableFormat;
 
-  public BlobTransferPayload(String baseDir, String storeName, int version, int partition) {
+  public BlobTransferPayload(
+      String baseDir,
+      String storeName,
+      int version,
+      int partition,
+      BlobTransferTableFormat requestTableFormat) {
     this.partition = partition;
     this.storeName = storeName;
     this.topicName = storeName + "_v" + version;
     this.partitionDir = composePartitionDbDir(baseDir, topicName, partition);
+    this.requestTableFormat = requestTableFormat;
   }
 
   public String getPartitionDir() {
@@ -44,5 +52,9 @@ public class BlobTransferPayload {
 
   public String getStoreName() {
     return storeName;
+  }
+
+  public BlobTransferTableFormat getRequestTableFormat() {
+    return requestTableFormat;
   }
 }

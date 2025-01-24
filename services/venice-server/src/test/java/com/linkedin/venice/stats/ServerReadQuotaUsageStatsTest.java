@@ -1,6 +1,13 @@
 package com.linkedin.venice.stats;
 
+import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -49,5 +56,26 @@ public class ServerReadQuotaUsageStatsTest {
     Assert.assertTrue(stats.getReadQuotaUsageRatio() > 0);
     Assert.assertTrue(stats.getVersionedRequestedQPS(currentVersion) > 0);
     Assert.assertTrue(stats.getVersionedRequestedKPS(currentVersion) > 0);
+  }
+
+  /**
+   * A non-thread safe map like Int2ObjectOpenHashMap could cause the threads to busy loop inside the internal find
+   * method when a race condition happens
+   */
+  @Test(timeOut = 10 * Time.MS_PER_SECOND)
+  public void testVersionedStatsThreadSafe() throws ExecutionException, InterruptedException, TimeoutException {
+    MetricsRepository metricsRepository = new MetricsRepository();
+    String storeName = "test-store";
+    ServerReadQuotaUsageStats stats = new ServerReadQuotaUsageStats(metricsRepository, storeName);
+    ExecutorService service = Executors.newFixedThreadPool(100);
+    CompletableFuture[] completableFutures = new CompletableFuture[100];
+    for (int j = 0; j < 100; j++) {
+      completableFutures[j] = CompletableFuture.runAsync(() -> {
+        for (int i = 0; i < 100000; i++) {
+          stats.recordAllowed(i, 1);
+        }
+      }, service);
+    }
+    CompletableFuture.allOf(completableFutures).get(10, TimeUnit.SECONDS);
   }
 }

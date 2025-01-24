@@ -3,6 +3,7 @@ package com.linkedin.venice.endToEnd;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.avro.Schema;
@@ -12,18 +13,13 @@ import org.apache.avro.util.Utf8;
 public class TestSkipResultRecordTransformer extends DaVinciRecordTransformer<Integer, String, String> {
   private final Map<Integer, String> inMemoryDB = new HashMap<>();
 
-  public TestSkipResultRecordTransformer(int storeVersion, boolean storeRecordsInDaVinci) {
-    super(storeVersion, storeRecordsInDaVinci);
-  }
-
-  @Override
-  public Schema getKeySchema() {
-    return Schema.create(Schema.Type.INT);
-  }
-
-  @Override
-  public Schema getOutputValueSchema() {
-    return Schema.create(Schema.Type.STRING);
+  public TestSkipResultRecordTransformer(
+      int storeVersion,
+      Schema keySchema,
+      Schema inputValueSchema,
+      Schema outputValueSchema,
+      boolean storeRecordsInDaVinci) {
+    super(storeVersion, keySchema, inputValueSchema, outputValueSchema, storeRecordsInDaVinci);
   }
 
   @Override
@@ -60,4 +56,8 @@ public class TestSkipResultRecordTransformer extends DaVinciRecordTransformer<In
     inMemoryDB.put(key, value);
   }
 
+  @Override
+  public void close() throws IOException {
+
+  }
 }

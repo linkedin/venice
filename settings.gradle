@@ -6,6 +6,10 @@ pluginManagement {
       url  "https://linkedin.jfrog.io/artifactory/open-source"
     }
     gradlePluginPortal()
+    maven {
+      // Needed for DuckDB SNAPSHOT. TODO: Remove when the real release is published!
+      url = uri('https://oss.sonatype.org/content/repositories/snapshots/')
+    }
   }
 }
 
@@ -57,12 +61,7 @@ include 'internal:venice-test-common'
 
 // Alpini modules
 include 'internal:alpini:common:alpini-common-base'
-include 'internal:alpini:common:alpini-common-cli'
-include 'internal:alpini:common:alpini-common-const'
 include 'internal:alpini:common:alpini-common-io'
-include 'internal:alpini:common:alpini-common-log'
-include 'internal:alpini:common:alpini-common-native'
-include 'internal:alpini:common:alpini-common-test'
 include 'internal:alpini:netty4:alpini-netty4-base'
 include 'internal:alpini:router:alpini-router-api'
 include 'internal:alpini:router:alpini-router-base'
@@ -70,6 +69,7 @@ include 'internal:alpini:router:alpini-router-impl'
 
 // 3rd-party system integration modules
 include 'integrations:venice-beam'
+include 'integrations:venice-duckdb'
 include 'integrations:venice-pulsar'
 include 'integrations:venice-samza'
 

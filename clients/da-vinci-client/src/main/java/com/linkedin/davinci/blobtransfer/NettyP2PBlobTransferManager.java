@@ -2,6 +2,7 @@ package com.linkedin.davinci.blobtransfer;
 
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.getThroughputPerPartition;
 
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
 import com.linkedin.davinci.blobtransfer.server.P2PBlobTransferService;
 import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
@@ -72,8 +73,11 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   }
 
   @Override
-  public CompletionStage<InputStream> get(String storeName, int version, int partition)
-      throws VenicePeersNotFoundException {
+  public CompletionStage<InputStream> get(
+      String storeName,
+      int version,
+      int partition,
+      BlobTransferTableFormat tableFormat) throws VenicePeersNotFoundException {
     CompletableFuture<InputStream> resultFuture = new CompletableFuture<>();
     // 1. Discover peers for the requested blob
     BlobPeersDiscoveryResponse response = peerFinder.discoverBlobPeers(storeName, version, partition);
@@ -92,7 +96,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
         .info("Discovered peers {} for store {} version {} partition {}", discoverPeers, storeName, version, partition);
 
     // 2: Process peers sequentially to fetch the blob
-    processPeersSequentially(discoverPeers, storeName, version, partition, resultFuture);
+    processPeersSequentially(discoverPeers, storeName, version, partition, tableFormat, resultFuture);
 
     return resultFuture;
   }
@@ -121,6 +125,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
    * @param storeName the name of the store
    * @param version the version of the store
    * @param partition the partition of the store
+   * @param tableFormat the needed table format
    * @param resultFuture the future to complete with the InputStream of the blob
    */
   private void processPeersSequentially(
@@ -128,6 +133,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       String storeName,
       int version,
       int partition,
+      BlobTransferTableFormat tableFormat,
       CompletableFuture<InputStream> resultFuture) {
     String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
     Instant startTime = Instant.now();
@@ -150,7 +156,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
         // Attempt to fetch the blob from the current peer asynchronously
         LOGGER.info("Attempting to connect to host: {}", chosenHost);
 
-        return nettyClient.get(chosenHost, storeName, version, partition)
+        return nettyClient.get(chosenHost, storeName, version, partition, tableFormat)
             .toCompletableFuture()
             .thenAccept(inputStream -> {
               // Success case: Complete the future with the input stream

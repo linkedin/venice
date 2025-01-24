@@ -27,7 +27,7 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
   protected final String storeName;
 
   public AbstractStoreMetadata(ClientConfig clientConfig) {
-    this.instanceHealthMonitor = new InstanceHealthMonitor(clientConfig);
+    this.instanceHealthMonitor = clientConfig.getInstanceHealthMonitor();
     this.storeName = clientConfig.getStoreName();
     ClientRoutingStrategyType clientRoutingStrategyType = clientConfig.getClientRoutingStrategyType();
     LOGGER.info("Chose the following routing strategy: {} for store: {}", clientRoutingStrategyType, storeName);

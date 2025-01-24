@@ -44,6 +44,18 @@ jar {
   }
 }
 
+shadowJar {
+  // Enable merging service files from different dependencies. Required to make gRPC based clients work.
+  mergeServiceFiles()
+}
+
 ext {
   jacocoCoverageThreshold = 0.00
+}
+
+checkerFramework {
+  extraJavacArgs = ['-Xmaxerrs', '256']
+  checkers = ['org.checkerframework.checker.nullness.NullnessChecker']
+  skipCheckerFramework = true
+  excludeTests = true
 }

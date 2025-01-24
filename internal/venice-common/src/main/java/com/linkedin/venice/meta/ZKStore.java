@@ -93,7 +93,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
       HybridStoreConfig hybridStoreConfig,
       PartitionerConfig partitionerConfig,
       int replicationFactor) {
-    if (!Store.isValidStoreName(name)) {
+    if (!StoreName.isValidStoreName(name)) {
       throw new VeniceException("Invalid store name: " + name);
     }
 
@@ -151,7 +151,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   }
 
   public ZKStore(StoreProperties storeProperties) {
-    if (!Store.isValidStoreName(storeProperties.name.toString())) {
+    if (!StoreName.isValidStoreName(storeProperties.name.toString())) {
       throw new VeniceException("Invalid store name: " + storeProperties.name.toString());
     }
     this.storeProperties = storeProperties;

@@ -12,6 +12,7 @@ import static com.linkedin.venice.Arg.BASE_PATH;
 import static com.linkedin.venice.Arg.BATCH_GET_LIMIT;
 import static com.linkedin.venice.Arg.BLOB_TRANSFER_ENABLED;
 import static com.linkedin.venice.Arg.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR;
+import static com.linkedin.venice.Arg.CHECKPOINT_FILE;
 import static com.linkedin.venice.Arg.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.Arg.CHUNKING_ENABLED;
 import static com.linkedin.venice.Arg.CLIENT_DECOMPRESSION_ENABLED;
@@ -127,6 +128,8 @@ import static com.linkedin.venice.Arg.STORE_VIEW_CONFIGS;
 import static com.linkedin.venice.Arg.SYSTEM_STORE_TYPE;
 import static com.linkedin.venice.Arg.TARGET_SWAP_REGION;
 import static com.linkedin.venice.Arg.TARGET_SWAP_REGION_WAIT_TIME;
+import static com.linkedin.venice.Arg.TASK_NAME;
+import static com.linkedin.venice.Arg.THREAD_COUNT;
 import static com.linkedin.venice.Arg.TO_BE_STOPPED_NODES;
 import static com.linkedin.venice.Arg.UNUSED_SCHEMA_DELETION_ENABLED;
 import static com.linkedin.venice.Arg.URL;
@@ -155,6 +158,14 @@ import org.apache.commons.cli.CommandLine;
 
 /**
  * TODO: Merge this with {@link com.linkedin.venice.controllerapi.ControllerRoute}
+ *
+ * COMMAND (
+ *   "long-name",
+ *   "short-name",
+ *   "description",
+ *   "required-args",
+ *   "optional-args"
+ * )
  */
 public enum Command {
   LIST_STORES(
@@ -200,6 +211,10 @@ public enum Command {
   BACKFILL_SYSTEM_STORES(
       "backfill-system-stores", "Create system stores of a given type for user stores in a cluster",
       new Arg[] { URL, CLUSTER, SYSTEM_STORE_TYPE }
+  ),
+  CLUSTER_BATCH_TASK(
+      "cluster-batch-task", "Run specific task against all user stores in a cluster in parallel",
+      new Arg[] { URL, CLUSTER, TASK_NAME, CHECKPOINT_FILE }, new Arg[] { THREAD_COUNT }
   ),
   SET_VERSION(
       "set-version", "Set the version that will be served", new Arg[] { URL, STORE, VERSION }, new Arg[] { CLUSTER }
@@ -518,6 +533,11 @@ public enum Command {
   REQUEST_BASED_METADATA(
       "request-based-metadata",
       "Get the store's metadata using request based metadata endpoint via a transport client and a server URL",
+      new Arg[] { URL, SERVER_URL, STORE }
+  ),
+  REQUEST_BASED_STORE_PROPERTIES(
+      "request-based-store-properties",
+      "Get the store's properties using request based store properties endpoint via a transport client and a server URL",
       new Arg[] { URL, SERVER_URL, STORE }
   ),
   DUMP_INGESTION_STATE(

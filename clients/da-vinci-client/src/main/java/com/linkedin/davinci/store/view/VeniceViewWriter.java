@@ -1,13 +1,20 @@
 package com.linkedin.davinci.store.view;
 
+import static com.linkedin.venice.views.ViewUtils.NEARLINE_PRODUCER_COMPRESSION_ENABLED;
+import static com.linkedin.venice.views.ViewUtils.NEARLINE_PRODUCER_COUNT_PER_WRITER;
+
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
-import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.views.VeniceView;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.nio.ByteBuffer;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -25,12 +32,27 @@ import org.apache.avro.generic.GenericRecord;
  * view implementations.
  */
 public abstract class VeniceViewWriter extends VeniceView {
+  protected final Version version;
+  protected final int versionNumber;
+  protected Optional<Boolean> isNearlineProducerCompressionEnabled = Optional.empty();
+  protected Optional<Integer> nearlineProducerCountPerWriter = Optional.empty();
+
   public VeniceViewWriter(
       VeniceConfigLoader props,
-      Store store,
+      Version version,
       Schema keySchema,
       Map<String, String> extraViewParameters) {
-    super(props.getCombinedProperties().toProperties(), store, extraViewParameters);
+    super(props.getCombinedProperties().toProperties(), version.getStoreName(), extraViewParameters);
+    this.version = version;
+    this.versionNumber = version.getNumber();
+    if (extraViewParameters.containsKey(NEARLINE_PRODUCER_COMPRESSION_ENABLED)) {
+      isNearlineProducerCompressionEnabled =
+          Optional.of(Boolean.valueOf(extraViewParameters.get(NEARLINE_PRODUCER_COMPRESSION_ENABLED)));
+    }
+    if (extraViewParameters.containsKey(NEARLINE_PRODUCER_COUNT_PER_WRITER)) {
+      nearlineProducerCountPerWriter =
+          Optional.of(Integer.valueOf(extraViewParameters.get(NEARLINE_PRODUCER_COUNT_PER_WRITER)));
+    }
   }
 
   /**
@@ -45,36 +67,62 @@ public abstract class VeniceViewWriter extends VeniceView {
    * @param oldValueSchemaId the schemaId of the old record
    * @param replicationMetadataRecord the associated RMD for the incoming record.
    */
-  public CompletableFuture<PubSubProduceResult> processRecord(
+  public abstract CompletableFuture<PubSubProduceResult> processRecord(
       ByteBuffer newValue,
       ByteBuffer oldValue,
       byte[] key,
-      int version,
       int newValueSchemaId,
       int oldValueSchemaId,
-      GenericRecord replicationMetadataRecord) {
-    return CompletableFuture.completedFuture(null);
-  }
+      GenericRecord replicationMetadataRecord);
+
+  /**
+   * To be called as a given ingestion task consumes each record. This is called prior to writing to a
+   * VT or to persistent storage.
+   *
+   * @param newValue the incoming fully specified value which hasn't yet been committed to Venice
+   * @param key the key of the record that designates newValue and oldValue
+   * @param version the version of the store taking this record
+   * @param newValueSchemaId the schemaId of the incoming record
+   */
+  public abstract CompletableFuture<PubSubProduceResult> processRecord(
+      ByteBuffer newValue,
+      byte[] key,
+      int newValueSchemaId);
 
   /**
    * Called when the server encounters a control message. There isn't (today) a strict ordering
    * on if the rest of the server alters it's state completely or not based on the incoming control message
    * relative to the given view.
    *
-   * TODO: Today this is only invoked for VERSION_SWAP control message, but we
-   * may in the future call this method for all control messages so that certain
-   * view types can act accordingly.
+   * Different view types may be interested in different control messages and act differently. The corresponding
+   * view writer should implement this method accordingly.
    *
+   * @param kafkaKey the corresponding kafka key of this control message
+   * @param kafkaMessageEnvelope the corresponding kafka message envelope of this control message
    * @param controlMessage the control message we're processing
    * @param partition the partition this control message was delivered to
    * @param partitionConsumptionState the pcs of the consuming node
-   * @param version the store version that received this message
    */
   public void processControlMessage(
+      KafkaKey kafkaKey,
+      KafkaMessageEnvelope kafkaMessageEnvelope,
       ControlMessage controlMessage,
       int partition,
-      PartitionConsumptionState partitionConsumptionState,
-      int version) {
+      PartitionConsumptionState partitionConsumptionState) {
     // Optionally act on Control Message
+  }
+
+  /**
+   * A store could have many views and to reduce the impact to write throughput we want to check and enable producer
+   * optimizations that can be configured at the store level. To change the producer optimization configs the ingestion
+   * task needs to be re-initialized. Meaning either a new version push or server restart after the store level config
+   * change and this is by design.
+   * @param configBuilder to be configured with the producer optimizations
+   * @return
+   */
+  protected VeniceWriterOptions.Builder setProducerOptimizations(VeniceWriterOptions.Builder configBuilder) {
+    isNearlineProducerCompressionEnabled.ifPresent(configBuilder::setProducerCompressionEnabled);
+    nearlineProducerCountPerWriter.ifPresent(configBuilder::setProducerCount);
+    return configBuilder;
   }
 }

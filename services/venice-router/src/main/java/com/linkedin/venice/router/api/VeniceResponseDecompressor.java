@@ -1,16 +1,14 @@
 package com.linkedin.venice.router.api;
 
-import static com.linkedin.venice.HttpConstants.VENICE_SUPPORTED_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.read.RequestType.MULTI_GET;
 import static com.linkedin.venice.read.RequestType.MULTI_GET_STREAMING;
 import static io.netty.handler.codec.http.HttpResponseStatus.BAD_GATEWAY;
 import static io.netty.handler.codec.http.HttpResponseStatus.SERVICE_UNAVAILABLE;
 
-import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
-import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.StoreVersionName;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
@@ -23,10 +21,8 @@ import com.linkedin.venice.utils.Pair;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.Unpooled;
-import io.netty.handler.codec.http.HttpRequest;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Optional;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
 
@@ -43,28 +39,18 @@ public class VeniceResponseDecompressor {
 
   private final CompressionStrategy clientCompression;
   private final RouterStats<AggRouterHttpRequestStats> routerStats;
-  private final String storeName;
-  private final int version;
-  private final String kafkaTopic;
+  private final StoreVersionName storeVersionName;
   private final CompressorFactory compressorFactory;
 
   public VeniceResponseDecompressor(
-      boolean decompressOnClient,
+      CompressionStrategy clientCompression,
       RouterStats<AggRouterHttpRequestStats> routerStats,
-      BasicFullHttpRequest request,
-      String storeName,
-      int version,
+      StoreVersionName storeVersionName,
       CompressorFactory compressorFactory) {
     this.routerStats = routerStats;
-    this.clientCompression = decompressOnClient ? getClientSupportedCompression(request) : CompressionStrategy.NO_OP;
-    this.storeName = storeName;
-    this.version = version;
-    this.kafkaTopic = Version.composeKafkaTopic(storeName, version);
+    this.clientCompression = clientCompression;
+    this.storeVersionName = storeVersionName;
     this.compressorFactory = compressorFactory;
-  }
-
-  private static CompressionStrategy getClientSupportedCompression(HttpRequest request) {
-    return getCompressionStrategy(request.headers().get(VENICE_SUPPORTED_COMPRESSION_STRATEGY));
   }
 
   public static CompressionStrategy getCompressionStrategy(String compressionHeader) {
@@ -85,13 +71,15 @@ public class VeniceResponseDecompressor {
     }
 
     AggRouterHttpRequestStats stats = routerStats.getStatsByType(RequestType.SINGLE_GET);
-    stats.recordCompressedResponseSize(storeName, content.readableBytes());
+    stats.recordCompressedResponseSize(this.storeVersionName.getStoreName(), content.readableBytes());
     long startTimeInNs = System.nanoTime();
     ByteBuf copy = content.isReadOnly() ? content.copy() : content;
     ByteBuf decompressedData =
         Unpooled.wrappedBuffer(decompressRecord(compressionStrategy, copy.nioBuffer(), RequestType.SINGLE_GET));
     final long decompressionTimeInNs = System.nanoTime() - startTimeInNs;
-    stats.recordDecompressionTime(storeName, LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNs));
+    stats.recordDecompressionTime(
+        this.storeVersionName.getStoreName(),
+        LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNs));
 
     /**
      * When using compression, the data in response is already copied to `decompressedData`, so we can explicitly
@@ -159,11 +147,13 @@ public class VeniceResponseDecompressor {
     }
 
     AggRouterHttpRequestStats stats = routerStats.getStatsByType(MULTI_GET_STREAMING);
-    stats.recordCompressedResponseSize(storeName, content.readableBytes());
+    stats.recordCompressedResponseSize(this.storeVersionName.getStoreName(), content.readableBytes());
     long startTimeInNs = System.nanoTime();
     ByteBuf copy = content.isReadOnly() ? content.copy() : content;
     ByteBuf decompressedContent = decompressMultiGetRecords(responseCompression, copy, MULTI_GET_STREAMING);
-    stats.recordDecompressionTime(storeName, LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNs));
+    stats.recordDecompressionTime(
+        this.storeVersionName.getStoreName(),
+        LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNs));
     content.release();
     return new Pair<>(decompressedContent, CompressionStrategy.NO_OP);
   }
@@ -173,26 +163,15 @@ public class VeniceResponseDecompressor {
       ByteBuffer compressedData,
       RequestType requestType) {
     try {
-      VeniceCompressor compressor;
-      if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-        compressor = compressorFactory.getVersionSpecificCompressor(kafkaTopic);
-        if (compressor == null) {
-          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
-              Optional.of(storeName),
-              Optional.of(requestType),
-              SERVICE_UNAVAILABLE,
-              "Compressor not available for resource " + kafkaTopic + ". Dictionary not downloaded.");
-        }
-      } else {
-        compressor = compressorFactory.getCompressor(compressionStrategy);
-      }
-      ByteBuffer decompressed = compressor.decompress(compressedData);
-      return decompressed;
+      return getCompressor(compressionStrategy, requestType).decompress(compressedData);
     } catch (IOException e) {
-      String errorMsg = String
-          .format("Failed to decompress data. Store: %s; Version: %d, error: %s", storeName, version, e.getMessage());
+      String errorMsg = String.format(
+          "Failed to decompress data. Store: %s; Version: %d, error: %s",
+          this.storeVersionName.getStoreName(),
+          this.storeVersionName.getVersionNumber(),
+          e.getMessage());
       throw RouterExceptionAndTrackingUtils
-          .newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(requestType), BAD_GATEWAY, errorMsg);
+          .newVeniceExceptionAndTracking(this.storeVersionName.getStoreName(), requestType, BAD_GATEWAY, errorMsg);
     }
   }
 
@@ -206,29 +185,38 @@ public class VeniceResponseDecompressor {
             .createOptimizedBinaryDecoder(copy.array(), 0, copy.readableBytes()));
 
     try {
-      VeniceCompressor compressor;
-      if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-        compressor = compressorFactory.getVersionSpecificCompressor(kafkaTopic);
-        if (compressor == null) {
-          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
-              Optional.of(storeName),
-              Optional.of(requestType),
-              SERVICE_UNAVAILABLE,
-              "Compressor not available for resource " + kafkaTopic + ". Dictionary not downloaded.");
-        }
-      } else {
-        compressor = compressorFactory.getCompressor(compressionStrategy);
-      }
+      VeniceCompressor compressor = getCompressor(compressionStrategy, requestType);
       for (MultiGetResponseRecordV1 record: records) {
         record.value = compressor.decompress(record.value);
       }
     } catch (IOException e) {
-      String errorMsg = String
-          .format("Failed to decompress data. Store: %s; Version: %d, error: %s", storeName, version, e.getMessage());
+      String errorMsg = String.format(
+          "Failed to decompress data. Store: %s; Version: %d, error: %s",
+          this.storeVersionName.getStoreName(),
+          this.storeVersionName.getVersionNumber(),
+          e.getMessage());
       throw RouterExceptionAndTrackingUtils
-          .newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(requestType), BAD_GATEWAY, errorMsg);
+          .newVeniceExceptionAndTracking(this.storeVersionName.getStoreName(), requestType, BAD_GATEWAY, errorMsg);
     }
 
     return Unpooled.wrappedBuffer(recordSerializer.serializeObjects(records));
+  }
+
+  private VeniceCompressor getCompressor(CompressionStrategy compressionStrategy, RequestType requestType) {
+    VeniceCompressor compressor;
+    if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
+      compressor = compressorFactory.getVersionSpecificCompressor(this.storeVersionName.getName());
+      if (compressor == null) {
+        throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
+            this.storeVersionName.getStoreName(),
+            requestType,
+            SERVICE_UNAVAILABLE,
+            "Compressor not available for resource " + this.storeVersionName.getName()
+                + ". Dictionary not downloaded.");
+      }
+    } else {
+      compressor = compressorFactory.getCompressor(compressionStrategy);
+    }
+    return compressor;
   }
 }

@@ -236,6 +236,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
                 .d2Enabled(true)
                 .regionName(options.getRegionName())
                 .extraProperties(options.getExtraProperties())
+                .dynamicAccessController(options.getAccessController())
                 .build());
         LOGGER.info(
             "[{}][{}] Created child controller on port {}",
@@ -493,6 +494,10 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     return new ArrayList<>(veniceServerWrappers.values());
   }
 
+  public synchronized VeniceServerWrapper getVeniceServerByPort(int port) {
+    return veniceServerWrappers.get(port);
+  }
+
   public synchronized Map<String, String> getNettyServerToGrpcAddress() {
     return nettyServerToGrpcAddress;
   }
@@ -533,6 +538,21 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         : veniceControllerWrappers.values()
             .stream()
             .map(VeniceControllerWrapper::getControllerUrl)
+            .collect(Collectors.joining(","));
+  }
+
+  /**
+   * Retrieves the gRPC URLs of all available Venice controllers as a comma-separated string.
+   *
+   * @return A comma-separated string of gRPC URLs for all controllers. If no controllers are available,
+   *         the {@code externalControllerDiscoveryURL} is returned.
+   */
+  public final synchronized String getAllControllersGrpcURLs() {
+    return veniceControllerWrappers.isEmpty()
+        ? externalControllerDiscoveryURL
+        : veniceControllerWrappers.values()
+            .stream()
+            .map(VeniceControllerWrapper::getControllerGrpcUrl)
             .collect(Collectors.joining(","));
   }
 

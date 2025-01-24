@@ -75,7 +75,6 @@ import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.BATCH_JOB_HEARTBEAT;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PUSH_JOB_DETAILS;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -185,6 +184,7 @@ import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RegionPushDetails;
@@ -199,7 +199,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
-import com.linkedin.venice.meta.ViewParameterKeys;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -1552,7 +1551,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
     Version newVersion;
     if (pushType.isIncremental()) {
-      newVersion = getVeniceHelixAdmin().getIncrementalPushVersion(clusterName, storeName);
+      newVersion = getVeniceHelixAdmin().getIncrementalPushVersion(clusterName, storeName, pushJobId);
     } else {
       validateTargetedRegions(targetedRegions, clusterName);
 
@@ -1730,19 +1729,6 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see VeniceHelixAdmin#getRealTimeTopic(String, Store)
-   */
-  @Override
-  public String getRealTimeTopic(String clusterName, Store store) {
-    return getVeniceHelixAdmin().getRealTimeTopic(clusterName, store);
-  }
-
-  @Override
-  public String getSeparateRealTimeTopic(String clusterName, String storeName) {
-    return getVeniceHelixAdmin().getSeparateRealTimeTopic(clusterName, storeName);
-  }
-
-  /**
    * A couple of extra checks are needed in parent controller
    * 1. check batch job statuses across child controllers. (We cannot only check the version status
    * in parent controller since they are marked as STARTED)
@@ -1750,12 +1736,17 @@ public class VeniceParentHelixAdmin implements Admin {
    * preserve incremental push topic in parent Kafka anymore
    */
   @Override
-  public Version getIncrementalPushVersion(String clusterName, String storeName) {
-    Version incrementalPushVersion = getVeniceHelixAdmin().getIncrementalPushVersion(clusterName, storeName);
+  public Version getIncrementalPushVersion(String clusterName, String storeName, String pushJobId) {
+    Version incrementalPushVersion = getVeniceHelixAdmin().getIncrementalPushVersion(clusterName, storeName, pushJobId);
     String incrementalPushTopic = incrementalPushVersion.kafkaTopicName();
     ExecutionStatus status = getOffLinePushStatus(clusterName, incrementalPushTopic).getExecutionStatus();
 
     return getIncrementalPushVersion(incrementalPushVersion, status);
+  }
+
+  @Override
+  public Version getReferenceVersionForStreamingWrites(String clusterName, String storeName, String pushJobId) {
+    return getVeniceHelixAdmin().getReferenceVersionForStreamingWrites(clusterName, storeName, pushJobId);
   }
 
   // This method is only for internal / test use case
@@ -2538,7 +2529,7 @@ public class VeniceParentHelixAdmin implements Admin {
           && !veniceHelixAdmin.isHybrid(currStore.getHybridStoreConfig())
           && !veniceHelixAdmin.isHybrid(updatedHybridStoreConfig)) {
         LOGGER.info(
-            "Enabling incremental push for a batch store:{}. Converting it to a hybrid store with default configs.",
+            "Enabling incremental push for a batch store:{}. Converting it to Active/Active hybrid store with default configs.",
             storeName);
         HybridStoreConfigRecord hybridStoreConfigRecord = new HybridStoreConfigRecord();
         hybridStoreConfigRecord.rewindTimeInSeconds = DEFAULT_REWIND_TIME_IN_SECONDS;
@@ -2553,6 +2544,10 @@ public class VeniceParentHelixAdmin implements Admin {
         updatedConfigsList.add(BUFFER_REPLAY_POLICY);
         hybridStoreConfigRecord.realTimeTopicName = DEFAULT_REAL_TIME_TOPIC_NAME;
         setStore.hybridStoreConfig = hybridStoreConfigRecord;
+        if (!currStore.isSystemStore() && controllerConfig.isActiveActiveReplicationEnabledAsDefaultForHybrid()) {
+          setStore.activeActiveReplicationEnabled = true;
+          updatedConfigsList.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
+        }
       }
 
       /**
@@ -2789,6 +2784,18 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       /**
+       * Pre-flight check for incremental push config update. We only allow incremental push config to be turned on
+       * when store is A/A. Otherwise, we should fail store update.
+       */
+      if (setStore.hybridStoreConfig != null && setStore.incrementalPushEnabled
+          && !setStore.activeActiveReplicationEnabled) {
+        throw new VeniceHttpException(
+            HttpStatus.SC_BAD_REQUEST,
+            "Hybrid store config invalid. Cannot have incremental push enabled while A/A not enabled",
+            ErrorType.BAD_REQUEST);
+      }
+
+      /**
        * By default, parent controllers will not try to replicate the unchanged store configs to child controllers;
        * an updatedConfigsList will be used to represent which configs are updated by users.
        */
@@ -2862,32 +2869,25 @@ public class VeniceParentHelixAdmin implements Admin {
             String.format("Materialized View name cannot contain version separator: %s", VERSION_SEPARATOR));
       }
       Map<String, String> viewParams = viewConfig.getViewParameters();
-      viewParams.put(ViewParameterKeys.MATERIALIZED_VIEW_NAME.name(), viewName);
-      if (!viewParams.containsKey(ViewParameterKeys.MATERIALIZED_VIEW_PARTITIONER.name())) {
-        viewParams.put(
-            ViewParameterKeys.MATERIALIZED_VIEW_PARTITIONER.name(),
-            store.getPartitionerConfig().getPartitionerClass());
+      MaterializedViewParameters.Builder decoratedViewParamBuilder =
+          new MaterializedViewParameters.Builder(viewName, viewParams);
+      if (!viewParams.containsKey(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITIONER.name())) {
+        decoratedViewParamBuilder.setPartitioner(store.getPartitionerConfig().getPartitionerClass());
         if (!store.getPartitionerConfig().getPartitionerParams().isEmpty()) {
-          try {
-            viewParams.put(
-                ViewParameterKeys.MATERIALIZED_VIEW_PARTITIONER_PARAMS.name(),
-                ObjectMapperFactory.getInstance()
-                    .writeValueAsString(store.getPartitionerConfig().getPartitionerParams()));
-          } catch (JsonProcessingException e) {
-            throw new VeniceException("Failed to convert store partitioner params to string", e);
-          }
+          decoratedViewParamBuilder.setPartitionerParams(store.getPartitionerConfig().getPartitionerParams());
         }
       }
-      if (!viewParams.containsKey(ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name())) {
-        viewParams.put(
-            ViewParameterKeys.MATERIALIZED_VIEW_PARTITION_COUNT.name(),
-            Integer.toString(store.getPartitionCount()));
+      if (!viewParams.containsKey(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name())) {
+        decoratedViewParamBuilder.setPartitionCount(store.getPartitionCount());
       }
-      viewConfig.setViewParameters(viewParams);
+      viewConfig.setViewParameters(decoratedViewParamBuilder.build());
     }
-    VeniceView view =
-        ViewUtils.getVeniceView(viewConfig.getViewClassName(), new Properties(), store, viewConfig.getViewParameters());
-    view.validateConfigs();
+    VeniceView view = ViewUtils.getVeniceView(
+        viewConfig.getViewClassName(),
+        new Properties(),
+        store.getName(),
+        viewConfig.getViewParameters());
+    view.validateConfigs(store);
     return viewConfig;
   }
 

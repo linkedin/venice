@@ -295,30 +295,4 @@ public enum ExceptionUtil {
   }
 
   private static final StackTraceElement[] EMPTY_STACK_TRACE_ELEMENTS = new StackTraceElement[0];
-
-  public static <T> T throwException(Throwable cause) {
-    if (_throwMethod == null) {
-      try {
-        // noinspection unchecked
-        _throwMethod = Class.forName("com.linkedin.alpini.base.misc.Netty4ThrowException")
-            .asSubclass(ExceptionThrower.class)
-            .newInstance();
-      } catch (Exception ex) {
-        _throwMethod = ExceptionUtil::<RuntimeException>throw0;
-      }
-    }
-    _throwMethod.throwException(cause);
-    return null;
-  }
-
-  private static <T extends Throwable> void throw0(Throwable exception) throws T {
-    // noinspection unchecked
-    throw (T) exception;
-  }
-
-  private static ExceptionThrower _throwMethod;
-
-  public interface ExceptionThrower {
-    void throwException(Throwable exception);
-  }
 }

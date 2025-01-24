@@ -392,7 +392,7 @@ class TopicMetadataFetcher implements Closeable {
     if (cachedValue == null) {
       cachedValue = latestOffsetCache.get(pubSubTopicPartition);
       if (cachedValue == null) {
-        return -1;
+        return PubSubConstants.UNKNOWN_LATEST_OFFSET;
       }
     }
     return cachedValue.getValue();
@@ -504,7 +504,8 @@ class TopicMetadataFetcher implements Closeable {
       // iterate in reverse order to find the first data message (not control message) from the end
       for (int i = lastConsumedRecords.size() - 1; i >= 0; i--) {
         PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = lastConsumedRecords.get(i);
-        if (!record.getKey().isControlMessage()) {
+        if (!record.getKey().isControlMessage()
+            || Arrays.equals(record.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
           stats.recordLatency(GET_PRODUCER_TIMESTAMP_OF_LAST_DATA_MESSAGE, startTime);
           // note that the timestamp is the producer timestamp and not the pubsub message (broker) timestamp
           return record.getValue().getProducerMetadata().getMessageTimestamp();

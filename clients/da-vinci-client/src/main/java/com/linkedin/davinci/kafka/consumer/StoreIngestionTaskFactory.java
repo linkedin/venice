@@ -1,6 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -55,7 +55,7 @@ public class StoreIngestionTaskFactory {
       int partitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
-      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction,
+      DaVinciRecordTransformerConfig recordTransformerConfig,
       Lazy<ZKHelixAdmin> zkHelixAdmin) {
     if (version.isActiveActiveReplicationEnabled()) {
       return new ActiveActiveStoreIngestionTask(
@@ -69,7 +69,7 @@ public class StoreIngestionTaskFactory {
           partitionId,
           isIsolatedIngestion,
           cacheBackend,
-          recordTransformerFunction,
+          recordTransformerConfig,
           zkHelixAdmin);
     }
     return new LeaderFollowerStoreIngestionTask(
@@ -83,7 +83,7 @@ public class StoreIngestionTaskFactory {
         partitionId,
         isIsolatedIngestion,
         cacheBackend,
-        recordTransformerFunction,
+        recordTransformerConfig,
         zkHelixAdmin);
   }
 

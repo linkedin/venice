@@ -46,6 +46,8 @@ dependencies {
     exclude group: 'org.mockito', module: 'mockito-all' // this will introduce another different mockito-all version
   }
 
+  implementation libraries.fastUtil
+
   implementation('org.apache.helix:helix-core:1.4.1:jdk8') {
     exclude group: 'org.apache.helix'
   }
@@ -83,4 +85,11 @@ jar {
 
 ext {
   jacocoCoverageThreshold = 0.40
+}
+
+checkerFramework {
+  extraJavacArgs = ['-Xmaxerrs', '256']
+  checkers = ['org.checkerframework.checker.nullness.NullnessChecker']
+  skipCheckerFramework = true
+  excludeTests = true
 }

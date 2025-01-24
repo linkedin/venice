@@ -5,13 +5,14 @@ import static com.linkedin.venice.ConfigKeys.PARTITIONER_CLASS;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
 import static com.linkedin.venice.utils.Utils.getUniqueString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.github.luben.zstd.Zstd;
@@ -27,6 +28,7 @@ import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.GzipCompressor;
 import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -46,9 +48,15 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
+import com.linkedin.venice.meta.ETLStoreConfig;
+import com.linkedin.venice.meta.ETLStoreConfigImpl;
+import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.NameRepository;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PartitionerConfigImpl;
@@ -58,8 +66,12 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.SystemStoreAttributes;
+import com.linkedin.venice.meta.SystemStoreAttributesImpl;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.meta.ViewConfig;
+import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
@@ -68,6 +80,12 @@ import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.router.VeniceRouterConfig;
+import com.linkedin.venice.router.api.VenicePartitionFinder;
+import com.linkedin.venice.router.api.VenicePathParser;
+import com.linkedin.venice.router.api.VeniceVersionFinder;
+import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
@@ -76,6 +94,7 @@ import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -93,10 +112,12 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Random;
 import java.util.TreeMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
@@ -467,7 +488,7 @@ public class TestUtils {
       ControllerClient controllerClient,
       long timeout,
       TimeUnit timeoutUnit) {
-    waitForNonDeterministicAssertion(timeout, timeoutUnit, () -> {
+    waitForNonDeterministicAssertion(timeout, timeoutUnit, true, () -> {
       JobStatusQueryResponse jobStatusQueryResponse =
           assertCommand(controllerClient.queryJobStatus(topicName, Optional.empty()));
       ExecutionStatus executionStatus = ExecutionStatus.valueOf(jobStatusQueryResponse.getStatus());
@@ -494,6 +515,74 @@ public class TestUtils {
     // Set the default timestamp to make sure every creation will return the same Store object.
     store.setLatestVersionPromoteToCurrentTimestamp(-1);
     return store;
+  }
+
+  public static HybridStoreConfig createTestHybridStoreConfig(Random random) {
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
+        random.nextLong(),
+        random.nextLong(),
+        random.nextInt(),
+        DataReplicationPolicy.AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_SOP);
+    hybridStoreConfig.setRealTimeTopicName(Long.toString(random.nextLong()));
+    return hybridStoreConfig;
+  }
+
+  public static Map<String, ViewConfig> createTestViewConfigs(Random random) {
+    Map<String, ViewConfig> viewConfigs = new HashMap<>();
+    viewConfigs.put("vc1", new ViewConfigImpl("vc1", createTestViewParams(random)));
+    viewConfigs.put("vc2", new ViewConfigImpl("vc2", createTestViewParams(random)));
+    viewConfigs.put("vc3", new ViewConfigImpl("vc3", createTestViewParams(random)));
+    return viewConfigs;
+  }
+
+  public static Map<String, String> createTestViewParams(Random random) {
+    Map<String, String> viewParams = new HashMap<>();
+    viewParams.put("k1", Long.toString(random.nextLong()));
+    viewParams.put("k2", Long.toString(random.nextLong()));
+    viewParams.put("k3", Long.toString(random.nextLong()));
+    return viewParams;
+  }
+
+  public static ETLStoreConfig createTestETLStoreConfig() {
+    ETLStoreConfig etlStoreConfig = new ETLStoreConfigImpl();
+    etlStoreConfig.setEtledUserProxyAccount("etled_user_proxy_account");
+    etlStoreConfig.setFutureVersionETLEnabled(true);
+    etlStoreConfig.setRegularVersionETLEnabled(true);
+    return etlStoreConfig;
+  }
+
+  public static PartitionerConfig createTestPartitionerConfig(Random random) {
+    PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
+    partitionerConfig.setPartitionerClass("partitioner_class");
+    partitionerConfig.setPartitionerParams(new HashMap<>());
+    partitionerConfig.setAmplificationFactor(random.nextInt());
+    return partitionerConfig;
+  }
+
+  public static List<Version> createTestVersions(String storeName, Random random) {
+    List<Version> versions = new ArrayList<>();
+    versions.add(new VersionImpl(storeName, 0, Long.toString(random.nextLong())));
+    versions.add(new VersionImpl(storeName, 1, Long.toString(random.nextLong())));
+    versions.add(new VersionImpl(storeName, 2, Long.toString(random.nextLong())));
+    return versions;
+  }
+
+  public static Map<String, SystemStoreAttributes> createTestSystemStores(String storeName, Random random) {
+    Map<String, SystemStoreAttributes> systemStores = new HashMap<>();
+    systemStores.put("ss1", createTestSystemStoreAttributes(storeName, random));
+    systemStores.put("ss2", createTestSystemStoreAttributes(storeName, random));
+    systemStores.put("ss3", createTestSystemStoreAttributes(storeName, random));
+    return systemStores;
+  }
+
+  public static SystemStoreAttributes createTestSystemStoreAttributes(String storeName, Random random) {
+    SystemStoreAttributes systemStoreAttributes = new SystemStoreAttributesImpl();
+    systemStoreAttributes.setCurrentVersion(random.nextInt());
+    systemStoreAttributes.setVersions(createTestVersions(storeName, random));
+    systemStoreAttributes.setLatestVersionPromoteToCurrentTimestamp(random.nextLong());
+    systemStoreAttributes.setLargestUsedVersionNumber(random.nextInt());
+    return systemStoreAttributes;
   }
 
   /**
@@ -562,6 +651,8 @@ public class TestUtils {
     properties.put(ConfigKeys.DEFAULT_NUMBER_OF_PARTITION, "1");
     properties.put(ConfigKeys.ADMIN_PORT, TestUtils.getFreePort());
     properties.put(ConfigKeys.ADMIN_SECURE_PORT, TestUtils.getFreePort());
+    properties.put(ConfigKeys.CONTROLLER_ADMIN_GRPC_PORT, TestUtils.getFreePort());
+    properties.put(ConfigKeys.CONTROLLER_ADMIN_SECURE_GRPC_PORT, TestUtils.getFreePort());
     return properties;
   }
 
@@ -652,23 +743,6 @@ public class TestUtils {
             storeResponse.getStore().isActiveActiveReplicationEnabled(),
             enabledAA,
             "The active active replication config does not match.");
-      }
-    });
-  }
-
-  public static void verifyHybridStoreDataReplicationPolicy(
-      String storeName,
-      DataReplicationPolicy dataReplicationPolicy,
-      ControllerClient... controllerClients) {
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-      for (ControllerClient controllerClient: controllerClients) {
-        StoreResponse storeResponse = assertCommand(controllerClient.getStore(storeName));
-        assertNotNull(storeResponse.getStore(), "Store should not be null");
-        assertNotNull(storeResponse.getStore().getHybridStoreConfig(), "Hybrid store config should not be null");
-        assertEquals(
-            storeResponse.getStore().getHybridStoreConfig().getDataReplicationPolicy(),
-            dataReplicationPolicy,
-            "The data replication policy does not match.");
       }
     });
   }
@@ -926,5 +1000,28 @@ public class TestUtils {
       LOGGER.error(e);
       return null;
     }
+  }
+
+  public static VenicePathParser getVenicePathParser(CompressorFactory compressorFactory, boolean decompressOnClient) {
+    RouterStats stats = mock(RouterStats.class);
+    when(stats.getStatsByType(any())).thenReturn(mock(AggRouterHttpRequestStats.class));
+    ReadOnlyStoreRepository readOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
+    Store store = mock(Store.class);
+    when(store.getClientDecompressionEnabled()).thenReturn(decompressOnClient);
+    when(readOnlyStoreRepository.getStoreOrThrow(anyString())).thenReturn(store);
+
+    VeniceRouterConfig routerConfig = mock(VeniceRouterConfig.class);
+    when(routerConfig.isDecompressOnClient()).thenReturn(decompressOnClient);
+
+    return new VenicePathParser(
+        mock(VeniceVersionFinder.class),
+        mock(VenicePartitionFinder.class),
+        stats,
+        readOnlyStoreRepository,
+        routerConfig,
+        compressorFactory,
+        mock(MetricsRepository.class),
+        mock(ScheduledExecutorService.class),
+        new NameRepository());
   }
 }

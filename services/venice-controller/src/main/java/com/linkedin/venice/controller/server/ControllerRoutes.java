@@ -24,7 +24,8 @@ import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.controllerapi.PubSubTopicConfigResponse;
 import com.linkedin.venice.controllerapi.StoppableNodeStatusResponse;
 import com.linkedin.venice.exceptions.ErrorType;
-import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
+import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -33,6 +34,7 @@ import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
 import java.util.List;
 import java.util.Optional;
+import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -45,13 +47,16 @@ public class ControllerRoutes extends AbstractRoute {
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
   private final PubSubTopicRepository pubSubTopicRepository;
+  private final VeniceControllerRequestHandler requestHandler;
 
   public ControllerRoutes(
       boolean sslEnabled,
       Optional<DynamicAccessController> accessController,
-      PubSubTopicRepository pubSubTopicRepository) {
+      PubSubTopicRepository pubSubTopicRepository,
+      VeniceControllerRequestHandler requestHandler) {
     super(sslEnabled, accessController);
     this.pubSubTopicRepository = pubSubTopicRepository;
+    this.requestHandler = requestHandler;
   }
 
   /**
@@ -64,12 +69,18 @@ public class ControllerRoutes extends AbstractRoute {
       try {
         AdminSparkServer.validateParams(request, LEADER_CONTROLLER.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
-        responseObject.setCluster(cluster);
-        Instance leaderController = admin.getLeaderController(cluster);
-        responseObject.setUrl(leaderController.getUrl(isSslEnabled()));
-        if (leaderController.getPort() != leaderController.getSslPort()) {
-          // Controller is SSL Enabled
-          responseObject.setSecureUrl(leaderController.getUrl(true));
+        LeaderControllerGrpcResponse inernalResponse = requestHandler
+            .getLeaderControllerDetails(LeaderControllerGrpcRequest.newBuilder().setClusterName(cluster).build());
+        responseObject.setCluster(inernalResponse.getClusterName());
+        responseObject.setUrl(inernalResponse.getHttpUrl());
+        if (StringUtils.isNotBlank(inernalResponse.getHttpsUrl())) {
+          responseObject.setSecureUrl(inernalResponse.getHttpsUrl());
+        }
+        if (StringUtils.isNotBlank(inernalResponse.getGrpcUrl())) {
+          responseObject.setGrpcUrl(inernalResponse.getGrpcUrl());
+        }
+        if (StringUtils.isNotBlank(inernalResponse.getSecureGrpcUrl())) {
+          responseObject.setSecureGrpcUrl(inernalResponse.getSecureGrpcUrl());
         }
       } catch (Throwable e) {
         responseObject.setError(e);

@@ -79,7 +79,7 @@ public enum MessageType implements VeniceEnumValue {
   }
 
   public static MessageType valueOf(KafkaMessageEnvelope kafkaMessageEnvelope) {
-    return valueOf(kafkaMessageEnvelope.messageType);
+    return valueOf(kafkaMessageEnvelope.getMessageType());
   }
 
   public static class Constants {

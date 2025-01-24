@@ -2,9 +2,16 @@
 // via transitive dependencies instead of enumerating all modules individually.
 dependencies {
   rootProject.subprojects.each { subproject ->
-    if (subproject.path != project.path && subproject.subprojects.isEmpty()) {
-      implementation project(subproject.path)
+    // Excluding venice-duckdb as it's experimental and causes build issues
+    if (subproject.path != project.path && subproject.subprojects.isEmpty() && subproject.path != ':integrations:venice-duckdb') {
+      implementation (project(subproject.path)) {
+        exclude group: 'org.duckdb'
+        exclude module: 'venice-duckdb'
+      }
     }
   }
-  implementation project(path: ':internal:venice-test-common', configuration: 'integrationTestUtils')
+  implementation (project(path: ':internal:venice-test-common', configuration: 'integrationTestUtils')) {
+    exclude group: 'org.duckdb'
+    exclude module: 'venice-duckdb'
+  }
 }

@@ -48,6 +48,7 @@ public class ServerStoreAclHandler extends AbstractStoreAclHandler<QueryAction> 
   private static final Set<QueryAction> QUERIES_TO_SKIP_ACL = new HashSet<>(
       Arrays.asList(
           QueryAction.METADATA,
+          QueryAction.STORE_PROPERTIES,
           QueryAction.ADMIN,
           QueryAction.HEALTH,
           QueryAction.CURRENT_VERSION,

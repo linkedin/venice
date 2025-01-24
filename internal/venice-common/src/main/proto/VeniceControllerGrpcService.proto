@@ -1,0 +1,42 @@
+syntax = 'proto3';
+package com.linkedin.venice.protocols.controller;
+
+import "google/rpc/status.proto";
+import "google/rpc/error_details.proto";
+import "controller/ControllerGrpcRequestContext.proto";
+
+option java_multiple_files = true;
+
+
+service VeniceControllerGrpcService {
+  // ClusterDiscovery
+  rpc discoverClusterForStore(DiscoverClusterGrpcRequest) returns (DiscoverClusterGrpcResponse) {}
+
+  // ControllerRoutes
+  rpc getLeaderController(LeaderControllerGrpcRequest) returns (LeaderControllerGrpcResponse);
+}
+
+message DiscoverClusterGrpcRequest {
+  string storeName = 1;
+}
+
+message DiscoverClusterGrpcResponse {
+  string clusterName = 1;
+  string storeName = 2;
+  string d2Service = 3;
+  string serverD2Service = 4;
+  optional string zkAddress = 5;
+  optional string pubSubBootstrapServers = 6;
+}
+
+message LeaderControllerGrpcRequest {
+  string clusterName = 1; // The cluster name
+}
+
+message LeaderControllerGrpcResponse {
+  string clusterName = 1;    // The cluster name
+  string httpUrl = 2;        // Leader controller URL
+  string httpsUrl = 3;       // SSL-enabled leader controller URL
+  string grpcUrl = 4;        // gRPC URL for leader controller
+  string secureGrpcUrl = 5;  // Secure gRPC URL for leader controller
+}

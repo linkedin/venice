@@ -23,3 +23,10 @@ dependencies {
 ext {
   jacocoCoverageThreshold = 0.01
 }
+
+checkerFramework {
+  extraJavacArgs = ['-Xmaxerrs', '256']
+  checkers = ['org.checkerframework.checker.nullness.NullnessChecker']
+  skipCheckerFramework = true
+  excludeTests = true
+}

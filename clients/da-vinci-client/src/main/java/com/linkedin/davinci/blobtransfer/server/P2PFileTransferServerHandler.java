@@ -3,6 +3,7 @@ package com.linkedin.davinci.blobtransfer.server;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_COMPLETED;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_TYPE;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferType;
 import static com.linkedin.venice.utils.NettyUtils.setupResponseAndFlush;
 import static io.netty.handler.codec.http.HttpHeaderValues.APPLICATION_JSON;
@@ -118,6 +119,16 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
 
         if (!snapshotDir.exists() || !snapshotDir.isDirectory()) {
           byte[] errBody = ("Snapshot for " + blobTransferRequest.getFullResourceName() + " doesn't exist").getBytes();
+          setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, errBody, false, ctx);
+          return;
+        }
+
+        // Check the snapshot table format
+        BlobTransferTableFormat currentSnapshotTableFormat = blobSnapshotManager.getBlobTransferTableFormat();
+        if (blobTransferRequest.getRequestTableFormat() != currentSnapshotTableFormat) {
+          byte[] errBody = ("Table format mismatch for " + blobTransferRequest.getFullResourceName()
+              + ", current snapshot format is " + currentSnapshotTableFormat.name() + ", requested format is "
+              + blobTransferRequest.getRequestTableFormat().name()).getBytes();
           setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, errBody, false, ctx);
           return;
         }
@@ -278,13 +289,24 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
   private BlobTransferPayload parseBlobTransferPayload(URI uri) throws IllegalArgumentException {
     // Parse the request uri to obtain the storeName and partition
     String[] requestParts = RequestHelper.getRequestParts(uri);
-    if (requestParts.length == 4) {
-      // [0]""/[1]"store"/[2]"version"/[3]"partition"
+
+    // Ensure table format is valid
+    BlobTransferTableFormat requestTableFormat;
+    try {
+      requestTableFormat = BlobTransferTableFormat.valueOf(requestParts[4]);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(
+          "Invalid table format: " + requestParts[4] + " for fetching blob at " + uri.getPath());
+    }
+
+    if (requestParts.length == 5) {
+      // [0]""/[1]"store"/[2]"version"/[3]"partition/[4]"table format"
       return new BlobTransferPayload(
           baseDir,
           requestParts[1],
           Integer.parseInt(requestParts[2]),
-          Integer.parseInt(requestParts[3]));
+          Integer.parseInt(requestParts[3]),
+          requestTableFormat);
     } else {
       throw new IllegalArgumentException("Invalid request for fetching blob at " + uri.getPath());
     }

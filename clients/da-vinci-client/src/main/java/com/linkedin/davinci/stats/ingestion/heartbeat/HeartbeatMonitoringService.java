@@ -2,7 +2,9 @@ package com.linkedin.davinci.stats.ingestion.heartbeat;
 
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.ReplicaHeartbeatInfo;
+import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Utils;
@@ -43,6 +45,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
 
   private static final Logger LOGGER = LogManager.getLogger(HeartbeatMonitoringService.class);
 
+  private final ReadOnlyStoreRepository metadataRepository;
   private final Thread reportingThread;
   private final Thread lagLoggingThread;
 
@@ -52,19 +55,22 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   // store -> version -> partition -> region -> (timestamp, RTS)
   private final Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> followerHeartbeatTimeStamps;
   private final Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> leaderHeartbeatTimeStamps;
-  HeartbeatVersionedStats versionStatsReporter;
+  private final HeartbeatVersionedStats versionStatsReporter;
+  private final HeartbeatMonitoringServiceStats heartbeatMonitoringServiceStats;
 
   public HeartbeatMonitoringService(
       MetricsRepository metricsRepository,
       ReadOnlyStoreRepository metadataRepository,
       Set<String> regionNames,
-      String localRegionName) {
+      String localRegionName,
+      HeartbeatMonitoringServiceStats heartbeatMonitoringServiceStats) {
     this.regionNames = regionNames.stream().filter(x -> !Utils.isSeparateTopicRegion(x)).collect(Collectors.toSet());
     this.localRegionName = localRegionName;
     this.reportingThread = new HeartbeatReporterThread();
     this.lagLoggingThread = new HeartbeatLagLoggingThread();
     this.followerHeartbeatTimeStamps = new VeniceConcurrentHashMap<>();
     this.leaderHeartbeatTimeStamps = new VeniceConcurrentHashMap<>();
+    this.metadataRepository = metadataRepository;
     this.versionStatsReporter = new HeartbeatVersionedStats(
         metricsRepository,
         metadataRepository,
@@ -75,6 +81,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
             regionNames),
         leaderHeartbeatTimeStamps,
         followerHeartbeatTimeStamps);
+    this.heartbeatMonitoringServiceStats = heartbeatMonitoringServiceStats;
   }
 
   private synchronized void initializeEntry(
@@ -377,6 +384,48 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     checkAndMaybeLogHeartbeatDelayMap(followerHeartbeatTimeStamps);
   }
 
+  AggregatedHeartbeatLagEntry getMaxHeartbeatLag(
+      Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> heartbeatTimestamps,
+      boolean isLeaderLag) {
+    long currentTimestamp = System.currentTimeMillis();
+    long minHeartbeatTimestampForCurrentVersion = Long.MAX_VALUE;
+    long minHeartbeatTimestampForNonCurrentVersion = Long.MAX_VALUE;
+    for (Map.Entry<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> storeName: heartbeatTimestamps
+        .entrySet()) {
+      Store store = metadataRepository.getStore(storeName.getKey());
+      if (store == null) {
+        LOGGER.warn("Store: {} not found in repository", storeName.getKey());
+        continue;
+      }
+      int currentVersion = store.getCurrentVersion();
+      for (Map.Entry<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>> version: storeName.getValue()
+          .entrySet()) {
+        for (Map.Entry<Integer, Map<String, HeartbeatTimeStampEntry>> partition: version.getValue().entrySet()) {
+          for (Map.Entry<String, HeartbeatTimeStampEntry> region: partition.getValue().entrySet()) {
+            long heartbeatTs = region.getValue().timestamp;
+            if (currentVersion == version.getKey()) {
+              minHeartbeatTimestampForCurrentVersion = Math.min(minHeartbeatTimestampForCurrentVersion, heartbeatTs);
+            } else {
+              minHeartbeatTimestampForNonCurrentVersion =
+                  Math.min(minHeartbeatTimestampForNonCurrentVersion, heartbeatTs);
+            }
+          }
+        }
+      }
+    }
+    return new AggregatedHeartbeatLagEntry(
+        currentTimestamp - minHeartbeatTimestampForCurrentVersion,
+        currentTimestamp - minHeartbeatTimestampForNonCurrentVersion);
+  }
+
+  public AggregatedHeartbeatLagEntry getMaxLeaderHeartbeatLag() {
+    return getMaxHeartbeatLag(leaderHeartbeatTimeStamps, true);
+  }
+
+  public AggregatedHeartbeatLagEntry getMaxFollowerHeartbeatLag() {
+    return getMaxHeartbeatLag(leaderHeartbeatTimeStamps, false);
+  }
+
   @FunctionalInterface
   interface ReportLagFunction {
     void apply(String storeName, int version, String region, long lag, boolean isReadyToServe);
@@ -390,12 +439,18 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     @Override
     public void run() {
       while (!Thread.interrupted()) {
-        record();
         try {
+          heartbeatMonitoringServiceStats.recordReporterHeartbeat();
+          record();
           TimeUnit.SECONDS.sleep(DEFAULT_REPORTER_THREAD_SLEEP_INTERVAL_SECONDS);
         } catch (InterruptedException e) {
           // We've received an interrupt which is to be expected, so we'll just leave the loop and log
           break;
+        } catch (Exception e) {
+          LOGGER.error("Received exception from Ingestion-Heartbeat-Reporter-Service-Thread", e);
+          heartbeatMonitoringServiceStats.recordHeartbeatExceptionCount();
+        } catch (Throwable throwable) {
+          LOGGER.error("Received exception from Ingestion-Heartbeat-Reporter-Service-Thread", throwable);
         }
       }
       LOGGER.info("Heartbeat lag metric reporting thread interrupted!  Shutting down...");
@@ -410,12 +465,19 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     @Override
     public void run() {
       while (!Thread.interrupted()) {
-        checkAndMaybeLogHeartbeatDelay();
         try {
+          heartbeatMonitoringServiceStats.recordLoggerHeartbeat();
+          checkAndMaybeLogHeartbeatDelay();
           TimeUnit.SECONDS.sleep(DEFAULT_LAG_LOGGING_THREAD_SLEEP_INTERVAL_SECONDS);
         } catch (InterruptedException e) {
           // We've received an interrupt which is to be expected, so we'll just leave the loop and log
           break;
+        } catch (Exception e) {
+          LOGGER.error("Received exception from Ingestion-Heartbeat-Lag-Logging-Service-Thread", e);
+          heartbeatMonitoringServiceStats.recordHeartbeatExceptionCount();
+        } catch (Throwable throwable) {
+          LOGGER
+              .error("Received non-exception throwable from Ingestion-Heartbeat-Lag-Logging-Service-Thread", throwable);
         }
       }
       LOGGER.info("Heartbeat lag logging thread interrupted!  Shutting down...");

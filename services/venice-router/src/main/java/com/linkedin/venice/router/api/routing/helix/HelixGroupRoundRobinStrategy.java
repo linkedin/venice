@@ -14,25 +14,8 @@ public class HelixGroupRoundRobinStrategy implements HelixGroupSelectionStrategy
   }
 
   @Override
-  public void finishRequest(long requestId, int groupId) {
+  public void finishRequest(long requestId, int groupId, double latency) {
     // do nothing
   }
 
-  @Override
-  public int getMaxGroupPendingRequest() {
-    // Not supported
-    return -1;
-  }
-
-  @Override
-  public int getMinGroupPendingRequest() {
-    // Not supported
-    return -1;
-  }
-
-  @Override
-  public int getAvgGroupPendingRequest() {
-    // Not supported
-    return -1;
-  }
 }

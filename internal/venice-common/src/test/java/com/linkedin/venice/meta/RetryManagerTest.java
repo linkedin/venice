@@ -1,6 +1,7 @@
 package com.linkedin.venice.meta;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;

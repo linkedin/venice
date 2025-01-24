@@ -239,7 +239,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
       synchronized (pubSubConsumer) {
         Set<PubSubTopicPartition> topicPartitionSet = getTopicAssignment();
-        for (PubSubTopicPartition topicPartition: pubSubConsumer.getAssignment()) {
+        for (PubSubTopicPartition topicPartition: topicPartitionSet) {
           if (partitions.contains(topicPartition.getPartitionNumber())) {
             pubSubConsumer.unSubscribe(topicPartition);
           }
@@ -549,6 +549,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public void unsubscribe(Set<Integer> partitions) {
+    if (partitions.isEmpty()) {
+      return;
+    }
     synchronized (pubSubConsumer) {
       Set<PubSubTopicPartition> topicPartitionSet = getTopicAssignment();
       Set<PubSubTopicPartition> topicPartitionsToUnsub = new HashSet<>();

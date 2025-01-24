@@ -112,7 +112,6 @@ public class TestChangelogConsumer {
   private String clusterName;
   private VeniceClusterWrapper clusterWrapper;
   private ControllerClient parentControllerClient;
-
   private static final List<Schema> SCHEMA_HISTORY = Arrays.asList(
       NAME_RECORD_V1_SCHEMA,
       NAME_RECORD_V2_SCHEMA,
@@ -173,7 +172,7 @@ public class TestChangelogConsumer {
     TestView.resetCounters();
   }
 
-  @Test(timeOut = TEST_TIMEOUT * 3, priority = 3)
+  @Test(timeOut = TEST_TIMEOUT, priority = 3)
   public void testAAIngestionWithStoreView() throws Exception {
     // Set up the store
     Long timestamp = System.currentTimeMillis();

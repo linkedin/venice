@@ -34,23 +34,38 @@ public class Instance {
   private final String url;
   private final String sUrl;
 
+  private final int grpcPort;
+  private final int grpcSslPort;
+  private final String grpcUrl;
+  private final String grpcSslUrl;
+
   // TODO: generate nodeId from host and port, should be "host_port", or generate host and port from id.
   public Instance(String nodeId, String host, int port) {
-    this(nodeId, host, port, port);
+    this(nodeId, host, port, port, -1, -1);
+  }
+
+  public Instance(String nodeId, String host, int port, int grpcPort, int grpcSslPort) {
+    this(nodeId, host, port, port, grpcPort, grpcSslPort);
   }
 
   public Instance(
       @JsonProperty("nodeId") String nodeId,
       @JsonProperty("host") String host,
       @JsonProperty("port") int port,
-      @JsonProperty("sslPort") int sslPort) {
+      @JsonProperty("sslPort") int sslPort,
+      @JsonProperty("grpcPort") int grpcPort,
+      @JsonProperty("grpcSslPort") int grpcSslPort) {
     this.nodeId = nodeId;
     this.host = host;
-    validatePort("port", port);
-    this.port = port;
+    this.port = validatePort("port", port);
     this.sslPort = sslPort;
     this.url = "http://" + host + ":" + port + "/";
     this.sUrl = "https://" + host + ":" + sslPort + "/";
+
+    this.grpcPort = grpcPort;
+    this.grpcSslPort = grpcSslPort;
+    this.grpcUrl = host + ":" + grpcPort;
+    this.grpcSslUrl = host + ":" + grpcSslPort;
   }
 
   public static Instance fromHostAndPort(String hostName, int port) {
@@ -91,6 +106,22 @@ public class Instance {
     return sslPort;
   }
 
+  public int getGrpcPort() {
+    return grpcPort;
+  }
+
+  public int getGrpcSslPort() {
+    return grpcSslPort;
+  }
+
+  public String getGrpcUrl() {
+    return grpcUrl;
+  }
+
+  public String getGrpcSslUrl() {
+    return grpcSslUrl;
+  }
+
   /***
    * Convenience method for getting a host and port based url.
    * Wraps IPv6 host strings in square brackets
@@ -111,10 +142,11 @@ public class Instance {
     return getUrl(false);
   }
 
-  private void validatePort(String name, int port) {
+  private int validatePort(String name, int port) {
     if (port < 0 || port > 65535) {
       throw new IllegalArgumentException("Invalid " + name + ": " + port);
     }
+    return port;
   }
 
   // Autogen except for .toLowerCase()

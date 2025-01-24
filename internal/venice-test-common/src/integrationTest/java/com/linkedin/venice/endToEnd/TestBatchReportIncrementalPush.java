@@ -121,6 +121,7 @@ public class TestBatchReportIncrementalPush {
               .setCompressionStrategy(CompressionStrategy.NO_OP)
               .setWriteComputationEnabled(true)
               .setChunkingEnabled(true)
+              .setActiveActiveReplicationEnabled(true)
               .setIncrementalPushEnabled(true)
               .setHybridRewindSeconds(1000L)
               .setHybridOffsetLagThreshold(2L);
