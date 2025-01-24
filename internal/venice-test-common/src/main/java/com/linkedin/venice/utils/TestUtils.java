@@ -5,11 +5,13 @@ import static com.linkedin.venice.ConfigKeys.PARTITIONER_CLASS;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
 import static com.linkedin.venice.utils.Utils.getUniqueString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
@@ -26,6 +28,7 @@ import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.GzipCompressor;
 import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -53,6 +56,7 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.NameRepository;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PartitionerConfigImpl;
@@ -76,6 +80,12 @@ import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.router.VeniceRouterConfig;
+import com.linkedin.venice.router.api.VenicePartitionFinder;
+import com.linkedin.venice.router.api.VenicePathParser;
+import com.linkedin.venice.router.api.VeniceVersionFinder;
+import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
@@ -84,6 +94,7 @@ import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -106,6 +117,7 @@ import java.util.TreeMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
@@ -988,5 +1000,28 @@ public class TestUtils {
       LOGGER.error(e);
       return null;
     }
+  }
+
+  public static VenicePathParser getVenicePathParser(CompressorFactory compressorFactory, boolean decompressOnClient) {
+    RouterStats stats = mock(RouterStats.class);
+    when(stats.getStatsByType(any())).thenReturn(mock(AggRouterHttpRequestStats.class));
+    ReadOnlyStoreRepository readOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
+    Store store = mock(Store.class);
+    when(store.getClientDecompressionEnabled()).thenReturn(decompressOnClient);
+    when(readOnlyStoreRepository.getStoreOrThrow(anyString())).thenReturn(store);
+
+    VeniceRouterConfig routerConfig = mock(VeniceRouterConfig.class);
+    when(routerConfig.isDecompressOnClient()).thenReturn(decompressOnClient);
+
+    return new VenicePathParser(
+        mock(VeniceVersionFinder.class),
+        mock(VenicePartitionFinder.class),
+        stats,
+        readOnlyStoreRepository,
+        routerConfig,
+        compressorFactory,
+        mock(MetricsRepository.class),
+        mock(ScheduledExecutorService.class),
+        new NameRepository());
   }
 }

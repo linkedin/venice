@@ -22,6 +22,8 @@ import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.factory.ClientFactory;
 import com.linkedin.venice.fastclient.meta.AbstractClientRoutingStrategy;
 import com.linkedin.venice.fastclient.meta.AbstractStoreMetadata;
+import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
+import com.linkedin.venice.fastclient.meta.InstanceHealthMonitorConfig;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
@@ -551,6 +553,13 @@ public class TestClientSimulator implements Client {
     clientConfigBuilder.setDualReadEnabled(false);
     clientConfigBuilder.setD2Client(mockD2Client);
     clientConfigBuilder.setClusterDiscoveryD2Service(dummyD2Discovery);
+    clientConfigBuilder.setInstanceHealthMonitor(
+        new InstanceHealthMonitor(
+            InstanceHealthMonitorConfig.builder()
+                .setClient(this)
+                .setRoutingRequestDefaultTimeoutMS(30000) // 30s, longer time out for test
+                .build()));
+
     clientConfig = clientConfigBuilder.build();
 
     AbstractStoreMetadata metadata = new AbstractStoreMetadata(clientConfig) {

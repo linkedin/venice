@@ -182,7 +182,7 @@ public class KafkaInputDictTrainer {
     // Get one split per partition
     KafkaInputSplit[] splits = (KafkaInputSplit[]) kafkaInputFormat.getSplitsByRecordsPerSplit(jobConf, Long.MAX_VALUE);
     // The following sort is trying to get a deterministic dict with the same input.
-    Arrays.sort(splits, Comparator.comparingInt(o -> o.getTopicPartition().partition()));
+    Arrays.sort(splits, Comparator.comparingInt(o -> o.getTopicPartition().getPartitionNumber()));
     // Try to gather some records from each partition
     PushJobZstdConfig zstdConfig = new PushJobZstdConfig(props, splits.length);
     ZstdDictTrainer trainer = trainerSupplier.orElseGet(zstdConfig::getZstdDictTrainer);

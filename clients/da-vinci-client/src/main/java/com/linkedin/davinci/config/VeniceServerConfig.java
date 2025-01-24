@@ -84,6 +84,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_
 import static com.linkedin.venice.ConfigKeys.SERVER_DEBUG_LOGGING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_CONSUMER_POOL_FOR_AA_WC_LEADER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_AA_WC_LEADER;
+import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_SEP_RT_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
@@ -150,6 +151,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_ROCKSDB_STORAGE_CONFIG_CHECK
 import static com.linkedin.venice.ConfigKeys.SERVER_ROUTER_CONNECTION_WARMING_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SCHEMA_FAST_CLASS_WARMUP_TIMEOUT;
 import static com.linkedin.venice.ConfigKeys.SERVER_SCHEMA_PRESENCE_CHECK_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_SEP_RT_LEADER_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_NON_EXISTING_TOPIC_CLEANUP_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHUTDOWN_DISK_UNHEALTHY_TIME_MS;
@@ -550,6 +552,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int consumerPoolSizeForNonCurrentVersionNonAAWCLeader;
 
   private final int dedicatedConsumerPoolSizeForAAWCLeader;
+  private final int dedicatedConsumerPoolSizeForSepRTLeader;
   private final boolean useDaVinciSpecificExecutionStatusForError;
   private final long daVinciPushStatusCheckIntervalInMs;
   private final boolean recordLevelMetricWhenBootstrappingCurrentVersionEnabled;
@@ -567,6 +570,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean resubscriptionTriggeredByVersionIngestionContextChangeEnabled;
   private final int defaultMaxRecordSizeBytes;
   private final int aaWCLeaderQuotaRecordsPerSecond;
+  private final int sepRTLeaderQuotaRecordsPerSecond;
   private final int currentVersionAAWCLeaderQuotaRecordsPerSecond;
   private final int currentVersionSepRTLeaderQuotaRecordsPerSecond;
   private final int currentVersionNonAAWCLeaderQuotaRecordsPerSecond;
@@ -919,6 +923,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_CONSUMER_POOL_SIZE_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER, 10);
     dedicatedConsumerPoolSizeForAAWCLeader =
         serverProperties.getInt(SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_AA_WC_LEADER, 5);
+    dedicatedConsumerPoolSizeForSepRTLeader =
+        serverProperties.getInt(SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_SEP_RT_LEADER, 3);
+
     useDaVinciSpecificExecutionStatusForError =
         serverProperties.getBoolean(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, false);
     daVinciPushStatusCheckIntervalInMs = serverProperties.getLong(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, -1L);
@@ -941,6 +948,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
               + generateHumanReadableByteCountString(BYTES_PER_MB));
     }
     aaWCLeaderQuotaRecordsPerSecond = serverProperties.getInt(SERVER_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
+    sepRTLeaderQuotaRecordsPerSecond = serverProperties.getInt(SERVER_SEP_RT_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
+
     currentVersionAAWCLeaderQuotaRecordsPerSecond =
         serverProperties.getInt(SERVER_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND, -1);
     currentVersionSepRTLeaderQuotaRecordsPerSecond =
@@ -1641,6 +1650,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return dedicatedConsumerPoolSizeForAAWCLeader;
   }
 
+  public int getDedicatedConsumerPoolSizeForSepRTLeader() {
+    return dedicatedConsumerPoolSizeForSepRTLeader;
+  }
+
   public KafkaConsumerServiceDelegator.ConsumerPoolStrategyType getConsumerPoolStrategyType() {
     return consumerPoolStrategyType;
   }
@@ -1715,6 +1728,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getAaWCLeaderQuotaRecordsPerSecond() {
     return aaWCLeaderQuotaRecordsPerSecond;
+  }
+
+  public int getSepRTLeaderQuotaRecordsPerSecond() {
+    return sepRTLeaderQuotaRecordsPerSecond;
   }
 
   public int getCurrentVersionAAWCLeaderQuotaRecordsPerSecond() {

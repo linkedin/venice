@@ -3,7 +3,7 @@
 dependencies {
   rootProject.subprojects.each { subproject ->
     // Excluding venice-duckdb as it's experimental and causes build issues
-    if (subproject.path != project.path && subproject.subprojects.isEmpty() && subproject.path != ':venice-duckdb') {
+    if (subproject.path != project.path && subproject.subprojects.isEmpty() && subproject.path != ':integrations:venice-duckdb') {
       implementation (project(subproject.path)) {
         exclude group: 'org.duckdb'
         exclude module: 'venice-duckdb'

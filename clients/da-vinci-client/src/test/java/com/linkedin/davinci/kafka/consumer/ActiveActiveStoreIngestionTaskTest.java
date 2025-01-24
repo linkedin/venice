@@ -723,9 +723,14 @@ public class ActiveActiveStoreIngestionTaskTest {
         .thenReturn(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.DEFAULT);
     when(serverConfig.getConsumerPoolSizePerKafkaCluster()).thenReturn(100);
     when(serverConfig.getKafkaClusterIdToUrlMap()).thenReturn(clusterIdToUrlMap);
+    when(serverConfig.getDedicatedConsumerPoolSizeForSepRTLeader()).thenReturn(3);
+    when(serverConfig.getDedicatedConsumerPoolSizeForAAWCLeader()).thenReturn(5);
     assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 10), 31);
-
+    when(serverConfig.isDedicatedConsumerPoolForAAWCLeaderEnabled()).thenReturn(true);
+    assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 10), 25);
+    assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 1), 4);
     // Test when current version prioritization strategy is enabled.
+    when(serverConfig.isDedicatedConsumerPoolForAAWCLeaderEnabled()).thenReturn(false);
     when(serverConfig.getConsumerPoolStrategyType())
         .thenReturn(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION);
     when(serverConfig.getConsumerPoolSizeForCurrentVersionAAWCLeader()).thenReturn(10);

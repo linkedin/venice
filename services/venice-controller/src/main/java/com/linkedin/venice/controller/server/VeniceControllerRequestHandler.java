@@ -3,15 +3,11 @@ package com.linkedin.venice.controller.server;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
 import com.linkedin.venice.meta.Instance;
-import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
-import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
-import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
 import com.linkedin.venice.utils.Pair;
-import java.util.Optional;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -24,20 +20,29 @@ import org.apache.logging.log4j.Logger;
  */
 public class VeniceControllerRequestHandler {
   private static final Logger LOGGER = LogManager.getLogger(VeniceControllerRequestHandler.class);
-  public static final String DEFAULT_STORE_OWNER = "";
   private final Admin admin;
   private final boolean sslEnabled;
   private final VeniceControllerAccessManager accessManager;
+  private final StoreRequestHandler storeRequestHandler;
 
   public VeniceControllerRequestHandler(ControllerRequestHandlerDependencies dependencies) {
     this.admin = dependencies.getAdmin();
     this.sslEnabled = dependencies.isSslEnabled();
     this.accessManager = dependencies.getControllerAccessManager();
+    this.storeRequestHandler = new StoreRequestHandler(dependencies);
   }
 
   // visibility: package-private
   boolean isSslEnabled() {
     return sslEnabled;
+  }
+
+  public Admin getAdmin() {
+    return admin;
+  }
+
+  public StoreRequestHandler getStoreRequestHandler() {
+    return storeRequestHandler;
   }
 
   /**
@@ -96,41 +101,6 @@ public class VeniceControllerRequestHandler {
     if (serverD2Service != null) {
       responseBuilder.setServerD2Service(serverD2Service);
     }
-    return responseBuilder.build();
-  }
-
-  /**
-   * Creates a new store in the specified Venice cluster with the provided parameters.
-   * @param request the request object containing all necessary details for the creation of the store
-   */
-  public CreateStoreGrpcResponse createStore(CreateStoreGrpcRequest request) {
-    ClusterStoreGrpcInfo clusterStoreInfo = request.getClusterStoreInfo();
-    String clusterName = clusterStoreInfo.getClusterName();
-    String storeName = clusterStoreInfo.getStoreName();
-    String keySchema = request.getKeySchema();
-    String valueSchema = request.getValueSchema();
-    String owner = request.hasOwner() ? request.getOwner() : null;
-    if (owner == null) {
-      owner = DEFAULT_STORE_OWNER;
-    }
-    Optional<String> accessPermissions =
-        Optional.ofNullable(request.hasAccessPermission() ? request.getAccessPermission() : null);
-    boolean isSystemStore = request.hasIsSystemStore() && request.getIsSystemStore();
-    ControllerRequestParamValidator.createStoreRequestValidator(clusterName, storeName, owner, keySchema, valueSchema);
-    LOGGER.info(
-        "Creating store: {} in cluster: {} with owner: {} and key schema: {} and value schema: {} and isSystemStore: {} and access permissions: {}",
-        storeName,
-        clusterName,
-        owner,
-        keySchema,
-        valueSchema,
-        isSystemStore,
-        accessPermissions);
-    admin.createStore(clusterName, storeName, owner, keySchema, valueSchema, isSystemStore, accessPermissions);
-    CreateStoreGrpcResponse.Builder responseBuilder =
-        CreateStoreGrpcResponse.newBuilder().setClusterStoreInfo(clusterStoreInfo).setOwner(owner);
-
-    LOGGER.info("Successfully created store: {} in cluster: {}", storeName, clusterName);
     return responseBuilder.build();
   }
 

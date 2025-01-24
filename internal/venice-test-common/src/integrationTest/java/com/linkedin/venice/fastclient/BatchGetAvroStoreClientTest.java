@@ -131,9 +131,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
             .setSpeculativeQueryEnabled(true)
-            .setDualReadEnabled(false)
-            // TODO: this needs to be revisited to see how much this should be set. Current default is 50.
-            .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt + 1);
+            .setDualReadEnabled(false);
 
     if (retryEnabled) {
       // enable retry to test the code path: to mimic retry in integration tests
@@ -172,9 +170,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
             .setSpeculativeQueryEnabled(true)
-            .setDualReadEnabled(false)
-            // TODO: this needs to be revisited to see how much this should be set. Current default is 50.
-            .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt);
+            .setDualReadEnabled(false);
 
     MetricsRepository metricsRepository = new MetricsRepository();
     AvroSpecificStoreClient<String, TestValueSchema> specificFastClient =

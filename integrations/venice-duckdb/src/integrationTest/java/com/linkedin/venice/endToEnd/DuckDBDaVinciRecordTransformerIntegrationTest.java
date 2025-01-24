@@ -158,18 +158,18 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
 
       clientWithRecordTransformer.subscribeAll().get();
 
-      assertRowCount(duckDBUrl, "subscribeAll() finishes!");
+      assertRowCount(duckDBUrl, storeName, "subscribeAll() finishes!");
 
       clientWithRecordTransformer.unsubscribeAll();
     }
 
-    assertRowCount(duckDBUrl, "DVC gets closed!");
+    assertRowCount(duckDBUrl, storeName, "DVC gets closed!");
   }
 
-  private void assertRowCount(String duckDBUrl, String assertionErrorMsg) throws SQLException {
+  private void assertRowCount(String duckDBUrl, String storeName, String assertionErrorMsg) throws SQLException {
     try (Connection connection = DriverManager.getConnection(duckDBUrl);
         Statement statement = connection.createStatement();
-        ResultSet rs = statement.executeQuery("SELECT count(*) FROM current_version")) {
+        ResultSet rs = statement.executeQuery("SELECT count(*) FROM " + storeName)) {
       assertTrue(rs.next());
       int rowCount = rs.getInt(1);
       assertEquals(

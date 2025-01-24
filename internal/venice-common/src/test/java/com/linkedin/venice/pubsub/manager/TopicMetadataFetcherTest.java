@@ -383,6 +383,15 @@ public class TopicMetadataFetcherTest {
     verify(consumerMock, times(2)).unSubscribe(eq(topicPartition));
   }
 
+  private PubSubMessage getHeartBeatPubSubMessage(PubSubTopicPartition topicPartition, long offset) {
+    KafkaKey key = KafkaKey.HEART_BEAT;
+    KafkaMessageEnvelope val = mock(KafkaMessageEnvelope.class);
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.setMessageTimestamp(System.nanoTime());
+    when(val.getProducerMetadata()).thenReturn(producerMetadata);
+    return new ImmutablePubSubMessage(key, val, topicPartition, offset, System.currentTimeMillis(), 512);
+  }
+
   private PubSubMessage getPubSubMessage(PubSubTopicPartition topicPartition, boolean isControlMessage, long offset) {
     KafkaKey key = mock(KafkaKey.class);
     when(key.isControlMessage()).thenReturn(isControlMessage);
@@ -403,13 +412,19 @@ public class TopicMetadataFetcherTest {
     assertEquals(timestamp, PUBSUB_NO_PRODUCER_TIME_IN_EMPTY_TOPIC_PARTITION);
     verify(metadataFetcherSpy, times(1)).consumeLatestRecords(eq(topicPartition), anyInt());
 
-    // test when there are no data messages to consume
+    // test when there are no data messages and heartbeat messages to consume
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cm = getPubSubMessage(topicPartition, true, 5);
     doReturn(Collections.singletonList(cm)).when(metadataFetcherSpy).consumeLatestRecords(eq(topicPartition), anyInt());
     Throwable t = expectThrows(
         VeniceException.class,
         () -> metadataFetcherSpy.getProducerTimestampOfLastDataMessage(topicPartition));
     assertTrue(t.getMessage().contains("No data message found in topic-partition"));
+
+    // test when there are heartbeat messages but no data messages to consume
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> hm = getHeartBeatPubSubMessage(topicPartition, 6);
+    doReturn(Collections.singletonList(hm)).when(metadataFetcherSpy).consumeLatestRecords(eq(topicPartition), anyInt());
+    timestamp = metadataFetcherSpy.getProducerTimestampOfLastDataMessage(topicPartition);
+    assertEquals(timestamp, hm.getValue().getProducerMetadata().getMessageTimestamp());
 
     // test when there are data messages to consume
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> dm0 = getPubSubMessage(topicPartition, false, 4);

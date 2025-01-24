@@ -33,7 +33,7 @@ public class LeastLoadedClientRoutingStrategy extends AbstractClientRoutingStrat
      */
     Collections.shuffle(replicas);
     for (String replica: replicas) {
-      if (!instanceHealthMonitor.isInstanceBlocked(replica)) {
+      if (!instanceHealthMonitor.isInstanceBlocked(replica) && instanceHealthMonitor.isInstanceHealthy(replica)) {
         availReplicas.add(replica);
       }
     }
@@ -41,34 +41,10 @@ public class LeastLoadedClientRoutingStrategy extends AbstractClientRoutingStrat
 
     if (requiredReplicaCount < availReplicas.size()) {
       List<String> selectedReplicas = new ArrayList<>();
-      /**
-       * Check whether any unhealthy replica has been selected or not, if yes, try to add more healthy replicas.
-       */
-      int selectedUnhealthyReplicaCnt = 0;
+
       for (int i = 0; i < requiredReplicaCount; ++i) {
         String currentReplica = availReplicas.get(i);
         selectedReplicas.add(currentReplica);
-        if (!instanceHealthMonitor.isInstanceHealthy(currentReplica)) {
-          ++selectedUnhealthyReplicaCnt;
-        }
-      }
-      if (selectedUnhealthyReplicaCnt > 0) {
-        /**
-         * If any unhealthy replica is selected, we will try to back-fill with the same number of healthy replicas.
-         * With this way, we could achieve the following goals:
-         * 1. The unhealthy replica will still receive some requests to bring it back once it is recovered.
-         * 2. The request latency won't be affected since we are still trying to return the required healthy replicas as
-         *    much as possible.
-         */
-        int backfillingHealthyReplicaCnt = 0;
-        for (int i = requiredReplicaCount; i < availReplicas.size()
-            && backfillingHealthyReplicaCnt < selectedUnhealthyReplicaCnt; ++i) {
-          String currentReplica = availReplicas.get(i);
-          if (instanceHealthMonitor.isInstanceHealthy(currentReplica)) {
-            selectedReplicas.add(currentReplica);
-            ++backfillingHealthyReplicaCnt;
-          }
-        }
       }
 
       return selectedReplicas;

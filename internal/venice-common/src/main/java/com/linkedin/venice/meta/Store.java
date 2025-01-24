@@ -1,8 +1,11 @@
 package com.linkedin.venice.meta;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
+import it.unimi.dsi.fastutil.ints.IntSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -242,6 +245,16 @@ public interface Store {
   Store cloneStore();
 
   List<Version> getVersions();
+
+  @JsonIgnore
+  default IntSet getVersionNumbers() {
+    List<Version> versions = getVersions();
+    IntSet versionNumbers = new IntOpenHashSet(versions.size());
+    for (Version version: versions) {
+      versionNumbers.add(version.getNumber());
+    }
+    return versionNumbers;
+  }
 
   void setVersions(List<Version> versions);
 

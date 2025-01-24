@@ -1,8 +1,6 @@
 package com.linkedin.venice.controller.server;
 
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
@@ -10,15 +8,11 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
 import com.linkedin.venice.meta.Instance;
-import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
-import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
-import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
 import com.linkedin.venice.utils.Pair;
-import java.util.Optional;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -84,59 +78,6 @@ public class VeniceControllerRequestHandlerTest {
     assertEquals(response.getClusterName(), "testCluster");
     assertEquals(response.getD2Service(), "testD2Service");
     assertEquals(response.getServerD2Service(), "testServerD2Service");
-  }
-
-  @Test
-  public void testCreateStore() {
-    CreateStoreGrpcRequest request = CreateStoreGrpcRequest.newBuilder()
-        .setClusterStoreInfo(
-            ClusterStoreGrpcInfo.newBuilder().setClusterName("testCluster").setStoreName("testStore").build())
-        .setKeySchema("testKeySchema")
-        .setValueSchema("testValueSchema")
-        .setOwner("testOwner")
-        .setAccessPermission("testAccessPermissions")
-        .setIsSystemStore(false)
-        .build();
-
-    CreateStoreGrpcResponse response = requestHandler.createStore(request);
-
-    verify(admin, times(1)).createStore(
-        "testCluster",
-        "testStore",
-        "testOwner",
-        "testKeySchema",
-        "testValueSchema",
-        false,
-        Optional.of("testAccessPermissions"));
-    assertEquals(response.getClusterStoreInfo().getClusterName(), "testCluster");
-    assertEquals(response.getClusterStoreInfo().getStoreName(), "testStore");
-    assertEquals(response.getOwner(), "testOwner");
-  }
-
-  @Test
-  public void testCreateStoreWithNullAccessPermissions() {
-    CreateStoreGrpcRequest request = CreateStoreGrpcRequest.newBuilder()
-        .setClusterStoreInfo(
-            ClusterStoreGrpcInfo.newBuilder().setClusterName("testCluster").setStoreName("testStore").build())
-        .setKeySchema("testKeySchema")
-        .setValueSchema("testValueSchema")
-        .setOwner("testOwner")
-        .setIsSystemStore(true)
-        .build();
-
-    CreateStoreGrpcResponse response = requestHandler.createStore(request);
-
-    verify(admin, times(1)).createStore(
-        "testCluster",
-        "testStore",
-        "testOwner",
-        "testKeySchema",
-        "testValueSchema",
-        true,
-        Optional.empty());
-    assertEquals(response.getClusterStoreInfo().getClusterName(), "testCluster");
-    assertEquals(response.getClusterStoreInfo().getStoreName(), "testStore");
-    assertEquals(response.getOwner(), "testOwner");
   }
 
   @Test

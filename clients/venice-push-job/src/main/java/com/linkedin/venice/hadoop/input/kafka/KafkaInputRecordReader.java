@@ -16,13 +16,11 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
-import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
@@ -37,7 +35,6 @@ import org.apache.avro.Schema;
 import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RecordReader;
-import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -70,8 +67,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
   private static final PubSubTopicRepository PUBSUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
 
   private final PubSubConsumerAdapter consumer;
-  private final TopicPartition topicPartition;
-  private final PubSubTopicPartition pubSubTopicPartition;
+  private final PubSubTopicPartition topicPartition;
   private final long maxNumberOfRecords;
   private final long startingOffset;
   private long currentOffset;
@@ -129,8 +125,6 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
     KafkaInputSplit inputSplit = (KafkaInputSplit) split;
     this.consumer = consumer;
     this.topicPartition = inputSplit.getTopicPartition();
-    PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topicPartition.topic());
-    this.pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopic, topicPartition.partition());
     this.startingOffset = inputSplit.getStartingOffset();
     this.currentOffset = inputSplit.getStartingOffset() - 1;
     this.endingOffset = inputSplit.getEndingOffset();
@@ -148,7 +142,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
     if (!ownedConsumer) {
       this.consumer.batchUnsubscribe(this.consumer.getAssignment());
     }
-    this.consumer.subscribe(pubSubTopicPartition, currentOffset);
+    this.consumer.subscribe(topicPartition, currentOffset);
     this.taskTracker = taskTracker;
     LOGGER.info(
         "KafkaInputRecordReader started for TopicPartition: {} starting offset: {} ending offset: {}",
