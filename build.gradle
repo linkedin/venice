@@ -782,6 +782,9 @@ ext.createDiffFile = { ->
       // admin-tool
       ':!clients/venice-admin-tool/*',
 
+      // Duck Vinci Tool
+      ':!integrations/venice-duckdb/src/main/java/com/linkedin/venice/duckdb/DuckVinciTool.java',
+
       // Keep this last
       // Other files that have tests but are not executed in the regular unit test task
       ':!internal/alpini/*'
