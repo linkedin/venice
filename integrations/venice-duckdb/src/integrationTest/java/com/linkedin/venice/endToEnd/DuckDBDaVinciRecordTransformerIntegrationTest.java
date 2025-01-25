@@ -31,6 +31,7 @@ import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -40,6 +41,8 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
+import com.linkedin.venice.producer.online.OnlineProducerFactory;
+import com.linkedin.venice.producer.online.OnlineVeniceProducer;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.PushInputSchemaBuilder;
 import com.linkedin.venice.utils.TestUtils;
@@ -163,15 +166,31 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
 
       clientWithRecordTransformer.subscribeAll().get();
 
-      assertRowCount(duckDBUrl, storeName, "subscribeAll() finishes!");
+      assertRowCount(duckDBUrl, storeName, DEFAULT_USER_DATA_RECORD_COUNT, "subscribeAll() finishes!");
+
+      try (OnlineVeniceProducer producer = OnlineProducerFactory.createProducer(
+          ClientConfig.defaultGenericClientConfig(storeName)
+              .setD2Client(d2Client)
+              .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME),
+          VeniceProperties.empty(),
+          null)) {
+        producer.asyncDelete(getKey(1)).get();
+      }
+
+      TestUtils.waitForNonDeterministicAssertion(
+          10,
+          TimeUnit.SECONDS,
+          true,
+          () -> assertRowCount(duckDBUrl, storeName, DEFAULT_USER_DATA_RECORD_COUNT - 1, "deleting 1 row!"));
 
       clientWithRecordTransformer.unsubscribeAll();
     }
 
-    assertRowCount(duckDBUrl, storeName, "DVC gets closed!");
+    assertRowCount(duckDBUrl, storeName, DEFAULT_USER_DATA_RECORD_COUNT - 1, "DVC gets closed!");
   }
 
-  private void assertRowCount(String duckDBUrl, String storeName, String assertionErrorMsg) throws SQLException {
+  private void assertRowCount(String duckDBUrl, String storeName, int expectedCount, String assertionErrorMsg)
+      throws SQLException {
     try (Connection connection = DriverManager.getConnection(duckDBUrl);
         Statement statement = connection.createStatement();
         ResultSet rs = statement.executeQuery("SELECT count(*) FROM " + storeName)) {
@@ -179,8 +198,8 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
       int rowCount = rs.getInt(1);
       assertEquals(
           rowCount,
-          DEFAULT_USER_DATA_RECORD_COUNT,
-          "The DB should contain " + DEFAULT_USER_DATA_RECORD_COUNT + " right after " + assertionErrorMsg);
+          expectedCount,
+          "The DB should contain " + expectedCount + " rows right after " + assertionErrorMsg);
     }
   }
 
@@ -200,8 +219,7 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
     String lastName = "last_name_";
     Schema valueSchema = writeSimpleAvroFile(inputDir, pushRecordSchema, i -> {
       GenericRecord keyValueRecord = new GenericData.Record(pushRecordSchema);
-      GenericRecord key = new GenericData.Record(SINGLE_FIELD_RECORD_SCHEMA);
-      key.put("key", i.toString());
+      GenericRecord key = getKey(i);
       keyValueRecord.put(DEFAULT_KEY_FIELD_PROP, key);
       GenericRecord valueRecord = new GenericData.Record(NAME_RECORD_V1_SCHEMA);
       valueRecord.put("firstName", firstName + i);
@@ -219,7 +237,9 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
     final int numPartitions = 3;
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPartitionCount(numPartitions)
         .setChunkingEnabled(chunkingEnabled)
-        .setCompressionStrategy(compressionStrategy);
+        .setCompressionStrategy(compressionStrategy)
+        .setHybridOffsetLagThreshold(10)
+        .setHybridRewindSeconds(1);
 
     paramsConsumer.accept(params);
 
@@ -234,6 +254,12 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
       assertFalse(schemaResponse.isError());
       runVPJ(vpjProperties, 1, cluster);
     }
+  }
+
+  private GenericRecord getKey(Integer i) {
+    GenericRecord key = new GenericData.Record(SINGLE_FIELD_RECORD_SCHEMA);
+    key.put("key", i.toString());
+    return key;
   }
 
   private static void runVPJ(Properties vpjProperties, int expectedVersionNumber, VeniceClusterWrapper cluster) {
