@@ -14,6 +14,7 @@ dependencies {
 
   api project(':internal:venice-common')
 
+  implementation libraries.commonsCli
   testImplementation project(':internal:venice-common')
 
   integrationTestImplementation project(path: ':internal:venice-test-common', configuration: 'integrationTestUtils')
