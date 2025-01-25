@@ -16,6 +16,7 @@ dependencies {
   testImplementation project(':internal:venice-common')
 
   integrationTestImplementation project(path: ':internal:venice-test-common', configuration: 'integrationTestUtils')
+  integrationTestImplementation project(':clients:venice-producer')
   integrationTestImplementation project(':clients:venice-push-job')
   integrationTestImplementation project(':clients:venice-thin-client')
   integrationTestImplementation project(':integrations:venice-duckdb')

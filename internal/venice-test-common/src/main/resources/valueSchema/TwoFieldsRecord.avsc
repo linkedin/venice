@@ -1,0 +1,14 @@
+{
+  "type" : "record",
+  "name" : "TwoFieldsRecord",
+  "namespace" : "example.avro",
+  "fields" : [ {
+    "name" : "id1",
+    "type" : "int",
+    "default" : ""
+  }, {
+    "name" : "id2",
+    "type" : "long",
+    "default" : ""
+  } ]
+}

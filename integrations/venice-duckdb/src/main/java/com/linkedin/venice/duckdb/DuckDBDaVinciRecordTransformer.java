@@ -6,12 +6,11 @@ import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.sql.AvroToSQL;
-import com.linkedin.venice.sql.InsertProcessor;
+import com.linkedin.venice.sql.PreparedStatementProcessor;
 import com.linkedin.venice.sql.SQLUtils;
 import com.linkedin.venice.sql.TableDefinition;
 import com.linkedin.venice.utils.concurrent.CloseableThreadLocal;
 import com.linkedin.venice.utils.lazy.Lazy;
-import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -28,7 +27,6 @@ public class DuckDBDaVinciRecordTransformer
     extends DaVinciRecordTransformer<GenericRecord, GenericRecord, GenericRecord> {
   private static final Logger LOGGER = LogManager.getLogger(DuckDBDaVinciRecordTransformer.class);
   private static final String duckDBFilePath = "my_database.duckdb";
-  private static final String deleteStatementTemplate = "DELETE FROM %s WHERE %s = ?;";
   private static final String createViewStatementTemplate = "CREATE OR REPLACE VIEW %s AS SELECT * FROM %s;";
   private static final String dropTableStatementTemplate = "DROP TABLE %s;";
   private final String storeNameWithoutVersionInfo;
@@ -38,7 +36,8 @@ public class DuckDBDaVinciRecordTransformer
   private final CloseableThreadLocal<Connection> connection;
   private final CloseableThreadLocal<PreparedStatement> deletePreparedStatement;
   private final CloseableThreadLocal<PreparedStatement> upsertPreparedStatement;
-  private final InsertProcessor upsertProcessor;
+  private final PreparedStatementProcessor upsertProcessor;
+  private final PreparedStatementProcessor deleteProcessor;
 
   public DuckDBDaVinciRecordTransformer(
       int storeVersion,
@@ -54,8 +53,7 @@ public class DuckDBDaVinciRecordTransformer
     this.versionTableName = buildStoreNameWithVersion(storeVersion);
     this.duckDBUrl = "jdbc:duckdb:" + baseDir + "/" + duckDBFilePath;
     this.columnsToProject = columnsToProject;
-    String deleteStatement = String.format(deleteStatementTemplate, versionTableName, "key"); // TODO: Fix this, it is
-                                                                                              // broken
+    String deleteStatement = AvroToSQL.deleteStatement(versionTableName, keySchema);
     String upsertStatement = AvroToSQL.upsertStatement(versionTableName, keySchema, inputValueSchema, columnsToProject);
     this.connection = CloseableThreadLocal.withInitial(() -> {
       try {
@@ -68,17 +66,18 @@ public class DuckDBDaVinciRecordTransformer
       try {
         return this.connection.get().prepareStatement(deleteStatement);
       } catch (SQLException e) {
-        throw new VeniceException("Failed to create PreparedStatement!", e);
+        throw new VeniceException("Failed to create PreparedStatement for: " + deleteStatement, e);
       }
     });
     this.upsertPreparedStatement = CloseableThreadLocal.withInitial(() -> {
       try {
         return this.connection.get().prepareStatement(upsertStatement);
       } catch (SQLException e) {
-        throw new VeniceException("Failed to create PreparedStatement!", e);
+        throw new VeniceException("Failed to create PreparedStatement for: " + upsertStatement, e);
       }
     });
     this.upsertProcessor = AvroToSQL.upsertProcessor(keySchema, inputValueSchema, columnsToProject);
+    this.deleteProcessor = AvroToSQL.deleteProcessor(keySchema);
   }
 
   @Override
@@ -95,14 +94,7 @@ public class DuckDBDaVinciRecordTransformer
 
   @Override
   public void processDelete(Lazy<GenericRecord> key) {
-    try {
-      PreparedStatement stmt = this.deletePreparedStatement.get();
-      // TODO: Fix this, it is broken.
-      stmt.setString(1, key.get().get("key").toString());
-      stmt.execute();
-    } catch (SQLException e) {
-      throw new VeniceException("Failed to execute delete!");
-    }
+    this.deleteProcessor.process(key.get(), null, this.deletePreparedStatement.get());
   }
 
   @Override
@@ -176,7 +168,7 @@ public class DuckDBDaVinciRecordTransformer
   }
 
   @Override
-  public void close() throws IOException {
+  public void close() {
     this.deletePreparedStatement.close();
     this.upsertPreparedStatement.close();
     this.connection.close();
