@@ -783,7 +783,9 @@ ext.createDiffFile = { ->
       ':!clients/venice-admin-tool/*',
 
       // Duck Vinci Tool
+      ':!integrations/venice-duckdb/src/main/java/com/linkedin/venice/duckdb/Arg.java',
       ':!integrations/venice-duckdb/src/main/java/com/linkedin/venice/duckdb/DuckVinciTool.java',
+      ':!integrations/venice-duckdb/src/main/java/com/linkedin/venice/duckdb/Command.java',
 
       // Keep this last
       // Other files that have tests but are not executed in the regular unit test task
