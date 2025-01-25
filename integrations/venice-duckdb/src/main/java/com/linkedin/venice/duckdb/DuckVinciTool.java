@@ -211,10 +211,6 @@ public class DuckVinciTool {
     return cmd;
   }
 
-  private static String getRequiredArgument(CommandLine cmd, Arg arg) {
-    return getRequiredArgument(cmd, arg, "");
-  }
-
   private static String getRequiredArgument(CommandLine cmd, Arg arg, Command command) {
     return getRequiredArgument(cmd, arg, "when using --" + command.toString());
   }
