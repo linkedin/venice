@@ -32,6 +32,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
@@ -61,6 +62,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -319,11 +321,21 @@ public class PushJobDetailsTest {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 180
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 300
       * Time.MS_PER_SECOND)
-  public void testPushJobDetails(boolean useCustomCheckpoints) throws IOException {
+  public void testPushJobDetails(boolean useCustomCheckpoints, boolean migratePushStatusStoreToAA) throws IOException {
     try {
       setUp(useCustomCheckpoints);
+      // Simulate the migration phase from AGG to A/A
+      if (migratePushStatusStoreToAA) {
+        childRegionClusterWrapper.waitVersion(VeniceSystemStoreUtils.getPushJobDetailsStoreName(), 1);
+        ControllerResponse updateStoreResponse = parentControllerClient.updateStore(
+            VeniceSystemStoreUtils.getPushJobDetailsStoreName(),
+            new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true));
+        Assert.assertFalse(updateStoreResponse.isError());
+        parentControllerClient.emptyPush(VeniceSystemStoreUtils.getPushJobDetailsStoreName(), "xxx", 100000);
+        childRegionClusterWrapper.waitVersion(VeniceSystemStoreUtils.getPushJobDetailsStoreName(), 2);
+      }
       // create a map for expected metrics for Count type which will be incremented through the test
       HashMap<String, Double> metricsExpectedCount = new HashMap<>();
 

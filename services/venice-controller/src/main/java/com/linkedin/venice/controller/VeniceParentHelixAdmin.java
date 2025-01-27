@@ -494,7 +494,6 @@ public class VeniceParentHelixAdmin implements Admin {
     boolean initializePushJobDetailsStore = !StringUtils.isEmpty(pushJobDetailsStoreClusterName);
     if (initRoutineForPushJobDetailsSystemStore != null) {
       if (initializePushJobDetailsStore) {
-        // TODO: When we plan to enable active-active push details store in future, we need to enable it by default.
         UpdateStoreQueryParams updateStoreQueryParamsForPushJobDetails =
             new UpdateStoreQueryParams().setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE);
         initRoutineForPushJobDetailsSystemStore.setDelegate(
