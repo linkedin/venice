@@ -1423,7 +1423,7 @@ public abstract class StoreIngestionTaskTest {
       if (enableRecordLevelMetricForCurrentVersionBootstrapping) {
         verify(mockStoreIngestionStats, times(3)).recordTotalBytesConsumed(anyLong());
       } else {
-        verify(mockStoreIngestionStats, times(2)).recordTotalBytesConsumed(anyLong());
+        verify(mockStoreIngestionStats, never()).recordTotalBytesConsumed(anyLong());
       }
       verify(mockStoreIngestionStats, times(3)).recordTotalRecordsConsumed();
 
@@ -1609,10 +1609,6 @@ public abstract class StoreIngestionTaskTest {
           .completed(topic, PARTITION_FOO, fooLastOffset + 1, "STANDBY");
       verify(mockPartitionStatusNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
           .completed(topic, PARTITION_BAR, barLastOffset + 1, "STANDBY");
-      verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
-          .catchUpVersionTopicOffsetLag(topic, PARTITION_FOO);
-      verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
-          .catchUpVersionTopicOffsetLag(topic, PARTITION_BAR);
       verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
           .completed(topic, PARTITION_FOO, fooLastOffset + 1, "STANDBY");
       verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
