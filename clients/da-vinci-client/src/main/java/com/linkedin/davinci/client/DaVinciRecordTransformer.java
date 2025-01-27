@@ -1,5 +1,6 @@
 package com.linkedin.davinci.client;
 
+import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -133,6 +134,11 @@ public abstract class DaVinciRecordTransformer<K, V, O> implements Closeable {
 
   public boolean useUniformInputValueSchema() {
     return false;
+  }
+
+  /** A subclass can return a concrete implementation of {@link StorageMetadataService} to control checkpointing. */
+  public StorageMetadataService getStorageMetadataService() {
+    return null;
   }
 
   // Final methods below

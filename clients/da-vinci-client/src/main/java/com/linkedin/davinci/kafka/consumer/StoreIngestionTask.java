@@ -386,7 +386,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.kafkaProps = kafkaConsumerProperties;
     this.storageService = storageService;
     this.storageEngineRepository = builder.getStorageEngineRepository();
-    this.storageMetadataService = builder.getStorageMetadataService();
     this.storeRepository = builder.getMetadataRepo();
     this.schemaRepository = builder.getSchemaRepo();
     this.kafkaVersionTopic = storeVersionConfig.getStoreVersionName();
@@ -475,6 +474,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.chunkAssembler = new ChunkAssembler(storeName);
     this.cacheBackend = cacheBackend;
 
+    StorageMetadataService dvrtCheckpointer = null;
     if (recordTransformerConfig != null && recordTransformerConfig.getRecordTransformerFunction() != null) {
       Schema keySchema = schemaRepository.getKeySchema(storeName).getSchema();
       this.recordTransformerKeyDeserializer = new AvroGenericDeserializer(keySchema, keySchema);
@@ -483,6 +483,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       DaVinciRecordTransformer clientRecordTransformer = recordTransformerConfig.getRecordTransformerFunction()
           .apply(versionNumber, keySchema, this.recordTransformerInputValueSchema, outputValueSchema);
+      dvrtCheckpointer = clientRecordTransformer.getStorageMetadataService();
 
       this.recordTransformer = new BlockingDaVinciRecordTransformer(
           clientRecordTransformer,
@@ -512,6 +513,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       this.recordTransformerInputValueSchema = null;
       this.recordTransformerDeserializersByPutSchemaId = null;
     }
+    this.storageMetadataService = dvrtCheckpointer == null ? builder.getStorageMetadataService() : dvrtCheckpointer;
 
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.localKafkaServerSingletonSet = Collections.singleton(localKafkaServer);

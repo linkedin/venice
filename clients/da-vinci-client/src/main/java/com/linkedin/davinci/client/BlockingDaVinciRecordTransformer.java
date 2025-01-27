@@ -1,5 +1,6 @@
 package com.linkedin.davinci.client;
 
+import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
@@ -56,6 +57,16 @@ public class BlockingDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
 
   public void onEndVersionIngestion(int currentVersion) {
     this.recordTransformer.onEndVersionIngestion(currentVersion);
+  }
+
+  @Override
+  public boolean useUniformInputValueSchema() {
+    return this.recordTransformer.useUniformInputValueSchema();
+  }
+
+  @Override
+  public StorageMetadataService getStorageMetadataService() {
+    return this.recordTransformer.getStorageMetadataService();
   }
 
   @Override
