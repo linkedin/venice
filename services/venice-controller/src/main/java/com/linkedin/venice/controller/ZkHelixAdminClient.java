@@ -7,6 +7,7 @@ import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.utils.RetryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -98,6 +99,32 @@ public class ZkHelixAdminClient implements HelixAdminClient {
         // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constrains on CRUSH alg to
         // choose proper instance to hold the replica.
         clusterConfig.setTopologyAwareEnabled(false);
+
+        // We want to prioritize evenness over less movement when it comes to resource assignment, because the cost
+        // of rebalancing for the controller is cheap as it is stateless.
+        Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> globalRebalancePreference = new HashMap<>();
+        globalRebalancePreference.put(ClusterConfig.GlobalRebalancePreferenceKey.EVENNESS, 10);
+        globalRebalancePreference.put(ClusterConfig.GlobalRebalancePreferenceKey.LESS_MOVEMENT, 1);
+        // This should be turned off, so it doesn't overpower other constraint calculations
+        globalRebalancePreference.put(ClusterConfig.GlobalRebalancePreferenceKey.FORCE_BASELINE_CONVERGE, 0);
+        clusterConfig.setGlobalRebalancePreference(globalRebalancePreference);
+
+        String resourceCapacityKey = "cluster_resource_weight";
+        List<String> instanceCapacityKeys = new ArrayList<>();
+        instanceCapacityKeys.add(resourceCapacityKey);
+        clusterConfig.setInstanceCapacityKeys(instanceCapacityKeys);
+
+        // This is how much capacity a participant can take. The Helix documentation recommends setting this to a high
+        // value to avoid rebalance failures. The primary goal of setting this is to enable a constraint that takes the
+        // current top-state distribution into account when rebalancing.
+        Map<String, Integer> defaultInstanceCapacityMap = new HashMap<>();
+        defaultInstanceCapacityMap.put(resourceCapacityKey, 10000);
+        clusterConfig.setDefaultInstanceCapacityMap(defaultInstanceCapacityMap);
+
+        // This is how much weight each resource in a cluster has
+        Map<String, Integer> defaultPartitionWeightMap = new HashMap<>();
+        defaultPartitionWeightMap.put(resourceCapacityKey, 100);
+        clusterConfig.setDefaultPartitionWeightMap(defaultPartitionWeightMap);
 
         updateClusterConfigs(controllerClusterName, clusterConfig);
         helixAdmin.addStateModelDef(controllerClusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
