@@ -62,8 +62,7 @@ public class MaterializedView extends VeniceView {
   public Map<String, VeniceProperties> getTopicNamesAndConfigsForVersion(int version) {
     VeniceProperties properties = new VeniceProperties(props);
     return Collections.singletonMap(
-        Version.composeKafkaTopic(storeName, version) + VIEW_TOPIC_SEPARATOR + viewName
-            + MATERIALIZED_VIEW_TOPIC_SUFFIX,
+        Version.composeKafkaTopic(storeName, version) + VIEW_NAME_SEPARATOR + viewName + MATERIALIZED_VIEW_TOPIC_SUFFIX,
         properties);
   }
 

@@ -93,7 +93,7 @@ public class MaterializedViewWriterTest {
     VeniceWriterOptions writerOptions = materializedViewWriter.buildWriterOptions();
     Assert.assertEquals(
         writerOptions.getTopicName(),
-        Version.composeKafkaTopic(storeName, 1) + VeniceView.VIEW_TOPIC_SEPARATOR + viewName
+        Version.composeKafkaTopic(storeName, 1) + VeniceView.VIEW_NAME_SEPARATOR + viewName
             + MaterializedView.MATERIALIZED_VIEW_TOPIC_SUFFIX);
     Assert.assertEquals(writerOptions.getPartitionCount(), Integer.valueOf(6));
     Assert.assertEquals(writerOptions.getPartitioner().getClass(), DefaultVenicePartitioner.class);

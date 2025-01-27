@@ -9,7 +9,6 @@ import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.ConcurrentRef;
 import com.linkedin.venice.utils.ReferenceCounted;
-import com.linkedin.venice.views.VeniceView;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
@@ -20,7 +19,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class StoreBackend {
-  protected static final Logger LOGGER = LogManager.getLogger(StoreBackend.class);
+  private static final Logger LOGGER = LogManager.getLogger(StoreBackend.class);
 
   private final DaVinciBackend backend;
   private final String storeName;
@@ -33,14 +32,13 @@ public class StoreBackend {
   private VersionBackend daVinciCurrentVersion;
   private VersionBackend daVinciFutureVersion;
 
-  StoreBackend(DaVinciBackend backend, String storeName, String viewName) {
-    String storeViewName = viewName == null ? storeName : VeniceView.getStoreAndViewName(storeName, viewName);
-    LOGGER.info("Opening local store {}", storeViewName);
+  StoreBackend(DaVinciBackend backend, String storeName) {
+    LOGGER.info("Opening local store {}", storeName);
     this.backend = backend;
     this.storeName = storeName;
     this.config =
         new StoreBackendConfig(backend.getConfigLoader().getVeniceServerConfig().getDataBasePath(), storeName);
-    this.stats = new StoreBackendStats(backend.getMetricsRepository(), storeViewName);
+    this.stats = new StoreBackendStats(backend.getMetricsRepository(), storeName);
     this.storeDeserializerCache = new AvroStoreDeserializerCache(backend.getSchemaRepository(), storeName, true);
     try {
       backend.getStoreRepository().subscribe(storeName);
@@ -52,18 +50,14 @@ public class StoreBackend {
     this.config.store();
   }
 
-  StoreBackend(DaVinciBackend backend, String storeName) {
-    this(backend, storeName, null);
-  }
-
   synchronized void close() {
     if (subscription.isEmpty()) {
-      LOGGER.info("Closing empty local store {}", getStoreName());
+      LOGGER.info("Closing empty local store {}", storeName);
       delete();
       return;
     }
 
-    LOGGER.info("Closing local store {}", getStoreName());
+    LOGGER.info("Closing local store {}", storeName);
     subscription.clear();
     daVinciCurrentVersionRef.clear();
 
@@ -83,7 +77,7 @@ public class StoreBackend {
   }
 
   synchronized void delete() {
-    LOGGER.info("Deleting local store {}", getStoreName());
+    LOGGER.info("Deleting local store {}", storeName);
     config.delete();
     subscription.clear();
     daVinciCurrentVersionRef.clear();
@@ -134,11 +128,11 @@ public class StoreBackend {
     return subscribe(partitions, Optional.empty());
   }
 
-  protected Version getCurrentVersion() {
+  private Version getCurrentVersion() {
     return backend.getVeniceCurrentVersion(storeName);
   }
 
-  protected Version getLatestNonFaultyVersion() {
+  private Version getLatestNonFaultyVersion() {
     return backend.getVeniceLatestNonFaultyVersion(storeName, faultyVersionSet);
   }
 
@@ -163,7 +157,7 @@ public class StoreBackend {
               + ", desiredVersion=" + bootstrapVersion.get().kafkaTopicName());
     }
 
-    LOGGER.info("Subscribing to partitions {} of store {}", partitions, getStoreName());
+    LOGGER.info("Subscribing to partitions {} of store {}", partitions, storeName);
     if (subscription.isEmpty() && !partitions.isEmpty()) {
       // Recreate store config that was potentially deleted by unsubscribe.
       config.store();
@@ -198,7 +192,7 @@ public class StoreBackend {
   }
 
   public synchronized void unsubscribe(ComplementSet<Integer> partitions) {
-    LOGGER.info("Unsubscribing from partitions {} of {}", partitions, getStoreName());
+    LOGGER.info("Unsubscribing from partitions {} of {}", partitions, storeName);
     subscription.removeAll(partitions);
 
     if (daVinciCurrentVersion != null) {
@@ -223,7 +217,7 @@ public class StoreBackend {
         version.delete();
       }
     }
-    LOGGER.info("Finished the unsubscription from partitions {} of {}", partitions, getStoreName());
+    LOGGER.info("Finished the unsubscription from partitions {} of {}", partitions, storeName);
 
   }
 
@@ -378,9 +372,5 @@ public class StoreBackend {
 
   public StoreDeserializerCache getStoreDeserializerCache() {
     return storeDeserializerCache;
-  }
-
-  protected String getStoreName() {
-    return storeName;
   }
 }

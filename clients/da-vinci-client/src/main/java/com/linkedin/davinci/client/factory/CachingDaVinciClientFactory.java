@@ -362,31 +362,28 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
       DaVinciClientConstructor clientConstructor,
       Class clientClass,
       boolean startClient) {
+    String internalStoreName = viewName == null ? storeName : VeniceView.getViewStoreName(storeName, viewName);
     if (closed) {
-      throw new VeniceException("Unable to get a client from a closed factory, storeName=" + storeName);
+      throw new VeniceException("Unable to get a client from a closed factory, storeName=" + internalStoreName);
     }
 
-    DaVinciConfig originalConfig = configs.computeIfAbsent(storeName, k -> config);
+    DaVinciConfig originalConfig = configs.computeIfAbsent(internalStoreName, k -> config);
     if (originalConfig.isManaged() != config.isManaged()) {
       throw new VeniceException(
-          "Managed flag conflict" + ", storeName=" + storeName + ", original=" + originalConfig.isManaged()
+          "Managed flag conflict" + ", storeName=" + internalStoreName + ", original=" + originalConfig.isManaged()
               + ", requested=" + config.isManaged());
     }
 
     if (originalConfig.getStorageClass() != config.getStorageClass()) {
       throw new VeniceException(
-          "Storage class conflict" + ", storeName=" + storeName + ", original=" + originalConfig.getStorageClass()
-              + ", requested=" + config.getStorageClass());
+          "Storage class conflict" + ", storeName=" + internalStoreName + ", original="
+              + originalConfig.getStorageClass() + ", requested=" + config.getStorageClass());
     }
 
-    ClientConfig clientConfig = new ClientConfig(storeName).setD2Client(d2Client)
+    ClientConfig clientConfig = new ClientConfig(internalStoreName).setD2Client(d2Client)
         .setD2ServiceName(clusterDiscoveryD2ServiceName)
         .setMetricsRepository(metricsRepository)
         .setSpecificValueClass(valueClass);
-
-    if (viewName != null) {
-      clientConfig.setViewName(viewName);
-    }
 
     DaVinciClient client;
     if (config.isIsolated()) {
@@ -395,14 +392,13 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
       client = clientConstructor.apply(config, clientConfig, backendConfig, managedClients, icProvider);
       isolatedClients.add(client);
     } else {
-      String sharedClientsKey = viewName == null ? storeName : VeniceView.getStoreAndViewName(storeName, viewName);
       client = sharedClients.computeIfAbsent(
-          sharedClientsKey,
+          internalStoreName,
           k -> clientConstructor.apply(config, clientConfig, backendConfig, managedClients, icProvider));
 
       if (!clientClass.isInstance(client)) {
         throw new VeniceException(
-            "Client type conflict" + ", storeName=" + storeName + ", originalClientClass=" + client.getClass()
+            "Client type conflict" + ", storeName=" + internalStoreName + ", originalClientClass=" + client.getClass()
                 + ", requestedClientClass=" + clientClass);
       }
     }

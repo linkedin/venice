@@ -85,10 +85,11 @@ public class TestMaterializedView {
 
   @Test
   public void testRePartitionViewTopicProcessing() {
-    String storeName = "test-store";
+    String storeName = "test-store_V2";
     Map<String, String> viewParams = new HashMap<>();
     int version = 8;
     String rePartitionViewName = "test-view";
+    String viewStoreName = VeniceView.getViewStoreName(storeName, rePartitionViewName);
     viewParams.put(MaterializedViewParameters.MATERIALIZED_VIEW_NAME.name(), rePartitionViewName);
     viewParams.put(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name(), "24");
     MaterializedView materializedView = new MaterializedView(new Properties(), storeName, viewParams);
@@ -100,10 +101,10 @@ public class TestMaterializedView {
       assertTrue(VeniceView.isViewTopic(viewTopic));
       assertEquals(VeniceView.parseStoreFromViewTopic(viewTopic), storeName);
       assertEquals(VeniceView.parseVersionFromViewTopic(viewTopic), version);
-      assertEquals(
-          VeniceView.parseStoreAndViewFromViewTopic(viewTopic),
-          storeName + VeniceView.VIEW_TOPIC_SEPARATOR + rePartitionViewName);
+      assertEquals(VeniceView.parseStoreAndViewFromViewTopic(viewTopic), viewStoreName);
     }
+    assertEquals(VeniceView.getStoreNameFromViewStoreName(viewStoreName), storeName);
+    assertEquals(VeniceView.getViewNameFromViewStoreName(viewStoreName), rePartitionViewName);
   }
 
   @Test

@@ -10,7 +10,7 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 import static com.linkedin.venice.utils.TestWriteUtils.DEFAULT_USER_DATA_VALUE_PREFIX;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.views.MaterializedView.MATERIALIZED_VIEW_TOPIC_SUFFIX;
-import static com.linkedin.venice.views.VeniceView.VIEW_TOPIC_SEPARATOR;
+import static com.linkedin.venice.views.VeniceView.VIEW_NAME_SEPARATOR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
@@ -147,8 +147,8 @@ public class TestMaterializedViewEndToEnd {
       TestWriteUtils.runPushJob("Run push job", props);
       // TODO we will verify the actual content once the DVC consumption part of the view topic is completed.
       // For now just check for topic existence and that they contain some records.
-      String viewTopicName = Version.composeKafkaTopic(storeName, 1) + VIEW_TOPIC_SEPARATOR + testViewName
-          + MATERIALIZED_VIEW_TOPIC_SUFFIX;
+      String viewTopicName =
+          Version.composeKafkaTopic(storeName, 1) + VIEW_NAME_SEPARATOR + testViewName + MATERIALIZED_VIEW_TOPIC_SUFFIX;
       String versionTopicName = Version.composeKafkaTopic(storeName, 1);
       validateViewTopicAndVersionTopic(viewTopicName, versionTopicName, 6, 3, 100);
 
@@ -158,8 +158,8 @@ public class TestMaterializedViewEndToEnd {
       rePushProps.setProperty(SOURCE_KAFKA, "true");
       rePushProps.setProperty(KAFKA_INPUT_BROKER_URL, childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
       TestWriteUtils.runPushJob("Run push job", rePushProps);
-      String rePushViewTopicName = Version.composeKafkaTopic(storeName, 2) + VIEW_TOPIC_SEPARATOR + testViewName
-          + MATERIALIZED_VIEW_TOPIC_SUFFIX;
+      String rePushViewTopicName =
+          Version.composeKafkaTopic(storeName, 2) + VIEW_NAME_SEPARATOR + testViewName + MATERIALIZED_VIEW_TOPIC_SUFFIX;
       String rePushVersionTopicName = Version.composeKafkaTopic(storeName, 2);
       validateViewTopicAndVersionTopic(rePushViewTopicName, rePushVersionTopicName, 6, 3, 100);
     }
@@ -233,7 +233,7 @@ public class TestMaterializedViewEndToEnd {
           getMetric(
               dvcMetricsRepo,
               "current_version_number.Gauge",
-              VeniceView.getStoreAndViewName(storeName, testViewName)),
+              VeniceView.getViewStoreName(storeName, testViewName)),
           (double) 1);
       for (int i = 1; i <= 100; i++) {
         Assert.assertEquals(viewClient.get(Integer.toString(i)).get().toString(), DEFAULT_USER_DATA_VALUE_PREFIX + i);
@@ -249,7 +249,7 @@ public class TestMaterializedViewEndToEnd {
           getMetric(
               dvcMetricsRepo,
               "current_version_number.Gauge",
-              VeniceView.getStoreAndViewName(storeName, testViewName)),
+              VeniceView.getViewStoreName(storeName, testViewName)),
           (double) 2);
       // The materialized view DVC client should be able to read all the keys from the new push
       for (int i = 1; i <= 200; i++) {

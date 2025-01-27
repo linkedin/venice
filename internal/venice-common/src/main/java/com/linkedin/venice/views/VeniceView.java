@@ -30,7 +30,8 @@ import java.util.Properties;
  * this interface for lifecycle management of arbitrary resources (not just kafka topics).
  */
 public abstract class VeniceView {
-  public static final String VIEW_TOPIC_SEPARATOR = "_";
+  public static final String VIEW_STORE_PREFIX = "view_store_";
+  public static final String VIEW_NAME_SEPARATOR = "_";
   protected final Properties props;
   protected final String storeName;
   protected final Map<String, String> viewParameters;
@@ -106,7 +107,7 @@ public abstract class VeniceView {
       throw new VeniceException("Cannot parse version because this is not a view topic, topic name: " + topicName);
     }
     int versionStartIndex = Version.getLastIndexOfVersionSeparator(topicName) + Version.VERSION_SEPARATOR.length();
-    int versionEndIndex = versionStartIndex + topicName.substring(versionStartIndex).indexOf(VIEW_TOPIC_SEPARATOR);
+    int versionEndIndex = versionStartIndex + topicName.substring(versionStartIndex).indexOf(VIEW_NAME_SEPARATOR);
     return Integer.parseInt(topicName.substring(versionStartIndex, versionEndIndex));
   }
 
@@ -116,12 +117,40 @@ public abstract class VeniceView {
    */
   public static String parseStoreAndViewFromViewTopic(String topicName) {
     String storeName = parseStoreFromViewTopic(topicName);
-    int viewTopicSuffixIndex = topicName.lastIndexOf(VIEW_TOPIC_SEPARATOR);
-    int viewNameStartIndex = topicName.substring(0, viewTopicSuffixIndex).lastIndexOf(VIEW_TOPIC_SEPARATOR);
-    return storeName + topicName.substring(viewNameStartIndex, viewTopicSuffixIndex);
+    int viewTopicSuffixIndex = topicName.lastIndexOf(VIEW_NAME_SEPARATOR);
+    int viewNameStartIndex = topicName.substring(0, viewTopicSuffixIndex).lastIndexOf(VIEW_NAME_SEPARATOR);
+    return VIEW_STORE_PREFIX + storeName + topicName.substring(viewNameStartIndex, viewTopicSuffixIndex);
   }
 
-  public static String getStoreAndViewName(String storeName, String viewName) {
-    return storeName + VIEW_TOPIC_SEPARATOR + viewName;
+  public static String getViewStoreName(String storeName, String viewName) {
+    return VIEW_STORE_PREFIX + storeName + VIEW_NAME_SEPARATOR + viewName;
+  }
+
+  public static String getStoreNameFromViewStoreName(String viewStoreName) {
+    String viewStoreNameWithoutPrefix = viewStoreName.substring(VIEW_STORE_PREFIX.length());
+    int storeNameEndIndex = viewStoreNameWithoutPrefix.lastIndexOf(VIEW_NAME_SEPARATOR);
+    return viewStoreNameWithoutPrefix.substring(0, storeNameEndIndex);
+  }
+
+  public static String getViewNameFromViewStoreName(String viewStoreName) {
+    int viewNameStartIndex = viewStoreName.lastIndexOf(VIEW_NAME_SEPARATOR);
+    return viewStoreName.substring(viewNameStartIndex + 1);
+  }
+
+  public static boolean isViewStore(String storeName) {
+    return storeName.startsWith(VIEW_STORE_PREFIX);
+  }
+
+  /**
+   * @param storeName
+   * @return storeName if the provided store name is a regular Venice store name or extract the regular Venice store
+   * name if the provided storeName is a view store name.
+   */
+  public static String getStoreName(String storeName) {
+    if (isViewStore(storeName)) {
+      return getStoreNameFromViewStoreName(storeName);
+    } else {
+      return storeName;
+    }
   }
 }
