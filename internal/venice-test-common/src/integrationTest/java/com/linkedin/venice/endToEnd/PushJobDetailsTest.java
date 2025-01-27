@@ -321,7 +321,7 @@ public class PushJobDetailsTest {
     }
   }
 
-  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 300
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 180
       * Time.MS_PER_SECOND)
   public void testPushJobDetails(boolean useCustomCheckpoints, boolean migratePushStatusStoreToAA) throws IOException {
     try {
