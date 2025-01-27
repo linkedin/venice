@@ -4,6 +4,8 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERRO
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
 import static com.linkedin.venice.utils.DataProviderUtils.BOOLEAN;
 import static com.linkedin.venice.utils.DataProviderUtils.allPermutationGenerator;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -11,10 +13,22 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.fail;
 
+import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
+import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.utils.VeniceProperties;
+import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -139,4 +153,65 @@ public class DaVinciBackendTest {
     verify(backend, times(2)).hasCurrentVersionBootstrapping();
   }
 
+  @Test
+  public void testBootstrappingSubscription() throws NoSuchFieldException, IllegalAccessException {
+    DaVinciBackend backend = mock(DaVinciBackend.class);
+    StorageService mockStorageService = mock(StorageService.class);
+
+    Field storageServiceField = DaVinciBackend.class.getDeclaredField("storageService");
+    storageServiceField.setAccessible(true);
+    storageServiceField.set(backend, mockStorageService);
+
+    StorageEngineRepository mockStorageEngineRepository = mock(StorageEngineRepository.class);
+    AbstractStorageEngine abstractStorageEngine = mock(AbstractStorageEngine.class);
+    mockStorageEngineRepository.addLocalStorageEngine(abstractStorageEngine);
+    String resourceName = "test_store_v1";
+    when(abstractStorageEngine.getStoreVersionName()).thenReturn(resourceName);
+
+    abstractStorageEngine.addStoragePartition(0);
+    abstractStorageEngine.addStoragePartition(1);
+
+    List<AbstractStorageEngine> localStorageEngines = new ArrayList<>();
+    localStorageEngines.add(abstractStorageEngine);
+
+    when(mockStorageService.getStorageEngineRepository()).thenReturn(mockStorageEngineRepository);
+    when(mockStorageService.getStorageEngine(resourceName)).thenReturn(abstractStorageEngine);
+    when(mockStorageEngineRepository.getAllLocalStorageEngines()).thenReturn(localStorageEngines);
+    when(backend.isIsolatedIngestion()).thenReturn(false);
+
+    List<Integer> userPartitionList = new ArrayList<>();
+    userPartitionList.add(0);
+    userPartitionList.add(1);
+    userPartitionList.add(2);
+    when(mockStorageService.getUserPartitions(anyString())).thenReturn(userPartitionList);
+
+    StoreBackend mockStoreBackend = mock(StoreBackend.class);
+    when(backend.getStoreOrThrow(anyString())).thenReturn(mockStoreBackend);
+
+    Version mockVersion = mock(Version.class);
+    Store mockStore = mock(Store.class);
+    SubscriptionBasedReadOnlyStoreRepository mockStoreRepository = mock(SubscriptionBasedReadOnlyStoreRepository.class);
+    Field storeRepositoryField = DaVinciBackend.class.getDeclaredField("storeRepository");
+    storeRepositoryField.setAccessible(true);
+    storeRepositoryField.set(backend, mockStoreRepository);
+    when(mockStoreRepository.getStoreOrThrow(anyString())).thenReturn(mockStore);
+    when(mockStore.getVersion(anyInt())).thenReturn(mockVersion);
+
+    VeniceConfigLoader mockConfigLoader = mock(VeniceConfigLoader.class);
+    Field configLoaderField = DaVinciBackend.class.getDeclaredField("configLoader");
+    configLoaderField.setAccessible(true);
+    configLoaderField.set(backend, mockConfigLoader);
+    VeniceProperties mockCombinedProperties = mock(VeniceProperties.class);
+    when(mockConfigLoader.getCombinedProperties()).thenReturn(mockCombinedProperties);
+
+    AggVersionedStorageEngineStats mockAggVersionedStorageEngineStats = mock(AggVersionedStorageEngineStats.class);
+    Field aggVersionedStorageEngineStatsField = DaVinciBackend.class.getDeclaredField("aggVersionedStorageEngineStats");
+    aggVersionedStorageEngineStatsField.setAccessible(true);
+    aggVersionedStorageEngineStatsField.set(backend, mockAggVersionedStorageEngineStats);
+
+    // DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY == false
+    when(mockCombinedProperties.getBoolean(anyString(), anyBoolean())).thenReturn(false);
+    doCallRealMethod().when(backend).bootstrap();
+    backend.bootstrap();
+  }
 }
