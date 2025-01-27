@@ -291,6 +291,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getRepushOrchestratorClassName();
   }
 
+  public VeniceProperties getRepushOrchestratorConfigs() {
+    return getCommonConfig().getRepushOrchestratorConfigs();
+  }
+
   public boolean isLogCompactionEnabled() {
     return getCommonConfig().isLogCompactionEnabled();
   }

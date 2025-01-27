@@ -612,10 +612,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       // Implementation of the interface RepushOrchestrator depends on the configuration. (see RepushOrchestrator docs)
       Class<? extends RepushOrchestrator> repushOrchestratorClass =
           ReflectUtils.loadClass(multiClusterConfigs.getRepushOrchestratorClassName());
-      RepushOrchestrator repushOrchestrator =
-          ReflectUtils.callConstructor(repushOrchestratorClass, new Class[0], new Object[0]);
+      Class<VeniceProperties> venicePropertiesClass = ReflectUtils.loadClass(VeniceProperties.class.getName());
+      RepushOrchestrator repushOrchestrator = ReflectUtils.callConstructor(
+          repushOrchestratorClass,
+          new Class[] { venicePropertiesClass },
+          new Object[] { multiClusterConfigs.getRepushOrchestratorConfigs() });
       compactionManager =
-          new CompactionManager(repushOrchestrator, multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS());
+          new CompactionManager(repushOrchestrator, multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS());// TODO
+                                                                                                                    // LC:
+                                                                                                                    // pass
+                                                                                                                    // VeniceProperties
+                                                                                                                    // instead
+                                                                                                                    // of
+                                                                                                                    // multiClusterConfigs.<specific
+                                                                                                                    // config>
     }
 
     List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();

@@ -63,6 +63,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_HEAR
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_CHECK_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_SERVICE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_REPUSH_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SCHEMA_VALIDATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
@@ -545,6 +546,7 @@ public class VeniceControllerClusterConfig {
    * Configs for repush
    */
   private String repushOrchestratorClassName;
+  private final VeniceProperties repushOrchestratorConfigs;
 
   /**
    * Configs for log compaction
@@ -987,6 +989,7 @@ public class VeniceControllerClusterConfig {
         props.getLong(SERVICE_DISCOVERY_REGISTRATION_RETRY_MS, 30L * Time.MS_PER_SECOND);
     this.pushJobUserErrorCheckpoints = parsePushJobUserErrorCheckpoints(props);
     this.repushOrchestratorClassName = props.getString(REPUSH_ORCHESTRATOR_CLASS_NAME); // TODO LC: default value?
+    this.repushOrchestratorConfigs = props.clipAndFilterNamespace(CONTROLLER_REPUSH_PREFIX);
     this.isLogCompactionEnabled = props.getBoolean(LOG_COMPACTION_ENABLED, false);
     this.scheduledLogCompactionThreadCount = props.getInt(SCHEDULED_LOG_COMPACTION_THREAD_COUNT, 1);
     this.scheduledLogCompactionIntervalMS =
@@ -1821,6 +1824,10 @@ public class VeniceControllerClusterConfig {
 
   public String getRepushOrchestratorClassName() {
     return repushOrchestratorClassName;
+  }
+
+  public VeniceProperties getRepushOrchestratorConfigs() {
+    return repushOrchestratorConfigs;
   }
 
   public boolean isLogCompactionEnabled() {

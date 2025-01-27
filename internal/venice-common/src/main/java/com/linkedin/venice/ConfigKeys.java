@@ -241,6 +241,11 @@ public class ConfigKeys {
   public static final String REPUSH_ORCHESTRATOR_CLASS_NAME = "repush.orchestrator.class.name";
 
   /**
+   * Prefix of configs to configure RepushOrchestrator
+   */
+  public static final String CONTROLLER_REPUSH_PREFIX = "controller.repush.";
+
+  /**
    * Whether log compaction is enabled for stores in this Venice controller
    */
   public static final String LOG_COMPACTION_ENABLED = "log.compaction.enabled";
