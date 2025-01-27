@@ -6,6 +6,7 @@ import static com.linkedin.venice.utils.DataProviderUtils.BOOLEAN;
 import static com.linkedin.venice.utils.DataProviderUtils.allPermutationGenerator;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -14,6 +15,9 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.fail;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.ingestion.DefaultIngestionBackend;
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageService;
@@ -208,6 +212,20 @@ public class DaVinciBackendTest {
     Field aggVersionedStorageEngineStatsField = DaVinciBackend.class.getDeclaredField("aggVersionedStorageEngineStats");
     aggVersionedStorageEngineStatsField.setAccessible(true);
     aggVersionedStorageEngineStatsField.set(backend, mockAggVersionedStorageEngineStats);
+
+    DefaultIngestionBackend ingestionBackend = mock(DefaultIngestionBackend.class);
+    Field ingestionBackendField = DaVinciBackend.class.getDeclaredField("ingestionBackend");
+    ingestionBackendField.setAccessible(true);
+    ingestionBackendField.set(backend, ingestionBackend);
+    VeniceNotifier ingestionListener = mock(VeniceNotifier.class);
+    Field ingestionListenerField = DaVinciBackend.class.getDeclaredField("ingestionListener");
+    ingestionListenerField.setAccessible(true);
+    ingestionListenerField.set(backend, ingestionListener);
+    KafkaStoreIngestionService storeIngestionService = mock(KafkaStoreIngestionService.class);
+    Field storeIngestionServiceField = DefaultIngestionBackend.class.getDeclaredField("storeIngestionService");
+    storeIngestionServiceField.setAccessible(true);
+    storeIngestionServiceField.set(ingestionBackend, storeIngestionService);
+    doNothing().when(ingestionBackend).addIngestionNotifier(any());
 
     // DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY == false
     when(mockCombinedProperties.getBoolean(anyString(), anyBoolean())).thenReturn(false);
