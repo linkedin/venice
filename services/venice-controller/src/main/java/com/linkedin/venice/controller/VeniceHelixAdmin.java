@@ -618,14 +618,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           new Class[] { venicePropertiesClass },
           new Object[] { multiClusterConfigs.getRepushOrchestratorConfigs() });
       compactionManager =
-          new CompactionManager(repushOrchestrator, multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS());// TODO
-                                                                                                                    // LC:
-                                                                                                                    // pass
-                                                                                                                    // VeniceProperties
-                                                                                                                    // instead
-                                                                                                                    // of
-                                                                                                                    // multiClusterConfigs.<specific
-                                                                                                                    // config>
+          new CompactionManager(repushOrchestrator, multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS());
+      // TODO LC: pass VeniceProperties instead of multiClusterConfigs.<specific config>
     }
 
     List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
