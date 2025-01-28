@@ -1,8 +1,11 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.meta.VersionStatus.ONLINE;
+
 import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
@@ -75,10 +78,10 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     return targetRegions.iterator().next();
   }
 
-  private StoreResponse getStoreForRegion(String clusterName, Set<String> targetRegions, String storeName) {
+  private StoreResponse getStoreForRegion(String clusterName, String targetRegion, String storeName) {
     Map<String, ControllerClient> controllerClientMap =
         veniceParentHelixAdmin.getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    ControllerClient targetRegionControllerClient = controllerClientMap.get(getTargetRegion(targetRegions));
+    ControllerClient targetRegionControllerClient = controllerClientMap.get(targetRegion);
     return targetRegionControllerClient.getStore(storeName);
   }
 
@@ -104,16 +107,18 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                 continue;
               }
 
-              if (targetVersion.getStatus() != VersionStatus.STARTED) {
+              if (targetVersion.getStatus() != VersionStatus.PUSHED) {
                 continue;
               }
 
+              String storeName = store.getName();
               Map<String, Integer> coloToVersions =
-                  veniceParentHelixAdmin.getCurrentVersionsForMultiColos(cluster, store.getName());
+                  veniceParentHelixAdmin.getCurrentVersionsForMultiColos(cluster, storeName);
               Set<String> targetRegions = RegionUtils.parseRegionsFilterList(store.getTargetSwapRegion());
               Set<String> remainingRegions = getRegionsForVersionSwap(coloToVersions, targetRegions);
 
-              StoreResponse targetRegionStoreResponse = getStoreForRegion(cluster, targetRegions, store.getName());
+              StoreResponse targetRegionStoreResponse =
+                  getStoreForRegion(cluster, getTargetRegion(targetRegions), storeName);
               if (!StringUtils.isEmpty(targetRegionStoreResponse.getError())) {
                 LOGGER.info("Got error when fetching targetRegionStore: {}", targetRegionStoreResponse.getError());
                 continue;
@@ -125,7 +130,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                 LOGGER.info(
                     "Unable to find version {} for store: {} in regions: {}",
                     targetVersionNum,
-                    store.getName(),
+                    storeName,
                     store.getTargetSwapRegion());
                 continue;
               }
@@ -135,13 +140,13 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               if (version.get().getIsDavinciHeartbeatReported()) {
                 LOGGER.info(
                     "Skipping version swap for store: {} on version: {} as it is davinci",
-                    store.getName(),
+                    storeName,
                     targetVersionNum);
                 continue;
               }
 
               // Check that push is completed in target regions
-              String kafkaTopicName = Version.composeKafkaTopic(store.getName(), targetVersionNum);
+              String kafkaTopicName = Version.composeKafkaTopic(storeName, targetVersionNum);
               Admin.OfflinePushStatusInfo pushStatusInfo =
                   veniceParentHelixAdmin.getOffLinePushStatus(cluster, kafkaTopicName);
               boolean didPushCompleteInTargetRegions = true;
@@ -150,14 +155,32 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                 if (!executionStatus.equals(ExecutionStatus.COMPLETED.toString())) {
                   didPushCompleteInTargetRegions = false;
                   LOGGER.info(
-                      "Skipping version swap for store: {} on version: {} as push is not complete in region {}",
-                      store.getName(),
+                      "Skipping version swap for store: {} on version: {} as push is not complete in target region {}",
+                      storeName,
                       targetVersionNum,
                       targetRegion);
                 }
               }
 
               if (!didPushCompleteInTargetRegions) {
+                continue;
+              }
+
+              // Check that push is complete in non target regions
+              boolean didPushCompleteInNonTargetRegions = true;
+              for (String remainingRegion: remainingRegions) {
+                String executionStatus = pushStatusInfo.getExtraInfo().get(remainingRegion);
+                if (!executionStatus.equals(ExecutionStatus.COMPLETED.toString())) {
+                  didPushCompleteInNonTargetRegions = false;
+                  LOGGER.info(
+                      "Skipping version swap for store: {} on version: {} as push is not complete in a non target region: {}",
+                      storeName,
+                      targetVersionNum,
+                      remainingRegion);
+                }
+              }
+
+              if (!didPushCompleteInNonTargetRegions) {
                 continue;
               }
 
@@ -175,7 +198,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               if (!didWaitTimeElapseInTargetRegions) {
                 LOGGER.info(
                     "Skipping version swap for store: {} on version: {} as wait time: {} has not passed",
-                    store.getName(),
+                    storeName,
                     targetVersionNum,
                     store.getTargetSwapRegionWaitTime());
                 continue;
@@ -184,16 +207,29 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               // TODO add call for postStoreVersionSwap() once it is implemented
 
               String remainingRegionsString = String.join(",\\s*", remainingRegions);
+              LOGGER
+                  .info("Issuing roll forward message for store: {} in regions: {}", storeName, remainingRegionsString);
+              veniceParentHelixAdmin.rollForwardToFutureVersion(cluster, storeName, remainingRegionsString);
+
+              // Update parent status to ONLINE
               LOGGER.info(
-                  "Issuing roll forward message for store: {} in regions: {}",
-                  store.getName(),
-                  remainingRegionsString);
-              veniceParentHelixAdmin.rollForwardToFutureVersion(cluster, store.getName(), remainingRegionsString);
+                  "Updating parent version status to online for version: {} in store: {}",
+                  targetVersionNum,
+                  storeName);
+              HelixVeniceClusterResources resources =
+                  veniceParentHelixAdmin.getVeniceHelixAdmin().getHelixVeniceClusterResources(cluster);
+              ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+              Store parentStore = repository.getStore(storeName);
+              parentStore.updateVersionStatus(targetVersionNum, ONLINE);
+              repository.updateStore(parentStore);
             }
           }
         } catch (Exception e) {
           LOGGER.warn("Caught exception: {} while performing deferred version swap", e.toString());
           deferredVersionSwapStats.recordDeferredVersionSwapErrorSensor();
+        } catch (Throwable throwable) {
+          LOGGER.warn("Caught a throwable: {} while performing deferred version swap", throwable.getMessage());
+          deferredVersionSwapStats.recordDeferreredVersionSwapThrowableSensor();
         }
       }
     }

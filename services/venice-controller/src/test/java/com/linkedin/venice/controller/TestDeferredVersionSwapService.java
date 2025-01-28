@@ -103,8 +103,8 @@ public class TestDeferredVersionSwapService {
     int davinciVersionNum = 2;
     int completedVersionNum = 1;
     versions.put(completedVersionNum, VersionStatus.ONLINE);
-    versions.put(davinciVersionNum, VersionStatus.STARTED);
-    versions.put(targetVersionNum, VersionStatus.STARTED);
+    versions.put(davinciVersionNum, VersionStatus.PUSHED);
+    versions.put(targetVersionNum, VersionStatus.PUSHED);
     String storeName1 = "testStore";
     String storeName2 = "testStore2";
     String storeName3 = "testStore3";

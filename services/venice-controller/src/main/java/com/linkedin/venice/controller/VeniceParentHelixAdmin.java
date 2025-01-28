@@ -3653,7 +3653,7 @@ public class VeniceParentHelixAdmin implements Admin {
         Store parentStore = repository.getStore(storeName);
         Version version = parentStore.getVersion(versionNum);
         boolean isDeferredSwap = version != null && version.isVersionSwapDeferred();
-        if (!isDeferredSwap) {
+        if (!isDeferredSwap || !StringUtils.isEmpty(targetedRegions)) {
           // targetedRegions is non-empty for target region push of batch store
           boolean isTargetRegionPush = !StringUtils.isEmpty(targetedRegions);
           Version storeVersion = parentStore.getVersion(versionNum);

@@ -10,7 +10,9 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -89,7 +91,7 @@ public class TestDeferredVersionSwap {
           TimeUnit.SECONDS);
 
       // Version should only be swapped in the target region
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
         Map<String, Integer> coloVersions =
             parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
 
@@ -102,6 +104,11 @@ public class TestDeferredVersionSwap {
         });
       });
 
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
+        Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.PUSHED);
+      });
+
       // Version should be swapped in all regions
       TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
         Map<String, Integer> coloVersions =
@@ -110,6 +117,11 @@ public class TestDeferredVersionSwap {
         coloVersions.forEach((colo, version) -> {
           Assert.assertEquals((int) version, 1);
         });
+      });
+
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
+        Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.ONLINE);
       });
     }
   }
