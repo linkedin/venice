@@ -206,7 +206,7 @@ public class VeniceController {
         secure || multiClusterConfigs.isControllerEnforceSSLOnly(),
         secure ? multiClusterConfigs.getSslConfig() : Optional.empty(),
         secure && multiClusterConfigs.adminCheckReadMethodForKafka(),
-        accessController,
+        secure ? accessController : Optional.empty(),
         multiClusterConfigs.getDisabledRoutes(),
         multiClusterConfigs.getCommonConfig().getJettyConfigOverrides(),
         multiClusterConfigs.getCommonConfig().isDisableParentRequestTopicForStreamPushes(),
