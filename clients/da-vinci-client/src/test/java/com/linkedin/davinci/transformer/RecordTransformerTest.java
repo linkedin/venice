@@ -31,7 +31,7 @@ import org.testng.annotations.Test;
 public class RecordTransformerTest {
   static final int storeVersion = 1;
   static final int partitionId = 0;
-  static final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+  final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
       AvroProtocolDefinition.PARTITION_STATE.getSerializer();
 
   @Test
@@ -99,6 +99,12 @@ public class RecordTransformerTest {
 
     offsetRecord.setRecordTransformerClassHash(recordTransformer.getClassHash());
     assertEquals((int) offsetRecord.getRecordTransformerClassHash(), recordTransformer.getClassHash());
+
+    // class hash should be the same when the OffsetRecord is serialized then deserialized
+    byte[] offsetRecordBytes = offsetRecord.toBytes();
+    OffsetRecord deserializedOffsetRecord = new OffsetRecord(offsetRecordBytes, partitionStateSerializer);
+    assertEquals((int) deserializedOffsetRecord.getRecordTransformerClassHash(), recordTransformer.getClassHash());
+
     when(storageEngine.getPartitionOffset(partitionId)).thenReturn(Optional.of(offsetRecord));
 
     // Execute the onRecovery method again to test the case where the classHash exists

@@ -93,6 +93,7 @@ public class DaVinciRecordTransformerUtility<K, O> {
               currentClassHash));
       return false;
     }
+    LOGGER.info(String.format("Transformer logic hasn't changed. Class hash = %d.", currentClassHash));
     return true;
   }
 
