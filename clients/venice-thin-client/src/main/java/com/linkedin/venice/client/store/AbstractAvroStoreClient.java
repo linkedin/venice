@@ -75,6 +75,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   private RecordDeserializer<StreamingFooterRecordV1> streamingFooterRecordDeserializer;
   private TransportClient transportClient;
   private final Executor deserializationExecutor;
+  private final Executor veniceClientWarmUpExecutor =
+      Executors.newFixedThreadPool(1, new DaemonThreadFactory("Venice-Client-Warmup"));
   private final CompressorFactory compressorFactory;
   private final String storageRequestPath;
   private final String computeRequestPath;
@@ -714,7 +716,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
          * If the D2 client isn't retry in the async warm-up phase, it will be delayed to the first query.
          * Essentially, this is a best-effort.
          */
-        CompletableFuture.runAsync(this::getKeySerializerWithRetryWithLongInterval);
+        CompletableFuture.runAsync(this::getKeySerializerWithRetryWithLongInterval, veniceClientWarmUpExecutor);
       }
     }
   }
