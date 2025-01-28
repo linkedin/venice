@@ -43,11 +43,19 @@ jobs:
 
           # Get the diff of the PR and process each file
           EXCEEDED=false
+          JAVA_FILE=false
+          SCHEMA_FILE=false
           while IFS=$'\t' read -r added removed file; do
           # Skip test files
           if [[ "$file" != *src/main* ]]; then
             echo "Skipping file: $file"
             continue
+          fi
+          
+          if [[ "$file" == *.java ]]; then
+            JAVA_FILE=true
+          else
+            SCHEMA_FILE=true
           fi
 
           # Calculate total lines changed for the file
@@ -59,11 +67,17 @@ jobs:
             echo "File $file exceeds the maximum allowed lines changed ($TOTAL > $MAX_LINES)"
             EXCEEDED=true
           fi
-          done < <(git diff --numstat upstream/main | grep '\.(java|avsc|proto)$')
+          done < <(git diff --numstat upstream/main | grep -E '\.(java|avsc|proto)$')
 
-          # Fail if any file exceeded the limit
+          # Fail if there are both schema and Java file changes
           if [ "$EXCEEDED" = true ]; then
             echo "Above files exceed the maximum allowed lines changed ($MAX_LINES)."
+            exit 1
+          fi
+          
+          # Fail if any file exceeded the limit
+          if [ "JAVA_FILE" = true && "SCHEMA_FILE" = true ]; then
+            echo "The PR has both schema and Java code changes, please make a separate PR for schema changes."
             exit 1
           fi
 
