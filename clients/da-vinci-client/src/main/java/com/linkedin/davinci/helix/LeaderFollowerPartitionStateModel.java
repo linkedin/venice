@@ -102,7 +102,6 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
        */
       if (isRegularStoreCurrentVersion) {
         notifier.startConsumption(resourceName, getPartition());
-        getIngestionBackend().getStoreIngestionService().recordLatchCreation(resourceName, getPartition());
       }
       try {
         long startTimeForSettingUpNewStorePartitionInNs = System.nanoTime();
@@ -119,6 +118,8 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
         throw e;
       }
       if (isRegularStoreCurrentVersion) {
+        // Recording the creation of the latch in notifier must happen after SIT is created in setupNewStorePartition()
+        getIngestionBackend().getStoreIngestionService().recordLatchCreation(resourceName, getPartition());
         waitConsumptionCompleted(resourceName, notifier);
       }
       updateLagMonitor(
