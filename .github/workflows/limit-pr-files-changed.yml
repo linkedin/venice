@@ -3,7 +3,9 @@ name: Enforce Max Lines Changed Per File
 on:
   pull_request:
     paths:
-      - '**/*.java'  # Monitor changes to Java files only
+      - '**/*.java'   # Monitor changes to Java files
+      - '**/*.avsc'   # Monitor changes to Avro schema files
+      - '**/*.proto'   # Monitor changes to proto schema files
 
 jobs:
   enforce-lines-changed:
@@ -23,7 +25,7 @@ jobs:
         id: check_override
         run: |
           # Define the keyword for override
-          OVERRIDE_KEYWORD="override"
+          OVERRIDE_KEYWORD="DIFFSIZEOVERRIDE"
           
           # Check PR title and body for the keyword
           if echo "${{ steps.pr_details.outputs.title }}${{ steps.pr_details.outputs.body }}" | grep -iq "$OVERRIDE_KEYWORD"; then
@@ -33,6 +35,7 @@ jobs:
             echo "override=false" >> $GITHUB_OUTPUT
           fi
       - name: Calculate Lines Changed Per File
+        if: ${{ steps.check_override.outputs.override != 'true' }}
         id: lines_changed_per_file
         run: |
           # Define the maximum allowed lines changed per file
@@ -56,11 +59,11 @@ jobs:
             echo "File $file exceeds the maximum allowed lines changed ($TOTAL > $MAX_LINES)"
             EXCEEDED=true
           fi
-          done < <(git diff --numstat origin/main | grep '\.java$')
+          done < <(git diff --numstat upstream/main | grep '\.(java|avsc|proto)$')
 
           # Fail if any file exceeded the limit
           if [ "$EXCEEDED" = true ]; then
-            echo "Some files exceed the maximum allowed lines changed ($MAX_LINES)."
+            echo "Above files exceed the maximum allowed lines changed ($MAX_LINES)."
             exit 1
           fi
 
