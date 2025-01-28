@@ -51,7 +51,8 @@ import org.apache.logging.log4j.Logger;
  * The point of having one storage engine(environment) or one database for one partition, is to simplify the complexity of rebalancing/partition migration/host swap.
  * The team agreed to take (2.2) as default storage-partition model for now, and run performance tests to see if it goes well.
  */
-public abstract class AbstractStorageEngine<Partition extends AbstractStoragePartition> implements Closeable {
+public abstract class AbstractStorageEngine<Partition extends AbstractStoragePartition>
+    implements CheckpointStorageEngine, Closeable {
   public enum StoragePartitionAdjustmentTrigger {
     CHECK_DATABASE_INTEGRITY, BEGIN_BATCH_PUSH, END_BATCH_PUSH, PREPARE_FOR_READ, PROMOTE_TO_LEADER, DEMOTE_TO_FOLLOWER
   }
@@ -573,7 +574,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   /**
    * Retrieve the offset associated with the partitionId from the metadata partition.
    */
-  public synchronized Optional<OffsetRecord> getPartitionOffset(int partitionId) {
+  public synchronized OffsetRecord getPartitionOffset(int partitionId) {
     if (!metadataPartitionCreated()) {
       throw new StorageInitializationException("Metadata partition not created!");
     }
@@ -585,9 +586,9 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
     byte[] value = metadataPartition.get(getPartitionMetadataKey(partitionId));
     if (value == null) {
-      return Optional.empty();
+      return null;
     }
-    return Optional.of(new OffsetRecord(value, partitionStateSerializer));
+    return new OffsetRecord(value, partitionStateSerializer);
   }
 
   /**

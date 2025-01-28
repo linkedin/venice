@@ -1,6 +1,7 @@
 package com.linkedin.davinci.storage;
 
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.CheckpointStorageEngine;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,6 +24,10 @@ public class StorageEngineRepository {
 
   public AbstractStorageEngine getLocalStorageEngine(String storeName) {
     return localStorageEngines.get(storeName);
+  }
+
+  public CheckpointStorageEngine getCheckpointStorageEngine(String storeName) {
+    return getLocalStorageEngine(storeName);
   }
 
   public AbstractStorageEngine removeLocalStorageEngine(String storeName) {

@@ -327,8 +327,9 @@ public class VeniceServer {
         storeVersionStateSerializer,
         partitionStateSerializer,
         metadataRepo);
-    storageEngineMetadataService =
-        new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
+    storageEngineMetadataService = new StorageEngineMetadataService(
+        storageService.getStorageEngineRepository()::getCheckpointStorageEngine,
+        partitionStateSerializer);
     services.add(storageEngineMetadataService);
     storageMetadataService = storageEngineMetadataService;
     services.add(storageService);

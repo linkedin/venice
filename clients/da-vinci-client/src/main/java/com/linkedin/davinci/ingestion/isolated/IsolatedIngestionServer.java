@@ -685,8 +685,9 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
             .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()),
         null);
 
-    storageMetadataService =
-        new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
+    storageMetadataService = new StorageEngineMetadataService(
+        storageService.getStorageEngineRepository()::getCheckpointStorageEngine,
+        partitionStateSerializer);
 
     StorageEngineBackedCompressorFactory compressorFactory =
         new StorageEngineBackedCompressorFactory(storageMetadataService);

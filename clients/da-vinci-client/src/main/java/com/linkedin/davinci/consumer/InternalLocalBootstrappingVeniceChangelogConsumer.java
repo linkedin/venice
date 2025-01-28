@@ -131,8 +131,9 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
         true,
         true,
         functionToCheckWhetherStorageEngineShouldBeKeptOrNot());
-    storageMetadataService =
-        new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
+    storageMetadataService = new StorageEngineMetadataService(
+        storageService.getStorageEngineRepository()::getCheckpointStorageEngine,
+        partitionStateSerializer);
   }
 
   private Function<String, Boolean> functionToCheckWhetherStorageEngineShouldBeKeptOrNot() {

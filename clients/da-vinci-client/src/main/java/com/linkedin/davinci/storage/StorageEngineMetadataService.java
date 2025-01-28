@@ -1,14 +1,12 @@
 package com.linkedin.davinci.storage;
 
-import com.linkedin.davinci.store.AbstractStorageEngine;
-import com.linkedin.davinci.store.AbstractStoragePartition;
+import com.linkedin.davinci.store.CheckpointStorageEngine;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
-import java.util.Optional;
 import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -21,13 +19,13 @@ import org.apache.logging.log4j.Logger;
 public class StorageEngineMetadataService extends AbstractVeniceService implements StorageMetadataService {
   private static final Logger LOGGER = LogManager.getLogger(StorageEngineMetadataService.class);
 
-  private final StorageEngineRepository storageEngineRepository;
+  private final Function<String, CheckpointStorageEngine> checkpointStorageEngineGetter;
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
 
   public StorageEngineMetadataService(
-      StorageEngineRepository storageEngineRepository,
+      Function<String, CheckpointStorageEngine> checkpointStorageEngineGetter,
       InternalAvroSpecificSerializer<PartitionState> serializer) {
-    this.storageEngineRepository = storageEngineRepository;
+    this.checkpointStorageEngineGetter = checkpointStorageEngineGetter;
     this.partitionStateSerializer = serializer;
   }
 
@@ -38,7 +36,7 @@ public class StorageEngineMetadataService extends AbstractVeniceService implemen
 
   @Override
   public void clearOffset(String topicName, int partitionId) {
-    AbstractStorageEngine<?> storageEngine = this.storageEngineRepository.getLocalStorageEngine(topicName);
+    CheckpointStorageEngine storageEngine = this.checkpointStorageEngineGetter.apply(topicName);
     if (storageEngine == null) {
       LOGGER.info("Store: {} could not be located, ignoring the reset partition message.", topicName);
       return;
@@ -48,8 +46,11 @@ public class StorageEngineMetadataService extends AbstractVeniceService implemen
 
   @Override
   public OffsetRecord getLastOffset(String topicName, int partitionId) throws VeniceException {
-    Optional<OffsetRecord> record = getStorageEngineOrThrow(topicName).getPartitionOffset(partitionId);
-    return record.orElseGet(() -> new OffsetRecord(partitionStateSerializer));
+    OffsetRecord record = getStorageEngineOrThrow(topicName).getPartitionOffset(partitionId);
+    if (record == null) {
+      return new OffsetRecord(this.partitionStateSerializer);
+    }
+    return record;
   }
 
   @Override
@@ -64,7 +65,7 @@ public class StorageEngineMetadataService extends AbstractVeniceService implemen
   @Override
   public void computeStoreVersionState(String topicName, Function<StoreVersionState, StoreVersionState> mapFunction)
       throws VeniceException {
-    AbstractStorageEngine engine = getStorageEngineOrThrow(topicName);
+    CheckpointStorageEngine engine = getStorageEngineOrThrow(topicName);
     synchronized (engine) {
       StoreVersionState previousSVS = engine.getStoreVersionState();
       StoreVersionState newSVS = mapFunction.apply(previousSVS);
@@ -86,8 +87,8 @@ public class StorageEngineMetadataService extends AbstractVeniceService implemen
     }
   }
 
-  private AbstractStorageEngine<? extends AbstractStoragePartition> getStorageEngineOrThrow(String topicName) {
-    AbstractStorageEngine<?> storageEngine = this.storageEngineRepository.getLocalStorageEngine(topicName);
+  private CheckpointStorageEngine getStorageEngineOrThrow(String topicName) {
+    CheckpointStorageEngine storageEngine = this.checkpointStorageEngineGetter.apply(topicName);
     if (storageEngine == null) {
       throw new VeniceException("Topic " + topicName + " not found in storageEngineRepository");
     }

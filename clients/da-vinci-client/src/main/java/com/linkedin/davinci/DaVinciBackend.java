@@ -246,7 +246,9 @@ public class DaVinciBackend implements Closeable {
               new MetadataUpdateStats(metricsRepository),
               configLoader,
               storageService.getStoreVersionStateSyncer())
-          : new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
+          : new StorageEngineMetadataService(
+              storageService.getStorageEngineRepository()::getCheckpointStorageEngine,
+              partitionStateSerializer);
       // Start storage metadata service
       ((AbstractVeniceService) storageMetadataService).start();
       compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);

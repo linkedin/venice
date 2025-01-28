@@ -3,6 +3,7 @@ package com.linkedin.davinci.store.rocksdb;
 import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITION_ID;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertNull;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
@@ -132,13 +133,13 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
     offsetRecord.setRealtimeTopicProducerState(kafkaUrl, guid, ppState);
     offsetRecord.setCheckpointLocalVersionTopicOffset(666L);
     rocksDBStorageEngine.putPartitionOffset(PARTITION_ID, offsetRecord);
-    Assert.assertEquals(rocksDBStorageEngine.getPartitionOffset(PARTITION_ID).get().getLocalVersionTopicOffset(), 666L);
+    Assert.assertEquals(rocksDBStorageEngine.getPartitionOffset(PARTITION_ID).getLocalVersionTopicOffset(), 666L);
     ProducerPartitionState ppStateFromRocksDB =
-        rocksDBStorageEngine.getPartitionOffset(PARTITION_ID).get().getRealTimeProducerState(kafkaUrl, guid);
+        rocksDBStorageEngine.getPartitionOffset(PARTITION_ID).getRealTimeProducerState(kafkaUrl, guid);
     Assert.assertEquals(ppStateFromRocksDB.getSegmentNumber(), segment);
     Assert.assertEquals(ppStateFromRocksDB.getMessageSequenceNumber(), sequence);
     rocksDBStorageEngine.clearPartitionOffset(PARTITION_ID);
-    Assert.assertEquals(rocksDBStorageEngine.getPartitionOffset(PARTITION_ID).isPresent(), false);
+    assertNull(rocksDBStorageEngine.getPartitionOffset(PARTITION_ID));
   }
 
   private ProducerPartitionState createProducerPartitionState(int segment, int sequence) {
