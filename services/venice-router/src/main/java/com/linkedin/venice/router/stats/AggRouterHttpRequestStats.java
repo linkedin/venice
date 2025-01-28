@@ -5,6 +5,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.AbstractVeniceAggStoreStats;
+import com.linkedin.venice.stats.dimensions.RequestValidationOutcome;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.metrics.MetricsRepository;
@@ -148,10 +149,15 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
     }
   }
 
-  public void recordBadRequestKeyCount(String storeName, int keyCount) {
-    totalStats.recordIncomingBadRequestKeyCount(keyCount);
+  public void recordBadRequestKeyCount(String storeName, int keyNum) {
+    totalStats
+        .recordIncomingBadRequestKeyCountMetric(keyNum, RequestValidationOutcome.INVALID_KEY_COUNT_LIMIT_EXCEEDED);
     if (storeName != null) {
-      recordStoreStats(storeName, stats -> stats.recordIncomingBadRequestKeyCount(keyCount));
+      recordStoreStats(
+          storeName,
+          stats -> stats.recordIncomingBadRequestKeyCountMetric(
+              keyNum,
+              RequestValidationOutcome.INVALID_KEY_COUNT_LIMIT_EXCEEDED));
     }
   }
 
@@ -265,8 +271,8 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
   }
 
   public void recordKeyNum(String storeName, int keyNum) {
-    totalStats.recordIncomingKeyNum(keyNum);
-    recordStoreStats(storeName, stats -> stats.recordIncomingKeyNum(keyNum));
+    totalStats.recordIncomingKeyCountMetric(keyNum, RequestValidationOutcome.VALID);
+    recordStoreStats(storeName, stats -> stats.recordIncomingKeyCountMetric(keyNum, RequestValidationOutcome.VALID));
   }
 
   public void recordRequestUsage(String storeName, int usage) {
@@ -295,18 +301,18 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
   }
 
   public void recordDelayConstraintAbortedRetryRequest(String storeName) {
-    totalStats.recordDelayConstraintAbortedRetryRequest();
-    recordStoreStats(storeName, RouterHttpRequestStats::recordDelayConstraintAbortedRetryRequest);
+    totalStats.recordDelayConstraintAbortedRetryCountMetric();
+    recordStoreStats(storeName, RouterHttpRequestStats::recordDelayConstraintAbortedRetryCountMetric);
   }
 
   public void recordSlowRouteAbortedRetryRequest(String storeName) {
-    totalStats.recordSlowRouteAbortedRetryRequest();
-    recordStoreStats(storeName, RouterHttpRequestStats::recordSlowRouteAbortedRetryRequest);
+    totalStats.recordSlowRouteAbortedRetryCountMetric();
+    recordStoreStats(storeName, RouterHttpRequestStats::recordSlowRouteAbortedRetryCountMetric);
   }
 
   public void recordRetryRouteLimitAbortedRetryRequest(String storeName) {
-    totalStats.recordRetryRouteLimitAbortedRetryRequest();
-    recordStoreStats(storeName, RouterHttpRequestStats::recordRetryRouteLimitAbortedRetryRequest);
+    totalStats.recordRetryRouteLimitAbortedRetryCountMetric();
+    recordStoreStats(storeName, RouterHttpRequestStats::recordRetryRouteLimitAbortedRetryCountMetric);
   }
 
   public void recordKeySize(long keySize) {
@@ -324,8 +330,8 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
   }
 
   public void recordNoAvailableReplicaAbortedRetryRequest(String storeName) {
-    totalStats.recordNoAvailableReplicaAbortedRetryRequest();
-    recordStoreStats(storeName, RouterHttpRequestStats::recordNoAvailableReplicaAbortedRetryRequest);
+    totalStats.recordNoAvailableReplicaAbortedRetryCountMetric();
+    recordStoreStats(storeName, RouterHttpRequestStats::recordNoAvailableReplicaAbortedRetryCountMetric);
   }
 
   public void recordErrorRetryAttemptTriggeredByPendingRequestCheck(String storeName) {
