@@ -118,8 +118,9 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
         throw e;
       }
       if (isRegularStoreCurrentVersion) {
-        // Recording the creation of the latch in notifier must happen after SIT is created in setupNewStorePartition()
+        // This must happen after SIT is created in setupNewStorePartition(), otherwise accessing SIT will be NPE
         getIngestionBackend().getStoreIngestionService().recordLatchCreation(resourceName, getPartition());
+
         waitConsumptionCompleted(resourceName, notifier);
       }
       updateLagMonitor(
