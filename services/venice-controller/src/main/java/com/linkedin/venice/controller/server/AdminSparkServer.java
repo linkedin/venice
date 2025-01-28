@@ -499,12 +499,15 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     httpService.get(
         EXECUTION.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, adminCommandExecutionRoutes.getExecution(admin)));
+        new VeniceParentControllerRegionStateHandler(
+            admin,
+            adminCommandExecutionRoutes.getExecution(admin, requestHandler.getClusterAdminOpsRequestHandler())));
     httpService.get(
         LAST_SUCCEED_EXECUTION_ID.getPath(),
         new VeniceParentControllerRegionStateHandler(
             admin,
-            adminCommandExecutionRoutes.getLastSucceedExecutionId(admin)));
+            adminCommandExecutionRoutes
+                .getLastSucceedExecutionId(admin, requestHandler.getClusterAdminOpsRequestHandler())));
 
     httpService.get(
         STORAGE_ENGINE_OVERHEAD_RATIO.getPath(),
@@ -624,10 +627,15 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     httpService.get(
         GET_ADMIN_TOPIC_METADATA.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, adminTopicMetadataRoutes.getAdminTopicMetadata(admin)));
+        new VeniceParentControllerRegionStateHandler(
+            admin,
+            adminTopicMetadataRoutes.getAdminTopicMetadata(admin, requestHandler.getClusterAdminOpsRequestHandler())));
     httpService.post(
         UPDATE_ADMIN_TOPIC_METADATA.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, adminTopicMetadataRoutes.updateAdminTopicMetadata(admin)));
+        new VeniceParentControllerRegionStateHandler(
+            admin,
+            adminTopicMetadataRoutes
+                .updateAdminTopicMetadata(admin, requestHandler.getClusterAdminOpsRequestHandler())));
 
     httpService.post(
         DELETE_KAFKA_TOPIC.getPath(),
