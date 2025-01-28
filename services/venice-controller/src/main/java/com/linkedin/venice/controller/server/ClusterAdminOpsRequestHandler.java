@@ -44,7 +44,8 @@ public class ClusterAdminOpsRequestHandler {
         admin.getAdminCommandExecutionTracker(clusterName);
     if (!adminCommandExecutionTracker.isPresent()) {
       throw new VeniceException(
-          "Could not track execution in this controller. Make sure you send the command to a correct parent controller.");
+          "Could not track execution in this controller for the cluster: " + clusterName
+              + ". Make sure you send the command to a correct parent controller.");
     }
     AdminCommandExecutionTracker tracker = adminCommandExecutionTracker.get();
     AdminCommandExecution execution = tracker.checkExecutionStatus(executionId);
@@ -93,17 +94,15 @@ public class ClusterAdminOpsRequestHandler {
         clusterName,
         storeName != null ? " and store: " + storeName : "");
 
-    AdminTopicGrpcMetadata.Builder adminMetadataBuilder = AdminTopicGrpcMetadata.newBuilder();
+    AdminTopicGrpcMetadata.Builder adminMetadataBuilder =
+        AdminTopicGrpcMetadata.newBuilder().setClusterName(clusterName);
     Map<String, Long> metadata = admin.getAdminTopicMetadata(clusterName, Optional.ofNullable(storeName));
     adminMetadataBuilder.setExecutionId(AdminTopicMetadataAccessor.getExecutionId(metadata));
     if (storeName == null) {
       Pair<Long, Long> offsets = AdminTopicMetadataAccessor.getOffsets(metadata);
       adminMetadataBuilder.setOffset(offsets.getFirst());
       adminMetadataBuilder.setUpstreamOffset(offsets.getSecond());
-    }
-
-    adminMetadataBuilder.setClusterName(clusterName);
-    if (storeName != null) {
+    } else {
       adminMetadataBuilder.setStoreName(storeName);
     }
     return AdminTopicMetadataGrpcResponse.newBuilder().setMetadata(adminMetadataBuilder.build()).build();

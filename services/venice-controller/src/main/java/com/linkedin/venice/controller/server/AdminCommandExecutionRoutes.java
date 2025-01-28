@@ -43,8 +43,9 @@ public class AdminCommandExecutionRoutes extends AbstractRoute {
         String cluster = request.queryParams(CLUSTER);
         long executionId = Long.parseLong(request.queryParams(EXECUTION_ID));
         AdminCommandExecutionStatusGrpcRequest.Builder requestBuilder =
-            AdminCommandExecutionStatusGrpcRequest.newBuilder();
-        requestBuilder.setClusterName(cluster).setAdminCommandExecutionId(executionId);
+            AdminCommandExecutionStatusGrpcRequest.newBuilder()
+                .setClusterName(cluster)
+                .setAdminCommandExecutionId(executionId);
         AdminCommandExecutionStatusGrpcResponse grpcResponse =
             requestHandler.getAdminCommandExecutionStatus(requestBuilder.build());
         responseObject.setCluster(cluster);

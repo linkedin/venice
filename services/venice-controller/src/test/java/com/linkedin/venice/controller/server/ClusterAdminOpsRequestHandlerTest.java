@@ -95,7 +95,8 @@ public class ClusterAdminOpsRequestHandlerTest {
     Exception e = expectThrows(VeniceException.class, () -> handler.getAdminCommandExecutionStatus(request));
     assertEquals(
         e.getMessage(),
-        "Could not track execution in this controller. Make sure you send the command to a correct parent controller.");
+        "Could not track execution in this controller for the cluster: test-cluster. Make sure you send the command to a correct parent controller.",
+        "Actual message: " + e.getMessage());
   }
 
   @Test

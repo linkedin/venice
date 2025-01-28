@@ -85,9 +85,8 @@ public class AdminTopicMetadataRoutes extends AbstractRoute {
         Optional<Long> offset = Optional.ofNullable(request.queryParams(OFFSET)).map(Long::parseLong);
         Optional<Long> upstreamOffset = Optional.ofNullable(request.queryParams(UPSTREAM_OFFSET)).map(Long::parseLong);
 
-        AdminTopicGrpcMetadata.Builder adminMetadataBuilder = AdminTopicGrpcMetadata.newBuilder();
-        adminMetadataBuilder.setClusterName(clusterName);
-        adminMetadataBuilder.setExecutionId(executionId);
+        AdminTopicGrpcMetadata.Builder adminMetadataBuilder =
+            AdminTopicGrpcMetadata.newBuilder().setClusterName(clusterName).setExecutionId(executionId);
         storeName.ifPresent(adminMetadataBuilder::setStoreName);
         offset.ifPresent(adminMetadataBuilder::setOffset);
         upstreamOffset.ifPresent(adminMetadataBuilder::setUpstreamOffset);

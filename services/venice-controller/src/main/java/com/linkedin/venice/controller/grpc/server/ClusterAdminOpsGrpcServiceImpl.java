@@ -2,7 +2,7 @@ package com.linkedin.venice.controller.grpc.server;
 
 import static com.linkedin.venice.controller.grpc.server.ControllerGrpcServerUtils.isAllowListUser;
 import static com.linkedin.venice.controller.server.VeniceRouteHandler.ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX;
-import static com.linkedin.venice.protocols.controller.ClusterAdminOpsGrpcServiceGrpc.*;
+import static com.linkedin.venice.protocols.controller.ClusterAdminOpsGrpcServiceGrpc.ClusterAdminOpsGrpcServiceImplBase;
 
 import com.linkedin.venice.controller.server.ClusterAdminOpsRequestHandler;
 import com.linkedin.venice.controller.server.VeniceControllerAccessManager;
