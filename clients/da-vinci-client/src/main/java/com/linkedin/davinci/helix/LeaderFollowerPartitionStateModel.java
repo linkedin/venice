@@ -105,7 +105,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       }
       try {
         long startTimeForSettingUpNewStorePartitionInNs = System.nanoTime();
-        setupNewStorePartition();
+        setupNewStorePartition(isRegularStoreCurrentVersion);
         logger.info(
             "Completed setting up the replica: {}. Total elapsed time: {} ms",
             Utils.getReplicaId(resourceName, getPartition()),
@@ -119,7 +119,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       }
       if (isRegularStoreCurrentVersion) {
         // This must happen after SIT is created in setupNewStorePartition(), otherwise accessing SIT will be NPE
-        getIngestionBackend().getStoreIngestionService().recordLatchCreation(resourceName, getPartition());
+        // getIngestionBackend().getStoreIngestionService().recordLatchCreation(resourceName, getPartition());
 
         waitConsumptionCompleted(resourceName, notifier);
       }

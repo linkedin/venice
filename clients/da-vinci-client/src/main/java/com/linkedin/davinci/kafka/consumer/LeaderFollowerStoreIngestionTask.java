@@ -415,7 +415,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     partitionToPendingConsumerActionCountMap
         .computeIfAbsent(topicPartition.getPartitionNumber(), x -> new AtomicInteger(0))
         .incrementAndGet();
-    consumerActionsQueue.add(new ConsumerAction(STANDBY_TO_LEADER, topicPartition, nextSeqNum(), checker, true));
+    consumerActionsQueue.add(new ConsumerAction(STANDBY_TO_LEADER, topicPartition, nextSeqNum(), checker, true, false));
   }
 
   @Override
@@ -426,7 +426,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     partitionToPendingConsumerActionCountMap
         .computeIfAbsent(topicPartition.getPartitionNumber(), x -> new AtomicInteger(0))
         .incrementAndGet();
-    consumerActionsQueue.add(new ConsumerAction(LEADER_TO_STANDBY, topicPartition, nextSeqNum(), checker, true));
+    consumerActionsQueue.add(new ConsumerAction(LEADER_TO_STANDBY, topicPartition, nextSeqNum(), checker, true, false));
   }
 
   @Override
@@ -1821,12 +1821,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
     }
     return false;
-  }
-
-  @Override
-  void recordLatchCreation(int partition) {
-    PartitionConsumptionState pcs = partitionConsumptionStateMap.get(partition);
-    pcs.recordLatchCreation();
   }
 
   @Override

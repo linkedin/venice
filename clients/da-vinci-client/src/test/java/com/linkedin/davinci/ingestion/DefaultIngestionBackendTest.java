@@ -1,6 +1,7 @@
 package com.linkedin.davinci.ingestion;
 
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.any;
@@ -86,7 +87,7 @@ public class DefaultIngestionBackendTest {
 
     when(storeConfig.getStoreVersionName()).thenReturn(STORE_VERSION);
     when(storeIngestionService.getMetadataRepo()).thenReturn(metadataRepo);
-    doNothing().when(storeIngestionService).startConsumption(any(VeniceStoreVersionConfig.class), anyInt());
+    doNothing().when(storeIngestionService).startConsumption(any(), anyInt(), anyBoolean());
     when(metadataRepo.waitVersion(anyString(), anyInt(), any(Duration.class))).thenReturn(storeAndVersion);
     when(storageMetadataService.getStoreVersionState(STORE_VERSION)).thenReturn(storeVersionState);
     when(storageService.openStoreForNewPartition(eq(storeConfig), eq(PARTITION), any())).thenReturn(storageEngine);
@@ -119,7 +120,7 @@ public class DefaultIngestionBackendTest {
     when(rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()).thenReturn(false);
     when(veniceServerConfig.getRocksDBServerConfig()).thenReturn(rocksDBServerConfig);
 
-    ingestionBackend.startConsumption(storeConfig, PARTITION);
+    ingestionBackend.startConsumption(storeConfig, PARTITION, false);
     verify(blobTransferManager).get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT));
     verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
     verify(aggVersionedBlobTransferStats)

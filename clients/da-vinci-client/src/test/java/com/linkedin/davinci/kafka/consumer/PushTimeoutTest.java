@@ -82,7 +82,7 @@ public class PushTimeoutTest {
         null);
 
     leaderFollowerStoreIngestionTask
-        .subscribePartition(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(versionTopic), 0));
+        .subscribePartition(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(versionTopic), 0), false);
     leaderFollowerStoreIngestionTask.run();
 
     // Verify that push timeout happens
@@ -158,7 +158,7 @@ public class PushTimeoutTest {
         null);
 
     leaderFollowerStoreIngestionTask
-        .subscribePartition(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(versionTopic), 0));
+        .subscribePartition(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(versionTopic), 0), false);
     /**
      * Since the mock consumer would show 0 subscription, the ingestion task will close after a few iteration.
      */

@@ -618,14 +618,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   /**
-   * Starts consuming messages from Kafka Partition corresponding to Venice Partition.
-   * Subscribes to partition if required.
-   * @param veniceStore Venice Store for the partition.
-   * @param partitionId Venice partition's id.
+   * Starts consuming messages from Kafka Partition corresponding to Venice Partition. Subscribes to partition if
+   * required.
+   *
+   * @param veniceStore    Venice Store for the partition.
+   * @param partitionId    Venice partition's id.
    */
   @Override
-  public void startConsumption(VeniceStoreVersionConfig veniceStore, int partitionId) {
-
+  public void startConsumption(VeniceStoreVersionConfig veniceStore, int partitionId, boolean isLatchCreated) {
     final String topic = veniceStore.getStoreVersionName();
 
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
@@ -674,8 +674,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       int maxVersionNumber = Math.max(maxVersionNumberFromMetadataRepo, maxVersionNumberFromTopicName);
       updateStatsEmission(topicNameToIngestionTaskMap, storeName, maxVersionNumber);
 
-      storeIngestionTask
-          .subscribePartition(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
+      storeIngestionTask.subscribePartition(
+          new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId),
+          isLatchCreated);
     }
     LOGGER.info("Started Consuming - Kafka Partition: {}-{}.", topic, partitionId);
   }
@@ -1090,10 +1091,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   public void recordIngestionFailure(String storeName) {
     hostLevelIngestionStats.getStoreStats(storeName).recordIngestionFailure();
-  }
-
-  public void recordLatchCreation(String topicName, int partition) {
-    getStoreIngestionTask(topicName).recordLatchCreation(partition);
   }
 
   @Override

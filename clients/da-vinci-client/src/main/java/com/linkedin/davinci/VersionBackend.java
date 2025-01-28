@@ -372,7 +372,7 @@ public class VersionBackend {
       } else {
         partitionFutures.computeIfAbsent(partition, k -> new CompletableFuture<>());
         // AtomicReference of storage engine will be updated internally.
-        backend.getIngestionBackend().startConsumption(config, partition);
+        backend.getIngestionBackend().startConsumption(config, partition, false);
         tryStartHeartbeat();
       }
       partitionToBatchReportEOIPEnabled.put(partition, batchReportEOIPStatusEnabled);

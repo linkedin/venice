@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 
 public interface IngestionBackend extends Closeable {
-  void startConsumption(VeniceStoreVersionConfig storeConfig, int partition);
+  void startConsumption(VeniceStoreVersionConfig storeConfig, int partition, boolean isLatchCreated);
 
   CompletableFuture<Void> stopConsumption(VeniceStoreVersionConfig storeConfig, int partition);
 
