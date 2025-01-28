@@ -107,6 +107,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                 continue;
               }
 
+              // The store is eligible for a version swap if its push job is in terminal status. For a target region
+              // push,
+              // the parent version status is set to PUSHED in getOfflinePushStatus when this happens
               if (targetVersion.getStatus() != VersionStatus.PUSHED) {
                 continue;
               }
@@ -211,17 +214,19 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                   .info("Issuing roll forward message for store: {} in regions: {}", storeName, remainingRegionsString);
               veniceParentHelixAdmin.rollForwardToFutureVersion(cluster, storeName, remainingRegionsString);
 
-              // Update parent status to ONLINE
-              LOGGER.info(
-                  "Updating parent version status to online for version: {} in store: {}",
-                  targetVersionNum,
-                  storeName);
+              // Once version is swapped in the remaining regions, update parent status to ONLINE so that we don't check
+              // this version
+              // for version swap again
               HelixVeniceClusterResources resources =
                   veniceParentHelixAdmin.getVeniceHelixAdmin().getHelixVeniceClusterResources(cluster);
               ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
               Store parentStore = repository.getStore(storeName);
               parentStore.updateVersionStatus(targetVersionNum, ONLINE);
               repository.updateStore(parentStore);
+              LOGGER.info(
+                  "Updated parent version status to online for version: {} in store: {}",
+                  targetVersionNum,
+                  storeName);
             }
           }
         } catch (Exception e) {
