@@ -13,6 +13,8 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Optional;
 import org.apache.avro.Schema;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -22,6 +24,7 @@ import org.apache.avro.Schema;
  * @param <O> the type of the output value
  */
 public class DaVinciRecordTransformerUtility<K, O> {
+  private static final Logger LOGGER = LogManager.getLogger(DaVinciRecordTransformerUtility.class);
   private final DaVinciRecordTransformer recordTransformer;
   private final AvroGenericDeserializer<K> keyDeserializer;
   private final AvroGenericDeserializer<O> outputValueDeserializer;
@@ -83,6 +86,11 @@ public class DaVinciRecordTransformerUtility<K, O> {
     Integer persistedClassHash = offsetRecord.getRecordTransformerClassHash();
 
     if (persistedClassHash != null && persistedClassHash == currentClassHash) {
+      LOGGER.info(
+          String.format(
+              "A change in transformer logic has been detected. Persisted class hash = %d. New class hash = %d.",
+              persistedClassHash,
+              currentClassHash));
       return false;
     }
     return true;
@@ -103,6 +111,8 @@ public class DaVinciRecordTransformerUtility<K, O> {
     boolean transformerLogicChanged = hasTransformerLogicChanged(classHash, offsetRecord);
 
     if (!recordTransformer.getStoreRecordsInDaVinci() || transformerLogicChanged) {
+      LOGGER.info(String.format("Bootstrapping directly from the VersionTopic for partition %d", partitionId));
+
       // Bootstrap from VT
       storageEngine.clearPartitionOffset(partitionId);
 
@@ -112,6 +122,7 @@ public class DaVinciRecordTransformerUtility<K, O> {
       storageEngine.putPartitionOffset(partitionId, offsetRecord);
     } else {
       // Bootstrap from local storage
+      LOGGER.info(String.format("Bootstrapping from local storage for partition %d", partitionId));
       AbstractStorageIterator iterator = storageEngine.getIterator(partitionId);
       for (iterator.seekToFirst(); iterator.isValid(); iterator.next()) {
         byte[] keyBytes = iterator.key();
