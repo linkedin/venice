@@ -179,7 +179,12 @@ public interface Admin extends AutoCloseable, Closeable {
   * Delete the entire store including both metadata and real user's data. Before deleting a store, we should disable
   * the store manually to ensure there is no reading/writing request hitting this tore.
   */
-  void deleteStore(String clusterName, String storeName, int largestUsedVersionNumber, boolean waitOnRTTopicDeletion);
+  void deleteStore(
+      String clusterName,
+      String storeName,
+      boolean isAbortMigrationCleanup,
+      int largestUsedVersionNumber,
+      boolean waitOnRTTopicDeletion);
 
   /**
    * This method behaves differently in {@link VeniceHelixAdmin} and {@link VeniceParentHelixAdmin}.

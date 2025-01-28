@@ -12,6 +12,7 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
@@ -231,6 +232,42 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     } finally {
       // Kill the running thread so remove the deadlock so that the controller can shut down properly for clean up.
       TestUtils.shutdownExecutor(asyncExecutor);
+    }
+  }
+
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
+  public void testAbortMigrationStoreDeletion() {
+    String storeName = Utils.getUniqueString("test_abort_migration_cleanup_store");
+    try {
+      veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+      veniceAdmin.updateStore(
+          clusterName,
+          storeName,
+          new UpdateStoreQueryParams().setStoreMigration(false).setEnableReads(false).setEnableWrites(false));
+
+      PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
+      veniceAdmin.getTopicManager().createTopic(rtTopic, 1, 1, true);
+
+      Assert.assertTrue(veniceAdmin.getTopicManager().containsTopic(rtTopic));
+      boolean abort = true;
+      veniceAdmin.deleteStore(clusterName, storeName, abort, Store.IGNORE_VERSION, false);
+      Assert.assertTrue(veniceAdmin.getTopicManager().containsTopic(rtTopic));
+      Assert.assertNotNull(veniceAdmin.getStore(clusterName, storeName));
+
+      String newStoreName = Utils.getUniqueString("test_cleanup_store");
+      veniceAdmin.createStore(clusterName, newStoreName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+      veniceAdmin.updateStore(
+          clusterName,
+          newStoreName,
+          new UpdateStoreQueryParams().setStoreMigration(false).setEnableReads(false).setEnableWrites(false));
+      PubSubTopic newRtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(newStoreName));
+      veniceAdmin.getTopicManager().createTopic(newRtTopic, 1, 1, true);
+      abort = false;
+      Assert.assertTrue(veniceAdmin.getTopicManager().containsTopic(newRtTopic));
+      veniceAdmin.deleteStore(clusterName, newStoreName, abort, Store.IGNORE_VERSION, false);
+      Assert.assertNull(veniceAdmin.getStore(clusterName, newStoreName));
+    } finally {
+      veniceAdmin.deleteStore(clusterName, storeName, false, Store.IGNORE_VERSION, false);
     }
   }
 

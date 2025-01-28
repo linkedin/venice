@@ -2,8 +2,11 @@ package com.linkedin.venice;
 
 import static com.linkedin.venice.Arg.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linkedin.venice.admin.protocol.response.AdminResponseRecord;
@@ -12,9 +15,12 @@ import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
+import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -40,6 +46,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.ParseException;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -147,6 +155,79 @@ public class TestAdminTool {
     doReturn(destMetaSystemStoreResponse).when(destControllerClient).getStore(metaSystemStoreName);
 
     Assert.assertFalse(AdminTool.isClonedStoreOnline(srcControllerClient, destControllerClient, storeName));
+  }
+
+  @Test
+  public void testAbortMigration() {
+    String storeName = "testAbortMigrationStore";
+    String srcCluster = "testCluster1";
+    String dstCluster = "testCluster2";
+
+    StoreResponse storeResponse = new StoreResponse();
+    StoreInfo srcStoreInfo = createStore(storeName, true);
+    srcStoreInfo.setStoreMetaSystemStoreEnabled(true);
+    storeResponse.setStore(srcStoreInfo);
+
+    try (MockedStatic<ControllerClient> controllerClientMockedStatic = Mockito.mockStatic(ControllerClient.class)) {
+      try (MockedStatic<AdminTool> adminToolMockedStatic =
+          Mockito.mockStatic(AdminTool.class, Mockito.CALLS_REAL_METHODS)) {
+        ControllerClient srcControllerClient = mock(ControllerClient.class);
+        ControllerClient destControllerClient = mock(ControllerClient.class);
+        Mockito.when(srcControllerClient.getStore(storeName)).thenReturn(storeResponse);
+
+        StoreMigrationResponse storeMigrationResponse = new StoreMigrationResponse();
+        storeMigrationResponse.isStoreMigrationAllowed();
+        Mockito.when(srcControllerClient.isStoreMigrationAllowed()).thenReturn(storeMigrationResponse);
+        Mockito.when(destControllerClient.isStoreMigrationAllowed()).thenReturn(storeMigrationResponse);
+
+        D2ServiceDiscoveryResponse discoveryResponse = new D2ServiceDiscoveryResponse();
+        discoveryResponse.setCluster(srcCluster);
+        Mockito.when(srcControllerClient.discoverCluster(storeName)).thenReturn(discoveryResponse);
+
+        StoreMigrationResponse abortMigrationResponse = new StoreMigrationResponse();
+        abortMigrationResponse.setSrcClusterName(srcCluster);
+        abortMigrationResponse.setCluster(srcCluster);
+        abortMigrationResponse.setName(storeName);
+
+        Mockito.when(srcControllerClient.abortMigration(storeName, dstCluster)).thenReturn(abortMigrationResponse);
+        Mockito.when(destControllerClient.getStore(storeName)).thenReturn(storeResponse);
+        Mockito.when(destControllerClient.deleteStore(storeName, true)).thenReturn(new TrackableControllerResponse());
+
+        // Create two different controller clients for the source and destination clusters.
+        controllerClientMockedStatic
+            .when(() -> ControllerClient.constructClusterControllerClient(eq(srcCluster), any(), any()))
+            .thenReturn(srcControllerClient);
+        controllerClientMockedStatic
+            .when(() -> ControllerClient.constructClusterControllerClient(eq(dstCluster), any(), any()))
+            .thenReturn(destControllerClient);
+
+        adminToolMockedStatic.when(() -> AdminTool.userGivesPermission("Do you still want to proceed"))
+            .thenReturn(false);
+
+        AdminTool.abortMigration("http://localhost:7036", storeName, srcCluster, dstCluster, false, new boolean[0]);
+        Mockito.verify(srcControllerClient, times(0)).discoverCluster(storeName);
+        Mockito.verify(srcControllerClient, times(0)).abortMigration(storeName, dstCluster);
+        // Verify that destControllerClient is NOT called with the true flag and storeName in the deleteStore method.
+        Mockito.verify(destControllerClient, times(0)).deleteStore(storeName, true);
+        srcStoreInfo.setMigrating(true);
+        storeResponse.setStore(srcStoreInfo);
+        Mockito.when(srcControllerClient.getStore(storeName)).thenReturn(storeResponse);
+        Mockito.when(destControllerClient.getStore(storeName)).thenReturn(storeResponse);
+
+        String promptAbortMigration = "Next step is to reset store migration flag, storeConfig and cluster "
+            + "discovery mapping. Do you want to proceed?";
+        adminToolMockedStatic.when(() -> AdminTool.userGivesPermission(promptAbortMigration)).thenReturn(true);
+        String promptDeleteStore = "Next step is to delete the cloned store in dest cluster testCluster2. "
+            + "testAbortMigrationStore in testCluster2 will be deleted irreversibly. "
+            + "Please verify there is no reads/writes to the cloned store. " + "Do you want to proceed?";
+        adminToolMockedStatic.when(() -> AdminTool.userGivesPermission(promptDeleteStore)).thenReturn(true);
+
+        AdminTool.abortMigration("http://localhost:7036", storeName, srcCluster, dstCluster, false, new boolean[0]);
+        Mockito.verify(srcControllerClient, times(1)).abortMigration(storeName, dstCluster);
+        // Verify that destControllerClient is called with the true flag and storeName in the deleteStore method once
+        Mockito.verify(destControllerClient, times(1)).deleteStore(storeName, true);
+      }
+    }
   }
 
   private StoreInfo createStore(String storeName, boolean hasOnlineVersion) {

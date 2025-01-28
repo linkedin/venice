@@ -958,8 +958,28 @@ public class VeniceParentHelixAdmin implements Admin {
   public void deleteStore(
       String clusterName,
       String storeName,
+      boolean isAbortMigrationCleanup,
       int largestUsedVersionNumber,
       boolean waitOnRTTopicDeletion) {
+    if (isAbortMigrationCleanup) {
+      HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+      try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreReadLock(storeName)) {
+        ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+        Store store = repository.getStore(storeName);
+        if (store != null && !store.isMigrating()) {
+          LOGGER.warn(
+              "Deletion of store: {} in cluster: {} was issued as part of abort migration resource cleanup, but the store's "
+                  + "migrating flag is false. Please ensure the store's migrating flag is set to true in the destination "
+                  + "cluster before issuing the deleteStore to prevent accidental deletion of shared resources.",
+              storeName,
+              clusterName);
+          throw new VeniceException(
+              "Store " + storeName + "'s migrating flag is false. Not safe to delete a store "
+                  + "that is assumed to be migrating without the migrating flag setup as true.",
+              ErrorType.INVALID_CONFIG);
+        }
+      }
+    }
     acquireAdminMessageLock(clusterName, storeName);
     try {
       LOGGER.info("Deleting store: {} from cluster: {}", storeName, clusterName);

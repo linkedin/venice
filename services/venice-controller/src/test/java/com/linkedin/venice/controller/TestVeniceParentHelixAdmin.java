@@ -21,6 +21,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -2165,6 +2166,24 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
+  public void testAbortMigrationDeleteStore() {
+    String storeName = "test-testAbortMigrationCreateStore";
+    String owner = "unitTest";
+    Store store = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
+
+    doReturn(store).when(internalAdmin).getStore(eq(clusterName), eq(storeName));
+    doReturn(store).when(internalAdmin).checkPreConditionForDeletion(eq(clusterName), eq(storeName));
+    assertTrue(!store.isMigrating());
+    parentAdmin.initStorageCluster(clusterName);
+    Exception exp = Assert
+        .expectThrows(VeniceException.class, () -> parentAdmin.deleteStore(clusterName, storeName, true, 0, true));
+    assertEquals(
+        "Store test-testAbortMigrationCreateStore's migrating flag is false. Not safe to delete a store "
+            + "that is assumed to be migrating without the migrating flag setup as true.",
+        exp.getMessage());
+  }
+
+  @Test
   public void testDeleteStore() {
     String storeName = "test-testReCreateStore";
     String owner = "unittest";
@@ -2180,7 +2199,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
 
     parentAdmin.initStorageCluster(clusterName);
-    parentAdmin.deleteStore(clusterName, storeName, 0, true);
+    parentAdmin.deleteStore(clusterName, storeName, false, 0, true);
 
     verify(veniceWriter).put(any(), any(), anyInt());
     verify(zkClient, times(1)).readData(zkMetadataNodePath, null);
