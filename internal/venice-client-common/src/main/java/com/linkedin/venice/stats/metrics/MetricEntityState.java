@@ -7,6 +7,7 @@ import io.opentelemetry.api.metrics.LongCounter;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.utils.RedundantLogFilter;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,8 +31,7 @@ public class MetricEntityState {
   private Map<TehutiMetricNameEnum, Sensor> tehutiSensors = null;
 
   public MetricEntityState(MetricEntity metricEntity, VeniceOpenTelemetryMetricsRepository otelRepository) {
-    this.metricEntity = metricEntity;
-    setOtelMetric(otelRepository.createInstrument(this.metricEntity));
+    this(metricEntity, otelRepository, null, Collections.EMPTY_MAP);
   }
 
   public MetricEntityState(
@@ -118,6 +118,14 @@ public class MetricEntityState {
         }
       }
     }
+  }
+
+  public void record(long value, Attributes otelDimensions) {
+    recordOtelMetric(value, otelDimensions);
+  }
+
+  public void record(double value, Attributes otelDimensions) {
+    recordOtelMetric(value, otelDimensions);
   }
 
   public void record(TehutiMetricNameEnum tehutiMetricNameEnum, long value, Attributes otelDimensions) {

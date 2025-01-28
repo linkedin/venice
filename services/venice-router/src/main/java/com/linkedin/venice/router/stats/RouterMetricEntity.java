@@ -42,12 +42,23 @@ public enum RouterMetricEntity {
           VENICE_STORE_NAME,
           VENICE_CLUSTER_NAME,
           VENICE_REQUEST_METHOD,
+          HTTP_RESPONSE_STATUS_CODE,
           HTTP_RESPONSE_STATUS_CODE_CATEGORY,
           VENICE_RESPONSE_STATUS_CODE_CATEGORY)
   ),
-  CALL_KEY_COUNT(
-      MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER, "Count of keys in multi key requests",
+  INCOMING_KEY_COUNT(
+      MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER, "Count of keys in all requests",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_VALIDATION_OUTCOME)
+  ),
+  KEY_COUNT(
+      MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER, "Count of keys in all responses",
+      setOf(
+          VENICE_STORE_NAME,
+          VENICE_CLUSTER_NAME,
+          VENICE_REQUEST_METHOD,
+          HTTP_RESPONSE_STATUS_CODE,
+          HTTP_RESPONSE_STATUS_CODE_CATEGORY,
+          VENICE_RESPONSE_STATUS_CODE_CATEGORY)
   ),
   RETRY_COUNT(
       MetricType.COUNTER, MetricUnit.NUMBER, "Count of retries triggered",

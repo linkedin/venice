@@ -320,13 +320,10 @@ public class VenicePathParser implements ExtendedResourcePathParser<VenicePath, 
       }
 
       AggRouterHttpRequestStats aggRouterHttpRequestStats = routerStats.getStatsByType(requestType);
-      if (!requestType.equals(SINGLE_GET)) {
-        /**
-         * Here we only track key num for non single-get request, since single-get request will be always 1.
-         */
-        keyNum = path.getPartitionKeys().size();
-        aggRouterHttpRequestStats.recordKeyNum(storeName, keyNum);
-      }
+
+      // record key num details for all types of requests
+      keyNum = path.getPartitionKeys().size();
+      aggRouterHttpRequestStats.recordKeyNum(storeName, keyNum);
 
       aggRouterHttpRequestStats.recordRequest(storeName);
       aggRouterHttpRequestStats.recordRequestSize(storeName, path.getRequestSize());

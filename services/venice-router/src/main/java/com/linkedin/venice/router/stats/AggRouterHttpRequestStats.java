@@ -80,9 +80,9 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
     recordStoreStats(storeName, RouterHttpRequestStats::recordIncomingRequest);
   }
 
-  public void recordHealthyRequest(String storeName, double latency, HttpResponseStatus responseStatus) {
-    totalStats.recordHealthyRequest(latency, responseStatus);
-    recordStoreStats(storeName, stats -> stats.recordHealthyRequest(latency, responseStatus));
+  public void recordHealthyRequest(String storeName, double latency, HttpResponseStatus responseStatus, int keyNum) {
+    totalStats.recordHealthyRequest(latency, responseStatus, keyNum);
+    recordStoreStats(storeName, stats -> stats.recordHealthyRequest(latency, responseStatus, keyNum));
   }
 
   public void recordUnhealthyRequest(String storeName, HttpResponseStatus responseStatus) {
@@ -97,10 +97,10 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
     recordStoreStats(storeName, RouterHttpRequestStats::recordUnavailableReplicaStreamingRequest);
   }
 
-  public void recordUnhealthyRequest(String storeName, double latency, HttpResponseStatus responseStatus) {
-    totalStats.recordUnhealthyRequest(latency, responseStatus);
+  public void recordUnhealthyRequest(String storeName, double latency, HttpResponseStatus responseStatus, int keyNum) {
+    totalStats.recordUnhealthyRequest(latency, responseStatus, keyNum);
     if (storeName != null) {
-      recordStoreStats(storeName, stats -> stats.recordUnhealthyRequest(latency, responseStatus));
+      recordStoreStats(storeName, stats -> stats.recordUnhealthyRequest(latency, responseStatus, keyNum));
     }
   }
 
@@ -115,9 +115,9 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
     recordStoreStats(storeName, stats -> stats.recordReadQuotaUsage(quotaUsage));
   }
 
-  public void recordTardyRequest(String storeName, double latency, HttpResponseStatus responseStatus) {
-    totalStats.recordTardyRequest(latency, responseStatus);
-    recordStoreStats(storeName, stats -> stats.recordTardyRequest(latency, responseStatus));
+  public void recordTardyRequest(String storeName, double latency, HttpResponseStatus responseStatus, int keyNum) {
+    totalStats.recordTardyRequest(latency, responseStatus, keyNum);
+    recordStoreStats(storeName, stats -> stats.recordTardyRequest(latency, responseStatus, keyNum));
   }
 
   /**
@@ -132,9 +132,13 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
     recordStoreStats(storeName, stats -> stats.recordThrottledRequest(httpResponseStatus));
   }
 
-  public void recordThrottledRequest(String storeName, double latency, HttpResponseStatus httpResponseStatus) {
-    totalStats.recordThrottledRequest(latency, httpResponseStatus);
-    recordStoreStats(storeName, stats -> stats.recordThrottledRequest(latency, httpResponseStatus));
+  public void recordThrottledRequest(
+      String storeName,
+      double latency,
+      HttpResponseStatus httpResponseStatus,
+      int keyNum) {
+    totalStats.recordThrottledRequest(latency, httpResponseStatus, keyNum);
+    recordStoreStats(storeName, stats -> stats.recordThrottledRequest(latency, httpResponseStatus, keyNum));
   }
 
   public void recordBadRequest(String storeName, HttpResponseStatus responseStatus) {
@@ -145,9 +149,9 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
   }
 
   public void recordBadRequestKeyCount(String storeName, int keyCount) {
-    totalStats.recordBadRequestKeyCount(keyCount);
+    totalStats.recordIncomingBadRequestKeyCount(keyCount);
     if (storeName != null) {
-      recordStoreStats(storeName, stats -> stats.recordBadRequestKeyCount(keyCount));
+      recordStoreStats(storeName, stats -> stats.recordIncomingBadRequestKeyCount(keyCount));
     }
   }
 
@@ -261,8 +265,8 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
   }
 
   public void recordKeyNum(String storeName, int keyNum) {
-    totalStats.recordKeyNum(keyNum);
-    recordStoreStats(storeName, stats -> stats.recordKeyNum(keyNum));
+    totalStats.recordIncomingKeyNum(keyNum);
+    recordStoreStats(storeName, stats -> stats.recordIncomingKeyNum(keyNum));
   }
 
   public void recordRequestUsage(String storeName, int usage) {

@@ -34,6 +34,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -129,11 +130,17 @@ public class VeniceOpenTelemetryMetricsRepository {
       SdkMeterProviderBuilder builder = SdkMeterProvider.builder();
       if (metricsConfig.exportOtelMetricsToEndpoint()) {
         MetricExporter httpExporter = getOtlpHttpMetricExporter(metricsConfig);
-        builder.registerMetricReader(PeriodicMetricReader.builder(httpExporter).build());
+        builder.registerMetricReader(
+            PeriodicMetricReader.builder(httpExporter)
+                .setInterval(metricsConfig.getExportOtelMetricsIntervalInSeconds(), TimeUnit.SECONDS)
+                .build());
       }
       if (metricsConfig.exportOtelMetricsToLog()) {
         // internal to test: Disabled by default
-        builder.registerMetricReader(PeriodicMetricReader.builder(new LogBasedMetricExporter(metricsConfig)).build());
+        builder.registerMetricReader(
+            PeriodicMetricReader.builder(new LogBasedMetricExporter(metricsConfig))
+                .setInterval(metricsConfig.getExportOtelMetricsIntervalInSeconds(), TimeUnit.SECONDS)
+                .build());
       }
 
       if (metricsConfig.useOtelExponentialHistogram()) {
