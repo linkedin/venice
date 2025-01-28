@@ -31,7 +31,7 @@ import org.testng.annotations.Test;
 public class RecordTransformerTest {
   static final int storeVersion = 1;
   static final int partitionId = 0;
-  final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+  static final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
       AvroProtocolDefinition.PARTITION_STATE.getSerializer();
 
   @Test
