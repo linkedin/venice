@@ -2,9 +2,6 @@ package com.linkedin.venice.router.stats;
 
 import static com.linkedin.venice.router.RouterServer.ROUTER_SERVICE_METRIC_PREFIX;
 import static com.linkedin.venice.router.RouterServer.ROUTER_SERVICE_NAME;
-import static com.linkedin.venice.router.stats.RouterHttpRequestStats.RouterTehutiMetricNameEnum.DELAY_CONSTRAINT_ABORTED_RETRY_REQUEST;
-import static com.linkedin.venice.router.stats.RouterHttpRequestStats.RouterTehutiMetricNameEnum.NO_AVAILABLE_REPLICA_ABORTED_RETRY_REQUEST;
-import static com.linkedin.venice.router.stats.RouterHttpRequestStats.RouterTehutiMetricNameEnum.RETRY_ROUTE_LIMIT_ABORTED_RETRY_REQUEST;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.ABORTED_RETRY_COUNT;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.ALLOWED_RETRY_COUNT;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.CALL_COUNT;
@@ -306,7 +303,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         ABORTED_RETRY_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorFinal,
-        DELAY_CONSTRAINT_ABORTED_RETRY_REQUEST,
+        RouterTehutiMetricNameEnum.DELAY_CONSTRAINT_ABORTED_RETRY_REQUEST,
         singletonList(new Count()));
 
     slowRouteAbortedRetryCountMetric = new MetricEntityState(
@@ -320,14 +317,14 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         ABORTED_RETRY_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorFinal,
-        RETRY_ROUTE_LIMIT_ABORTED_RETRY_REQUEST,
+        RouterTehutiMetricNameEnum.RETRY_ROUTE_LIMIT_ABORTED_RETRY_REQUEST,
         singletonList(new Count()));
 
     noAvailableReplicaAbortedRetryCountMetric = new MetricEntityState(
         ABORTED_RETRY_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorFinal,
-        NO_AVAILABLE_REPLICA_ABORTED_RETRY_REQUEST,
+        RouterTehutiMetricNameEnum.NO_AVAILABLE_REPLICA_ABORTED_RETRY_REQUEST,
         singletonList(new Count()));
 
     incomingKeyCountMetric = new MetricEntityState(
