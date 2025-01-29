@@ -165,7 +165,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     if (metricsRepository instanceof VeniceMetricsRepository) {
       VeniceMetricsRepository veniceMetricsRepository = (VeniceMetricsRepository) metricsRepository;
       VeniceMetricsConfig veniceMetricsConfig = veniceMetricsRepository.getVeniceMetricsConfig();
-      emitOpenTelemetryMetrics = veniceMetricsConfig.emitOtelMetrics();
+      // total stats won't be emitted by OTel
+      emitOpenTelemetryMetrics = veniceMetricsConfig.emitOtelMetrics() && !isTotalStats();
       openTelemetryMetricFormat = veniceMetricsConfig.getMetricNamingFormat();
       if (emitOpenTelemetryMetrics) {
         otelRepository = veniceMetricsRepository.getOpenTelemetryMetricsRepository();
