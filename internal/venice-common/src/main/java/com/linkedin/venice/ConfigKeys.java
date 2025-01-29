@@ -2398,4 +2398,37 @@ public class ConfigKeys {
    * Default: {@value com.linkedin.venice.meta.NameRepository#DEFAULT_MAXIMUM_ENTRY_COUNT}
    */
   public static final String NAME_REPOSITORY_MAX_ENTRY_COUNT = "name.repository.max.entry.count";
+
+  /**
+   * Specifies the value to use for Helix's rebalance preference for evenness when using Waged.
+   * The default value is 1.
+   */
+  public static final String CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS =
+      "controller.helix.rebalance.preference.evenness";
+
+  /**
+   * Specifies the value to use for Helix's rebalance preference for less movement when using Waged.
+   * The default value is 1.
+   */
+  public static final String CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT =
+      "controller.helix.rebalance.preference.less.movement";
+
+  /**
+   * Indicates whether to enable force baseline convergence in Helix's rebalance preference when using Waged.
+   * Default is false.
+   */
+  public static final String CONTROLLER_HELIX_REBALANCE_PREFERENCE_ENABLE_FORCE_BASELINE_CONVERGE =
+      "controller.helix.rebalance.preference.enable.force.baseline.converge";
+
+  /**
+   * Specifies the capacity a controller instance can handle, determined by
+   * {@link ConfigKeys#CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT}. Default is 10000.
+   */
+  public static final String CONTROLLER_HELIX_INSTANCE_CAPACITY = "controller.helix.instance.capacity";
+
+  /**
+   * Specifies the weight of each Helix resource. The maximum weight per instance is determined by
+   * {@link ConfigKeys#CONTROLLER_HELIX_INSTANCE_CAPACITY}. Default is 100.
+   */
+  public static final String CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT = "controller.helix.default.instance.capacity";
 }

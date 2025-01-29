@@ -57,6 +57,11 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESS
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_PACKAGE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_SOURCES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_PROVIDER;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_INSTANCE_CAPACITY;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_ENABLE_FORCE_BASELINE_CONVERGE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_INSTANCE_TAG_LIST;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX;
@@ -545,6 +550,12 @@ public class VeniceControllerClusterConfig {
   private Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
   private boolean isHybridStorePartitionCountUpdateEnabled;
 
+  private final int helixRebalancePreferenceEvenness;
+  private final int helixRebalancePreferenceLessMovement;
+  private final boolean helixRebalancePreferenceEnableForceBaselineConverge;
+  private final int helixInstanceCapacity;
+  private final int helixResourceCapacityWeight;
+
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
     this.clusterName = props.getString(CLUSTER_NAME);
@@ -996,6 +1007,13 @@ public class VeniceControllerClusterConfig {
     this.pushJobUserErrorCheckpoints = parsePushJobUserErrorCheckpoints(props);
     this.isHybridStorePartitionCountUpdateEnabled =
         props.getBoolean(ConfigKeys.CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE, false);
+
+    this.helixRebalancePreferenceEvenness = props.getInt(CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS, 1);
+    this.helixRebalancePreferenceLessMovement = props.getInt(CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT, 1);
+    this.helixRebalancePreferenceEnableForceBaselineConverge =
+        props.getBoolean(CONTROLLER_HELIX_REBALANCE_PREFERENCE_ENABLE_FORCE_BASELINE_CONVERGE, false);
+    this.helixInstanceCapacity = props.getInt(CONTROLLER_HELIX_INSTANCE_CAPACITY, 10000);
+    this.helixResourceCapacityWeight = props.getInt(CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT, 100);
   }
 
   public VeniceProperties getProps() {
@@ -1832,5 +1850,25 @@ public class VeniceControllerClusterConfig {
 
   public Set<PushJobCheckpoints> getPushJobUserErrorCheckpoints() {
     return pushJobUserErrorCheckpoints;
+  }
+
+  public int getHelixRebalancePreferenceEvenness() {
+    return helixRebalancePreferenceEvenness;
+  }
+
+  public int getHelixRebalancePreferenceLessMovement() {
+    return helixRebalancePreferenceLessMovement;
+  }
+
+  public boolean isHelixRebalancePreferenceForceBaselineConvergeEnabled() {
+    return helixRebalancePreferenceEnableForceBaselineConverge;
+  }
+
+  public int getHelixInstanceCapacity() {
+    return helixInstanceCapacity;
+  }
+
+  public int getHelixResourceCapacityWeight() {
+    return helixResourceCapacityWeight;
   }
 }

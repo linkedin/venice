@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigConstants.DEFAULT_HELIX_RESOURCE_CAPACITY_KEY;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.helix.ZkClientFactory;
@@ -103,27 +105,33 @@ public class ZkHelixAdminClient implements HelixAdminClient {
         // We want to prioritize evenness over less movement when it comes to resource assignment, because the cost
         // of rebalancing for the controller is cheap as it is stateless.
         Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> globalRebalancePreference = new HashMap<>();
-        globalRebalancePreference.put(ClusterConfig.GlobalRebalancePreferenceKey.EVENNESS, 10);
-        globalRebalancePreference.put(ClusterConfig.GlobalRebalancePreferenceKey.LESS_MOVEMENT, 1);
+        globalRebalancePreference.put(
+            ClusterConfig.GlobalRebalancePreferenceKey.EVENNESS,
+            commonConfig.getHelixRebalancePreferenceEvenness());
+        globalRebalancePreference.put(
+            ClusterConfig.GlobalRebalancePreferenceKey.LESS_MOVEMENT,
+            commonConfig.getHelixRebalancePreferenceLessMovement());
         // This should be turned off, so it doesn't overpower other constraint calculations
-        globalRebalancePreference.put(ClusterConfig.GlobalRebalancePreferenceKey.FORCE_BASELINE_CONVERGE, 0);
+        int forceBaseLineConverge = commonConfig.isHelixRebalancePreferenceForceBaselineConvergeEnabled() ? 1 : 0;
+        globalRebalancePreference
+            .put(ClusterConfig.GlobalRebalancePreferenceKey.FORCE_BASELINE_CONVERGE, forceBaseLineConverge);
         clusterConfig.setGlobalRebalancePreference(globalRebalancePreference);
 
-        String resourceCapacityKey = "cluster_resource_weight";
         List<String> instanceCapacityKeys = new ArrayList<>();
-        instanceCapacityKeys.add(resourceCapacityKey);
+        instanceCapacityKeys.add(DEFAULT_HELIX_RESOURCE_CAPACITY_KEY);
         clusterConfig.setInstanceCapacityKeys(instanceCapacityKeys);
 
         // This is how much capacity a participant can take. The Helix documentation recommends setting this to a high
         // value to avoid rebalance failures. The primary goal of setting this is to enable a constraint that takes the
         // current top-state distribution into account when rebalancing.
         Map<String, Integer> defaultInstanceCapacityMap = new HashMap<>();
-        defaultInstanceCapacityMap.put(resourceCapacityKey, 10000);
+        defaultInstanceCapacityMap.put(DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, commonConfig.getHelixInstanceCapacity());
         clusterConfig.setDefaultInstanceCapacityMap(defaultInstanceCapacityMap);
 
         // This is how much weight each resource in a cluster has
         Map<String, Integer> defaultPartitionWeightMap = new HashMap<>();
-        defaultPartitionWeightMap.put(resourceCapacityKey, 100);
+        defaultPartitionWeightMap
+            .put(DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, commonConfig.getHelixResourceCapacityWeight());
         clusterConfig.setDefaultPartitionWeightMap(defaultPartitionWeightMap);
 
         updateClusterConfigs(controllerClusterName, clusterConfig);
