@@ -15,12 +15,10 @@ import java.util.concurrent.CompletableFuture;
 public interface StoreIngestionService {
   /**
    * Starts consuming messages from Kafka Partition corresponding to Venice Partition.
-   *
-   * @param veniceStore    Venice Store for the partition.
-   * @param partitionId    Venice partition's id.
-   * @param isLatchCreated
+   * @param veniceStore Venice Store for the partition.
+   * @param partitionId Venice partition's id.
    */
-  void startConsumption(VeniceStoreVersionConfig veniceStore, int partitionId, boolean isLatchCreated);
+  void startConsumption(VeniceStoreVersionConfig veniceStore, int partitionId);
 
   /**
    * Stops consuming messages from Kafka Partition corresponding to Venice Partition.

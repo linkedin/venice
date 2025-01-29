@@ -205,7 +205,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
   /**
    * set up a new store partition and start the ingestion
    */
-  protected void setupNewStorePartition(boolean isLatchCreated) {
+  protected void setupNewStorePartition() {
     /**
      * Waiting for push accessor to get initialized before starting ingestion.
      * Otherwise, it's possible that store ingestion starts without having the
@@ -246,7 +246,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
       }
     };
     try (Timer t = Timer.run(setupTimeLogging)) {
-      ingestionBackend.startConsumption(storeAndServerConfigs, partition, isLatchCreated);
+      ingestionBackend.startConsumption(storeAndServerConfigs, partition);
     }
   }
 

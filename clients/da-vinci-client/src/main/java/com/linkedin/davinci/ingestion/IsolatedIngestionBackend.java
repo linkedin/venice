@@ -97,14 +97,14 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   }
 
   @Override
-  public void startConsumption(VeniceStoreVersionConfig storeConfig, int partition, boolean isLatchCreated) {
+  public void startConsumption(VeniceStoreVersionConfig storeConfig, int partition) {
     String topicName = storeConfig.getStoreVersionName();
     executeCommandWithRetry(
         topicName,
         partition,
         START_CONSUMPTION,
         () -> mainIngestionRequestClient.startConsumption(storeConfig.getStoreVersionName(), partition),
-        () -> super.startConsumption(storeConfig, partition, isLatchCreated));
+        () -> super.startConsumption(storeConfig, partition));
   }
 
   @Override
@@ -274,7 +274,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   }
 
   void startConsumptionLocally(VeniceStoreVersionConfig storeVersionConfig, int partition) {
-    super.startConsumption(storeVersionConfig, partition, false);
+    super.startConsumption(storeVersionConfig, partition);
   }
 
   VeniceNotifier getIsolatedIngestionNotifier(VeniceNotifier notifier) {

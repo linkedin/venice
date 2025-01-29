@@ -347,7 +347,7 @@ public class PartitionConsumptionState {
     return latchStatus != LatchStatus.NONE;
   }
 
-  public void setLatchCreated() {
+  public void recordLatchCreation() {
     if (this.latchStatus == LatchStatus.NONE) {
       this.latchStatus = LatchStatus.LATCH_CREATED;
     }

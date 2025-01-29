@@ -630,8 +630,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  public synchronized void subscribePartition(PubSubTopicPartition topicPartition, boolean isLatchCreated) {
-    subscribePartition(topicPartition, true, isLatchCreated);
+  public synchronized void subscribePartition(PubSubTopicPartition topicPartition) {
+    subscribePartition(topicPartition, true);
   }
 
   void resubscribeForAllPartitions() throws InterruptedException {
@@ -644,10 +644,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * Adds an asynchronous partition subscription request for the task.
    */
-  public synchronized void subscribePartition(
-      PubSubTopicPartition topicPartition,
-      boolean isHelixTriggeredAction,
-      boolean isLatchCreated) {
+  public synchronized void subscribePartition(PubSubTopicPartition topicPartition, boolean isHelixTriggeredAction) {
     throwIfNotRunning();
     int partitionNumber = topicPartition.getPartitionNumber();
 
@@ -657,8 +654,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     partitionToPendingConsumerActionCountMap.computeIfAbsent(partitionNumber, x -> new AtomicInteger(0))
         .incrementAndGet();
-    consumerActionsQueue
-        .add(new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction, isLatchCreated));
+    consumerActionsQueue.add(new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction));
   }
 
   public synchronized CompletableFuture<Void> unSubscribePartition(PubSubTopicPartition topicPartition) {
@@ -676,7 +672,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         .computeIfAbsent(topicPartition.getPartitionNumber(), x -> new AtomicInteger(0))
         .incrementAndGet();
     ConsumerAction consumerAction =
-        new ConsumerAction(UNSUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction, false);
+        new ConsumerAction(UNSUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction);
 
     consumerActionsQueue.add(consumerAction);
     return consumerAction.getFuture();
@@ -694,7 +690,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             "Ingestion task is still running for Topic {}. Dropping partition {} asynchronously",
             topicPartition.getTopicName(),
             partitionId);
-        ConsumerAction consumerAction = new ConsumerAction(DROP_PARTITION, topicPartition, nextSeqNum(), true, false);
+        ConsumerAction consumerAction = new ConsumerAction(DROP_PARTITION, topicPartition, nextSeqNum(), true);
         consumerActionsQueue.add(consumerAction);
         return consumerAction.getFuture();
       }
@@ -730,7 +726,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     partitionToPendingConsumerActionCountMap
         .computeIfAbsent(topicPartition.getPartitionNumber(), x -> new AtomicInteger(0))
         .incrementAndGet();
-    consumerActionsQueue.add(new ConsumerAction(RESET_OFFSET, topicPartition, nextSeqNum(), false, false));
+    consumerActionsQueue.add(new ConsumerAction(RESET_OFFSET, topicPartition, nextSeqNum(), false));
   }
 
   public String getStoreName() {
@@ -1463,7 +1459,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                 Utils.getReplicaId(kafkaVersionTopic, exceptionPartition));
             storageEngine.reopenStoragePartition(exceptionPartition);
             // DaVinci is always a follower.
-            subscribePartition(pubSubTopicPartition, false, false);
+            subscribePartition(pubSubTopicPartition, false);
           }
         } else if (isCurrentVersion.getAsBoolean() && resetErrorReplicaEnabled && !isDaVinciClient) {
           // marking its replica status ERROR which will later be reset by the controller
@@ -2161,9 +2157,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             partition,
             offsetRecord,
             hybridStoreConfig.isPresent());
-        if (consumerAction.isLatchCreated()) {
-          newPartitionConsumptionState.setLatchCreated();
-        }
 
         partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
 
@@ -4651,6 +4644,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   Lazy<CountDownLatch> getGracefulShutdownLatch() {
     return gracefulShutdownLatch;
   }
+
+  abstract void recordLatchCreation(int partition);
 
   // For unit test purpose.
   void setVersionRole(PartitionReplicaIngestionContext.VersionRole versionRole) {

@@ -883,7 +883,7 @@ public abstract class StoreIngestionTaskTest {
     Future testSubscribeTaskFuture = null;
     try {
       for (int partition: partitions) {
-        storeIngestionTaskUnderTest.subscribePartition(new PubSubTopicPartitionImpl(pubSubTopic, partition), false);
+        storeIngestionTaskUnderTest.subscribePartition(new PubSubTopicPartitionImpl(pubSubTopic, partition));
       }
 
       beforeStartingConsumption.run();
@@ -2318,7 +2318,7 @@ public abstract class StoreIngestionTaskTest {
             relevantPartitions.stream()
                 .forEach(
                     partition -> storeIngestionTaskUnderTest
-                        .subscribePartition(new PubSubTopicPartitionImpl(pubSubTopic, partition), false));
+                        .subscribePartition(new PubSubTopicPartitionImpl(pubSubTopic, partition)));
           } else {
             LOGGER.info(
                 "TopicPartition: {}, Offset: {}",

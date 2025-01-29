@@ -25,16 +25,14 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
   private long createTimestampInMs = System.currentTimeMillis();
 
   private boolean isHelixTriggeredAction = true;
-  private boolean isLatchCreated;
   private CompletableFuture<Void> future = new CompletableFuture<>();
 
   public ConsumerAction(
       ConsumerActionType type,
       PubSubTopicPartition topicPartition,
       int sequenceNumber,
-      boolean isHelixTriggeredAction,
-      boolean isLatchCreated) {
-    this(type, topicPartition, sequenceNumber, null, isHelixTriggeredAction, isLatchCreated);
+      boolean isHelixTriggeredAction) {
+    this(type, topicPartition, sequenceNumber, null, isHelixTriggeredAction);
   }
 
   public ConsumerAction(
@@ -42,14 +40,12 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
       PubSubTopicPartition topicPartition,
       int sequenceNumber,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker,
-      boolean isHelixTriggeredAction,
-      boolean isLatchCreated) {
+      boolean isHelixTriggeredAction) {
     this.type = type;
     this.topicPartition = Utils.notNull(topicPartition);
     this.sequenceNumber = sequenceNumber;
     this.checker = checker;
     this.isHelixTriggeredAction = isHelixTriggeredAction;
-    this.isLatchCreated = isLatchCreated;
   }
 
   public ConsumerActionType getType() {
@@ -94,10 +90,6 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
 
   public boolean isHelixTriggeredAction() {
     return isHelixTriggeredAction;
-  }
-
-  public boolean isLatchCreated() {
-    return isLatchCreated;
   }
 
   @Override
@@ -159,7 +151,6 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
         new PubSubTopicPartitionImpl(topic, 0),
         sequenceNumber,
         null,
-        false,
         false);
   }
 }
