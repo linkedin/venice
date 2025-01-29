@@ -126,6 +126,7 @@ public class TestDeferredVersionSwapService {
     storeList.add(store3);
     storeList.add(store4);
     storeList.add(store5);
+    storeList.add(store6);
     doReturn(storeList).when(admin).getAllStores(clusterName);
     doReturn(3).when(store1).getLargestUsedVersionNumber();
     doReturn(2).when(store2).getLargestUsedVersionNumber();
