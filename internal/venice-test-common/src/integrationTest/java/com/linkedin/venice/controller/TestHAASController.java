@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigConstants.DEFAULT_HELIX_RESOURCE_CAPACITY_KEY;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.shutdownExecutor;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
@@ -16,6 +17,8 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.helix.SafeHelixDataAccessor;
+import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.integration.utils.HelixAsAServiceWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -31,6 +34,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -40,6 +44,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.HelixAdmin;
+import org.apache.helix.PropertyKey;
 import org.apache.helix.cloud.constants.CloudProvider;
 import org.apache.helix.constants.InstanceConstants;
 import org.apache.helix.manager.zk.ZKHelixManager;
@@ -252,6 +257,60 @@ public class TestHAASController {
           assertEquals(jobStatusQueryResponse.getStatus(), ExecutionStatus.COMPLETED.toString());
         });
       });
+    }
+  }
+
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  public void testRebalancePreferenceAndCapacityKeys() {
+    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(0, 0, 0, 1);
+        HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
+      String controllerClusterName = "venice-controllers";
+
+      int helixRebalancePreferenceEvenness = 10;
+      int helixRebalancePreferenceLessMovement = 2;
+      boolean helixRebalancePreferenceEnableForceBaselineConverge = true;
+      int helixInstanceCapacity = 1000;
+      int helixResourceCapacityWeight = 10;
+
+      Properties clusterProperties = (Properties) enableControllerAndStorageClusterHAASProperties.clone();
+      clusterProperties
+          .put(ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS, helixRebalancePreferenceEvenness);
+      clusterProperties
+          .put(ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT, helixRebalancePreferenceLessMovement);
+      clusterProperties.put(
+          ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_ENABLE_FORCE_BASELINE_CONVERGE,
+          helixRebalancePreferenceEnableForceBaselineConverge);
+      clusterProperties.put(ConfigKeys.CONTROLLER_HELIX_INSTANCE_CAPACITY, helixInstanceCapacity);
+      clusterProperties.put(ConfigKeys.CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT, helixResourceCapacityWeight);
+
+      VeniceControllerWrapper controllerWrapper = venice.addVeniceController(clusterProperties);
+
+      VeniceHelixAdmin veniceHelixAdmin = controllerWrapper.getVeniceHelixAdmin();
+
+      SafeHelixManager helixManager = veniceHelixAdmin.getHelixManager();
+      SafeHelixDataAccessor helixDataAccessor = helixManager.getHelixDataAccessor();
+      PropertyKey.Builder propertyKeyBuilder = new PropertyKey.Builder(controllerClusterName);
+      ClusterConfig clusterConfig = helixDataAccessor.getProperty(propertyKeyBuilder.clusterConfig());
+
+      Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> globalRebalancePreference =
+          clusterConfig.getGlobalRebalancePreference();
+      assertEquals(
+          (int) globalRebalancePreference.get(ClusterConfig.GlobalRebalancePreferenceKey.EVENNESS),
+          helixRebalancePreferenceEvenness);
+      assertEquals(
+          (int) globalRebalancePreference.get(ClusterConfig.GlobalRebalancePreferenceKey.LESS_MOVEMENT),
+          helixRebalancePreferenceLessMovement);
+      assertEquals(
+          (int) globalRebalancePreference.get(ClusterConfig.GlobalRebalancePreferenceKey.FORCE_BASELINE_CONVERGE),
+          1);
+
+      Map<String, Integer> defaultInstanceCapacityMap = clusterConfig.getDefaultInstanceCapacityMap();
+      assertEquals((int) defaultInstanceCapacityMap.get(DEFAULT_HELIX_RESOURCE_CAPACITY_KEY), helixInstanceCapacity);
+
+      Map<String, Integer> defaultPartitionWeightMap = clusterConfig.getDefaultPartitionWeightMap();
+      assertEquals(
+          (int) defaultPartitionWeightMap.get(DEFAULT_HELIX_RESOURCE_CAPACITY_KEY),
+          helixResourceCapacityWeight);
     }
   }
 
