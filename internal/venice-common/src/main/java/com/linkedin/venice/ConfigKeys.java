@@ -2422,13 +2422,13 @@ public class ConfigKeys {
 
   /**
    * Specifies the capacity a controller instance can handle, determined by
-   * {@link ConfigKeys#CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT}. Default is 10000.
+   * {@link ConfigKeys#CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT}. Default is -1 which indicates disabled.
    */
   public static final String CONTROLLER_HELIX_INSTANCE_CAPACITY = "controller.helix.instance.capacity";
 
   /**
    * Specifies the weight of each Helix resource. The maximum weight per instance is determined by
-   * {@link ConfigKeys#CONTROLLER_HELIX_INSTANCE_CAPACITY}. Default is 100.
+   * {@link ConfigKeys#CONTROLLER_HELIX_INSTANCE_CAPACITY}. Default is -1 which indicates disabled.
    */
   public static final String CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT = "controller.helix.default.instance.capacity";
 }

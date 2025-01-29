@@ -20,7 +20,7 @@ public class ConfigConstants {
   public static final long DEFAULT_PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS =
       TimeUnit.MINUTES.toSeconds(10);
 
-  public static final String DEFAULT_HELIX_RESOURCE_CAPACITY_KEY = "cluster_resource_weight";
+  public static final String CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY = "cluster_resource_weight";
 
   /**
    * End of controller config default value

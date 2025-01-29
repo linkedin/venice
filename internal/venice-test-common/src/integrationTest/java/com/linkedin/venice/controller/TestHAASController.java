@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.ConfigConstants.DEFAULT_HELIX_RESOURCE_CAPACITY_KEY;
+import static com.linkedin.venice.ConfigConstants.CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.shutdownExecutor;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
@@ -305,11 +305,13 @@ public class TestHAASController {
           1);
 
       Map<String, Integer> defaultInstanceCapacityMap = clusterConfig.getDefaultInstanceCapacityMap();
-      assertEquals((int) defaultInstanceCapacityMap.get(DEFAULT_HELIX_RESOURCE_CAPACITY_KEY), helixInstanceCapacity);
+      assertEquals(
+          (int) defaultInstanceCapacityMap.get(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY),
+          helixInstanceCapacity);
 
       Map<String, Integer> defaultPartitionWeightMap = clusterConfig.getDefaultPartitionWeightMap();
       assertEquals(
-          (int) defaultPartitionWeightMap.get(DEFAULT_HELIX_RESOURCE_CAPACITY_KEY),
+          (int) defaultPartitionWeightMap.get(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY),
           helixResourceCapacityWeight);
     }
   }

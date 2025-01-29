@@ -1012,8 +1012,8 @@ public class VeniceControllerClusterConfig {
     this.helixRebalancePreferenceLessMovement = props.getInt(CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT, 1);
     this.helixRebalancePreferenceEnableForceBaselineConverge =
         props.getBoolean(CONTROLLER_HELIX_REBALANCE_PREFERENCE_ENABLE_FORCE_BASELINE_CONVERGE, false);
-    this.helixInstanceCapacity = props.getInt(CONTROLLER_HELIX_INSTANCE_CAPACITY, 10000);
-    this.helixResourceCapacityWeight = props.getInt(CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT, 100);
+    this.helixInstanceCapacity = props.getInt(CONTROLLER_HELIX_INSTANCE_CAPACITY, -1);
+    this.helixResourceCapacityWeight = props.getInt(CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT, -1);
   }
 
   public VeniceProperties getProps() {
