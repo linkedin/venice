@@ -5242,24 +5242,27 @@ public abstract class StoreIngestionTaskTest {
    * {@link StoreIngestionTask#reportError(String, int, Exception)} should be called in order to trigger a Helix
    * state transition without waiting 24+ hours for the Helix state transition timeout.
    */
-  @Test(timeOut = 30000)
+  @Test
   public void testProcessConsumerActionsError() throws Exception {
     runTest(Collections.singleton(PARTITION_FOO), () -> {
+      storeIngestionTaskUnderTest.close(); // prevent the SIT polling thread run from interfering with the
+                                           // processConsumerActions()
+
       // This is an actual exception thrown when deserializing a corrupted OffsetRecord
       String msg = "Received Magic Byte '6' which is not supported by InternalAvroSpecificSerializer. "
           + "The only supported Magic Byte for this implementation is '24'.";
       when(mockStorageMetadataService.getLastOffset(any(), anyInt())).thenThrow(new VeniceMessageException(msg));
-      try {
-        storeIngestionTaskUnderTest.processConsumerActions(storeAndVersionConfigsUnderTest.store);
-      } catch (InterruptedException e) {
-        throw new RuntimeException(e);
+      // To reach reportError(), bypass the conditional: action.getAttemptsCount() <= MAX_CONSUMER_ACTION_ATTEMPTS
+      for (int i = 0; i < StoreIngestionTask.MAX_CONSUMER_ACTION_ATTEMPTS + 1; i++) {
+        try {
+          storeIngestionTaskUnderTest.processConsumerActions(storeAndVersionConfigsUnderTest.store);
+        } catch (InterruptedException e) {
+          throw new RuntimeException(e);
+        }
       }
-      waitForNonDeterministicAssertion(
-          30,
-          TimeUnit.SECONDS,
-          () -> assertTrue(storeIngestionTaskUnderTest.consumerActionsQueue.isEmpty(), "Wait until CAQ is empty"));
       ArgumentCaptor<VeniceException> captor = ArgumentCaptor.forClass(VeniceException.class);
-      verify(storeIngestionTaskUnderTest, atLeastOnce()).reportError(anyString(), eq(PARTITION_FOO), captor.capture());
+      verify(storeIngestionTaskUnderTest, timeout(TEST_TIMEOUT_MS).atLeast(1))
+          .reportError(anyString(), eq(PARTITION_FOO), captor.capture());
       assertTrue(captor.getValue().getMessage().endsWith(msg));
     }, AA_OFF);
   }
