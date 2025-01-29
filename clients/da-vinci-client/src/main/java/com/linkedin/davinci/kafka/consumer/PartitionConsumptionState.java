@@ -237,6 +237,7 @@ public class PartitionConsumptionState {
     this.isSubscribed = true;
     this.processedRecordSizeSinceLastSync = 0;
     this.leaderFollowerState = LeaderFollowerStateType.STANDBY;
+    this.latchStatus = LatchStatus.NONE;
     this.expectedSSTFileChecksum = null;
     /**
      * Initialize the latest consumed time with current time; otherwise, it's 0 by default
@@ -347,7 +348,7 @@ public class PartitionConsumptionState {
     return latchStatus != LatchStatus.NONE;
   }
 
-  public void recordLatchCreation() {
+  public void setLatchCreated() {
     if (this.latchStatus == LatchStatus.NONE) {
       this.latchStatus = LatchStatus.LATCH_CREATED;
     }

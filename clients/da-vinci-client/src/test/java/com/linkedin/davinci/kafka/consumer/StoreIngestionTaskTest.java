@@ -1423,7 +1423,7 @@ public abstract class StoreIngestionTaskTest {
       if (enableRecordLevelMetricForCurrentVersionBootstrapping) {
         verify(mockStoreIngestionStats, times(3)).recordTotalBytesConsumed(anyLong());
       } else {
-        verify(mockStoreIngestionStats, never()).recordTotalBytesConsumed(anyLong());
+        verify(mockStoreIngestionStats, times(2)).recordTotalBytesConsumed(anyLong());
       }
       verify(mockStoreIngestionStats, times(3)).recordTotalRecordsConsumed();
 

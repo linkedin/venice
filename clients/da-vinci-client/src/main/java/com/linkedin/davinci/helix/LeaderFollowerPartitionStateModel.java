@@ -118,9 +118,6 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
         throw e;
       }
       if (isRegularStoreCurrentVersion) {
-        // This must happen after SIT is created in setupNewStorePartition(), otherwise accessing SIT will be NPE
-        getIngestionBackend().getStoreIngestionService().recordLatchCreation(resourceName, getPartition());
-
         waitConsumptionCompleted(resourceName, notifier);
       }
       updateLagMonitor(

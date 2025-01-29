@@ -1092,10 +1092,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     hostLevelIngestionStats.getStoreStats(storeName).recordIngestionFailure();
   }
 
-  public void recordLatchCreation(String topicName, int partition) {
-    getStoreIngestionTask(topicName).recordLatchCreation(partition);
-  }
-
   @Override
   public AggVersionedIngestionStats getAggVersionedIngestionStats() {
     return versionedIngestionStats;

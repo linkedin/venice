@@ -1824,12 +1824,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  void recordLatchCreation(int partition) {
-    PartitionConsumptionState pcs = partitionConsumptionStateMap.get(partition);
-    pcs.recordLatchCreation();
-  }
-
-  @Override
   protected void reportIfCatchUpVersionTopicOffset(PartitionConsumptionState pcs) {
     int partition = pcs.getPartition();
 

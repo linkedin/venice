@@ -2158,6 +2158,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             offsetRecord,
             hybridStoreConfig.isPresent());
 
+        if (isCurrentVersion.getAsBoolean()) {
+          // Latch creation is in StateModelIngestionProgressNotifier#startConsumption() from the Helix transition
+          newPartitionConsumptionState.setLatchCreated();
+        }
+
         partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
 
         /**
@@ -4644,8 +4649,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   Lazy<CountDownLatch> getGracefulShutdownLatch() {
     return gracefulShutdownLatch;
   }
-
-  abstract void recordLatchCreation(int partition);
 
   // For unit test purpose.
   void setVersionRole(PartitionReplicaIngestionContext.VersionRole versionRole) {
