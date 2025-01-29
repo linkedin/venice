@@ -135,9 +135,12 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                 continue;
               }
 
+              // If we have a cached push completion for this store, check that the waitTime has elapsed before
+              // proceeding further
               String storeName = store.getName();
+              String kafkaTopicName = Version.composeKafkaTopic(storeName, targetVersionNum);
               Set<String> targetRegions = RegionUtils.parseRegionsFilterList(store.getTargetSwapRegion());
-              Map<String, Long> storePushCompletionTimes = storePushCompletionTimeCache.getIfPresent(storeName);
+              Map<String, Long> storePushCompletionTimes = storePushCompletionTimeCache.getIfPresent(kafkaTopicName);
               if (storePushCompletionTimes != null) {
                 if (!didWaitTimeElapseInTargetRegions(
                     storePushCompletionTimes,
@@ -185,7 +188,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               }
 
               // Check that push is completed in target regions
-              String kafkaTopicName = Version.composeKafkaTopic(storeName, targetVersionNum);
               Admin.OfflinePushStatusInfo pushStatusInfo =
                   veniceParentHelixAdmin.getOffLinePushStatus(cluster, kafkaTopicName);
               boolean didPushCompleteInTargetRegions = true;
@@ -206,16 +208,19 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               }
 
               // Check that push is complete in non target regions
-              int numNonTargetRegionsCompleted = remainingRegions.size();
+              int numNonTargetRegionsFailed = 0;
+              Set<String> nonTargetRegionsCompleted = new HashSet<>();
               for (String remainingRegion: remainingRegions) {
                 String executionStatus = pushStatusInfo.getExtraInfo().get(remainingRegion);
-                if (!executionStatus.equals(ExecutionStatus.COMPLETED.toString())) {
-                  numNonTargetRegionsCompleted -= 1;
-                  LOGGER.info(
-                      "Push is not complete for store: {} on version: {} in a non target region: {}",
+                if (executionStatus.equals(ExecutionStatus.ERROR.toString())) {
+                  numNonTargetRegionsFailed += 1;
+                  LOGGER.warn(
+                      "Push has error status store: {} on version: {} in a non target region: {}",
                       storeName,
                       targetVersionNum,
                       remainingRegion);
+                } else if (executionStatus.equals(ExecutionStatus.COMPLETED.toString())) {
+                  nonTargetRegionsCompleted.add(remainingRegion);
                 }
               }
 
@@ -225,13 +230,23 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                   veniceParentHelixAdmin.getVeniceHelixAdmin().getHelixVeniceClusterResources(cluster);
               ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
               Store parentStore = repository.getStore(storeName);
-              if (numNonTargetRegionsCompleted < remainingRegions.size() / 2) {
+              if (numNonTargetRegionsFailed > remainingRegions.size() / 2) {
                 LOGGER.warn(
-                    "Skipping version swap for store: {} on version: {} as majority of non target regions are not complete",
+                    "Skipping version swap for store: {} on version: {} as majority of non target regions have failed",
                     storeName,
                     targetVersionNum);
                 parentStore.updateVersionStatus(targetVersionNum, ERROR);
                 repository.updateStore(parentStore);
+                continue;
+              }
+
+              // If the majority of the remaining regions have not completed their push yet, do not perform versions
+              // swap yet
+              if (nonTargetRegionsCompleted.size() < remainingRegions.size() / 2) {
+                LOGGER.info(
+                    "Skipping version swap for store: {} on version: {} as majority of non target regions have not completed their push",
+                    storeName,
+                    targetVersionNum);
                 continue;
               }
 
@@ -247,16 +262,15 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                     storeName,
                     targetVersionNum,
                     store.getTargetSwapRegionWaitTime());
-                storePushCompletionTimeCache.put(storeName, pushStatusInfo.getExtraInfoUpdateTimestamp());
+                storePushCompletionTimeCache.put(kafkaTopicName, pushStatusInfo.getExtraInfoUpdateTimestamp());
                 continue;
               }
 
               // TODO add call for postStoreVersionSwap() once it is implemented
 
-              String remainingRegionsString = String.join(",\\s*", remainingRegions);
-              LOGGER
-                  .info("Issuing roll forward message for store: {} in regions: {}", storeName, remainingRegionsString);
-              veniceParentHelixAdmin.rollForwardToFutureVersion(cluster, storeName, remainingRegionsString);
+              String regionsToRollForward = String.join(",\\s*", nonTargetRegionsCompleted);
+              LOGGER.info("Issuing roll forward message for store: {} in regions: {}", storeName, regionsToRollForward);
+              veniceParentHelixAdmin.rollForwardToFutureVersion(cluster, storeName, regionsToRollForward);
 
               // Once version is swapped in the remaining regions, update parent status to ONLINE so that we don't check
               // this version for version swap again

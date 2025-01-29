@@ -111,11 +111,13 @@ public class TestDeferredVersionSwapService {
     String storeName3 = "testStore3";
     String storeName4 = "testStore4";
     String storeName5 = "testStore5";
+    String storeName6 = "testStore5";
     Store store1 = mockStore(davinciVersionNum, 60, region1, versions, storeName1);
     Store store2 = mockStore(completedVersionNum, 60, region1, versions, storeName2);
     Store store3 = mockStore(davinciVersionNum, 60, region1, versions, storeName3);
     Store store4 = mockStore(davinciVersionNum, 60, region1, versions, storeName4);
     Store store5 = mockStore(completedVersionNum, 60, region1, versions, storeName5);
+    Store store6 = mockStore(davinciVersionNum, 60, region1, versions, storeName6);
 
     Long time = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
     List<Store> storeList = new ArrayList<>();
@@ -123,12 +125,14 @@ public class TestDeferredVersionSwapService {
     storeList.add(store2);
     storeList.add(store3);
     storeList.add(store4);
+    storeList.add(store5);
     doReturn(storeList).when(admin).getAllStores(clusterName);
     doReturn(3).when(store1).getLargestUsedVersionNumber();
     doReturn(2).when(store2).getLargestUsedVersionNumber();
     doReturn(3).when(store3).getLargestUsedVersionNumber();
     doReturn(3).when(store4).getLargestUsedVersionNumber();
     doReturn(1).when(store5).getLargestUsedVersionNumber();
+    doReturn(3).when(store5).getLargestUsedVersionNumber();
 
     Version davinciVersion = new VersionImpl(storeName2, davinciVersionNum);
     Version targetVersion = new VersionImpl(storeName1, targetVersionNum);
@@ -167,6 +171,7 @@ public class TestDeferredVersionSwapService {
     doReturn(davinciColoToVersions).when(admin).getCurrentVersionsForMultiColos(clusterName, storeName2);
     doReturn(coloToVersions).when(admin).getCurrentVersionsForMultiColos(clusterName, storeName3);
     doReturn(coloToVersions).when(admin).getCurrentVersionsForMultiColos(clusterName, storeName4);
+    doReturn(coloToVersions).when(admin).getCurrentVersionsForMultiColos(clusterName, storeName6);
 
     Admin.OfflinePushStatusInfo offlinePushStatusInfoWithWaitTimeElapsed = getOfflinePushStatusInfo(
         ExecutionStatus.COMPLETED.toString(),
@@ -183,16 +188,23 @@ public class TestDeferredVersionSwapService {
         ExecutionStatus.COMPLETED.toString(),
         time - TimeUnit.MINUTES.toSeconds(30),
         time - TimeUnit.MINUTES.toSeconds(30));
+    Admin.OfflinePushStatusInfo offlinePushStatusInfoWithFailedPush = getOfflinePushStatusInfo(
+        ExecutionStatus.COMPLETED.toString(),
+        ExecutionStatus.ERROR.toString(),
+        time - TimeUnit.MINUTES.toSeconds(90),
+        time - TimeUnit.MINUTES.toSeconds(30));
 
     String kafkaTopicName1 = Version.composeKafkaTopic(storeName1, targetVersionNum);
     String kafkaTopicName2 = Version.composeKafkaTopic(storeName2, davinciVersionNum);
     String kafkaTopicName3 = Version.composeKafkaTopic(storeName3, targetVersionNum);
     String kafkaTopicName4 = Version.composeKafkaTopic(storeName4, targetVersionNum);
+    String kafkaTopicName6 = Version.composeKafkaTopic(storeName6, targetVersionNum);
     doReturn(offlinePushStatusInfoWithWaitTimeElapsed).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName1);
     doReturn(offlinePushStatusInfoWithWaitTimeElapsed).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName2);
     doReturn(offlinePushStatusInfoWithoutWaitTimeElapsed).when(admin)
         .getOffLinePushStatus(clusterName, kafkaTopicName3);
     doReturn(offlinePushStatusInfoWithOngoingPush).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName4);
+    doReturn(offlinePushStatusInfoWithFailedPush).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName6);
     doReturn(true).when(admin).isLeaderControllerFor(clusterName);
 
     DeferredVersionSwapService deferredVersionSwapService =
@@ -215,6 +227,9 @@ public class TestDeferredVersionSwapService {
 
       // push is complete in all regions
       verify(admin, never()).rollForwardToFutureVersion(clusterName, storeName5, region2);
+
+      // push failed in non target region
+      verify(admin, never()).rollForwardToFutureVersion(clusterName, storeName6, region2);
     });
   }
 
