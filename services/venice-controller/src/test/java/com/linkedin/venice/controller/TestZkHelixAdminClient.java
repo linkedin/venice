@@ -217,11 +217,10 @@ public class TestZkHelixAdminClient {
 
     doAnswer(invocation -> {
       String clusterNameProp = invocation.getArgument(0);
-      ClusterConfig restProps = invocation.getArgument(1);
+      RESTConfig restProps = invocation.getArgument(1);
       Map<String, String> simpleFields = restProps.getRecord().getSimpleFields();
 
       assertEquals(clusterNameProp, clusterName);
-      assertEquals(restProps.getClusterName(), clusterName);
       assertEquals(simpleFields.size(), 2);
       assertEquals(simpleFields.get(RESTConfig.SimpleFields.CUSTOMIZED_HEALTH_URL.name()), restUrl);
       assertEquals(simpleFields.get("FIELD1"), "VALUE1");
