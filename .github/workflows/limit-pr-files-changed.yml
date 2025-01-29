@@ -67,7 +67,7 @@ jobs:
             echo "File $file exceeds the maximum allowed lines changed ($TOTAL > $MAX_LINES)"
             EXCEEDED=true
           fi
-          done < <(git diff --numstat upstream/main | grep -E '\.(java|avsc|proto)$')
+          done < <(git diff --numstat origin/main | grep -E '\.(java|avsc|proto)$')
 
           # Fail if there are both schema and Java file changes
           if [ "$EXCEEDED" = true ]; then
