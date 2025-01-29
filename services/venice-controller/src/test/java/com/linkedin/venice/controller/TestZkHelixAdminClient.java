@@ -21,11 +21,11 @@ import java.lang.reflect.Field;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.util.Map;
+import org.apache.helix.ConfigAccessor;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.model.CloudConfig;
 import org.apache.helix.model.ClusterConfig;
-import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.model.RESTConfig;
 import org.testng.annotations.BeforeMethod;
@@ -35,6 +35,7 @@ import org.testng.annotations.Test;
 public class TestZkHelixAdminClient {
   private ZkHelixAdminClient zkHelixAdminClient;
   private HelixAdmin mockHelixAdmin;
+  private ConfigAccessor mockHelixConfigAccessor;
   private VeniceControllerMultiClusterConfig mockMultiClusterConfigs;
   private VeniceControllerClusterConfig mockCommonConfig;
   private static final String VENICE_CONTROLLER_CLUSTER = "venice-controller-cluster";
@@ -43,6 +44,7 @@ public class TestZkHelixAdminClient {
   public void setUp() throws NoSuchFieldException, IllegalAccessException {
     zkHelixAdminClient = mock(ZkHelixAdminClient.class);
     mockHelixAdmin = mock(HelixAdmin.class);
+    mockHelixConfigAccessor = mock(ConfigAccessor.class);
     mockMultiClusterConfigs = mock(VeniceControllerMultiClusterConfig.class);
     mockCommonConfig = mock(VeniceControllerClusterConfig.class);
 
@@ -51,6 +53,10 @@ public class TestZkHelixAdminClient {
         Field helixAdminField = ZkHelixAdminClient.class.getDeclaredField("helixAdmin");
         helixAdminField.setAccessible(true);
         helixAdminField.set(zkHelixAdminClient, mockHelixAdmin);
+
+        Field helixConfigAccessorField = ZkHelixAdminClient.class.getDeclaredField("helixConfigAccessor");
+        helixConfigAccessorField.setAccessible(true);
+        helixConfigAccessorField.set(zkHelixAdminClient, mockHelixConfigAccessor);
 
         Field multiClusterConfigsField = ZkHelixAdminClient.class.getDeclaredField("multiClusterConfigs");
         multiClusterConfigsField.setAccessible(true);
@@ -171,27 +177,29 @@ public class TestZkHelixAdminClient {
     clusterConfig.setFaultZoneType(HelixUtils.TOPOLOGY_CONSTRAINT);
 
     doAnswer(invocation -> {
-      HelixConfigScope scope = invocation.getArgument(0);
-      Map<String, String> clusterProps = invocation.getArgument(1);
+      String clusterNameProp = invocation.getArgument(0);
+      ClusterConfig clusterProps = invocation.getArgument(1);
 
-      assertEquals(scope.getType(), HelixConfigScope.ConfigScopeProperty.CLUSTER);
-      assertEquals(scope.getClusterName(), clusterName);
-      assertEquals(clusterProps.size(), 6);
-      assertEquals(clusterProps.get(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN), "true");
-      assertEquals(clusterProps.get(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_ENABLED.name()), "true");
-      assertEquals(clusterProps.get(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_TIME.name()), "1000");
+      assertEquals(clusterNameProp, clusterName);
+      assertEquals(clusterProps.getClusterName(), clusterName);
+      Map<String, String> simpleFields = clusterProps.getRecord().getSimpleFields();
+
+      assertEquals(simpleFields.size(), 6);
+      assertEquals(simpleFields.get(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN), "true");
+      assertEquals(simpleFields.get(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_ENABLED.name()), "true");
+      assertEquals(simpleFields.get(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_TIME.name()), "1000");
       assertEquals(
-          clusterProps.get(ClusterConfig.ClusterConfigProperty.PERSIST_BEST_POSSIBLE_ASSIGNMENT.name()),
+          simpleFields.get(ClusterConfig.ClusterConfigProperty.PERSIST_BEST_POSSIBLE_ASSIGNMENT.name()),
           "true");
       assertEquals(
-          clusterProps.get(ClusterConfig.ClusterConfigProperty.TOPOLOGY.name()),
+          simpleFields.get(ClusterConfig.ClusterConfigProperty.TOPOLOGY.name()),
           "/" + HelixUtils.TOPOLOGY_CONSTRAINT);
       assertEquals(
-          clusterProps.get(ClusterConfig.ClusterConfigProperty.FAULT_ZONE_TYPE.name()),
+          simpleFields.get(ClusterConfig.ClusterConfigProperty.FAULT_ZONE_TYPE.name()),
           HelixUtils.TOPOLOGY_CONSTRAINT);
 
       return null;
-    }).when(mockHelixAdmin).setConfig(any(), any());
+    }).when(mockHelixConfigAccessor).setClusterConfig(any(), any());
 
     zkHelixAdminClient.updateClusterConfigs(clusterName, clusterConfig);
   }
@@ -208,17 +216,18 @@ public class TestZkHelixAdminClient {
     restConfig.getRecord().setSimpleField("FIELD1", "VALUE1");
 
     doAnswer(invocation -> {
-      HelixConfigScope scope = invocation.getArgument(0);
-      Map<String, String> restProps = invocation.getArgument(1);
+      String clusterNameProp = invocation.getArgument(0);
+      ClusterConfig restProps = invocation.getArgument(1);
+      Map<String, String> simpleFields = restProps.getRecord().getSimpleFields();
 
-      assertEquals(scope.getType(), HelixConfigScope.ConfigScopeProperty.REST);
-      assertEquals(scope.getClusterName(), clusterName);
-      assertEquals(restProps.size(), 2);
-      assertEquals(restProps.get(RESTConfig.SimpleFields.CUSTOMIZED_HEALTH_URL.name()), restUrl);
-      assertEquals(restProps.get("FIELD1"), "VALUE1");
+      assertEquals(clusterNameProp, clusterName);
+      assertEquals(restProps.getClusterName(), clusterName);
+      assertEquals(simpleFields.size(), 2);
+      assertEquals(simpleFields.get(RESTConfig.SimpleFields.CUSTOMIZED_HEALTH_URL.name()), restUrl);
+      assertEquals(simpleFields.get("FIELD1"), "VALUE1");
 
       return null;
-    }).when(mockHelixAdmin).setConfig(any(), any());
+    }).when(mockHelixConfigAccessor).setRESTConfig(any(), any());
 
     zkHelixAdminClient.updateRESTConfigs(clusterName, restConfig);
   }
