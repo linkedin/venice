@@ -8837,6 +8837,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   protected SafeHelixManager getHelixManager() {
     return helixManager;
+  }
 
   String getPushJobStatusStoreClusterName() {
     return pushJobStatusStoreClusterName;
