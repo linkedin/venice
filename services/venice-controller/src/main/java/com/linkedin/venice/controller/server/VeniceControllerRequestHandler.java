@@ -24,12 +24,14 @@ public class VeniceControllerRequestHandler {
   private final boolean sslEnabled;
   private final VeniceControllerAccessManager accessManager;
   private final StoreRequestHandler storeRequestHandler;
+  private final ClusterAdminOpsRequestHandler clusterAdminOpsRequestHandler;
 
   public VeniceControllerRequestHandler(ControllerRequestHandlerDependencies dependencies) {
     this.admin = dependencies.getAdmin();
     this.sslEnabled = dependencies.isSslEnabled();
     this.accessManager = dependencies.getControllerAccessManager();
     this.storeRequestHandler = new StoreRequestHandler(dependencies);
+    this.clusterAdminOpsRequestHandler = new ClusterAdminOpsRequestHandler(dependencies);
   }
 
   // visibility: package-private
@@ -43,6 +45,10 @@ public class VeniceControllerRequestHandler {
 
   public StoreRequestHandler getStoreRequestHandler() {
     return storeRequestHandler;
+  }
+
+  public ClusterAdminOpsRequestHandler getClusterAdminOpsRequestHandler() {
+    return clusterAdminOpsRequestHandler;
   }
 
   /**

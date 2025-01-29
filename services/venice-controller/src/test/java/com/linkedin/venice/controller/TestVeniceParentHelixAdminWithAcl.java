@@ -129,7 +129,7 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
     initializeParentAdmin(Optional.of(authorizerService));
     parentAdmin.initStorageCluster(clusterName);
-    parentAdmin.deleteStore(clusterName, storeName, 0, true);
+    parentAdmin.deleteStore(clusterName, storeName, false, 0, true);
     Assert.assertEquals(1, authorizerService.clearAclCounter);
     AclBinding actualAB = authorizerService.describeAcls(new Resource(storeName));
     Assert.assertTrue(isAclBindingSame(new AclBinding(new Resource(storeName)), actualAB));
