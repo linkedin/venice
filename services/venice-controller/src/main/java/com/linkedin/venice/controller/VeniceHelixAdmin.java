@@ -180,6 +180,7 @@ import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -346,6 +347,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   protected static final long INTERNAL_STORE_RTT_RETRY_BACKOFF_MS = TimeUnit.SECONDS.toMillis(5);
   private static final int PARTICIPANT_MESSAGE_STORE_SCHEMA_ID = 1;
   private static final long PUSH_STATUS_STORE_WRITER_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(30);
+  private final InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer =
+      AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer();
 
   static final int VERSION_ID_UNSET = -1;
 
@@ -1316,10 +1319,40 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public void sendPushJobDetails(PushJobStatusRecordKey key, PushJobDetails value) {
+    sendPushJobDetailsToLocalRT(key, value);
+    if (isParent()) {
+      String lastDualWriteError = "";
+      for (Map.Entry<String, ControllerClient> entry: getControllerClientMap(getPushJobStatusStoreClusterName())
+          .entrySet()) {
+        LOGGER.info("Sending push job details: {} to region: {} for: {}", value, entry.getKey(), key);
+        ControllerResponse response = entry.getValue()
+            .sendPushJobDetails(
+                key.storeName.toString(),
+                key.versionNumber,
+                getPushJobDetailsSerializer().serialize(null, value));
+        if (response.isError()) {
+          LOGGER.error(
+              "Unable to send push job details to region: {}, for key: {}, value: {} for error: {}",
+              entry.getKey(),
+              key,
+              value,
+              response.getError());
+          lastDualWriteError = response.getError();
+        } else {
+          // When A/A is enabled, we only need to write to one child region and it will be replicated to all regions.
+          return;
+        }
+      }
+      throw new VeniceException(
+          "Unable to dual write push job details to any child region with last error:" + lastDualWriteError);
+    }
+  }
+
+  void sendPushJobDetailsToLocalRT(PushJobStatusRecordKey key, PushJobDetails value) {
     // Emit push job status metrics
     emitPushJobStatusMetrics(pushJobStatusStatsMap, key, value, pushJobUserErrorCheckpoints);
     // Send push job details to the push job status system store
-    if (pushJobStatusStoreClusterName.isEmpty()) {
+    if (getPushJobStatusStoreClusterName().isEmpty()) {
       throw new VeniceException(
           ("Unable to send the push job details because " + ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME)
               + " is not configured");
@@ -8800,5 +8833,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public PubSubTopicRepository getPubSubTopicRepository() {
     return pubSubTopicRepository;
+  }
+
+  String getPushJobStatusStoreClusterName() {
+    return pushJobStatusStoreClusterName;
+  }
+
+  InternalAvroSpecificSerializer<PushJobDetails> getPushJobDetailsSerializer() {
+    return pushJobDetailsSerializer;
   }
 }

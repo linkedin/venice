@@ -8,6 +8,7 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -85,6 +86,9 @@ import com.linkedin.venice.pushmonitor.StatusSnapshot;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.status.protocol.PushJobDetails;
+import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
@@ -131,6 +135,36 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @AfterMethod
   public void cleanupTestCase() {
     super.cleanupTestCase();
+  }
+
+  @Test
+  public void testDualWriteSendPushJobDetails() {
+    parentAdmin.initStorageCluster(clusterName);
+    PushJobStatusRecordKey key = new PushJobStatusRecordKey();
+    key.versionNumber = 1;
+    key.storeName = "abc";
+    PushJobDetails value = new PushJobDetails();
+    doCallRealMethod().when(internalAdmin).sendPushJobDetails(any(), any());
+    ControllerClient controllerClient = mock(ControllerClient.class);
+    ControllerResponse controllerResponse = mock(ControllerResponse.class);
+    when(controllerResponse.isError()).thenReturn(false);
+    doReturn(controllerResponse).when(controllerClient).sendPushJobDetails(anyString(), anyInt(), any(byte[].class));
+    Assert.assertNotNull(controllerClient.sendPushJobDetails("abc", 1, "abc".getBytes()));
+    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
+    controllerClientMap.put("test-region", controllerClient);
+    doReturn(controllerClientMap).when(internalAdmin).getControllerClientMap(anyString());
+    doReturn(true).when(internalAdmin).isParent();
+    InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsInternalAvroSpecificSerializer =
+        mock(InternalAvroSpecificSerializer.class);
+    doReturn("abc".getBytes()).when(pushJobDetailsInternalAvroSpecificSerializer).serialize(any(), any());
+    doReturn(pushJobDetailsInternalAvroSpecificSerializer).when(internalAdmin).getPushJobDetailsSerializer();
+    doReturn("test-cluster").when(internalAdmin).getPushJobStatusStoreClusterName();
+    parentAdmin.sendPushJobDetails(key, value);
+    verify(internalAdmin, atLeast(1)).sendPushJobDetails(key, value);
+    verify(internalAdmin, atLeast(1)).sendPushJobDetailsToLocalRT(any(), any());
+    verify(controllerClient, atLeast(1)).sendPushJobDetails(anyString(), anyInt(), any());
+    doReturn(controllerClients).when(internalAdmin).getControllerClientMap(any());
+
   }
 
   @Test
