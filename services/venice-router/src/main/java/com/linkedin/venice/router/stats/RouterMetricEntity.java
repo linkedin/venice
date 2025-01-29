@@ -51,7 +51,7 @@ public enum RouterMetricEntity {
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_VALIDATION_OUTCOME)
   ),
   KEY_COUNT(
-      MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER, "Count of keys in all responses",
+      MetricType.HISTOGRAM, MetricUnit.NUMBER, "Count of keys in all responses",
       setOf(
           VENICE_STORE_NAME,
           VENICE_CLUSTER_NAME,

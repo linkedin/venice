@@ -77,7 +77,7 @@ public class RouterMetricEntityTest {
         RouterMetricEntity.KEY_COUNT,
         new MetricEntity(
             "key_count",
-            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricType.HISTOGRAM,
             MetricUnit.NUMBER,
             "Count of keys in all responses",
             Utils.setOf(
