@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -84,7 +85,7 @@ public class PartitionConsumptionState {
    * See {@link LeaderFollowerPartitionStateModel} for the
    * details why we need latch for certain resources.
    */
-  private volatile LatchStatus latchStatus = LatchStatus.NONE;
+  private final AtomicReference<LatchStatus> latchStatus = new AtomicReference<>(LatchStatus.NONE);
 
   /**
    * This future is completed in drainer thread after persisting the associated record and offset to DB.
@@ -237,7 +238,6 @@ public class PartitionConsumptionState {
     this.isSubscribed = true;
     this.processedRecordSizeSinceLastSync = 0;
     this.leaderFollowerState = LeaderFollowerStateType.STANDBY;
-    this.latchStatus = LatchStatus.NONE;
     this.expectedSSTFileChecksum = null;
     /**
      * Initialize the latest consumed time with current time; otherwise, it's 0 by default
@@ -345,23 +345,19 @@ public class PartitionConsumptionState {
   }
 
   public boolean isLatchCreated() {
-    return latchStatus != LatchStatus.NONE;
+    return latchStatus.get() != LatchStatus.NONE;
   }
 
   public void setLatchCreated() {
-    if (this.latchStatus == LatchStatus.NONE) {
-      this.latchStatus = LatchStatus.LATCH_CREATED;
-    }
+    latchStatus.compareAndSet(LatchStatus.NONE, LatchStatus.LATCH_CREATED);
   }
 
   public boolean isLatchReleased() {
-    return latchStatus == LatchStatus.LATCH_RELEASED;
+    return latchStatus.get() == LatchStatus.LATCH_RELEASED;
   }
 
   public void releaseLatch() {
-    if (this.latchStatus == LatchStatus.LATCH_CREATED) {
-      this.latchStatus = LatchStatus.LATCH_RELEASED;
-    }
+    latchStatus.compareAndSet(LatchStatus.LATCH_CREATED, LatchStatus.LATCH_RELEASED);
   }
 
   public void errorReported() {
