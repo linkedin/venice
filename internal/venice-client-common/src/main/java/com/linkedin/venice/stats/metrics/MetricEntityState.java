@@ -11,14 +11,15 @@ import java.util.List;
 
 
 /**
- * Operational state of a metric. It holds <br>
- * 1. {@link MetricEntity}
- * 2. 1 Otel Instrument and
- * 3. 0 or 1 (out of 0 (for new metric) or more(for existing metrics)) tehuti Sensors for this Otel Metrics. 1 Otel metric can
- *    cover multiple Tehuti sensors with the use of dimensions. Ideally this should be 1 otel instrument to n tehuti sensors map,
- *    but to keep the lookup simple during runtime, this class holds 1 Otel and 1 tehuti sensor. If an otel instrument has n
- *    tehuti sensors, there will be n {@link MetricEntityState} objects and each object will have the same otel instrument but
- *    different tehuti sensors.
+ * Operational state of a metric. It holds: <br>
+ * 1. A {@link MetricEntity} <br>
+ * 2. One OpenTelemetry (Otel) Instrument <br>
+ * 3. Zero or one (out of zero for new metrics or more for existing metrics) Tehuti sensors for this Otel Metric. <br>
+ *
+ * One Otel instrument can cover multiple Tehuti sensors through the use of dimensions. Ideally, this class should represent a one-to-many
+ * mapping between an Otel instrument and Tehuti sensors. However, to simplify lookup during runtime, this class holds one Otel instrument
+ * and one Tehuti sensor. If an Otel instrument corresponds to multiple Tehuti sensors, there will be multiple {@link MetricEntityState}
+ * objects, each containing the same Otel instrument but different Tehuti sensors.
  */
 public class MetricEntityState {
   private final MetricEntity metricEntity;
@@ -34,11 +35,11 @@ public class MetricEntityState {
   public MetricEntityState(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
-      TehutiSensorRegistrationFunction registerTehutiSensor,
+      TehutiSensorRegistrationFunction registerTehutiSensorFn,
       TehutiMetricNameEnum tehutiMetricNameEnum,
       List<MeasurableStat> tehutiMetricStats) {
     this.metricEntity = metricEntity;
-    createMetric(otelRepository, tehutiMetricNameEnum, tehutiMetricStats, registerTehutiSensor);
+    createMetric(otelRepository, tehutiMetricNameEnum, tehutiMetricStats, registerTehutiSensorFn);
   }
 
   public void setOtelMetric(Object otelMetric) {
@@ -61,7 +62,7 @@ public class MetricEntityState {
       VeniceOpenTelemetryMetricsRepository otelRepository,
       TehutiMetricNameEnum tehutiMetricNameEnum,
       List<MeasurableStat> tehutiMetricStats,
-      TehutiSensorRegistrationFunction registerTehutiSensor) {
+      TehutiSensorRegistrationFunction registerTehutiSensorFn) {
     // Otel metric: otelRepository will be null if otel is not enabled
     if (otelRepository != null) {
       setOtelMetric(otelRepository.createInstrument(this.metricEntity));
@@ -69,7 +70,7 @@ public class MetricEntityState {
     // tehuti metric
     if (tehutiMetricStats != null && !tehutiMetricStats.isEmpty()) {
       setTehutiSensor(
-          registerTehutiSensor
+          registerTehutiSensorFn
               .register(tehutiMetricNameEnum.getMetricName(), tehutiMetricStats.toArray(new MeasurableStat[0])));
     }
   }
