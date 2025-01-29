@@ -4,7 +4,10 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERRO
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
 import static com.linkedin.venice.utils.DataProviderUtils.BOOLEAN;
 import static com.linkedin.venice.utils.DataProviderUtils.allPermutationGenerator;
-import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
@@ -225,6 +228,10 @@ public class DaVinciBackendTest {
     Field storeIngestionServiceField = DefaultIngestionBackend.class.getDeclaredField("storeIngestionService");
     storeIngestionServiceField.setAccessible(true);
     storeIngestionServiceField.set(ingestionBackend, storeIngestionService);
+    Field ingestionServiceField = DaVinciBackend.class.getDeclaredField("ingestionService");
+    ingestionServiceField.setAccessible(true);
+    ingestionServiceField.set(backend, storeIngestionService);
+
     doNothing().when(ingestionBackend).addIngestionNotifier(any());
 
     // DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY == false
