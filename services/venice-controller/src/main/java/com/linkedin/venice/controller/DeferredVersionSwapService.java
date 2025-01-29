@@ -190,11 +190,11 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               // Check that push is completed in target regions
               Admin.OfflinePushStatusInfo pushStatusInfo =
                   veniceParentHelixAdmin.getOffLinePushStatus(cluster, kafkaTopicName);
-              boolean didPushCompleteInTargetRegions = true;
+              Set<String> targetRegionsCompleted = new HashSet<>();
               for (String targetRegion: targetRegions) {
                 String executionStatus = pushStatusInfo.getExtraInfo().get(targetRegion);
-                if (!executionStatus.equals(ExecutionStatus.COMPLETED.toString())) {
-                  didPushCompleteInTargetRegions = false;
+                if (executionStatus.equals(ExecutionStatus.COMPLETED.toString())) {
+                  targetRegionsCompleted.add(targetRegion);
                   LOGGER.warn(
                       "Skipping version swap for store: {} on version: {} as push is not complete in target region {}",
                       storeName,
@@ -203,7 +203,14 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                 }
               }
 
-              if (!didPushCompleteInTargetRegions) {
+              if (targetRegionsCompleted.size() < targetRegions.size() / 2) {
+                LOGGER.warn(
+                    "Skipping version swap for store: {} on version: {} as push is complete in the majority of target regions."
+                        + "Completed target regions: {}, target regions: {}",
+                    storeName,
+                    targetVersionNum,
+                    targetRegionsCompleted,
+                    targetRegions);
                 continue;
               }
 
@@ -215,7 +222,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                 if (executionStatus.equals(ExecutionStatus.ERROR.toString())) {
                   numNonTargetRegionsFailed += 1;
                   LOGGER.warn(
-                      "Push has error status store: {} on version: {} in a non target region: {}",
+                      "Push has error status for store: {} on version: {} in a non target region: {}",
                       storeName,
                       targetVersionNum,
                       remainingRegion);
@@ -240,9 +247,12 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                 continue;
               }
 
-              // If the majority of the remaining regions have not completed their push yet, do not perform versions
-              // swap yet
-              if (nonTargetRegionsCompleted.size() < remainingRegions.size() / 2) {
+              // If the majority of the remaining regions have not completed their push yet or if any of the regions
+              // have yet to reach a terminal status:
+              // COMPLETED or PUSHED, do not perform versions swap yet
+              int nonTargetRegionsInTerminalStatus = nonTargetRegionsCompleted.size() + numNonTargetRegionsFailed;
+              if (nonTargetRegionsCompleted.size() < remainingRegions.size() / 2
+                  || nonTargetRegionsInTerminalStatus != remainingRegions.size()) {
                 LOGGER.info(
                     "Skipping version swap for store: {} on version: {} as majority of non target regions have not completed their push",
                     storeName,
