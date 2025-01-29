@@ -19,7 +19,6 @@ import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.common.CompletableResultCode;
 import io.opentelemetry.sdk.metrics.Aggregation;
 import io.opentelemetry.sdk.metrics.InstrumentSelector;
-import io.opentelemetry.sdk.metrics.InstrumentSelectorBuilder;
 import io.opentelemetry.sdk.metrics.InstrumentType;
 import io.opentelemetry.sdk.metrics.SdkMeterProvider;
 import io.opentelemetry.sdk.metrics.SdkMeterProviderBuilder;
@@ -98,19 +97,20 @@ public class VeniceOpenTelemetryMetricsRepository {
       }
     }
 
-    // Build an InstrumentSelector with multiple setName calls for all Exponential Histogram metrics
-    InstrumentSelectorBuilder selectorBuilder = InstrumentSelector.builder().setType(InstrumentType.HISTOGRAM);
-    metricNames.forEach(selectorBuilder::setName);
+    // Register views for all MetricType.HISTOGRAM metrics to be aggregated/exported as exponential histograms
+    for (String metricName: metricNames) {
+      InstrumentSelector selector =
+          InstrumentSelector.builder().setType(InstrumentType.HISTOGRAM).setName(metricName).build();
 
-    // Register a single view with all metric names included in the InstrumentSelector
-    builder.registerView(
-        selectorBuilder.build(),
-        View.builder()
-            .setAggregation(
-                Aggregation.base2ExponentialBucketHistogram(
-                    metricsConfig.getOtelExponentialHistogramMaxBuckets(),
-                    metricsConfig.getOtelExponentialHistogramMaxScale()))
-            .build());
+      builder.registerView(
+          selector,
+          View.builder()
+              .setAggregation(
+                  Aggregation.base2ExponentialBucketHistogram(
+                      metricsConfig.getOtelExponentialHistogramMaxBuckets(),
+                      metricsConfig.getOtelExponentialHistogramMaxScale()))
+              .build());
+    }
   }
 
   public VeniceOpenTelemetryMetricsRepository(VeniceMetricsConfig metricsConfig) {
