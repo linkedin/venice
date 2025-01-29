@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
@@ -147,6 +148,12 @@ public class TestDeferredVersionSwapService {
 
     doReturn(storeResponse).when(controllerClient).getStore(any());
     doReturn(veniceHelixAdmin).when(admin).getVeniceHelixAdmin();
+
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    doReturn(repository).when(resources).getStoreMetadataRepository();
+    doReturn(resources).when(veniceHelixAdmin).getHelixVeniceClusterResources(clusterName);
+    doReturn(store1).when(repository).getStore(storeName1);
     doReturn(controllerClientMap).when(veniceHelixAdmin).getControllerClientMap(clusterName);
 
     Map<String, Integer> coloToVersions = new HashMap<>();

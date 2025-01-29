@@ -3677,12 +3677,15 @@ public class VeniceParentHelixAdmin implements Admin {
           }
           // status PUSHED is set when batch store's target region push is completed, but other region are yet to
           // complete
-          if (isTargetRegionPush && !isVersionPushed) {
-            parentStore.updateVersionStatus(versionNum, PUSHED);
-            repository.updateStore(parentStore);
-          } else { // status ONLINE is set when all region finishes ingestion for either regular or target region push.
-            parentStore.updateVersionStatus(versionNum, ONLINE);
-            repository.updateStore(parentStore);
+          if (currentReturnStatus.equals(ExecutionStatus.COMPLETED)) {
+            if (isTargetRegionPush && !isVersionPushed) {
+              parentStore.updateVersionStatus(versionNum, PUSHED);
+              repository.updateStore(parentStore);
+            } else { // status ONLINE is set when all region finishes ingestion for either regular or target region
+                     // push.
+              parentStore.updateVersionStatus(versionNum, ONLINE);
+              repository.updateStore(parentStore);
+            }
           }
         }
       }
