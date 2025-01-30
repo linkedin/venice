@@ -3,6 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.venice.utils.LatencyUtils.getElapsedTimeFromMsToMs;
 
 import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
+import com.linkedin.venice.annotation.UnderDevelopment;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
@@ -128,6 +129,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
     stats.recordTotalUpdateCurrentAssignmentLatency(getElapsedTimeFromMsToMs(updateCurrentAssignmentStartTime));
   }
 
+  @UnderDevelopment(value = "This API may not be implemented in all PubSubConsumerAdapter implementations.")
   @Override
   public synchronized void subscribe(PubSubTopicPartition pubSubTopicPartition, long lastReadOffset) {
     throw new VeniceException(

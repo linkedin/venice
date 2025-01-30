@@ -16,6 +16,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import javax.annotation.Nonnull;
 
 
 /**
@@ -39,8 +40,27 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    */
   void subscribe(PubSubTopicPartition pubSubTopicPartition, long lastReadOffset);
 
+  /**
+   * Subscribes to a specified topic-partition if it is not already subscribed. If the topic-partition is
+   * already subscribed, this method performs no action.
+   *
+   * The subscription uses the provided {@link PubSubPosition} to determine the starting offset for
+   * consumption. If the position is {@link PubSubPosition#EARLIEST}, the consumer will seek to the earliest
+   * available message. If it is {@link PubSubPosition#LATEST}, the consumer will seek to the latest available
+   * message. If a custom position is provided, implementations should resolve it to the corresponding offset
+   * or position in the underlying pub-sub system.
+   *
+   * Implementations of this interface should ensure proper validation of the topic-partition existence and
+   * manage consumer assignments. This method does not guarantee immediate subscription state changes and may
+   * defer them based on implementation details.
+   *
+   * @param pubSubTopicPartition the topic-partition to subscribe to
+   * @param lastReadPubSubPosition the last known position for the topic-partition
+   * @throws IllegalArgumentException if lastReadPubSubPosition is null or of an unsupported type
+   * @throws PubSubTopicDoesNotExistException if the specified topic does not exist
+   */
   @UnderDevelopment("This method is under development and may be subject to change.")
-  void subscribe(PubSubTopicPartition pubSubTopicPartition, PubSubPosition lastReadPubSubPosition);
+  void subscribe(@Nonnull PubSubTopicPartition pubSubTopicPartition, @Nonnull PubSubPosition lastReadPubSubPosition);
 
   /**
    * Unsubscribes the consumer from a specified topic-partition.

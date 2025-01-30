@@ -109,13 +109,18 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   /**
-   * Subscribes to a topic-partition if not already subscribed. If the topic-partition is already subscribed,
-   * this method is a no-op.
+   * Subscribes to a specified topic-partition if it is not already subscribed. If the topic-partition is already
+   * subscribed, this method performs no action.
+   *
+   * The subscription uses the provided {@link PubSubPosition} to determine the starting offset for consumption.
+   * If the position is {@link PubSubPosition#EARLIEST}, the consumer will seek to the earliest available message.
+   * If it is {@link PubSubPosition#LATEST}, the consumer will seek to the latest offset. If an instance of
+   * {@link ApacheKafkaOffsetPosition} is provided, the consumer will seek to the specified offset plus one.
    *
    * @param pubSubTopicPartition the topic-partition to subscribe to
    * @param lastReadPubSubPosition the last known position for the topic-partition
-   * @throws IllegalArgumentException if lastReadPubSubPosition is invalid
-   * @throws PubSubTopicDoesNotExistException if the topic does not exist
+   * @throws IllegalArgumentException if lastReadPubSubPosition is null or not an instance of {@link ApacheKafkaOffsetPosition}
+   * @throws PubSubTopicDoesNotExistException if the specified topic does not exist
    */
   @Override
   public void subscribe(

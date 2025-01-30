@@ -165,7 +165,7 @@ public class MockInMemoryConsumer implements PubSubConsumerAdapter {
 
   @Override
   public Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout) {
-    throw new UnsupportedOperationException("Not implemented");
+    return null;
   }
 
   @Override
