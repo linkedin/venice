@@ -1,5 +1,6 @@
 package com.linkedin.davinci.stats;
 
+import com.linkedin.davinci.store.rocksdb.ReplicationMetadataRocksDBStoragePartition;
 import com.linkedin.davinci.store.rocksdb.RocksDBStoragePartition;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.stats.AbstractVeniceStats;
@@ -89,6 +90,9 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
         // Lock down the list of RocksDB interfaces while the collection is ongoing
         synchronized (hostedRocksDBPartitions) {
           for (RocksDBStoragePartition dbPartition: hostedRocksDBPartitions.values()) {
+            if (dbPartition instanceof ReplicationMetadataRocksDBStoragePartition) {
+              continue;
+            }
             try {
               total += dbPartition.getRocksDBStatValue(metric);
             } catch (VeniceException e) {
@@ -103,6 +107,28 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
         }
         return total;
       }, metric));
+      registerSensor(new AsyncGauge((ignored, ignored2) -> {
+        Long total = 0L;
+        // Lock down the list of RocksDB interfaces while the collection is ongoing
+        synchronized (hostedRocksDBPartitions) {
+          for (RocksDBStoragePartition dbPartition: hostedRocksDBPartitions.values()) {
+            if (!(dbPartition instanceof ReplicationMetadataRocksDBStoragePartition)) {
+              continue;
+            }
+            try {
+              total += dbPartition.getRocksDBStatValue(metric);
+            } catch (VeniceException e) {
+              LOGGER.warn("Could not get rocksDB metric {} with error:", metric, e);
+              continue;
+            }
+            if (INSTANCE_METRIC_DOMAINS.contains(metric)) {
+              // Collect this metric once from any available partition and move on
+              break;
+            }
+          }
+        }
+        return total;
+      }, "rmd-" + metric));
     }
     registerSensor(new AsyncGauge((ignored, ignored2) -> memoryLimit, "memory_limit"));
     registerSensor(new AsyncGauge((ignored, ignored2) -> {
