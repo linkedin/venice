@@ -87,13 +87,12 @@ public class DaVinciRecordTransformerUtility<K, O> {
 
     if (persistedClassHash != null && persistedClassHash == currentClassHash) {
       LOGGER.info(
-          String.format(
-              "A change in transformer logic has been detected. Persisted class hash = %d. New class hash = %d.",
-              persistedClassHash,
-              currentClassHash));
+          "A change in transformer logic has been detected. Persisted class hash = {}. New class hash = {}",
+          persistedClassHash,
+          currentClassHash);
       return false;
     }
-    LOGGER.info(String.format("Transformer logic hasn't changed. Class hash = %d.", currentClassHash));
+    LOGGER.info("Transformer logic hasn't changed. Class hash = {}", currentClassHash);
     return true;
   }
 
@@ -112,7 +111,7 @@ public class DaVinciRecordTransformerUtility<K, O> {
     boolean transformerLogicChanged = hasTransformerLogicChanged(classHash, offsetRecord);
 
     if (!recordTransformer.getStoreRecordsInDaVinci() || transformerLogicChanged) {
-      LOGGER.info(String.format("Bootstrapping directly from the VersionTopic for partition %d", partitionId));
+      LOGGER.info("Bootstrapping directly from the VersionTopic for partition {}", partitionId);
 
       // Bootstrap from VT
       storageEngine.clearPartitionOffset(partitionId);
@@ -123,7 +122,7 @@ public class DaVinciRecordTransformerUtility<K, O> {
       storageEngine.putPartitionOffset(partitionId, offsetRecord);
     } else {
       // Bootstrap from local storage
-      LOGGER.info(String.format("Bootstrapping from local storage for partition %d", partitionId));
+      LOGGER.info("Bootstrapping from local storage for partition {}", partitionId);
       AbstractStorageIterator iterator = storageEngine.getIterator(partitionId);
       for (iterator.seekToFirst(); iterator.isValid(); iterator.next()) {
         byte[] keyBytes = iterator.key();
