@@ -15,11 +15,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Get PR Metadata
-        id: pr_details
-        uses: actions-ecosystem/action-get-PR@v2
+      - name: Find the PR associated with this branch
+        id: find_pr
+        uses: peter-evans/find-pull-request@v2
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          state: open
+      - name: Fetch PR details
+        id: pr_details
+        run: |
+         PR_NUMBER=${{ steps.find_pr.outputs.pr_number }}
+          echo "PR Number: $PR_NUMBER"
+       
+         # Fetch PR details using GitHub API
+         PR_DESCRIPTION=$(gh pr view $PR_NUMBER --json body -q .body)
+         echo "pr_description=$PR_DESCRIPTION" >> $GITHUB_ENV
+         echo "PR_TITLE=${{ steps.find_pr.outputs.pr_title }}" >> $GITHUB_ENV
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Check for Override Keyword
         id: check_override
@@ -28,7 +40,7 @@ jobs:
           OVERRIDE_KEYWORD="DIFFSIZEOVERRIDE"
           
           # Check PR title and body for the keyword
-          if echo "${{ steps.pr_details.outputs.title }}${{ steps.pr_details.outputs.body }}" | grep -iq "$OVERRIDE_KEYWORD"; then
+          if echo "${{ steps.find_pr.outputs.pr_title }}${{ env.pr_description }}" | grep -iq "$OVERRIDE_KEYWORD"; then
             echo "Override keyword found. Skipping validation."
             echo "override=true" >> $GITHUB_OUTPUT
           else
@@ -40,7 +52,8 @@ jobs:
         run: |
           # Define the maximum allowed lines changed per file
           MAX_LINES=500
-
+          MAX_TOTAL_LINES_ADDED=2000
+          TOTAL_LINED_ADDED=0
           # Get the diff of the PR and process each file
           EXCEEDED=false
           JAVA_FILE=false
@@ -60,6 +73,8 @@ jobs:
 
           # Calculate total lines changed for the file
           TOTAL=$((added + removed))
+          TOTAL_LINED_ADDED=$((TOTAL_LINED_ADDED + added))
+
           echo "File: $file, Lines Changed: $TOTAL"
 
           # Check if the total exceeds the max allowed
@@ -70,11 +85,14 @@ jobs:
           done < <(git diff --numstat origin/main | grep -E '\.(java|avsc|proto)$')
 
           # Fail if there are both schema and Java file changes
+          if [ "$TOTAL_LINED_ADDED" -gt "$MAX_TOTAL_LINES_ADDED" ]; then
+            echo "Total added lines of all files exceed the maximum allowed lines ($TOTAL_LINED_ADDED > $MAX_TOTAL_LINES_ADDED)."
+            exit 1
+          fi
           if [ "$EXCEEDED" = true ]; then
             echo "Above files exceed the maximum allowed lines changed ($MAX_LINES)."
             exit 1
           fi
-          
           # Fail if any file exceeded the limit
           if [ "JAVA_FILE" = true && "SCHEMA_FILE" = true ]; then
             echo "The PR has both schema and Java code changes, please make a separate PR for schema changes."
