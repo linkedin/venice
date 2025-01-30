@@ -119,11 +119,11 @@ public class ZkHelixAdminClient implements HelixAdminClient {
             .put(ClusterConfig.GlobalRebalancePreferenceKey.FORCE_BASELINE_CONVERGE, forceBaseLineConverge);
         clusterConfig.setGlobalRebalancePreference(globalRebalancePreference);
 
-        List<String> instanceCapacityKeys = new ArrayList<>();
-        instanceCapacityKeys.add(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY);
-        clusterConfig.setInstanceCapacityKeys(instanceCapacityKeys);
-
         if (commonConfig.getHelixInstanceCapacity() > 0 && commonConfig.getHelixResourceCapacityWeight() > 0) {
+          List<String> instanceCapacityKeys = new ArrayList<>();
+          instanceCapacityKeys.add(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY);
+          clusterConfig.setInstanceCapacityKeys(instanceCapacityKeys);
+
           // This is how much capacity a participant can take. The Helix documentation recommends setting this to a high
           // value to avoid rebalance failures. The primary goal of setting this is to enable a constraint that takes
           // the
