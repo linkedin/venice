@@ -5143,8 +5143,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Long> hybridTimeLagThreshold = params.getHybridTimeLagThreshold();
     Optional<DataReplicationPolicy> hybridDataReplicationPolicy = params.getHybridDataReplicationPolicy();
     Optional<BufferReplayPolicy> hybridBufferReplayPolicy = params.getHybridBufferReplayPolicy();
-    Optional<String> realTimeTopicName = Optional.empty(); // real time topic name should only be changed during
-                                                           // partition count update
+    Optional<String> realTimeTopicName = params.getRealTimeTopicName();
     Optional<Boolean> accessControlled = params.getAccessControlled();
     Optional<CompressionStrategy> compressionStrategy = params.getCompressionStrategy();
     Optional<Boolean> clientDecompressionEnabled = params.getClientDecompressionEnabled();
