@@ -301,15 +301,12 @@
                       "default": null
                     }, {
                       "name": "localHighWatermarkPubSubPositions",
-                      "doc": "The latest pubsub positions of all real-time topic has been consumed up until now.",
-                      "type": [
-                        "null",
-                        {
-                          "type": "array",
-                          "items": "bytes"
-                        }
-                      ],
-                      "default": null
+                      "doc": "The latest pubsub positions of all real-time topics consumed up until now.",
+                      "type": {
+                        "type": "array",
+                        "items": "bytes"
+                      },
+                      "default": []
                     }, {
                       "name": "isRepush",
                       "doc": "Flag to indicate this version swap is triggered by repush or not.",
@@ -354,8 +351,8 @@
             }, {
               "name": "upstreamPubSubPosition",
               "doc": "The position of the message in the upstream pubsub system (usually real-time topic).",
-              "type": ["null", "bytes"],
-              "default": null
+              "type": "bytes",
+              "default": ""
             }, {
               "name": "termId",
               "doc": "TermId is a unique identifier (usually a Helix message timestamp) for the term in which the message is produced.",
