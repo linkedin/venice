@@ -8,13 +8,10 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doCallRealMethod;
-import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -32,13 +29,17 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -168,7 +169,6 @@ public class DaVinciBackendTest {
     Field storageServiceField = DaVinciBackend.class.getDeclaredField("storageService");
     storageServiceField.setAccessible(true);
     storageServiceField.set(backend, mockStorageService);
-
     StorageEngineRepository mockStorageEngineRepository = mock(StorageEngineRepository.class);
     AbstractStorageEngine abstractStorageEngine = mock(AbstractStorageEngine.class);
     mockStorageEngineRepository.addLocalStorageEngine(abstractStorageEngine);
@@ -192,8 +192,23 @@ public class DaVinciBackendTest {
     userPartitionList.add(2);
     when(mockStorageService.getUserPartitions(anyString())).thenReturn(userPartitionList);
 
+    HashSet<Integer> backendSubscription = new HashSet<>();
+    backendSubscription.add(0);
+    backendSubscription.add(1);
+
     StoreBackend mockStoreBackend = mock(StoreBackend.class);
     when(backend.getStoreOrThrow(anyString())).thenReturn(mockStoreBackend);
+    ComplementSet<Integer> backendSubscriptionSet = ComplementSet.wrap(backendSubscription);
+    when(mockStoreBackend.getSubscription()).thenReturn(backendSubscriptionSet);
+
+    doAnswer(new Answer() {
+      @Override
+      public Object answer(InvocationOnMock invocation) throws Throwable {
+        ComplementSet<Integer> partitions = invocation.getArgument(0);
+        mockStoreBackend.getSubscription().addAll(partitions);
+        return null;
+      }
+    }).when(mockStoreBackend).subscribe(any(), any());
 
     Version mockVersion = mock(Version.class);
     Store mockStore = mock(Store.class);
@@ -238,5 +253,10 @@ public class DaVinciBackendTest {
     when(mockCombinedProperties.getBoolean(anyString(), anyBoolean())).thenReturn(false);
     doCallRealMethod().when(backend).bootstrap();
     backend.bootstrap();
+
+    ComplementSet<Integer> subscription = mockStoreBackend.getSubscription();
+    assertTrue(subscription.contains(0));
+    assertTrue(subscription.contains(1));
+    assertFalse(subscription.contains(2));
   }
 }
