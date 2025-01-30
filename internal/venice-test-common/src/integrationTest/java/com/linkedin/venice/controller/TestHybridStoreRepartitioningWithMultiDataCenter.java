@@ -13,6 +13,7 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -73,6 +74,58 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testUpdateRealTimeTopicName() {
+    String storeName = Utils.getUniqueString("TestUpdateRealTimeTopicName");
+    String clusterName = CLUSTER_NAMES[0];
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+
+    ControllerClient parentControllerClient =
+        ControllerClient.constructClusterControllerClient(clusterName, parentControllerURLs);
+    ControllerClient[] childControllerClients = new ControllerClient[childDatacenters.size()];
+    for (int i = 0; i < childDatacenters.size(); i++) {
+      childControllerClients[i] =
+          new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString());
+    }
+
+    NewStoreResponse newStoreResponse =
+        parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
+    Assert.assertFalse(
+        newStoreResponse.isError(),
+        "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+
+    String newRealTimeTopicName = "NewRealTimeTopicName" + Version.REAL_TIME_TOPIC_SUFFIX;
+    UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams();
+    updateStoreParams.setIncrementalPushEnabled(true)
+        .setBackupStrategy(BackupStrategy.KEEP_MIN_VERSIONS)
+        .setNumVersionsToPreserve(2)
+        .setHybridRewindSeconds(1000)
+        .setActiveActiveReplicationEnabled(true)
+        .setRealTimeTopicName(newRealTimeTopicName)
+        .setHybridOffsetLagThreshold(1000);
+    TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
+
+    // create new version by doing an empty push
+    parentControllerClient
+        .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
+
+    for (ControllerClient controllerClient: childControllerClients) {
+      Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 1);
+    }
+
+    for (int i = 0; i < childControllerClients.length; i++) {
+      final int index = i;
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        StoreInfo storeInfo = childControllerClients[index].getStore(storeName).getStore();
+        String realTimeTopicNameInStore = storeInfo.getHybridStoreConfig().getRealTimeTopicName();
+        String realTimeTopicNameInVersion = Utils.getRealTimeTopicName(storeInfo.getVersions().get(0));
+
+        Assert.assertEquals(realTimeTopicNameInVersion, newRealTimeTopicName);
+        Assert.assertEquals(realTimeTopicNameInStore, newRealTimeTopicName);
+      });
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
