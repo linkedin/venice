@@ -304,6 +304,9 @@ public class TestHAASController {
           (int) globalRebalancePreference.get(ClusterConfig.GlobalRebalancePreferenceKey.FORCE_BASELINE_CONVERGE),
           1);
 
+      List<String> instanceCapacityKeys = clusterConfig.getInstanceCapacityKeys();
+      assertEquals(instanceCapacityKeys.size(), 1);
+
       Map<String, Integer> defaultInstanceCapacityMap = clusterConfig.getDefaultInstanceCapacityMap();
       assertEquals(
           (int) defaultInstanceCapacityMap.get(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY),

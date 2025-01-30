@@ -20,6 +20,7 @@ import com.linkedin.venice.utils.HelixUtils;
 import java.lang.reflect.Field;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
+import java.util.List;
 import java.util.Map;
 import org.apache.helix.ConfigAccessor;
 import org.apache.helix.HelixAdmin;
@@ -269,6 +270,9 @@ public class TestZkHelixAdminClient {
           (int) globalRebalancePreference.get(ClusterConfig.GlobalRebalancePreferenceKey.FORCE_BASELINE_CONVERGE),
           0);
 
+      List<String> instanceCapacityKeys = clusterConfig.getInstanceCapacityKeys();
+      assertEquals(instanceCapacityKeys.size(), 1);
+
       Map<String, Integer> defaultInstanceCapacityMap = clusterConfig.getDefaultInstanceCapacityMap();
       assertEquals(
           (int) defaultInstanceCapacityMap.get(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY),
@@ -322,6 +326,9 @@ public class TestZkHelixAdminClient {
       assertEquals(
           (int) globalRebalancePreference.get(ClusterConfig.GlobalRebalancePreferenceKey.FORCE_BASELINE_CONVERGE),
           0);
+
+      List<String> instanceCapacityKeys = clusterConfig.getInstanceCapacityKeys();
+      assertEquals(instanceCapacityKeys.size(), 0);
 
       Map<String, Integer> defaultInstanceCapacityMap = clusterConfig.getDefaultInstanceCapacityMap();
       assertEquals(defaultInstanceCapacityMap.size(), 0);
