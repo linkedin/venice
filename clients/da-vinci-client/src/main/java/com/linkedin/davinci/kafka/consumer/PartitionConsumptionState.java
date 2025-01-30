@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -66,6 +67,16 @@ public class PartitionConsumptionState {
   private CompletableFuture<Void> lastVTProduceCallFuture;
 
   /**
+   * State machine that can only transition to LATCH_CREATED if LatchStatus is NONE, and transition to LATCH_RELEASED
+   * if LatchStatus is LATCH_CREATED. The latch will only be created in {@link LeaderFollowerPartitionStateModel} if
+   * consumption begins on a partition that is the current version. It will not be created if the future version
+   * (being consumed) later becomes the current version.
+   */
+  enum LatchStatus {
+    NONE, LATCH_CREATED, LATCH_RELEASED
+  }
+
+  /**
    * Only used in L/F model. Check if the partition has released the latch.
    * In L/F ingestion task, Optionally, the state model holds a latch that
    * is used to determine when it should transit from offline to follower.
@@ -74,7 +85,7 @@ public class PartitionConsumptionState {
    * See {@link LeaderFollowerPartitionStateModel} for the
    * details why we need latch for certain resources.
    */
-  private boolean isLatchReleased = false;
+  private final AtomicReference<LatchStatus> latchStatus = new AtomicReference<>(LatchStatus.NONE);
 
   /**
    * This future is completed in drainer thread after persisting the associated record and offset to DB.
@@ -333,12 +344,20 @@ public class PartitionConsumptionState {
     this.isSubscribed = false;
   }
 
+  public boolean isLatchCreated() {
+    return latchStatus.get() != LatchStatus.NONE;
+  }
+
+  public void setLatchCreated() {
+    latchStatus.compareAndSet(LatchStatus.NONE, LatchStatus.LATCH_CREATED);
+  }
+
   public boolean isLatchReleased() {
-    return isLatchReleased;
+    return latchStatus.get() == LatchStatus.LATCH_RELEASED;
   }
 
   public void releaseLatch() {
-    this.isLatchReleased = true;
+    latchStatus.compareAndSet(LatchStatus.LATCH_CREATED, LatchStatus.LATCH_RELEASED);
   }
 
   public void errorReported() {
