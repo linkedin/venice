@@ -313,7 +313,11 @@ public class TestZkHelixAdminClient {
       // When you don't specify rebalance preferences, it will use Helix's default settings
       Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> globalRebalancePreference =
           clusterConfig.getGlobalRebalancePreference();
-      assertTrue(globalRebalancePreference.isEmpty());
+      assertEquals((int) globalRebalancePreference.get(ClusterConfig.GlobalRebalancePreferenceKey.EVENNESS), 1);
+      assertEquals((int) globalRebalancePreference.get(ClusterConfig.GlobalRebalancePreferenceKey.LESS_MOVEMENT), 1);
+      assertEquals(
+          (int) globalRebalancePreference.get(ClusterConfig.GlobalRebalancePreferenceKey.FORCE_BASELINE_CONVERGE),
+          0);
 
       List<String> instanceCapacityKeys = clusterConfig.getInstanceCapacityKeys();
       assertEquals(instanceCapacityKeys.size(), 0);
