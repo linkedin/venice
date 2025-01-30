@@ -268,7 +268,7 @@ public class TestHAASController {
 
       int helixRebalancePreferenceEvenness = 10;
       int helixRebalancePreferenceLessMovement = 2;
-      boolean helixRebalancePreferenceEnableForceBaselineConverge = true;
+      int helixRebalancePreferenceForceBaselineConverge = 1;
       int helixInstanceCapacity = 1000;
       int helixResourceCapacityWeight = 10;
 
@@ -278,8 +278,8 @@ public class TestHAASController {
       clusterProperties
           .put(ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT, helixRebalancePreferenceLessMovement);
       clusterProperties.put(
-          ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_ENABLE_FORCE_BASELINE_CONVERGE,
-          helixRebalancePreferenceEnableForceBaselineConverge);
+          ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_FORCE_BASELINE_CONVERGE,
+          helixRebalancePreferenceForceBaselineConverge);
       clusterProperties.put(ConfigKeys.CONTROLLER_HELIX_INSTANCE_CAPACITY, helixInstanceCapacity);
       clusterProperties.put(ConfigKeys.CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT, helixResourceCapacityWeight);
 
@@ -302,7 +302,7 @@ public class TestHAASController {
           helixRebalancePreferenceLessMovement);
       assertEquals(
           (int) globalRebalancePreference.get(ClusterConfig.GlobalRebalancePreferenceKey.FORCE_BASELINE_CONVERGE),
-          1);
+          helixRebalancePreferenceForceBaselineConverge);
 
       List<String> instanceCapacityKeys = clusterConfig.getInstanceCapacityKeys();
       assertEquals(instanceCapacityKeys.size(), 1);

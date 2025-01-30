@@ -107,27 +107,36 @@ public class ZkHelixAdminClient implements HelixAdminClient {
         // We want to prioritize evenness over less movement when it comes to resource assignment, because the cost
         // of rebalancing for the controller is cheap as it is stateless.
         Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> globalRebalancePreference = new HashMap<>();
-        globalRebalancePreference.put(
-            ClusterConfig.GlobalRebalancePreferenceKey.EVENNESS,
-            commonConfig.getHelixRebalancePreferenceEvenness());
-        globalRebalancePreference.put(
-            ClusterConfig.GlobalRebalancePreferenceKey.LESS_MOVEMENT,
-            commonConfig.getHelixRebalancePreferenceLessMovement());
-        // This should be turned off, so it doesn't overpower other constraint calculations
-        int forceBaseLineConverge = commonConfig.isHelixRebalancePreferenceForceBaselineConvergeEnabled() ? 1 : 0;
-        globalRebalancePreference
-            .put(ClusterConfig.GlobalRebalancePreferenceKey.FORCE_BASELINE_CONVERGE, forceBaseLineConverge);
-        clusterConfig.setGlobalRebalancePreference(globalRebalancePreference);
 
-        if (commonConfig.getHelixInstanceCapacity() > 0 && commonConfig.getHelixResourceCapacityWeight() > 0) {
+        if (commonConfig.getHelixRebalancePreferenceEvenness() > -1
+            && commonConfig.getHelixRebalancePreferenceLessMovement() > -1) {
+          // EVENNESS and LESS_MOVEMENT need to be defined together
+          globalRebalancePreference.put(
+              ClusterConfig.GlobalRebalancePreferenceKey.EVENNESS,
+              commonConfig.getHelixRebalancePreferenceEvenness());
+          globalRebalancePreference.put(
+              ClusterConfig.GlobalRebalancePreferenceKey.LESS_MOVEMENT,
+              commonConfig.getHelixRebalancePreferenceLessMovement());
+        }
+
+        if (commonConfig.getHelixRebalancePreferenceForceBaselineConverge() > -1) {
+          globalRebalancePreference.put(
+              ClusterConfig.GlobalRebalancePreferenceKey.FORCE_BASELINE_CONVERGE,
+              commonConfig.getHelixRebalancePreferenceForceBaselineConverge());
+        }
+
+        if (!globalRebalancePreference.isEmpty()) {
+          clusterConfig.setGlobalRebalancePreference(globalRebalancePreference);
+        }
+
+        if (commonConfig.getHelixInstanceCapacity() > -1 && commonConfig.getHelixResourceCapacityWeight() > -1) {
           List<String> instanceCapacityKeys = new ArrayList<>();
           instanceCapacityKeys.add(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY);
           clusterConfig.setInstanceCapacityKeys(instanceCapacityKeys);
 
           // This is how much capacity a participant can take. The Helix documentation recommends setting this to a high
           // value to avoid rebalance failures. The primary goal of setting this is to enable a constraint that takes
-          // the
-          // current top-state distribution into account when rebalancing.
+          // the current top-state distribution into account when rebalancing.
           Map<String, Integer> defaultInstanceCapacityMap = new HashMap<>();
           defaultInstanceCapacityMap
               .put(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, commonConfig.getHelixInstanceCapacity());

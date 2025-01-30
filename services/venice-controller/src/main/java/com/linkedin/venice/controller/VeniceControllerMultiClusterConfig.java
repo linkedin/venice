@@ -302,24 +302,4 @@ public class VeniceControllerMultiClusterConfig {
   public List<String> getControllerInstanceTagList() {
     return getCommonConfig().getControllerInstanceTagList();
   }
-
-  public int getHelixRebalancePreferenceEvenness() {
-    return getCommonConfig().getHelixRebalancePreferenceEvenness();
-  }
-
-  public int getHelixRebalancePreferenceLessMovement() {
-    return getCommonConfig().getHelixRebalancePreferenceLessMovement();
-  }
-
-  public boolean isHelixRebalancePreferenceForceBaselineConvergeEnabled() {
-    return getCommonConfig().isHelixRebalancePreferenceForceBaselineConvergeEnabled();
-  }
-
-  public int getHelixInstanceCapacity() {
-    return getCommonConfig().getHelixInstanceCapacity();
-  }
-
-  public int getHelixResourceCapacityWeight() {
-    return getCommonConfig().getHelixResourceCapacityWeight();
-  }
 }

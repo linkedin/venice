@@ -2401,34 +2401,37 @@ public class ConfigKeys {
 
   /**
    * Specifies the value to use for Helix's rebalance preference for evenness when using Waged.
-   * The default value is 1.
+   * Default is -1 which will use Helix's default.
    */
   public static final String CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS =
       "controller.helix.rebalance.preference.evenness";
 
   /**
    * Specifies the value to use for Helix's rebalance preference for less movement when using Waged.
-   * The default value is 1.
+   * Default is -1 which will use Helix's default.
    */
   public static final String CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT =
       "controller.helix.rebalance.preference.less.movement";
 
   /**
-   * Indicates whether to enable force baseline convergence in Helix's rebalance preference when using Waged.
-   * Default is false.
+   * Specifies the value to use for Helix's rebalance preference for force baseline convergence when using Waged.
+   * This should always be turned off, so it doesn't overpower other constraints.
+   * Default is -1 which will use Helix's default.
    */
-  public static final String CONTROLLER_HELIX_REBALANCE_PREFERENCE_ENABLE_FORCE_BASELINE_CONVERGE =
-      "controller.helix.rebalance.preference.enable.force.baseline.converge";
+  public static final String CONTROLLER_HELIX_REBALANCE_PREFERENCE_FORCE_BASELINE_CONVERGE =
+      "controller.helix.rebalance.preference.force.baseline.converge";
 
   /**
-   * Specifies the capacity a controller instance can handle, determined by
-   * {@link ConfigKeys#CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT}. Default is -1 which indicates disabled.
+   * Specifies the capacity a controller instance can handle.
+   * The weight of each Helix resource is determined by {@link ConfigKeys#CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT}.
+   * Default is -1 which indicates disabled.
    */
   public static final String CONTROLLER_HELIX_INSTANCE_CAPACITY = "controller.helix.instance.capacity";
 
   /**
-   * Specifies the weight of each Helix resource. The maximum weight per instance is determined by
-   * {@link ConfigKeys#CONTROLLER_HELIX_INSTANCE_CAPACITY}. Default is -1 which indicates disabled.
+   * Specifies the weight of each Helix resource.
+   * The maximum weight per instance is determined by {@link ConfigKeys#CONTROLLER_HELIX_INSTANCE_CAPACITY}.
+   * Default is -1 which indicates disabled.
    */
   public static final String CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT = "controller.helix.default.instance.capacity";
 }
