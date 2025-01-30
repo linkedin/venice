@@ -228,7 +228,7 @@ public class VeniceControllerMultiClusterConfig {
   }
 
   public boolean isDeferredVersionSwapServiceEnabled() {
-    return getCommonConfig().getIsDeferredVersionSwapServiceEnabled();
+    return getCommonConfig().isDeferredVersionSwapServiceEnabled();
   }
 
   public boolean isControllerEnforceSSLOnly() {

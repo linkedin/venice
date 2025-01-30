@@ -1517,7 +1517,7 @@ public class VeniceControllerClusterConfig {
     return deferredVersionSwapSleepMs;
   }
 
-  public boolean getIsDeferredVersionSwapServiceEnabled() {
+  public boolean isDeferredVersionSwapServiceEnabled() {
     return deferredVersionSwapServiceEnabled;
   }
 
