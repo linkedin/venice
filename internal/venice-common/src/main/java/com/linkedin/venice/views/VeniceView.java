@@ -116,6 +116,10 @@ public abstract class VeniceView {
    * @return the corresponding store name and view name for the given view topic in a single string.
    */
   public static String parseStoreAndViewFromViewTopic(String topicName) {
+    if (!isViewTopic(topicName)) {
+      throw new IllegalArgumentException(
+          "Cannot parse store and view because this is not a view topic, topic name: " + topicName);
+    }
     String storeName = parseStoreFromViewTopic(topicName);
     int viewTopicSuffixIndex = topicName.lastIndexOf(VIEW_NAME_SEPARATOR);
     int viewNameStartIndex = topicName.substring(0, viewTopicSuffixIndex).lastIndexOf(VIEW_NAME_SEPARATOR);
@@ -123,16 +127,25 @@ public abstract class VeniceView {
   }
 
   public static String getViewStoreName(String storeName, String viewName) {
+    if (isViewStore(storeName)) {
+      throw new IllegalArgumentException(storeName + " is already associated with a view");
+    }
     return VIEW_STORE_PREFIX + storeName + VIEW_NAME_SEPARATOR + viewName;
   }
 
   public static String getStoreNameFromViewStoreName(String viewStoreName) {
+    if (!isViewStore(viewStoreName)) {
+      throw new IllegalArgumentException(viewStoreName + " is not a view store");
+    }
     String viewStoreNameWithoutPrefix = viewStoreName.substring(VIEW_STORE_PREFIX.length());
     int storeNameEndIndex = viewStoreNameWithoutPrefix.lastIndexOf(VIEW_NAME_SEPARATOR);
     return viewStoreNameWithoutPrefix.substring(0, storeNameEndIndex);
   }
 
   public static String getViewNameFromViewStoreName(String viewStoreName) {
+    if (!isViewStore(viewStoreName)) {
+      throw new IllegalArgumentException(viewStoreName + " is not a view store");
+    }
     int viewNameStartIndex = viewStoreName.lastIndexOf(VIEW_NAME_SEPARATOR);
     return viewStoreName.substring(viewNameStartIndex + 1);
   }

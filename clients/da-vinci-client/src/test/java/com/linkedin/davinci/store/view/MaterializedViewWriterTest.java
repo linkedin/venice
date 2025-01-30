@@ -5,9 +5,11 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -28,25 +30,30 @@ import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
+import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class MaterializedViewWriterTest {
   private static final Schema SCHEMA = AvroCompatibilityHelper.parse("\"string\"");
+  private static final Random RANDOM = new Random(123);
 
   @Test
   public void testViewParametersBuilder() throws JsonProcessingException {
@@ -130,6 +137,37 @@ public class MaterializedViewWriterTest {
     materializedViewWriter
         .processControlMessage(kafkaKey, kafkaMessageEnvelope, controlMessage, 1, partitionConsumptionState);
     verify(veniceWriter, never()).sendHeartbeat(anyString(), anyInt(), any(), any(), anyBoolean(), any(), anyLong());
+  }
+
+  @Test
+  public void testViewWriterCanForwardChunkedKeysCorrectly() {
+    String storeName = "testStoreWithChunkedKeys";
+    String viewName = "testMaterializedViewWithChunkedKeys";
+    Version version = mock(Version.class);
+    doReturn(true).when(version).isChunkingEnabled();
+    doReturn(true).when(version).isRmdChunkingEnabled();
+    getMockStore(storeName, 1, version);
+    MaterializedViewParameters.Builder viewParamsBuilder = new MaterializedViewParameters.Builder(viewName);
+    viewParamsBuilder.setPartitionCount(6);
+    viewParamsBuilder.setPartitioner(DefaultVenicePartitioner.class.getCanonicalName());
+    Map<String, String> viewParamsMap = viewParamsBuilder.build();
+    VeniceConfigLoader props = getMockProps();
+    MaterializedViewWriter materializedViewWriter = new MaterializedViewWriter(props, version, SCHEMA, viewParamsMap);
+    VeniceWriter veniceWriter = mock(VeniceWriter.class);
+    doReturn(CompletableFuture.completedFuture(null)).when(veniceWriter).put(any(), any(), anyInt());
+    materializedViewWriter.setVeniceWriter(veniceWriter);
+    KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
+    ByteBuffer dummyValue = mock(ByteBuffer.class);
+    // Deterministic random bytes
+    int keySize = 5;
+    for (int i = 0; i < 100; i++) {
+      byte[] key = new byte[keySize];
+      RANDOM.nextBytes(key);
+      materializedViewWriter
+          .processRecord(dummyValue, keyWithChunkingSuffixSerializer.serializeNonChunkedKey(key), 1, true);
+      verify(veniceWriter, times(1)).put(eq(key), any(), eq(1));
+      Mockito.clearInvocations(veniceWriter);
+    }
   }
 
   private VeniceConfigLoader getMockProps() {

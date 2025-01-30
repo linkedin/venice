@@ -3,13 +3,10 @@ package com.linkedin.davinci.repository;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.meta.ReadOnlyStore;
-import com.linkedin.venice.meta.ReadOnlyStoreView;
+import com.linkedin.venice.meta.ReadOnlyViewStore;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
-import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
@@ -17,11 +14,13 @@ import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.views.VeniceView;
 import java.util.Collection;
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.stream.Collectors;
+import javax.annotation.Nonnull;
 
 
 /**
@@ -29,13 +28,17 @@ import java.util.concurrent.ConcurrentSkipListSet;
  * {@link NativeMetadataRepository} for both regular Venice stores and Venice view stores. Intended for client
  * libraries like DaVinci and CC clients which need to consume and materialize store views.
  */
-public class NativeMetadataRepositoryViewAdapter
-    implements SubscriptionBasedReadOnlyStoreRepository, ReadOnlySchemaRepository, ClusterInfoProvider {
+public class NativeMetadataRepositoryViewAdapter implements SubscriptionBasedReadOnlyStoreRepository,
+    ReadOnlySchemaRepository, ClusterInfoProvider, SubscribedViewStoreProvider {
   private final NativeMetadataRepository nativeMetadataRepository;
 
   // Map of store name to a set of subscribed store name and store view name(s). Used to track subscription, so we only
   // unsubscribe from the internal store once all corresponding regular store and view store(s) are unsubscribed.
   private final Map<String, Set<String>> subscribedStoreMap = new VeniceConcurrentHashMap<>();
+
+  // A map to track registered StoreDataChangedListener and the corresponding StoreDataChangedListenerViewAdapter.
+  private final Map<StoreDataChangedListener, StoreDataChangedListener> storeDataChangedAdapterMap =
+      new VeniceConcurrentHashMap<>();
 
   public NativeMetadataRepositoryViewAdapter(NativeMetadataRepository nativeMetadataRepository) {
     this.nativeMetadataRepository = nativeMetadataRepository;
@@ -48,7 +51,7 @@ public class NativeMetadataRepositoryViewAdapter
 
   @Override
   public void clear() {
-    nativeMetadataRepository.refresh();
+    nativeMetadataRepository.clear();
   }
 
   @Override
@@ -135,20 +138,8 @@ public class NativeMetadataRepositoryViewAdapter
     if (!VeniceView.isViewStore(storeName)) {
       return store;
     }
-    // It's a view store, so we need to annotate the version(s) before returning
-    List<Version> storeVersions = store.getVersions();
-    String viewName = VeniceView.getViewNameFromViewStoreName(storeName);
-    Map<Integer, ReadOnlyStore.ReadOnlyVersion> viewVersionMap = new HashMap<>();
-    for (Version version: storeVersions) {
-      ViewConfig viewConfig = version.getViewConfigs().get(viewName);
-      if (viewConfig == null) {
-        // versions that do not contain the corresponding view name is omitted
-        continue;
-      }
-      viewVersionMap
-          .put(version.getNumber(), new ReadOnlyStoreView.ReadOnlyMaterializedViewVersion(version, viewConfig));
-    }
-    return new ReadOnlyStoreView(store, viewVersionMap);
+    // It's a view store, so we need to create a ReadOnlyViewStore
+    return new ReadOnlyViewStore(store, storeName);
   }
 
   @Override
@@ -182,12 +173,19 @@ public class NativeMetadataRepositoryViewAdapter
 
   @Override
   public void registerStoreDataChangedListener(StoreDataChangedListener listener) {
-    nativeMetadataRepository.registerStoreDataChangedListener(listener);
+    StoreDataChangedListener adapterListener = new StoreDataChangedListenerViewAdapter(listener, this);
+    nativeMetadataRepository.registerStoreDataChangedListener(adapterListener);
+    storeDataChangedAdapterMap.put(listener, adapterListener);
   }
 
   @Override
   public void unregisterStoreDataChangedListener(StoreDataChangedListener listener) {
-    nativeMetadataRepository.unregisterStoreDataChangedListener(listener);
+    storeDataChangedAdapterMap.compute(listener, (dataChangeListener, dataChangedListenerAdapter) -> {
+      if (dataChangedListenerAdapter != null) {
+        nativeMetadataRepository.unregisterStoreDataChangedListener(dataChangedListenerAdapter);
+      }
+      return dataChangedListenerAdapter;
+    });
   }
 
   @Override
@@ -204,20 +202,33 @@ public class NativeMetadataRepositoryViewAdapter
   public void subscribe(String storeName) throws InterruptedException {
     String internalStoreName = VeniceView.getStoreName(storeName);
     nativeMetadataRepository.subscribe(internalStoreName);
-    getSubscribedStoreViews(internalStoreName).add(storeName);
+    subscribedStoreMap.compute(internalStoreName, (k, s) -> {
+      Set<String> stores = s == null ? new ConcurrentSkipListSet<>() : s;
+      stores.add(storeName);
+      return stores;
+    });
   }
 
   @Override
   public void unsubscribe(String storeName) {
     String internalStoreName = VeniceView.getStoreName(storeName);
-    Set<String> subscribedStoreViews = getSubscribedStoreViews(internalStoreName);
-    subscribedStoreViews.remove(storeName);
-    if (subscribedStoreViews.isEmpty()) {
-      nativeMetadataRepository.unsubscribe(internalStoreName);
-    }
+    subscribedStoreMap.compute(internalStoreName, (k, s) -> {
+      if (s != null) {
+        s.remove(storeName);
+        if (s.isEmpty()) {
+          nativeMetadataRepository.unsubscribe(internalStoreName);
+        }
+      }
+      return s;
+    });
   }
 
-  private Set<String> getSubscribedStoreViews(String internalStoreName) {
-    return subscribedStoreMap.computeIfAbsent(internalStoreName, k -> new ConcurrentSkipListSet<>());
+  @Override
+  public @Nonnull Set<String> getSubscribedViewStores(String storeName) {
+    Set<String> subscribedStores = subscribedStoreMap.get(storeName);
+    if (subscribedStores == null) {
+      return Collections.emptySet();
+    }
+    return subscribedStores.stream().filter(VeniceView::isViewStore).collect(Collectors.toSet());
   }
 }

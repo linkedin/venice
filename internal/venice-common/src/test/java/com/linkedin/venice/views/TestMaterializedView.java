@@ -105,6 +105,13 @@ public class TestMaterializedView {
     }
     assertEquals(VeniceView.getStoreNameFromViewStoreName(viewStoreName), storeName);
     assertEquals(VeniceView.getViewNameFromViewStoreName(viewStoreName), rePartitionViewName);
+
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> VeniceView.parseStoreAndViewFromViewTopic(Version.composeKafkaTopic(storeName, version)));
+    assertThrows(IllegalArgumentException.class, () -> VeniceView.getViewStoreName(viewStoreName, "another-test-view"));
+    assertThrows(IllegalArgumentException.class, () -> VeniceView.getStoreNameFromViewStoreName(storeName));
+    assertThrows(IllegalArgumentException.class, () -> VeniceView.getViewNameFromViewStoreName(storeName));
   }
 
   @Test

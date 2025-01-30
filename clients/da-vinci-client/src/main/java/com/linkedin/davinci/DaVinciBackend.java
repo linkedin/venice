@@ -70,7 +70,6 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
@@ -647,14 +646,6 @@ public class DaVinciBackend implements Closeable {
     if (storeBackend != null) {
       storeBackend.delete();
     }
-    // Check the store map for corresponding view stores
-    for (Map.Entry<String, StoreBackend> entry: storeByNameMap.entrySet()) {
-      if (VeniceView.isViewStore(entry.getKey())) {
-        if (storeName.equals(VeniceView.getStoreNameFromViewStoreName(entry.getKey()))) {
-          entry.getValue().delete();
-        }
-      }
-    }
   }
 
   protected final boolean isIsolatedIngestion() {
@@ -718,14 +709,6 @@ public class DaVinciBackend implements Closeable {
       StoreBackend storeBackend = storeByNameMap.get(store.getName());
       if (storeBackend != null) {
         DaVinciBackend.this.handleStoreChanged(storeBackend);
-      }
-      // Check the store map for corresponding view stores
-      for (Map.Entry<String, StoreBackend> entry: storeByNameMap.entrySet()) {
-        if (VeniceView.isViewStore(entry.getKey())) {
-          if (store.getName().equals(VeniceView.getStoreNameFromViewStoreName(entry.getKey()))) {
-            DaVinciBackend.this.handleStoreChanged(entry.getValue());
-          }
-        }
       }
     }
 

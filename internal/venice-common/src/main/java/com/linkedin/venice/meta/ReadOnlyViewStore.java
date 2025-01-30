@@ -6,6 +6,7 @@ import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -15,12 +16,31 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 
-public class ReadOnlyStoreView extends ReadOnlyStore {
+public class ReadOnlyViewStore extends ReadOnlyStore {
   private final Map<Integer, ReadOnlyVersion> viewVersionMap;
+  private final String viewStoreName;
 
-  public ReadOnlyStoreView(Store delegate, Map<Integer, ReadOnlyVersion> viewVersionMap) {
+  public ReadOnlyViewStore(Store delegate, String viewStoreName) {
     super(delegate);
-    this.viewVersionMap = viewVersionMap;
+    this.viewVersionMap = new HashMap<>();
+    this.viewStoreName = viewStoreName;
+    // Decorate the Store with appropriate version list based on the provided view
+    List<Version> storeVersions = delegate.getVersions();
+    String viewName = VeniceView.getViewNameFromViewStoreName(viewStoreName);
+    for (Version version: storeVersions) {
+      ViewConfig viewConfig = version.getViewConfigs().get(viewName);
+      if (viewConfig == null) {
+        // versions that do not contain the corresponding view name is omitted
+        continue;
+      }
+      viewVersionMap
+          .put(version.getNumber(), new ReadOnlyViewStore.ReadOnlyMaterializedViewVersion(version, viewConfig));
+    }
+  }
+
+  @Override
+  public String getName() {
+    return viewStoreName;
   }
 
   @Override
@@ -52,7 +72,7 @@ public class ReadOnlyStoreView extends ReadOnlyStore {
     if (o == null || getClass() != o.getClass()) {
       return false;
     }
-    ReadOnlyStoreView storeView = (ReadOnlyStoreView) o;
+    ReadOnlyViewStore storeView = (ReadOnlyViewStore) o;
     return this.delegate.equals(storeView.delegate) && this.viewVersionMap.equals(storeView.viewVersionMap);
   }
 
@@ -72,13 +92,6 @@ public class ReadOnlyStoreView extends ReadOnlyStore {
 
     public ReadOnlyMaterializedViewVersion(Version delegate, ViewConfig viewConfig) {
       super(delegate);
-      if (delegate.isHybrid()) {
-        throw new UnsupportedOperationException(CONSTRUCTOR_ERROR_MESSAGE + "hybrid store view is not supported yet");
-      }
-      if (delegate.isChunkingEnabled()) {
-        // TODO despite writers are configured properly the read path with chunking enabled needs some fixing
-        throw new UnsupportedOperationException(CONSTRUCTOR_ERROR_MESSAGE + "chunking is not supported yet");
-      }
       if (viewConfig == null) {
         throw new VeniceException(CONSTRUCTOR_ERROR_MESSAGE + "provided viewConfig is null");
       }

@@ -177,7 +177,8 @@ public class TestMaterializedViewEndToEnd {
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(false)
-        .setChunkingEnabled(false)
+        .setChunkingEnabled(true)
+        .setRmdChunkingEnabled(true)
         .setNativeReplicationEnabled(true)
         .setNativeReplicationSourceFabric(childDatacenters.get(0).getRegionName())
         .setPartitionCount(3);
@@ -210,11 +211,11 @@ public class TestMaterializedViewEndToEnd {
             .build();
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     // Use non-source fabric region to also verify NR for materialized view.
-    D2Client daVinciD2 = D2TestUtils
+    D2Client daVinciD2RemoteFabric = D2TestUtils
         .getAndStartD2Client(multiRegionMultiClusterWrapper.getChildRegions().get(1).getZkServerWrapper().getAddress());
     MetricsRepository dvcMetricsRepo = new MetricsRepository();
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
-        daVinciD2,
+        daVinciD2RemoteFabric,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         dvcMetricsRepo,
         backendConfig)) {
@@ -256,7 +257,30 @@ public class TestMaterializedViewEndToEnd {
         Assert.assertEquals(viewClient.get(Integer.toString(i)).get().toString(), DEFAULT_USER_DATA_VALUE_PREFIX + i);
       }
     } finally {
-      D2ClientUtils.shutdownClient(daVinciD2);
+      D2ClientUtils.shutdownClient(daVinciD2RemoteFabric);
+    }
+    // Make sure things work in the source fabric too.
+    VeniceProperties newBackendConfig =
+        new PropertyBuilder().put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
+            .put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
+            .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+            .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
+            .build();
+    D2Client daVinciD2SourceFabric = D2TestUtils
+        .getAndStartD2Client(multiRegionMultiClusterWrapper.getChildRegions().get(1).getZkServerWrapper().getAddress());
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+        daVinciD2SourceFabric,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        new MetricsRepository(),
+        newBackendConfig)) {
+      DaVinciClient<String, Object> viewClient =
+          factory.getAndStartGenericAvroClient(storeName, testViewName, daVinciConfig);
+      viewClient.subscribe(Collections.singleton(0)).get();
+      for (int i = 1; i <= 200; i++) {
+        Assert.assertEquals(viewClient.get(Integer.toString(i)).get().toString(), DEFAULT_USER_DATA_VALUE_PREFIX + i);
+      }
+    } finally {
+      D2ClientUtils.shutdownClient(daVinciD2SourceFabric);
     }
   }
 
