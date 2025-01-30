@@ -419,22 +419,6 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   /**
-   * Returns the latest position for the given topic-partition. The latest offsets are derived from the lag metric
-   * and may be outdated or imprecise.
-   *
-   * @param pubSubTopicPartition the topic-partition for which the latest position is requested
-   * @return the latest position as a {@link PubSubPosition}, or {@link PubSubPosition#LATEST} if tracking is unavailable
-   */
-  @Override
-  public PubSubPosition getLatestPosition(PubSubTopicPartition pubSubTopicPartition) {
-    return topicPartitionsOffsetsTracker != null
-        ? new ApacheKafkaOffsetPosition(
-            topicPartitionsOffsetsTracker
-                .getEndOffset(pubSubTopicPartition.getTopicName(), pubSubTopicPartition.getPartitionNumber()))
-        : PubSubPosition.LATEST;
-  }
-
-  /**
    * @return get the offset of the first message with timestamp greater than or equal to the target timestamp.
    *          {@code null} will be returned for the partition if there is no such message.
    */
@@ -467,11 +451,6 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   @Override
-  public PubSubPosition positionForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout) {
-    throw new UnsupportedOperationException("positionForTime is not supported in Apache Kafka consumer");
-  }
-
-  @Override
   public Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
     try {
       TopicPartition topicPartition = new TopicPartition(
@@ -499,11 +478,6 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   @Override
-  public PubSubPosition positionForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
-    return null;
-  }
-
-  @Override
   public Long beginningOffset(PubSubTopicPartition pubSubTopicPartition, Duration timeout) {
     TopicPartition kafkaTp =
         new TopicPartition(pubSubTopicPartition.getPubSubTopic().getName(), pubSubTopicPartition.getPartitionNumber());
@@ -514,11 +488,6 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     } catch (Exception e) {
       throw new PubSubClientException("Exception while getting beginning offset for " + kafkaTp, e);
     }
-  }
-
-  @Override
-  public PubSubPosition beginningPosition(PubSubTopicPartition pubSubTopicPartition, Duration timeout) {
-    return null;
   }
 
   @Override
@@ -547,13 +516,6 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   @Override
-  public Map<PubSubTopicPartition, PubSubPosition> endPositions(
-      Collection<PubSubTopicPartition> partitions,
-      Duration timeout) {
-    throw new UnsupportedOperationException("endPositions is not supported in Apache Kafka consumer");
-  }
-
-  @Override
   public Long endOffset(PubSubTopicPartition pubSubTopicPartition) {
     try {
       TopicPartition topicPartition = new TopicPartition(
@@ -571,11 +533,6 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     } catch (Exception e) {
       throw new PubSubClientException("Failed to fetch end offset for " + pubSubTopicPartition, e);
     }
-  }
-
-  @Override
-  public PubSubPosition endPosition(PubSubTopicPartition pubSubTopicPartition) {
-    return null;
   }
 
   /**

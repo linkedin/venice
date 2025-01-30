@@ -169,28 +169,13 @@ public class MockInMemoryConsumer implements PubSubConsumerAdapter {
   }
 
   @Override
-  public PubSubPosition positionForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout) {
-    throw new UnsupportedOperationException("Not implemented");
-  }
-
-  @Override
   public Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
     return null;
   }
 
   @Override
-  public PubSubPosition positionForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
-    throw new UnsupportedOperationException("Not implemented");
-  }
-
-  @Override
   public Long beginningOffset(PubSubTopicPartition partition, Duration timeout) {
     return 0L;
-  }
-
-  @Override
-  public PubSubPosition beginningPosition(PubSubTopicPartition pubSubTopicPartition, Duration timeout) {
-    throw new UnsupportedOperationException("Not implemented");
   }
 
   @Override
@@ -203,21 +188,9 @@ public class MockInMemoryConsumer implements PubSubConsumerAdapter {
   }
 
   @Override
-  public Map<PubSubTopicPartition, PubSubPosition> endPositions(
-      Collection<PubSubTopicPartition> partitions,
-      Duration timeout) {
-    throw new UnsupportedOperationException("Not implemented");
-  }
-
-  @Override
   public Long endOffset(PubSubTopicPartition pubSubTopicPartition) {
     return broker
         .endOffsets(pubSubTopicPartition.getPubSubTopic().getName(), pubSubTopicPartition.getPartitionNumber());
-  }
-
-  @Override
-  public PubSubPosition endPosition(PubSubTopicPartition pubSubTopicPartition) {
-    throw new UnsupportedOperationException("Not implemented");
   }
 
   @Override

@@ -351,18 +351,8 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   }
 
   @Override
-  public PubSubPosition getLatestPosition(PubSubTopicPartition pubSubTopicPartition) {
-    return delegate.getLatestPosition(pubSubTopicPartition);
-  }
-
-  @Override
   public Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout) {
     throw new UnsupportedOperationException("offsetForTime is not supported in SharedKafkaConsumer");
-  }
-
-  @Override
-  public PubSubPosition positionForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout) {
-    throw new UnsupportedOperationException("positionForTime is not supported in SharedKafkaConsumer");
   }
 
   @Override
@@ -371,18 +361,8 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   }
 
   @Override
-  public PubSubPosition positionForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
-    throw new UnsupportedOperationException("positionForTime is not supported in SharedKafkaConsumer");
-  }
-
-  @Override
   public Long beginningOffset(PubSubTopicPartition partition, Duration timeout) {
     throw new UnsupportedOperationException("beginningOffset is not supported in SharedKafkaConsumer");
-  }
-
-  @Override
-  public PubSubPosition beginningPosition(PubSubTopicPartition pubSubTopicPartition, Duration timeout) {
-    throw new UnsupportedOperationException("beginningPosition is not supported in SharedKafkaConsumer");
   }
 
   @Override
@@ -391,20 +371,8 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   }
 
   @Override
-  public Map<PubSubTopicPartition, PubSubPosition> endPositions(
-      Collection<PubSubTopicPartition> partitions,
-      Duration timeout) {
-    throw new UnsupportedOperationException("endPositions is not supported in SharedKafkaConsumer");
-  }
-
-  @Override
   public Long endOffset(PubSubTopicPartition pubSubTopicPartition) {
     throw new UnsupportedOperationException("endOffset is not supported in SharedKafkaConsumer");
-  }
-
-  @Override
-  public PubSubPosition endPosition(PubSubTopicPartition pubSubTopicPartition) {
-    throw new UnsupportedOperationException("endPosition is not supported in SharedKafkaConsumer");
   }
 
   @Override

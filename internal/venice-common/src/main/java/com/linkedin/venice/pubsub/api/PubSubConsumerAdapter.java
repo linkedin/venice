@@ -39,7 +39,7 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    */
   void subscribe(PubSubTopicPartition pubSubTopicPartition, long lastReadOffset);
 
-  @UnderDevelopment
+  @UnderDevelopment("This method is under development and may be subject to change.")
   void subscribe(PubSubTopicPartition pubSubTopicPartition, PubSubPosition lastReadPubSubPosition);
 
   /**
@@ -143,11 +143,6 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
     return -1;
   }
 
-  @UnderDevelopment
-  default PubSubPosition getLatestPosition(PubSubTopicPartition pubSubTopicPartition) {
-    return PubSubPosition.LATEST;
-  }
-
   /**
    * Retrieves the offset of the first message with a timestamp greater than or equal to the target
    * timestamp for the specified PubSub topic-partition. If no such message is found, {@code null}
@@ -163,8 +158,6 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    */
   Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout);
 
-  PubSubPosition positionForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout);
-
   /**
    * Retrieves the offset of the first message with a timestamp greater than or equal to the target
    * timestamp for the specified PubSub topic-partition. If no such message is found, {@code null}
@@ -179,9 +172,6 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    */
   Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp);
 
-  @UnderDevelopment
-  PubSubPosition positionForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp);
-
   /**
    * Retrieves the beginning offset for the specified PubSub topic-partition.
    *
@@ -193,9 +183,6 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * @throws PubSubClientException If there is an error while attempting to fetch the beginning offset.
    */
   Long beginningOffset(PubSubTopicPartition pubSubTopicPartition, Duration timeout);
-
-  @UnderDevelopment
-  PubSubPosition beginningPosition(PubSubTopicPartition pubSubTopicPartition, Duration timeout);
 
   /**
    * Retrieves the end offsets for a collection of PubSub topic-partitions. The end offset represents
@@ -211,9 +198,6 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    */
   Map<PubSubTopicPartition, Long> endOffsets(Collection<PubSubTopicPartition> partitions, Duration timeout);
 
-  @UnderDevelopment
-  Map<PubSubTopicPartition, PubSubPosition> endPositions(Collection<PubSubTopicPartition> partitions, Duration timeout);
-
   /**
    * Retrieves the end offset for the specified PubSub topic-partition. The end offset represents
    * the highest offset available in each specified partition, i.e., offset of the last message + 1.
@@ -225,9 +209,6 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * @throws PubSubClientException If there is an error while attempting to fetch the end offset.
    */
   Long endOffset(PubSubTopicPartition pubSubTopicPartition);
-
-  @UnderDevelopment
-  PubSubPosition endPosition(PubSubTopicPartition pubSubTopicPartition);
 
   /**
    * Retrieves the list of partitions associated with a given Pub-Sub topic.
