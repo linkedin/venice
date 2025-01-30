@@ -8,6 +8,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_A;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_B;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HEARTBEAT_TIMESTAMP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCLUDE_SYSTEM_STORES;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_ABORT_MIGRATION_CLEANUP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OPERATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
@@ -510,29 +511,35 @@ public class StoresRoutes extends AbstractRoute {
     return new VeniceRouteHandler<TrackableControllerResponse>(TrackableControllerResponse.class) {
       @Override
       public void internalHandle(Request request, TrackableControllerResponse veniceResponse) {
-        // Only allow allowlist users to run this command
-        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
-          return;
-        }
-        AdminSparkServer.validateParams(request, DELETE_STORE.getParams(), admin);
-        String clusterName = request.queryParams(CLUSTER);
-        String storeName = request.queryParams(NAME);
-
-        veniceResponse.setCluster(clusterName);
-        veniceResponse.setName(storeName);
-
-        Optional<AdminCommandExecutionTracker> adminCommandExecutionTracker =
-            admin.getAdminCommandExecutionTracker(clusterName);
-        if (adminCommandExecutionTracker.isPresent()) {
-          // Lock the tracker to get the execution id for the last admin command.
-          // If will not make our performance worse, because we lock the whole cluster while handling the admin
-          // operation in parent admin.
-          synchronized (adminCommandExecutionTracker) {
-            admin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION, false);
-            veniceResponse.setExecutionId(adminCommandExecutionTracker.get().getLastExecutionId());
+        try {
+          // Only allow allowlist users to run this command
+          if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
+            return;
           }
-        } else {
-          admin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION, false);
+          AdminSparkServer.validateParams(request, DELETE_STORE.getParams(), admin);
+          String clusterName = request.queryParams(CLUSTER);
+          String storeName = request.queryParams(NAME);
+          boolean abortMigratingStore =
+              Utils.parseBooleanFromString(request.queryParams(IS_ABORT_MIGRATION_CLEANUP), IS_ABORT_MIGRATION_CLEANUP);
+          veniceResponse.setCluster(clusterName);
+          veniceResponse.setName(storeName);
+
+          Optional<AdminCommandExecutionTracker> adminCommandExecutionTracker =
+              admin.getAdminCommandExecutionTracker(clusterName);
+
+          if (adminCommandExecutionTracker.isPresent()) {
+            // Lock the tracker to get the execution id for the last admin command.
+            // It will not make our performance worse, because we lock the whole cluster while handling the admin
+            // operation in parent admin.
+            synchronized (adminCommandExecutionTracker) {
+              admin.deleteStore(clusterName, storeName, abortMigratingStore, Store.IGNORE_VERSION, false);
+              veniceResponse.setExecutionId(adminCommandExecutionTracker.get().getLastExecutionId());
+            }
+          } else {
+            admin.deleteStore(clusterName, storeName, abortMigratingStore, Store.IGNORE_VERSION, false);
+          }
+        } catch (Throwable e) {
+          veniceResponse.setError(e);
         }
       }
     };

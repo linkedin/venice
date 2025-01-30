@@ -76,7 +76,12 @@ public class LeaderFollowerParticipantModelFactoryTest {
         mockReadOnlyStoreRepository,
         null,
         null,
-        new HeartbeatMonitoringService(new MetricsRepository(), mockReadOnlyStoreRepository, new HashSet<>(), "local"));
+        new HeartbeatMonitoringService(
+            new MetricsRepository(),
+            mockReadOnlyStoreRepository,
+            new HashSet<>(),
+            "local",
+            null));
   }
 
   @Test

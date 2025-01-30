@@ -74,10 +74,6 @@ public class StateModelIngestionProgressNotifier implements VeniceNotifier {
     return stateModelToIngestionCompleteFlagMap.get(getStateModelID(resourceName, partitionId));
   }
 
-  void removeIngestionCompleteFlag(String resourceName, int partitionId) {
-    stateModelToIngestionCompleteFlagMap.remove(getStateModelID(resourceName, partitionId));
-  }
-
   @Override
   public void completed(String resourceName, int partitionId, long offset, String message) {
     CountDownLatch ingestionCompleteFlag = getIngestionCompleteFlag(resourceName, partitionId);

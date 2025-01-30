@@ -504,7 +504,8 @@ class TopicMetadataFetcher implements Closeable {
       // iterate in reverse order to find the first data message (not control message) from the end
       for (int i = lastConsumedRecords.size() - 1; i >= 0; i--) {
         PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = lastConsumedRecords.get(i);
-        if (!record.getKey().isControlMessage()) {
+        if (!record.getKey().isControlMessage()
+            || Arrays.equals(record.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
           stats.recordLatency(GET_PRODUCER_TIMESTAMP_OF_LAST_DATA_MESSAGE, startTime);
           // note that the timestamp is the producer timestamp and not the pubsub message (broker) timestamp
           return record.getValue().getProducerMetadata().getMessageTimestamp();
@@ -732,6 +733,9 @@ class TopicMetadataFetcher implements Closeable {
     completableFutureSupplier.get().whenComplete((value, throwable) -> {
       if (throwable != null) {
         cache.remove(key);
+
+        T cachedContents = (cachedValue != null) ? cachedValue.getValue() : null;
+        LOGGER.warn("Failed to update cachedValue for key: {} cachedValue: {}", key, cachedContents, throwable);
         return;
       }
       putLatestValueInCache(key, value, cache);

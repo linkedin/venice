@@ -85,6 +85,9 @@ public class TestWriteUtils {
   public static final Schema SINGLE_FIELD_RECORD_SCHEMA =
       AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/SingleFieldRecord.avsc"));
 
+  public static final Schema TWO_FIELDS_RECORD_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/TwoFieldsRecord.avsc"));
+
   public static final Schema SIMPLE_USER_WITH_DEFAULT_SCHEMA =
       AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/SimpleUserWithDefault.avsc"));
   public static final Schema USER_WITH_FLOAT_ARRAY_SCHEMA =

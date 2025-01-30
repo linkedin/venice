@@ -1827,7 +1827,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected void reportIfCatchUpVersionTopicOffset(PartitionConsumptionState pcs) {
     int partition = pcs.getPartition();
 
-    if (pcs.isEndOfPushReceived() && !pcs.isLatchReleased()) {
+    if (pcs.isEndOfPushReceived() && pcs.isLatchCreated() && !pcs.isLatchReleased()) {
       long lag = measureLagWithCallToPubSub(
           localKafkaServer,
           versionTopic,
@@ -2458,9 +2458,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
       if (consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
         recordRegionHybridConsumptionStats(
-            // convert the cluster id back to the original cluster id for monitoring purpose
-            serverConfig.getEquivalentKafkaClusterIdForSepTopic(
-                serverConfig.getEquivalentKafkaClusterIdForSepTopic(kafkaClusterId)),
+            kafkaClusterId,
             consumerRecord.getPayloadSize(),
             consumerRecord.getOffset(),
             beforeProcessingBatchRecordsTimestampMs);

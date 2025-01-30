@@ -1,8 +1,8 @@
 package com.linkedin.venice.duckdb;
 
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
-import static com.linkedin.venice.utils.TestWriteUtils.SIMPLE_USER_WITH_DEFAULT_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.SINGLE_FIELD_RECORD_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.TWO_FIELDS_RECORD_SCHEMA;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
@@ -141,12 +141,7 @@ public class DuckDBDaVinciRecordTransformerTest {
 
     try (Connection connection = DriverManager.getConnection(duckDBUrl);
         Statement stmt = connection.createStatement()) {
-      try (ResultSet rs = stmt.executeQuery("SELECT * FROM " + storeName)) {
-        assertTrue(rs.next(), "There should be a first row!");
-        assertEquals(rs.getString("firstName"), "Duck");
-        assertEquals(rs.getString("lastName"), "Goose");
-        assertFalse(rs.next(), "There should be only one row!");
-      }
+      assertDataset1(stmt, storeName);
 
       // Swap here
       recordTransformer_v1.onEndVersionIngestion(2);
@@ -178,7 +173,7 @@ public class DuckDBDaVinciRecordTransformerTest {
         columnsToProject);
     DuckDBDaVinciRecordTransformer recordTransformerForStore2 = new DuckDBDaVinciRecordTransformer(
         1,
-        SIMPLE_USER_WITH_DEFAULT_SCHEMA,
+        TWO_FIELDS_RECORD_SCHEMA,
         NAME_RECORD_V1_SCHEMA,
         NAME_RECORD_V1_SCHEMA,
         false,
@@ -192,71 +187,88 @@ public class DuckDBDaVinciRecordTransformerTest {
 
     GenericRecord keyRecord = new GenericData.Record(SINGLE_FIELD_RECORD_SCHEMA);
     keyRecord.put("key", "key");
-    Lazy<GenericRecord> lazyKey = Lazy.of(() -> keyRecord);
+    Lazy<GenericRecord> lazyKeyForStore1 = Lazy.of(() -> keyRecord);
 
     GenericRecord valueRecordForStore1 = new GenericData.Record(NAME_RECORD_V1_SCHEMA);
     valueRecordForStore1.put("firstName", "Duck");
     valueRecordForStore1.put("lastName", "Goose");
-    Lazy<GenericRecord> lazyValue = Lazy.of(() -> valueRecordForStore1);
-    recordTransformerForStore1.processPut(lazyKey, lazyValue);
-
-    try (Connection connection = DriverManager.getConnection(duckDBUrl);
-        Statement stmt = connection.createStatement()) {
-      try (ResultSet rs = stmt.executeQuery("SELECT * FROM " + store1)) {
-        assertTrue(rs.next(), "There should be a first row!");
-        assertEquals(rs.getString("key"), "key");
-        assertEquals(rs.getString("firstName"), "Duck");
-        assertEquals(rs.getString("lastName"), "Goose");
-        assertFalse(rs.next(), "There should be only one row!");
-      }
-    }
+    Lazy<GenericRecord> lazyValueForStore1 = Lazy.of(() -> valueRecordForStore1);
+    recordTransformerForStore1.processPut(lazyKeyForStore1, lazyValueForStore1);
 
     recordTransformerForStore2.onStartVersionIngestion(true);
 
-    GenericRecord keyRecordForStore2 = new GenericData.Record(SIMPLE_USER_WITH_DEFAULT_SCHEMA);
-    keyRecordForStore2.put("key", "key");
-    keyRecordForStore2.put("value", "value");
+    try (Connection connection = DriverManager.getConnection(duckDBUrl);
+        Statement stmt = connection.createStatement()) {
+      assertDataset1(stmt, store1);
+      assertJoin(stmt, store1, store2, false);
+    }
+
+    GenericRecord keyRecordForStore2 = new GenericData.Record(TWO_FIELDS_RECORD_SCHEMA);
+    keyRecordForStore2.put("id1", 1);
+    keyRecordForStore2.put("id2", 2L);
     Lazy<GenericRecord> lazyKeyForStore2 = Lazy.of(() -> keyRecordForStore2);
 
     GenericRecord valueRecordForStore2 = new GenericData.Record(NAME_RECORD_V1_SCHEMA);
-    valueRecordForStore2.put("firstName", "Duck2");
-    valueRecordForStore2.put("lastName", "Goose2");
+    valueRecordForStore2.put("firstName", "Duck");
+    valueRecordForStore2.put("lastName", "Goose");
     Lazy<GenericRecord> lazyValueForStore2 = Lazy.of(() -> valueRecordForStore2);
     recordTransformerForStore2.processPut(lazyKeyForStore2, lazyValueForStore2);
 
     try (Connection connection = DriverManager.getConnection(duckDBUrl);
         Statement stmt = connection.createStatement()) {
-      try (ResultSet rs = stmt.executeQuery("SELECT * FROM " + store1)) {
+      assertDataset1(stmt, store1);
+
+      try (ResultSet rs = stmt.executeQuery("SELECT * FROM " + store2)) {
         assertTrue(rs.next(), "There should be a first row!");
-        assertEquals(rs.getString("key"), "key");
+        assertEquals(rs.getInt("id1"), 1);
+        assertEquals(rs.getLong("id2"), 2L);
         assertEquals(rs.getString("firstName"), "Duck");
         assertEquals(rs.getString("lastName"), "Goose");
         assertFalse(rs.next(), "There should be only one row!");
       }
 
-      try (ResultSet rs = stmt.executeQuery("SELECT * FROM " + store2)) {
-        assertTrue(rs.next(), "There should be a first row!");
-        assertEquals(rs.getString("key"), "key");
-        assertEquals(rs.getString("value"), "value");
-        assertEquals(rs.getString("firstName"), "Duck2");
-        assertEquals(rs.getString("lastName"), "Goose2");
-        assertFalse(rs.next(), "There should be only one row!");
-      }
+      assertJoin(stmt, store1, store2, true);
 
-      try (ResultSet rs = stmt.executeQuery(
-          "SELECT s1.key AS s1key, s1.firstName AS s1FirstName, s1.lastName AS s1LastName, "
-              + "s2.key AS s2key, s2.value AS s2value, s2.firstName AS s2FirstName, s2.lastName AS s2LastName "
-              + "FROM " + store1 + " s1 JOIN " + store2 + " s2 ON s1.key = s2.key")) {
-        assertTrue(rs.next(), "There should be a first row!");
-        assertEquals(rs.getString("s1key"), "key");
-        assertEquals(rs.getString("s1FirstName"), "Duck");
-        assertEquals(rs.getString("s1LastName"), "Goose");
-        assertEquals(rs.getString("s2key"), "key");
-        assertEquals(rs.getString("s2value"), "value");
-        assertEquals(rs.getString("s2FirstName"), "Duck2");
-        assertEquals(rs.getString("s2LastName"), "Goose2");
-        assertFalse(rs.next(), "There should be only one row!");
+      recordTransformerForStore2.processDelete(lazyKeyForStore2);
+
+      assertJoin(stmt, store1, store2, false);
+
+      recordTransformerForStore1.processDelete(lazyKeyForStore1);
+
+      try (ResultSet rs = stmt.executeQuery(getJoinQuery(store1, store2))) {
+        assertFalse(rs.next());
       }
     }
+  }
+
+  private void assertDataset1(Statement statement, String storeName) throws SQLException {
+    try (ResultSet rs = statement.executeQuery("SELECT * FROM " + storeName)) {
+      assertTrue(rs.next(), "There should be a first row!");
+      assertEquals(rs.getString("key"), "key");
+      assertEquals(rs.getString("firstName"), "Duck");
+      assertEquals(rs.getString("lastName"), "Goose");
+      assertFalse(rs.next(), "There should be only one row!");
+    }
+  }
+
+  private void assertJoin(Statement statement, String store1, String store2, boolean includeStore2)
+      throws SQLException {
+    try (ResultSet rs = statement.executeQuery(getJoinQuery(store1, store2))) {
+      assertTrue(rs.next(), "There should be a first row!");
+      assertEquals(rs.getString("s1key"), "key");
+      assertEquals(rs.getString("s1FirstName"), "Duck");
+      assertEquals(rs.getString("s1LastName"), "Goose");
+      assertEquals(rs.getInt("s2id1"), includeStore2 ? 1 : 0);
+      assertEquals(rs.getLong("s2id2"), includeStore2 ? 2L : 0);
+      assertEquals(rs.getString("s2FirstName"), includeStore2 ? "Duck" : null);
+      assertEquals(rs.getString("s2LastName"), includeStore2 ? "Goose" : null);
+      assertFalse(rs.next(), "There should be only one row!");
+    }
+  }
+
+  private String getJoinQuery(String store1, String store2) {
+    return "SELECT s1.key AS s1key, s1.firstName AS s1FirstName, s1.lastName AS s1LastName, "
+        + "s2.id1 AS s2id1, s2.id2 AS s2id2, s2.firstName AS s2FirstName, s2.lastName AS s2LastName FROM " + store1
+        + " s1 LEFT JOIN " + store2 + " s2 ON s1.firstName = s2.firstName AND s1.lastName = s2.lastName";
   }
 }

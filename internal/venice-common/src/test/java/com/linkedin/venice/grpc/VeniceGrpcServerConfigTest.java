@@ -29,7 +29,7 @@ public class VeniceGrpcServerConfigTest {
 
     VeniceGrpcServerConfig config = new VeniceGrpcServerConfig.Builder().setPort(8080)
         .setCredentials(credentials)
-        .setService(service)
+        .addService(service)
         .setInterceptor(interceptor)
         .setSslFactory(sslFactory)
         .setExecutor(executor)
@@ -37,7 +37,7 @@ public class VeniceGrpcServerConfigTest {
 
     assertEquals(config.getPort(), 8080);
     assertEquals(config.getCredentials(), credentials);
-    assertEquals(config.getService(), service);
+    assertEquals(config.getServices().get(0), service);
     assertEquals(config.getInterceptors(), Collections.singletonList(interceptor));
     assertEquals(config.getSslFactory(), sslFactory);
     assertEquals(config.getExecutor(), executor);
@@ -48,7 +48,7 @@ public class VeniceGrpcServerConfigTest {
     BindableService service = mock(BindableService.class);
 
     VeniceGrpcServerConfig config =
-        new VeniceGrpcServerConfig.Builder().setPort(8080).setService(service).setNumThreads(2).build();
+        new VeniceGrpcServerConfig.Builder().setPort(8080).addService(service).setNumThreads(2).build();
 
     assertTrue(config.getInterceptors().isEmpty());
     assertNotNull(config.getExecutor());
@@ -59,7 +59,7 @@ public class VeniceGrpcServerConfigTest {
     BindableService service = mock(BindableService.class);
 
     VeniceGrpcServerConfig config =
-        new VeniceGrpcServerConfig.Builder().setPort(8080).setService(service).setNumThreads(4).build();
+        new VeniceGrpcServerConfig.Builder().setPort(8080).addService(service).setNumThreads(4).build();
 
     assertNotNull(config.getExecutor());
     assertEquals(((ThreadPoolExecutor) config.getExecutor()).getCorePoolSize(), 4);
@@ -71,9 +71,9 @@ public class VeniceGrpcServerConfigTest {
     when(service.toString()).thenReturn("MockService");
 
     VeniceGrpcServerConfig config =
-        new VeniceGrpcServerConfig.Builder().setPort(9090).setService(service).setNumThreads(2).build();
+        new VeniceGrpcServerConfig.Builder().setPort(9090).addService(service).setNumThreads(2).build();
 
-    String expectedString = "VeniceGrpcServerConfig{port=9090, service=MockService}";
+    String expectedString = "VeniceGrpcServerConfig{port=9090, services=[MockService]}";
     assertEquals(config.toString(), expectedString);
   }
 
@@ -82,7 +82,7 @@ public class VeniceGrpcServerConfigTest {
     BindableService service = mock(BindableService.class);
 
     IllegalArgumentException exception = expectThrows(IllegalArgumentException.class, () -> {
-      new VeniceGrpcServerConfig.Builder().setService(service).setNumThreads(2).build();
+      new VeniceGrpcServerConfig.Builder().addService(service).setNumThreads(2).build();
     });
 
     assertEquals(exception.getMessage(), "Port value is required to create the gRPC server but was not provided.");
@@ -94,7 +94,7 @@ public class VeniceGrpcServerConfigTest {
         IllegalArgumentException.class,
         () -> new VeniceGrpcServerConfig.Builder().setPort(8080).setNumThreads(2).build());
 
-    assertEquals(exception.getMessage(), "A non-null gRPC service instance is required to create the server.");
+    assertEquals(exception.getMessage(), "Service value is required to create the gRPC server but was not provided.");
   }
 
   @Test
@@ -103,7 +103,7 @@ public class VeniceGrpcServerConfigTest {
 
     IllegalArgumentException exception = expectThrows(
         IllegalArgumentException.class,
-        () -> new VeniceGrpcServerConfig.Builder().setPort(8080).setService(service).build());
+        () -> new VeniceGrpcServerConfig.Builder().setPort(8080).addService(service).build());
 
     assertEquals(
         exception.getMessage(),

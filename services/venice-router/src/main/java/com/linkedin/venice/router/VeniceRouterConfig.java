@@ -15,6 +15,7 @@ import static com.linkedin.venice.ConfigKeys.LISTENER_HOSTNAME;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.ConfigKeys.LISTENER_SSL_PORT;
 import static com.linkedin.venice.ConfigKeys.MAX_READ_CAPACITY;
+import static com.linkedin.venice.ConfigKeys.NAME_REPOSITORY_MAX_ENTRY_COUNT;
 import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
 import static com.linkedin.venice.ConfigKeys.REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_ASYNC_START_ENABLED;
@@ -103,6 +104,7 @@ import static com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionSt
 
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.NameRepository;
 import com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
@@ -122,7 +124,7 @@ import org.apache.logging.log4j.Logger;
 /**
  * Configuration for Venice Router.
  */
-public class VeniceRouterConfig {
+public class VeniceRouterConfig implements RouterRetryConfig {
   private static final Logger LOGGER = LogManager.getLogger(VeniceRouterConfig.class);
 
   // IMMUTABLE CONFIGS
@@ -220,6 +222,7 @@ public class VeniceRouterConfig {
   private final double multiKeyLongTailRetryBudgetPercentDecimal;
   private final long longTailRetryBudgetEnforcementWindowInMs;
   private final int retryManagerCorePoolSize;
+  private final int nameRepoMaxEntryCount;
 
   // MUTABLE CONFIGS
 
@@ -405,6 +408,8 @@ public class VeniceRouterConfig {
       longTailRetryBudgetEnforcementWindowInMs =
           props.getLong(ROUTER_LONG_TAIL_RETRY_BUDGET_ENFORCEMENT_WINDOW_MS, Time.MS_PER_MINUTE);
       retryManagerCorePoolSize = props.getInt(ROUTER_RETRY_MANAGER_CORE_POOL_SIZE, 5);
+      this.nameRepoMaxEntryCount =
+          props.getInt(NAME_REPOSITORY_MAX_ENTRY_COUNT, NameRepository.DEFAULT_MAXIMUM_ENTRY_COUNT);
       LOGGER.info("Loaded configuration");
     } catch (Exception e) {
       String errorMessage = "Can not load properties.";
@@ -872,5 +877,9 @@ public class VeniceRouterConfig {
 
   public int getRetryManagerCorePoolSize() {
     return retryManagerCorePoolSize;
+  }
+
+  public int getNameRepoMaxEntryCount() {
+    return this.nameRepoMaxEntryCount;
   }
 }

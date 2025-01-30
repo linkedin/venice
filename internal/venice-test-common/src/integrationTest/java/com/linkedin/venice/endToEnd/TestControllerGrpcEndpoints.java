@@ -20,6 +20,7 @@ import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
+import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcServiceGrpc.VeniceControllerGrpcServiceBlockingStub;
 import com.linkedin.venice.security.SSLFactory;
@@ -72,6 +73,7 @@ public class TestControllerGrpcEndpoints {
     String controllerGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerGrpcUrl();
     ManagedChannel channel = Grpc.newChannelBuilder(controllerGrpcUrl, InsecureChannelCredentials.create()).build();
     VeniceControllerGrpcServiceBlockingStub blockingStub = VeniceControllerGrpcServiceGrpc.newBlockingStub(channel);
+    StoreGrpcServiceGrpc.StoreGrpcServiceBlockingStub storeBlockingStub = StoreGrpcServiceGrpc.newBlockingStub(channel);
 
     // Test 1: getLeaderControllerDetails
     LeaderControllerGrpcResponse grpcResponse = blockingStub.getLeaderController(
@@ -83,22 +85,22 @@ public class TestControllerGrpcEndpoints {
         veniceCluster.getLeaderVeniceController().getControllerSecureGrpcUrl());
 
     // Test 2: createStore
+    ClusterStoreGrpcInfo storeGrpcInfo = ClusterStoreGrpcInfo.newBuilder()
+        .setClusterName(veniceCluster.getClusterName())
+        .setStoreName(storeName)
+        .build();
     CreateStoreGrpcRequest createStoreGrpcRequest = CreateStoreGrpcRequest.newBuilder()
-        .setClusterStoreInfo(
-            ClusterStoreGrpcInfo.newBuilder()
-                .setClusterName(veniceCluster.getClusterName())
-                .setStoreName(storeName)
-                .build())
+        .setStoreInfo(storeGrpcInfo)
         .setOwner("owner")
         .setKeySchema(DEFAULT_KEY_SCHEMA)
         .setValueSchema("\"string\"")
         .build();
 
-    CreateStoreGrpcResponse response = blockingStub.createStore(createStoreGrpcRequest);
+    CreateStoreGrpcResponse response = storeBlockingStub.createStore(createStoreGrpcRequest);
     assertNotNull(response, "Response should not be null");
-    assertNotNull(response.getClusterStoreInfo(), "ClusterStoreInfo should not be null");
-    assertEquals(response.getClusterStoreInfo().getClusterName(), veniceCluster.getClusterName());
-    assertEquals(response.getClusterStoreInfo().getStoreName(), storeName);
+    assertNotNull(response.getStoreInfo(), "ClusterStoreInfo should not be null");
+    assertEquals(response.getStoreInfo().getClusterName(), veniceCluster.getClusterName());
+    assertEquals(response.getStoreInfo().getStoreName(), storeName);
 
     veniceCluster.useControllerClient(controllerClient -> {
       StoreResponse storeResponse = TestUtils.assertCommand(controllerClient.getStore(storeName));
@@ -121,10 +123,10 @@ public class TestControllerGrpcEndpoints {
     String controllerSecureGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerSecureGrpcUrl();
     ChannelCredentials credentials = GrpcUtils.buildChannelCredentials(sslFactory);
     ManagedChannel channel = Grpc.newChannelBuilder(controllerSecureGrpcUrl, credentials).build();
-    VeniceControllerGrpcServiceBlockingStub blockingStub = VeniceControllerGrpcServiceGrpc.newBlockingStub(channel);
+    StoreGrpcServiceGrpc.StoreGrpcServiceBlockingStub storeBlockingStub = StoreGrpcServiceGrpc.newBlockingStub(channel);
 
     CreateStoreGrpcRequest createStoreGrpcRequest = CreateStoreGrpcRequest.newBuilder()
-        .setClusterStoreInfo(
+        .setStoreInfo(
             ClusterStoreGrpcInfo.newBuilder()
                 .setClusterName(veniceCluster.getClusterName())
                 .setStoreName(storeName)
@@ -140,16 +142,16 @@ public class TestControllerGrpcEndpoints {
         mockDynamicAccessController.isAllowlistUsers(null, storeName, Method.GET.name()),
         "User should not be in allowlist");
     StatusRuntimeException exception =
-        Assert.expectThrows(StatusRuntimeException.class, () -> blockingStub.createStore(createStoreGrpcRequest));
+        Assert.expectThrows(StatusRuntimeException.class, () -> storeBlockingStub.createStore(createStoreGrpcRequest));
     assertEquals(exception.getStatus().getCode(), io.grpc.Status.Code.PERMISSION_DENIED);
 
     // Case 2: Allowlist user
     mockDynamicAccessController.addResourceToAllowList(storeName);
-    CreateStoreGrpcResponse okResponse = blockingStub.createStore(createStoreGrpcRequest);
+    CreateStoreGrpcResponse okResponse = storeBlockingStub.createStore(createStoreGrpcRequest);
     assertNotNull(okResponse, "Response should not be null");
-    assertNotNull(okResponse.getClusterStoreInfo(), "ClusterStoreInfo should not be null");
-    assertEquals(okResponse.getClusterStoreInfo().getClusterName(), veniceCluster.getClusterName());
-    assertEquals(okResponse.getClusterStoreInfo().getStoreName(), storeName);
+    assertNotNull(okResponse.getStoreInfo(), "ClusterStoreInfo should not be null");
+    assertEquals(okResponse.getStoreInfo().getClusterName(), veniceCluster.getClusterName());
+    assertEquals(okResponse.getStoreInfo().getStoreName(), storeName);
 
     veniceCluster.useControllerClient(controllerClient -> {
       StoreResponse storeResponse = TestUtils.assertCommand(controllerClient.getStore(storeName));

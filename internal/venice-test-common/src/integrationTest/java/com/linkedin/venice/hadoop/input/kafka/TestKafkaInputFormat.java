@@ -8,7 +8,10 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.Time;
@@ -23,7 +26,6 @@ import java.util.List;
 import java.util.Map;
 import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.JobConf;
-import org.apache.kafka.common.TopicPartition;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -36,7 +38,7 @@ public class TestKafkaInputFormat {
 
   private PubSubBrokerWrapper pubSubBrokerWrapper;
   private TopicManager manager;
-  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeClass
   public void setUp() {
@@ -58,21 +60,21 @@ public class TestKafkaInputFormat {
     pubSubBrokerWrapper.close();
   }
 
-  public String getTopic(int numRecord, int numPartition) {
-    String topicName = Utils.getUniqueString("test_kafka_input_format") + "_v1";
-    manager.createTopic(pubSubTopicRepository.getTopic(topicName), numPartition, 1, true);
+  public PubSubTopic getTopic(int numRecord, int numPartition) {
+    PubSubTopic topic = pubSubTopicRepository.getTopic(Utils.getUniqueString("test_kafka_input_format") + "_v1");
+    manager.createTopic(topic, numPartition, 1, true);
     PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
         pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
     VeniceWriterFactory veniceWriterFactory =
         IntegrationTestPushUtils.getVeniceWriterFactory(pubSubBrokerWrapper, pubSubProducerAdapterFactory);
     try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
-        veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topicName).build())) {
+        veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topic.getName()).build())) {
       for (int i = 0; i < numRecord; ++i) {
         veniceWriter.put((KAFKA_MESSAGE_KEY_PREFIX + i).getBytes(), (KAFKA_MESSAGE_VALUE_PREFIX + i).getBytes(), -1);
       }
     }
 
-    return topicName;
+    return topic;
   }
 
   /**
@@ -94,9 +96,9 @@ public class TestKafkaInputFormat {
     Arrays.sort(kafkaInputSplits, new Comparator<KafkaInputSplit>() {
       @Override
       public int compare(KafkaInputSplit o1, KafkaInputSplit o2) {
-        if (o1.getTopicPartition().partition() > o2.getTopicPartition().partition()) {
+        if (o1.getTopicPartition().getPartitionNumber() > o2.getTopicPartition().getPartitionNumber()) {
           return 1;
-        } else if (o1.getTopicPartition().partition() < o2.getTopicPartition().partition()) {
+        } else if (o1.getTopicPartition().getPartitionNumber() < o2.getTopicPartition().getPartitionNumber()) {
           return -1;
         } else {
           return (int) (o1.getStartingOffset() - o2.getStartingOffset());
@@ -113,7 +115,7 @@ public class TestKafkaInputFormat {
       long expectedPartition = expected[0];
       long expectedStartOffset = expected[1];
       long expectedEndOffset = expected[2];
-      Assert.assertEquals(split.getTopicPartition().partition(), expectedPartition);
+      Assert.assertEquals(split.getTopicPartition().getPartitionNumber(), expectedPartition);
       Assert.assertEquals(split.getStartingOffset(), expectedStartOffset);
       Assert.assertEquals(split.getEndingOffset(), expectedEndOffset);
     }
@@ -122,14 +124,14 @@ public class TestKafkaInputFormat {
   @Test
   public void testGetSplits() throws IOException {
     KafkaInputFormat kafkaInputFormat = new KafkaInputFormat();
-    String topic = getTopic(1000, 3);
+    PubSubTopic topic = getTopic(1000, 3);
     JobConf conf = new JobConf();
     conf.set(KAFKA_INPUT_BROKER_URL, pubSubBrokerWrapper.getAddress());
-    conf.set(KAFKA_INPUT_TOPIC, topic);
-    Map<TopicPartition, Long> latestOffsets = kafkaInputFormat.getLatestOffsets(conf);
-    TopicPartition partition0 = new TopicPartition(topic, 0);
-    TopicPartition partition1 = new TopicPartition(topic, 1);
-    TopicPartition partition2 = new TopicPartition(topic, 2);
+    conf.set(KAFKA_INPUT_TOPIC, topic.getName());
+    Map<PubSubTopicPartition, Long> latestOffsets = kafkaInputFormat.getLatestOffsets(conf);
+    PubSubTopicPartition partition0 = new PubSubTopicPartitionImpl(topic, 0);
+    PubSubTopicPartition partition1 = new PubSubTopicPartitionImpl(topic, 1);
+    PubSubTopicPartition partition2 = new PubSubTopicPartitionImpl(topic, 2);
     Assert.assertEquals(latestOffsets.get(partition0).longValue(), 300);
     Assert.assertEquals(latestOffsets.get(partition1).longValue(), 356);
     Assert.assertEquals(latestOffsets.get(partition2).longValue(), 350);

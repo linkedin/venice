@@ -175,7 +175,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   public static int getKeyLevelLockMaxPoolSizeBasedOnServerConfig(VeniceServerConfig serverConfig, int partitionCount) {
     int consumerPoolSizeForLeaderConsumption = 0;
     if (serverConfig.isDedicatedConsumerPoolForAAWCLeaderEnabled()) {
-      consumerPoolSizeForLeaderConsumption = serverConfig.getDedicatedConsumerPoolSizeForAAWCLeader();
+      consumerPoolSizeForLeaderConsumption = serverConfig.getDedicatedConsumerPoolSizeForAAWCLeader()
+          + serverConfig.getDedicatedConsumerPoolSizeForSepRTLeader();
     } else if (serverConfig.getConsumerPoolStrategyType()
         .equals(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION)) {
       consumerPoolSizeForLeaderConsumption = serverConfig.getConsumerPoolSizeForCurrentVersionAAWCLeader()

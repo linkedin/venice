@@ -1,10 +1,12 @@
 package com.linkedin.venice.controller.server;
 
 import static com.linkedin.venice.exceptions.ErrorType.INCORRECT_CONTROLLER;
+import static com.linkedin.venice.exceptions.ErrorType.INVALID_CONFIG;
 import static com.linkedin.venice.exceptions.ErrorType.STORE_NOT_FOUND;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.controller.Admin;
@@ -13,6 +15,8 @@ import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.TrackableControllerResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
@@ -87,6 +91,40 @@ public class StoreRoutesTest {
             rollForwardToFutureVersion.handle(request, mock(Response.class)).toString(),
             MultiStoreStatusResponse.class);
     Assert.assertEquals(multiStoreStatusResponse.getCluster(), TEST_CLUSTER);
+  }
+
+  @Test
+  public void testDeleteStore() throws Exception {
+    Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(true).when(mockAdmin).isLeaderControllerFor(TEST_CLUSTER);
+
+    Request request = mock(Request.class);
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.NAME));
+    doReturn("true").when(request).queryParams(eq(ControllerApiConstants.IS_ABORT_MIGRATION_CLEANUP));
+
+    Route deleteStoreRoute = new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).deleteStore(mockAdmin);
+    TrackableControllerResponse trackableControllerResponse = ObjectMapperFactory.getInstance()
+        .readValue(
+            deleteStoreRoute.handle(request, mock(Response.class)).toString(),
+            TrackableControllerResponse.class);
+    Assert.assertFalse(trackableControllerResponse.isError());
+    Assert.assertEquals(trackableControllerResponse.getCluster(), TEST_CLUSTER);
+    Assert.assertEquals(trackableControllerResponse.getName(), TEST_STORE_NAME);
+
+    String errMessage = "Store " + TEST_STORE_NAME + "'s migrating flag is false. Not safe to delete a store "
+        + "that is assumed to be migrating without the migrating flag setup as true.";
+    doThrow(new VeniceException(errMessage, INVALID_CONFIG)).when(mockAdmin)
+        .deleteStore(TEST_CLUSTER, TEST_STORE_NAME, true, Store.IGNORE_VERSION, false);
+    trackableControllerResponse = ObjectMapperFactory.getInstance()
+        .readValue(
+            deleteStoreRoute.handle(request, mock(Response.class)).toString(),
+            TrackableControllerResponse.class);
+    Assert.assertTrue(trackableControllerResponse.isError());
+    Assert.assertEquals(trackableControllerResponse.getErrorType(), INVALID_CONFIG);
+    Assert.assertEquals(trackableControllerResponse.getError(), errMessage);
+    Assert.assertEquals(trackableControllerResponse.getCluster(), TEST_CLUSTER);
+    Assert.assertEquals(trackableControllerResponse.getName(), TEST_STORE_NAME);
   }
 
   @Test

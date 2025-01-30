@@ -281,13 +281,17 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
   }
 
   public class AAOrWCLeaderConsumerPoolStrategy extends DefaultConsumerPoolStrategy {
-    private final KafkaConsumerService dedicatedConsumerService;
+    private final KafkaConsumerService dedicatedConsumerServiceForAAWCLeader;
+    private final KafkaConsumerService dedicatedConsumerServiceForSepRT;
 
     public AAOrWCLeaderConsumerPoolStrategy() {
       super();
-      dedicatedConsumerService = consumerServiceConstructor
+      dedicatedConsumerServiceForAAWCLeader = consumerServiceConstructor
           .apply(serverConfig.getDedicatedConsumerPoolSizeForAAWCLeader(), ConsumerPoolType.AA_WC_LEADER_POOL);
-      consumerServices.add(dedicatedConsumerService);
+      dedicatedConsumerServiceForSepRT = consumerServiceConstructor
+          .apply(serverConfig.getDedicatedConsumerPoolSizeForSepRTLeader(), ConsumerPoolType.SEP_RT_LEADER_POOL);
+      consumerServices.add(dedicatedConsumerServiceForAAWCLeader);
+      consumerServices.add(dedicatedConsumerServiceForSepRT);
     }
 
     @Override
@@ -295,9 +299,12 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
         PartitionReplicaIngestionContext topicPartitionReplicaRole) {
       PubSubTopicPartition topicPartition = topicPartitionReplicaRole.getPubSubTopicPartition();
       PubSubTopic versionTopic = topicPartitionReplicaRole.getVersionTopic();
-      if (isAAWCStoreFunc.apply(versionTopic.getName()) && topicPartition.getPubSubTopic().isRealTime()
-          && !topicPartition.getPubSubTopic().isSeparateRealTimeTopic()) {
-        return dedicatedConsumerService;
+      if (isAAWCStoreFunc.apply(versionTopic.getName()) && topicPartition.getPubSubTopic().isRealTime()) {
+        if (topicPartition.getPubSubTopic().isSeparateRealTimeTopic()) {
+          return dedicatedConsumerServiceForSepRT;
+        } else {
+          return dedicatedConsumerServiceForAAWCLeader;
+        }
       }
       return defaultConsumerService;
     }

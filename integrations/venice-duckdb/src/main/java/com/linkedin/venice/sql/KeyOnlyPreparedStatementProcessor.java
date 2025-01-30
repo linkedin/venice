@@ -1,5 +1,6 @@
 package com.linkedin.venice.sql;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.ByteUtils;
 import java.nio.ByteBuffer;
 import java.sql.JDBCType;
@@ -14,70 +15,47 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
 
-public class InsertProcessor {
+/** This class provides plumbing to plug the fields of Avro records into a {@link PreparedStatement}. */
+public class KeyOnlyPreparedStatementProcessor implements PreparedStatementProcessor {
   private final int[] keyFieldIndexToJdbcIndexMapping;
-  private final int[] valueFieldIndexToJdbcIndexMapping;
   private final int[] keyFieldIndexToUnionBranchIndex;
-  private final int[] valueFieldIndexToUnionBranchIndex;
   private final JDBCType[] keyFieldIndexToCorrespondingType;
-  private final JDBCType[] valueFieldIndexToCorrespondingType;
 
-  InsertProcessor(@Nonnull Schema keySchema, @Nonnull Schema valueSchema, @Nonnull Set<String> columnsToProject) {
-    Objects.requireNonNull(keySchema);
-    Objects.requireNonNull(valueSchema);
-    Objects.requireNonNull(columnsToProject);
-
-    int keyFieldCount = keySchema.getFields().size();
+  KeyOnlyPreparedStatementProcessor(@Nonnull Schema keySchema) {
+    int keyFieldCount = Objects.requireNonNull(keySchema).getFields().size();
     this.keyFieldIndexToJdbcIndexMapping = new int[keyFieldCount];
     this.keyFieldIndexToUnionBranchIndex = new int[keyFieldCount];
     this.keyFieldIndexToCorrespondingType = new JDBCType[keyFieldCount];
 
-    int valueFieldCount = valueSchema.getFields().size();
-    this.valueFieldIndexToJdbcIndexMapping = new int[valueFieldCount];
-    this.valueFieldIndexToUnionBranchIndex = new int[valueFieldCount];
-    this.valueFieldIndexToCorrespondingType = new JDBCType[valueFieldCount];
-
-    // N.B.: JDBC indices start at 1, not at 0.
-    int index = 1;
-    index = populateArrays(
-        index,
+    populateArrays(
+        1, // N.B.: JDBC indices start at 1, not at 0.
         keySchema,
         this.keyFieldIndexToJdbcIndexMapping,
         this.keyFieldIndexToUnionBranchIndex,
         this.keyFieldIndexToCorrespondingType,
         Collections.emptySet()); // N.B.: All key columns must be projected.
-    populateArrays(
-        index, // N.B.: The same index value needs to carry over from key to value columns.
-        valueSchema,
-        this.valueFieldIndexToJdbcIndexMapping,
-        this.valueFieldIndexToUnionBranchIndex,
-        this.valueFieldIndexToCorrespondingType,
-        columnsToProject);
   }
 
+  @Override
   public void process(GenericRecord key, GenericRecord value, PreparedStatement preparedStatement) {
     try {
-      processRecord(
-          key,
-          preparedStatement,
-          this.keyFieldIndexToJdbcIndexMapping,
-          this.keyFieldIndexToUnionBranchIndex,
-          this.keyFieldIndexToCorrespondingType);
-
-      processRecord(
-          value,
-          preparedStatement,
-          this.valueFieldIndexToJdbcIndexMapping,
-          this.valueFieldIndexToUnionBranchIndex,
-          this.valueFieldIndexToCorrespondingType);
-
+      processKey(key, preparedStatement);
       preparedStatement.execute();
     } catch (SQLException e) {
-      throw new RuntimeException(e);
+      throw new VeniceException("Failed to execute prepared statement!", e);
     }
   }
 
-  private int populateArrays(
+  protected void processKey(GenericRecord key, PreparedStatement preparedStatement) throws SQLException {
+    processRecord(
+        key,
+        preparedStatement,
+        this.keyFieldIndexToJdbcIndexMapping,
+        this.keyFieldIndexToUnionBranchIndex,
+        this.keyFieldIndexToCorrespondingType);
+  }
+
+  protected void populateArrays(
       int index,
       @Nonnull Schema schema,
       @Nonnull int[] avroFieldIndexToJdbcIndexMapping,
@@ -108,10 +86,13 @@ public class InsertProcessor {
         }
       }
     }
-    return index;
   }
 
-  private void processRecord(
+  protected final int getLastKeyJdbcIndex() {
+    return this.keyFieldIndexToJdbcIndexMapping[this.keyFieldIndexToJdbcIndexMapping.length - 1];
+  }
+
+  protected void processRecord(
       GenericRecord record,
       PreparedStatement preparedStatement,
       int[] avroFieldIndexToJdbcIndexMapping,

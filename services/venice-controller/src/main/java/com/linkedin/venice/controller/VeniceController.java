@@ -8,6 +8,8 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
+import com.linkedin.venice.controller.grpc.server.ClusterAdminOpsGrpcServiceImpl;
+import com.linkedin.venice.controller.grpc.server.StoreGrpcServiceImpl;
 import com.linkedin.venice.controller.grpc.server.interceptor.ControllerGrpcAuditLoggingInterceptor;
 import com.linkedin.venice.controller.grpc.server.interceptor.ControllerGrpcSslSessionInterceptor;
 import com.linkedin.venice.controller.grpc.server.interceptor.ParentControllerRegionValidationInterceptor;
@@ -205,7 +207,7 @@ public class VeniceController {
         secure || multiClusterConfigs.isControllerEnforceSSLOnly(),
         secure ? multiClusterConfigs.getSslConfig() : Optional.empty(),
         secure && multiClusterConfigs.adminCheckReadMethodForKafka(),
-        accessController,
+        secure ? accessController : Optional.empty(),
         multiClusterConfigs.getDisabledRoutes(),
         multiClusterConfigs.getCommonConfig().getJettyConfigOverrides(),
         multiClusterConfigs.getCommonConfig().isDisableParentRequestTopicForStreamPushes(),
@@ -285,6 +287,12 @@ public class VeniceController {
     interceptors.add(parentControllerRegionValidationInterceptor);
 
     VeniceControllerGrpcServiceImpl grpcService = new VeniceControllerGrpcServiceImpl(unsecureRequestHandler);
+    StoreGrpcServiceImpl storeGrpcServiceGrpc = new StoreGrpcServiceImpl(
+        unsecureRequestHandler.getStoreRequestHandler(),
+        unsecureRequestHandler.getControllerAccessManager());
+    ClusterAdminOpsGrpcServiceImpl clusterAdminOpsGrpcService = new ClusterAdminOpsGrpcServiceImpl(
+        unsecureRequestHandler.getClusterAdminOpsRequestHandler(),
+        unsecureRequestHandler.getControllerAccessManager());
     grpcExecutor = ThreadPoolFactory.createThreadPool(
         multiClusterConfigs.getGrpcServerThreadCount(),
         CONTROLLER_GRPC_SERVER_THREAD_NAME,
@@ -293,7 +301,9 @@ public class VeniceController {
 
     adminGrpcServer = new VeniceGrpcServer(
         new VeniceGrpcServerConfig.Builder().setPort(multiClusterConfigs.getAdminGrpcPort())
-            .setService(grpcService)
+            .addService(grpcService)
+            .addService(storeGrpcServiceGrpc)
+            .addService(clusterAdminOpsGrpcService)
             .setExecutor(grpcExecutor)
             .setInterceptors(interceptors)
             .build());
@@ -304,9 +314,17 @@ public class VeniceController {
           multiClusterConfigs.getSslConfig().get().getSslProperties(),
           multiClusterConfigs.getSslFactoryClassName());
       VeniceControllerGrpcServiceImpl secureGrpcService = new VeniceControllerGrpcServiceImpl(secureRequestHandler);
+      StoreGrpcServiceImpl secureStoreGrpcService = new StoreGrpcServiceImpl(
+          secureRequestHandler.getStoreRequestHandler(),
+          secureRequestHandler.getControllerAccessManager());
+      ClusterAdminOpsGrpcServiceImpl secureClusterAdminOpsGrpcService = new ClusterAdminOpsGrpcServiceImpl(
+          secureRequestHandler.getClusterAdminOpsRequestHandler(),
+          secureRequestHandler.getControllerAccessManager());
       adminSecureGrpcServer = new VeniceGrpcServer(
           new VeniceGrpcServerConfig.Builder().setPort(multiClusterConfigs.getAdminSecureGrpcPort())
-              .setService(secureGrpcService)
+              .addService(secureGrpcService)
+              .addService(secureStoreGrpcService)
+              .addService(secureClusterAdminOpsGrpcService)
               .setExecutor(grpcExecutor)
               .setSslFactory(sslFactory)
               .setInterceptors(interceptors)

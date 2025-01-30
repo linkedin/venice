@@ -366,12 +366,14 @@ public class AdminSparkServer extends AbstractVeniceService {
         new VeniceParentControllerRegionStateHandler(admin, createVersion.addVersionAndStartIngestion(admin)));
     httpService.post(
         NEW_STORE.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, createStoreRoute.createStore(admin, requestHandler)));
+        new VeniceParentControllerRegionStateHandler(
+            admin,
+            createStoreRoute.createStore(admin, requestHandler.getStoreRequestHandler())));
     httpService.get(
         CHECK_RESOURCE_CLEANUP_FOR_STORE_CREATION.getPath(),
         new VeniceParentControllerRegionStateHandler(
             admin,
-            createStoreRoute.checkResourceCleanupForStoreCreation(admin)));
+            createStoreRoute.checkResourceCleanupForStoreCreation(admin, requestHandler.getStoreRequestHandler())));
     httpService.post(
         DELETE_STORE.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.deleteStore(admin)));
@@ -497,12 +499,15 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     httpService.get(
         EXECUTION.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, adminCommandExecutionRoutes.getExecution(admin)));
+        new VeniceParentControllerRegionStateHandler(
+            admin,
+            adminCommandExecutionRoutes.getExecution(admin, requestHandler.getClusterAdminOpsRequestHandler())));
     httpService.get(
         LAST_SUCCEED_EXECUTION_ID.getPath(),
         new VeniceParentControllerRegionStateHandler(
             admin,
-            adminCommandExecutionRoutes.getLastSucceedExecutionId(admin)));
+            adminCommandExecutionRoutes
+                .getLastSucceedExecutionId(admin, requestHandler.getClusterAdminOpsRequestHandler())));
 
     httpService.get(
         STORAGE_ENGINE_OVERHEAD_RATIO.getPath(),
@@ -555,13 +560,19 @@ public class AdminSparkServer extends AbstractVeniceService {
             storesRoutes.enableActiveActiveReplicationForCluster(admin)));
     httpService.post(
         UPDATE_ACL.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, createStoreRoute.updateAclForStore(admin)));
+        new VeniceParentControllerRegionStateHandler(
+            admin,
+            createStoreRoute.updateAclForStore(admin, requestHandler.getStoreRequestHandler())));
     httpService.get(
         GET_ACL.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, createStoreRoute.getAclForStore(admin)));
+        new VeniceParentControllerRegionStateHandler(
+            admin,
+            createStoreRoute.getAclForStore(admin, requestHandler.getStoreRequestHandler())));
     httpService.get(
         DELETE_ACL.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, createStoreRoute.deleteAclForStore(admin)));
+        new VeniceParentControllerRegionStateHandler(
+            admin,
+            createStoreRoute.deleteAclForStore(admin, requestHandler.getStoreRequestHandler())));
     httpService.get(
         GET_DELETABLE_STORE_TOPICS.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getDeletableStoreTopics(admin)));
@@ -616,10 +627,15 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     httpService.get(
         GET_ADMIN_TOPIC_METADATA.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, adminTopicMetadataRoutes.getAdminTopicMetadata(admin)));
+        new VeniceParentControllerRegionStateHandler(
+            admin,
+            adminTopicMetadataRoutes.getAdminTopicMetadata(admin, requestHandler.getClusterAdminOpsRequestHandler())));
     httpService.post(
         UPDATE_ADMIN_TOPIC_METADATA.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, adminTopicMetadataRoutes.updateAdminTopicMetadata(admin)));
+        new VeniceParentControllerRegionStateHandler(
+            admin,
+            adminTopicMetadataRoutes
+                .updateAdminTopicMetadata(admin, requestHandler.getClusterAdminOpsRequestHandler())));
 
     httpService.post(
         DELETE_KAFKA_TOPIC.getPath(),

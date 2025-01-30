@@ -111,6 +111,14 @@ public class IngestionThrottler implements Closeable {
             false,
             EventThrottler.BLOCK_STRATEGY));
     this.poolTypeRecordThrottlerMap.put(
+        ConsumerPoolType.SEP_RT_LEADER_POOL,
+        new EventThrottler(
+            serverConfig.getSepRTLeaderQuotaRecordsPerSecond(),
+            serverConfig.getKafkaFetchQuotaTimeWindow(),
+            "sep_rt_leader_records_count",
+            false,
+            EventThrottler.BLOCK_STRATEGY));
+    this.poolTypeRecordThrottlerMap.put(
         ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL,
         new EventThrottler(
             serverConfig.getCurrentVersionAAWCLeaderQuotaRecordsPerSecond(),
