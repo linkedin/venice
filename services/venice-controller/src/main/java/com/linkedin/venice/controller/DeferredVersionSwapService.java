@@ -236,20 +236,22 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               HelixVeniceClusterResources resources =
                   veniceParentHelixAdmin.getVeniceHelixAdmin().getHelixVeniceClusterResources(cluster);
               ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
-              Store parentStore = repository.getStore(storeName);
               if (numNonTargetRegionsFailed > remainingRegions.size() / 2) {
                 LOGGER.warn(
                     "Skipping version swap for store: {} on version: {} as majority of non target regions have failed",
                     storeName,
                     targetVersionNum);
-                parentStore.updateVersionStatus(targetVersionNum, ERROR);
-                repository.updateStore(parentStore);
+                store.updateVersionStatus(targetVersionNum, ERROR);
+                repository.updateStore(store);
                 continue;
               }
 
-              // If the majority of the remaining regions have not completed their push yet or if any of the regions
-              // have yet to reach a terminal status:
-              // COMPLETED or PUSHED, do not perform versions swap yet
+              // Do not perform a version swap if:
+              // 1. The majority of the remaining regions have not completed their push yet
+              // 2. Any of the remaining regions have yet to reach a terminal status: COMPLETED or ERRORas we need to
+              // wait for all of the
+              // remaining regions to be completed to account for cases where we have 3 remaining regions and 2
+              // COMPLETED, but 1 is STARTED
               int nonTargetRegionsInTerminalStatus = nonTargetRegionsCompleted.size() + numNonTargetRegionsFailed;
               if (nonTargetRegionsCompleted.size() < remainingRegions.size() / 2
                   || nonTargetRegionsInTerminalStatus != remainingRegions.size()) {
@@ -284,8 +286,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
               // Once version is swapped in the remaining regions, update parent status to ONLINE so that we don't check
               // this version for version swap again
-              parentStore.updateVersionStatus(targetVersionNum, ONLINE);
-              repository.updateStore(parentStore);
+              store.updateVersionStatus(targetVersionNum, ONLINE);
+              repository.updateStore(store);
               LOGGER.info(
                   "Updated parent version status to online for version: {} in store: {}",
                   targetVersionNum,

@@ -281,7 +281,7 @@ public class VeniceController {
   }
 
   private Optional<DeferredVersionSwapService> createDeferredVersionSwapService() {
-    if (multiClusterConfigs.isParent()) {
+    if (multiClusterConfigs.isParent() && multiClusterConfigs.isDeferredVersionSwapServiceEnabled()) {
       Admin admin = controllerService.getVeniceHelixAdmin();
       return Optional.of(
           new DeferredVersionSwapService(

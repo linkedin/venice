@@ -42,6 +42,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_ZK_ADDRESSS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DANGLING_TOPIC_CLEAN_UP_INTERVAL_SECOND;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DANGLING_TOPIC_OCCURRENCE_THRESHOLD_FOR_CLEANUP;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_REPLICA_ENABLER_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_ROUTES;
@@ -546,6 +547,7 @@ public class VeniceControllerClusterConfig {
   private Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
   private boolean isHybridStorePartitionCountUpdateEnabled;
   private final long deferredVersionSwapSleepMs;
+  private final boolean deferredVersionSwapServiceEnabled;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
@@ -1000,6 +1002,7 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(ConfigKeys.CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE, false);
     this.deferredVersionSwapSleepMs =
         props.getLong(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, TimeUnit.MINUTES.toMillis(1));
+    this.deferredVersionSwapServiceEnabled = props.getBoolean(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, false);
   }
 
   public VeniceProperties getProps() {
@@ -1512,6 +1515,10 @@ public class VeniceControllerClusterConfig {
 
   public long getDeferredVersionSwapSleepMs() {
     return deferredVersionSwapSleepMs;
+  }
+
+  public boolean getIsDeferredVersionSwapServiceEnabled() {
+    return deferredVersionSwapServiceEnabled;
   }
 
   public long getTerminalStateTopicCheckerDelayMs() {
