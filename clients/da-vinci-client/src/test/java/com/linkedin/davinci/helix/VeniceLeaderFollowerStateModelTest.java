@@ -59,7 +59,7 @@ public class VeniceLeaderFollowerStateModelTest extends
   public void testOnBecomeFollowerFromOffline() throws Exception {
     // if the resource is not the current serving version, latch is not placed.
     Version version = new VersionImpl("mockStore.getName()", 2, "");
-    when(mockStore.getVersion(Mockito.anyInt())).thenReturn(version);
+    when(mockStore.getVersion(anyInt())).thenReturn(version);
     when(mockStore.getCurrentVersion()).thenReturn(2);
     testStateModel.onBecomeStandbyFromOffline(mockMessage, mockContext);
     verify(mockNotifier, never()).waitConsumptionCompleted(
