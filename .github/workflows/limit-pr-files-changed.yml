@@ -78,6 +78,7 @@ jobs:
           # Fail if there are both schema and Java file changes
           if [[ "JAVA_FILE" == true && "SCHEMA_FILE" == true ]]; then
             echo "The PR has both schema and Java code changes, please make a separate PR for schema changes."
+            echo "For schema file changes, please update build.gradle to update 'versionOverrides' inside compileAvro task to use fixed protocol version"
             exit 1
           fi
           
