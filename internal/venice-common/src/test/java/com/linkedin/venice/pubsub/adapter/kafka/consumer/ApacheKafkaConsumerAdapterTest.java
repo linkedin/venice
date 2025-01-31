@@ -110,6 +110,7 @@ public class ApacheKafkaConsumerAdapterTest {
     doNothing().when(internalKafkaConsumer).assign(any());
 
     kafkaConsumerAdapter.subscribe(pubSubTopicPartition, 100);
+    assertTrue(kafkaConsumerAdapter.getAssignment().contains(pubSubTopicPartition));
     verify(internalKafkaConsumer).assign(any(List.class));
     verify(internalKafkaConsumer).seek(topicPartition, 101); // Should seek to offset + 1
 
@@ -127,6 +128,7 @@ public class ApacheKafkaConsumerAdapterTest {
     doNothing().when(internalKafkaConsumer).assign(any());
 
     kafkaConsumerAdapter.subscribe(pubSubTopicPartition, PubSubPosition.EARLIEST);
+    assertTrue(kafkaConsumerAdapter.getAssignment().contains(pubSubTopicPartition));
     verify(internalKafkaConsumer).assign(any(List.class));
     verify(internalKafkaConsumer).seekToBeginning(Collections.singletonList(topicPartition));
 
@@ -157,6 +159,7 @@ public class ApacheKafkaConsumerAdapterTest {
 
     kafkaConsumerAdapter.subscribe(pubSubTopicPartition, PubSubPosition.LATEST);
 
+    assertTrue(kafkaConsumerAdapter.getAssignment().contains(pubSubTopicPartition));
     verify(internalKafkaConsumer).assign(any(List.class));
     verify(internalKafkaConsumer).seekToEnd(Collections.singletonList(topicPartition));
   }
@@ -182,7 +185,7 @@ public class ApacheKafkaConsumerAdapterTest {
     when(internalKafkaConsumer.assignment()).thenReturn(Collections.emptySet());
 
     kafkaConsumerAdapter.subscribe(pubSubTopicPartition, offsetPosition);
-
+    assertTrue(kafkaConsumerAdapter.getAssignment().contains(pubSubTopicPartition));
     verify(internalKafkaConsumer).assign(any(List.class));
     verify(internalKafkaConsumer).seek(topicPartition, 51);
   }
@@ -196,8 +199,8 @@ public class ApacheKafkaConsumerAdapterTest {
         .thenReturn(Collections.singleton(topicPartition));
 
     kafkaConsumerAdapter.subscribe(pubSubTopicPartition, 100);
+    assertTrue(kafkaConsumerAdapter.getAssignment().contains(pubSubTopicPartition));
     kafkaConsumerAdapter.subscribe(pubSubTopicPartition, 200);
-
     verify(internalKafkaConsumer, times(1)).assign(any());
   }
 

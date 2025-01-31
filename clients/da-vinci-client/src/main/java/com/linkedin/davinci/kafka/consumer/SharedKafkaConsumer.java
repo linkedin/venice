@@ -129,15 +129,15 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
     stats.recordTotalUpdateCurrentAssignmentLatency(getElapsedTimeFromMsToMs(updateCurrentAssignmentStartTime));
   }
 
-  @UnderDevelopment(value = "This API may not be implemented in all PubSubConsumerAdapter implementations.")
   @Override
   public synchronized void subscribe(PubSubTopicPartition pubSubTopicPartition, long lastReadOffset) {
     throw new VeniceException(
         this.getClass().getSimpleName() + " does not support subscribe without specifying a version-topic.");
   }
 
+  @UnderDevelopment(value = "This API may not be implemented in all PubSubConsumerAdapter implementations.")
   @Override
-  public synchronized void subscribe(PubSubTopicPartition pubSubTopicPartition, PubSubPosition lastReadOffset) {
+  public synchronized void subscribe(PubSubTopicPartition pubSubTopicPartition, PubSubPosition lastReadPubSubPosition) {
     throw new VeniceException(
         this.getClass().getSimpleName() + " does not support subscribe without specifying a version-topic.");
   }

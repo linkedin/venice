@@ -174,9 +174,6 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     }
     assignments.put(topicPartition, pubSubTopicPartition);
     LOGGER.info("Subscribed to topic-partition: {} from position: {}", pubSubTopicPartition, logMessage);
-
-    assignments.put(topicPartition, pubSubTopicPartition);
-    LOGGER.info("Subscribed to topic-partition: {} from position: {}", pubSubTopicPartition, lastReadPubSubPosition);
   }
 
   private TopicPartition toKafkaTopicPartition(PubSubTopicPartition topicPartition) {

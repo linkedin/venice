@@ -41,7 +41,7 @@ public interface PubSubPosition {
 
     @Override
     public int hashCode() {
-      return 1;
+      return -1;
     }
   };
 
@@ -79,7 +79,7 @@ public interface PubSubPosition {
 
     @Override
     public int hashCode() {
-      return 2;
+      return -2;
     }
   };
 
