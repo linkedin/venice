@@ -1993,6 +1993,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       throw new VeniceException("Store name: " + storeName + " clashes with the internal usage, please change it");
     }
 
+    if (VeniceView.isViewStore(storeName)) {
+      throw new VeniceException(
+          "Store name: " + storeName + " clashes with the internal usage, please remove the prefix: "
+              + VeniceView.VIEW_STORE_PREFIX);
+    }
+
     if (!allowSystemStore && VeniceSystemStoreUtils.isSystemStore(storeName)) {
       throw new VeniceException(
           "Store name: " + storeName + " clashes with the Venice system store usage, please change it");

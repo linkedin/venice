@@ -81,13 +81,14 @@ public abstract class VeniceViewWriter extends VeniceView {
    *
    * @param newValue the incoming fully specified value which hasn't yet been committed to Venice
    * @param key the key of the record that designates newValue and oldValue
-   * @param version the version of the store taking this record
    * @param newValueSchemaId the schemaId of the incoming record
+   * @param isChunkedKey is the key already serialized with {@link com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer}
    */
   public abstract CompletableFuture<PubSubProduceResult> processRecord(
       ByteBuffer newValue,
       byte[] key,
-      int newValueSchemaId);
+      int newValueSchemaId,
+      boolean isChunkedKey);
 
   /**
    * Called when the server encounters a control message. There isn't (today) a strict ordering

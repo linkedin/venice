@@ -19,4 +19,20 @@ public interface DaVinciClientFactory {
       String storeName,
       DaVinciConfig config,
       Class<V> valueClass);
+
+  <K, V> DaVinciClient<K, V> getGenericAvroClient(String storeName, String viewName, DaVinciConfig config);
+
+  <K, V> DaVinciClient<K, V> getAndStartGenericAvroClient(String storeName, String viewName, DaVinciConfig config);
+
+  <K, V extends SpecificRecord> DaVinciClient<K, V> getSpecificAvroClient(
+      String storeName,
+      String viewName,
+      DaVinciConfig config,
+      Class<V> valueClass);
+
+  <K, V extends SpecificRecord> DaVinciClient<K, V> getAndStartSpecificAvroClient(
+      String storeName,
+      String viewName,
+      DaVinciConfig config,
+      Class<V> valueClass);
 }

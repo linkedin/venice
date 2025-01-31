@@ -74,6 +74,7 @@ import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.BATCH_JOB_HEARTBEAT;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PUSH_JOB_DETAILS;
+import static com.linkedin.venice.views.VeniceView.VIEW_NAME_SEPARATOR;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -2864,8 +2865,11 @@ public class VeniceParentHelixAdmin implements Admin {
     // TODO: Pass a proper properties object here. Today this isn't used in this context
     if (viewConfig.getViewClassName().equals(MaterializedView.class.getCanonicalName())) {
       if (viewName.contains(VERSION_SEPARATOR)) {
+        throw new VeniceException(String.format("View name cannot contain version separator: %s", VERSION_SEPARATOR));
+      }
+      if (viewName.contains(VIEW_NAME_SEPARATOR)) {
         throw new VeniceException(
-            String.format("Materialized View name cannot contain version separator: %s", VERSION_SEPARATOR));
+            String.format("View name cannot contain view name separator: %s", VIEW_NAME_SEPARATOR));
       }
       Map<String, String> viewParams = viewConfig.getViewParameters();
       MaterializedViewParameters.Builder decoratedViewParamBuilder =

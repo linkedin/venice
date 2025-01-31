@@ -113,9 +113,11 @@ public class VeniceMetadataRepositoryBuilder {
         NativeMetadataRepository.getInstance(clientConfig, veniceProperties, icProvider);
     systemStoreBasedRepository.start();
     systemStoreBasedRepository.refresh();
-    clusterInfoProvider = systemStoreBasedRepository;
-    storeRepo = systemStoreBasedRepository;
-    schemaRepo = systemStoreBasedRepository;
+    NativeMetadataRepositoryViewAdapter repositoryViewAdapter =
+        new NativeMetadataRepositoryViewAdapter(systemStoreBasedRepository);
+    clusterInfoProvider = repositoryViewAdapter;
+    storeRepo = repositoryViewAdapter;
+    schemaRepo = repositoryViewAdapter;
     liveClusterConfigRepo = null;
   }
 

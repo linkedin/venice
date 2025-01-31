@@ -779,7 +779,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     if (isReady()) {
       return;
     }
-    logger.info("Starting client, storeName=" + getStoreName());
+    logger.info("Starting client, storeName={}", getStoreName());
     VeniceConfigLoader configLoader = buildVeniceConfig();
     Optional<ObjectCacheConfig> cacheConfig = Optional.ofNullable(daVinciConfig.getCacheConfig());
     initBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig, recordTransformerConfig);
@@ -790,7 +790,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       if (daVinciConfig.isCacheEnabled()) {
         cacheBackend = getBackend().getObjectCache();
       }
-
       storeBackend = getBackend().getStoreOrThrow(getStoreName());
       if (managedClients.isPresent()) {
         storeBackend.setManaged(daVinciConfig.isManaged());

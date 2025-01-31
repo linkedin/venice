@@ -83,7 +83,11 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
   }
 
   @Override
-  public CompletableFuture<PubSubProduceResult> processRecord(ByteBuffer newValue, byte[] key, int newValueSchemaId) {
+  public CompletableFuture<PubSubProduceResult> processRecord(
+      ByteBuffer newValue,
+      byte[] key,
+      int newValueSchemaId,
+      boolean isChunkedKey) {
     // No op
     return CompletableFuture.completedFuture(null);
   }

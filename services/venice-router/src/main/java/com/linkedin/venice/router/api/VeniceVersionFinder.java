@@ -9,8 +9,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceStoreIsMigratedException;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
-import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
@@ -41,7 +41,7 @@ public class VeniceVersionFinder {
 
   private final ReadOnlyStoreRepository metadataRepository;
   private final StaleVersionStats stats;
-  private final HelixReadOnlyStoreConfigRepository storeConfigRepo;
+  private final ReadOnlyStoreConfigRepository storeConfigRepo;
   private final Map<String, String> clusterToD2Map;
   private final String clusterName;
   private final ConcurrentMap<String, Integer> lastCurrentVersionMap = new ConcurrentHashMap<>();
@@ -57,7 +57,7 @@ public class VeniceVersionFinder {
       ReadOnlyStoreRepository metadataRepository,
       HelixBaseRoutingRepository routingDataRepository,
       StaleVersionStats stats,
-      HelixReadOnlyStoreConfigRepository storeConfigRepo,
+      ReadOnlyStoreConfigRepository storeConfigRepo,
       Map<String, String> clusterToD2Map,
       String clusterName,
       CompressorFactory compressorFactory,
