@@ -112,7 +112,7 @@ public abstract class VeniceView {
   }
 
   /**
-   * @param topicName for the view topic
+   * @param topicName for the view topic, e.g. batchStore_148ff3a146001_v1_MaterializedViewTest_mv
    * @return the corresponding store name and view name for the given view topic in a single string.
    */
   public static String parseStoreAndViewFromViewTopic(String topicName) {

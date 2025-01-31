@@ -84,6 +84,10 @@ public class NativeMetadataRepositoryViewAdapterTest {
     assertEquals(repoViewAdapter.getSubscribedViewStores(storeName).size(), 0);
     repoViewAdapter.unsubscribe(storeName);
     verify(nativeMetadataRepository, times(1)).unsubscribe(storeName);
+    // We should be able to resubscribe
+    repoViewAdapter.subscribe(viewStoreName1);
+    verify(nativeMetadataRepository, times(4)).subscribe(storeName);
+    assertEquals(repoViewAdapter.getSubscribedViewStores(storeName).iterator().next(), viewStoreName1);
 
     // Do some simple thread-safe sanity check
     Mockito.clearInvocations(nativeMetadataRepository);
@@ -205,6 +209,9 @@ public class NativeMetadataRepositoryViewAdapterTest {
     verify(nativeMetadataRepository, times(1)).unregisterStoreDataChangedListener(wrappedListenerCaptor.capture());
     // Ensure the storeDataChangedAdapterMap is working and we are unregistering the correct listener
     assertEquals(wrappedListenerCaptor.getValue(), listenerViewAdapter);
+    // We should be able to re-register the same listener
+    repoViewAdapter.registerStoreDataChangedListener(testDataChangedListener);
+    verify(nativeMetadataRepository, times(2)).registerStoreDataChangedListener(wrappedListenerCaptor.capture());
   }
 
   private void invokeAndVerifyPassThroughAPIs(

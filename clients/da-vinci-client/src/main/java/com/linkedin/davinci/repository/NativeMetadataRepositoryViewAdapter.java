@@ -161,6 +161,14 @@ public class NativeMetadataRepositoryViewAdapter implements SubscriptionBasedRea
     return nativeMetadataRepository.refreshOneStore(VeniceView.getStoreName(storeName));
   }
 
+  /**
+   * This method will only return all the subscribed Venice stores and not include the view stores for the following
+   * reasons:
+   *   1. Currently, there is no usage of get all view stores.
+   *   2. The purpose of this adapter is to allow consumers to work with view stores without having to leak view store
+   *   specific logic everywhere. If the repository included view stores in getAllStores() then callers will need to
+   *   understand and differentiate view stores in order to avoid unexpected behaviors.
+   */
   @Override
   public List<Store> getAllStores() {
     return nativeMetadataRepository.getAllStores();
@@ -173,18 +181,18 @@ public class NativeMetadataRepositoryViewAdapter implements SubscriptionBasedRea
 
   @Override
   public void registerStoreDataChangedListener(StoreDataChangedListener listener) {
-    StoreDataChangedListener adapterListener = new StoreDataChangedListenerViewAdapter(listener, this);
-    nativeMetadataRepository.registerStoreDataChangedListener(adapterListener);
-    storeDataChangedAdapterMap.put(listener, adapterListener);
+    StoreDataChangedListener dataChangedListenerAdapter = new StoreDataChangedListenerViewAdapter(listener, this);
+    storeDataChangedAdapterMap.computeIfAbsent(listener, (ignored) -> {
+      nativeMetadataRepository.registerStoreDataChangedListener(dataChangedListenerAdapter);
+      return dataChangedListenerAdapter;
+    });
   }
 
   @Override
   public void unregisterStoreDataChangedListener(StoreDataChangedListener listener) {
-    storeDataChangedAdapterMap.compute(listener, (dataChangeListener, dataChangedListenerAdapter) -> {
-      if (dataChangedListenerAdapter != null) {
-        nativeMetadataRepository.unregisterStoreDataChangedListener(dataChangedListenerAdapter);
-      }
-      return dataChangedListenerAdapter;
+    storeDataChangedAdapterMap.computeIfPresent(listener, (ignored, dataChangedListenerAdapter) -> {
+      nativeMetadataRepository.unregisterStoreDataChangedListener(dataChangedListenerAdapter);
+      return null;
     });
   }
 
@@ -202,24 +210,25 @@ public class NativeMetadataRepositoryViewAdapter implements SubscriptionBasedRea
   public void subscribe(String storeName) throws InterruptedException {
     String internalStoreName = VeniceView.getStoreName(storeName);
     nativeMetadataRepository.subscribe(internalStoreName);
-    subscribedStoreMap.compute(internalStoreName, (k, s) -> {
-      Set<String> stores = s == null ? new ConcurrentSkipListSet<>() : s;
-      stores.add(storeName);
-      return stores;
+    subscribedStoreMap.compute(internalStoreName, (ignored, subscribedStores) -> {
+      if (subscribedStores == null) {
+        subscribedStores = new ConcurrentSkipListSet<>();
+      }
+      subscribedStores.add(storeName);
+      return subscribedStores;
     });
   }
 
   @Override
   public void unsubscribe(String storeName) {
     String internalStoreName = VeniceView.getStoreName(storeName);
-    subscribedStoreMap.compute(internalStoreName, (k, s) -> {
-      if (s != null) {
-        s.remove(storeName);
-        if (s.isEmpty()) {
-          nativeMetadataRepository.unsubscribe(internalStoreName);
-        }
+    subscribedStoreMap.computeIfPresent(internalStoreName, (ignored, subscribedStores) -> {
+      subscribedStores.remove(storeName);
+      if (subscribedStores.isEmpty()) {
+        nativeMetadataRepository.unsubscribe(internalStoreName);
+        return null;
       }
-      return s;
+      return subscribedStores;
     });
   }
 
