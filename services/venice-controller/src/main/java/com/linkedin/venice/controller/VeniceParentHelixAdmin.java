@@ -3672,7 +3672,7 @@ public class VeniceParentHelixAdmin implements Admin {
         Store parentStore = repository.getStore(storeName);
         Version version = parentStore.getVersion(versionNum);
         boolean isDeferredSwap = version != null && version.isVersionSwapDeferred();
-        if (!isDeferredSwap) {
+        if (!isDeferredSwap || !StringUtils.isEmpty(targetedRegions)) {
           // targetedRegions is non-empty for target region push of batch store
           boolean isTargetRegionPush = !StringUtils.isEmpty(targetedRegions);
           Version storeVersion = parentStore.getVersion(versionNum);
@@ -3696,12 +3696,15 @@ public class VeniceParentHelixAdmin implements Admin {
           }
           // status PUSHED is set when batch store's target region push is completed, but other region are yet to
           // complete
-          if (isTargetRegionPush && !isVersionPushed) {
-            parentStore.updateVersionStatus(versionNum, PUSHED);
-            repository.updateStore(parentStore);
-          } else { // status ONLINE is set when all region finishes ingestion for either regular or target region push.
-            parentStore.updateVersionStatus(versionNum, ONLINE);
-            repository.updateStore(parentStore);
+          if (currentReturnStatus.equals(ExecutionStatus.COMPLETED)) {
+            if (isTargetRegionPush && !isVersionPushed) {
+              parentStore.updateVersionStatus(versionNum, PUSHED);
+              repository.updateStore(parentStore);
+            } else { // status ONLINE is set when all region finishes ingestion for either regular or target region
+                     // push.
+              parentStore.updateVersionStatus(versionNum, ONLINE);
+              repository.updateStore(parentStore);
+            }
           }
         }
       }
