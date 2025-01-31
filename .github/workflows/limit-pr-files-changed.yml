@@ -1,0 +1,110 @@
+name: Enforce Max Lines Changed Per File
+
+on:
+  pull_request:
+    paths:
+      - '**/*.java'   # Monitor changes to Java files
+      - '**/*.avsc'   # Monitor changes to Avro schema files
+      - '**/*.proto'   # Monitor changes to proto schema files
+
+jobs:
+  enforce-lines-changed:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Fetch PR Title via GitHub API
+        id: pr_details
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          PR_TITLE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/pulls/$PR_NUMBER" | jq -r '.title')
+          echo "pr_title=$PR_TITLE" >> $GITHUB_ENV
+          PR_DESCRIPTION=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \ -H "Accept: application/vnd.github.v3+json" \
+          "https://api.github.com/repos/${{ github.repository }}/pulls/$PR_NUMBER" | jq -r '.body')
+          {
+             echo "pr_description<<EOF"
+             echo "$PR_DESCRIPTION"
+             echo "EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Check for Override Keyword
+        id: check_override
+        run: |
+          # Define the keyword for override
+          OVERRIDE_KEYWORD="DIFFSIZEOVERRIDE"
+          
+          # Check PR title and body for the keyword
+          if printf "%s%s" "$pr_title$pr_description" | grep -iq "$OVERRIDE_KEYWORD"; then
+            echo "Override keyword found. Skipping validation."
+            echo "override=true" >> $GITHUB_OUTPUT
+          else
+            echo "override=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Calculate Lines Changed Per File
+        if: ${{ steps.check_override.outputs.override != 'true' }}
+        id: lines_changed_per_file
+        run: |
+          # Define the maximum allowed lines changed per file
+          JAVA_MAX_LINES=500
+          SCHEMA_MAX_LINES=1500
+          MAX_TOTAL_LINES_ADDED=2000
+          TOTAL_LINED_ADDED=0
+          # Get the diff of the PR and process each file
+          EXCEEDED=false
+          JAVA_FILE=false
+          SCHEMA_FILE=false
+          while IFS=$'\t' read -r added removed file; do
+          # Skip test files
+          if [[ "$file" != *src/main* ]]; then
+            echo "Skipping file: $file"
+            continue
+          fi
+          
+          if [[ "$file" == *.java ]]; then
+            JAVA_FILE=true
+          else
+            SCHEMA_FILE=true
+          fi
+
+          # Calculate total lines changed for the file
+          TOTAL=$((added + removed))
+          TOTAL_LINED_ADDED=$((TOTAL_LINED_ADDED + added))
+
+          echo "File: $file, Lines Changed: $TOTAL"
+
+          # Check if the total exceeds the max allowed
+          if [ "$JAVA_FILE" = "true" ]; then
+            MAX_LINES=$JAVA_MAX_LINES
+          elif [ "$SCHEMA_FILE" = "true" ]; then
+            MAX_LINES=$SCHEMA_MAX_LINES
+          fi
+          
+          if [ "$TOTAL" -gt "$MAX_LINES" ]; then
+            echo "File $file exceeds the maximum allowed lines changed ($TOTAL > $MAX_LINES)"
+            EXCEEDED=true
+          fi
+          done < <(git diff --numstat origin/main | grep -E '\.(java|avsc|proto)$')
+
+          # Fail if there are both schema and Java file changes
+          if [ "$TOTAL_LINED_ADDED" -gt "$MAX_TOTAL_LINES_ADDED" ]; then
+            echo "Total added lines of all files exceed the maximum allowed lines ($TOTAL_LINED_ADDED > $MAX_TOTAL_LINES_ADDED)."
+            exit 1
+          fi
+          if [ "$EXCEEDED" = true ]; then
+            echo "Above files exceed the maximum allowed lines changed ($MAX_LINES)."
+            exit 1
+          fi
+          # Fail if any file exceeded the limit
+          if [[ "JAVA_FILE" == true && "SCHEMA_FILE" == true ]]; then
+            echo "The PR has both schema and Java code changes, please make a separate PR for schema changes."
+            exit 1
+          fi
+
+      - name: Notify
+        if: failure()
+        run: |
+          echo "One or more files in the PR exceed the maximum allowed lines changed. Please review and adjust your changes to your files."
