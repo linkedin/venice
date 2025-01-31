@@ -399,7 +399,7 @@ public class DaVinciBackend implements Closeable {
     };
   }
 
-  protected synchronized void bootstrap() {
+  private synchronized void bootstrap() {
     List<AbstractStorageEngine> storageEngines =
         storageService.getStorageEngineRepository().getAllLocalStorageEngines();
     LOGGER.info("Starting bootstrap, storageEngines: {}", storageEngines);
@@ -667,6 +667,10 @@ public class DaVinciBackend implements Closeable {
      */
     storeBackend.trySwapDaVinciCurrentVersion(null);
     storeBackend.trySubscribeDaVinciFutureVersion();
+  }
+
+  protected void executeBootstrapping() {
+    bootstrap();
   }
 
   Version getVeniceLatestNonFaultyVersion(String storeName, Set<Integer> faultyVersions) {

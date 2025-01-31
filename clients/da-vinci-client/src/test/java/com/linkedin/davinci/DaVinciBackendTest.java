@@ -239,6 +239,7 @@ public class DaVinciBackendTest {
     Field ingestionListenerField = DaVinciBackend.class.getDeclaredField("ingestionListener");
     ingestionListenerField.setAccessible(true);
     ingestionListenerField.set(backend, ingestionListener);
+
     KafkaStoreIngestionService storeIngestionService = mock(KafkaStoreIngestionService.class);
     Field storeIngestionServiceField = DefaultIngestionBackend.class.getDeclaredField("storeIngestionService");
     storeIngestionServiceField.setAccessible(true);
@@ -251,8 +252,8 @@ public class DaVinciBackendTest {
 
     // DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY == false
     when(mockCombinedProperties.getBoolean(anyString(), anyBoolean())).thenReturn(false);
-    doCallRealMethod().when(backend).bootstrap();
-    backend.bootstrap();
+    doCallRealMethod().when(backend).executeBootstrapping();
+    backend.executeBootstrapping();
 
     ComplementSet<Integer> subscription = mockStoreBackend.getSubscription();
     assertTrue(subscription.contains(0));
