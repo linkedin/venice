@@ -2434,4 +2434,8 @@ public class ConfigKeys {
    * The maximum weight per instance is determined by {@link ConfigKeys#CONTROLLER_HELIX_INSTANCE_CAPACITY}.
    */
   public static final String CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT = "controller.helix.default.instance.capacity";
+
+  public static final String CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS = "controller.deferred.version.swap.sleep.ms";
+  public static final String CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED =
+      "controller.deferred.version.swap.service.enabled";
 }

@@ -1993,6 +1993,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       throw new VeniceException("Store name: " + storeName + " clashes with the internal usage, please change it");
     }
 
+    if (VeniceView.isViewStore(storeName)) {
+      throw new VeniceException(
+          "Store name: " + storeName + " clashes with the internal usage, please remove the prefix: "
+              + VeniceView.VIEW_STORE_PREFIX);
+    }
+
     if (!allowSystemStore && VeniceSystemStoreUtils.isSystemStore(storeName)) {
       throw new VeniceException(
           "Store name: " + storeName + " clashes with the Venice system store usage, please change it");
@@ -5143,8 +5149,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Long> hybridTimeLagThreshold = params.getHybridTimeLagThreshold();
     Optional<DataReplicationPolicy> hybridDataReplicationPolicy = params.getHybridDataReplicationPolicy();
     Optional<BufferReplayPolicy> hybridBufferReplayPolicy = params.getHybridBufferReplayPolicy();
-    Optional<String> realTimeTopicName = Optional.empty(); // real time topic name should only be changed during
-                                                           // partition count update
+    Optional<String> realTimeTopicName = params.getRealTimeTopicName();
     Optional<Boolean> accessControlled = params.getAccessControlled();
     Optional<CompressionStrategy> compressionStrategy = params.getCompressionStrategy();
     Optional<Boolean> clientDecompressionEnabled = params.getClientDecompressionEnabled();

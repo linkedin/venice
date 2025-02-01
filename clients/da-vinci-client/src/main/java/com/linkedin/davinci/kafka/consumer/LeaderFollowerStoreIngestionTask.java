@@ -3377,9 +3377,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     // Write to views
     if (hasViewWriters()) {
       Put newPut = writeComputeResultWrapper.getNewPut();
+      // keys will be serialized with chunk suffix during pass-through mode in L/F NR if chunking is enabled
+      boolean isChunkedKey = isChunked() && !partitionConsumptionState.isEndOfPushReceived();
       queueUpVersionTopicWritesWithViewWriters(
           partitionConsumptionState,
-          (viewWriter) -> viewWriter.processRecord(newPut.putValue, keyBytes, newPut.schemaId),
+          (viewWriter) -> viewWriter.processRecord(newPut.putValue, keyBytes, newPut.schemaId, isChunkedKey),
           produceToVersionTopic);
     } else {
       produceToVersionTopic.run();

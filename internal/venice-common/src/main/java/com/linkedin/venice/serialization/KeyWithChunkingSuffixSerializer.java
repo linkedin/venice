@@ -53,6 +53,13 @@ public class KeyWithChunkingSuffixSerializer {
     return serialize(key, serializedNonChunkKeySuffix);
   }
 
+  public byte[] getKeyFromChunkedKey(byte[] keyBytesWithChunkSuffix) {
+    int keyLength = keyBytesWithChunkSuffix.length - serializedNonChunkKeySuffix.length;
+    byte[] keyBytes = new byte[keyLength];
+    System.arraycopy(keyBytesWithChunkSuffix, 0, keyBytes, 0, keyLength);
+    return keyBytes;
+  }
+
   private ByteBuffer serialize(ByteBuffer key, byte[] encodedChunkedKeySuffix) {
     /**
      * Here will always allocate a new {@link ByteBuffer} to accommodate} the combination of key and chunked

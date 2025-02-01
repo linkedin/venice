@@ -33,6 +33,7 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepositoryAdapter;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepositoryAdapter;
+import com.linkedin.venice.helix.HelixReadOnlyStoreViewConfigRepositoryAdapter;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
@@ -162,7 +163,7 @@ public class RouterServer extends AbstractVeniceService {
   private Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository;
   private ReadOnlyStoreRepository metadataRepository;
   private RouterStats<AggRouterHttpRequestStats> routerStats;
-  private HelixReadOnlyStoreConfigRepository storeConfigRepository;
+  private HelixReadOnlyStoreViewConfigRepositoryAdapter storeConfigRepository;
 
   private PushStatusStoreReader pushStatusStoreReader;
   private HelixLiveInstanceMonitor liveInstanceMonitor;
@@ -363,7 +364,8 @@ public class RouterServer extends AbstractVeniceService {
     this.hybridStoreQuotaRepository = config.isHelixHybridStoreQuotaEnabled()
         ? Optional.of(new HelixHybridStoreQuotaRepository(manager))
         : Optional.empty();
-    this.storeConfigRepository = new HelixReadOnlyStoreConfigRepository(zkClient, adapter);
+    this.storeConfigRepository =
+        new HelixReadOnlyStoreViewConfigRepositoryAdapter(new HelixReadOnlyStoreConfigRepository(zkClient, adapter));
     this.liveInstanceMonitor = new HelixLiveInstanceMonitor(this.zkClient, config.getClusterName());
 
     this.pushStatusStoreReader = new PushStatusStoreReader(
@@ -419,7 +421,7 @@ public class RouterServer extends AbstractVeniceService {
       Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository,
       HelixReadOnlyStoreRepository metadataRepository,
       HelixReadOnlySchemaRepository schemaRepository,
-      HelixReadOnlyStoreConfigRepository storeConfigRepository,
+      HelixReadOnlyStoreViewConfigRepositoryAdapter storeConfigRepository,
       List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
       Optional<SSLFactory> sslFactory,
       HelixLiveInstanceMonitor liveInstanceMonitor) {
