@@ -8835,7 +8835,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return pubSubTopicRepository;
   }
 
-  protected SafeHelixManager getHelixManager() {
+  SafeHelixManager getHelixManager() {
     return helixManager;
   }
 

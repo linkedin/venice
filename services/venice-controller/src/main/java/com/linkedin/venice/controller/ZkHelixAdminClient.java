@@ -1,7 +1,5 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.ConfigConstants.CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY;
-
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.helix.ZkClientFactory;
@@ -9,9 +7,7 @@ import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.utils.RetryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -104,49 +100,21 @@ public class ZkHelixAdminClient implements HelixAdminClient {
         clusterConfig.setTopologyAwareEnabled(false);
         clusterConfig.setPersistBestPossibleAssignment(true);
 
-        // We want to prioritize evenness over less movement when it comes to resource assignment, because the cost
-        // of rebalancing for the controller is cheap as it is stateless.
-        Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> globalRebalancePreference = new HashMap<>();
-
-        if (commonConfig.getHelixRebalancePreferenceEvenness() > -1
-            && commonConfig.getHelixRebalancePreferenceLessMovement() > -1) {
-          // EVENNESS and LESS_MOVEMENT need to be defined together
-          globalRebalancePreference.put(
-              ClusterConfig.GlobalRebalancePreferenceKey.EVENNESS,
-              commonConfig.getHelixRebalancePreferenceEvenness());
-          globalRebalancePreference.put(
-              ClusterConfig.GlobalRebalancePreferenceKey.LESS_MOVEMENT,
-              commonConfig.getHelixRebalancePreferenceLessMovement());
+        if (!commonConfig.getHelixGlobalRebalancePreference().isEmpty()) {
+          // We want to prioritize evenness over less movement when it comes to resource assignment, because the cost
+          // of rebalancing for the controller is cheap as it is stateless.
+          clusterConfig.setGlobalRebalancePreference(commonConfig.getHelixGlobalRebalancePreference());
         }
 
-        if (commonConfig.getHelixRebalancePreferenceForceBaselineConverge() > -1) {
-          globalRebalancePreference.put(
-              ClusterConfig.GlobalRebalancePreferenceKey.FORCE_BASELINE_CONVERGE,
-              commonConfig.getHelixRebalancePreferenceForceBaselineConverge());
-        }
-
-        if (!globalRebalancePreference.isEmpty()) {
-          clusterConfig.setGlobalRebalancePreference(globalRebalancePreference);
-        }
-
-        if (commonConfig.getHelixInstanceCapacity() > -1 && commonConfig.getHelixResourceCapacityWeight() > -1) {
-          List<String> instanceCapacityKeys = new ArrayList<>();
-          instanceCapacityKeys.add(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY);
-          clusterConfig.setInstanceCapacityKeys(instanceCapacityKeys);
+        if (commonConfig.getHelixDefaultInstanceCapacityMap() != null
+            && commonConfig.getHelixDefaultPartitionWeightMap() != null) {
+          clusterConfig.setInstanceCapacityKeys(commonConfig.getHelixInstanceCapacityKeys());
 
           // This is how much capacity a participant can take. The Helix documentation recommends setting this to a high
           // value to avoid rebalance failures. The primary goal of setting this is to enable a constraint that takes
           // the current top-state distribution into account when rebalancing.
-          Map<String, Integer> defaultInstanceCapacityMap = new HashMap<>();
-          defaultInstanceCapacityMap
-              .put(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, commonConfig.getHelixInstanceCapacity());
-          clusterConfig.setDefaultInstanceCapacityMap(defaultInstanceCapacityMap);
-
-          // This is how much weight each resource in a cluster has
-          Map<String, Integer> defaultPartitionWeightMap = new HashMap<>();
-          defaultPartitionWeightMap
-              .put(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, commonConfig.getHelixResourceCapacityWeight());
-          clusterConfig.setDefaultPartitionWeightMap(defaultPartitionWeightMap);
+          clusterConfig.setDefaultInstanceCapacityMap(commonConfig.getHelixDefaultInstanceCapacityMap());
+          clusterConfig.setDefaultPartitionWeightMap(commonConfig.getHelixDefaultPartitionWeightMap());
         }
 
         updateClusterConfigs(controllerClusterName, clusterConfig);

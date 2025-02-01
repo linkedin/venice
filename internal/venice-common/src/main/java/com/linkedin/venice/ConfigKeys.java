@@ -2401,22 +2401,24 @@ public class ConfigKeys {
 
   /**
    * Specifies the value to use for Helix's rebalance preference for evenness when using Waged.
-   * Default is -1 which will use Helix's default.
+   * Must be used in conjunction with {@link ConfigKeys#CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT}.
+   * Accepted range: 0 - 1000
    */
   public static final String CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS =
       "controller.helix.rebalance.preference.evenness";
 
   /**
    * Specifies the value to use for Helix's rebalance preference for less movement when using Waged.
-   * Default is -1 which will use Helix's default.
+   * Must be used in conjunction with {@link ConfigKeys#CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS}.
+   * Accepted range: 0 - 1000
    */
   public static final String CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT =
       "controller.helix.rebalance.preference.less.movement";
 
   /**
    * Specifies the value to use for Helix's rebalance preference for force baseline convergence when using Waged.
-   * This should always be turned off, so it doesn't overpower other constraints.
-   * Default is -1 which will use Helix's default.
+   * This shouldn't be enabled, so it doesn't overpower other constraints.
+   * Accepted range: 0 - 1000
    */
   public static final String CONTROLLER_HELIX_REBALANCE_PREFERENCE_FORCE_BASELINE_CONVERGE =
       "controller.helix.rebalance.preference.force.baseline.converge";
@@ -2424,14 +2426,12 @@ public class ConfigKeys {
   /**
    * Specifies the capacity a controller instance can handle.
    * The weight of each Helix resource is determined by {@link ConfigKeys#CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT}.
-   * Default is -1 which indicates disabled.
    */
   public static final String CONTROLLER_HELIX_INSTANCE_CAPACITY = "controller.helix.instance.capacity";
 
   /**
    * Specifies the weight of each Helix resource.
    * The maximum weight per instance is determined by {@link ConfigKeys#CONTROLLER_HELIX_INSTANCE_CAPACITY}.
-   * Default is -1 which indicates disabled.
    */
   public static final String CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT = "controller.helix.default.instance.capacity";
 }
