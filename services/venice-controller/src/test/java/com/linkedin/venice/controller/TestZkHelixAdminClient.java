@@ -300,9 +300,17 @@ public class TestZkHelixAdminClient {
   }
 
   @Test
-  public void testUndefinedRebalancePreferenceAndCapacityKeys() {
+  public void testUndefinedRebalancePreferenceAndCapacityKeys() throws NoSuchFieldException, IllegalAccessException {
     when(zkHelixAdminClient.isVeniceControllerClusterCreated()).thenReturn(false);
     when(mockHelixAdmin.addCluster(VENICE_CONTROLLER_CLUSTER, false)).thenReturn(true);
+
+    Properties clusterProperties = getBaseSingleRegionProperties(false);
+    VeniceControllerClusterConfig clusterConfig =
+        new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties));
+
+    Field commonConfigsField = ZkHelixAdminClient.class.getDeclaredField("commonConfig");
+    commonConfigsField.setAccessible(true);
+    commonConfigsField.set(zkHelixAdminClient, clusterConfig);
 
     doAnswer(invocation -> {
       String controllerClusterName = invocation.getArgument(0);
@@ -358,7 +366,6 @@ public class TestZkHelixAdminClient {
 
       assertEquals(controllerClusterName, VENICE_CONTROLLER_CLUSTER);
 
-      // EVENNESS and LESS_MOVEMENT must be defined together. If not it will use Helix's default settings
       Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> globalRebalancePreference =
           helixClusterConfig.getGlobalRebalancePreference();
       assertFalse(globalRebalancePreference.containsKey(ClusterConfig.GlobalRebalancePreferenceKey.EVENNESS));

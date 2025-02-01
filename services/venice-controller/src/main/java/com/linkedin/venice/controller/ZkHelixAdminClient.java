@@ -95,12 +95,12 @@ public class ZkHelixAdminClient implements HelixAdminClient {
         }
         ClusterConfig clusterConfig = new ClusterConfig(controllerClusterName);
         clusterConfig.getRecord().setBooleanField(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, true);
-        // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constrains on CRUSH alg to
+        // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constraints on CRUSH alg to
         // choose proper instance to hold the replica.
         clusterConfig.setTopologyAwareEnabled(false);
         clusterConfig.setPersistBestPossibleAssignment(true);
 
-        if (!commonConfig.getHelixGlobalRebalancePreference().isEmpty()) {
+        if (commonConfig.getHelixGlobalRebalancePreference() != null) {
           // We want to prioritize evenness over less movement when it comes to resource assignment, because the cost
           // of rebalancing for the controller is cheap as it is stateless.
           clusterConfig.setGlobalRebalancePreference(commonConfig.getHelixGlobalRebalancePreference());
