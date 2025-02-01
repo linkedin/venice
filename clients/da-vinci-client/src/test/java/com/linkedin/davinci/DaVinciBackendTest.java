@@ -8,7 +8,13 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
@@ -239,7 +245,6 @@ public class DaVinciBackendTest {
     Field ingestionListenerField = DaVinciBackend.class.getDeclaredField("ingestionListener");
     ingestionListenerField.setAccessible(true);
     ingestionListenerField.set(backend, ingestionListener);
-
     KafkaStoreIngestionService storeIngestionService = mock(KafkaStoreIngestionService.class);
     Field storeIngestionServiceField = DefaultIngestionBackend.class.getDeclaredField("storeIngestionService");
     storeIngestionServiceField.setAccessible(true);
@@ -247,7 +252,6 @@ public class DaVinciBackendTest {
     Field ingestionServiceField = DaVinciBackend.class.getDeclaredField("ingestionService");
     ingestionServiceField.setAccessible(true);
     ingestionServiceField.set(backend, storeIngestionService);
-
     doNothing().when(ingestionBackend).addIngestionNotifier(any());
 
     // DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY == false
