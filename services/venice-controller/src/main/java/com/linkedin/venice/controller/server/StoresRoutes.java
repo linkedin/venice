@@ -696,7 +696,7 @@ public class StoresRoutes extends AbstractRoute {
         String cluster = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         String operation = request.queryParams(OPERATION);
-        boolean status = Utils.parseBooleanFromString(request.queryParams(STATUS), "storeAccessStatus");
+        boolean status = Utils.parseBooleanOrThrow(request.queryParams(STATUS), "storeAccessStatus");
 
         veniceResponse.setCluster(cluster);
         veniceResponse.setName(storeName);
@@ -812,7 +812,7 @@ public class StoresRoutes extends AbstractRoute {
 
         String cluster = request.queryParams(CLUSTER);
         boolean enableActiveActiveReplicationForCluster =
-            Utils.parseBooleanFromString(request.queryParams(STATUS), STATUS);
+            Utils.parseBooleanOrThrow(request.queryParams(STATUS), STATUS);
         String regionsFilterParams = request.queryParamOrDefault(REGIONS_FILTER, null);
 
         admin.configureActiveActiveReplication(

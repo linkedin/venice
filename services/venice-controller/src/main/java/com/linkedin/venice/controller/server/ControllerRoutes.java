@@ -121,7 +121,7 @@ public class ControllerRoutes extends AbstractRoute {
     return updateKafkaTopicConfig(admin, adminRequest -> {
       AdminSparkServer.validateParams(adminRequest, UPDATE_KAFKA_TOPIC_LOG_COMPACTION.getParams(), admin);
       PubSubTopic topicName = pubSubTopicRepository.getTopic(adminRequest.queryParams(TOPIC));
-      boolean kafkaTopicLogCompactionEnabled = Utils.parseBooleanFromString(
+      boolean kafkaTopicLogCompactionEnabled = Utils.parseBooleanOrThrow(
           adminRequest.queryParams(KAFKA_TOPIC_LOG_COMPACTION_ENABLED),
           KAFKA_TOPIC_LOG_COMPACTION_ENABLED);
 

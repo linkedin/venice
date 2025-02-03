@@ -541,19 +541,6 @@ public class UtilsTest {
   }
 
   @Test(dataProvider = "booleanParsingData")
-  public void testParseBooleanFromString(String value, String fieldName, Boolean expectedResult) {
-    if (expectedResult != null) {
-      // For valid cases
-      boolean result = Utils.parseBooleanFromString(value, fieldName);
-      assertEquals(result, (boolean) expectedResult, "Parsed boolean value does not match expected value.");
-      return;
-    }
-    VeniceHttpException e =
-        expectThrows(VeniceHttpException.class, () -> Utils.parseBooleanFromString(value, fieldName));
-    assertEquals(e.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST, "Invalid status code.");
-  }
-
-  @Test(dataProvider = "booleanParsingData")
   public void testParseBooleanOrThrow(String value, String fieldName, Boolean expectedResult) {
     if (expectedResult != null) {
       // For valid cases
