@@ -12,7 +12,7 @@ import static org.mockito.Mockito.verify;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
 import com.linkedin.davinci.kafka.consumer.TestPubSubTopic;
-import com.linkedin.davinci.repository.ThinClientMetaStoreBasedRepository;
+import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.client.change.capture.protocol.ValueBytes;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -134,7 +134,7 @@ public class VeniceChangelogConsumerImplTest {
         new VeniceChangelogConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
     Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
 
-    ThinClientMetaStoreBasedRepository mockRepository = mock(ThinClientMetaStoreBasedRepository.class);
+    NativeMetadataRepositoryViewAdapter mockRepository = mock(NativeMetadataRepositoryViewAdapter.class);
     Store store = mock(Store.class);
     Version mockVersion = new VersionImpl(storeName, 1, "foo");
     Mockito.when(store.getCurrentVersion()).thenReturn(1);
@@ -217,7 +217,7 @@ public class VeniceChangelogConsumerImplTest {
     veniceChangelogConsumer.versionSwapDetectionIntervalTimeInMs = 1;
     Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
 
-    ThinClientMetaStoreBasedRepository mockRepository = mock(ThinClientMetaStoreBasedRepository.class);
+    NativeMetadataRepositoryViewAdapter mockRepository = mock(NativeMetadataRepositoryViewAdapter.class);
     Store store = mock(Store.class);
     Version mockVersion = new VersionImpl(storeName, 1, "foo");
     Mockito.when(store.getCurrentVersion()).thenReturn(1);
@@ -297,7 +297,7 @@ public class VeniceChangelogConsumerImplTest {
         new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
     Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
 
-    ThinClientMetaStoreBasedRepository mockRepository = mock(ThinClientMetaStoreBasedRepository.class);
+    NativeMetadataRepositoryViewAdapter mockRepository = mock(NativeMetadataRepositoryViewAdapter.class);
     Store store = mock(Store.class);
     Version mockVersion = new VersionImpl(storeName, 1, "foo");
     Mockito.when(store.getCurrentVersion()).thenReturn(1);
@@ -376,7 +376,7 @@ public class VeniceChangelogConsumerImplTest {
         new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
     Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
 
-    ThinClientMetaStoreBasedRepository mockRepository = mock(ThinClientMetaStoreBasedRepository.class);
+    NativeMetadataRepositoryViewAdapter mockRepository = mock(NativeMetadataRepositoryViewAdapter.class);
     Store store = mock(Store.class);
     Version mockVersion = new VersionImpl(storeName, 1, "foo");
     Mockito.when(store.getCurrentVersion()).thenReturn(1);
@@ -434,7 +434,7 @@ public class VeniceChangelogConsumerImplTest {
 
     String storeName = "Leppalúði_store";
 
-    ThinClientMetaStoreBasedRepository mockRepository = Mockito.mock(ThinClientMetaStoreBasedRepository.class);
+    NativeMetadataRepositoryViewAdapter mockRepository = Mockito.mock(NativeMetadataRepositoryViewAdapter.class);
     Store mockStore = Mockito.mock(Store.class);
     Mockito.when(mockStore.getCurrentVersion()).thenReturn(5);
     Mockito.when(mockRepository.getStore(storeName)).thenReturn(mockStore);

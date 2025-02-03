@@ -183,7 +183,8 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
   protected boolean handleVersionSwapControlMessage(
       ControlMessage controlMessage,
       PubSubTopicPartition pubSubTopicPartition,
-      String topicSuffix) {
+      String topicSuffix,
+      Integer upstreamPartition) {
     ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
     if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
       VersionSwap versionSwap = (VersionSwap) controlMessage.controlMessageUnion;
@@ -506,7 +507,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
 
     storageService.start();
     try {
-      storeRepository.start();
+      // storeRepository.start();
       storeRepository.subscribe(storeName);
     } catch (InterruptedException e) {
       throw new RuntimeException(e);

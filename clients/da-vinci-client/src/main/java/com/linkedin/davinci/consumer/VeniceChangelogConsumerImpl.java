@@ -5,6 +5,7 @@ import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT
 
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
+import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
 import com.linkedin.davinci.repository.ThinClientMetaStoreBasedRepository;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
@@ -16,7 +17,6 @@ import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
-import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -28,7 +28,6 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -94,12 +93,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected StoreDeserializerCache<GenericRecord> rmdDeserializerCache;
   protected Class specificValueClass;
 
-  protected ThinClientMetaStoreBasedRepository storeRepository;
+  protected NativeMetadataRepositoryViewAdapter storeRepository;
 
   protected final AbstractAvroChunkingAdapter<V> userEventChunkingAdapter;
 
   protected final SchemaReader schemaReader;
-  private final String viewClassName;
   protected final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   protected final Map<Integer, AtomicLong> partitionToPutMessageCount = new VeniceConcurrentHashMap<>();
@@ -120,7 +118,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final String storeName;
 
   protected final PubSubConsumerAdapter pubSubConsumer;
-  protected final Map<Integer, List<Long>> currentVersionHighWatermarks = new HashMap<>();
+
+  // TODO: we will convert this into a map of maps. If the message we consume has the appropriate footer then
+  // we'll use that to infer entry into the wrapped map and compare with it. Otherwise we'll infer it from the consumed
+  // partition for the given message.
+  protected final Map<Integer, Map<Integer, List<Long>>> currentVersionHighWatermarks = new HashMap<>();
   protected final Map<Integer, Long> currentVersionLastHeartbeat = new VeniceConcurrentHashMap<>();
   protected final int[] currentValuePayloadSize;
 
@@ -135,7 +137,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       ChangelogClientConfig changelogClientConfig,
       PubSubConsumerAdapter pubSubConsumer) {
     this.pubSubConsumer = pubSubConsumer;
-    this.storeName = changelogClientConfig.getStoreName();
+
+    if (changelogClientConfig.getViewName() == null || changelogClientConfig.getViewName().isEmpty()) {
+      this.storeName = changelogClientConfig.getStoreName();
+    } else {
+      this.storeName =
+          ChangeCaptureView.getViewStoreName(changelogClientConfig.getStoreName(), changelogClientConfig.getViewName());
+    }
+
     this.d2ControllerClient = changelogClientConfig.getD2ControllerClient();
     if (changelogClientConfig.getInnerClientConfig().getMetricsRepository() != null) {
       this.changeCaptureStats = new BasicConsumerStats(
@@ -145,16 +154,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       changeCaptureStats = null;
     }
     heartbeatReporterThread = new HeartbeatReporterThread();
-    StoreResponse storeResponse = changelogClientConfig.getD2ControllerClient().getStore(storeName);
-    if (storeResponse.isError()) {
-      throw new VeniceException(
-          "Failed to get store info for store: " + storeName + " with error: " + storeResponse.getError());
-    }
-    StoreInfo store = storeResponse.getStore();
     this.changelogClientConfig = ChangelogClientConfig.cloneConfig(changelogClientConfig);
-    this.partitionCount = store.getPartitionCount();
-    this.currentValuePayloadSize = new int[partitionCount];
-    this.viewClassName = changelogClientConfig.getViewName();
     this.replicationMetadataSchemaRepository = new ReplicationMetadataSchemaRepository(d2ControllerClient);
     this.schemaReader = changelogClientConfig.getSchemaReader();
     Schema keySchema = schemaReader.getKeySchema();
@@ -162,10 +162,15 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     this.chunkAssembler = new ChunkAssembler(storeName);
     this.startTimestamp = System.currentTimeMillis();
     LOGGER.info("VeniceChangelogConsumer created at timestamp: {}", startTimestamp);
-    this.storeRepository = new ThinClientMetaStoreBasedRepository(
-        changelogClientConfig.getInnerClientConfig(),
-        VeniceProperties.empty(),
-        null);
+
+    this.storeRepository = new NativeMetadataRepositoryViewAdapter(
+        new ThinClientMetaStoreBasedRepository(
+            changelogClientConfig.getInnerClientConfig(),
+            VeniceProperties.empty(),
+            null));
+    Store store = storeRepository.getStore(storeName);
+    this.partitionCount = store.getPartitionCount();
+    this.currentValuePayloadSize = new int[partitionCount];
     this.rmdDeserializerCache = new RmdDeserializerCache<>(replicationMetadataSchemaRepository, storeName, 1, false);
     if (changelogClientConfig.getInnerClientConfig().isSpecificClient()) {
       // If a value class is supplied, we'll use a Specific record adapter
@@ -182,11 +187,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
     }
 
-    LOGGER.info(
-        "Start a change log consumer client for store: {}, with partition count: {} and view class: {} ",
-        storeName,
-        partitionCount,
-        viewClassName);
+    LOGGER
+        .info("Start a change log consumer client for store: {}, with partition count: {}", storeName, partitionCount);
   }
 
   @Override
@@ -206,7 +208,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected CompletableFuture<Void> internalSubscribe(Set<Integer> partitions, PubSubTopic topic) {
     return CompletableFuture.supplyAsync(() -> {
       try {
-        storeRepository.start();
         for (int i = 0; i <= MAX_SUBSCRIBE_RETRIES; i++) {
           try {
             storeRepository.subscribe(storeName);
@@ -687,7 +688,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           pubSubTopicPartition.getPartitionNumber());
     }
     if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
-      return handleVersionSwapControlMessage(controlMessage, pubSubTopicPartition, topicSuffix);
+      // TODO: In view topics, we need to know the partition of the upstream RT
+      // how we transmit this information has yet to be determined, so once we finalize
+      // that, we'll need to tweak this. For now, we'll just pass in the same partition number
+      return handleVersionSwapControlMessage(
+          controlMessage,
+          pubSubTopicPartition,
+          topicSuffix,
+          pubSubTopicPartition.getPartitionNumber());
     }
     if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()
         && Arrays.equals(key, KafkaKey.HEART_BEAT.getKey())) {
@@ -860,8 +868,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       }
       partitionToPutMessageCount.computeIfAbsent(message.getPartition(), x -> new AtomicLong(0)).incrementAndGet();
     }
+
+    // TODO: Once we settle on how to extract upstream RT partition we need to update this with the correct RT partition
     // Determine if the event should be filtered or not
-    if (filterRecordByVersionSwapHighWatermarks(replicationCheckpoint, pubSubTopicPartition)) {
+    if (filterRecordByVersionSwapHighWatermarks(
+        replicationCheckpoint,
+        pubSubTopicPartition,
+        pubSubTopicPartition.getPartitionNumber())) {
       return Optional.empty();
     }
 
@@ -890,7 +903,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected boolean handleVersionSwapControlMessage(
       ControlMessage controlMessage,
       PubSubTopicPartition pubSubTopicPartition,
-      String topicSuffix) {
+      String topicSuffix,
+      Integer upstreamPartition) {
     ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
     if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
       VersionSwap versionSwap = (VersionSwap) controlMessage.controlMessageUnion;
@@ -908,11 +922,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       // To make the client
       // handle this gracefully, we instate the below condition that says the hwm in the client should never go
       // backwards.
-      if (RmdUtils.hasOffsetAdvanced(
-          currentVersionHighWatermarks.getOrDefault(pubSubTopicPartition.getPartitionNumber(), Collections.EMPTY_LIST),
-          versionSwap.getLocalHighWatermarks())) {
-        currentVersionHighWatermarks
-            .put(pubSubTopicPartition.getPartitionNumber(), versionSwap.getLocalHighWatermarks());
+      List<Long> localOffset = (List<Long>) currentVersionHighWatermarks
+          .getOrDefault(pubSubTopicPartition.getPartitionNumber(), Collections.EMPTY_MAP)
+          .getOrDefault(upstreamPartition, Collections.EMPTY_LIST);
+      if (RmdUtils.hasOffsetAdvanced(localOffset, versionSwap.getLocalHighWatermarks())) {
+
+        currentVersionHighWatermarks.putIfAbsent(pubSubTopicPartition.getPartitionNumber(), new HashMap<>());
+        currentVersionHighWatermarks.get(pubSubTopicPartition.getPartitionNumber())
+            .put(upstreamPartition, versionSwap.getLocalHighWatermarks());
       }
       switchToNewTopic(newServingVersionTopic, topicSuffix, pubSubTopicPartition.getPartitionNumber());
       chunkAssembler.clearInMemoryDB();
@@ -963,12 +980,18 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   private boolean filterRecordByVersionSwapHighWatermarks(
       List<Long> recordCheckpointVector,
-      PubSubTopicPartition pubSubTopicPartition) {
+      PubSubTopicPartition pubSubTopicPartition,
+      Integer upstreamPartition) {
     int partitionId = pubSubTopicPartition.getPartitionNumber();
-    if (recordCheckpointVector != null && currentVersionHighWatermarks.containsKey(partitionId)) {
-      List<Long> partitionCurrentVersionHighWatermarks =
-          currentVersionHighWatermarks.getOrDefault(partitionId, Collections.EMPTY_LIST);
-      return !RmdUtils.hasOffsetAdvanced(partitionCurrentVersionHighWatermarks, recordCheckpointVector);
+    List<Long> localOffset = (List<Long>) currentVersionHighWatermarks.getOrDefault(partitionId, Collections.EMPTY_MAP)
+        .getOrDefault(upstreamPartition, Collections.EMPTY_LIST);
+    if (localOffset != null) {
+      if (RmdUtils.hasOffsetAdvanced(localOffset, recordCheckpointVector)) {
+        currentVersionHighWatermarks.putIfAbsent(pubSubTopicPartition.getPartitionNumber(), new HashMap<>());
+        currentVersionHighWatermarks.get(pubSubTopicPartition.getPartitionNumber())
+            .put(upstreamPartition, recordCheckpointVector);
+        return true;
+      }
     }
     // Has not met version swap message after client initialization.
     return false;
@@ -1011,7 +1034,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   @VisibleForTesting
-  protected void setStoreRepository(ThinClientMetaStoreBasedRepository repository) {
+  protected void setStoreRepository(NativeMetadataRepositoryViewAdapter repository) {
     this.storeRepository = repository;
     if (changelogClientConfig.getInnerClientConfig().isSpecificClient()) {
       // If a value class is supplied, we'll use a Specific record adapter

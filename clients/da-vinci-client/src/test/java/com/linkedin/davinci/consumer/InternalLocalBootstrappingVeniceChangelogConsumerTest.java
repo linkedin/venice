@@ -18,7 +18,7 @@ import static org.mockito.Mockito.when;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.davinci.repository.ThinClientMetaStoreBasedRepository;
+import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
 import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -113,7 +113,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
   private RecordSerializer<String> keySerializer;
   private RecordSerializer<String> valueSerializer;
   private PubSubConsumerAdapter pubSubConsumer;
-  private ThinClientMetaStoreBasedRepository metadataRepository;
+  private NativeMetadataRepositoryViewAdapter metadataRepository;
   private PubSubTopic changeCaptureTopic;
   private SchemaReader schemaReader;
   private Schema valueSchema;
@@ -185,7 +185,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     bootstrappingVeniceChangelogConsumer =
         new InternalLocalBootstrappingVeniceChangelogConsumer<>(changelogClientConfig, pubSubConsumer, null);
 
-    metadataRepository = mock(ThinClientMetaStoreBasedRepository.class);
+    metadataRepository = mock(NativeMetadataRepositoryViewAdapter.class);
     Store store = mock(Store.class);
     Version mockVersion = new VersionImpl(storeName, 1, "foo");
     when(store.getCurrentVersion()).thenReturn(1);
@@ -230,7 +230,6 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     verify(mockStorageService, times(1)).start();
     verify(mockStorageService, times(1)).openStoreForNewPartition(any(), eq(0), any());
     verify(mockStorageService, times(1)).openStoreForNewPartition(any(), eq(1), any());
-    verify(metadataRepository, times(1)).start();
     verify(metadataRepository, times(1)).subscribe(storeName);
     verify(pubSubConsumer, times(1)).subscribe(topicPartition_0, LOWEST_OFFSET);
     verify(pubSubConsumer, times(1)).subscribe(topicPartition_1, LOWEST_OFFSET);

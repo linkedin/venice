@@ -1,6 +1,6 @@
 package com.linkedin.davinci.consumer;
 
-import com.linkedin.davinci.repository.ThinClientMetaStoreBasedRepository;
+import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
@@ -14,13 +14,13 @@ import org.apache.logging.log4j.Logger;
 class VersionSwapDataChangeListener<K, V> implements StoreDataChangedListener {
   private static final Logger LOGGER = LogManager.getLogger(VersionSwapDataChangeListener.class);
   private final VeniceAfterImageConsumerImpl<K, V> consumer;
-  private final ThinClientMetaStoreBasedRepository storeRepository;
+  private final NativeMetadataRepositoryViewAdapter storeRepository;
   private final String storeName;
   private final String consumerName;
 
   VersionSwapDataChangeListener(
       VeniceAfterImageConsumerImpl<K, V> consumer,
-      ThinClientMetaStoreBasedRepository storeRepository,
+      NativeMetadataRepositoryViewAdapter storeRepository,
       String storeName,
       String consumerName) {
     this.consumer = consumer;
