@@ -589,6 +589,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
               .clusterToD2(clusterToD2)
               .clusterToServerD2(clusterToServerD2)
               .extraProperties(properties)
+              .dynamicAccessController(options.getAccessController())
               .build());
       synchronized (this) {
         veniceControllerWrappers.put(veniceControllerWrapper.getPort(), veniceControllerWrapper);

@@ -224,6 +224,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
               .clusterToServerD2(clusterToServerD2)
               .regionName(parentRegionName)
               .authorizerService(options.getParentAuthorizerService())
+              .dynamicAccessController(options.getAccessController())
               .build();
       // Create parentControllers for multi-cluster
       for (int i = 0; i < options.getNumberOfParentControllers(); i++) {

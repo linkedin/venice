@@ -117,6 +117,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
               .clusterToServerD2(clusterToServerD2)
               .sslToKafka(false)
               .d2Enabled(true)
+              .dynamicAccessController(options.getAccessController())
               .extraProperties(controllerProperties)
               .build();
       for (int i = 0; i < options.getNumberOfControllers(); i++) {
