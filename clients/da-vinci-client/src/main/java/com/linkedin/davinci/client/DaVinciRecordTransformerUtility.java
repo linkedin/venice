@@ -3,17 +3,18 @@ package com.linkedin.davinci.client;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.venice.compression.VeniceCompressor;
-import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.lazy.Lazy;
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Optional;
 import org.apache.avro.Schema;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -23,6 +24,7 @@ import org.apache.avro.Schema;
  * @param <O> the type of the output value
  */
 public class DaVinciRecordTransformerUtility<K, O> {
+  private static final Logger LOGGER = LogManager.getLogger(DaVinciRecordTransformerUtility.class);
   private final DaVinciRecordTransformer recordTransformer;
   private final AvroGenericDeserializer<K> keyDeserializer;
   private final AvroGenericDeserializer<O> outputValueDeserializer;
@@ -80,26 +82,18 @@ public class DaVinciRecordTransformerUtility<K, O> {
   /**
    * @return true if transformer logic has changed since the last time the class was loaded
    */
-  public boolean hasTransformerLogicChanged(int classHash) {
-    try {
-      String classHashPath = String.format("./classHash-%d.txt", recordTransformer.getStoreVersion());
-      File f = new File(classHashPath);
-      if (f.exists()) {
-        try (BufferedReader br = new BufferedReader(new FileReader(classHashPath))) {
-          int storedClassHash = Integer.parseInt(br.readLine());
-          if (storedClassHash == classHash) {
-            return false;
-          }
-        }
-      }
+  public boolean hasTransformerLogicChanged(int currentClassHash, OffsetRecord offsetRecord) {
+    Integer persistedClassHash = offsetRecord.getRecordTransformerClassHash();
 
-      try (FileWriter fw = new FileWriter(classHashPath)) {
-        fw.write(String.valueOf(classHash));
-      }
-      return true;
-    } catch (IOException e) {
-      throw new VeniceException("Failed to check if transformation logic has changed", e);
+    if (persistedClassHash != null && persistedClassHash == currentClassHash) {
+      LOGGER.info(
+          "A change in transformer logic has been detected. Persisted class hash = {}. New class hash = {}",
+          persistedClassHash,
+          currentClassHash);
+      return false;
     }
+    LOGGER.info("Transformer logic hasn't changed. Class hash = {}", currentClassHash);
+    return true;
   }
 
   /**
@@ -107,18 +101,29 @@ public class DaVinciRecordTransformerUtility<K, O> {
    */
   public final void onRecovery(
       AbstractStorageEngine storageEngine,
-      Integer partition,
+      int partitionId,
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       Lazy<VeniceCompressor> compressor) {
-    // ToDo: Store class hash in RocksDB to support blob transfer
     int classHash = recordTransformer.getClassHash();
-    boolean transformerLogicChanged = hasTransformerLogicChanged(classHash);
+    Optional<OffsetRecord> optionalOffsetRecord = storageEngine.getPartitionOffset(partitionId);
+    OffsetRecord offsetRecord = optionalOffsetRecord.orElseGet(() -> new OffsetRecord(partitionStateSerializer));
+
+    boolean transformerLogicChanged = hasTransformerLogicChanged(classHash, offsetRecord);
 
     if (!recordTransformer.getStoreRecordsInDaVinci() || transformerLogicChanged) {
+      LOGGER.info("Bootstrapping directly from the VersionTopic for partition {}", partitionId);
+
       // Bootstrap from VT
-      storageEngine.clearPartitionOffset(partition);
+      storageEngine.clearPartitionOffset(partitionId);
+
+      // Offset record is deleted, so create a new one and persist it
+      offsetRecord = new OffsetRecord(partitionStateSerializer);
+      offsetRecord.setRecordTransformerClassHash(classHash);
+      storageEngine.putPartitionOffset(partitionId, offsetRecord);
     } else {
       // Bootstrap from local storage
-      AbstractStorageIterator iterator = storageEngine.getIterator(partition);
+      LOGGER.info("Bootstrapping from local storage for partition {}", partitionId);
+      AbstractStorageIterator iterator = storageEngine.getIterator(partitionId);
       for (iterator.seekToFirst(); iterator.isValid(); iterator.next()) {
         byte[] keyBytes = iterator.key();
         byte[] valueBytes = iterator.value();

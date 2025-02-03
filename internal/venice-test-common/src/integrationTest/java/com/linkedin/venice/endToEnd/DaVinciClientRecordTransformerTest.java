@@ -1,18 +1,24 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
+import static com.linkedin.venice.utils.TestWriteUtils.DEFAULT_USER_DATA_RECORD_COUNT;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithIntToIntSchema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema;
@@ -23,6 +29,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
+import com.linkedin.davinci.DaVinciUserApp;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
@@ -36,7 +43,9 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
+import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -45,15 +54,17 @@ import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -93,16 +104,6 @@ public class DaVinciClientRecordTransformerTest {
       D2ClientUtils.shutdownClient(d2Client);
     }
     Utils.closeQuietlyWithErrorLogged(cluster);
-  }
-
-  @BeforeMethod
-  @AfterClass
-  public void deleteClassHash() {
-    int storeVersion = 1;
-    File file = new File(String.format("./classHash-%d.txt", storeVersion));
-    if (file.exists()) {
-      assertTrue(file.delete());
-    }
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
@@ -496,6 +497,96 @@ public class DaVinciClientRecordTransformerTest {
     }
   }
 
+  @Test(timeOut = 2 * TEST_TIMEOUT)
+  public void testBlobTransferRecordTransformer() throws Exception {
+    String dvcPath1 = Utils.getTempDataDirectory().getAbsolutePath();
+    boolean pushStatusStoreEnabled = true;
+    String zkHosts = cluster.getZk().getAddress();
+    int port1 = TestUtils.getFreePort();
+    int port2 = TestUtils.getFreePort();
+    while (port1 == port2) {
+      port2 = TestUtils.getFreePort();
+    }
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setBlobTransferEnabled(true);
+    String storeName = Utils.getUniqueString("test-store");
+    DaVinciConfig clientConfig = new DaVinciConfig();
+
+    Schema myKeySchema = Schema.create(Schema.Type.INT);
+    Schema myValueSchema = Schema.create(Schema.Type.STRING);
+
+    TestStringRecordTransformer recordTransformer =
+        new TestStringRecordTransformer(1, myKeySchema, myValueSchema, myValueSchema, true);
+
+    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
+        (storeVersion, keySchema, inputValueSchema, outputValueSchema) -> recordTransformer,
+        String.class,
+        Schema.create(Schema.Type.STRING));
+    clientConfig.setRecordTransformerConfig(recordTransformerConfig);
+
+    setUpStore(storeName, paramsConsumer, properties -> {}, pushStatusStoreEnabled);
+    LOGGER.info("Port1 is {}, Port2 is {}", port1, port2);
+    LOGGER.info("zkHosts is {}", zkHosts);
+
+    // Start the first DaVinci Client using DaVinciUserApp for regular ingestion
+    ForkedJavaProcess.exec(
+        DaVinciUserApp.class,
+        zkHosts,
+        dvcPath1,
+        storeName,
+        "100",
+        "10",
+        "false",
+        Integer.toString(port1),
+        Integer.toString(port2),
+        StorageClass.DISK.toString(),
+        "true");
+
+    // Wait for the first DaVinci Client to complete ingestion
+    Thread.sleep(60000);
+
+    // Start the second DaVinci Client using settings for blob transfer
+    String dvcPath2 = Utils.getTempDataDirectory().getAbsolutePath();
+
+    PropertyBuilder configBuilder = new PropertyBuilder().put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false")
+        .put(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "3000")
+        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
+        .put(DATA_BASE_PATH, dvcPath2)
+        .put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, port2)
+        .put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, port1)
+        .put(PUSH_STATUS_STORE_ENABLED, true)
+        .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 1)
+        .put(BLOB_TRANSFER_MANAGER_ENABLED, true);
+    VeniceProperties backendConfig2 = configBuilder.build();
+
+    try (CachingDaVinciClientFactory factory2 = new CachingDaVinciClientFactory(
+        d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        new MetricsRepository(),
+        backendConfig2)) {
+      DaVinciClient<Integer, Object> client2 = factory2.getAndStartGenericAvroClient(storeName, clientConfig);
+      client2.subscribeAll().get();
+
+      // Verify snapshots exists
+      for (int i = 0; i < 3; i++) {
+        String snapshotPath = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertTrue(Files.exists(Paths.get(snapshotPath)));
+      }
+
+      // All of the records should have already been transformed due to blob transfer
+      assertEquals(recordTransformer.getTransformInvocationCount(), 0);
+
+      // Test single-get access
+      for (int k = 1; k <= DEFAULT_USER_DATA_RECORD_COUNT; ++k) {
+        Object valueObj = client2.get(k).get();
+        String expectedValue = "name " + k + "Transformed";
+        assertEquals(valueObj.toString(), expectedValue);
+        assertEquals(recordTransformer.get(k), expectedValue);
+      }
+    }
+  }
+
   /*
    * Batch data schema:
    * Key: Integer
@@ -516,6 +607,41 @@ public class DaVinciClientRecordTransformerTest {
     Runnable writeAvroFileRunnable = () -> {
       try {
         writeSimpleAvroFileWithIntToStringSchema(inputDir, customValue, numKeys);
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      }
+    };
+    String valueSchema = "\"string\"";
+    setUpStore(
+        storeName,
+        paramsConsumer,
+        propertiesConsumer,
+        useDVCPushStatusStore,
+        chunkingEnabled,
+        compressionStrategy,
+        writeAvroFileRunnable,
+        valueSchema,
+        inputDir);
+  }
+
+  /*
+   * Batch data schema:
+   * Key: Integer
+   * Value: String
+   */
+  private void setUpStore(
+      String storeName,
+      Consumer<UpdateStoreQueryParams> paramsConsumer,
+      Consumer<Properties> propertiesConsumer,
+      boolean useDVCPushStatusStore) {
+    boolean chunkingEnabled = false;
+    CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
+
+    File inputDir = getTempDataDirectory();
+
+    Runnable writeAvroFileRunnable = () -> {
+      try {
+        writeSimpleAvroFileWithIntToStringSchema(inputDir);
       } catch (IOException e) {
         throw new RuntimeException(e);
       }
@@ -619,9 +745,7 @@ public class DaVinciClientRecordTransformerTest {
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true)
-        .put(PUSH_STATUS_STORE_ENABLED, pushStatusStoreEnabled)
-        .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000);
+        .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true);
 
     if (pushStatusStoreEnabled) {
       backendPropertyBuilder.put(PUSH_STATUS_STORE_ENABLED, true).put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000);

@@ -132,7 +132,6 @@ import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -179,16 +178,6 @@ public class DaVinciClientTest {
       D2ClientUtils.shutdownClient(d2Client);
     }
     Utils.closeQuietlyWithErrorLogged(cluster);
-  }
-
-  @BeforeMethod
-  @AfterClass
-  public void deleteClassHash() {
-    int storeVersion = 1;
-    File file = new File(String.format("./classHash-%d.txt", storeVersion));
-    if (file.exists()) {
-      assertTrue(file.delete());
-    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -1108,7 +1097,8 @@ public class DaVinciClientTest {
         "true",
         Integer.toString(port1),
         Integer.toString(port2),
-        StorageClass.DISK.toString());
+        StorageClass.DISK.toString(),
+        "false");
     // Sleep long enough so the forked Da Vinci app process can finish ingestion.
     Thread.sleep(60000);
     IsolatedIngestionUtils.executeShellCommand("kill " + forkedDaVinciUserApp.pid());
@@ -1183,7 +1173,8 @@ public class DaVinciClientTest {
         "false",
         Integer.toString(port1),
         Integer.toString(port2),
-        StorageClass.DISK.toString());
+        StorageClass.DISK.toString(),
+        "false");
 
     // Wait for the first DaVinci Client to complete ingestion
     Thread.sleep(60000);
@@ -1251,7 +1242,8 @@ public class DaVinciClientTest {
         "false",
         Integer.toString(port1),
         Integer.toString(port2),
-        storageClass);
+        storageClass,
+        "false");
 
     // Wait for the first DaVinci Client to complete ingestion
     Thread.sleep(60000);

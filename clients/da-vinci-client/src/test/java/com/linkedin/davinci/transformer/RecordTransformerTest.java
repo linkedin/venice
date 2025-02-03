@@ -18,25 +18,21 @@ import com.linkedin.davinci.client.DaVinciRecordTransformerUtility;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.lazy.Lazy;
-import java.io.File;
+import java.util.Optional;
 import org.apache.avro.Schema;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class RecordTransformerTest {
   static final int storeVersion = 1;
-
-  @BeforeMethod
-  @AfterClass
-  public void deleteClassHash() {
-    File file = new File(String.format("./classHash-%d.txt", storeVersion));
-    if (file.exists()) {
-      assertTrue(file.delete());
-    }
-  }
+  static final int partitionId = 0;
+  static final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+      AvroProtocolDefinition.PARTITION_STATE.getSerializer();
 
   @Test
   public void testRecordTransformer() {
@@ -66,8 +62,13 @@ public class RecordTransformerTest {
 
     DaVinciRecordTransformerUtility<Integer, String> recordTransformerUtility =
         recordTransformer.getRecordTransformerUtility();
-    assertTrue(recordTransformerUtility.hasTransformerLogicChanged(classHash));
-    assertFalse(recordTransformerUtility.hasTransformerLogicChanged(classHash));
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+
+    assertTrue(recordTransformerUtility.hasTransformerLogicChanged(classHash, offsetRecord));
+
+    offsetRecord.setRecordTransformerClassHash(classHash);
+
+    assertFalse(recordTransformerUtility.hasTransformerLogicChanged(classHash, offsetRecord));
   }
 
   @Test
@@ -87,18 +88,30 @@ public class RecordTransformerTest {
     AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
     Lazy<VeniceCompressor> compressor = Lazy.of(() -> mock(VeniceCompressor.class));
 
-    int partitionNumber = 1;
-    recordTransformer.onRecovery(storageEngine, partitionNumber, compressor);
-    verify(storageEngine, times(1)).clearPartitionOffset(partitionNumber);
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+    when(storageEngine.getPartitionOffset(partitionId)).thenReturn(Optional.of(offsetRecord));
+
+    recordTransformer.onRecovery(storageEngine, partitionId, partitionStateSerializer, compressor);
+    verify(storageEngine, times(1)).clearPartitionOffset(partitionId);
 
     // Reset the mock to clear previous interactions
     reset(storageEngine);
 
-    // Execute the onRecovery method again to test the case where the classHash file exists
-    when(storageEngine.getIterator(partitionNumber)).thenReturn(iterator);
-    recordTransformer.onRecovery(storageEngine, partitionNumber, compressor);
-    verify(storageEngine, never()).clearPartitionOffset(partitionNumber);
-    verify(storageEngine, times(1)).getIterator(partitionNumber);
+    offsetRecord.setRecordTransformerClassHash(recordTransformer.getClassHash());
+    assertEquals((int) offsetRecord.getRecordTransformerClassHash(), recordTransformer.getClassHash());
+
+    // class hash should be the same when the OffsetRecord is serialized then deserialized
+    byte[] offsetRecordBytes = offsetRecord.toBytes();
+    OffsetRecord deserializedOffsetRecord = new OffsetRecord(offsetRecordBytes, partitionStateSerializer);
+    assertEquals((int) deserializedOffsetRecord.getRecordTransformerClassHash(), recordTransformer.getClassHash());
+
+    when(storageEngine.getPartitionOffset(partitionId)).thenReturn(Optional.of(offsetRecord));
+
+    // Execute the onRecovery method again to test the case where the classHash exists
+    when(storageEngine.getIterator(partitionId)).thenReturn(iterator);
+    recordTransformer.onRecovery(storageEngine, partitionId, partitionStateSerializer, compressor);
+    verify(storageEngine, never()).clearPartitionOffset(partitionId);
+    verify(storageEngine, times(1)).getIterator(partitionId);
   }
 
   @Test
@@ -134,5 +147,4 @@ public class RecordTransformerTest {
 
     recordTransformer.onEndVersionIngestion(2);
   }
-
 }
