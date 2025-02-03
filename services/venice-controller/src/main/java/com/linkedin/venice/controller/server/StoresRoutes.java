@@ -520,7 +520,7 @@ public class StoresRoutes extends AbstractRoute {
           String clusterName = request.queryParams(CLUSTER);
           String storeName = request.queryParams(NAME);
           boolean abortMigratingStore =
-              Utils.parseBooleanFromString(request.queryParams(IS_ABORT_MIGRATION_CLEANUP), IS_ABORT_MIGRATION_CLEANUP);
+              Utils.parseBooleanOrFalse(request.queryParams(IS_ABORT_MIGRATION_CLEANUP), IS_ABORT_MIGRATION_CLEANUP);
           veniceResponse.setCluster(clusterName);
           veniceResponse.setName(storeName);
 

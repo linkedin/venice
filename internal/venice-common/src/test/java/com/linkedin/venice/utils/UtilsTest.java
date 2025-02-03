@@ -4,11 +4,13 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
+import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -82,7 +84,7 @@ public class UtilsTest {
   public void testGetDebugInfo() {
     Map<CharSequence, CharSequence> debugInfo = Utils.getDebugInfo();
     debugInfo.forEach((k, v) -> System.out.println(k + ": " + v));
-    Assert.assertFalse(debugInfo.isEmpty(), "debugInfo should not be empty.");
+    assertFalse(debugInfo.isEmpty(), "debugInfo should not be empty.");
     // N.B.: The "version" entry is not available in unit tests because of the way the classpath is built...
     String[] expectedKeys = { "path", "host", "pid", "user", "JDK major version" };
     assertTrue(
@@ -159,8 +161,8 @@ public class UtilsTest {
     Path filePath = Files.createTempFile(null, null);
     Path nonExistingPath = Paths.get(Utils.getUniqueTempPath());
     assertTrue(Utils.directoryExists(directoryPath.toString()));
-    Assert.assertFalse(Utils.directoryExists(filePath.toString()));
-    Assert.assertFalse(Utils.directoryExists(nonExistingPath.toString()));
+    assertFalse(Utils.directoryExists(filePath.toString()));
+    assertFalse(Utils.directoryExists(nonExistingPath.toString()));
     Files.delete(directoryPath);
     Files.delete(filePath);
   }
@@ -434,7 +436,7 @@ public class UtilsTest {
   @Test
   public void testIsSeparateTopicRegion() {
     Assert.assertTrue(Utils.isSeparateTopicRegion("dc-0_sep"));
-    Assert.assertFalse(Utils.isSeparateTopicRegion("dc-0"));
+    assertFalse(Utils.isSeparateTopicRegion("dc-0"));
   }
 
   @Test
@@ -521,16 +523,68 @@ public class UtilsTest {
     };
   }
 
+  @DataProvider(name = "booleanOrFalseParsingData")
+  public Object[][] booleanOrFalseParsingData() {
+    return new Object[][] {
+        // Valid cases
+        { "true", "testField", true }, // Valid "true"
+        { "false", "testField", false }, // Valid "false"
+        { "TRUE", "testField", true }, // Valid case-insensitive "TRUE"
+        { "FALSE", "testField", false }, // Valid case-insensitive "FALSE"
+        { null, "testField", false }, // Null input
+
+        // Invalid cases
+        { "notABoolean", "testField", null }, // Invalid string
+        { "123", "testField", null }, // Non-boolean numeric string
+        { "", "testField", null }, // Empty string
+    };
+  }
+
   @Test(dataProvider = "booleanParsingData")
   public void testParseBooleanFromString(String value, String fieldName, Boolean expectedResult) {
     if (expectedResult != null) {
       // For valid cases
       boolean result = Utils.parseBooleanFromString(value, fieldName);
-      assertEquals((boolean) expectedResult, result, "Parsed boolean value does not match expected value.");
+      assertEquals(result, (boolean) expectedResult, "Parsed boolean value does not match expected value.");
       return;
     }
     VeniceHttpException e =
         expectThrows(VeniceHttpException.class, () -> Utils.parseBooleanFromString(value, fieldName));
     assertEquals(e.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST, "Invalid status code.");
+  }
+
+  @Test(dataProvider = "booleanParsingData")
+  public void testParseBooleanOrThrow(String value, String fieldName, Boolean expectedResult) {
+    if (expectedResult != null) {
+      // For valid cases
+      boolean result = Utils.parseBooleanOrThrow(value, fieldName);
+      assertEquals(result, (boolean) expectedResult, "Parsed boolean value does not match expected value.");
+      return;
+    }
+    VeniceHttpException e = expectThrows(VeniceHttpException.class, () -> Utils.parseBooleanOrThrow(value, fieldName));
+    assertEquals(e.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST, "Invalid status code.");
+    if (value == null) {
+      assertEquals(e.getMessage(), "Http Status 400 - testField must be a boolean, but value is null.");
+    } else {
+      assertEquals(
+          e.getMessage(),
+          "Http Status 400 - testField must be a boolean, but value: " + value + " is invalid.");
+    }
+    assertEquals(e.getErrorType(), ErrorType.BAD_REQUEST);
+  }
+
+  @Test(dataProvider = "booleanOrFalseParsingData")
+  public void testParseBooleanOrFalse(String value, String fieldName, Boolean expectedResult) {
+    // For valid cases
+    if (expectedResult != null) {
+      boolean result = Utils.parseBooleanOrFalse(value, fieldName);
+      assertEquals(result, (boolean) expectedResult, "Parsed boolean value does not match expected value.");
+      return;
+    }
+    // For invalid cases
+    VeniceHttpException e = expectThrows(VeniceHttpException.class, () -> Utils.parseBooleanOrThrow(value, fieldName));
+    assertEquals(e.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST, "Invalid status code.");
+    assertEquals(e.getMessage(), "Http Status 400 - testField must be a boolean, but value: " + value + " is invalid.");
+    assertEquals(e.getErrorType(), ErrorType.BAD_REQUEST);
   }
 }

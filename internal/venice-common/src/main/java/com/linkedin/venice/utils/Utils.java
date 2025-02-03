@@ -325,6 +325,52 @@ public class Utils {
   }
 
   /**
+   * Parses a boolean from a string, ensuring that only valid boolean values ("true" or "false")
+   * are accepted. Throws an exception if the value is null or invalid.
+   *
+   * @param value the string to parse
+   * @param fieldName the name of the field being validated
+   * @return the parsed boolean value
+   * @throws VeniceHttpException if the value is null or not "true" or "false"
+   */
+  public static boolean parseBooleanOrThrow(String value, String fieldName) {
+    if (value == null) {
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          fieldName + " must be a boolean, but value is null.",
+          ErrorType.BAD_REQUEST);
+    }
+    return parseBoolean(value, fieldName);
+  }
+
+  /**
+   * Parses a boolean from a string, ensuring that only null and valid boolean values ("true" or "false")
+   * are accepted. Returns false if the value is null.
+   *
+   * @param value the string to parse
+   * @param fieldName the name of the field being validated
+   * @return the parsed boolean value, or false if the input is null
+   * @throws VeniceHttpException if the value is not "true" or "false"
+   */
+  public static boolean parseBooleanOrFalse(String value, String fieldName) {
+    return value != null && parseBoolean(value, fieldName);
+  }
+
+  /**
+   * Validates the boolean string, allowing only "true" or "false".
+   * Throws an exception if the value is invalid.
+   */
+  private static boolean parseBoolean(String value, String fieldName) {
+    if (!"true".equalsIgnoreCase(value) && !"false".equalsIgnoreCase(value)) {
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          fieldName + " must be a boolean, but value: " + value + " is invalid.",
+          ErrorType.BAD_REQUEST);
+    }
+    return Boolean.parseBoolean(value);
+  }
+
+  /**
    * For String-String key-value map config, we expect the command-line interface users to use JSON
    * format to represent it. This method deserialize it to String-String map.
    */
