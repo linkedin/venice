@@ -451,7 +451,8 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
                     InstanceHealthMonitorConfig.builder()
                         .setClient(r2Client)
                         .setRoutingRequestDefaultTimeoutMS(10000)
-                        .build()));
+                        .build()))
+            .setRetryBudgetEnabled(true);
     String multiKeyLongTailRetryManagerStatsPrefix = ".multi-key-long-tail-retry-manager-" + storeName + "--";
     String singleKeyLongTailRetryManagerStatsPrefix = ".single-key-long-tail-retry-manager-" + storeName + "--";
     MetricsRepository clientMetric = new MetricsRepository();
