@@ -281,7 +281,7 @@ public class ServiceFactory {
   /**
    * Start up a testing Venice cluster in another process.
    *
-   * The reason to call this method instead of other {@link #getVeniceCluster()} methods is
+   * The reason to call this method instead of other {@link #getVeniceCluster(VeniceClusterCreateOptions)} methods is
    * when one wants to maximize its testing environment isolation.
    * Example usage: {@literal com.linkedin.venice.benchmark.IngestionBenchmarkWithTwoProcesses}
    *
@@ -294,7 +294,7 @@ public class ServiceFactory {
   /**
    * Start up a testing Venice cluster in another process.
    *
-   * The reason to call this method instead of other {@link #getVeniceCluster()} methods is
+   * The reason to call this method instead of other {@link #getVeniceCluster(VeniceClusterCreateOptions)} methods is
    * when one wants to maximize its testing environment isolation.
    * Example usage: {@literal com.linkedin.venice.benchmark.IngestionBenchmarkWithTwoProcesses}
    *
@@ -317,17 +317,6 @@ public class ServiceFactory {
 
   public static VeniceClusterWrapper getVeniceCluster(VeniceClusterCreateOptions options) {
     return getService(VeniceClusterWrapper.SERVICE_NAME, VeniceClusterWrapper.generateService(options));
-  }
-
-  /**
-   * @deprecated
-   * <p> Use {@link ServiceFactory#getVeniceCluster(VeniceClusterCreateOptions)} instead.
-   */
-  @Deprecated
-  public static VeniceClusterWrapper getVeniceCluster() {
-    VeniceClusterCreateOptions options =
-        new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(1).numberOfRouters(1).build();
-    return getVeniceCluster(options);
   }
 
   public static VeniceMultiClusterWrapper getVeniceMultiClusterWrapper(VeniceMultiClusterCreateOptions options) {

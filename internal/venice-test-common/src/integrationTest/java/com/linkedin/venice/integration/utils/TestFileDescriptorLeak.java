@@ -37,7 +37,9 @@ public class TestFileDescriptorLeak {
 
   @Test(invocationCount = 20, groups = { "flaky" })
   public void testVeniceClusterLeak() {
-    try (VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster()) {
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(1).numberOfRouters(1).build();
+    try (VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(options)) {
       LOGGER.info("Created VeniceClusterWrapper: {}", veniceClusterWrapper.getClusterName());
     }
   }

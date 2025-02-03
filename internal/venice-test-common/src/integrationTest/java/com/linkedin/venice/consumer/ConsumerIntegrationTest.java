@@ -9,6 +9,7 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
@@ -103,7 +104,9 @@ public abstract class ConsumerIntegrationTest {
 
   @BeforeClass
   public void sharedSetUp() {
-    cluster = ServiceFactory.getVeniceCluster();
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(1).numberOfRouters(1).build();
+    cluster = ServiceFactory.getVeniceCluster(options);
     controllerClient =
         ControllerClient.constructClusterControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
 
