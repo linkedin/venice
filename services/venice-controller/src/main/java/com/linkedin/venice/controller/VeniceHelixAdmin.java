@@ -59,6 +59,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
+import com.linkedin.venice.controller.repush.RepushOrchestratorConfig;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -609,17 +610,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     if (multiClusterConfigs.isLogCompactionEnabled()) {
       // TODO extends interchangeable with implements?
-      // Implementation of the interface RepushOrchestrator depends on the configuration. (see RepushOrchestrator docs)
+      RepushOrchestratorConfig repushOrchestratorConfig =
+          new RepushOrchestratorConfig(multiClusterConfigs.getRepushOrchestratorConfigs(), this.d2Client);
+
       Class<? extends RepushOrchestrator> repushOrchestratorClass =
           ReflectUtils.loadClass(multiClusterConfigs.getRepushOrchestratorClassName());
-      Class<VeniceProperties> venicePropertiesClass = ReflectUtils.loadClass(VeniceProperties.class.getName());
+      Class<RepushOrchestratorConfig> repushOrchestratorConfigClass =
+          ReflectUtils.loadClass(RepushOrchestratorConfig.class.getName());
       RepushOrchestrator repushOrchestrator = ReflectUtils.callConstructor(
           repushOrchestratorClass,
-          new Class[] { venicePropertiesClass },
-          new Object[] { multiClusterConfigs.getRepushOrchestratorConfigs() });
+          new Class[] { repushOrchestratorConfigClass },
+          new Object[] { repushOrchestratorConfig });
       compactionManager =
           new CompactionManager(repushOrchestrator, multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS());
-      // TODO LC: pass VeniceProperties instead of multiClusterConfigs.<specific config>
     }
 
     List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
