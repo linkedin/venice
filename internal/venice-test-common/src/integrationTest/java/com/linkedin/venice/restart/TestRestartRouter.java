@@ -5,6 +5,7 @@ import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.RoutingDataRepository;
@@ -30,7 +31,12 @@ public class TestRestartRouter {
     int numberOfServer = 1;
     int numberOfRouter = 2;
 
-    cluster = ServiceFactory.getVeniceCluster(numberOfController, numberOfServer, numberOfRouter);
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(numberOfController)
+            .numberOfServers(numberOfServer)
+            .numberOfRouters(numberOfRouter)
+            .build();
+    cluster = ServiceFactory.getVeniceCluster(options);
   }
 
   @AfterClass

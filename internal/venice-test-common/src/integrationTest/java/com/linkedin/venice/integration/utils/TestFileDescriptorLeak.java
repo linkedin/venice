@@ -46,7 +46,9 @@ public class TestFileDescriptorLeak {
 
   @BeforeClass
   public void setUpReusableCluster() {
-    this.veniceClusterWrapper = ServiceFactory.getVeniceCluster(1, 2, 1);
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(2).numberOfRouters(1).build();
+    this.veniceClusterWrapper = ServiceFactory.getVeniceCluster(options);
   }
 
   @AfterClass

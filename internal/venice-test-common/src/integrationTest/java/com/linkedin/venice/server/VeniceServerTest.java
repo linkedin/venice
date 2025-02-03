@@ -79,7 +79,9 @@ public class VeniceServerTest {
 
   @Test
   public void testStartServerWithDefaultConfigForTests() throws NoSuchFieldException, IllegalAccessException {
-    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 1, 0)) {
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(1).numberOfRouters(0).build();
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(options)) {
       TestVeniceServer server = cluster.getVeniceServers().get(0).getVeniceServer();
       Assert.assertTrue(server.isStarted());
 
@@ -91,7 +93,9 @@ public class VeniceServerTest {
 
   @Test
   public void testStartServerWhenEnableAllowlistCheckingFailed() {
-    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 0, 0)) {
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(0).numberOfRouters(0).build();
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(options)) {
       Assert.assertThrows(VeniceException.class, () -> {
         Properties featureProperties = new Properties();
         featureProperties.setProperty(SERVER_ENABLE_SERVER_ALLOW_LIST, Boolean.toString(true));
@@ -104,7 +108,9 @@ public class VeniceServerTest {
 
   @Test
   public void testStartServerWhenEnableAllowlistCheckingSuccessful() {
-    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 0, 0)) {
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(0).numberOfRouters(0).build();
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(options)) {
       Properties featureProperties = new Properties();
       featureProperties.setProperty(SERVER_ENABLE_SERVER_ALLOW_LIST, Boolean.toString(true));
       featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(true));
@@ -115,7 +121,9 @@ public class VeniceServerTest {
 
   @Test
   public void testCheckBeforeJoinCluster() {
-    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 1, 0)) {
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(1).numberOfRouters(0).build();
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(options)) {
       VeniceServerWrapper server = cluster.getVeniceServers().get(0);
       StorageEngineRepository repository = server.getVeniceServer().getStorageService().getStorageEngineRepository();
 
@@ -176,7 +184,9 @@ public class VeniceServerTest {
   @Test
   public void testCheckBeforeJointClusterBeforeHelixInitializingCluster() throws Exception {
     Thread serverAddingThread = null;
-    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(0, 0, 0)) {
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(0).numberOfServers(0).numberOfRouters(0).build();
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(options)) {
       serverAddingThread = new Thread(() -> {
         Properties featureProperties = new Properties();
         featureProperties.setProperty(SERVER_ENABLE_SERVER_ALLOW_LIST, Boolean.toString(false));
@@ -200,7 +210,9 @@ public class VeniceServerTest {
 
   @Test
   public void testStartServerAndShutdownWithPartitionAssignmentVerification() {
-    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 0, 0)) {
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(0).numberOfRouters(0).build();
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(options)) {
       Properties featureProperties = new Properties();
       featureProperties.setProperty(SERVER_ENABLE_SERVER_ALLOW_LIST, Boolean.toString(true));
       featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(true));
@@ -351,7 +363,9 @@ public class VeniceServerTest {
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testVeniceServerWithD2(boolean https) throws Exception {
-    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 1, 0)) {
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(1).numberOfRouters(0).build();
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(options)) {
       String storeName = cluster.createStore(1);
       Map<String, String> clusterToServerD2 = cluster.getClusterToServerD2();
       String d2ServiceName = clusterToServerD2.get(cluster.getClusterName());
@@ -397,7 +411,9 @@ public class VeniceServerTest {
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testDropStorePartitionAsynchronously() {
-    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 1, 0)) {
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(1).numberOfRouters(0).build();
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(options)) {
       VeniceServerWrapper server = cluster.getVeniceServers().get(0);
       Assert.assertTrue(server.getVeniceServer().isStarted());
 
@@ -435,7 +451,9 @@ public class VeniceServerTest {
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testDropStorePartitionSynchronously() {
-    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 1, 0)) {
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(1).numberOfRouters(0).build();
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(options)) {
       Properties featureProperties = new Properties();
       featureProperties.setProperty(SERVER_ENABLE_SERVER_ALLOW_LIST, Boolean.toString(true));
       featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(true));

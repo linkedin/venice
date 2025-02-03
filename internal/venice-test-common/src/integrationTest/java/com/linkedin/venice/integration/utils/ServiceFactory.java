@@ -334,19 +334,6 @@ public class ServiceFactory {
   public static VeniceClusterWrapper getVeniceCluster(
       int numberOfControllers,
       int numberOfServers,
-      int numberOfRouters) {
-    VeniceClusterCreateOptions options =
-        new VeniceClusterCreateOptions.Builder().numberOfControllers(numberOfControllers)
-            .numberOfServers(numberOfServers)
-            .numberOfRouters(numberOfRouters)
-            .build();
-    return getVeniceCluster(options);
-  }
-
-  @Deprecated
-  public static VeniceClusterWrapper getVeniceCluster(
-      int numberOfControllers,
-      int numberOfServers,
       int numberOfRouters,
       int replicationFactor) {
     VeniceClusterCreateOptions options =
