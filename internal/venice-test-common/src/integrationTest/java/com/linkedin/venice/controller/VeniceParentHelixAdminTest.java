@@ -82,7 +82,15 @@ public class VeniceParentHelixAdminTest {
   @BeforeClass
   public void setUp() {
     Utils.thisIsLocalhost();
-    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(1, 1, 1, 1, 1, 1);
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+            .numberOfClusters(1)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(1)
+            .numberOfRouters(1);
+    multiRegionMultiClusterWrapper =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
     clusterName = multiRegionMultiClusterWrapper.getClusterNames()[0];
     venice = multiRegionMultiClusterWrapper.getChildRegions().get(0).getClusters().get(clusterName);
   }
