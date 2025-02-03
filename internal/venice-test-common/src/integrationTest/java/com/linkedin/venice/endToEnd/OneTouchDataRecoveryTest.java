@@ -13,6 +13,7 @@ import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.Version;
@@ -58,18 +59,18 @@ public class OneTouchDataRecoveryTest {
     Properties serverProperties = new Properties();
     serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
 
-    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-        NUMBER_OF_CHILD_DATACENTERS,
-        NUMBER_OF_CLUSTERS,
-        NUMBER_OF_PARENT_CONTROLLERS,
-        NUMBER_OF_CONTROLLERS,
-        NUMBER_OF_SERVERS,
-        NUMBER_OF_ROUTERS,
-        REPLICATION_FACTOR,
-        Optional.empty(),
-        Optional.empty(),
-        Optional.of(serverProperties),
-        false);
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
+            .numberOfClusters(NUMBER_OF_CLUSTERS)
+            .numberOfParentControllers(NUMBER_OF_PARENT_CONTROLLERS)
+            .numberOfChildControllers(NUMBER_OF_CONTROLLERS)
+            .numberOfServers(NUMBER_OF_SERVERS)
+            .numberOfRouters(NUMBER_OF_ROUTERS)
+            .replicationFactor(REPLICATION_FACTOR)
+            .forkServer(false)
+            .serverProperties(serverProperties);
+    multiRegionMultiClusterWrapper =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
 
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     parentControllers = multiRegionMultiClusterWrapper.getParentControllers();

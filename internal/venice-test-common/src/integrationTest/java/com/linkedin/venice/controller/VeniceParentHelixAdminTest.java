@@ -247,19 +247,20 @@ public class VeniceParentHelixAdminTest {
     properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(false));
     properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, String.valueOf(false));
 
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+            .numberOfClusters(1)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(1)
+            .numberOfRouters(1)
+            .replicationFactor(1)
+            .forkServer(false)
+            .parentControllerProperties(properties)
+            .childControllerProperties(properties);
     try (
         VeniceTwoLayerMultiRegionMultiClusterWrapper twoLayerMultiRegionMultiClusterWrapper =
-            ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-                1,
-                1,
-                1,
-                1,
-                1,
-                1,
-                1,
-                Optional.of(properties),
-                Optional.of(properties),
-                Optional.empty());
+            ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
         ControllerClient parentControllerClient = new ControllerClient(
             twoLayerMultiRegionMultiClusterWrapper.getClusterNames()[0],
             twoLayerMultiRegionMultiClusterWrapper.getControllerConnectString())) {
@@ -441,18 +442,18 @@ public class VeniceParentHelixAdminTest {
     properties
         .put(VeniceControllerWrapper.SUPERSET_SCHEMA_GENERATOR, new SupersetSchemaGeneratorWithCustomProp(CUSTOM_PROP));
 
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+            .numberOfClusters(1)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(0)
+            .numberOfRouters(0)
+            .replicationFactor(1)
+            .forkServer(false)
+            .parentControllerProperties(properties);
     try (VeniceTwoLayerMultiRegionMultiClusterWrapper twoLayerMultiRegionMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-            1,
-            1,
-            1,
-            1,
-            0,
-            0,
-            1,
-            Optional.of(properties),
-            Optional.empty(),
-            Optional.empty())) {
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build())) {
       String parentControllerUrl = twoLayerMultiRegionMultiClusterWrapper.getControllerConnectString();
       try (ControllerClient parentControllerClient =
           new ControllerClient(twoLayerMultiRegionMultiClusterWrapper.getClusterNames()[0], parentControllerUrl)) {

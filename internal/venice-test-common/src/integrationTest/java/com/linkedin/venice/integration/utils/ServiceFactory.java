@@ -324,59 +324,6 @@ public class ServiceFactory {
   }
 
   public static VeniceTwoLayerMultiRegionMultiClusterWrapper getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-      int numberOfRegions,
-      int numberOfClustersInEachRegion,
-      int numberOfParentControllers,
-      int numberOfControllers,
-      int numberOfServers,
-      int numberOfRouters,
-      int replicationFactor,
-      Optional<Properties> parentControllerProps,
-      Optional<Properties> childControllerProperties,
-      Optional<Properties> serverProps) {
-    return getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-        numberOfRegions,
-        numberOfClustersInEachRegion,
-        numberOfParentControllers,
-        numberOfControllers,
-        numberOfServers,
-        numberOfRouters,
-        replicationFactor,
-        parentControllerProps,
-        childControllerProperties,
-        serverProps,
-        false);
-  }
-
-  public static VeniceTwoLayerMultiRegionMultiClusterWrapper getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-      int numberOfRegions,
-      int numberOfClustersInEachRegion,
-      int numberOfParentControllers,
-      int numberOfControllers,
-      int numberOfServers,
-      int numberOfRouters,
-      int replicationFactor,
-      Optional<Properties> parentControllerProps,
-      Optional<Properties> childControllerProperties,
-      Optional<Properties> serverProps,
-      boolean forkServer) {
-    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
-        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(numberOfRegions)
-            .numberOfClusters(numberOfClustersInEachRegion)
-            .numberOfParentControllers(numberOfParentControllers)
-            .numberOfChildControllers(numberOfControllers)
-            .numberOfServers(numberOfServers)
-            .numberOfRouters(numberOfRouters)
-            .replicationFactor(replicationFactor)
-            .forkServer(forkServer);
-
-    parentControllerProps.ifPresent(optionsBuilder::parentControllerProperties);
-    childControllerProperties.ifPresent(optionsBuilder::childControllerProperties);
-    serverProps.ifPresent(optionsBuilder::serverProperties);
-    return getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
-  }
-
-  public static VeniceTwoLayerMultiRegionMultiClusterWrapper getVeniceTwoLayerMultiRegionMultiClusterWrapper(
       VeniceMultiRegionClusterCreateOptions options) {
     return getService(
         VeniceTwoLayerMultiRegionMultiClusterWrapper.SERVICE_NAME,
