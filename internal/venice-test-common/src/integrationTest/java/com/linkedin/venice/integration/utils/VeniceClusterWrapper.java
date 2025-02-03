@@ -1173,8 +1173,16 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       Utils.thisIsLocalhost();
       Properties extraProperties = new Properties();
       extraProperties.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, numberOfPartitions);
-      VeniceClusterWrapper veniceClusterWrapper =
-          ServiceFactory.getVeniceCluster(1, 1, 1, 1, 10 * 1024 * 1024, false, false, extraProperties);
+      VeniceClusterCreateOptions options1 = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+          .numberOfServers(1)
+          .numberOfRouters(1)
+          .replicationFactor(1)
+          .partitionSize(10 * 1024 * 1024)
+          .sslToStorageNodes(false)
+          .sslToKafka(false)
+          .extraProperties(extraProperties)
+          .build();
+      VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(options1);
 
       String storeName = Utils.getUniqueString("storeForMainMethodOf" + VeniceClusterWrapper.class.getSimpleName());
       String controllerUrl = veniceClusterWrapper.getRandomVeniceController().getControllerUrl();

@@ -20,6 +20,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
@@ -97,7 +98,15 @@ public class StorageNodeComputeTest {
 
   @BeforeClass(alwaysRun = true)
   public void setUp() throws InterruptedException, ExecutionException, VeniceClientException {
-    veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 0, 2, 100, false, false);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(1)
+        .numberOfRouters(0)
+        .replicationFactor(2)
+        .partitionSize(100)
+        .sslToStorageNodes(false)
+        .sslToKafka(false)
+        .build();
+    veniceCluster = ServiceFactory.getVeniceCluster(options);
     // Add one more server with all the bells and whistles: fast-avro, parallel batch get
     Properties serverProperties = new Properties();
     serverProperties.put(ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED, true);

@@ -256,7 +256,12 @@ public class VeniceServerTest {
     int servers = 6;
     int replicationFactor = 2;
 
-    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, servers, 0, replicationFactor);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(servers)
+        .numberOfRouters(0)
+        .replicationFactor(replicationFactor)
+        .build();
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(options);
         CloseableHttpAsyncClient client =
             HttpClientUtils.getMinimalHttpClient(1, 1, Optional.of(SslUtils.getVeniceLocalSslFactory()))) {
 

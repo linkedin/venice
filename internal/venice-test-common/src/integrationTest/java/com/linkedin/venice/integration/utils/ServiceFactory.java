@@ -330,65 +330,6 @@ public class ServiceFactory {
     return getVeniceCluster(options);
   }
 
-  @Deprecated
-  public static VeniceClusterWrapper getVeniceCluster(
-      int numberOfControllers,
-      int numberOfServers,
-      int numberOfRouters,
-      int replicationFactor) {
-    VeniceClusterCreateOptions options =
-        new VeniceClusterCreateOptions.Builder().numberOfControllers(numberOfControllers)
-            .numberOfServers(numberOfServers)
-            .numberOfRouters(numberOfRouters)
-            .replicationFactor(replicationFactor)
-            .build();
-    return getVeniceCluster(options);
-  }
-
-  @Deprecated
-  public static VeniceClusterWrapper getVeniceCluster(
-      int numberOfControllers,
-      int numberOfServers,
-      int numberOfRouters,
-      int replicationFactor,
-      int partitionSize,
-      boolean sslToStorageNodes,
-      boolean sslToKafka,
-      Properties extraProperties) {
-    VeniceClusterCreateOptions options =
-        new VeniceClusterCreateOptions.Builder().numberOfControllers(numberOfControllers)
-            .numberOfServers(numberOfServers)
-            .numberOfRouters(numberOfRouters)
-            .replicationFactor(replicationFactor)
-            .partitionSize(partitionSize)
-            .sslToStorageNodes(sslToStorageNodes)
-            .sslToKafka(sslToKafka)
-            .extraProperties(extraProperties)
-            .build();
-    return getVeniceCluster(options);
-  }
-
-  @Deprecated
-  public static VeniceClusterWrapper getVeniceCluster(
-      int numberOfControllers,
-      int numberOfServers,
-      int numberOfRouters,
-      int replicationFactor,
-      int partitionSize,
-      boolean sslToStorageNodes,
-      boolean sslToKafka) {
-    VeniceClusterCreateOptions options =
-        new VeniceClusterCreateOptions.Builder().numberOfControllers(numberOfControllers)
-            .numberOfServers(numberOfServers)
-            .numberOfRouters(numberOfRouters)
-            .replicationFactor(replicationFactor)
-            .partitionSize(partitionSize)
-            .sslToStorageNodes(sslToStorageNodes)
-            .sslToKafka(sslToKafka)
-            .build();
-    return getVeniceCluster(options);
-  }
-
   public static VeniceMultiClusterWrapper getVeniceMultiClusterWrapper(VeniceMultiClusterCreateOptions options) {
     return getService(VeniceMultiClusterWrapper.SERVICE_NAME, VeniceMultiClusterWrapper.generateService(options));
   }
