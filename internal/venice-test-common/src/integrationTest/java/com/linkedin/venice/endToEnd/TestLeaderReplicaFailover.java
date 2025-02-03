@@ -23,6 +23,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Instance;
@@ -92,8 +93,17 @@ public class TestLeaderReplicaFailover {
     int numberOfServer = 3;
     int numberOfRouter = 1;
 
-    clusterWrapper = ServiceFactory
-        .getVeniceCluster(numberOfController, numberOfServer, numberOfRouter, 3, 1, false, false, serverProperties);
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(numberOfController)
+            .numberOfServers(numberOfServer)
+            .numberOfRouters(numberOfRouter)
+            .replicationFactor(3)
+            .partitionSize(1)
+            .sslToStorageNodes(false)
+            .sslToKafka(false)
+            .extraProperties(serverProperties)
+            .build();
+    clusterWrapper = ServiceFactory.getVeniceCluster(options);
     clusterName = clusterWrapper.getClusterName();
   }
 

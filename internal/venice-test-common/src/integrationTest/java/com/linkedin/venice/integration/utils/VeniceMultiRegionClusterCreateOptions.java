@@ -7,6 +7,7 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_SSL_TO_KAFKA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_SSL_TO_STORAGE_NODES;
 
+import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AuthorizerService;
 import java.util.Properties;
 
@@ -28,6 +29,7 @@ public class VeniceMultiRegionClusterCreateOptions {
   private final AuthorizerService parentAuthorizerService;
   private final String parentVeniceZkBasePath;
   private final String childVeniceZkBasePath;
+  private final DynamicAccessController accessController;
 
   public int getNumberOfRegions() {
     return numberOfRegions;
@@ -91,6 +93,10 @@ public class VeniceMultiRegionClusterCreateOptions {
 
   public String getChildVeniceZkBasePath() {
     return childVeniceZkBasePath;
+  }
+
+  public DynamicAccessController getAccessController() {
+    return accessController;
   }
 
   @Override
@@ -163,6 +169,7 @@ public class VeniceMultiRegionClusterCreateOptions {
     parentAuthorizerService = builder.parentAuthorizerService;
     parentVeniceZkBasePath = builder.parentVeniceZkBasePath;
     childVeniceZkBasePath = builder.childVeniceZkBasePath;
+    accessController = builder.accessController;
   }
 
   public static class Builder {
@@ -182,6 +189,7 @@ public class VeniceMultiRegionClusterCreateOptions {
     private AuthorizerService parentAuthorizerService;
     private String parentVeniceZkBasePath = "/";
     private String childVeniceZkBasePath = "/";
+    private DynamicAccessController accessController;
 
     public Builder numberOfRegions(int numberOfRegions) {
       this.numberOfRegions = numberOfRegions;
@@ -268,6 +276,11 @@ public class VeniceMultiRegionClusterCreateOptions {
       }
 
       this.childVeniceZkBasePath = veniceZkBasePath;
+      return this;
+    }
+
+    public Builder accessController(DynamicAccessController accessController) {
+      this.accessController = accessController;
       return this;
     }
 

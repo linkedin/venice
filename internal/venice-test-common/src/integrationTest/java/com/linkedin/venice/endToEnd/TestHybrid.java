@@ -56,6 +56,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.kafka.protocol.GUID;
@@ -475,8 +476,16 @@ public class TestHybrid {
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
 
     SystemProducer veniceBatchProducer = null;
-    try (VeniceClusterWrapper veniceClusterWrapper =
-        ServiceFactory.getVeniceCluster(1, 3, 1, 2, 1000000, false, false, extraProperties)) {
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(3)
+        .numberOfRouters(1)
+        .replicationFactor(2)
+        .partitionSize(1000000)
+        .sslToStorageNodes(false)
+        .sslToKafka(false)
+        .extraProperties(extraProperties)
+        .build();
+    try (VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(options)) {
       try {
         Admin admin = veniceClusterWrapper.getLeaderVeniceController().getVeniceAdmin();
         String clusterName = veniceClusterWrapper.getClusterName();
@@ -725,9 +734,16 @@ public class TestHybrid {
   public void testLeaderHonorLastTopicSwitchMessage() throws Exception {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(10L));
-    try (
-        VeniceClusterWrapper venice =
-            ServiceFactory.getVeniceCluster(1, 2, 1, 2, 1000000, false, false, extraProperties);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(2)
+        .numberOfRouters(1)
+        .replicationFactor(2)
+        .partitionSize(1000000)
+        .sslToStorageNodes(false)
+        .sslToKafka(false)
+        .extraProperties(extraProperties)
+        .build();
+    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(options);
         ControllerClient controllerClient =
             new ControllerClient(venice.getClusterName(), venice.getAllControllersURLs())) {
       long streamingRewindSeconds = 25L;
@@ -1606,8 +1622,16 @@ public class TestHybrid {
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(20L));
     final int partitionCount = 1;
     final int keyCount = 10;
-    try (VeniceClusterWrapper cluster =
-        ServiceFactory.getVeniceCluster(1, 1, 1, 1, 1000000, false, false, extraProperties)) {
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(1)
+        .numberOfRouters(1)
+        .replicationFactor(1)
+        .partitionSize(1000000)
+        .sslToStorageNodes(false)
+        .sslToKafka(false)
+        .extraProperties(extraProperties)
+        .build();
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(options)) {
       UpdateStoreQueryParams params = new UpdateStoreQueryParams()
           // set hybridRewindSecond to a big number so following versions won't ignore old records in RT
           .setHybridRewindSeconds(10)
@@ -1695,7 +1719,16 @@ public class TestHybrid {
   private static VeniceClusterWrapper setUpCluster(boolean enablePartitionWiseSharedConsumer) {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(DEFAULT_MAX_NUMBER_OF_PARTITIONS, "5");
-    VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 0, 0, 2, 1000000, false, false, extraProperties);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(0)
+        .numberOfRouters(0)
+        .replicationFactor(2)
+        .partitionSize(1000000)
+        .sslToStorageNodes(false)
+        .sslToKafka(false)
+        .extraProperties(extraProperties)
+        .build();
+    VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(options);
 
     // Add Venice Router
     Properties routerProperties = new Properties();

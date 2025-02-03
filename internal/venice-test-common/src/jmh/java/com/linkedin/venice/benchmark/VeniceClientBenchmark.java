@@ -6,6 +6,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -55,7 +56,9 @@ public class VeniceClientBenchmark {
   @Setup
   public void setUp() throws Exception {
     Utils.thisIsLocalhost();
-    cluster = getVeniceCluster(1, 1, 1);
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(1).numberOfRouters(1).build();
+    cluster = getVeniceCluster(options);
     String storeName = buildStore(cluster);
     cluster.useControllerClient(c -> c.updateStore(storeName, new UpdateStoreQueryParams().setReadQuotaInCU(10000)));
     client = ClientFactory.getAndStartGenericAvroClient(
