@@ -3896,6 +3896,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     for (Map.Entry<String, ControllerClient> controllerClientEntry: controllerClientMap.entrySet()) {
       StoreResponse storeResponse = controllerClientEntry.getValue().getStore(storeName);
       if (storeResponse.isError()) {
+        if (storeResponse.getError().contains("does not exist")) {
+          LOGGER.warn(
+              "Store {} does not exist in fabric {}, probably deleted already, skipping RT check",
+              storeName,
+              controllerClientEntry.getKey());
+          continue;
+        }
         LOGGER.warn(
             "Skipping RT cleanup check for store: {} in cluster: {} due to unable to get store from fabric: {} Error: {}",
             storeName,
