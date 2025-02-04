@@ -426,7 +426,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     private InstanceHealthMonitor instanceHealthMonitor;
 
-    private boolean retryBudgetEnabled = false;
+    private boolean retryBudgetEnabled = true;
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
