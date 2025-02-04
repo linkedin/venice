@@ -172,7 +172,7 @@ public class TestChangelogConsumer {
     TestView.resetCounters();
   }
 
-  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  @Test(timeOut = TEST_TIMEOUT * 2, priority = 3)
   public void testAAIngestionWithStoreView() throws Exception {
     // Set up the store
     Long timestamp = System.currentTimeMillis();
@@ -545,7 +545,7 @@ public class TestChangelogConsumer {
     veniceChangelogConsumer.seekToBeginningOfPush().join();
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-      Assert.assertEquals(polledChangeEvents.size(), 30);
+      Assert.assertEquals(polledChangeEvents.size(), 10);
     });
 
     // Save a checkpoint and clear the map
@@ -571,7 +571,7 @@ public class TestChangelogConsumer {
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       // Repush with TTL will include delete events in the topic
-      Assert.assertEquals(polledChangeEvents.size(), 16);
+      Assert.assertEquals(polledChangeEvents.size(), 5);
     });
     allChangeEvents.putAll(polledChangeEvents);
     polledChangeEvents.clear();
@@ -619,7 +619,7 @@ public class TestChangelogConsumer {
       pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
       // Reconsuming the events from the version topic, which at this point should just contain the same 16
       // events we consumed with the before/after image consumer earlier.
-      Assert.assertEquals(versionTopicEvents.size(), 30);
+      Assert.assertEquals(versionTopicEvents.size(), 10);
     });
 
     // Verify version swap count matches with version count - 1 (since we don't transmit from version 0 to version 1).

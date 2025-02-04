@@ -31,6 +31,7 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -519,7 +520,8 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
   @Override
   public CompletableFuture<Void> start() {
     Set<Integer> allPartitions = new HashSet<>();
-    for (int partition = 0; partition < partitionCount; partition++) {
+    Store store = storeRepository.getStore(storeName);
+    for (int partition = 0; partition < store.getPartitionCount(); partition++) {
       allPartitions.add(partition);
     }
     return this.start(allPartitions);

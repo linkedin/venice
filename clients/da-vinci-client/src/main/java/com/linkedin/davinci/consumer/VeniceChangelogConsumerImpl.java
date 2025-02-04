@@ -81,7 +81,6 @@ import org.apache.logging.log4j.Logger;
 public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceChangelogConsumerImpl.class);
   private static final int MAX_SUBSCRIBE_RETRIES = 5;
-  protected final int partitionCount;
   protected long subscribeTime = Long.MAX_VALUE;
 
   protected static final VeniceCompressor NO_OP_COMPRESSOR = new NoopCompressor();
@@ -124,7 +123,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   // partition for the given message.
   protected final Map<Integer, Map<Integer, List<Long>>> currentVersionHighWatermarks = new HashMap<>();
   protected final Map<Integer, Long> currentVersionLastHeartbeat = new VeniceConcurrentHashMap<>();
-  protected final int[] currentValuePayloadSize;
 
   protected final ChangelogClientConfig changelogClientConfig;
 
@@ -138,7 +136,15 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       PubSubConsumerAdapter pubSubConsumer) {
     this.pubSubConsumer = pubSubConsumer;
 
-    if (changelogClientConfig.getViewName() == null || changelogClientConfig.getViewName().isEmpty()) {
+    // TODO: putting the change capture case here is a little bit weird. The view abstraction should probably
+    // accommodate
+    // this case, but it doesn't seem that clean in this case. Change capture topics don't behave like view topics as
+    // they only contain nearline data whereas views are full version topics. So for now it seems legit to have this
+    // caveat, but we should perhaps think through this in the future if we think we'll have more nearline data only
+    // cases for view topics. Change capture topic naming also doesn't follow the view_store_store_name_view_name
+    // naming pattern, making tracking it even weirder.
+    if (changelogClientConfig.getViewName() == null || changelogClientConfig.getViewName().isEmpty()
+        || changelogClientConfig.isBeforeImageView()) {
       this.storeName = changelogClientConfig.getStoreName();
     } else {
       this.storeName =
@@ -163,14 +169,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     this.startTimestamp = System.currentTimeMillis();
     LOGGER.info("VeniceChangelogConsumer created at timestamp: {}", startTimestamp);
 
-    this.storeRepository = new NativeMetadataRepositoryViewAdapter(
-        new ThinClientMetaStoreBasedRepository(
-            changelogClientConfig.getInnerClientConfig(),
-            VeniceProperties.empty(),
-            null));
-    Store store = storeRepository.getStore(storeName);
-    this.partitionCount = store.getPartitionCount();
-    this.currentValuePayloadSize = new int[partitionCount];
+    ThinClientMetaStoreBasedRepository repository = new ThinClientMetaStoreBasedRepository(
+        changelogClientConfig.getInnerClientConfig(),
+        VeniceProperties.empty(),
+        null);
+    repository.start();
+    this.storeRepository = new NativeMetadataRepositoryViewAdapter(repository);
     this.rmdDeserializerCache = new RmdDeserializerCache<>(replicationMetadataSchemaRepository, storeName, 1, false);
     if (changelogClientConfig.getInnerClientConfig().isSpecificClient()) {
       // If a value class is supplied, we'll use a Specific record adapter
@@ -187,13 +191,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
     }
 
-    LOGGER
-        .info("Start a change log consumer client for store: {}, with partition count: {}", storeName, partitionCount);
+    LOGGER.info("Start a change log consumer client for store: {}", storeName);
   }
 
   @Override
   public int getPartitionCount() {
-    return partitionCount;
+    Store store = storeRepository.getStore(storeName);
+    return store.getPartitionCount();
   }
 
   @Override
@@ -446,7 +450,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public CompletableFuture<Void> subscribeAll() {
-    return this.subscribe(IntStream.range(0, partitionCount).boxed().collect(Collectors.toSet()));
+    Store store = storeRepository.getStore(storeName);
+    return this.subscribe(IntStream.range(0, store.getPartitionCount()).boxed().collect(Collectors.toSet()));
   }
 
   @Override
@@ -571,7 +576,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   @Override
   public void unsubscribeAll() {
     Set<Integer> allPartitions = new HashSet<>();
-    for (int partition = 0; partition < partitionCount; partition++) {
+    Store store = storeRepository.getStore(storeName);
+    for (int partition = 0; partition < store.getPartitionCount(); partition++) {
       allPartitions.add(partition);
     }
     this.unsubscribe(allPartitions);
@@ -947,8 +953,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       int payloadSize) {
     V currentValue = null;
     if (recordChangeEvent.currentValue != null && recordChangeEvent.currentValue.getSchemaId() > 0) {
-      currentValuePayloadSize[pubSubTopicPartition.getPartitionNumber()] =
-          recordChangeEvent.currentValue.getValue().array().length;
       currentValue = deserializeValueFromBytes(
           recordChangeEvent.currentValue.getValue(),
           recordChangeEvent.currentValue.getSchemaId());
@@ -988,8 +992,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     if (localOffset != null) {
       if (RmdUtils.hasOffsetAdvanced(localOffset, recordCheckpointVector)) {
         currentVersionHighWatermarks.putIfAbsent(pubSubTopicPartition.getPartitionNumber(), new HashMap<>());
+        // We need to merge
         currentVersionHighWatermarks.get(pubSubTopicPartition.getPartitionNumber())
-            .put(upstreamPartition, recordCheckpointVector);
+            .put(upstreamPartition, RmdUtils.mergeOffsetVectors(localOffset, recordCheckpointVector));
+        return false;
+      } else {
         return true;
       }
     }
