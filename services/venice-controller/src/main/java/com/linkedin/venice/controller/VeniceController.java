@@ -194,7 +194,7 @@ public class VeniceController {
     Admin admin = controllerService.getVeniceHelixAdmin();
     if (multiClusterConfigs.isLogCompactionEnabled()) {
       logCompactionService = new LogCompactionService(admin, multiClusterConfigs);
-      LOGGER.info("LogCompactionService is initialised");
+      LOGGER.info(LogCompactionService.class.getSimpleName() + " is initialised");
     }
 
     if (multiClusterConfigs.isParent()) {
