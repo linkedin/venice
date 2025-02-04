@@ -4838,16 +4838,13 @@ public abstract class StoreIngestionTaskTest {
       }
     }, aaConfig);
 
-    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-        (storeVersion, keySchema, inputValueSchema, outputValueSchema) -> new TestStringRecordTransformer(
-            storeVersion,
-            keySchema,
-            inputValueSchema,
-            outputValueSchema,
-            true),
-        String.class,
-        Schema.create(Schema.Type.STRING));
+    DaVinciRecordTransformerConfig recordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .setOutputValueClass(String.class)
+            .setOutputValueSchema(Schema.create(Schema.Type.STRING))
+            .build();
     config.setRecordTransformerConfig(recordTransformerConfig);
+
     runTest(config);
 
     // Transformer error should never be recorded
@@ -4914,15 +4911,11 @@ public abstract class StoreIngestionTaskTest {
           .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
     }, aaConfig);
 
-    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-        (storeVersion, keySchema, inputValueSchema, outputValueSchema) -> new TestStringRecordTransformer(
-            storeVersion,
-            keySchema,
-            inputValueSchema,
-            outputValueSchema,
-            true),
-        String.class,
-        Schema.create(Schema.Type.STRING));
+    DaVinciRecordTransformerConfig recordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .setOutputValueClass(String.class)
+            .setOutputValueSchema(Schema.create(Schema.Type.STRING))
+            .build();
     config.setRecordTransformerConfig(recordTransformerConfig);
     runTest(config);
   }

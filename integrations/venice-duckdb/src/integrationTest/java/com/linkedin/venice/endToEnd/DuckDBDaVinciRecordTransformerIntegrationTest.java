@@ -29,6 +29,7 @@ import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -136,18 +137,24 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
         metricsRepository,
         backendConfig)) {
       Set<String> columnsToProject = Collections.emptySet();
-      DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-          (storeVersion, keySchema, inputValueSchema, outputValueSchema) -> new DuckDBDaVinciRecordTransformer(
+
+      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction =
+          (storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> new DuckDBDaVinciRecordTransformer(
               storeVersion,
               keySchema,
               inputValueSchema,
               outputValueSchema,
-              false,
+              config,
               tmpDir.getAbsolutePath(),
               storeName,
-              columnsToProject),
-          GenericRecord.class,
-          NAME_RECORD_V1_SCHEMA);
+              columnsToProject);
+
+      DaVinciRecordTransformerConfig recordTransformerConfig =
+          new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(recordTransformerFunction)
+              .setOutputValueClass(GenericRecord.class)
+              .setOutputValueSchema(NAME_RECORD_V1_SCHEMA)
+              .setStoreRecordsInDaVinci(false)
+              .build();
       clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
       DaVinciClient<Integer, Object> clientWithRecordTransformer =

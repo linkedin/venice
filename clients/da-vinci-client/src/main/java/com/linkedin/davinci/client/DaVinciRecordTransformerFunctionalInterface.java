@@ -13,5 +13,6 @@ public interface DaVinciRecordTransformerFunctionalInterface {
       Integer storeVersion,
       Schema keySchema,
       Schema inputValueSchema,
-      Schema outputValueSchema);
+      Schema outputValueSchema,
+      DaVinciRecordTransformerConfig recordTransformerConfig);
 }

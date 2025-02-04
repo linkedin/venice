@@ -8,6 +8,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
@@ -22,8 +23,8 @@ public class DaVinciConfigTest {
         Schema keySchema,
         Schema inputValueSchema,
         Schema outputValueSchema,
-        boolean storeRecordsInDaVinci) {
-      super(storeVersion, keySchema, inputValueSchema, outputValueSchema, storeRecordsInDaVinci);
+        DaVinciRecordTransformerConfig recordTransformerConfig) {
+      super(storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
     }
 
     @Override
@@ -44,38 +45,56 @@ public class DaVinciConfigTest {
 
   @Test
   public void testRecordTransformerEnabled() {
-    DaVinciConfig config = new DaVinciConfig();
-    assertFalse(config.isRecordTransformerEnabled());
+    DaVinciConfig clientConfig = new DaVinciConfig();
+    assertFalse(clientConfig.isRecordTransformerEnabled());
 
-    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-        (storeVersion, keySchema, inputValueSchema, outputValueSchema) -> new TestRecordTransformer(
+    DaVinciRecordTransformerConfig dummyRecordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
+        .setRecordTransformerFunction((storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> null)
+        .build();
+
+    DaVinciRecordTransformerFunctionalInterface recordTransformerFunction =
+        (storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> new TestRecordTransformer(
             storeVersion,
             keySchema,
             inputValueSchema,
             outputValueSchema,
-            true),
-        String.class,
-        Schema.create(Schema.Type.INT));
-    config.setRecordTransformerConfig(recordTransformerConfig);
-    assertTrue(config.isRecordTransformerEnabled());
+            dummyRecordTransformerConfig);
+
+    DaVinciRecordTransformerConfig recordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(recordTransformerFunction)
+            .setOutputValueClass(String.class)
+            .setOutputValueSchema(Schema.create(Schema.Type.INT))
+            .build();
+    clientConfig.setRecordTransformerConfig(recordTransformerConfig);
+
+    assertTrue(clientConfig.isRecordTransformerEnabled());
   }
 
   @Test
   public void testGetAndSetRecordTransformer() {
-    DaVinciConfig config = new DaVinciConfig();
-    assertNull(config.getRecordTransformerConfig());
+    DaVinciConfig clientConfig = new DaVinciConfig();
+    assertNull(clientConfig.getRecordTransformerConfig());
 
-    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-        (storeVersion, keySchema, inputValueSchema, outputValueSchema) -> new TestRecordTransformer(
+    DaVinciRecordTransformerConfig dummyRecordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
+        .setRecordTransformerFunction((storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> null)
+        .build();
+
+    DaVinciRecordTransformerFunctionalInterface recordTransformerFunction =
+        (storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> new TestRecordTransformer(
             storeVersion,
             keySchema,
             inputValueSchema,
             outputValueSchema,
-            true),
-        String.class,
-        Schema.create(Schema.Type.INT));
-    config.setRecordTransformerConfig(recordTransformerConfig);
-    assertNotNull(config.getRecordTransformerConfig());
+            dummyRecordTransformerConfig);
+
+    DaVinciRecordTransformerConfig recordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(recordTransformerFunction)
+            .setOutputValueClass(String.class)
+            .setOutputValueSchema(Schema.create(Schema.Type.INT))
+            .build();
+    clientConfig.setRecordTransformerConfig(recordTransformerConfig);
+
+    assertNotNull(clientConfig.getRecordTransformerConfig());
   }
 
 }
