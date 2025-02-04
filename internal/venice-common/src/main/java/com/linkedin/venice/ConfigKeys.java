@@ -238,7 +238,7 @@ public class ConfigKeys {
   /**
    * Class name of the implementation of interface {@link com.linkedin.venice.controller.repush.RepushOrchestrator} in {@link com.linkedin.venice.controller.logcompaction.CompactionManager}
    */
-  public static final String REPUSH_ORCHESTRATOR_CLASS_NAME = "repush.orchestrator.class.name";
+  public static final String REPUSH_ORCHESTRATOR_CLASS_NAME = "controller.repush.orchestrator.class.name";
 
   /**
    * Prefix of configs to configure RepushOrchestrator
