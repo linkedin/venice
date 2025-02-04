@@ -1073,10 +1073,10 @@ public class TestHybrid {
     latch = new CountDownLatch(1);
     try {
       if (latch.await(TEST_TIMEOUT, TimeUnit.MILLISECONDS)) {
-        System.out.println("Log compaction job triggered");
+        LOGGER.info("Log compaction job triggered");
       }
     } catch (InterruptedException e) {
-      System.out.println("Log compaction job failed");
+      LOGGER.error("Log compaction job failed");
       throw new RuntimeException(e);
     }
   }
@@ -1085,7 +1085,7 @@ public class TestHybrid {
     @Override
     public RepushJobResponse repush(String storeName) {
       latch.countDown();
-      System.out.println("Repush job triggered for store: " + storeName);
+      LOGGER.info("Repush job triggered for store: " + storeName);
       return null;
     }
   }
