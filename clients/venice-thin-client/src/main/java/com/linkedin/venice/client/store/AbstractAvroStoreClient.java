@@ -75,8 +75,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   private RecordDeserializer<StreamingFooterRecordV1> streamingFooterRecordDeserializer;
   private TransportClient transportClient;
   private final Executor deserializationExecutor;
-  private final Executor veniceClientWarmUpExecutor =
-      Executors.newFixedThreadPool(1, new DaemonThreadFactory("Venice-Client-Warmup"));
+  private final Executor veniceClientWarmUpExecutor;
   private final CompressorFactory compressorFactory;
   private final String storageRequestPath;
   private final String computeRequestPath;
@@ -134,6 +133,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     this.compressorFactory = new CompressorFactory();
     this.storageRequestPath = TYPE_STORAGE + "/" + clientConfig.getStoreName();
     this.computeRequestPath = TYPE_COMPUTE + "/" + clientConfig.getStoreName();
+    this.veniceClientWarmUpExecutor = Executors
+        .newFixedThreadPool(1, new DaemonThreadFactory("Venice-Client-Warmup-For-" + clientConfig.getStoreName()));
   }
 
   @Override
