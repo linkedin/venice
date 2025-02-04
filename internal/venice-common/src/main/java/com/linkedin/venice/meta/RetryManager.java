@@ -99,27 +99,34 @@ public class RetryManager {
   }
 
   private void updateRetryTokenBucket() {
-    if (retryBudgetEnabled.get() && requestCount.get() > 0) {
+    if (retryBudgetEnabled.get()) {
       try {
+        /**
+         * Always schedule the next update of retry token bucket, even if the request count is 0 as the traffic
+         * can come back later, and we want to make sure that the retry token bucket is updated according to the
+         * new traffic volume.
+         */
+        scheduler.schedule(this::updateRetryTokenBucket, enforcementWindowInMs, TimeUnit.MILLISECONDS);
         long elapsedTimeInMs = clock.millis() - lastUpdateTimestamp;
-        long requestCountSinceLastUpdate = requestCount.getAndSet(0);
         lastUpdateTimestamp = clock.millis();
-        // Minimum user request per second will be 1
-        long newQPS = (long) Math
-            .ceil((double) requestCountSinceLastUpdate / (double) TimeUnit.MILLISECONDS.toSeconds(elapsedTimeInMs));
-        if (previousQPS > 0) {
-          long difference = Math.abs(previousQPS - newQPS);
-          double differenceInPercentDecimal = (double) difference / (double) previousQPS;
-          if (differenceInPercentDecimal > 0.1) {
-            // Only update the retry token bucket if the change in request per seconds is more than 10 percent
+        if (requestCount.get() > 0) {
+          long requestCountSinceLastUpdate = requestCount.getAndSet(0);
+          // Minimum user request per second will be 1
+          long newQPS = (long) Math
+              .ceil((double) requestCountSinceLastUpdate / (double) TimeUnit.MILLISECONDS.toSeconds(elapsedTimeInMs));
+          if (previousQPS > 0) {
+            long difference = Math.abs(previousQPS - newQPS);
+            double differenceInPercentDecimal = (double) difference / (double) previousQPS;
+            if (differenceInPercentDecimal > 0.1) {
+              // Only update the retry token bucket if the change in request per seconds is more than 10 percent
+              previousQPS = newQPS;
+              updateTokenBucket(newQPS);
+            }
+          } else {
             previousQPS = newQPS;
             updateTokenBucket(newQPS);
           }
-        } else {
-          previousQPS = newQPS;
-          updateTokenBucket(newQPS);
         }
-        scheduler.schedule(this::updateRetryTokenBucket, enforcementWindowInMs, TimeUnit.MILLISECONDS);
       } catch (Throwable e) {
         LOGGER.warn("Caught exception when trying to update retry budget, retry budget will be disabled", e);
         // Once disabled it will not be re-enabled until client is restarted
