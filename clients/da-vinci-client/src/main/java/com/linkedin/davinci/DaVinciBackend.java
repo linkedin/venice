@@ -399,7 +399,7 @@ public class DaVinciBackend implements Closeable {
     };
   }
 
-  final synchronized void bootstrap() {
+  private synchronized void bootstrap() {
     List<AbstractStorageEngine> storageEngines =
         storageService.getStorageEngineRepository().getAllLocalStorageEngines();
     LOGGER.info("Starting bootstrap, storageEngines: {}", storageEngines);

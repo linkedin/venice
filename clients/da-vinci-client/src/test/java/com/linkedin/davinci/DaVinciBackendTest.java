@@ -9,7 +9,6 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -38,6 +37,8 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -168,7 +169,8 @@ public class DaVinciBackendTest {
   }
 
   @Test
-  public void testBootstrappingSubscription() throws NoSuchFieldException, IllegalAccessException {
+  public void testBootstrappingSubscription()
+      throws IllegalAccessException, NoSuchFieldException, NoSuchMethodException, InvocationTargetException {
     DaVinciBackend backend = mock(DaVinciBackend.class);
     StorageService mockStorageService = mock(StorageService.class);
 
@@ -254,10 +256,12 @@ public class DaVinciBackendTest {
     ingestionServiceField.set(backend, storeIngestionService);
     doNothing().when(ingestionBackend).addIngestionNotifier(any());
 
+    Method bootstrapMethod = DaVinciBackend.class.getDeclaredMethod("bootstrap");
+    bootstrapMethod.setAccessible(true);
+
     // DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY == false
     when(mockCombinedProperties.getBoolean(anyString(), anyBoolean())).thenReturn(false);
-    doCallRealMethod().when(backend).bootstrap();
-    backend.bootstrap();
+    bootstrapMethod.invoke(backend);
 
     ComplementSet<Integer> subscription = mockStoreBackend.getSubscription();
     assertTrue(subscription.contains(0));
@@ -265,7 +269,7 @@ public class DaVinciBackendTest {
     assertFalse(subscription.contains(2));
 
     when(mockCombinedProperties.getBoolean(anyString(), anyBoolean())).thenReturn(true);
-    backend.bootstrap();
+    bootstrapMethod.invoke(backend);
 
     // DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY == true
     subscription = mockStoreBackend.getSubscription();
