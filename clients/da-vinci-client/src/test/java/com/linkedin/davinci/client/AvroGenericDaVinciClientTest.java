@@ -60,15 +60,11 @@ public class AvroGenericDaVinciClientTest {
       daVinciConfig = new DaVinciConfig();
     }
 
-    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-        (storeVersion, keySchema, inputValueSchema, outputValueSchema) -> new TestStringRecordTransformer(
-            storeVersion,
-            keySchema,
-            inputValueSchema,
-            outputValueSchema,
-            true),
-        String.class,
-        Schema.create(Schema.Type.STRING));
+    DaVinciRecordTransformerConfig recordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .setOutputValueClass(String.class)
+            .setOutputValueSchema(Schema.create(Schema.Type.STRING))
+            .build();
     daVinciConfig.setRecordTransformerConfig(recordTransformerConfig);
 
     VeniceProperties backendConfig = mock(VeniceProperties.class);

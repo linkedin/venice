@@ -13,6 +13,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.client.DaVinciRecordTransformerUtility;
 import com.linkedin.davinci.store.AbstractStorageEngine;
@@ -39,8 +40,17 @@ public class RecordTransformerTest {
     Schema keySchema = Schema.create(Schema.Type.INT);
     Schema valueSchema = Schema.create(Schema.Type.STRING);
 
-    DaVinciRecordTransformer<Integer, String, String> recordTransformer =
-        new TestStringRecordTransformer(storeVersion, keySchema, valueSchema, valueSchema, false);
+    DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .setStoreRecordsInDaVinci(false)
+            .build();
+
+    DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(
+        storeVersion,
+        keySchema,
+        valueSchema,
+        valueSchema,
+        dummyRecordTransformerConfig);
     assertEquals(recordTransformer.getStoreVersion(), storeVersion);
 
     assertEquals(recordTransformer.getKeySchema().getType(), Schema.Type.INT);
@@ -76,8 +86,16 @@ public class RecordTransformerTest {
     Schema keySchema = Schema.create(Schema.Type.INT);
     Schema valueSchema = Schema.create(Schema.Type.STRING);
 
-    DaVinciRecordTransformer<Integer, String, String> recordTransformer =
-        new TestStringRecordTransformer(storeVersion, keySchema, valueSchema, valueSchema, true);
+    DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .build();
+
+    DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(
+        storeVersion,
+        keySchema,
+        valueSchema,
+        valueSchema,
+        dummyRecordTransformerConfig);
     assertEquals(recordTransformer.getStoreVersion(), storeVersion);
 
     AbstractStorageIterator iterator = mock(AbstractStorageIterator.class);
@@ -115,12 +133,61 @@ public class RecordTransformerTest {
   }
 
   @Test
+  public void testOnRecoveryAlwaysBootstrapFromVersionTopic() {
+    Schema keySchema = Schema.create(Schema.Type.INT);
+    Schema valueSchema = Schema.create(Schema.Type.STRING);
+
+    DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .setAlwaysBootstrapFromVersionTopic(true)
+            .build();
+
+    DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(
+        storeVersion,
+        keySchema,
+        valueSchema,
+        valueSchema,
+        dummyRecordTransformerConfig);
+    assertEquals(recordTransformer.getStoreVersion(), storeVersion);
+
+    AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
+    Lazy<VeniceCompressor> compressor = Lazy.of(() -> mock(VeniceCompressor.class));
+
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+    when(storageEngine.getPartitionOffset(partitionId)).thenReturn(Optional.of(offsetRecord));
+
+    recordTransformer.onRecovery(storageEngine, partitionId, partitionStateSerializer, compressor);
+    verify(storageEngine, times(1)).clearPartitionOffset(partitionId);
+
+    // Reset the mock to clear previous interactions
+    reset(storageEngine);
+
+    offsetRecord.setRecordTransformerClassHash(recordTransformer.getClassHash());
+    assertEquals((int) offsetRecord.getRecordTransformerClassHash(), recordTransformer.getClassHash());
+
+    when(storageEngine.getPartitionOffset(partitionId)).thenReturn(Optional.of(offsetRecord));
+
+    // Execute the onRecovery method again to test the case where the classHash exists
+    recordTransformer.onRecovery(storageEngine, partitionId, partitionStateSerializer, compressor);
+    verify(storageEngine, times(1)).clearPartitionOffset(partitionId);
+    verify(storageEngine, never()).getIterator(partitionId);
+  }
+
+  @Test
   public void testBlockingRecordTransformer() {
     Schema keySchema = Schema.create(Schema.Type.INT);
     Schema valueSchema = Schema.create(Schema.Type.STRING);
 
-    DaVinciRecordTransformer<Integer, String, String> recordTransformer =
-        new TestStringRecordTransformer(storeVersion, keySchema, valueSchema, valueSchema, true);
+    DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .build();
+
+    DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(
+        storeVersion,
+        keySchema,
+        valueSchema,
+        valueSchema,
+        dummyRecordTransformerConfig);
     assertEquals(recordTransformer.getStoreVersion(), storeVersion);
 
     recordTransformer = new BlockingDaVinciRecordTransformer<>(
@@ -128,7 +195,7 @@ public class RecordTransformerTest {
         keySchema,
         valueSchema,
         valueSchema,
-        recordTransformer.getStoreRecordsInDaVinci());
+        dummyRecordTransformerConfig);
     recordTransformer.onStartVersionIngestion(true);
 
     assertTrue(recordTransformer.getStoreRecordsInDaVinci());

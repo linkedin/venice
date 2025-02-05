@@ -110,7 +110,7 @@ public class DaVinciRecordTransformerUtility<K, O> {
 
     boolean transformerLogicChanged = hasTransformerLogicChanged(classHash, offsetRecord);
 
-    if (!recordTransformer.getStoreRecordsInDaVinci() || transformerLogicChanged) {
+    if (recordTransformer.getAlwaysBootstrapFromVersionTopic() || transformerLogicChanged) {
       LOGGER.info("Bootstrapping directly from the VersionTopic for partition {}", partitionId);
 
       // Bootstrap from VT
