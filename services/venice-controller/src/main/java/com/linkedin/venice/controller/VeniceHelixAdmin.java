@@ -3895,33 +3895,42 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     String rtTopicName = Utils.composeRealTimeTopic(storeName);
     Map<String, ControllerClient> controllerClientMap = getControllerClientMap(clusterName);
     for (Map.Entry<String, ControllerClient> controllerClientEntry: controllerClientMap.entrySet()) {
-      StoreResponse storeResponse = RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
-        StoreResponse response = controllerClientEntry.getValue().getStore(storeName);
-        if (response.isError() && response.getError().contains(DOES_NOT_EXISTS)) {
-          throw new VeniceException("Store does not exist " + storeName);
-        }
-        return response;
-      },
-          5,
-          Duration.ofMillis(10),
-          Duration.ofMillis(500),
-          Duration.ofSeconds(5),
-          Collections.singletonList(VeniceException.class));
-      if (storeResponse.isError()) {
-        if (storeResponse.getError().contains(DOES_NOT_EXISTS)) {
+      StoreResponse storeResponse;
+      try {
+        storeResponse = RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
+          StoreResponse response = controllerClientEntry.getValue().getStore(storeName);
+          if (response.isError() && response.getError().contains(DOES_NOT_EXISTS)) {
+            throw new VeniceNoStoreException(storeName);
+          }
+          return response;
+        },
+            5,
+            Duration.ofMillis(10),
+            Duration.ofMillis(500),
+            Duration.ofSeconds(5),
+            Collections.singletonList(VeniceNoStoreException.class));
+        if (storeResponse.isError()) {
+          if (storeResponse.getError().contains(DOES_NOT_EXISTS)) {
+            LOGGER.warn(
+                "Store {} does not exist in fabric {}, probably deleted already, skipping RT check",
+                storeName,
+                controllerClientEntry.getKey());
+            continue;
+          }
           LOGGER.warn(
-              "Store {} does not exist in fabric {}, probably deleted already, skipping RT check",
+              "Skipping RT cleanup check for store: {} in cluster: {} due to unable to get store from fabric: {} Error: {}",
               storeName,
-              controllerClientEntry.getKey());
-          continue;
+              clusterName,
+              controllerClientEntry.getKey(),
+              storeResponse.getError());
+          return false;
         }
+      } catch (VeniceNoStoreException e) {
         LOGGER.warn(
-            "Skipping RT cleanup check for store: {} in cluster: {} due to unable to get store from fabric: {} Error: {}",
+            "Store {} does not exist in fabric {}, probably deleted already, skipping RT check",
             storeName,
-            clusterName,
-            controllerClientEntry.getKey(),
-            storeResponse.getError());
-        return false;
+            controllerClientEntry.getKey());
+        continue;
       }
       if (Version.containsHybridVersion(storeResponse.getStore().getVersions())) {
         LOGGER.warn(
