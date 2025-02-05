@@ -1,0 +1,34 @@
+{
+  "type": "record",
+  "name": "NestedRecord",
+  "namespace": "example.avro",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string",
+      "default": "default_id"
+    },
+    {
+      "name": "itemList",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "ItemRecord",
+          "fields": [
+            {
+              "name": "memberId",
+              "type": "long"
+            },
+            {
+              "name": "dummyField",
+              "type": "long",
+              "default": 100
+            }
+          ]
+        }
+      },
+      "default": []
+    }
+  ]
+}

@@ -333,7 +333,8 @@ public class MergeConflictResolver {
      * {@link mergeResultValueSchema}.
      */
     GenericRecord newValueRecord =
-        deserializerCacheForFullValue.get(newValueSchemaID, newValueSchemaID).deserialize(newValueBytes);
+        deserializerCacheForFullValue.get(newValueSchemaID, mergeResultValueSchemaEntry.getId())
+            .deserialize(newValueBytes);
     ValueAndRmd<GenericRecord> oldValueAndRmd = createOldValueAndRmd(
         mergeResultValueSchemaEntry.getSchema(),
         mergeResultValueSchemaEntry.getId(),
