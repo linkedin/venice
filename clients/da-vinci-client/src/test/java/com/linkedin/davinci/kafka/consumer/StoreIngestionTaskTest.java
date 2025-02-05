@@ -259,6 +259,7 @@ import org.apache.logging.log4j.Logger;
 import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
+import org.mockito.stubbing.Answer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
@@ -1305,6 +1306,7 @@ public abstract class StoreIngestionTaskTest {
     setupMockAbstractStorageEngine(metadataPartition);
     doReturn(svs).when(mockAbstractStorageEngine).getStoreVersionState();
     doReturn(svs).when(mockStorageMetadataService).getStoreVersionState(topic);
+    doReturn(svs).when(mockStorageMetadataService).computeStoreVersionState(eq(topic), any());
   }
 
   void setStoreVersionStateSupplier(boolean sorted) {
@@ -2499,8 +2501,23 @@ public abstract class StoreIngestionTaskTest {
     }, aaConfig);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testVeniceMessagesProcessingWithSortedInputWithBlobMode(boolean blobMode) throws Exception {
+  @Test(dataProvider = "Boolean-and-Optional-Boolean", dataProviderClass = DataProviderUtils.class)
+  public void testVeniceMessagesProcessingWithSortedInputWithBlobMode(boolean blobMode, Boolean sortedFlagInSVS)
+      throws Exception {
+    if (sortedFlagInSVS != null) {
+      setStoreVersionStateSupplier(sortedFlagInSVS);
+    } else {
+      doReturn(null).when(mockStorageMetadataService).getStoreVersionState(any());
+    }
+    doAnswer((Answer<StoreVersionState>) invocationOnMock -> {
+      String topicName = invocationOnMock.getArgument(0, String.class);
+      Function<StoreVersionState, StoreVersionState> mapFunction = invocationOnMock.getArgument(1, Function.class);
+      StoreVersionState updatedStoreVersionState =
+          mapFunction.apply(mockStorageMetadataService.getStoreVersionState(topicName));
+      doReturn(updatedStoreVersionState).when(mockStorageMetadataService).getStoreVersionState(any());
+      return updatedStoreVersionState;
+    }).when(mockStorageMetadataService).computeStoreVersionState(anyString(), any());
+
     localVeniceWriter.broadcastStartOfPush(true, new HashMap<>());
     PubSubProduceResult putMetadata =
         (PubSubProduceResult) localVeniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID).get();
@@ -2522,7 +2539,13 @@ public abstract class StoreIngestionTaskTest {
           .put(topic, PARTITION_FOO, getOffsetRecord(putMetadata.getOffset() - 1));
       // Check database mode switches from deferred-write to transactional after EOP control message
       StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
-      deferredWritePartitionConfig.setDeferredWrite(!blobMode);
+      boolean deferredWrite;
+      if (!blobMode) {
+        deferredWrite = sortedFlagInSVS != null ? sortedFlagInSVS : true;
+      } else {
+        deferredWrite = sortedFlagInSVS != null ? sortedFlagInSVS : false;
+      }
+      deferredWritePartitionConfig.setDeferredWrite(deferredWrite);
       verify(mockAbstractStorageEngine, times(1))
           .beginBatchWrite(eq(deferredWritePartitionConfig), any(), eq(Optional.empty()));
       StoragePartitionConfig transactionalPartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
