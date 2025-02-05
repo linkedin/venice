@@ -701,7 +701,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     }
 
     String recordTransformerOutputValueSchema = "null";
-
     if (daVinciConfig.isRecordTransformerEnabled() && recordTransformerConfig.getOutputValueSchema() != null) {
       recordTransformerOutputValueSchema = recordTransformerConfig.getOutputValueSchema().toString();
     }

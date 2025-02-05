@@ -150,11 +150,6 @@ public class RecordTransformerTest {
         dummyRecordTransformerConfig);
     assertEquals(recordTransformer.getStoreVersion(), storeVersion);
 
-    AbstractStorageIterator iterator = mock(AbstractStorageIterator.class);
-    when(iterator.isValid()).thenReturn(true).thenReturn(false);
-    when(iterator.key()).thenReturn("mockKey".getBytes());
-    when(iterator.value()).thenReturn("mockValue".getBytes());
-
     AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
     Lazy<VeniceCompressor> compressor = Lazy.of(() -> mock(VeniceCompressor.class));
 
@@ -170,15 +165,9 @@ public class RecordTransformerTest {
     offsetRecord.setRecordTransformerClassHash(recordTransformer.getClassHash());
     assertEquals((int) offsetRecord.getRecordTransformerClassHash(), recordTransformer.getClassHash());
 
-    // class hash should be the same when the OffsetRecord is serialized then deserialized
-    byte[] offsetRecordBytes = offsetRecord.toBytes();
-    OffsetRecord deserializedOffsetRecord = new OffsetRecord(offsetRecordBytes, partitionStateSerializer);
-    assertEquals((int) deserializedOffsetRecord.getRecordTransformerClassHash(), recordTransformer.getClassHash());
-
     when(storageEngine.getPartitionOffset(partitionId)).thenReturn(Optional.of(offsetRecord));
 
     // Execute the onRecovery method again to test the case where the classHash exists
-    when(storageEngine.getIterator(partitionId)).thenReturn(iterator);
     recordTransformer.onRecovery(storageEngine, partitionId, partitionStateSerializer, compressor);
     verify(storageEngine, times(1)).clearPartitionOffset(partitionId);
     verify(storageEngine, never()).getIterator(partitionId);

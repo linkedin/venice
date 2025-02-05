@@ -27,7 +27,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -75,8 +74,6 @@ public class DaVinciUserApp {
     if (recordTransformerEnabled) {
       DaVinciRecordTransformerConfig recordTransformerConfig =
           new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
-              .setOutputValueClass(String.class)
-              .setOutputValueSchema(Schema.create(Schema.Type.STRING))
               .build();
       daVinciConfig.setRecordTransformerConfig(recordTransformerConfig);
     }

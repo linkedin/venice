@@ -128,8 +128,6 @@ public class DaVinciClientRecordTransformerTest {
 
       DaVinciRecordTransformerConfig recordTransformerConfig =
           new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
-              .setOutputValueClass(String.class)
-              .setOutputValueSchema(Schema.create(Schema.Type.STRING))
               .build();
       clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
@@ -224,12 +222,11 @@ public class DaVinciClientRecordTransformerTest {
       TestStringRecordTransformer recordTransformer =
           new TestStringRecordTransformer(1, myKeySchema, myValueSchema, myValueSchema, dummyRecordTransformerConfig);
 
-      DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
-          .setRecordTransformerFunction(
-              (storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> recordTransformer)
-          .setOutputValueClass(String.class)
-          .setOutputValueSchema(Schema.create(Schema.Type.STRING))
-          .build();
+      DaVinciRecordTransformerConfig recordTransformerConfig =
+          new DaVinciRecordTransformerConfig.Builder()
+              .setRecordTransformerFunction(
+                  (storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> recordTransformer)
+              .build();
       clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
       DaVinciClient<Integer, Object> clientWithRecordTransformer =
@@ -309,12 +306,11 @@ public class DaVinciClientRecordTransformerTest {
       TestStringRecordTransformer recordTransformer =
           new TestStringRecordTransformer(1, myKeySchema, myValueSchema, myValueSchema, dummyRecordTransformerConfig);
 
-      DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
-          .setRecordTransformerFunction(
-              (storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> recordTransformer)
-          .setOutputValueClass(String.class)
-          .setOutputValueSchema(Schema.create(Schema.Type.STRING))
-          .build();
+      DaVinciRecordTransformerConfig recordTransformerConfig =
+          new DaVinciRecordTransformerConfig.Builder()
+              .setRecordTransformerFunction(
+                  (storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> recordTransformer)
+              .build();
       clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
       DaVinciClient<Integer, String> clientWithRecordTransformer =
@@ -383,8 +379,6 @@ public class DaVinciClientRecordTransformerTest {
     DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
         .setRecordTransformerFunction(
             (storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> recordTransformer)
-        .setOutputValueClass(String.class)
-        .setOutputValueSchema(Schema.create(Schema.Type.STRING))
         .setStoreRecordsInDaVinci(false)
         .build();
     clientConfig.setRecordTransformerConfig(recordTransformerConfig);
@@ -436,12 +430,11 @@ public class DaVinciClientRecordTransformerTest {
     TestSkipResultRecordTransformer recordTransformer =
         new TestSkipResultRecordTransformer(1, myKeySchema, myValueSchema, myValueSchema, dummyRecordTransformerConfig);
 
-    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
-        .setRecordTransformerFunction(
-            (storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> recordTransformer)
-        .setOutputValueClass(String.class)
-        .setOutputValueSchema(Schema.create(Schema.Type.STRING))
-        .build();
+    DaVinciRecordTransformerConfig recordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder()
+            .setRecordTransformerFunction(
+                (storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> recordTransformer)
+            .build();
     clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
@@ -483,8 +476,6 @@ public class DaVinciClientRecordTransformerTest {
 
     DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
         .setRecordTransformerFunction(TestUnchangedResultRecordTransformer::new)
-        .setOutputValueClass(String.class)
-        .setOutputValueSchema(Schema.create(Schema.Type.STRING))
         .build();
     clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
@@ -536,12 +527,11 @@ public class DaVinciClientRecordTransformerTest {
     TestStringRecordTransformer recordTransformer =
         new TestStringRecordTransformer(1, myKeySchema, myValueSchema, myValueSchema, dummyRecordTransformerConfig);
 
-    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
-        .setRecordTransformerFunction(
-            (storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> recordTransformer)
-        .setOutputValueClass(String.class)
-        .setOutputValueSchema(Schema.create(Schema.Type.STRING))
-        .build();
+    DaVinciRecordTransformerConfig recordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder()
+            .setRecordTransformerFunction(
+                (storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> recordTransformer)
+            .build();
     clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
     setUpStore(storeName, paramsConsumer, properties -> {}, pushStatusStoreEnabled);
