@@ -4979,8 +4979,6 @@ public abstract class StoreIngestionTaskTest {
 
     DaVinciRecordTransformerConfig recordTransformerConfig =
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
-            .setOutputValueClass(String.class)
-            .setOutputValueSchema(Schema.create(Schema.Type.STRING))
             .build();
     config.setRecordTransformerConfig(recordTransformerConfig);
     runTest(config);

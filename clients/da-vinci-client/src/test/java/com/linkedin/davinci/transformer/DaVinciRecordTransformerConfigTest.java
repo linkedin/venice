@@ -75,7 +75,7 @@ public class DaVinciRecordTransformerConfigTest {
   }
 
   @Test
-  public void testNotDefiningOutputValueClassAndSchema() {
+  public void testUndefinedOutputValueClassAndSchema() {
     DaVinciRecordTransformerConfig recordTransformerConfig =
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
             .build();

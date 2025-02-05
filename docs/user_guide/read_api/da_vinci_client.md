@@ -126,6 +126,7 @@ public class IntToStringRecordTransformer extends DaVinciRecordTransformer<Integ
 }
 ```
 
+Here's an example `DaVinciRecordTransformerConfig` implementation:
 ```
 DaVinciRecordTransformerConfig recordTransformerConfig =
         new DaVinciRecordTransformerConfig.Builder()
