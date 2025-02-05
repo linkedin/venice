@@ -22,7 +22,6 @@ import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
-import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
@@ -67,7 +66,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import org.apache.avro.generic.GenericRecord;
@@ -193,54 +191,57 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         * serverConfig.getKafkaClusterIdToUrlMap().size() * multiplier + 1;
   }
 
-  @Override
-  protected DelegateConsumerRecordResult delegateConsumerRecord(
-      PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> consumerRecordWrapper,
-      int partition,
-      String kafkaUrl,
-      int kafkaClusterId,
-      long beforeProcessingPerRecordTimestampNs,
-      long beforeProcessingBatchRecordsTimestampMs) {
-    if (!consumerRecordWrapper.getMessage().getTopicPartition().getPubSubTopic().isRealTime()) {
-      /**
-       * We don't need to lock the partition here because during VT consumption there is only one consumption source.
-       */
-      return super.delegateConsumerRecord(
-          consumerRecordWrapper,
-          partition,
-          kafkaUrl,
-          kafkaClusterId,
-          beforeProcessingPerRecordTimestampNs,
-          beforeProcessingBatchRecordsTimestampMs);
-    } else {
-      /**
-       * The below flow must be executed in a critical session for the same key:
-       * Read existing value/RMD from transient record cache/disk -> perform DCR and decide incoming value wins
-       * -> update transient record cache -> produce to VT (just call send, no need to wait for the produce future in the critical session)
-       *
-       * Otherwise, there could be race conditions:
-       * [fabric A thread]Read from transient record cache -> [fabric A thread]perform DCR and decide incoming value wins
-       * -> [fabric B thread]read from transient record cache -> [fabric B thread]perform DCR and decide incoming value wins
-       * -> [fabric B thread]update transient record cache -> [fabric B thread]produce to VT -> [fabric A thread]update transient record cache
-       * -> [fabric A thread]produce to VT
-       */
-      final ByteArrayKey byteArrayKey = ByteArrayKey.wrap(consumerRecordWrapper.getMessage().getKey().getKey());
-      ReentrantLock keyLevelLock = this.keyLevelLocksManager.get().acquireLockByKey(byteArrayKey);
-      keyLevelLock.lock();
-      try {
-        return super.delegateConsumerRecord(
-            consumerRecordWrapper,
-            partition,
-            kafkaUrl,
-            kafkaClusterId,
-            beforeProcessingPerRecordTimestampNs,
-            beforeProcessingBatchRecordsTimestampMs);
-      } finally {
-        keyLevelLock.unlock();
-        this.keyLevelLocksManager.get().releaseLock(byteArrayKey);
-      }
-    }
-  }
+  // @Override
+  // protected DelegateConsumerRecordResult delegateConsumerRecord(
+  // PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> consumerRecordWrapper,
+  // int partition,
+  // String kafkaUrl,
+  // int kafkaClusterId,
+  // long beforeProcessingPerRecordTimestampNs,
+  // long beforeProcessingBatchRecordsTimestampMs) {
+  // if (!consumerRecordWrapper.getMessage().getTopicPartition().getPubSubTopic().isRealTime()) {
+  // /**
+  // * We don't need to lock the partition here because during VT consumption there is only one consumption source.
+  // */
+  // return super.delegateConsumerRecord(
+  // consumerRecordWrapper,
+  // partition,
+  // kafkaUrl,
+  // kafkaClusterId,
+  // beforeProcessingPerRecordTimestampNs,
+  // beforeProcessingBatchRecordsTimestampMs);
+  // } else {
+  // /**
+  // * The below flow must be executed in a critical session for the same key:
+  // * Read existing value/RMD from transient record cache/disk -> perform DCR and decide incoming value wins
+  // * -> update transient record cache -> produce to VT (just call send, no need to wait for the produce future in the
+  // critical session)
+  // *
+  // * Otherwise, there could be race conditions:
+  // * [fabric A thread]Read from transient record cache -> [fabric A thread]perform DCR and decide incoming value wins
+  // * -> [fabric B thread]read from transient record cache -> [fabric B thread]perform DCR and decide incoming value
+  // wins
+  // * -> [fabric B thread]update transient record cache -> [fabric B thread]produce to VT -> [fabric A thread]update
+  // transient record cache
+  // * -> [fabric A thread]produce to VT
+  // */
+  // final ByteArrayKey byteArrayKey = ByteArrayKey.wrap(consumerRecordWrapper.getMessage().getKey().getKey());
+  // ReentrantLock keyLevelLock = this.keyLevelLocksManager.get().acquireLockByKey(byteArrayKey);
+  // keyLevelLock.lock();
+  // try {
+  // return super.delegateConsumerRecord(
+  // consumerRecordWrapper,
+  // partition,
+  // kafkaUrl,
+  // kafkaClusterId,
+  // beforeProcessingPerRecordTimestampNs,
+  // beforeProcessingBatchRecordsTimestampMs);
+  // } finally {
+  // keyLevelLock.unlock();
+  // this.keyLevelLocksManager.get().releaseLock(byteArrayKey);
+  // }
+  // }
+  // }
 
   @Override
   protected void putInStorageEngine(int partition, byte[] keyBytes, Put put) {
@@ -1441,6 +1442,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
   int getRmdProtocolVersionId() {
     return rmdProtocolVersionId;
+  }
+
+  @Override
+  public final Lazy<KeyLevelLocksManager> getKeyLevelLocksManager() {
+    return keyLevelLocksManager;
   }
 
   protected BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> getProduceToTopicFunction(

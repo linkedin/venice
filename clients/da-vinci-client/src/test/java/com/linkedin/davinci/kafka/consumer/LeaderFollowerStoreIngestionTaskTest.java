@@ -206,6 +206,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     mockPartitionConsumptionState = mock(PartitionConsumptionState.class);
     mockConsumerAction = mock(ConsumerAction.class);
+    mockTopicPartition = mock(PubSubTopicPartition.class);
 
     mockProperties = new Properties();
     mockBooleanSupplier = mock(BooleanSupplier.class);
@@ -247,7 +248,6 @@ public class LeaderFollowerStoreIngestionTaskTest {
         mock(LeaderFollowerPartitionStateModel.LeaderSessionIdChecker.class);
     when(mockConsumerAction.getLeaderSessionIdChecker()).thenReturn(mockLeaderSessionIdChecker);
     when(mockLeaderSessionIdChecker.isSessionIdValid()).thenReturn(true);
-    mockTopicPartition = mock(PubSubTopicPartition.class);
     OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
     when(mockConsumerAction.getTopicPartition()).thenReturn(mockTopicPartition);
     when(mockPartitionConsumptionState.getOffsetRecord()).thenReturn(mockOffsetRecord);
@@ -332,8 +332,10 @@ public class LeaderFollowerStoreIngestionTaskTest {
         .thenReturn(nextVTWriteFuture);
     VeniceWriter veniceWriter = mock(VeniceWriter.class);
     doReturn(Lazy.of(() -> veniceWriter)).when(mockPartitionConsumptionState).getVeniceWriterLazyRef();
-    leaderFollowerStoreIngestionTask.delegateConsumerRecord(firstCM, 0, "testURL", 0, 0, 0);
-    leaderFollowerStoreIngestionTask.delegateConsumerRecord(secondCM, 0, "testURL", 0, 0, 0);
+    StorePartitionDataReceiver storePartitionDataReceiver =
+        spy(new StorePartitionDataReceiver(leaderFollowerStoreIngestionTask, mockTopicPartition, "testURL", 0));
+    storePartitionDataReceiver.delegateConsumerRecord(firstCM, 0, "testURL", 0, 0, 0);
+    storePartitionDataReceiver.delegateConsumerRecord(secondCM, 0, "testURL", 0, 0, 0);
     // The CM write should be queued but not executed yet since the previous VT write future is still incomplete
     verify(veniceWriter, never()).put(any(), any(), any(), anyInt(), any());
     lastVTWriteFuture.complete(null);

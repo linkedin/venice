@@ -1,5 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.END_OF_PUSH;
+
 import com.linkedin.avroutil1.compatibility.shaded.org.apache.commons.lang3.Validate;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
@@ -26,11 +28,16 @@ import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.ValueHolder;
+import com.linkedin.venice.writer.VeniceWriter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NavigableMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -478,14 +485,13 @@ public class StorePartitionDataReceiver
 
     // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after
     // this call.
-    StoreIngestionTask.DelegateConsumerRecordResult delegateConsumerRecordResult =
-        storeIngestionTask.delegateConsumerRecord(
-            consumerRecordWrapper,
-            partition,
-            kafkaUrl,
-            kafkaClusterId,
-            beforeProcessingPerRecordTimestampNs,
-            beforeProcessingBatchRecordsTimestampMs);
+    DelegateConsumerRecordResult delegateConsumerRecordResult = delegateConsumerRecordMaybeWithLock(
+        consumerRecordWrapper,
+        partition,
+        kafkaUrl,
+        kafkaClusterId,
+        beforeProcessingPerRecordTimestampNs,
+        beforeProcessingBatchRecordsTimestampMs);
 
     switch (delegateConsumerRecordResult) {
       case QUEUED_TO_DRAINER:
@@ -511,6 +517,466 @@ public class StorePartitionDataReceiver
     partitionConsumptionState.setLatestMessageConsumedTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
 
     return record.getPayloadSize();
+  }
+
+  /**
+   * This enum represents all potential results after calling {@link #delegateConsumerRecord(PubSubMessageProcessedResultWrapper, int, String, int, long, long)}.
+   */
+  protected enum DelegateConsumerRecordResult {
+    /**
+     * The consumer record has been produced to local version topic by leader.
+     */
+    PRODUCED_TO_KAFKA,
+    /**
+     * The consumer record has been put into drainer queue; the following cases will result in putting to drainer directly:
+     * 1. Online/Offline ingestion task
+     * 2. Follower replicas
+     * 3. Leader is consuming from local version topics
+     */
+    QUEUED_TO_DRAINER,
+    /**
+     * The consumer record is skipped. e.g. remote VT's TS message during data recovery.
+     */
+    SKIPPED_MESSAGE
+  }
+
+  private DelegateConsumerRecordResult delegateConsumerRecordMaybeWithLock(
+      PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> consumerRecordWrapper,
+      int partition,
+      String kafkaUrl,
+      int kafkaClusterId,
+      long beforeProcessingPerRecordTimestampNs,
+      long beforeProcessingBatchRecordsTimestampMs) {
+    if (!storeIngestionTask.isActiveActiveReplicationEnabled()
+        || !consumerRecordWrapper.getMessage().getTopicPartition().getPubSubTopic().isRealTime()) {
+      /**
+       * We don't need to lock the partition here because during VT consumption there is only one consumption source.
+       */
+      return delegateConsumerRecord(
+          consumerRecordWrapper,
+          partition,
+          kafkaUrl,
+          kafkaClusterId,
+          beforeProcessingPerRecordTimestampNs,
+          beforeProcessingBatchRecordsTimestampMs);
+    } else {
+      /**
+       * The below flow must be executed in a critical session for the same key:
+       * Read existing value/RMD from transient record cache/disk -> perform DCR and decide incoming value wins
+       * -> update transient record cache -> produce to VT (just call send, no need to wait for the produce future in the critical session)
+       *
+       * Otherwise, there could be race conditions:
+       * [fabric A thread]Read from transient record cache -> [fabric A thread]perform DCR and decide incoming value wins
+       * -> [fabric B thread]read from transient record cache -> [fabric B thread]perform DCR and decide incoming value wins
+       * -> [fabric B thread]update transient record cache -> [fabric B thread]produce to VT -> [fabric A thread]update transient record cache
+       * -> [fabric A thread]produce to VT
+       */
+      final ByteArrayKey byteArrayKey = ByteArrayKey.wrap(consumerRecordWrapper.getMessage().getKey().getKey());
+      ReentrantLock keyLevelLock = storeIngestionTask.getKeyLevelLocksManager().get().acquireLockByKey(byteArrayKey);
+      keyLevelLock.lock();
+      try {
+        return delegateConsumerRecord(
+            consumerRecordWrapper,
+            partition,
+            kafkaUrl,
+            kafkaClusterId,
+            beforeProcessingPerRecordTimestampNs,
+            beforeProcessingBatchRecordsTimestampMs);
+      } finally {
+        keyLevelLock.unlock();
+        storeIngestionTask.getKeyLevelLocksManager().get().releaseLock(byteArrayKey);
+      }
+    }
+  }
+
+  /**
+   * The goal of this function is to possibly produce the incoming kafka message consumed from local VT, remote VT, RT or SR topic to
+   * local VT if needed. It's decided based on the function output of {@link StoreIngestionTask#shouldProduceToVersionTopic} and message type.
+   * It also perform any necessary additional computation operation such as for write-compute/update message.
+   * It returns a boolean indicating if it was produced to kafka or not.
+   *
+   * This function should be called as one of the first steps in processing pipeline for all messages consumed from any kafka topic.
+   *
+   * The caller of this function should only process this {@param consumerRecord} further if the return is
+   * {@link DelegateConsumerRecordResult#QUEUED_TO_DRAINER}.
+   *
+   * This function assumes {@link LeaderFollowerStoreIngestionTask#shouldProcessRecord(PubSubMessage)} has been called which happens in
+   * {@link StorePartitionDataReceiver#produceToStoreBufferServiceOrKafka(Iterable, PubSubTopicPartition, String, int)}
+   * before calling this and the it was decided that this record needs to be processed. It does not perform any
+   * validation check on the PartitionConsumptionState object to keep the goal of the function simple and not overload.
+   *
+   * Also DIV validation is done here if the message is received from RT topic. For more info please see
+   * please see {@link StoreIngestionTask#internalProcessConsumerRecord}
+   *
+   * This function may modify the original record in KME and it is unsafe to use the payload from KME directly after this function.
+   *
+   * @return a {@link DelegateConsumerRecordResult} indicating what to do with the record
+   */
+  DelegateConsumerRecordResult delegateConsumerRecord(
+      PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> consumerRecordWrapper,
+      int partition,
+      String kafkaUrl,
+      int kafkaClusterId,
+      long beforeProcessingPerRecordTimestampNs,
+      long beforeProcessingBatchRecordsTimestampMs) {
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord = consumerRecordWrapper.getMessage();
+    try {
+      KafkaKey kafkaKey = consumerRecord.getKey();
+      KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
+      /**
+       * partitionConsumptionState must be in a valid state and no error reported. This is made sure by calling
+       * {@link shouldProcessRecord} before processing any record.
+       *
+       * ^ This is no longer true because with shared consumer the partitionConsumptionState could have been removed
+       * from unsubscribe action in the StoreIngestionTask thread. Today, when unsubscribing
+       * {@link StoreIngestionTask.waitForAllMessageToBeProcessedFromTopicPartition} only ensure the buffer queue is
+       * drained before unsubscribe. Records being processed by shared consumer may see invalid partitionConsumptionState.
+       */
+      PartitionConsumptionState partitionConsumptionState = storeIngestionTask.getPartitionConsumptionState(partition);
+      if (partitionConsumptionState == null) {
+        // The partition is likely unsubscribed, will skip these messages.
+        return DelegateConsumerRecordResult.SKIPPED_MESSAGE;
+      }
+      boolean shouldProduceToLocalKafka = storeIngestionTask.shouldProduceToVersionTopic(partitionConsumptionState);
+      // UPDATE message is only expected in LEADER which must be produced to kafka.
+      MessageType msgType = MessageType.valueOf(kafkaValue);
+      if (msgType == MessageType.UPDATE && !shouldProduceToLocalKafka) {
+        throw new VeniceMessageException(
+            storeIngestionTask.getIngestionTaskName()
+                + " hasProducedToKafka: Received UPDATE message in non-leader for: "
+                + consumerRecord.getTopicPartition() + " Offset " + consumerRecord.getOffset());
+      } else if (msgType == MessageType.CONTROL_MESSAGE) {
+        ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
+        storeIngestionTask.getAndUpdateLeaderCompletedState(
+            kafkaKey,
+            kafkaValue,
+            controlMessage,
+            consumerRecord.getPubSubMessageHeaders(),
+            partitionConsumptionState);
+      }
+
+      /**
+       * return early if it needs not be produced to local VT such as cases like
+       * (i) it's a follower or (ii) leader is consuming from VT
+       */
+      if (!shouldProduceToLocalKafka) {
+        /**
+         * For the local consumption, the batch data won't be produce to the local VT again, so we will switch
+         * to real-time writer upon EOP here and for the remote consumption of VT, the switch will be handled
+         * in the following section as it needs to flush the messages and then switch.
+         */
+        if (LeaderFollowerStoreIngestionTask.isLeader(partitionConsumptionState)
+            && msgType == MessageType.CONTROL_MESSAGE
+            && ControlMessageType.valueOf((ControlMessage) kafkaValue.payloadUnion).equals(END_OF_PUSH)) {
+          LOGGER.info(
+              "Switching to the VeniceWriter for real-time workload for topic: {}, partition: {}",
+              storeIngestionTask.getVersionTopic().getName(),
+              partition);
+          // Just to be extra safe
+          partitionConsumptionState.getVeniceWriterLazyRef().ifPresent(vw -> vw.flush());
+          storeIngestionTask.setRealTimeVeniceWriterRef(partitionConsumptionState);
+        }
+        return DelegateConsumerRecordResult.QUEUED_TO_DRAINER;
+      }
+
+      // If we are here the message must be produced to local kafka or silently consumed.
+      LeaderProducedRecordContext leaderProducedRecordContext;
+      // No need to resolve cluster id and kafka url because sep topics are real time topic and it's not VT
+      storeIngestionTask.validateRecordBeforeProducingToLocalKafka(
+          consumerRecord,
+          partitionConsumptionState,
+          kafkaUrl,
+          kafkaClusterId);
+
+      if (consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
+        storeIngestionTask.recordRegionHybridConsumptionStats(
+            // convert the cluster id back to the original cluster id for monitoring purpose
+            storeIngestionTask.getServerConfig()
+                .getEquivalentKafkaClusterIdForSepTopic(
+                    storeIngestionTask.getServerConfig().getEquivalentKafkaClusterIdForSepTopic(kafkaClusterId)),
+            consumerRecord.getPayloadSize(),
+            consumerRecord.getOffset(),
+            beforeProcessingBatchRecordsTimestampMs);
+        storeIngestionTask.updateLatestInMemoryLeaderConsumedRTOffset(
+            partitionConsumptionState,
+            kafkaUrl,
+            consumerRecord.getOffset());
+      }
+
+      // heavy leader processing starts here
+      storeIngestionTask.getVersionIngestionStats()
+          .recordLeaderPreprocessingLatency(
+              storeIngestionTask.getStoreName(),
+              storeIngestionTask.getVersionNumber(),
+              LatencyUtils.getElapsedTimeFromNSToMS(beforeProcessingPerRecordTimestampNs),
+              beforeProcessingBatchRecordsTimestampMs);
+
+      if (kafkaKey.isControlMessage()) {
+        boolean producedFinally = true;
+        ControlMessage controlMessage = (ControlMessage) kafkaValue.getPayloadUnion();
+        ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
+        leaderProducedRecordContext = LeaderProducedRecordContext
+            .newControlMessageRecord(kafkaClusterId, consumerRecord.getOffset(), kafkaKey.getKey(), controlMessage);
+        switch (controlMessageType) {
+          case START_OF_PUSH:
+            /**
+             * N.B.: This is expected to be the first time we call {@link veniceWriter#get()}. During this time
+             *       since startOfPush has not been processed yet, {@link StoreVersionState} is not created yet (unless
+             *       this is a server restart scenario). So the {@link com.linkedin.venice.writer.VeniceWriter#isChunkingEnabled} field
+             *       will not be set correctly at this point. This is fine as chunking is mostly not applicable for control messages.
+             *       This chunking flag for the veniceWriter will happen be set correctly in
+             *       {@link StoreIngestionTask#processStartOfPush(ControlMessage, int, long, PartitionConsumptionState)},
+             *       which will be called when this message gets processed in drainer thread after successfully producing
+             *       to kafka.
+             *
+             * Note update: the first time we call {@link veniceWriter#get()} is different in various use cases:
+             * 1. For hybrid store with L/F enabled, the first time a VeniceWriter is created is after leader switches to RT and
+             *    consumes the first message; potential message type: SOS, EOS, data message.
+             * 2. For store version generated by stream reprocessing push type, the first time is after leader switches to
+             *    SR topic and consumes the first message; potential message type: SOS, EOS, data message (consider server restart).
+             * 3. For store with native replication enabled, the first time is after leader switches to remote topic and start
+             *    consumes the first message; potential message type: SOS, EOS, SOP, EOP, data message (consider server restart).
+             */
+          case END_OF_PUSH:
+            // CMs that are produced with DIV pass-through mode can break DIV without synchronization with view writers.
+            // This is because for data (PUT) records we queue their produceToLocalKafka behind the completion of view
+            // writers. The main SIT will move on to subsequent messages and for CMs that don't need to be propagated
+            // to view topics we are producing them directly. If we don't check the previous write before producing the
+            // CMs then in the VT we might get out of order messages and with pass-through DIV that's going to be an
+            // issue. e.g. a PUT record belonging to seg:0 can come after the EOS of seg:0 due to view writer delays.
+            // Since SOP and EOP are rare we can simply wait for the last VT produce future.
+            checkAndWaitForLastVTProduceFuture(partitionConsumptionState);
+            /**
+             * Simply produce this EOP to local VT. It will be processed in order in the drainer queue later
+             * after successfully producing to kafka.
+             */
+            storeIngestionTask.produceToLocalKafka(
+                consumerRecord,
+                partitionConsumptionState,
+                leaderProducedRecordContext,
+                (callback, leaderMetadataWrapper) -> partitionConsumptionState.getVeniceWriterLazyRef()
+                    .get()
+                    .put(
+                        consumerRecord.getKey(),
+                        consumerRecord.getValue(),
+                        callback,
+                        consumerRecord.getTopicPartition().getPartitionNumber(),
+                        leaderMetadataWrapper),
+                partition,
+                kafkaUrl,
+                kafkaClusterId,
+                beforeProcessingPerRecordTimestampNs);
+            partitionConsumptionState.getVeniceWriterLazyRef().get().flush();
+            // Switch the writer for real-time workload
+            LOGGER.info(
+                "Switching to the VeniceWriter for real-time workload for topic: {}, partition: {}",
+                storeIngestionTask.getVersionTopic().getName(),
+                partition);
+            storeIngestionTask.setRealTimeVeniceWriterRef(partitionConsumptionState);
+            break;
+          case START_OF_SEGMENT:
+          case END_OF_SEGMENT:
+            /**
+             * SOS and EOS will be produced to the local version topic with DIV pass-through mode by leader in the following cases:
+             * 1. SOS and EOS are from stream-reprocessing topics (use cases: stream-reprocessing)
+             * 2. SOS and EOS are from version topics in a remote fabric (use cases: native replication for remote fabrics)
+             *
+             * SOS and EOS will not be produced to local version topic in the following cases:
+             * 1. SOS and EOS are from real-time topics (use cases: hybrid ingestion, incremental push to RT)
+             * 2. SOS and EOS are from version topics in local fabric, which has 2 different scenarios:
+             *    i.  native replication is enabled, but the current fabric is the source fabric (use cases: native repl for source fabric)
+             *    ii. native replication is not enabled; it doesn't matter whether current replica is leader or follower,
+             *        messages from local VT doesn't need to be reproduced into local VT again (use case: local batch consumption)
+             *
+             * There is one exception that overrules the above conditions. i.e. if the SOS is a heartbeat from the RT topic.
+             * In such case the heartbeat is produced to VT with updated {@link LeaderMetadataWrapper}.
+             *
+             * We want to ensure correct ordering for any SOS and EOS that we do decide to write to VT. This is done by
+             * coordinating with the corresponding {@link PartitionConsumptionState#getLastVTProduceCallFuture}.
+             * However, this coordination is only needed if there are view writers. i.e. the VT writes and CM writes
+             * need to be in the same mode. Either both coordinate with lastVTProduceCallFuture or neither.
+             */
+            if (!consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
+              final LeaderProducedRecordContext segmentCMLeaderProduceRecordContext = leaderProducedRecordContext;
+              maybeQueueCMWritesToVersionTopic(
+                  partitionConsumptionState,
+                  () -> storeIngestionTask.produceToLocalKafka(
+                      consumerRecord,
+                      partitionConsumptionState,
+                      segmentCMLeaderProduceRecordContext,
+                      (callback, leaderMetadataWrapper) -> partitionConsumptionState.getVeniceWriterLazyRef()
+                          .get()
+                          .put(
+                              consumerRecord.getKey(),
+                              consumerRecord.getValue(),
+                              callback,
+                              consumerRecord.getTopicPartition().getPartitionNumber(),
+                              leaderMetadataWrapper),
+                      partition,
+                      kafkaUrl,
+                      kafkaClusterId,
+                      beforeProcessingPerRecordTimestampNs));
+            } else {
+              if (controlMessageType == ControlMessageType.START_OF_SEGMENT
+                  && Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
+                final LeaderProducedRecordContext heartbeatLeaderProducedRecordContext = leaderProducedRecordContext;
+                maybeQueueCMWritesToVersionTopic(
+                    partitionConsumptionState,
+                    () -> storeIngestionTask.propagateHeartbeatFromUpstreamTopicToLocalVersionTopic(
+                        partitionConsumptionState,
+                        consumerRecord,
+                        heartbeatLeaderProducedRecordContext,
+                        partition,
+                        kafkaUrl,
+                        kafkaClusterId,
+                        beforeProcessingPerRecordTimestampNs));
+              } else {
+                /**
+                 * Based on current design handling this case (specially EOS) is tricky as we don't produce the SOS/EOS
+                 * received from RT to local VT. But ideally EOS must be queued in-order (after all previous data message
+                 * PUT/UPDATE/DELETE) to drainer. But since the queueing of data message to drainer
+                 * happens in Kafka producer callback there is no way to queue this EOS to drainer in-order.
+                 *
+                 * Usually following processing in Leader for other control message.
+                 *    1. DIV:
+                 *    2. updateOffset:
+                 *    3. stats maintenance as in {@link StoreIngestionTask#processKafkaDataMessage}
+                 *
+                 * For #1 Since we have moved the DIV validation in this function, We are good with DIV part which is the most critical one.
+                 * For #2 Leader will not update the offset for SOS/EOS. From Server restart point of view this is tolerable. This was the case in previous design also. So there is no change in behaviour.
+                 * For #3 stat counter update will not happen for SOS/EOS message. This should not be a big issue. If needed we can copy some of the stats maintenance
+                 *   work here.
+                 *
+                 * So in summary NO further processing is needed SOS/EOS received from RT topics. Just silently drop the message here.
+                 * We should not return false here.
+                 */
+                producedFinally = false;
+              }
+            }
+            break;
+          case START_OF_INCREMENTAL_PUSH:
+          case END_OF_INCREMENTAL_PUSH:
+            // For inc push to RT policy, the control msg is written in RT topic, we will need to calculate the
+            // destination partition in VT correctly.
+            int versionTopicPartitionToBeProduced = consumerRecord.getTopicPartition().getPartitionNumber();
+            /**
+             * We are using {@link VeniceWriter#asyncSendControlMessage()} api instead of {@link VeniceWriter#put()} since we have
+             * to calculate DIV for this message but keeping the ControlMessage content unchanged. {@link VeniceWriter#put()} does not
+             * allow that.
+             */
+            storeIngestionTask.produceToLocalKafka(
+                consumerRecord,
+                partitionConsumptionState,
+                leaderProducedRecordContext,
+                (callback, leaderMetadataWrapper) -> partitionConsumptionState.getVeniceWriterLazyRef()
+                    .get()
+                    .asyncSendControlMessage(
+                        controlMessage,
+                        versionTopicPartitionToBeProduced,
+                        new HashMap<>(),
+                        callback,
+                        leaderMetadataWrapper),
+                partition,
+                kafkaUrl,
+                kafkaClusterId,
+                beforeProcessingPerRecordTimestampNs);
+            break;
+          case TOPIC_SWITCH:
+            /**
+             * For TOPIC_SWITCH message we should use -1 as consumedOffset. This will ensure that it does not update the
+             * setLeaderUpstreamOffset in:
+             * {@link #updateOffsetsAsRemoteConsumeLeader(PartitionConsumptionState, LeaderProducedRecordContext, String, PubSubMessage, LeaderFollowerStoreIngestionTask.UpdateVersionTopicOffset, LeaderFollowerStoreIngestionTask.UpdateUpstreamTopicOffset)}
+             * The leaderUpstreamOffset is set from the TS message config itself. We should not override it.
+             */
+            if (storeIngestionTask.isDataRecovery() && !partitionConsumptionState.isBatchOnly()) {
+              // Ignore remote VT's TS message since we might need to consume more RT or incremental push data from VT
+              // that's no longer in the local/remote RT due to retention.
+              return DelegateConsumerRecordResult.SKIPPED_MESSAGE;
+            }
+            leaderProducedRecordContext =
+                LeaderProducedRecordContext.newControlMessageRecord(kafkaKey.getKey(), controlMessage);
+            storeIngestionTask.produceToLocalKafka(
+                consumerRecord,
+                partitionConsumptionState,
+                leaderProducedRecordContext,
+                (callback, leaderMetadataWrapper) -> partitionConsumptionState.getVeniceWriterLazyRef()
+                    .get()
+                    .asyncSendControlMessage(
+                        controlMessage,
+                        consumerRecord.getTopicPartition().getPartitionNumber(),
+                        new HashMap<>(),
+                        callback,
+                        VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER),
+                partition,
+                kafkaUrl,
+                kafkaClusterId,
+                beforeProcessingPerRecordTimestampNs);
+            break;
+          case VERSION_SWAP:
+            return DelegateConsumerRecordResult.QUEUED_TO_DRAINER;
+          default:
+            // do nothing
+            break;
+        }
+        if (!storeIngestionTask.isSegmentControlMsg(controlMessageType)) {
+          LOGGER.info(
+              "Replica: {} hasProducedToKafka: {}; ControlMessage: {}; Incoming record topic-partition: {}; offset: {}",
+              partitionConsumptionState.getReplicaId(),
+              producedFinally,
+              controlMessageType.name(),
+              consumerRecord.getTopicPartition(),
+              consumerRecord.getOffset());
+        }
+      } else if (kafkaValue == null) {
+        throw new VeniceMessageException(
+            partitionConsumptionState.getReplicaId()
+                + " hasProducedToKafka: Given null Venice Message. TopicPartition: "
+                + consumerRecord.getTopicPartition() + " Offset " + consumerRecord.getOffset());
+      } else {
+        // This function may modify the original record in KME and it is unsafe to use the payload from KME directly
+        // after this call.
+        storeIngestionTask.processMessageAndMaybeProduceToKafka(
+            consumerRecordWrapper,
+            partitionConsumptionState,
+            partition,
+            kafkaUrl,
+            kafkaClusterId,
+            beforeProcessingPerRecordTimestampNs,
+            beforeProcessingBatchRecordsTimestampMs);
+      }
+      return DelegateConsumerRecordResult.PRODUCED_TO_KAFKA;
+    } catch (Exception e) {
+      throw new VeniceException(
+          storeIngestionTask.getIngestionTaskName() + " hasProducedToKafka: exception for message received from: "
+              + consumerRecord.getTopicPartition() + ", Offset: " + consumerRecord.getOffset() + ". Bubbling up.",
+          e);
+    }
+  }
+
+  private void checkAndWaitForLastVTProduceFuture(PartitionConsumptionState partitionConsumptionState)
+      throws ExecutionException, InterruptedException {
+    partitionConsumptionState.getLastVTProduceCallFuture().get();
+  }
+
+  private void maybeQueueCMWritesToVersionTopic(
+      PartitionConsumptionState partitionConsumptionState,
+      Runnable produceCall) {
+    if (storeIngestionTask.hasViewWriters()) {
+      CompletableFuture<Void> propagateSegmentCMWrite = new CompletableFuture<>();
+      partitionConsumptionState.getLastVTProduceCallFuture().whenCompleteAsync((value, exception) -> {
+        if (exception == null) {
+          produceCall.run();
+          propagateSegmentCMWrite.complete(null);
+        } else {
+          VeniceException veniceException = new VeniceException(exception);
+          storeIngestionTask.setIngestionException(partitionConsumptionState.getPartition(), veniceException);
+          propagateSegmentCMWrite.completeExceptionally(veniceException);
+        }
+      });
+      partitionConsumptionState.setLastVTProduceCallFuture(propagateSegmentCMWrite);
+    } else {
+      produceCall.run();
+    }
   }
 
   @Override
