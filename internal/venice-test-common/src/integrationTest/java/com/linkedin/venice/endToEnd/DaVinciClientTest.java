@@ -1209,6 +1209,13 @@ public class DaVinciClientTest {
         String snapshotPath = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
         Assert.assertTrue(Files.exists(Paths.get(snapshotPath)));
       }
+
+      for (int i = 0; i < 3; i++) {
+        String partitionPath2 = RocksDBUtils.composePartitionDbDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertTrue(Files.exists(Paths.get(partitionPath2)));
+        String snapshotPath2 = RocksDBUtils.composeSnapshotDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertFalse(Files.exists(Paths.get(snapshotPath2)));
+      }
     }
   }
 

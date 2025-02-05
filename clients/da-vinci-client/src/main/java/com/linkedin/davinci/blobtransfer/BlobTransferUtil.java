@@ -1,7 +1,5 @@
 package com.linkedin.davinci.blobtransfer;
 
-import static com.linkedin.venice.client.store.ClientFactory.getTransportClient;
-
 import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
 import com.linkedin.davinci.blobtransfer.server.P2PBlobTransferService;
 import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
@@ -9,8 +7,6 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.blobtransfer.DaVinciBlobFinder;
 import com.linkedin.venice.blobtransfer.ServerBlobFinder;
-import com.linkedin.venice.client.store.AbstractAvroStoreClient;
-import com.linkedin.venice.client.store.AvroGenericStoreClientImpl;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -79,12 +75,10 @@ public class BlobTransferUtil {
           maxConcurrentSnapshotUser,
           snapshotRetentionTimeInMin,
           transferSnapshotTableFormat);
-      AbstractAvroStoreClient storeClient =
-          new AvroGenericStoreClientImpl<>(getTransportClient(clientConfig), false, clientConfig);
       BlobTransferManager<Void> manager = new NettyP2PBlobTransferManager(
           new P2PBlobTransferService(p2pTransferServerPort, baseDir, blobTransferMaxTimeoutInMin, blobSnapshotManager),
           new NettyFileTransferClient(p2pTransferClientPort, baseDir, storageMetadataService),
-          new DaVinciBlobFinder(storeClient),
+          new DaVinciBlobFinder(clientConfig),
           baseDir,
           aggVersionedBlobTransferStats);
       manager.start();

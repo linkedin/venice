@@ -11,6 +11,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
@@ -20,6 +21,7 @@ import java.util.concurrent.CompletableFuture;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -35,8 +37,12 @@ public class DaVinciBlobFinderTest {
 
   @BeforeMethod
   public void setUp() {
+    ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName);
+
     storeClient = mock(AbstractAvroStoreClient.class);
-    daVinciBlobFinder = new DaVinciBlobFinder(storeClient);
+    daVinciBlobFinder = spy(new DaVinciBlobFinder(clientConfig));
+
+    Mockito.doReturn(storeClient).when(daVinciBlobFinder).getStoreClient(storeName);
   }
 
   @Test
