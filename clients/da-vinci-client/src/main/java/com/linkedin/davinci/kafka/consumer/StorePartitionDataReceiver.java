@@ -20,7 +20,9 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -28,6 +30,8 @@ import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.ValueHolder;
+import com.linkedin.venice.writer.LeaderCompleteState;
+import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -818,7 +822,7 @@ public class StorePartitionDataReceiver
                 final LeaderProducedRecordContext heartbeatLeaderProducedRecordContext = leaderProducedRecordContext;
                 maybeQueueCMWritesToVersionTopic(
                     partitionConsumptionState,
-                    () -> storeIngestionTask.propagateHeartbeatFromUpstreamTopicToLocalVersionTopic(
+                    () -> propagateHeartbeatFromUpstreamTopicToLocalVersionTopic(
                         partitionConsumptionState,
                         consumerRecord,
                         heartbeatLeaderProducedRecordContext,
@@ -1027,6 +1031,72 @@ public class StorePartitionDataReceiver
       storeIngestionTask.getHostLevelIngestionStats()
           .recordTotalRegionHybridBytesConsumed(kafkaClusterId, producedRecordSize, currentTimeMs);
     }
+  }
+
+  /**
+   * Leaders propagate HB SOS message from RT to local VT (to all subpartitions in case if amplification
+   * Factor is configured to be more than 1) with updated LeaderCompleteState header:
+   * Adding the headers during this phase instead of adding it to RT directly simplifies the logic
+   * of how to identify the HB SOS from the correct version or whether the HB SOS is from the local
+   * colo or remote colo, as the header inherited from an incorrect version or remote colos might
+   * provide incorrect information about the leader state.
+   */
+  private void propagateHeartbeatFromUpstreamTopicToLocalVersionTopic(
+      PartitionConsumptionState partitionConsumptionState,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      LeaderProducedRecordContext leaderProducedRecordContext,
+      int partition,
+      String kafkaUrl,
+      int kafkaClusterId,
+      long beforeProcessingRecordTimestampNs) {
+    LeaderProducerCallback callback = storeIngestionTask.createProducerCallback(
+        consumerRecord,
+        partitionConsumptionState,
+        leaderProducedRecordContext,
+        partition,
+        kafkaUrl,
+        beforeProcessingRecordTimestampNs);
+    LeaderMetadataWrapper leaderMetadataWrapper = new LeaderMetadataWrapper(consumerRecord.getOffset(), kafkaClusterId);
+    LeaderCompleteState leaderCompleteState =
+        LeaderCompleteState.getLeaderCompleteState(partitionConsumptionState.isCompletionReported());
+    /**
+     * The maximum value between the original producer timestamp and the timestamp when the message is added to the RT topic is used:
+     * This approach addresses scenarios wrt clock drift where the producer's timestamp is consistently delayed by several minutes,
+     * causing it not to align with the {@link VeniceServerConfig#getLeaderCompleteStateCheckInFollowerValidIntervalMs()}
+     * interval. The likelihood of simultaneous significant time discrepancies between the leader (producer) and the RT should be very
+     * rare, making this a viable workaround. In cases where the time discrepancy is reversed, the follower may complete slightly earlier
+     * than expected. However, this should not pose a significant issue as the completion of the leader, indicated by the leader
+     * completed header, is a prerequisite for the follower completion and is expected to occur shortly thereafter.
+     */
+    long producerTimeStamp =
+        Long.max(consumerRecord.getPubSubMessageTime(), consumerRecord.getValue().producerMetadata.messageTimestamp);
+    PubSubTopicPartition topicPartition =
+        new PubSubTopicPartitionImpl(storeIngestionTask.getVersionTopic(), partitionConsumptionState.getPartition());
+    sendIngestionHeartbeatToVT(
+        partitionConsumptionState,
+        topicPartition,
+        callback,
+        leaderMetadataWrapper,
+        leaderCompleteState,
+        producerTimeStamp);
+  }
+
+  private void sendIngestionHeartbeatToVT(
+      PartitionConsumptionState partitionConsumptionState,
+      PubSubTopicPartition topicPartition,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      LeaderCompleteState leaderCompleteState,
+      long originTimeStampMs) {
+    storeIngestionTask.sendIngestionHeartbeat(
+        partitionConsumptionState,
+        topicPartition,
+        callback,
+        leaderMetadataWrapper,
+        true,
+        true,
+        leaderCompleteState,
+        originTimeStampMs);
   }
 
   @Override
