@@ -300,14 +300,14 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     Assert.assertFalse(result.isUpdateIgnored());
     GenericRecord updatedRmd = result.getRmdRecord();
     GenericRecord updatedPerFieldTimestampRecord = (GenericRecord) updatedRmd.get(TIMESTAMP_FIELD_NAME);
-    Assert.assertEquals(updatedPerFieldTimestampRecord.get("id"), 10L); // Not updated
+    Assert.assertEquals(updatedPerFieldTimestampRecord.get("id"), 15L); // Updated due to schema up-convert
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("name"), 20L); // Not updated
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("weight"), 15L); // Not updated and it is a new field.
 
     ByteBuffer newValueOptional = result.getNewValue();
     Assert.assertNotNull(newValueOptional);
     newValueRecord = getDeserializer(userSchemaV5, userSchemaV5).deserialize(newValueOptional);
-    Assert.assertEquals(newValueRecord.get("id").toString(), "123"); // Not updated
+    Assert.assertEquals(newValueRecord.get("id").toString(), "id"); // Updated to default due to schema up-convert
     Assert.assertEquals(newValueRecord.get("name").toString(), "James"); // Not updated
     Assert.assertEquals(newValueRecord.get("weight").toString(), "250.0"); // Updated and it is a new field.
   }
@@ -408,14 +408,14 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     Assert.assertFalse(result.isUpdateIgnored());
     GenericRecord updatedRmd = result.getRmdRecord();
     GenericRecord updatedPerFieldTimestampRecord = (GenericRecord) updatedRmd.get(TIMESTAMP_FIELD_NAME);
-    Assert.assertEquals(updatedPerFieldTimestampRecord.get("id"), 10L); // Not updated
+    Assert.assertEquals(updatedPerFieldTimestampRecord.get("id"), 25L); // Updated timestamp due to schema up-convert
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("name"), 25L); // Updated
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("weight"), 30L); // Not updated
 
     ByteBuffer newValueOptional = result.getNewValue();
     Assert.assertNotNull(newValueOptional);
     newValueRecord = getDeserializer(userSchemaV5, userSchemaV5).deserialize(newValueOptional);
-    Assert.assertEquals(newValueRecord.get("id").toString(), "123"); // Not updated
+    Assert.assertEquals(newValueRecord.get("id").toString(), "id"); // Updated to default due to schema up-convert
     Assert.assertEquals(newValueRecord.get("name").toString(), "Lebron"); // Updated
     Assert.assertEquals(newValueRecord.get("weight").toString(), "250.1"); // Updated and it is a new field.
   }

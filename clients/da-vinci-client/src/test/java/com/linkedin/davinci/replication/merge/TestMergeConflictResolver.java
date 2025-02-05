@@ -36,7 +36,6 @@ public class TestMergeConflictResolver {
   protected ReadOnlySchemaRepository schemaRepository;
   protected Schema nestedRecordSchemaV1;
   protected Schema nestedRecordSchemaV2;
-  protected Schema nestedRecordRmdSchemaV1;
   protected Schema nestedRecordRmdSchemaV2;
 
   protected Schema userSchemaV1;
@@ -64,7 +63,6 @@ public class TestMergeConflictResolver {
     ValueAndDerivedSchemas personV3Schema = new ValueAndDerivedSchemas(storeName, -1, "avro/PersonV3.avsc");
     this.nestedRecordSchemaV1 = nestedV1Schema.getValueSchema();
     this.nestedRecordSchemaV2 = nestedV2Schema.getValueSchema();
-    this.nestedRecordRmdSchemaV1 = nestedV1Schema.getRmdSchema();
     this.nestedRecordRmdSchemaV2 = nestedV2Schema.getRmdSchema();
 
     this.userSchemaV1 = userV1Schema.getValueSchema();
