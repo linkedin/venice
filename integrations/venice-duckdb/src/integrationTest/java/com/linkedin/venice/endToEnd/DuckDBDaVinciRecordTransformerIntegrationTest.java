@@ -151,8 +151,6 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
 
       DaVinciRecordTransformerConfig recordTransformerConfig =
           new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(recordTransformerFunction)
-              .setOutputValueClass(GenericRecord.class)
-              .setOutputValueSchema(NAME_RECORD_V1_SCHEMA)
               .setStoreRecordsInDaVinci(false)
               .build();
       clientConfig.setRecordTransformerConfig(recordTransformerConfig);

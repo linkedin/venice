@@ -4785,7 +4785,7 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test(dataProvider = "aaConfigProvider")
-  public void testStoreIngestionRecordTransformer(AAConfig aaConfig) throws Exception {
+  public void testSITRecordTransformer(AAConfig aaConfig) throws Exception {
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, putKeyFoo);
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
     kafkaMessageEnvelope.messageType = MessageType.PUT.getValue();
@@ -4852,9 +4852,75 @@ public abstract class StoreIngestionTaskTest {
         .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
   }
 
+  @Test(dataProvider = "aaConfigProvider")
+  public void testSITRecordTransformerUndefinedOutputValueClassAndSchema(AAConfig aaConfig) throws Exception {
+    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, putKeyFoo);
+    KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
+    kafkaMessageEnvelope.messageType = MessageType.PUT.getValue();
+    Put put = new Put();
+
+    put.putValue = ByteBuffer.wrap(putValue);
+    put.replicationMetadataPayload = ByteBuffer.allocate(10);
+    kafkaMessageEnvelope.payloadUnion = put;
+    kafkaMessageEnvelope.producerMetadata = new ProducerMetadata();
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = new ImmutablePubSubMessage(
+        kafkaKey,
+        kafkaMessageEnvelope,
+        new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO),
+        0,
+        0,
+        0);
+
+    LeaderProducedRecordContext leaderProducedRecordContext = mock(LeaderProducedRecordContext.class);
+    when(leaderProducedRecordContext.getMessageType()).thenReturn(MessageType.PUT);
+    when(leaderProducedRecordContext.getValueUnion()).thenReturn(put);
+    when(leaderProducedRecordContext.getKeyBytes()).thenReturn(putKeyFoo);
+
+    Schema myKeySchema = Schema.create(Schema.Type.INT);
+    SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
+    when(keySchemaEntry.getSchema()).thenReturn(myKeySchema);
+    when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
+
+    Schema myValueSchema = Schema.create(Schema.Type.STRING);
+    SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
+    when(valueSchemaEntry.getSchema()).thenReturn(myValueSchema);
+    when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
+    when(mockSchemaRepo.getSupersetOrLatestValueSchema(eq(storeNameWithoutVersionInfo))).thenReturn(valueSchemaEntry);
+
+    StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> assertTrue(storeIngestionTaskUnderTest.hasAnySubscription()));
+
+      try {
+        storeIngestionTaskUnderTest.produceToStoreBufferService(
+            pubSubMessage,
+            leaderProducedRecordContext,
+            PARTITION_FOO,
+            localKafkaConsumerService.kafkaUrl,
+            System.nanoTime(),
+            System.currentTimeMillis());
+      } catch (InterruptedException e) {
+        throw new VeniceException(e);
+      }
+    }, aaConfig);
+
+    DaVinciRecordTransformerConfig recordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .build();
+    config.setRecordTransformerConfig(recordTransformerConfig);
+
+    runTest(config);
+
+    // Transformer error should never be recorded
+    verify(mockVersionedStorageIngestionStats, never())
+        .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
+  }
+
   // Test to throw type error when performing record transformation with incompatible types
   @Test(dataProvider = "aaConfigProvider")
-  public void testStoreIngestionRecordTransformerError(AAConfig aaConfig) throws Exception {
+  public void testSITRecordTransformerError(AAConfig aaConfig) throws Exception {
     byte[] keyBytes = new byte[1];
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, keyBytes);
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();

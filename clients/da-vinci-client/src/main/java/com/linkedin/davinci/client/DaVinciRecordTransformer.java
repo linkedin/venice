@@ -44,7 +44,7 @@ public abstract class DaVinciRecordTransformer<K, V, O> implements Closeable {
   private final boolean storeRecordsInDaVinci;
 
   /**
-   * Boolean to determine if we should always bootstrap from Version Topic.
+   * Boolean to determine if we should always bootstrap from the Version Topic.
    */
   private final boolean alwaysBootstrapFromVersionTopic;
 
@@ -70,7 +70,7 @@ public abstract class DaVinciRecordTransformer<K, V, O> implements Closeable {
    * @param keySchema the key schema, which is immutable inside DaVinciClient. Users can modify the key if they are storing records in an external storage engine, but this must be managed by the user
    * @param inputValueSchema the value schema before transformation
    * @param outputValueSchema the value schema after transformation
-   * @param recordTransformerConfig
+   * @param recordTransformerConfig the config for the record transformer
    */
   public DaVinciRecordTransformer(
       int storeVersion,

@@ -81,6 +81,7 @@ public class DaVinciRecordTransformerConfig {
     }
 
     /**
+     * Set this if you modify the schema during transformation. Must be used in conjunction with {@link #setOutputValueSchema(Schema)}
      * @param outputValueClass the class of the output value
      */
     public Builder setOutputValueClass(Class outputValueClass) {
@@ -89,6 +90,7 @@ public class DaVinciRecordTransformerConfig {
     }
 
     /**
+     * Set this if you modify the schema during transformation. Must be used in conjunction with {@link #setOutputValueClass(Class)}
      * @param outputValueSchema the schema of the output value
      */
     public Builder setOutputValueSchema(Schema outputValueSchema) {
