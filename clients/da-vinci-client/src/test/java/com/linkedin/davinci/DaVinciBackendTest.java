@@ -267,10 +267,10 @@ public class DaVinciBackendTest {
     when(mockCombinedProperties.getBoolean(anyString(), anyBoolean())).thenReturn(true);
     backend.bootstrap();
 
+    // DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY == true
     subscription = mockStoreBackend.getSubscription();
     assertTrue(subscription.contains(0));
     assertTrue(subscription.contains(1));
     assertTrue(subscription.contains(2));
-
   }
 }
