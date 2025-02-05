@@ -12,6 +12,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -130,29 +131,34 @@ public class ActiveActiveStoreIngestionTaskTest {
   @Test
   public void testHandleDeleteBeforeEOP() {
     ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
-    doCallRealMethod().when(ingestionTask)
-        .processMessageAndMaybeProduceToKafka(any(), any(), anyInt(), anyString(), anyInt(), anyLong(), anyLong());
+    PubSubTopicPartition topicPartition = mock(PubSubTopicPartition.class);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.isComputeFastAvroEnabled()).thenReturn(false);
+    when(ingestionTask.getServerConfig()).thenReturn(serverConfig);
+    when(ingestionTask.getHostLevelIngestionStats()).thenReturn(mock(HostLevelIngestionStats.class));
+    StorePartitionDataReceiver storePartitionDataReceiver =
+        spy(new StorePartitionDataReceiver(ingestionTask, topicPartition, "dummyUrl", 0));
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     when(pcs.isEndOfPushReceived()).thenReturn(false);
+    when(pcs.getVeniceWriterLazyRef()).thenReturn(Lazy.of(() -> mock(VeniceWriter.class)));
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord = mock(PubSubMessage.class);
-    KafkaKey kafkaKey = mock(KafkaKey.class);
+    KafkaKey kafkaKey = new KafkaKey(MessageType.DELETE, new byte[] { 1 });
     when(consumerRecord.getKey()).thenReturn(kafkaKey);
     KafkaMessageEnvelope kafkaValue = new KafkaMessageEnvelope();
     when(consumerRecord.getValue()).thenReturn(kafkaValue);
     when(consumerRecord.getOffset()).thenReturn(1L);
+    when(consumerRecord.getTopicPartition()).thenReturn(topicPartition);
     kafkaValue.messageType = MessageType.DELETE.getValue();
     Delete deletePayload = new Delete();
     kafkaValue.payloadUnion = deletePayload;
+    PubSubMessageProcessedResult result =
+        new PubSubMessageProcessedResult(new WriteComputeResultWrapper(null, null, true));
+    PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> resultWrapper =
+        new PubSubMessageProcessedResultWrapper<>(consumerRecord);
+    resultWrapper.setProcessedResult(result);
     ArgumentCaptor<LeaderProducedRecordContext> leaderProducedRecordContextArgumentCaptor =
         ArgumentCaptor.forClass(LeaderProducedRecordContext.class);
-    ingestionTask.processMessageAndMaybeProduceToKafka(
-        new PubSubMessageProcessedResultWrapper<>(consumerRecord),
-        pcs,
-        0,
-        "dummyUrl",
-        0,
-        0L,
-        0L);
+    storePartitionDataReceiver.processMessageAndMaybeProduceToKafka(resultWrapper, pcs, 0, "dummyUrl", 0, 0L, 0L);
     verify(ingestionTask, times(1)).produceToLocalKafka(
         any(),
         any(),

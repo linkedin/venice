@@ -406,7 +406,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     return ingestionBatchProcessorLazy.get();
   }
 
-  private PubSubMessageProcessedResult processActiveActiveMessage(
+  @Override
+  protected PubSubMessageProcessedResult processActiveActiveMessage(
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       PartitionConsumptionState partitionConsumptionState,
       int partition,
@@ -585,99 +586,99 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
   }
 
-  // This function may modify the original record in KME, it is unsafe to use the payload from KME directly after
-  // this function.
-  protected void processMessageAndMaybeProduceToKafka(
-      PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> consumerRecordWrapper,
-      PartitionConsumptionState partitionConsumptionState,
-      int partition,
-      String kafkaUrl,
-      int kafkaClusterId,
-      long beforeProcessingRecordTimestampNs,
-      long beforeProcessingBatchRecordsTimestampMs) {
-    /**
-     * With {@link BatchConflictResolutionPolicy.BATCH_WRITE_LOSES} there is no need
-     * to perform DCR before EOP and L/F DIV passthrough mode should be used. If the version is going through data
-     * recovery then there is no need to perform DCR until we completed data recovery and switched to consume from RT.
-     * TODO. We need to refactor this logic when we support other batch conflict resolution policy.
-     */
-    if (!partitionConsumptionState.isEndOfPushReceived()
-        || isDataRecovery && partitionConsumptionState.getTopicSwitch() != null) {
-      super.processMessageAndMaybeProduceToKafka(
-          consumerRecordWrapper,
-          partitionConsumptionState,
-          partition,
-          kafkaUrl,
-          kafkaClusterId,
-          beforeProcessingRecordTimestampNs,
-          beforeProcessingBatchRecordsTimestampMs);
-      return;
-    }
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord = consumerRecordWrapper.getMessage();
-    KafkaKey kafkaKey = consumerRecord.getKey();
-    byte[] keyBytes = kafkaKey.getKey();
-    final MergeConflictResultWrapper mergeConflictResultWrapper;
-    if (consumerRecordWrapper.getProcessedResult() != null
-        && consumerRecordWrapper.getProcessedResult().getMergeConflictResultWrapper() != null) {
-      mergeConflictResultWrapper = consumerRecordWrapper.getProcessedResult().getMergeConflictResultWrapper();
-    } else {
-      mergeConflictResultWrapper = processActiveActiveMessage(
-          consumerRecord,
-          partitionConsumptionState,
-          partition,
-          kafkaUrl,
-          kafkaClusterId,
-          beforeProcessingRecordTimestampNs,
-          beforeProcessingBatchRecordsTimestampMs).getMergeConflictResultWrapper();
-    }
-
-    MergeConflictResult mergeConflictResult = mergeConflictResultWrapper.getMergeConflictResult();
-    if (!mergeConflictResult.isUpdateIgnored()) {
-      // Apply this update to any views for this store
-      // TODO: It'd be good to be able to do this in LeaderFollowerStoreIngestionTask instead, however, AA currently is
-      // the
-      // only extension of IngestionTask which does a read from disk before applying the record. This makes the
-      // following function
-      // call in this context much less obtrusive, however, it implies that all views can only work for AA stores
-
-      // Write to views
-      Runnable produceToVersionTopic = () -> producePutOrDeleteToKafka(
-          mergeConflictResultWrapper,
-          partitionConsumptionState,
-          keyBytes,
-          consumerRecord,
-          partition,
-          kafkaUrl,
-          kafkaClusterId,
-          beforeProcessingRecordTimestampNs);
-      if (hasViewWriters()) {
-        /**
-         * The ordering guarantees we want is the following:
-         *
-         * 1. Write to all view topics (in parallel).
-         * 2. Write to the VT only after we get the ack for all views AND the previous write to VT was queued into the
-         *    producer (but not necessarily acked).
-         */
-        ByteBuffer oldValueBB = mergeConflictResultWrapper.getOldValueByteBufferProvider().get();
-        int oldValueSchemaId =
-            oldValueBB == null ? -1 : mergeConflictResultWrapper.getOldValueProvider().get().writerSchemaId();
-        queueUpVersionTopicWritesWithViewWriters(
-            partitionConsumptionState,
-            (viewWriter) -> viewWriter.processRecord(
-                mergeConflictResultWrapper.getUpdatedValueBytes(),
-                oldValueBB,
-                keyBytes,
-                mergeConflictResult.getValueSchemaId(),
-                oldValueSchemaId,
-                mergeConflictResult.getRmdRecord()),
-            produceToVersionTopic);
-      } else {
-        // This function may modify the original record in KME and it is unsafe to use the payload from KME directly
-        // after this call.
-        produceToVersionTopic.run();
-      }
-    }
-  }
+  // // This function may modify the original record in KME, it is unsafe to use the payload from KME directly after
+  // // this function.
+  // protected void processMessageAndMaybeProduceToKafka(
+  // PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> consumerRecordWrapper,
+  // PartitionConsumptionState partitionConsumptionState,
+  // int partition,
+  // String kafkaUrl,
+  // int kafkaClusterId,
+  // long beforeProcessingRecordTimestampNs,
+  // long beforeProcessingBatchRecordsTimestampMs) {
+  // /**
+  // * With {@link BatchConflictResolutionPolicy.BATCH_WRITE_LOSES} there is no need
+  // * to perform DCR before EOP and L/F DIV passthrough mode should be used. If the version is going through data
+  // * recovery then there is no need to perform DCR until we completed data recovery and switched to consume from RT.
+  // * TODO. We need to refactor this logic when we support other batch conflict resolution policy.
+  // */
+  // if (!partitionConsumptionState.isEndOfPushReceived()
+  // || isDataRecovery && partitionConsumptionState.getTopicSwitch() != null) {
+  // super.processMessageAndMaybeProduceToKafka(
+  // consumerRecordWrapper,
+  // partitionConsumptionState,
+  // partition,
+  // kafkaUrl,
+  // kafkaClusterId,
+  // beforeProcessingRecordTimestampNs,
+  // beforeProcessingBatchRecordsTimestampMs);
+  // return;
+  // }
+  // PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord = consumerRecordWrapper.getMessage();
+  // KafkaKey kafkaKey = consumerRecord.getKey();
+  // byte[] keyBytes = kafkaKey.getKey();
+  // final MergeConflictResultWrapper mergeConflictResultWrapper;
+  // if (consumerRecordWrapper.getProcessedResult() != null
+  // && consumerRecordWrapper.getProcessedResult().getMergeConflictResultWrapper() != null) {
+  // mergeConflictResultWrapper = consumerRecordWrapper.getProcessedResult().getMergeConflictResultWrapper();
+  // } else {
+  // mergeConflictResultWrapper = processActiveActiveMessage(
+  // consumerRecord,
+  // partitionConsumptionState,
+  // partition,
+  // kafkaUrl,
+  // kafkaClusterId,
+  // beforeProcessingRecordTimestampNs,
+  // beforeProcessingBatchRecordsTimestampMs).getMergeConflictResultWrapper();
+  // }
+  //
+  // MergeConflictResult mergeConflictResult = mergeConflictResultWrapper.getMergeConflictResult();
+  // if (!mergeConflictResult.isUpdateIgnored()) {
+  // // Apply this update to any views for this store
+  // // TODO: It'd be good to be able to do this in LeaderFollowerStoreIngestionTask instead, however, AA currently is
+  // // the
+  // // only extension of IngestionTask which does a read from disk before applying the record. This makes the
+  // // following function
+  // // call in this context much less obtrusive, however, it implies that all views can only work for AA stores
+  //
+  // // Write to views
+  // Runnable produceToVersionTopic = () -> producePutOrDeleteToKafka(
+  // mergeConflictResultWrapper,
+  // partitionConsumptionState,
+  // keyBytes,
+  // consumerRecord,
+  // partition,
+  // kafkaUrl,
+  // kafkaClusterId,
+  // beforeProcessingRecordTimestampNs);
+  // if (hasViewWriters()) {
+  // /**
+  // * The ordering guarantees we want is the following:
+  // *
+  // * 1. Write to all view topics (in parallel).
+  // * 2. Write to the VT only after we get the ack for all views AND the previous write to VT was queued into the
+  // * producer (but not necessarily acked).
+  // */
+  // ByteBuffer oldValueBB = mergeConflictResultWrapper.getOldValueByteBufferProvider().get();
+  // int oldValueSchemaId =
+  // oldValueBB == null ? -1 : mergeConflictResultWrapper.getOldValueProvider().get().writerSchemaId();
+  // queueUpVersionTopicWritesWithViewWriters(
+  // partitionConsumptionState,
+  // (viewWriter) -> viewWriter.processRecord(
+  // mergeConflictResultWrapper.getUpdatedValueBytes(),
+  // oldValueBB,
+  // keyBytes,
+  // mergeConflictResult.getValueSchemaId(),
+  // oldValueSchemaId,
+  // mergeConflictResult.getRmdRecord()),
+  // produceToVersionTopic);
+  // } else {
+  // // This function may modify the original record in KME and it is unsafe to use the payload from KME directly
+  // // after this call.
+  // produceToVersionTopic.run();
+  // }
+  // }
+  // }
 
   /**
    * Package private for testing purposes.
@@ -811,7 +812,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * @param partition
    * @param kafkaUrl
    */
-  private void producePutOrDeleteToKafka(
+  @Override
+  protected void producePutOrDeleteToKafka(
       MergeConflictResultWrapper mergeConflictResultWrapper,
       PartitionConsumptionState partitionConsumptionState,
       byte[] key,

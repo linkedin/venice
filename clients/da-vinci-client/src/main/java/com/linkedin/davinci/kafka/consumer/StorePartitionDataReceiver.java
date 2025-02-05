@@ -4,7 +4,9 @@ import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.END_OF
 
 import com.linkedin.avroutil1.compatibility.shaded.org.apache.commons.lang3.Validate;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
+import com.linkedin.davinci.replication.merge.MergeConflictResult;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
+import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.davinci.validation.PartitionTracker.TopicType;
@@ -13,6 +15,7 @@ import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.Update;
@@ -22,27 +25,34 @@ import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.ValueHolder;
+import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.NavigableMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.BiConsumer;
+import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -935,7 +945,7 @@ public class StorePartitionDataReceiver
       } else {
         // This function may modify the original record in KME and it is unsafe to use the payload from KME directly
         // after this call.
-        storeIngestionTask.processMessageAndMaybeProduceToKafka(
+        processMessageAndMaybeProduceToKafka(
             consumerRecordWrapper,
             partitionConsumptionState,
             partition,
@@ -984,6 +994,326 @@ public class StorePartitionDataReceiver
    *
    * Extend this function when there is new check needed.
    */
+  void processMessageAndMaybeProduceToKafka(
+      PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> consumerRecordWrapper,
+      PartitionConsumptionState partitionConsumptionState,
+      int partition,
+      String kafkaUrl,
+      int kafkaClusterId,
+      long beforeProcessingRecordTimestampNs,
+      long beforeProcessingBatchRecordsTimestampMs) {
+    /**
+     * With {@link BatchConflictResolutionPolicy.BATCH_WRITE_LOSES} there is no need
+     * to perform DCR before EOP and L/F DIV passthrough mode should be used. If the version is going through data
+     * recovery then there is no need to perform DCR until we completed data recovery and switched to consume from RT.
+     * TODO. We need to refactor this logic when we support other batch conflict resolution policy.
+     */
+    if (storeIngestionTask.isActiveActiveReplicationEnabled() && partitionConsumptionState.isEndOfPushReceived()
+        && (!storeIngestionTask.isDataRecovery() || partitionConsumptionState.getTopicSwitch() == null)) {
+      processActiveActiveMessageAndMaybeProduceToKafka(
+          consumerRecordWrapper,
+          partitionConsumptionState,
+          partition,
+          kafkaUrl,
+          kafkaClusterId,
+          beforeProcessingRecordTimestampNs,
+          beforeProcessingBatchRecordsTimestampMs);
+      return;
+    }
+
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord = consumerRecordWrapper.getMessage();
+    KafkaKey kafkaKey = consumerRecord.getKey();
+    KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
+    byte[] keyBytes = kafkaKey.getKey();
+    MessageType msgType = MessageType.valueOf(kafkaValue.messageType);
+
+    WriteComputeResultWrapper writeComputeResultWrapper;
+    if (consumerRecordWrapper.getProcessedResult() != null
+        && consumerRecordWrapper.getProcessedResult().getWriteComputeResultWrapper() != null) {
+      writeComputeResultWrapper = consumerRecordWrapper.getProcessedResult().getWriteComputeResultWrapper();
+    } else {
+      writeComputeResultWrapper =
+          storeIngestionTask
+              .processMessage(
+                  consumerRecord,
+                  partitionConsumptionState,
+                  partition,
+                  kafkaUrl,
+                  kafkaClusterId,
+                  beforeProcessingRecordTimestampNs,
+                  beforeProcessingBatchRecordsTimestampMs)
+              .getWriteComputeResultWrapper();
+    }
+
+    if (msgType.equals(MessageType.UPDATE) && writeComputeResultWrapper.isSkipProduce()) {
+      return;
+    }
+    Runnable produceToVersionTopic = () -> produceToLocalKafkaHelper(
+        consumerRecord,
+        partitionConsumptionState,
+        writeComputeResultWrapper,
+        partition,
+        kafkaUrl,
+        kafkaClusterId,
+        beforeProcessingRecordTimestampNs);
+    // Write to views
+    if (storeIngestionTask.hasViewWriters()) {
+      Put newPut = writeComputeResultWrapper.getNewPut();
+      // keys will be serialized with chunk suffix during pass-through mode in L/F NR if chunking is enabled
+      boolean isChunkedKey = storeIngestionTask.isChunked() && !partitionConsumptionState.isEndOfPushReceived();
+      queueUpVersionTopicWritesWithViewWriters(
+          partitionConsumptionState,
+          (viewWriter) -> viewWriter.processRecord(newPut.putValue, keyBytes, newPut.schemaId, isChunkedKey),
+          produceToVersionTopic);
+    } else {
+      produceToVersionTopic.run();
+    }
+  }
+
+  private void produceToLocalKafkaHelper(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PartitionConsumptionState partitionConsumptionState,
+      WriteComputeResultWrapper writeComputeResultWrapper,
+      int partition,
+      String kafkaUrl,
+      int kafkaClusterId,
+      long beforeProcessingRecordTimestampNs) {
+    KafkaKey kafkaKey = consumerRecord.getKey();
+    KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
+    byte[] keyBytes = kafkaKey.getKey();
+    MessageType msgType = MessageType.valueOf(kafkaValue.messageType);
+    LeaderProducedRecordContext leaderProducedRecordContext;
+    Put newPut = writeComputeResultWrapper.getNewPut();
+    switch (msgType) {
+      case PUT:
+        leaderProducedRecordContext =
+            LeaderProducedRecordContext.newPutRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, newPut);
+        storeIngestionTask.produceToLocalKafka(
+            consumerRecord,
+            partitionConsumptionState,
+            leaderProducedRecordContext,
+            (callback, leaderMetadataWrapper) -> {
+              /**
+               * 1. Unfortunately, Kafka does not support fancy array manipulation via {@link ByteBuffer} or otherwise,
+               * so we may be forced to do a copy here, if the backing array of the {@link putValue} has padding,
+               * which is the case when using {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer}.
+               * Since this is in a closure, it is not guaranteed to be invoked.
+               *
+               * The {@link OnlineOfflineStoreIngestionTask}, which ignores this closure, will not pay this price.
+               *
+               * Conversely, the {@link LeaderFollowerStoreIngestionTask}, which does invoke it, will.
+               *
+               * TODO: Evaluate holistically what is the best way to optimize GC for the L/F case.
+               *
+               * 2. Enable venice writer "pass-through" mode if we haven't received EOP yet. In pass through mode,
+               * Leader will reuse upstream producer metadata. This would secures the correctness of DIV states in
+               * followers when the leadership failover happens.
+               */
+
+              if (!partitionConsumptionState.isEndOfPushReceived()) {
+                partitionConsumptionState.getVeniceWriterLazyRef()
+                    .get()
+                    .put(
+                        kafkaKey,
+                        kafkaValue,
+                        callback,
+                        consumerRecord.getTopicPartition().getPartitionNumber(),
+                        leaderMetadataWrapper);
+              } else {
+                partitionConsumptionState.getVeniceWriterLazyRef()
+                    .get()
+                    .put(
+                        keyBytes,
+                        ByteUtils.extractByteArray(newPut.putValue),
+                        newPut.schemaId,
+                        callback,
+                        leaderMetadataWrapper);
+              }
+            },
+            partition,
+            kafkaUrl,
+            kafkaClusterId,
+            beforeProcessingRecordTimestampNs);
+        break;
+
+      case UPDATE:
+        leaderProducedRecordContext =
+            LeaderProducedRecordContext.newPutRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, newPut);
+        BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction =
+            (callback, leaderMetadataWrapper) -> partitionConsumptionState.getVeniceWriterLazyRef()
+                .get()
+                .put(
+                    keyBytes,
+                    ByteUtils.extractByteArray(newPut.getPutValue()),
+                    newPut.getSchemaId(),
+                    callback,
+                    leaderMetadataWrapper,
+                    VeniceWriter.APP_DEFAULT_LOGICAL_TS,
+                    null,
+                    writeComputeResultWrapper.getOldValueManifest(),
+                    null);
+
+        storeIngestionTask.produceToLocalKafka(
+            consumerRecord,
+            partitionConsumptionState,
+            leaderProducedRecordContext,
+            produceFunction,
+            partitionConsumptionState.getPartition(),
+            kafkaUrl,
+            kafkaClusterId,
+            beforeProcessingRecordTimestampNs);
+        break;
+
+      case DELETE:
+        leaderProducedRecordContext = LeaderProducedRecordContext
+            .newDeleteRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, (Delete) kafkaValue.payloadUnion);
+        storeIngestionTask.produceToLocalKafka(
+            consumerRecord,
+            partitionConsumptionState,
+            leaderProducedRecordContext,
+            (callback, leaderMetadataWrapper) -> {
+              /**
+               * DIV pass-through for DELETE messages before EOP.
+               */
+              if (!partitionConsumptionState.isEndOfPushReceived()) {
+                partitionConsumptionState.getVeniceWriterLazyRef()
+                    .get()
+                    .delete(
+                        kafkaKey,
+                        kafkaValue,
+                        callback,
+                        consumerRecord.getTopicPartition().getPartitionNumber(),
+                        leaderMetadataWrapper);
+              } else {
+                partitionConsumptionState.getVeniceWriterLazyRef()
+                    .get()
+                    .delete(keyBytes, callback, leaderMetadataWrapper);
+              }
+            },
+            partition,
+            kafkaUrl,
+            kafkaClusterId,
+            beforeProcessingRecordTimestampNs);
+        break;
+
+      default:
+        throw new VeniceMessageException(
+            storeIngestionTask.getIngestionTaskName() + " : Invalid/Unrecognized operation type submitted: "
+                + kafkaValue.messageType);
+    }
+  }
+
+  // This function may modify the original record in KME, it is unsafe to use the payload from KME directly after
+  // this function.
+  private void processActiveActiveMessageAndMaybeProduceToKafka(
+      PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> consumerRecordWrapper,
+      PartitionConsumptionState partitionConsumptionState,
+      int partition,
+      String kafkaUrl,
+      int kafkaClusterId,
+      long beforeProcessingRecordTimestampNs,
+      long beforeProcessingBatchRecordsTimestampMs) {
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord = consumerRecordWrapper.getMessage();
+    KafkaKey kafkaKey = consumerRecord.getKey();
+    byte[] keyBytes = kafkaKey.getKey();
+    final MergeConflictResultWrapper mergeConflictResultWrapper;
+    if (consumerRecordWrapper.getProcessedResult() != null
+        && consumerRecordWrapper.getProcessedResult().getMergeConflictResultWrapper() != null) {
+      mergeConflictResultWrapper = consumerRecordWrapper.getProcessedResult().getMergeConflictResultWrapper();
+    } else {
+      mergeConflictResultWrapper =
+          storeIngestionTask
+              .processActiveActiveMessage(
+                  consumerRecord,
+                  partitionConsumptionState,
+                  partition,
+                  kafkaUrl,
+                  kafkaClusterId,
+                  beforeProcessingRecordTimestampNs,
+                  beforeProcessingBatchRecordsTimestampMs)
+              .getMergeConflictResultWrapper();
+    }
+
+    MergeConflictResult mergeConflictResult = mergeConflictResultWrapper.getMergeConflictResult();
+    if (!mergeConflictResult.isUpdateIgnored()) {
+      // Apply this update to any views for this store
+      // TODO: It'd be good to be able to do this in LeaderFollowerStoreIngestionTask instead, however, AA currently is
+      // the
+      // only extension of IngestionTask which does a read from disk before applying the record. This makes the
+      // following function
+      // call in this context much less obtrusive, however, it implies that all views can only work for AA stores
+
+      // Write to views
+      Runnable produceToVersionTopic = () -> storeIngestionTask.producePutOrDeleteToKafka(
+          mergeConflictResultWrapper,
+          partitionConsumptionState,
+          keyBytes,
+          consumerRecord,
+          partition,
+          kafkaUrl,
+          kafkaClusterId,
+          beforeProcessingRecordTimestampNs);
+      if (storeIngestionTask.hasViewWriters()) {
+        /**
+         * The ordering guarantees we want is the following:
+         *
+         * 1. Write to all view topics (in parallel).
+         * 2. Write to the VT only after we get the ack for all views AND the previous write to VT was queued into the
+         *    producer (but not necessarily acked).
+         */
+        ByteBuffer oldValueBB = mergeConflictResultWrapper.getOldValueByteBufferProvider().get();
+        int oldValueSchemaId =
+            oldValueBB == null ? -1 : mergeConflictResultWrapper.getOldValueProvider().get().writerSchemaId();
+        queueUpVersionTopicWritesWithViewWriters(
+            partitionConsumptionState,
+            (viewWriter) -> viewWriter.processRecord(
+                mergeConflictResultWrapper.getUpdatedValueBytes(),
+                oldValueBB,
+                keyBytes,
+                mergeConflictResult.getValueSchemaId(),
+                oldValueSchemaId,
+                mergeConflictResult.getRmdRecord()),
+            produceToVersionTopic);
+      } else {
+        // This function may modify the original record in KME and it is unsafe to use the payload from KME directly
+        // after this call.
+        produceToVersionTopic.run();
+      }
+    }
+  }
+
+  void queueUpVersionTopicWritesWithViewWriters(
+      PartitionConsumptionState partitionConsumptionState,
+      Function<VeniceViewWriter, CompletableFuture<PubSubProduceResult>> viewWriterRecordProcessor,
+      Runnable versionTopicWrite) {
+    long preprocessingTime = System.currentTimeMillis();
+    CompletableFuture<Void> currentVersionTopicWrite = new CompletableFuture<>();
+    Map<String, VeniceViewWriter> viewWriters = storeIngestionTask.getViewWriters();
+    CompletableFuture[] viewWriterFutures = new CompletableFuture[viewWriters.size() + 1];
+    int index = 0;
+    // The first future is for the previous write to VT
+    viewWriterFutures[index++] = partitionConsumptionState.getLastVTProduceCallFuture();
+    for (VeniceViewWriter writer: viewWriters.values()) {
+      viewWriterFutures[index++] = viewWriterRecordProcessor.apply(writer);
+    }
+
+    HostLevelIngestionStats hostLevelIngestionStats = storeIngestionTask.getHostLevelIngestionStats();
+    hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
+    CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
+      hostLevelIngestionStats.recordViewProducerAckLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
+      if (exception == null) {
+        versionTopicWrite.run();
+        currentVersionTopicWrite.complete(null);
+      } else {
+        VeniceException veniceException = new VeniceException(exception);
+        storeIngestionTask.setIngestionException(partitionConsumptionState.getPartition(), veniceException);
+        currentVersionTopicWrite.completeExceptionally(veniceException);
+      }
+    });
+
+    partitionConsumptionState.setLastVTProduceCallFuture(currentVersionTopicWrite);
+  }
+
   private void validateRecordBeforeProducingToLocalKafka(
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       PartitionConsumptionState partitionConsumptionState,

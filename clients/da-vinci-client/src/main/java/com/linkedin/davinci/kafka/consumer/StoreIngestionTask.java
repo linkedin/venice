@@ -42,6 +42,7 @@ import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
+import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.utils.ChunkAssembler;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
 import com.linkedin.davinci.validation.PartitionTracker;
@@ -1925,6 +1926,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected void closeVeniceViewWriters() {
   }
+
+  public abstract Map<String, VeniceViewWriter> getViewWriters();
 
   /**
    * Consumes the kafka actions messages in the queue.
@@ -4758,14 +4761,37 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       String kafkaUrl,
       long beforeProcessingRecordTimestampNs);
 
-  protected abstract void processMessageAndMaybeProduceToKafka(
-      PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> consumerRecordWrapper,
+  protected abstract PubSubMessageProcessedResult processMessage(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       PartitionConsumptionState partitionConsumptionState,
       int partition,
       String kafkaUrl,
       int kafkaClusterId,
       long beforeProcessingRecordTimestampNs,
       long beforeProcessingBatchRecordsTimestampMs);
+
+  protected PubSubMessageProcessedResult processActiveActiveMessage(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PartitionConsumptionState partitionConsumptionState,
+      int partition,
+      String kafkaUrl,
+      int kafkaClusterId,
+      long beforeProcessingRecordTimestampNs,
+      long beforeProcessingBatchRecordsTimestampMs) {
+    throw new VeniceException("processActiveActiveMessage() should only be called in active active mode");
+  }
+
+  protected void producePutOrDeleteToKafka(
+      MergeConflictResultWrapper mergeConflictResultWrapper,
+      PartitionConsumptionState partitionConsumptionState,
+      byte[] key,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      int partition,
+      String kafkaUrl,
+      int kafkaClusterId,
+      long beforeProcessingRecordTimestampNs) {
+    throw new VeniceException("producePutOrDeleteToKafka() should only be called in active active mode");
+  }
 
   protected abstract void setRealTimeVeniceWriterRef(PartitionConsumptionState partitionConsumptionState);
 

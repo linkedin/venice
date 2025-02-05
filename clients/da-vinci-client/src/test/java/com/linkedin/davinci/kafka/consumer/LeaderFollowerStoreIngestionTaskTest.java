@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -289,7 +290,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
     AtomicBoolean writeToVersionTopic = new AtomicBoolean(false);
     when(mockPartitionConsumptionState.getLastVTProduceCallFuture())
         .thenReturn(CompletableFuture.completedFuture(null));
-    leaderFollowerStoreIngestionTask.queueUpVersionTopicWritesWithViewWriters(
+    StorePartitionDataReceiver storePartitionDataReceiver =
+        spy(new StorePartitionDataReceiver(leaderFollowerStoreIngestionTask, mockTopicPartition, "dummyUrl", 0));
+    storePartitionDataReceiver.queueUpVersionTopicWritesWithViewWriters(
         mockPartitionConsumptionState,
         (viewWriter) -> viewWriter.processRecord(mock(ByteBuffer.class), new byte[1], 1, false),
         () -> writeToVersionTopic.set(true));
