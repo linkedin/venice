@@ -256,12 +256,21 @@ public class DaVinciBackendTest {
 
     // DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY == false
     when(mockCombinedProperties.getBoolean(anyString(), anyBoolean())).thenReturn(false);
-    doCallRealMethod().when(backend).executeBootstrapping();
-    backend.executeBootstrapping();
+    doCallRealMethod().when(backend).bootstrap();
+    backend.bootstrap();
 
     ComplementSet<Integer> subscription = mockStoreBackend.getSubscription();
     assertTrue(subscription.contains(0));
     assertTrue(subscription.contains(1));
     assertFalse(subscription.contains(2));
+
+    when(mockCombinedProperties.getBoolean(anyString(), anyBoolean())).thenReturn(true);
+    backend.bootstrap();
+
+    subscription = mockStoreBackend.getSubscription();
+    assertTrue(subscription.contains(0));
+    assertTrue(subscription.contains(1));
+    assertTrue(subscription.contains(2));
+
   }
 }
