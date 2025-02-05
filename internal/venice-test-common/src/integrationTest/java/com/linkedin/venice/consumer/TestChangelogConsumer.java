@@ -172,7 +172,7 @@ public class TestChangelogConsumer {
     TestView.resetCounters();
   }
 
-  @Test(timeOut = TEST_TIMEOUT * 2, priority = 3)
+  @Test(timeOut = TEST_TIMEOUT, priority = 3)
   public void testAAIngestionWithStoreView() throws Exception {
     // Set up the store
     Long timestamp = System.currentTimeMillis();
