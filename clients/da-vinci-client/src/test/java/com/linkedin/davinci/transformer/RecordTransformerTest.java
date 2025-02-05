@@ -40,10 +40,10 @@ public class RecordTransformerTest {
     Schema keySchema = Schema.create(Schema.Type.INT);
     Schema valueSchema = Schema.create(Schema.Type.STRING);
 
-    DaVinciRecordTransformerConfig dummyRecordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
-        .setRecordTransformerFunction((storeVersion, keySchema1, inputValueSchema, outputValueSchema, config) -> null)
-        .setStoreRecordsInDaVinci(false)
-        .build();
+    DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .setStoreRecordsInDaVinci(false)
+            .build();
 
     DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(
         storeVersion,
@@ -86,9 +86,9 @@ public class RecordTransformerTest {
     Schema keySchema = Schema.create(Schema.Type.INT);
     Schema valueSchema = Schema.create(Schema.Type.STRING);
 
-    DaVinciRecordTransformerConfig dummyRecordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
-        .setRecordTransformerFunction((storeVersion, keySchema1, inputValueSchema, outputValueSchema, config) -> null)
-        .build();
+    DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .build();
 
     DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(
         storeVersion,
@@ -137,10 +137,10 @@ public class RecordTransformerTest {
     Schema keySchema = Schema.create(Schema.Type.INT);
     Schema valueSchema = Schema.create(Schema.Type.STRING);
 
-    DaVinciRecordTransformerConfig dummyRecordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
-        .setRecordTransformerFunction((storeVersion, keySchema1, inputValueSchema, outputValueSchema, config) -> null)
-        .setAlwaysBootstrapFromVersionTopic(true)
-        .build();
+    DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .setAlwaysBootstrapFromVersionTopic(true)
+            .build();
 
     DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(
         storeVersion,
@@ -189,9 +189,9 @@ public class RecordTransformerTest {
     Schema keySchema = Schema.create(Schema.Type.INT);
     Schema valueSchema = Schema.create(Schema.Type.STRING);
 
-    DaVinciRecordTransformerConfig dummyRecordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
-        .setRecordTransformerFunction((storeVersion, keySchema1, inputValueSchema, outputValueSchema, config) -> null)
-        .build();
+    DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .build();
 
     DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(
         storeVersion,

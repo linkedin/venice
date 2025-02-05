@@ -48,9 +48,8 @@ public class DaVinciConfigTest {
     DaVinciConfig clientConfig = new DaVinciConfig();
     assertFalse(clientConfig.isRecordTransformerEnabled());
 
-    DaVinciRecordTransformerConfig dummyRecordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
-        .setRecordTransformerFunction((storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> null)
-        .build();
+    DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestRecordTransformer::new).build();
 
     DaVinciRecordTransformerFunctionalInterface recordTransformerFunction =
         (storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> new TestRecordTransformer(
@@ -75,9 +74,8 @@ public class DaVinciConfigTest {
     DaVinciConfig clientConfig = new DaVinciConfig();
     assertNull(clientConfig.getRecordTransformerConfig());
 
-    DaVinciRecordTransformerConfig dummyRecordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
-        .setRecordTransformerFunction((storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> null)
-        .build();
+    DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestRecordTransformer::new).build();
 
     DaVinciRecordTransformerFunctionalInterface recordTransformerFunction =
         (storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> new TestRecordTransformer(

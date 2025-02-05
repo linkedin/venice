@@ -217,9 +217,9 @@ public class DaVinciClientRecordTransformerTest {
       Schema myKeySchema = Schema.create(Schema.Type.INT);
       Schema myValueSchema = Schema.create(Schema.Type.STRING);
 
-      DaVinciRecordTransformerConfig dummyRecordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
-          .setRecordTransformerFunction((storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> null)
-          .build();
+      DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
+          new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+              .build();
 
       TestStringRecordTransformer recordTransformer =
           new TestStringRecordTransformer(1, myKeySchema, myValueSchema, myValueSchema, dummyRecordTransformerConfig);
@@ -302,9 +302,9 @@ public class DaVinciClientRecordTransformerTest {
       Schema myKeySchema = Schema.create(Schema.Type.INT);
       Schema myValueSchema = Schema.create(Schema.Type.STRING);
 
-      DaVinciRecordTransformerConfig dummyRecordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
-          .setRecordTransformerFunction((storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> null)
-          .build();
+      DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
+          new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+              .build();
 
       TestStringRecordTransformer recordTransformer =
           new TestStringRecordTransformer(1, myKeySchema, myValueSchema, myValueSchema, dummyRecordTransformerConfig);
@@ -372,10 +372,10 @@ public class DaVinciClientRecordTransformerTest {
     Schema myKeySchema = Schema.create(Schema.Type.INT);
     Schema myValueSchema = Schema.create(Schema.Type.STRING);
 
-    DaVinciRecordTransformerConfig dummyRecordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
-        .setRecordTransformerFunction((storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> null)
-        .setStoreRecordsInDaVinci(false)
-        .build();
+    DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .setStoreRecordsInDaVinci(false)
+            .build();
 
     TestStringRecordTransformer recordTransformer =
         new TestStringRecordTransformer(1, myKeySchema, myValueSchema, myValueSchema, dummyRecordTransformerConfig);
@@ -429,9 +429,9 @@ public class DaVinciClientRecordTransformerTest {
     Schema myKeySchema = Schema.create(Schema.Type.INT);
     Schema myValueSchema = Schema.create(Schema.Type.STRING);
 
-    DaVinciRecordTransformerConfig dummyRecordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
-        .setRecordTransformerFunction((storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> null)
-        .build();
+    DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestSkipResultRecordTransformer::new)
+            .build();
 
     TestSkipResultRecordTransformer recordTransformer =
         new TestSkipResultRecordTransformer(1, myKeySchema, myValueSchema, myValueSchema, dummyRecordTransformerConfig);
@@ -529,9 +529,9 @@ public class DaVinciClientRecordTransformerTest {
     Schema myKeySchema = Schema.create(Schema.Type.INT);
     Schema myValueSchema = Schema.create(Schema.Type.STRING);
 
-    DaVinciRecordTransformerConfig dummyRecordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
-        .setRecordTransformerFunction((storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> null)
-        .build();
+    DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .build();
 
     TestStringRecordTransformer recordTransformer =
         new TestStringRecordTransformer(1, myKeySchema, myValueSchema, myValueSchema, dummyRecordTransformerConfig);
