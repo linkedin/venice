@@ -11,8 +11,9 @@ import java.util.function.Function;
  * This is a superset of the OffsetManager APIs, which also provide functions for storing store-version level state.
  */
 public interface StorageMetadataService extends OffsetManager {
-  void computeStoreVersionState(String topicName, Function<StoreVersionState, StoreVersionState> mapFunction)
-      throws VeniceException;
+  StoreVersionState computeStoreVersionState(
+      String topicName,
+      Function<StoreVersionState, StoreVersionState> mapFunction) throws VeniceException;
 
   /**
    * This will clear all metadata, including store-version state and partition states, tied to {@param topicName}.

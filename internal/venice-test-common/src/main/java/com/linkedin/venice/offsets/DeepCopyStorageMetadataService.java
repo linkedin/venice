@@ -28,9 +28,10 @@ public class DeepCopyStorageMetadataService extends DeepCopyOffsetManager implem
   }
 
   @Override
-  public void computeStoreVersionState(String topicName, Function<StoreVersionState, StoreVersionState> mapFunction)
-      throws VeniceException {
-    delegateStorageMetadataService.computeStoreVersionState(topicName, previousStoreVersionState -> {
+  public StoreVersionState computeStoreVersionState(
+      String topicName,
+      Function<StoreVersionState, StoreVersionState> mapFunction) throws VeniceException {
+    return delegateStorageMetadataService.computeStoreVersionState(topicName, previousStoreVersionState -> {
       StoreVersionState newSVS = mapFunction.apply(
           previousStoreVersionState == null
               ? null
