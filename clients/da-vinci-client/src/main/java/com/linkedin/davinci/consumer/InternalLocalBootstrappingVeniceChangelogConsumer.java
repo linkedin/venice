@@ -520,6 +520,11 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
   @Override
   public CompletableFuture<Void> start() {
     Set<Integer> allPartitions = new HashSet<>();
+    try {
+      storeRepository.subscribe(storeName);
+    } catch (InterruptedException e) {
+      throw new VeniceException("Failed to start bootstrapping changelog consumer with error:", e);
+    }
     Store store = storeRepository.getStore(storeName);
     for (int partition = 0; partition < store.getPartitionCount(); partition++) {
       allPartitions.add(partition);
