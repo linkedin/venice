@@ -6,6 +6,8 @@ import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V3_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V4_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V5_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V6_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.USER_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.USER_WITH_DEFAULT_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsString;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
@@ -496,6 +498,16 @@ public class TestAvroSupersetSchemaUtils {
         AvroSupersetSchemaUtils.getLatestUpdateSchemaFromSchemaResponse(schemaResponse, 1);
     Assert.assertNotNull(retrievedSchema);
     Assert.assertEquals(retrievedSchema.getSchemaStr(), "dummySchemaStr2");
+  }
+
+  @Test
+  public void testSupersetSchemaKeepDefault() {
+    Assert.assertEquals(
+        AvroSupersetSchemaUtils.generateSupersetSchema(USER_WITH_DEFAULT_SCHEMA, USER_SCHEMA),
+        USER_WITH_DEFAULT_SCHEMA);
+    Assert.assertEquals(
+        AvroSupersetSchemaUtils.generateSupersetSchema(USER_SCHEMA, USER_WITH_DEFAULT_SCHEMA),
+        USER_WITH_DEFAULT_SCHEMA);
   }
 
   @Test
