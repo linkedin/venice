@@ -12,6 +12,14 @@ public class DaVinciRecordTransformerConfig {
   private final Schema outputValueSchema;
 
   /**
+   * Use this constructor if you don't intend on transforming records
+   * @param recordTransformerFunction the functional interface for creating a {@link DaVinciRecordTransformer}
+   */
+  public DaVinciRecordTransformerConfig(DaVinciRecordTransformerFunctionalInterface recordTransformerFunction) {
+    this(recordTransformerFunction, null, null);
+  }
+
+  /**
    * @param recordTransformerFunction the functional interface for creating a {@link DaVinciRecordTransformer}
    * @param outputValueClass the class of the output value
    * @param outputValueSchema the schema of the output value

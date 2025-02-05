@@ -700,6 +700,12 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       kafkaBootstrapServers = backendConfig.getString(KAFKA_BOOTSTRAP_SERVERS);
     }
 
+    String recordTransformerOutputValueSchema = "null";
+
+    if (daVinciConfig.isRecordTransformerEnabled() && recordTransformerConfig.getOutputValueSchema() != null) {
+      recordTransformerOutputValueSchema = recordTransformerConfig.getOutputValueSchema().toString();
+    }
+
     VeniceProperties config = new PropertyBuilder().put(KAFKA_ADMIN_CLASS, ApacheKafkaAdminAdapter.class.getName())
         .put(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER, 4) // RocksDB default config
         .put(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER, 20) // RocksDB default config
@@ -712,11 +718,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers)
         .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, daVinciConfig.getStorageClass() == StorageClass.MEMORY_BACKED_BY_DISK)
         .put(INGESTION_USE_DA_VINCI_CLIENT, true)
-        .put(
-            RECORD_TRANSFORMER_VALUE_SCHEMA,
-            daVinciConfig.isRecordTransformerEnabled()
-                ? recordTransformerConfig.getOutputValueSchema().toString()
-                : "null")
+        .put(RECORD_TRANSFORMER_VALUE_SCHEMA, recordTransformerOutputValueSchema)
         .put(INGESTION_ISOLATION_CONFIG_PREFIX + "." + INGESTION_MEMORY_LIMIT, -1) // Explicitly disable memory limiter
                                                                                    // in Isolated Process
         .put(backendConfig.toProperties())

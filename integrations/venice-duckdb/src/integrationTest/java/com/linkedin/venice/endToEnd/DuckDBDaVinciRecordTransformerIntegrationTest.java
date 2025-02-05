@@ -145,9 +145,7 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
               false,
               tmpDir.getAbsolutePath(),
               storeName,
-              columnsToProject),
-          GenericRecord.class,
-          NAME_RECORD_V1_SCHEMA);
+              columnsToProject));
       clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
       DaVinciClient<Integer, Object> clientWithRecordTransformer =
