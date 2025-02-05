@@ -951,7 +951,7 @@ public interface Admin extends AutoCloseable, Closeable {
    * @param storeName
    * @return
    */
-  RepushJobResponse compactStore(String storeName);
+  RepushJobResponse compactStore(String storeName) throws Exception;
 
   public CompactionManager getCompactionManager();
 

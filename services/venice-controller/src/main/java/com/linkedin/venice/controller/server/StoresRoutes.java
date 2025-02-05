@@ -964,7 +964,12 @@ public class StoresRoutes extends AbstractRoute {
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         AdminSparkServer.validateParams(request, COMPACT_STORE.getParams(), admin);
         String storeName = request.queryParams(NAME);
-        admin.compactStore(storeName);
+        try {
+          admin.compactStore(storeName);
+        } catch (Exception e) {
+          throw new RuntimeException(e);
+          // TODO LC: AdminSparkServer.handleError & send error response back to client
+        }
         veniceResponse.setName(storeName);
       }
     };

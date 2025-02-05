@@ -7,5 +7,5 @@ package com.linkedin.venice.controller.repush;
  * by {@link com.linkedin.venice.controller.logcompaction.CompactionManager}
  */
 public interface RepushOrchestrator {
-  RepushJobResponse repush(String storeName);
+  RepushJobResponse repush(String storeName) throws Exception; // TODO LC: probably need to throw Exception
 }

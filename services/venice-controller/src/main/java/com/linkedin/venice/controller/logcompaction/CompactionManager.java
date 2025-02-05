@@ -105,7 +105,7 @@ public class CompactionManager {
    *
    * @param storeName of the store to be compacted
    */
-  public RepushJobResponse compactStore(String storeName) {
+  public RepushJobResponse compactStore(String storeName) throws Exception {
     try {
       RepushJobResponse response = repushOrchestrator.repush(storeName);
       LOGGER.info(
