@@ -3912,8 +3912,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (storeResponse.isError()) {
           if (storeResponse.getError().contains(DOES_NOT_EXISTS)) {
             LOGGER.warn(
-                "Store {} does not exist in fabric {}, probably deleted already, skipping RT check",
+                "Store {} does not exist in cluster {} in fabric {}, probably deleted already, skipping RT check",
                 storeName,
+                clusterName,
                 controllerClientEntry.getKey());
             continue;
           }
@@ -3927,8 +3928,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
       } catch (VeniceNoStoreException e) {
         LOGGER.warn(
-            "Store {} does not exist in fabric {}, probably deleted already, skipping RT check",
+            "Store {} does not exist in cluster {} in fabric {}, probably deleted already, skipping RT check",
             storeName,
+            clusterName,
             controllerClientEntry.getKey());
         continue;
       }
