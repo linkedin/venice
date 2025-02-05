@@ -701,9 +701,10 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       kafkaBootstrapServers = backendConfig.getString(KAFKA_BOOTSTRAP_SERVERS);
     }
 
-    String recordTransformerOutputValueSchema = daVinciConfig.isRecordTransformerEnabled()
-        ? Objects.toString(recordTransformerConfig.getOutputValueSchema(), "null")
-        : "null";
+    String recordTransformerOutputValueSchema = "null";
+    if (daVinciConfig.isRecordTransformerEnabled()) {
+      recordTransformerOutputValueSchema = Objects.toString(recordTransformerConfig.getOutputValueSchema(), "null");
+    }
 
     VeniceProperties config = new PropertyBuilder().put(KAFKA_ADMIN_CLASS, ApacheKafkaAdminAdapter.class.getName())
         .put(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER, 4) // RocksDB default config
