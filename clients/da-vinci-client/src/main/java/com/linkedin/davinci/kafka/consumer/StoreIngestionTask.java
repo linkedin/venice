@@ -2983,7 +2983,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               // Something very wrong is going on ): ...
               throw new VeniceException(
                   "Unexpected: received multiple " + ControlMessageType.START_OF_PUSH.name()
-                      + " control messages with inconsistent 'sorted' fields within the same topic!");
+                      + " control messages with inconsistent 'sorted' fields within the same topic!"
+                      + " And persisted sorted value: " + previousStoreVersionState.sorted
+                      + " is different from the current one: " + sorted);
             }
             /**
              * Because of the blob-db integration, `SIT` will forcibly set `sorted` to `false` for hybrid stores (check the
@@ -3000,7 +3002,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
              *    b. If the input for a given partition is not sorted, the underlying `SSTFileWriter` will throw exception
              *       when we try to ingest it as sorted data.
              */
-            LOGGER.info(
+            LOGGER.warn(
                 "Store version state for topic {} has already been initialized with a different value of 'sorted': {}",
                 kafkaVersionTopic,
                 previousStoreVersionState.sorted);
