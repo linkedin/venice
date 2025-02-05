@@ -62,13 +62,15 @@ public class StorageEngineMetadataService extends AbstractVeniceService implemen
   }
 
   @Override
-  public void computeStoreVersionState(String topicName, Function<StoreVersionState, StoreVersionState> mapFunction)
-      throws VeniceException {
+  public StoreVersionState computeStoreVersionState(
+      String topicName,
+      Function<StoreVersionState, StoreVersionState> mapFunction) throws VeniceException {
     AbstractStorageEngine engine = getStorageEngineOrThrow(topicName);
     synchronized (engine) {
       StoreVersionState previousSVS = engine.getStoreVersionState();
       StoreVersionState newSVS = mapFunction.apply(previousSVS);
       engine.putStoreVersionState(newSVS);
+      return newSVS;
     }
   }
 
