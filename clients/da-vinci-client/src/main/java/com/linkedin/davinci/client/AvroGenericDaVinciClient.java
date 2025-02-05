@@ -69,6 +69,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -700,10 +701,9 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       kafkaBootstrapServers = backendConfig.getString(KAFKA_BOOTSTRAP_SERVERS);
     }
 
-    String recordTransformerOutputValueSchema = "null";
-    if (daVinciConfig.isRecordTransformerEnabled() && recordTransformerConfig.getOutputValueSchema() != null) {
-      recordTransformerOutputValueSchema = recordTransformerConfig.getOutputValueSchema().toString();
-    }
+    String recordTransformerOutputValueSchema = daVinciConfig.isRecordTransformerEnabled()
+        ? Objects.toString(recordTransformerConfig.getOutputValueSchema(), "null")
+        : "null";
 
     VeniceProperties config = new PropertyBuilder().put(KAFKA_ADMIN_CLASS, ApacheKafkaAdminAdapter.class.getName())
         .put(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER, 4) // RocksDB default config
