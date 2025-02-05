@@ -82,10 +82,6 @@ public class LogCompactionService extends AbstractVeniceService {
 
     @Override
     public void run() {
-      errorHandlingWrapper();
-    }
-
-    private void errorHandlingWrapper() {
       try {
         compactStoresInClusters();
       } catch (Throwable e) {
