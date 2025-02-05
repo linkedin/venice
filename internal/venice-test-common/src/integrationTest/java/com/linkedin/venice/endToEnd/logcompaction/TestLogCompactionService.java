@@ -106,7 +106,7 @@ public class TestLogCompactionService {
     //
     // // Assert the value of the captured argument
     // assertEquals(argumentCaptor.getValue(), "" /* TODO LC: store to be compacted */);
-    Utils.sleep(20000);
+    Utils.sleep(20000L);
   }
 
   @AfterClass
