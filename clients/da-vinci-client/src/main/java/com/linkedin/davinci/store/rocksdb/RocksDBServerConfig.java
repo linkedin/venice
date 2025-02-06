@@ -338,9 +338,9 @@ public class RocksDBServerConfig {
     }
 
     this.rocksDBBlockCacheSizeInBytes =
-        props.getSizeInBytes(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 16 * 1024 * 1024 * 1024L); // 16GB
+        props.getSizeInBytes(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024 * 1024L); // 2GB
     this.rocksDBRMDBlockCacheSizeInBytes =
-        props.getSizeInBytes(ROCKSDB_RMD_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024 * 1024L); // 2GB
+        props.getSizeInBytes(ROCKSDB_RMD_BLOCK_CACHE_SIZE_IN_BYTES, 1 * 1024 * 1024 * 1024L); // 1GB
 
     this.rocksDBBlockCacheImplementation = RocksDBBlockCacheImplementations
         .valueOf(props.getString(ROCKSDB_BLOCK_CACHE_IMPLEMENTATION, RocksDBBlockCacheImplementations.LRU.toString()));
