@@ -32,12 +32,12 @@ class VersionSwapDataChangeListener<K, V> implements StoreDataChangedListener {
 
   @Override
   public void handleStoreChanged(Store store) {
-    // store may be null as this is called by other repair tasks
-    if (!consumer.subscribed()) {
-      // skip this for now as the consumer hasn't even been set up yet
-      return;
-    }
     synchronized (this) {
+      // store may be null as this is called by other repair tasks
+      if (!consumer.subscribed()) {
+        // skip this for now as the consumer hasn't even been set up yet
+        return;
+      }
       Set<Integer> partitions = new HashSet<>();
       try {
         // Check the current version of the server
@@ -75,6 +75,9 @@ class VersionSwapDataChangeListener<K, V> implements StoreDataChangedListener {
 
   @VisibleForTesting
   void setStoreRepository(NativeMetadataRepositoryViewAdapter storeRepository) {
-    this.storeRepository = storeRepository;
+    // This is chiefly to make static analysis happy
+    synchronized (this) {
+      this.storeRepository = storeRepository;
+    }
   }
 }
