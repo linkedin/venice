@@ -5,6 +5,10 @@ import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.ConfigKeys.REPUSH_AIRFLOW_PASSWORD;
+import static com.linkedin.venice.ConfigKeys.REPUSH_AIRFLOW_URL;
+import static com.linkedin.venice.ConfigKeys.REPUSH_AIRFLOW_USERNAME;
+import static com.linkedin.venice.ConfigKeys.REPUSH_DAG_ID;
 import static com.linkedin.venice.ConfigKeys.REPUSH_ORCHESTRATOR_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.SCHEDULED_LOG_COMPACTION_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY;
@@ -51,6 +55,7 @@ import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
+import com.linkedin.venice.controller.repush.RepushOrchestratorConfig;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -145,8 +150,8 @@ public class TestHybrid {
   public static final int STREAMING_RECORD_SIZE = 1024;
 
   // Log compaction test constants
-  private static final int TEST_TIMEOUT = 999999; // ms
-  private static final long TEST_LOG_COMPACTION_INTERVAL_MS = TimeUnit.SECONDS.toMillis(10);
+  private static final long TEST_LOG_COMPACTION_INTERVAL_MS = TimeUnit.SECONDS.toMillis(1);
+  private static final long TEST_TIMEOUT = TEST_LOG_COMPACTION_INTERVAL_MS * 5; // ms
   private static final long TEST_TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS = 0;
   private static CountDownLatch latch;
 
@@ -1082,6 +1087,9 @@ public class TestHybrid {
   }
 
   public static class TestRepushOrchestratorImpl implements RepushOrchestrator {
+    public TestRepushOrchestratorImpl(RepushOrchestratorConfig config) {
+    }
+
     @Override
     public RepushJobResponse repush(String storeName) {
       latch.countDown();
@@ -1752,6 +1760,10 @@ public class TestHybrid {
 
     // log compaction controller configs
     extraProperties.setProperty(REPUSH_ORCHESTRATOR_CLASS_NAME, TestHybrid.TestRepushOrchestratorImpl.class.getName());
+    extraProperties.setProperty(REPUSH_AIRFLOW_URL, "http://localhost:8080");
+    extraProperties.setProperty(REPUSH_AIRFLOW_USERNAME, "your_username");
+    extraProperties.setProperty(REPUSH_AIRFLOW_PASSWORD, "your_password");
+    extraProperties.setProperty(REPUSH_DAG_ID, "your_dag_id");
     extraProperties.setProperty(LOG_COMPACTION_ENABLED, "true");
     extraProperties.setProperty(SCHEDULED_LOG_COMPACTION_INTERVAL_MS, String.valueOf(TEST_LOG_COMPACTION_INTERVAL_MS));
     extraProperties.setProperty(
