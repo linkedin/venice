@@ -53,7 +53,7 @@ public class TestOffsetRecord {
 
     Map<String, Long> testMap = new HashMap<>();
     testMap.put(TEST_KAFKA_URL2, 2L);
-    offsetRecord.mergeUpstreamOffsets(testMap);
+    offsetRecord.updateUpstreamOffsets(testMap);
     // no upstream found for it so fall back to use the leaderOffset which is 1
     Assert.assertEquals(offsetRecord.getUpstreamOffset(TEST_KAFKA_URL1), 1L);
     Assert.assertEquals(offsetRecord.getUpstreamOffset(TEST_KAFKA_URL2), 2L);

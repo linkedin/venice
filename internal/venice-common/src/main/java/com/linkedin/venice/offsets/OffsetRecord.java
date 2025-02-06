@@ -276,7 +276,7 @@ public class OffsetRecord {
    * Update the checkpoint upstream offset map with new values from another map provided as the input.
    * @param newUpstreamOffsetMap
    */
-  public void mergeUpstreamOffsets(@Nonnull Map<String, Long> newUpstreamOffsetMap) {
+  public void updateUpstreamOffsets(@Nonnull Map<String, Long> newUpstreamOffsetMap) {
     Validate.notNull(newUpstreamOffsetMap);
     for (Map.Entry<String, Long> offsetEntry: newUpstreamOffsetMap.entrySet()) {
       // leader offset can be the topic offset from any colo
