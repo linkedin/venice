@@ -10,6 +10,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricConfig;
@@ -19,6 +20,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.IntConsumer;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
@@ -49,6 +51,8 @@ class ConsumptionTask implements Runnable {
       new VeniceConcurrentHashMap<>();
   private final long readCycleDelayMs;
   private final Supplier<Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> pollFunction;
+
+  private final Function<PubSubTopicPartition, Long> offsetLagGetter;
   private final IntConsumer bandwidthThrottler;
   private final IntConsumer recordsThrottler;
   private final AggKafkaConsumerServiceStats aggStats;
@@ -61,6 +65,8 @@ class ConsumptionTask implements Runnable {
    */
   private final Map<PubSubTopicPartition, Rate> messageRatePerTopicPartition = new VeniceConcurrentHashMap<>();
   private final Map<PubSubTopicPartition, Rate> bytesRatePerTopicPartition = new VeniceConcurrentHashMap<>();
+  private final Map<PubSubTopicPartition, Rate> pollRatePerTopicPartition = new VeniceConcurrentHashMap<>();
+  private final RedundantExceptionFilter redundantExceptionFilter;
   private final Map<PubSubTopicPartition, Long> lastSuccessfulPollTimestampPerTopicPartition =
       new VeniceConcurrentHashMap<>();
 
@@ -87,7 +93,9 @@ class ConsumptionTask implements Runnable {
       final IntConsumer bandwidthThrottler,
       final IntConsumer recordsThrottler,
       final AggKafkaConsumerServiceStats aggStats,
-      final ConsumerSubscriptionCleaner cleaner) {
+      final ConsumerSubscriptionCleaner cleaner,
+      Function<PubSubTopicPartition, Long> offsetLagGetter,
+      RedundantExceptionFilter redundantExceptionFilter) {
     this.readCycleDelayMs = readCycleDelayMs;
     this.pollFunction = pollFunction;
     this.bandwidthThrottler = bandwidthThrottler;
@@ -95,6 +103,8 @@ class ConsumptionTask implements Runnable {
     this.aggStats = aggStats;
     this.cleaner = cleaner;
     this.taskId = taskId;
+    this.offsetLagGetter = offsetLagGetter;
+    this.redundantExceptionFilter = redundantExceptionFilter;
     this.consumptionTaskIdStr = Utils.getSanitizedStringForLogger(consumerNamePrefix) + " - " + taskId;
     this.LOGGER = LogManager.getLogger(getClass().getSimpleName() + "[ " + consumptionTaskIdStr + " ]");
   }
@@ -180,8 +190,11 @@ class ConsumptionTask implements Runnable {
               bytesRatePerTopicPartition
                   .computeIfAbsent(pubSubTopicPartition, tp -> createRate(lastSuccessfulPollTimestamp))
                   .record(payloadSizePerTopicPartition, lastSuccessfulPollTimestamp);
-
+              pollRatePerTopicPartition
+                  .computeIfAbsent(pubSubTopicPartition, tp -> createRate(lastSuccessfulPollTimestamp))
+                  .record(1, lastSuccessfulPollTimestamp);
               consumedDataReceiver.write(topicPartitionMessages);
+              checkSlowPartitionWithHighLag(pubSubTopicPartition);
             }
             aggStats.recordTotalConsumerRecordsProducingToWriterBufferLatency(
                 LatencyUtils.getElapsedTimeFromMsToMs(beforeProducingToWriteBufferTimestamp));
@@ -276,6 +289,29 @@ class ConsumptionTask implements Runnable {
       return bytesRatePerTopicPartition.get(topicPartition).measure(metricConfig, System.currentTimeMillis());
     }
     return 0.0D;
+  }
+
+  Double getPollRate(PubSubTopicPartition topicPartition) {
+    if (pollRatePerTopicPartition.containsKey(topicPartition)) {
+      return pollRatePerTopicPartition.get(topicPartition).measure(metricConfig, System.currentTimeMillis());
+    }
+    return 0.0D;
+  }
+
+  private void checkSlowPartitionWithHighLag(PubSubTopicPartition pubSubTopicPartition) {
+    Long offsetLag = offsetLagGetter.apply(pubSubTopicPartition);
+    Double messageRate = getMessageRate(pubSubTopicPartition);
+    Double pollRate = getPollRate(pubSubTopicPartition);
+    String slowTaskWithPartitionStr = consumptionTaskIdStr + " - " + pubSubTopicPartition;
+    if (offsetLag > 200000 && messageRate < 200
+        && !redundantExceptionFilter.isRedundantException(slowTaskWithPartitionStr)) {
+      LOGGER.warn(
+          "Slow partition with high lag detected: {}. Lag: {}, Message Rate: {}, Poll Rate: {}",
+          pubSubTopicPartition,
+          offsetLag,
+          messageRate,
+          pollRate);
+    }
   }
 
   PubSubTopic getDestinationIdentifier(PubSubTopicPartition topicPartition) {
