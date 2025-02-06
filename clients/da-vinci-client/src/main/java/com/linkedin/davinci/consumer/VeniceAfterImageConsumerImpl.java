@@ -2,6 +2,7 @@ package com.linkedin.davinci.consumer;
 
 import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.alpini.base.concurrency.ScheduledExecutorService;
+import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -207,5 +208,11 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       // repository change.
       versionSwapListener.handleStoreChanged(null);
     }
+  }
+
+  @Override
+  public void setStoreRepository(NativeMetadataRepositoryViewAdapter repository) {
+    super.setStoreRepository(repository);
+    versionSwapListener.setStoreRepository(repository);
   }
 }

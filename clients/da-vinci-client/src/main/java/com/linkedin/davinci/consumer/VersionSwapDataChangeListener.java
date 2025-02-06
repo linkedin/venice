@@ -1,5 +1,6 @@
 package com.linkedin.davinci.consumer;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
@@ -14,7 +15,7 @@ import org.apache.logging.log4j.Logger;
 class VersionSwapDataChangeListener<K, V> implements StoreDataChangedListener {
   private static final Logger LOGGER = LogManager.getLogger(VersionSwapDataChangeListener.class);
   private final VeniceAfterImageConsumerImpl<K, V> consumer;
-  private final NativeMetadataRepositoryViewAdapter storeRepository;
+  private NativeMetadataRepositoryViewAdapter storeRepository;
   private final String storeName;
   private final String consumerName;
 
@@ -70,5 +71,10 @@ class VersionSwapDataChangeListener<K, V> implements StoreDataChangedListener {
             e);
       }
     }
+  }
+
+  @VisibleForTesting
+  void setStoreRepository(NativeMetadataRepositoryViewAdapter storeRepository) {
+    this.storeRepository = storeRepository;
   }
 }

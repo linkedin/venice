@@ -180,7 +180,8 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
             .setConsumerProperties(consumerProperties)
             .setLocalD2ZkHosts(TEST_ZOOKEEPER_ADDRESS)
             .setRocksDBBlockCacheSizeInBytes(TEST_ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES)
-            .setDatabaseSyncBytesInterval(TEST_DB_SYNC_BYTES_INTERVAL);
+            .setDatabaseSyncBytesInterval(TEST_DB_SYNC_BYTES_INTERVAL)
+            .setIsBeforeImageView(true);
     changelogClientConfig.getInnerClientConfig().setMetricsRepository(new MetricsRepository());
     bootstrappingVeniceChangelogConsumer =
         new InternalLocalBootstrappingVeniceChangelogConsumer<>(changelogClientConfig, pubSubConsumer, null);
@@ -190,6 +191,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     Version mockVersion = new VersionImpl(storeName, 1, "foo");
     when(store.getCurrentVersion()).thenReturn(1);
     when(store.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
+    when(store.getPartitionCount()).thenReturn(2);
     when(metadataRepository.getStore(anyString())).thenReturn(store);
     when(store.getVersionOrThrow(Mockito.anyInt())).thenReturn(mockVersion);
     when(metadataRepository.getValueSchema(storeName, TEST_SCHEMA_ID))
@@ -230,7 +232,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     verify(mockStorageService, times(1)).start();
     verify(mockStorageService, times(1)).openStoreForNewPartition(any(), eq(0), any());
     verify(mockStorageService, times(1)).openStoreForNewPartition(any(), eq(1), any());
-    verify(metadataRepository, times(1)).subscribe(storeName);
+    verify(metadataRepository, times(2)).subscribe(storeName);
     verify(pubSubConsumer, times(1)).subscribe(topicPartition_0, LOWEST_OFFSET);
     verify(pubSubConsumer, times(1)).subscribe(topicPartition_1, LOWEST_OFFSET);
     verify(pubSubConsumer, times(1)).subscribe(topicPartition_0, 0L);

@@ -129,10 +129,9 @@ public class VeniceChangelogConsumerImplTest {
         false,
         false);
     ChangelogClientConfig changelogClientConfig =
-        getChangelogClientConfig(d2ControllerClient).setViewName("changeCaptureView");
+        getChangelogClientConfig(d2ControllerClient).setViewName("changeCaptureView").setIsBeforeImageView(true);
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
         new VeniceChangelogConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
-    Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
 
     NativeMetadataRepositoryViewAdapter mockRepository = mock(NativeMetadataRepositoryViewAdapter.class);
     Store store = mock(Store.class);
@@ -142,8 +141,11 @@ public class VeniceChangelogConsumerImplTest {
     Mockito.when(mockRepository.getStore(anyString())).thenReturn(store);
     Mockito.when(store.getVersionOrThrow(Mockito.anyInt())).thenReturn(mockVersion);
     Mockito.when(mockRepository.getValueSchema(storeName, 1)).thenReturn(new SchemaEntry(1, valueSchema));
-
+    Mockito.when(store.getPartitionCount()).thenReturn(2);
     veniceChangelogConsumer.setStoreRepository(mockRepository);
+
+    Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
+
     veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
     veniceChangelogConsumer.seekToTimestamp(System.currentTimeMillis() - 10000L);
     PubSubTopicPartition oldVersionTopicPartition = new PubSubTopicPartitionImpl(oldVersionTopic, 0);
@@ -215,16 +217,18 @@ public class VeniceChangelogConsumerImplTest {
         mockPubSubConsumer,
         Lazy.of(() -> mockInternalSeekConsumer));
     veniceChangelogConsumer.versionSwapDetectionIntervalTimeInMs = 1;
-    Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
-
     NativeMetadataRepositoryViewAdapter mockRepository = mock(NativeMetadataRepositoryViewAdapter.class);
     Store store = mock(Store.class);
     Version mockVersion = new VersionImpl(storeName, 1, "foo");
     Mockito.when(store.getCurrentVersion()).thenReturn(1);
     Mockito.when(store.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
+    Mockito.when(store.getPartitionCount()).thenReturn(2);
     Mockito.when(mockRepository.getStore(anyString())).thenReturn(store);
-    Mockito.when(store.getVersionOrThrow(Mockito.anyInt())).thenReturn(mockVersion);
     veniceChangelogConsumer.setStoreRepository(mockRepository);
+
+    Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
+
+    Mockito.when(store.getVersionOrThrow(Mockito.anyInt())).thenReturn(mockVersion);
     veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
 
     Set<Integer> partitionSet = new HashSet<>();
@@ -295,17 +299,19 @@ public class VeniceChangelogConsumerImplTest {
     ChangelogClientConfig changelogClientConfig = getChangelogClientConfig(d2ControllerClient).setViewName("");
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
         new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
-    Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
 
     NativeMetadataRepositoryViewAdapter mockRepository = mock(NativeMetadataRepositoryViewAdapter.class);
     Store store = mock(Store.class);
     Version mockVersion = new VersionImpl(storeName, 1, "foo");
     Mockito.when(store.getCurrentVersion()).thenReturn(1);
     Mockito.when(store.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
+    Mockito.when(store.getPartitionCount()).thenReturn(2);
     Mockito.when(mockRepository.getStore(anyString())).thenReturn(store);
     Mockito.when(mockRepository.getValueSchema(storeName, 1)).thenReturn(new SchemaEntry(1, valueSchema));
     Mockito.when(store.getVersionOrThrow(Mockito.anyInt())).thenReturn(mockVersion);
     veniceChangelogConsumer.setStoreRepository(mockRepository);
+
+    Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
     veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
     verify(mockPubSubConsumer).subscribe(new PubSubTopicPartitionImpl(oldVersionTopic, 0), OffsetRecord.LOWEST_OFFSET);
 
@@ -317,8 +323,8 @@ public class VeniceChangelogConsumerImplTest {
       Assert.assertEquals(messageStr.toString(), "newValue" + i);
     }
     prepareChangeCaptureRecordsToBePolled(
-        0L,
-        10L,
+        5L,
+        15L,
         mockPubSubConsumer,
         oldChangeCaptureTopic,
         0,
@@ -330,8 +336,8 @@ public class VeniceChangelogConsumerImplTest {
         (List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>>) veniceChangelogConsumer.poll(100);
     Assert.assertFalse(pubSubMessages.isEmpty());
     Assert.assertEquals(pubSubMessages.size(), 10);
-    for (int i = 0; i < 10; i++) {
-      PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage = pubSubMessages.get(i);
+    for (int i = 5; i < 15; i++) {
+      PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage = pubSubMessages.get(i - 5);
       Utf8 pubSubMessageValue = pubSubMessage.getValue().getCurrentValue();
       Assert.assertEquals(pubSubMessageValue.toString(), "newValue" + i);
     }
@@ -374,17 +380,20 @@ public class VeniceChangelogConsumerImplTest {
     changelogClientConfig.getInnerClientConfig().setMetricsRepository(new MetricsRepository());
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
         new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
-    Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
 
     NativeMetadataRepositoryViewAdapter mockRepository = mock(NativeMetadataRepositoryViewAdapter.class);
     Store store = mock(Store.class);
     Version mockVersion = new VersionImpl(storeName, 1, "foo");
     Mockito.when(store.getCurrentVersion()).thenReturn(1);
     Mockito.when(store.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
+    Mockito.when(store.getPartitionCount()).thenReturn(2);
     Mockito.when(mockRepository.getStore(anyString())).thenReturn(store);
     Mockito.when(mockRepository.getValueSchema(storeName, 1)).thenReturn(new SchemaEntry(1, valueSchema));
     Mockito.when(store.getVersionOrThrow(Mockito.anyInt())).thenReturn(mockVersion);
     veniceChangelogConsumer.setStoreRepository(mockRepository);
+
+    Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
+
     veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
     verify(mockPubSubConsumer).subscribe(new PubSubTopicPartitionImpl(oldVersionTopic, 0), OffsetRecord.LOWEST_OFFSET);
 
@@ -396,8 +405,8 @@ public class VeniceChangelogConsumerImplTest {
       Assert.assertEquals(messageStr.toString(), "newValue" + i);
     }
     prepareChangeCaptureRecordsToBePolled(
-        0L,
-        10L,
+        5L,
+        15L,
         mockPubSubConsumer,
         oldChangeCaptureTopic,
         0,
@@ -408,8 +417,8 @@ public class VeniceChangelogConsumerImplTest {
     pubSubMessages = new ArrayList<>(veniceChangelogConsumer.poll(100));
     Assert.assertFalse(pubSubMessages.isEmpty());
     Assert.assertEquals(pubSubMessages.size(), 10);
-    for (int i = 0; i < 10; i++) {
-      PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage = pubSubMessages.get(i);
+    for (int i = 5; i < 15; i++) {
+      PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage = pubSubMessages.get(i - 5);
       Utf8 pubSubMessageValue = pubSubMessage.getValue().getCurrentValue();
       Assert.assertEquals(pubSubMessageValue.toString(), "newValue" + i);
     }
@@ -469,6 +478,18 @@ public class VeniceChangelogConsumerImplTest {
     ChangelogClientConfig changelogClientConfig = getChangelogClientConfig(d2ControllerClient).setViewName("");
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
         new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
+
+    NativeMetadataRepositoryViewAdapter mockRepository = mock(NativeMetadataRepositoryViewAdapter.class);
+    Store store = mock(Store.class);
+    Version mockVersion = new VersionImpl(storeName, 1, "foo");
+    Mockito.when(store.getCurrentVersion()).thenReturn(1);
+    Mockito.when(store.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
+    Mockito.when(store.getPartitionCount()).thenReturn(2);
+    Mockito.when(mockRepository.getStore(anyString())).thenReturn(store);
+    Mockito.when(mockRepository.getValueSchema(storeName, 1)).thenReturn(new SchemaEntry(1, valueSchema));
+    Mockito.when(store.getVersionOrThrow(Mockito.anyInt())).thenReturn(mockVersion);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+
     Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
 
     VeniceChangelogConsumerImpl.HeartbeatReporterThread reporterThread =
