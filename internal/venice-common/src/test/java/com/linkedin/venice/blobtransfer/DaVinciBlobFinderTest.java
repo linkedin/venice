@@ -127,7 +127,7 @@ public class DaVinciBlobFinderTest {
   }
 
   @Test
-  public void testGetStoreClient() {
+  public void testGetStoreClient() throws IOException {
     // set up the transport client provider used to initialize the store client
     TransportClient transportClient1 = mock(TransportClient.class);
     TransportClient transportClient2 = mock(TransportClient.class);
@@ -154,5 +154,10 @@ public class DaVinciBlobFinderTest {
     AbstractAvroStoreClient storeClient2 = daVinciBlobFinder.getStoreClient("storeName2");
     Assert.assertNotNull(storeClient2);
     Assert.assertEquals(storeClient2.getStoreName(), "storeName2");
+
+    daVinciBlobFinder.close();
+    // verify that the store client is closed
+    verify(transportClient1).close();
+    verify(transportClient2).close();
   }
 }
