@@ -1,5 +1,7 @@
 package com.linkedin.davinci.store.rocksdb;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_RMD_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_SEPARATE_RMD_CACHE_ENABLED;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -49,6 +51,8 @@ public class ReplicationMeadataRocksDBStoragePartitionCFTest extends Replication
 
     Properties properties = new Properties();
     properties.put(ROCKSDB_SEPARATE_RMD_CACHE_ENABLED, "true");
+    properties.put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 1024 * 1024 * 1024L);
+    properties.put(ROCKSDB_RMD_BLOCK_CACHE_SIZE_IN_BYTES, 1024 * 1024L);
     VeniceProperties serverProps = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, properties);
     storageService = new StorageService(
         AbstractStorageEngineTest.getVeniceConfigLoader(serverProps),
