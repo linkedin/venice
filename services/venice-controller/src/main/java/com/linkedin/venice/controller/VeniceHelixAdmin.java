@@ -57,6 +57,7 @@ import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
+import com.linkedin.venice.controller.logcompaction.LogCompactionService;
 import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controller.repush.RepushOrchestratorConfig;
@@ -611,18 +612,23 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (multiClusterConfigs.isLogCompactionEnabled()) {
       // TODO extends interchangeable with implements?
       RepushOrchestratorConfig repushOrchestratorConfig =
-          new RepushOrchestratorConfig(multiClusterConfigs.getRepushOrchestratorConfigs(), this.d2Client);
+          new RepushOrchestratorConfig(multiClusterConfigs.getRepushOrchestratorConfigs());
 
       Class<? extends RepushOrchestrator> repushOrchestratorClass =
           ReflectUtils.loadClass(multiClusterConfigs.getRepushOrchestratorClassName());
       Class<RepushOrchestratorConfig> repushOrchestratorConfigClass =
           ReflectUtils.loadClass(RepushOrchestratorConfig.class.getName());
-      RepushOrchestrator repushOrchestrator = ReflectUtils.callConstructor(
-          repushOrchestratorClass,
-          new Class[] { repushOrchestratorConfigClass },
-          new Object[] { repushOrchestratorConfig });
-      compactionManager =
-          new CompactionManager(repushOrchestrator, multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS());
+      try {
+        RepushOrchestrator repushOrchestrator = ReflectUtils.callConstructor(
+            repushOrchestratorClass,
+            new Class[] { repushOrchestratorConfigClass },
+            new Object[] { repushOrchestratorConfig });
+        compactionManager =
+            new CompactionManager(repushOrchestrator, multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS());
+      } catch (Exception e) {
+        LOGGER.error("Failed to enable " + LogCompactionService.class.getSimpleName(), e);
+        throw new VeniceException(e);
+      }
     }
 
     List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
@@ -7517,13 +7523,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @return
    */
   @Override
-  public RepushJobResponse compactStore(String storeName) {
+  public RepushJobResponse compactStore(String storeName) throws Exception {
     try {
       return compactionManager.compactStore(storeName);
     } catch (Exception e) {
       LOGGER.error("Error while compacting store: {}", storeName, e);
       throw e; // this method is the first common point for scheduled & adhoc log compaction, each has different error
-               // handling. Thus, the exception is rethrown after logging.
     }
   }
 
