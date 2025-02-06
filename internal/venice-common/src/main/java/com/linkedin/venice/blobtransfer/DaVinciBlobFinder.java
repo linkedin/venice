@@ -48,15 +48,14 @@ public class DaVinciBlobFinder implements BlobFinder {
    * @return the store client
    */
   AbstractAvroStoreClient getStoreClient(String storeName) {
-    if (!storeToClientMap.containsKey(storeName)) {
+    return storeToClientMap.computeIfAbsent(storeName, k -> {
       // update the config with respective store name
       ClientConfig storeClientConfig = ClientConfig.cloneConfig(clientConfig).setStoreName(storeName);
       AbstractAvroStoreClient storeLevelClient =
           new AvroGenericStoreClientImpl<>(getTransportClient(storeClientConfig), false, storeClientConfig);
-      storeToClientMap.put(storeName, storeLevelClient);
       LOGGER.info("Created store client for store: {}", storeName);
-    }
-    return storeToClientMap.get(storeName);
+      return storeLevelClient;
+    });
   }
 
   @Override

@@ -12,12 +12,15 @@ import static org.testng.Assert.assertTrue;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.mockito.ArgumentCaptor;
@@ -42,11 +45,13 @@ public class DaVinciBlobFinderTest {
     storeClient = mock(AbstractAvroStoreClient.class);
     daVinciBlobFinder = spy(new DaVinciBlobFinder(clientConfig));
 
-    Mockito.doReturn(storeClient).when(daVinciBlobFinder).getStoreClient(storeName);
+    Mockito.doReturn(storeName).when(storeClient).getStoreName();
   }
 
   @Test
   public void testDiscoverBlobPeers_Success() {
+    Mockito.doReturn(storeClient).when(daVinciBlobFinder).getStoreClient(storeName);
+
     String responseBodyJson =
         "{\"error\":false,\"errorMessage\":\"\",\"discoveryResult\":[\"host1\",\"host2\",\"host3\"]}";
     byte[] responseBody = responseBodyJson.getBytes(StandardCharsets.UTF_8);
@@ -63,6 +68,7 @@ public class DaVinciBlobFinderTest {
 
   @Test
   public void testDiscoverBlobPeers_CallsTransportClientWithCorrectURI() {
+    Mockito.doReturn(storeClient).when(daVinciBlobFinder).getStoreClient(storeName);
     String responseBodyJson =
         "{\"error\":false,\"errorMessage\":\"\",\"discoveryResult\":[\"host1\",\"host2\",\"host3\"]}";
     byte[] responseBody = responseBodyJson.getBytes(StandardCharsets.UTF_8);
@@ -84,6 +90,8 @@ public class DaVinciBlobFinderTest {
 
   @Test
   public void testDiscoverBlobPeers_ContentDeserializationError() throws Exception {
+    Mockito.doReturn(storeClient).when(daVinciBlobFinder).getStoreClient(storeName);
+
     String responseBodyJson = "{\"error\":true,\"errorMessage\":\"some error\",\"discoveryResult\":[]}";
     byte[] responseBody = responseBodyJson.getBytes(StandardCharsets.UTF_8);
     TransportClientResponse mockResponse = new TransportClientResponse(0, null, responseBody);
@@ -104,6 +112,8 @@ public class DaVinciBlobFinderTest {
 
   @Test
   public void testDiscoverBlobPeers_ClientWithIncorrectUri() {
+    Mockito.doReturn(storeClient).when(daVinciBlobFinder).getStoreClient(storeName);
+
     CompletableFuture<byte[]> futureResponse = new CompletableFuture<>();
     futureResponse.completeExceptionally(new RuntimeException("Test Exception"));
     when(storeClient.getRaw(anyString())).thenReturn(futureResponse);
@@ -114,5 +124,35 @@ public class DaVinciBlobFinderTest {
     assertEquals(
         response.getErrorMessage(),
         "Error finding DVC peers for blob transfer in store: testStore, version: 1, partition: 1");
+  }
+
+  @Test
+  public void testGetStoreClient() {
+    // set up the transport client provider used to initialize the store client
+    TransportClient transportClient1 = mock(TransportClient.class);
+    TransportClient transportClient2 = mock(TransportClient.class);
+    Function<ClientConfig, TransportClient> clientConfigTransportClientFunction = (clientConfig) -> {
+      if (clientConfig.getStoreName().equals(storeName)) {
+        return transportClient1;
+      } else if (clientConfig.getStoreName().equals("storeName2")) {
+        return transportClient2;
+      } else {
+        // Create TransportClient the regular way
+        return null;
+      }
+    };
+    ClientFactory.setUnitTestMode();
+    ClientFactory.setTransportClientProvider(clientConfigTransportClientFunction);
+
+    // ClientConfig is initialized with storeName
+    AbstractAvroStoreClient storeClient = daVinciBlobFinder.getStoreClient(storeName);
+    Assert.assertNotNull(storeClient);
+    Assert.assertEquals(storeClient.getStoreName(), storeName);
+
+    // Even if the daVinciBlobFinder is initialized at the beginning with "storeName", the getStoreClient
+    // method should be able to return a store client for "storeName2"
+    AbstractAvroStoreClient storeClient2 = daVinciBlobFinder.getStoreClient("storeName2");
+    Assert.assertNotNull(storeClient2);
+    Assert.assertEquals(storeClient2.getStoreName(), "storeName2");
   }
 }

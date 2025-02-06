@@ -20,40 +20,14 @@ public class BlobTransferUtil {
 
   /**
    * Get a P2P blob transfer manager for DaVinci Client and start it.
-   * @param p2pTransferPort, the port used by the P2P transfer server and client
+   * @param p2pTransferServerPort, the port used by the P2P transfer server
+   * @param p2pTransferClientPort, the port used by the P2P transfer client
    * @param baseDir, the base directory of the underlying storage
    * @param clientConfig, the client config to start up a transport client
    * @param storageMetadataService, the storage metadata service
    * @return the blob transfer manager
    * @throws Exception
    */
-  public static BlobTransferManager<Void> getP2PBlobTransferManagerForDVCAndStart(
-      int p2pTransferPort,
-      String baseDir,
-      ClientConfig clientConfig,
-      StorageMetadataService storageMetadataService,
-      ReadOnlyStoreRepository readOnlyStoreRepository,
-      StorageEngineRepository storageEngineRepository,
-      int maxConcurrentSnapshotUser,
-      int snapshotRetentionTimeInMin,
-      int blobTransferMaxTimeoutInMin,
-      AggVersionedBlobTransferStats aggVersionedBlobTransferStats,
-      BlobTransferUtils.BlobTransferTableFormat transferSnapshotTableFormat) {
-    return getP2PBlobTransferManagerForDVCAndStart(
-        p2pTransferPort,
-        p2pTransferPort,
-        baseDir,
-        clientConfig,
-        storageMetadataService,
-        readOnlyStoreRepository,
-        storageEngineRepository,
-        maxConcurrentSnapshotUser,
-        snapshotRetentionTimeInMin,
-        blobTransferMaxTimeoutInMin,
-        aggVersionedBlobTransferStats,
-        transferSnapshotTableFormat);
-  }
-
   public static BlobTransferManager<Void> getP2PBlobTransferManagerForDVCAndStart(
       int p2pTransferServerPort,
       int p2pTransferClientPort,
