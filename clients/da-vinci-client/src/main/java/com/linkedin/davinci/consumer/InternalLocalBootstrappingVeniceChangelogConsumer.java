@@ -508,10 +508,9 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
 
     storageService.start();
     try {
-      // storeRepository.start();
       storeRepository.subscribe(storeName);
     } catch (InterruptedException e) {
-      throw new RuntimeException(e);
+      throw new VeniceException("Failed to start bootstrapping changelog consumer with error:", e);
     }
 
     return seekWithBootStrap(partitions);

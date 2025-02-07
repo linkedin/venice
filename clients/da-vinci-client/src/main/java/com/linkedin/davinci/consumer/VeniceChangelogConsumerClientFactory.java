@@ -78,7 +78,7 @@ public class VeniceChangelogConsumerClientFactory {
       String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
       String consumerName = suffixConsumerIdToStore(storeName + "-" + viewClass.getClass().getSimpleName(), consumerId);
       if (viewClass.equals(ChangeCaptureView.class.getCanonicalName())) {
-        // TODO: This is a little bit of a back. This is to deal with the an issue where the before image change
+        // TODO: This is a little bit of a hack. This is to deal with the an issue where the before image change
         // capture topic doesn't follow the same naming convention as view topics.
         newStoreChangelogClientConfig.setIsBeforeImageView(true);
         return new VeniceChangelogConsumerImpl(

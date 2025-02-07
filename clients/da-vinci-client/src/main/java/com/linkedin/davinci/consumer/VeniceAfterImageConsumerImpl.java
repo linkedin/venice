@@ -93,6 +93,11 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     if (partitions.isEmpty()) {
       return CompletableFuture.completedFuture(null);
     }
+    try {
+      storeRepository.subscribe(storeName);
+    } catch (InterruptedException e) {
+      throw new VeniceException("Failed to start bootstrapping changelog consumer with error:", e);
+    }
     if (!versionSwapThreadScheduled.get()) {
       // schedule the version swap thread and set up the callback listener
       this.storeRepository.registerStoreDataChangedListener(versionSwapListener);

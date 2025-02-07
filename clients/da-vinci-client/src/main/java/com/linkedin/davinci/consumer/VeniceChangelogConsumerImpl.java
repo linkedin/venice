@@ -178,11 +178,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         null);
     repository.start();
     this.storeRepository = new NativeMetadataRepositoryViewAdapter(repository);
-    try {
-      this.storeRepository.subscribe(storeName);
-    } catch (InterruptedException e) {
-      throw new RuntimeException(e);
-    }
     this.rmdDeserializerCache = new RmdDeserializerCache<>(replicationMetadataSchemaRepository, storeName, 1, false);
     if (changelogClientConfig.getInnerClientConfig().isSpecificClient()) {
       // If a value class is supplied, we'll use a Specific record adapter
@@ -204,7 +199,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public int getPartitionCount() {
-    Store store = storeRepository.getStore(storeName);
+    Store store = getStore();
     return store.getPartitionCount();
   }
 
@@ -322,7 +317,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   public CompletableFuture<Void> seekToEndOfPush(Set<Integer> partitions) {
     // Get the latest change capture topic
     storeRepository.refresh();
-    Store store = storeRepository.getStore(storeName);
+    Store store = getStore();
     int currentVersion = store.getCurrentVersion();
     PubSubTopic topic = pubSubTopicRepository
         .getTopic(Version.composeKafkaTopic(storeName, currentVersion) + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
@@ -458,7 +453,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public CompletableFuture<Void> subscribeAll() {
-    Store store = storeRepository.getStore(storeName);
+    Store store = getStore();
     return this.subscribe(IntStream.range(0, store.getPartitionCount()).boxed().collect(Collectors.toSet()));
   }
 
@@ -584,11 +579,20 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   @Override
   public void unsubscribeAll() {
     Set<Integer> allPartitions = new HashSet<>();
-    Store store = storeRepository.getStore(storeName);
+    Store store = getStore();
     for (int partition = 0; partition < store.getPartitionCount(); partition++) {
       allPartitions.add(partition);
     }
     this.unsubscribe(allPartitions);
+  }
+
+  private Store getStore() {
+    try {
+      storeRepository.subscribe(storeName);
+    } catch (InterruptedException e) {
+      throw new VeniceException("Failed to get store info with exception:", e);
+    }
+    return storeRepository.getStore(storeName);
   }
 
   @Override
