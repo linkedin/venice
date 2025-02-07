@@ -153,7 +153,6 @@ public class TestHybrid {
   private static final long TEST_LOG_COMPACTION_INTERVAL_MS = TimeUnit.SECONDS.toMillis(1);
   private static final long TEST_TIMEOUT = TEST_LOG_COMPACTION_INTERVAL_MS * 5; // ms
   private static final long TEST_TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS = 0;
-  private static CountDownLatch latch;
 
   /**
    * IMPORTANT NOTE: if you use this sharedVenice cluster, please do not close it. The {@link #cleanUp()} function
@@ -1075,9 +1074,8 @@ public class TestHybrid {
     Assert.assertTrue(admin.getCompactionManager().isCompactionReady(compactionReadyStore));
 
     // Wait for the latch to count down
-    latch = new CountDownLatch(1);
     try {
-      if (latch.await(TEST_TIMEOUT, TimeUnit.MILLISECONDS)) {
+      if (TestRepushOrchestratorImpl.latch.await(TEST_TIMEOUT, TimeUnit.MILLISECONDS)) {
         LOGGER.info("Log compaction job triggered");
       }
     } catch (InterruptedException e) {
@@ -1087,7 +1085,10 @@ public class TestHybrid {
   }
 
   public static class TestRepushOrchestratorImpl implements RepushOrchestrator {
-    public TestRepushOrchestratorImpl(RepushOrchestratorConfig config) {
+    static CountDownLatch latch = new CountDownLatch(1);
+
+    public void init(RepushOrchestratorConfig config) {
+      // no-op
     }
 
     @Override
