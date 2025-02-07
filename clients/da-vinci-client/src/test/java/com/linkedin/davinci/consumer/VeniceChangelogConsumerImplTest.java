@@ -64,6 +64,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
@@ -495,7 +496,7 @@ public class VeniceChangelogConsumerImplTest {
     VeniceChangelogConsumerImpl.HeartbeatReporterThread reporterThread =
         veniceChangelogConsumer.getHeartbeatReporterThread();
 
-    Map<Integer, Long> lastHeartbeat = new HashMap<>();
+    ConcurrentHashMap<Integer, Long> lastHeartbeat = new VeniceConcurrentHashMap<>();
     BasicConsumerStats consumerStats = Mockito.mock(BasicConsumerStats.class);
     Set<PubSubTopicPartition> topicPartitionSet = new HashSet<>();
     topicPartitionSet.add(new PubSubTopicPartitionImpl(oldVersionTopic, 1));

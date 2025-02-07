@@ -60,12 +60,14 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -118,11 +120,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected final PubSubConsumerAdapter pubSubConsumer;
 
-  // TODO: we will convert this into a map of maps. If the message we consume has the appropriate footer then
-  // we'll use that to infer entry into the wrapped map and compare with it. Otherwise we'll infer it from the consumed
-  // partition for the given message.
-  protected final Map<Integer, Map<Integer, List<Long>>> currentVersionHighWatermarks = new HashMap<>();
-  protected final Map<Integer, Long> currentVersionLastHeartbeat = new VeniceConcurrentHashMap<>();
+  // This member is a map of maps in order to accommodate view topics. If the message we consume has the appropriate
+  // footer then we'll use that to infer entry into the wrapped map and compare with it, otherwise we'll infer it from
+  // the consumed partition for the given message. We do all this because for a view topic, it may have many
+  // upstream RT partitions writing to a given view partition.
+  protected final Map<Integer, Map<Integer, List<Long>>> currentVersionHighWatermarks = new VeniceConcurrentHashMap<>();
+  protected final ConcurrentHashMap<Integer, Long> currentVersionLastHeartbeat = new VeniceConcurrentHashMap<>();
 
   protected final ChangelogClientConfig changelogClientConfig;
 
@@ -175,6 +178,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         null);
     repository.start();
     this.storeRepository = new NativeMetadataRepositoryViewAdapter(repository);
+    try {
+      this.storeRepository.subscribe(storeName);
+    } catch (InterruptedException e) {
+      throw new RuntimeException(e);
+    }
     this.rmdDeserializerCache = new RmdDeserializerCache<>(replicationMetadataSchemaRepository, storeName, 1, false);
     if (changelogClientConfig.getInnerClientConfig().isSpecificClient()) {
       // If a value class is supplied, we'll use a Specific record adapter
@@ -226,11 +234,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           }
         }
         storeRepository.refresh();
-        if (changeCaptureStats != null) {
-          if (!heartbeatReporterThread.isAlive()) {
-            heartbeatReporterThread.start();
-          }
-        }
       } catch (InterruptedException e) {
         throw new RuntimeException(e);
       }
@@ -267,6 +270,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         for (PubSubTopicPartition topicPartition: topicPartitionListToSeek) {
           pubSubConsumer.subscribe(topicPartition, OffsetRecord.LOWEST_OFFSET);
           currentVersionLastHeartbeat.put(topicPartition.getPartitionNumber(), System.currentTimeMillis());
+        }
+      }
+      if (changeCaptureStats != null) {
+        if (!heartbeatReporterThread.isAlive()) {
+          heartbeatReporterThread.start();
         }
       }
       isSubscribed.set(true);
@@ -1123,12 +1131,17 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     }
 
     protected void recordStats(
-        Map<Integer, Long> currentVersionLastHeartbeat,
+        ConcurrentHashMap<Integer, Long> currentVersionLastHeartbeat,
         BasicConsumerStats changeCaptureStats,
         Set<PubSubTopicPartition> assignment) {
-      for (Map.Entry<Integer, Long> lastHeartbeat: currentVersionLastHeartbeat.entrySet()) {
-        changeCaptureStats.recordLag(System.currentTimeMillis() - lastHeartbeat.getValue());
+
+      Iterator<Map.Entry<Integer, Long>> heartbeatIterator = currentVersionLastHeartbeat.entrySet().iterator();
+      while (heartbeatIterator.hasNext()) {
+        changeCaptureStats.recordLag(System.currentTimeMillis() - heartbeatIterator.next().getValue());
       }
+
+      currentVersionLastHeartbeat.forEachValue(1, changeCaptureStats::recordLag);
+
       int maxVersion = -1;
       int minVersion = Integer.MAX_VALUE;
       synchronized (assignment) {

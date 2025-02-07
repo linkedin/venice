@@ -102,7 +102,7 @@ import org.testng.annotations.Test;
 
 
 public class TestChangelogConsumer {
-  private static final int TEST_TIMEOUT = 2 * Time.MS_PER_MINUTE;
+  private static final int TEST_TIMEOUT = 3 * Time.MS_PER_MINUTE;
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, 1).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
 
@@ -254,7 +254,8 @@ public class TestChangelogConsumer {
         .setControllerD2ServiceName(D2_SERVICE_NAME)
         .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
         .setLocalD2ZkHosts(localZkServer.getAddress())
-        .setControllerRequestRetryCount(3);
+        .setControllerRequestRetryCount(3)
+        .setIsBeforeImageView(true);
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
 

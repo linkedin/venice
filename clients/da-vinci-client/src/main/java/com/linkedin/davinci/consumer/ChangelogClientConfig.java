@@ -229,7 +229,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return isBeforeImageView;
   }
 
-  protected ChangelogClientConfig setIsBeforeImageView(Boolean beforeImageView) {
+  public ChangelogClientConfig setIsBeforeImageView(Boolean beforeImageView) {
     isBeforeImageView = beforeImageView;
     return this;
   }
