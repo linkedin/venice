@@ -17,6 +17,7 @@ import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -65,7 +66,8 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
       byte[] key,
       int newValueSchemaId,
       int oldValueSchemaId,
-      GenericRecord replicationMetadataRecord) {
+      GenericRecord replicationMetadataRecord,
+      Lazy<GenericRecord> newValueProvider) {
     // TODO: not sold about having currentValue in the interface but it VASTLY simplifies a lot of things with regards
     // to dealing with compression/chunking/etc. in the storage layer.
 
@@ -87,7 +89,8 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
       ByteBuffer newValue,
       byte[] key,
       int newValueSchemaId,
-      boolean isChunkedKey) {
+      boolean isChunkedKey,
+      Lazy<GenericRecord> newValueProvider) {
     // No op
     return CompletableFuture.completedFuture(null);
   }

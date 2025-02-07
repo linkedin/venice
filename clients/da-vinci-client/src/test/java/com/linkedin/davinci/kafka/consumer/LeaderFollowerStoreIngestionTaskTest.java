@@ -280,7 +280,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
     viewWriterMap.put("testView", materializedViewWriter);
     when(mockVeniceViewWriterFactory.buildStoreViewWriters(any(), anyInt(), any())).thenReturn(viewWriterMap);
     CompletableFuture<PubSubProduceResult> viewWriterFuture = new CompletableFuture<>();
-    when(materializedViewWriter.processRecord(any(), any(), anyInt(), anyBoolean())).thenReturn(viewWriterFuture);
+    when(materializedViewWriter.processRecord(any(), any(), anyInt(), anyBoolean(), any()))
+        .thenReturn(viewWriterFuture);
     setUp();
     WriteComputeResultWrapper mockResult = mock(WriteComputeResultWrapper.class);
     Put put = new Put();
@@ -291,12 +292,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
         .thenReturn(CompletableFuture.completedFuture(null));
     leaderFollowerStoreIngestionTask.queueUpVersionTopicWritesWithViewWriters(
         mockPartitionConsumptionState,
-        (viewWriter) -> viewWriter.processRecord(mock(ByteBuffer.class), new byte[1], 1, false),
+        (viewWriter) -> viewWriter.processRecord(mock(ByteBuffer.class), new byte[1], 1, false, Lazy.of(() -> null)),
         () -> writeToVersionTopic.set(true));
     verify(mockPartitionConsumptionState, times(1)).getLastVTProduceCallFuture();
     ArgumentCaptor<CompletableFuture> vtWriteFutureCaptor = ArgumentCaptor.forClass(CompletableFuture.class);
     verify(mockPartitionConsumptionState, times(1)).setLastVTProduceCallFuture(vtWriteFutureCaptor.capture());
-    verify(materializedViewWriter, times(1)).processRecord(any(), any(), anyInt(), anyBoolean());
+    verify(materializedViewWriter, times(1)).processRecord(any(), any(), anyInt(), anyBoolean(), any());
     verify(hostLevelIngestionStats, times(1)).recordViewProducerLatency(anyDouble());
     verify(hostLevelIngestionStats, never()).recordViewProducerAckLatency(anyDouble());
     assertFalse(writeToVersionTopic.get());

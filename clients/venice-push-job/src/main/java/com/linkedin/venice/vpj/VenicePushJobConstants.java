@@ -32,6 +32,7 @@ public final class VenicePushJobConstants {
   public static final String EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED = "extended.schema.validity.check.enabled";
   public static final boolean DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED = true;
   public static final String UPDATE_SCHEMA_STRING_PROP = "update.schema";
+  public static final String VALUE_SCHEMA_STRING_PROP = "value.schema.string";
 
   // This is a temporary config used to rollout the native input format for Spark. This will be removed soon
   public static final String SPARK_NATIVE_INPUT_FORMAT_ENABLED = "spark.native.input.format.enabled";

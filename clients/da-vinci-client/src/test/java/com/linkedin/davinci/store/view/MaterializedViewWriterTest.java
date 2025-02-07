@@ -33,6 +33,7 @@ import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -163,8 +164,12 @@ public class MaterializedViewWriterTest {
     for (int i = 0; i < 100; i++) {
       byte[] key = new byte[keySize];
       RANDOM.nextBytes(key);
-      materializedViewWriter
-          .processRecord(dummyValue, keyWithChunkingSuffixSerializer.serializeNonChunkedKey(key), 1, true);
+      materializedViewWriter.processRecord(
+          dummyValue,
+          keyWithChunkingSuffixSerializer.serializeNonChunkedKey(key),
+          1,
+          true,
+          Lazy.of(() -> null));
       verify(veniceWriter, times(1)).put(eq(key), any(), eq(1));
       Mockito.clearInvocations(veniceWriter);
     }

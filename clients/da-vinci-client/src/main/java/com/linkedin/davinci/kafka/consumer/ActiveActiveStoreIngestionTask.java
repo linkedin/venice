@@ -669,6 +669,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         ByteBuffer oldValueBB = mergeConflictResultWrapper.getOldValueByteBufferProvider().get();
         int oldValueSchemaId =
             oldValueBB == null ? -1 : mergeConflictResultWrapper.getOldValueProvider().get().writerSchemaId();
+        Lazy<GenericRecord> newValueProvider;
+        if (mergeConflictResult.getNewValueDeserialized().isPresent()) {
+          newValueProvider = Lazy.of(() -> mergeConflictResult.getNewValueDeserialized().get());
+        } else {
+          newValueProvider = getNewValueProvider(
+              mergeConflictResultWrapper.getUpdatedValueBytes(),
+              mergeConflictResult.getValueSchemaId());
+        }
         queueUpVersionTopicWritesWithViewWriters(
             partitionConsumptionState,
             (viewWriter) -> viewWriter.processRecord(
@@ -677,7 +685,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                 keyBytes,
                 mergeConflictResult.getValueSchemaId(),
                 oldValueSchemaId,
-                mergeConflictResult.getRmdRecord()),
+                mergeConflictResult.getRmdRecord(),
+                newValueProvider),
             produceToVersionTopic);
       } else {
         // This function may modify the original record in KME and it is unsafe to use the payload from KME directly

@@ -11,6 +11,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.STORAGE_QUOTA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_ID_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_STRING_PROP;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.annotation.NotThreadsafe;
@@ -25,10 +26,13 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ViewConfig;
+import com.linkedin.venice.partitioner.VeniceComplexPartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.serialization.DefaultSerializer;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SystemTime;
@@ -36,6 +40,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
@@ -57,6 +62,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -146,7 +153,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   private Lazy<VeniceWriterFactory> veniceWriterFactory;
   private AbstractVeniceWriter<byte[], byte[], byte[]> veniceWriter = null;
   private VeniceWriter<byte[], byte[], byte[]> mainWriter = null;
-  private VeniceWriter[] childWriters = null;
+  private AbstractVeniceWriter[] childWriters = null;
   private int valueSchemaId = -1;
   private int derivedValueSchemaId = -1;
   private boolean enableWriteCompute = false;
@@ -390,7 +397,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       boolean rmdChunkingEnabled) {
     try {
       Map<String, ViewConfig> viewConfigMap = ViewUtils.parseViewConfigMapString(flatViewConfigMapString);
-      childWriters = new VeniceWriter[viewConfigMap.size()];
+      childWriters = new AbstractVeniceWriter[viewConfigMap.size()];
       String storeName = Version.parseStoreFromKafkaTopicName(topicName);
       int versionNumber = Version.parseVersionFromKafkaTopicName(topicName);
       // TODO using a dummy Version to get venice writer options could be error prone. Alternatively we could change
@@ -403,6 +410,22 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         VeniceView view = ViewUtils
             .getVeniceView(viewConfig.getViewClassName(), new Properties(), storeName, viewConfig.getViewParameters());
         String viewTopic = view.getTopicNamesAndConfigsForVersion(versionNumber).keySet().stream().findAny().get();
+        if (view instanceof MaterializedView) {
+          MaterializedView materializedView = (MaterializedView) view;
+          if (materializedView.getViewPartitioner() instanceof VeniceComplexPartitioner) {
+            // We need to build a ComplexPartitionerWriterAdapter to handle writes with complex partitioner.
+            Schema valueSchema = new Schema.Parser().parse(props.getString(VALUE_SCHEMA_STRING_PROP));
+            RecordDeserializer<GenericRecord> deserializer =
+                FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(valueSchema, valueSchema);
+            childWriters[index++] = new ComplexPartitionerWriterAdapter<byte[], byte[], byte[]>(
+                viewTopic,
+                factory.createVeniceWriter(view.getWriterOptionsBuilder(viewTopic, version).build()),
+                (VeniceComplexPartitioner) materializedView.getViewPartitioner(),
+                materializedView.getViewPartitionCount(),
+                deserializer::deserialize);
+            continue;
+          }
+        }
         childWriters[index++] = factory.createVeniceWriter(view.getWriterOptionsBuilder(viewTopic, version).build());
       }
       return new CompositeVeniceWriter<byte[], byte[], byte[]>(
@@ -468,7 +491,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         }
         if (veniceWriter instanceof CompositeVeniceWriter) {
           if (childWriters != null) {
-            for (VeniceWriter childWriter: childWriters) {
+            for (AbstractVeniceWriter childWriter: childWriters) {
               childWriter.close(shouldEndAllSegments);
             }
           }

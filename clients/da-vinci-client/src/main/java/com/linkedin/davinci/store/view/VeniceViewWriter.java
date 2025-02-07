@@ -10,6 +10,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.nio.ByteBuffer;
@@ -62,10 +63,10 @@ public abstract class VeniceViewWriter extends VeniceView {
    * @param newValue the incoming fully specified value which hasn't yet been committed to Venice
    * @param oldValue the previous value which has already been locally committed to Venice for the given key
    * @param key the key of the record that designates newValue and oldValue
-   * @param version the version of the store taking this record
    * @param newValueSchemaId the schemaId of the incoming record
    * @param oldValueSchemaId the schemaId of the old record
    * @param replicationMetadataRecord the associated RMD for the incoming record.
+   * @param newValueProvider to provide the deserialized new value
    */
   public abstract CompletableFuture<PubSubProduceResult> processRecord(
       ByteBuffer newValue,
@@ -73,7 +74,8 @@ public abstract class VeniceViewWriter extends VeniceView {
       byte[] key,
       int newValueSchemaId,
       int oldValueSchemaId,
-      GenericRecord replicationMetadataRecord);
+      GenericRecord replicationMetadataRecord,
+      Lazy<GenericRecord> newValueProvider);
 
   /**
    * To be called as a given ingestion task consumes each record. This is called prior to writing to a
@@ -83,12 +85,14 @@ public abstract class VeniceViewWriter extends VeniceView {
    * @param key the key of the record that designates newValue and oldValue
    * @param newValueSchemaId the schemaId of the incoming record
    * @param isChunkedKey is the key already serialized with {@link com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer}
+   * @param newValueProvider to provide the deserialized new value
    */
   public abstract CompletableFuture<PubSubProduceResult> processRecord(
       ByteBuffer newValue,
       byte[] key,
       int newValueSchemaId,
-      boolean isChunkedKey);
+      boolean isChunkedKey,
+      Lazy<GenericRecord> newValueProvider);
 
   /**
    * Called when the server encounters a control message. There isn't (today) a strict ordering

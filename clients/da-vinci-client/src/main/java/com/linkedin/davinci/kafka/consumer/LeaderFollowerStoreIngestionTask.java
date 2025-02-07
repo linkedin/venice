@@ -203,7 +203,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected final Map<String, VeniceViewWriter> viewWriters;
   protected final boolean hasChangeCaptureView;
 
-  protected final AvroStoreDeserializerCache storeDeserializerCache;
+  protected final AvroStoreDeserializerCache<GenericRecord> storeDeserializerCache;
 
   private final AtomicLong lastSendIngestionHeartbeatTimestamp = new AtomicLong(0);
 
@@ -3377,9 +3377,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       Put newPut = writeComputeResultWrapper.getNewPut();
       // keys will be serialized with chunk suffix during pass-through mode in L/F NR if chunking is enabled
       boolean isChunkedKey = isChunked() && !partitionConsumptionState.isEndOfPushReceived();
+      Lazy<GenericRecord> newValueProvider = getNewValueProvider(newPut.putValue, newPut.schemaId);
       queueUpVersionTopicWritesWithViewWriters(
           partitionConsumptionState,
-          (viewWriter) -> viewWriter.processRecord(newPut.putValue, keyBytes, newPut.schemaId, isChunkedKey),
+          (viewWriter) -> viewWriter
+              .processRecord(newPut.putValue, keyBytes, newPut.schemaId, isChunkedKey, newValueProvider),
           produceToVersionTopic);
     } else {
       produceToVersionTopic.run();
@@ -4062,5 +4064,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     } else {
       return supplier.get();
     }
+  }
+  protected Lazy<GenericRecord> getNewValueProvider(ByteBuffer newValue, int schemaId) {
+    if (newValue == null) {
+      return Lazy.of(() -> null);
+    }
+    return Lazy.of(() -> storeDeserializerCache.getDeserializer(schemaId, schemaId).deserialize(newValue));
   }
 }
