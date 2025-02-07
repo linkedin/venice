@@ -16,6 +16,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
@@ -63,7 +64,16 @@ public class TestGlobalRtDiv {
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
 
     // N.B.: RF 2 with 3 servers is important, in order to test both the leader and follower code paths
-    sharedVenice = ServiceFactory.getVeniceCluster(1, 0, 0, 2, 1000000, false, false, extraProperties);
+    sharedVenice = ServiceFactory.getVeniceCluster(
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+            .numberOfServers(0)
+            .numberOfRouters(0)
+            .replicationFactor(2)
+            .partitionSize(1000000)
+            .sslToStorageNodes(false)
+            .sslToKafka(false)
+            .extraProperties(extraProperties)
+            .build());
 
     Properties routerProperties = new Properties();
 
