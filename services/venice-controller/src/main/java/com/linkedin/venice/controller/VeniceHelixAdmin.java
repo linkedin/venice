@@ -610,19 +610,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         new DataRecoveryManager(this, icProvider, pubSubTopicRepository, participantStoreClientsManager);
 
     if (multiClusterConfigs.isLogCompactionEnabled()) {
-      // TODO extends interchangeable with implements?
-      RepushOrchestratorConfig repushOrchestratorConfig =
-          new RepushOrchestratorConfig(multiClusterConfigs.getRepushOrchestratorConfigs());
-
+      // TODO LC: extends interchangeable with implements?
       Class<? extends RepushOrchestrator> repushOrchestratorClass =
           ReflectUtils.loadClass(multiClusterConfigs.getRepushOrchestratorClassName());
-      Class<RepushOrchestratorConfig> repushOrchestratorConfigClass =
-          ReflectUtils.loadClass(RepushOrchestratorConfig.class.getName());
       try {
-        RepushOrchestrator repushOrchestrator = ReflectUtils.callConstructor(
-            repushOrchestratorClass,
-            new Class[] { repushOrchestratorConfigClass },
-            new Object[] { repushOrchestratorConfig });
+        RepushOrchestrator repushOrchestrator =
+            ReflectUtils.callConstructor(repushOrchestratorClass, new Class[0], new Object[0]);
+        RepushOrchestratorConfig repushOrchestratorConfig =
+            new RepushOrchestratorConfig(multiClusterConfigs.getRepushOrchestratorConfigs());
+        repushOrchestrator.init(repushOrchestratorConfig);
+
         compactionManager =
             new CompactionManager(repushOrchestrator, multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS());
       } catch (Exception e) {

@@ -10,6 +10,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
+import com.linkedin.venice.controller.repush.RepushOrchestratorConfig;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
@@ -115,6 +116,11 @@ public class TestLogCompactionService {
   }
 
   public static class TestRepushOrchestratorImpl implements RepushOrchestrator {
+    @Override
+    public void init(RepushOrchestratorConfig config) {
+      // no-op
+    }
+
     @Override
     public RepushJobResponse repush(String storeName) {
       latch.countDown();
