@@ -52,6 +52,7 @@ public class DaVinciBlobFinder implements BlobFinder {
       ClientConfig storeClientConfig = ClientConfig.cloneConfig(clientConfig).setStoreName(storeName);
       AbstractAvroStoreClient storeLevelClient =
           new AvroGenericStoreClientImpl<>(getTransportClient(storeClientConfig), false, storeClientConfig);
+      storeLevelClient.start();
       LOGGER.info("Started store client for store: {}", storeName);
       return storeLevelClient;
     });
