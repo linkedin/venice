@@ -1,7 +1,9 @@
 package com.linkedin.venice.integration.utils;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_OPTIONS_USE_DIRECT_READS;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_RMD_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.ADMIN_PORT;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_DISCOVERY_D2_SERVICE;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
@@ -264,6 +266,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           .put(SERVER_INGESTION_HEARTBEAT_INTERVAL_MS, 5000)
           .put(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS, 5000)
           .put(SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED, true)
+          .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 8 * 1024 * 1024 * 1024L)
+          .put(ROCKSDB_RMD_BLOCK_CACHE_SIZE_IN_BYTES, 1024 * 1024 * 1024L)
           .put(SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP, serverDeleteUnassignedPartitionsOnStartup);
       if (sslToKafka) {
         serverPropsBuilder.put(KAFKA_SECURITY_PROTOCOL, PubSubSecurityProtocol.SSL.name());
