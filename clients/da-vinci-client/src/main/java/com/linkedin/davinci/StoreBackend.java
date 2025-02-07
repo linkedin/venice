@@ -4,16 +4,19 @@ import com.linkedin.davinci.config.StoreBackendConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.ConcurrentRef;
 import com.linkedin.venice.utils.ReferenceCounted;
+import com.linkedin.venice.utils.RegionUtils;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -240,9 +243,24 @@ public class StoreBackend {
     } else {
       return;
     }
-    LOGGER.info("Subscribing to future version {}", targetVersion.kafkaTopicName());
-    setDaVinciFutureVersion(new VersionBackend(backend, targetVersion, stats));
-    daVinciFutureVersion.subscribe(subscription).whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
+
+    Store store = backend.getStoreRepository().getStoreOrThrow(storeName);
+    Set<String> targetRegions = RegionUtils.parseRegionsFilterList(store.getTargetSwapRegion());
+    String currentRegion = backend.getConfigLoader().getVeniceServerConfig().getRegionName();
+    boolean isTargetRegionEnabled = !StringUtils.isEmpty(store.getTargetSwapRegion());
+    boolean startIngestionInNonTargetRegion =
+        isTargetRegionEnabled && targetVersion.getStatus() == VersionStatus.ONLINE;
+
+    // Subscribe to the future version if:
+    // 1. Target region push with delayed ingestion is not enabled
+    // 2. Target region push with delayed ingestion is enabled and the current region is a target region
+    // 3. Target region push with delayed ingestion is enabled and the current region is a non target region
+    // and the wait time has elapsed. The wait time has elapsed when the version status is marked ONLINE
+    if (targetRegions.contains(currentRegion) || startIngestionInNonTargetRegion || !isTargetRegionEnabled) {
+      LOGGER.info("Subscribing to future version {}", targetVersion.kafkaTopicName());
+      setDaVinciFutureVersion(new VersionBackend(backend, targetVersion, stats));
+      daVinciFutureVersion.subscribe(subscription).whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
+    }
   }
 
   /**
@@ -372,5 +390,9 @@ public class StoreBackend {
 
   public StoreDeserializerCache getStoreDeserializerCache() {
     return storeDeserializerCache;
+  }
+
+  public String getStoreName() {
+    return storeName;
   }
 }
