@@ -113,7 +113,7 @@ public class LeastLoadedClientRoutingStrategyTest {
         new boolean[] { true, false, false, false, false, false },
         new boolean[] { true, false, true, true, true, true },
         new int[] { 100, 1, 2, 4, 5, 3 });
-    runTest(instanceHealthMonitor, replicas, 0, 2, Arrays.asList(instance2, instance3, instance6));
+    runTest(instanceHealthMonitor, replicas, 0, 2, replica -> Arrays.asList(instance3, instance6).contains(replica));
   }
 
   @Test

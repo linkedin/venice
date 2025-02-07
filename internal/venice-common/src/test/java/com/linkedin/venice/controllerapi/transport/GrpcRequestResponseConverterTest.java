@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
@@ -14,6 +15,8 @@ import com.google.protobuf.Any;
 import com.google.rpc.Code;
 import com.google.rpc.Status;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.controller.grpc.GrpcRequestResponseConverter;
+import com.linkedin.venice.controllerapi.AdminCommandExecutionStatus;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.ControllerGrpcErrorType;
@@ -21,6 +24,10 @@ import com.linkedin.venice.protocols.controller.VeniceControllerGrpcErrorInfo;
 import io.grpc.StatusRuntimeException;
 import io.grpc.protobuf.StatusProto;
 import io.grpc.stub.StreamObserver;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.testng.annotations.Test;
 
 
@@ -143,5 +150,64 @@ public class GrpcRequestResponseConverterTest {
     });
 
     assertTrue(thrownException.getMessage().contains("Failed to unpack error details"));
+  }
+
+  @Test
+  public void testToExecutionStatusMapSuccess() {
+    Map<String, String> grpcMap = new HashMap<>();
+    grpcMap.put("fabric1", "COMPLETED");
+    grpcMap.put("fabric2", "PROCESSING");
+    grpcMap.put("fabric3", "ERROR");
+
+    ConcurrentHashMap<String, AdminCommandExecutionStatus> executionStatusMap =
+        GrpcRequestResponseConverter.toExecutionStatusMap(grpcMap);
+
+    assertNotNull(executionStatusMap);
+    assertEquals(executionStatusMap.size(), grpcMap.size());
+    assertEquals(executionStatusMap.get("fabric1"), AdminCommandExecutionStatus.COMPLETED);
+    assertEquals(executionStatusMap.get("fabric2"), AdminCommandExecutionStatus.PROCESSING);
+    assertEquals(executionStatusMap.get("fabric3"), AdminCommandExecutionStatus.ERROR);
+  }
+
+  @Test
+  public void testToExecutionStatusMapWithEmptyInput() {
+    Map<String, String> grpcMap = Collections.emptyMap();
+    ConcurrentHashMap<String, AdminCommandExecutionStatus> executionStatusMap =
+        GrpcRequestResponseConverter.toExecutionStatusMap(grpcMap);
+
+    assertNotNull(executionStatusMap);
+    assertEquals(executionStatusMap.size(), 0);
+  }
+
+  @Test
+  public void testToExecutionStatusMapWithInvalidStatus() {
+    Map<String, String> grpcMap = new HashMap<>();
+    grpcMap.put("fabric1", "INVALID_STATUS");
+    assertThrows(IllegalArgumentException.class, () -> GrpcRequestResponseConverter.toExecutionStatusMap(grpcMap));
+  }
+
+  @Test
+  public void testToGrpcExecutionStatusMapSuccess() {
+    ConcurrentHashMap<String, AdminCommandExecutionStatus> executionStatusMap = new ConcurrentHashMap<>();
+    executionStatusMap.put("fabric1", AdminCommandExecutionStatus.COMPLETED);
+    executionStatusMap.put("fabric2", AdminCommandExecutionStatus.PROCESSING);
+    executionStatusMap.put("fabric3", AdminCommandExecutionStatus.ERROR);
+
+    Map<String, String> grpcMap = GrpcRequestResponseConverter.toGrpcExecutionStatusMap(executionStatusMap);
+
+    assertNotNull(grpcMap);
+    assertEquals(grpcMap.size(), executionStatusMap.size());
+    assertEquals(grpcMap.get("fabric1"), "COMPLETED");
+    assertEquals(grpcMap.get("fabric2"), "PROCESSING");
+    assertEquals(grpcMap.get("fabric3"), "ERROR");
+  }
+
+  @Test
+  public void testToGrpcExecutionStatusMapWithEmptyInput() {
+    ConcurrentHashMap<String, AdminCommandExecutionStatus> executionStatusMap = new ConcurrentHashMap<>();
+    Map<String, String> grpcMap = GrpcRequestResponseConverter.toGrpcExecutionStatusMap(executionStatusMap);
+
+    assertNotNull(grpcMap);
+    assertEquals(grpcMap.size(), 0);
   }
 }

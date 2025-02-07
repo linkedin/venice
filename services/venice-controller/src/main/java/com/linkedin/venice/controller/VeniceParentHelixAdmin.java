@@ -74,6 +74,7 @@ import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.BATCH_JOB_HEARTBEAT;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PUSH_JOB_DETAILS;
+import static com.linkedin.venice.views.VeniceView.VIEW_NAME_SEPARATOR;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -494,7 +495,6 @@ public class VeniceParentHelixAdmin implements Admin {
     boolean initializePushJobDetailsStore = !StringUtils.isEmpty(pushJobDetailsStoreClusterName);
     if (initRoutineForPushJobDetailsSystemStore != null) {
       if (initializePushJobDetailsStore) {
-        // TODO: When we plan to enable active-active push details store in future, we need to enable it by default.
         UpdateStoreQueryParams updateStoreQueryParamsForPushJobDetails =
             new UpdateStoreQueryParams().setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE);
         initRoutineForPushJobDetailsSystemStore.setDelegate(
@@ -958,8 +958,28 @@ public class VeniceParentHelixAdmin implements Admin {
   public void deleteStore(
       String clusterName,
       String storeName,
+      boolean isAbortMigrationCleanup,
       int largestUsedVersionNumber,
       boolean waitOnRTTopicDeletion) {
+    if (isAbortMigrationCleanup) {
+      HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+      try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreReadLock(storeName)) {
+        ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+        Store store = repository.getStore(storeName);
+        if (store != null && !store.isMigrating()) {
+          LOGGER.warn(
+              "Deletion of store: {} in cluster: {} was issued as part of abort migration resource cleanup, but the store's "
+                  + "migrating flag is false. Please ensure the store's migrating flag is set to true in the destination "
+                  + "cluster before issuing the deleteStore to prevent accidental deletion of shared resources.",
+              storeName,
+              clusterName);
+          throw new VeniceException(
+              "Store " + storeName + "'s migrating flag is false. Not safe to delete a store "
+                  + "that is assumed to be migrating without the migrating flag setup as true.",
+              ErrorType.INVALID_CONFIG);
+        }
+      }
+    }
     acquireAdminMessageLock(clusterName, storeName);
     try {
       LOGGER.info("Deleting store: {} from cluster: {}", storeName, clusterName);
@@ -2845,8 +2865,11 @@ public class VeniceParentHelixAdmin implements Admin {
     // TODO: Pass a proper properties object here. Today this isn't used in this context
     if (viewConfig.getViewClassName().equals(MaterializedView.class.getCanonicalName())) {
       if (viewName.contains(VERSION_SEPARATOR)) {
+        throw new VeniceException(String.format("View name cannot contain version separator: %s", VERSION_SEPARATOR));
+      }
+      if (viewName.contains(VIEW_NAME_SEPARATOR)) {
         throw new VeniceException(
-            String.format("Materialized View name cannot contain version separator: %s", VERSION_SEPARATOR));
+            String.format("View name cannot contain view name separator: %s", VIEW_NAME_SEPARATOR));
       }
       Map<String, String> viewParams = viewConfig.getViewParameters();
       MaterializedViewParameters.Builder decoratedViewParamBuilder =
@@ -3653,7 +3676,7 @@ public class VeniceParentHelixAdmin implements Admin {
         Store parentStore = repository.getStore(storeName);
         Version version = parentStore.getVersion(versionNum);
         boolean isDeferredSwap = version != null && version.isVersionSwapDeferred();
-        if (!isDeferredSwap) {
+        if (!isDeferredSwap || !StringUtils.isEmpty(targetedRegions)) {
           // targetedRegions is non-empty for target region push of batch store
           boolean isTargetRegionPush = !StringUtils.isEmpty(targetedRegions);
           Version storeVersion = parentStore.getVersion(versionNum);
@@ -3677,12 +3700,15 @@ public class VeniceParentHelixAdmin implements Admin {
           }
           // status PUSHED is set when batch store's target region push is completed, but other region are yet to
           // complete
-          if (isTargetRegionPush && !isVersionPushed) {
-            parentStore.updateVersionStatus(versionNum, PUSHED);
-            repository.updateStore(parentStore);
-          } else { // status ONLINE is set when all region finishes ingestion for either regular or target region push.
-            parentStore.updateVersionStatus(versionNum, ONLINE);
-            repository.updateStore(parentStore);
+          if (currentReturnStatus.equals(ExecutionStatus.COMPLETED)) {
+            if (isTargetRegionPush && !isVersionPushed) {
+              parentStore.updateVersionStatus(versionNum, PUSHED);
+              repository.updateStore(parentStore);
+            } else { // status ONLINE is set when all region finishes ingestion for either regular or target region
+                     // push.
+              parentStore.updateVersionStatus(versionNum, ONLINE);
+              repository.updateStore(parentStore);
+            }
           }
         }
       }

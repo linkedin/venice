@@ -306,7 +306,7 @@ public class ReadOnlyStore implements Store {
    * A read-only wrapper of {@link Version}
    */
   public static class ReadOnlyVersion implements Version {
-    private final Version delegate;
+    protected final Version delegate;
 
     public ReadOnlyVersion(Version delegate) {
       this.delegate = delegate;
@@ -769,7 +769,7 @@ public class ReadOnlyStore implements Store {
     }
   }
 
-  private final Store delegate;
+  protected final Store delegate;
 
   public ReadOnlyStore(Store delegate) {
     this.delegate = delegate;

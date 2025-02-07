@@ -151,16 +151,22 @@ public class KafkaConsumerServiceDelegatorTest {
   public void unsubscribeAllTest() {
     KafkaConsumerService mockDefaultConsumerService = mock(KafkaConsumerService.class);
     KafkaConsumerService mockDedicatedConsumerService = mock(KafkaConsumerService.class);
+    KafkaConsumerService mockDedicatedConsumerServiceForSepRT = mock(KafkaConsumerService.class);
     VeniceServerConfig mockConfig = mock(VeniceServerConfig.class);
     doReturn(true).when(mockConfig).isDedicatedConsumerPoolForAAWCLeaderEnabled();
     doReturn(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.AA_OR_WC_LEADER_DEDICATED).when(mockConfig)
         .getConsumerPoolStrategyType();
 
     Function<String, Boolean> isAAWCStoreFunc = vt -> true;
-    KafkaConsumerServiceDelegator.KafkaConsumerServiceBuilder consumerServiceBuilder =
-        (ignored, poolType) -> poolType.equals(ConsumerPoolType.REGULAR_POOL)
-            ? mockDefaultConsumerService
-            : mockDedicatedConsumerService;
+    KafkaConsumerServiceDelegator.KafkaConsumerServiceBuilder consumerServiceBuilder = (ignored, poolType) -> {
+      if (poolType.equals(ConsumerPoolType.AA_WC_LEADER_POOL)) {
+        return mockDedicatedConsumerService;
+      } else if (poolType.equals(ConsumerPoolType.SEP_RT_LEADER_POOL)) {
+        return mockDedicatedConsumerServiceForSepRT;
+      } else {
+        return mockDefaultConsumerService;
+      }
+    };
 
     KafkaConsumerServiceDelegator delegator =
         new KafkaConsumerServiceDelegator(mockConfig, consumerServiceBuilder, isAAWCStoreFunc);
@@ -168,6 +174,7 @@ public class KafkaConsumerServiceDelegatorTest {
     delegator.unsubscribeAll(versionTopic);
     verify(mockDefaultConsumerService).unsubscribeAll(versionTopic);
     verify(mockDedicatedConsumerService).unsubscribeAll(versionTopic);
+    verify(mockDedicatedConsumerServiceForSepRT).unsubscribeAll(versionTopic);
   }
 
   @Test
@@ -175,16 +182,22 @@ public class KafkaConsumerServiceDelegatorTest {
       throws Exception {
     KafkaConsumerService mockDefaultConsumerService = mock(KafkaConsumerService.class);
     KafkaConsumerService mockDedicatedConsumerService = mock(KafkaConsumerService.class);
+    KafkaConsumerService mockDedicatedConsumerServiceForSepRT = mock(KafkaConsumerService.class);
     VeniceServerConfig mockConfig = mock(VeniceServerConfig.class);
     doReturn(true).when(mockConfig).isDedicatedConsumerPoolForAAWCLeaderEnabled();
     doReturn(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.AA_OR_WC_LEADER_DEDICATED).when(mockConfig)
         .getConsumerPoolStrategyType();
 
     Function<String, Boolean> isAAWCStoreFunc = vt -> true;
-    KafkaConsumerServiceDelegator.KafkaConsumerServiceBuilder consumerServiceBuilder =
-        (ignored, poolType) -> poolType.equals(ConsumerPoolType.REGULAR_POOL)
-            ? mockDefaultConsumerService
-            : mockDedicatedConsumerService;
+    KafkaConsumerServiceDelegator.KafkaConsumerServiceBuilder consumerServiceBuilder = (ignored, poolType) -> {
+      if (poolType.equals(ConsumerPoolType.AA_WC_LEADER_POOL)) {
+        return mockDedicatedConsumerService;
+      } else if (poolType.equals(ConsumerPoolType.SEP_RT_LEADER_POOL)) {
+        return mockDedicatedConsumerServiceForSepRT;
+      } else {
+        return mockDefaultConsumerService;
+      }
+    };
 
     KafkaConsumerServiceDelegator delegator =
         new KafkaConsumerServiceDelegator(mockConfig, consumerServiceBuilder, isAAWCStoreFunc);

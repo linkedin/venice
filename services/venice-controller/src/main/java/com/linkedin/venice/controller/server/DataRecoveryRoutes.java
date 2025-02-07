@@ -48,12 +48,11 @@ public class DataRecoveryRoutes extends AbstractRoute {
         int version = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
         String sourceFabric = request.queryParams(SOURCE_FABRIC);
         String destinationFabric = request.queryParams(FABRIC);
-        boolean copyAllVersionConfigs = Utils.parseBooleanFromString(
+        boolean copyAllVersionConfigs = Utils.parseBooleanOrThrow(
             request.queryParams(DATA_RECOVERY_COPY_ALL_VERSION_CONFIGS),
             DATA_RECOVERY_COPY_ALL_VERSION_CONFIGS);
-        boolean sourceVersionIncluded = Utils.parseBooleanFromString(
-            request.queryParams(SOURCE_FABRIC_VERSION_INCLUDED),
-            SOURCE_FABRIC_VERSION_INCLUDED);
+        boolean sourceVersionIncluded = Utils
+            .parseBooleanOrThrow(request.queryParams(SOURCE_FABRIC_VERSION_INCLUDED), SOURCE_FABRIC_VERSION_INCLUDED);
         Optional<Version> sourceVersion;
         if (sourceVersionIncluded) {
           Version sourceVersionObject = null;

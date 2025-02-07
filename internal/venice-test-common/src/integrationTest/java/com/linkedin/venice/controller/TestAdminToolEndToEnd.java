@@ -17,6 +17,7 @@ import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Version;
@@ -47,7 +48,16 @@ public class TestAdminToolEndToEnd {
     properties.setProperty(LOCAL_REGION_NAME, "dc-0");
     properties.setProperty(ALLOW_CLUSTER_WIPE, "true");
     properties.setProperty(TOPIC_CLEANUP_DELAY_FACTOR, "0");
-    venice = ServiceFactory.getVeniceCluster(1, 1, 1, 1, 100000, false, false, properties);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(1)
+        .numberOfRouters(1)
+        .replicationFactor(1)
+        .partitionSize(100000)
+        .sslToStorageNodes(false)
+        .sslToKafka(false)
+        .extraProperties(properties)
+        .build();
+    venice = ServiceFactory.getVeniceCluster(options);
     clusterName = venice.getClusterName();
   }
 

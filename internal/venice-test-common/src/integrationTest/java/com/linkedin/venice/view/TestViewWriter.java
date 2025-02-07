@@ -45,7 +45,11 @@ public class TestViewWriter extends VeniceViewWriter {
   }
 
   @Override
-  public CompletableFuture<PubSubProduceResult> processRecord(ByteBuffer newValue, byte[] key, int newValueSchemaId) {
+  public CompletableFuture<PubSubProduceResult> processRecord(
+      ByteBuffer newValue,
+      byte[] key,
+      int newValueSchemaId,
+      boolean isChunkedKey) {
     internalView.incrementRecordCount(storeName);
     return CompletableFuture.completedFuture(null);
   }

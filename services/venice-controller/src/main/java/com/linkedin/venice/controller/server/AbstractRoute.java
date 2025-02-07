@@ -6,6 +6,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.acl.NoOpDynamicAccessController;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.security.cert.X509Certificate;
 import java.util.Optional;
@@ -164,7 +165,7 @@ public class AbstractRoute {
     /**
      * {@link accessController} will be empty if ACL is not enabled.
      */
-    return accessController.isPresent();
+    return accessController.isPresent() && !(accessController.get() instanceof NoOpDynamicAccessController);
   }
 
   /**

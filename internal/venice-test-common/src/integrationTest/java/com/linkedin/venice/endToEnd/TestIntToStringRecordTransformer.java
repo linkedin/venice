@@ -1,6 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
@@ -16,8 +17,8 @@ public class TestIntToStringRecordTransformer extends DaVinciRecordTransformer<I
       Schema keySchema,
       Schema inputValueSchema,
       Schema outputValueSchema,
-      boolean storeRecordsInDaVinci) {
-    super(storeVersion, keySchema, inputValueSchema, outputValueSchema, storeRecordsInDaVinci);
+      DaVinciRecordTransformerConfig recordTransformerConfig) {
+    super(storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
   }
 
   @Override

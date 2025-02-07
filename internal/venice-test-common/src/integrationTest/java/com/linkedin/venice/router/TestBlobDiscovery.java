@@ -31,6 +31,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.PersistenceType;
@@ -46,7 +47,6 @@ import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -81,18 +81,18 @@ public class TestBlobDiscovery {
     Properties props = new Properties();
     props.put(OFFLINE_JOB_START_TIMEOUT_MS, "180000");
 
-    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-        1,
-        2,
-        1,
-        1,
-        3,
-        1,
-        3,
-        Optional.of(props),
-        Optional.empty(),
-        Optional.empty(),
-        false);
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+            .numberOfClusters(2)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(3)
+            .numberOfRouters(1)
+            .replicationFactor(3)
+            .forkServer(false)
+            .parentControllerProperties(props);
+    multiRegionMultiClusterWrapper =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
 
     multiClusterVenice = multiRegionMultiClusterWrapper.getChildRegions().get(0);
     String[] clusterNames = multiClusterVenice.getClusterNames();

@@ -7,6 +7,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.controller.UserSystemStoreLifeCycleHelper.AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX;
+import static com.linkedin.venice.exceptions.VeniceNoStoreException.DOES_NOT_EXISTS;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
@@ -180,6 +181,7 @@ import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -346,6 +348,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   protected static final long INTERNAL_STORE_RTT_RETRY_BACKOFF_MS = TimeUnit.SECONDS.toMillis(5);
   private static final int PARTICIPANT_MESSAGE_STORE_SCHEMA_ID = 1;
   private static final long PUSH_STATUS_STORE_WRITER_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(30);
+  private final InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer =
+      AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer();
 
   static final int VERSION_ID_UNSET = -1;
 
@@ -1051,9 +1055,24 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public void deleteStore(
       String clusterName,
       String storeName,
+      boolean isAbortMigrationCleanup,
       int largestUsedVersionNumber,
       boolean waitOnRTTopicDeletion) {
-    deleteStore(clusterName, storeName, largestUsedVersionNumber, waitOnRTTopicDeletion, false);
+    deleteStore(
+        clusterName,
+        storeName,
+        largestUsedVersionNumber,
+        waitOnRTTopicDeletion,
+        false,
+        isAbortMigrationCleanup);
+  }
+
+  public void deleteStore(
+      String clusterName,
+      String storeName,
+      int largestUsedVersionNumber,
+      boolean waitOnRTTopicDeletion) {
+    deleteStore(clusterName, storeName, largestUsedVersionNumber, waitOnRTTopicDeletion, false, false);
   }
 
   private void deleteStore(
@@ -1061,7 +1080,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String storeName,
       int largestUsedVersionNumber,
       boolean waitOnRTTopicDeletion,
-      boolean isForcedDelete) {
+      boolean isForcedDelete,
+      boolean isAbortMigrationCleanup) {
     checkControllerLeadershipFor(clusterName);
     LOGGER.info("Start deleting store: {} in cluster {}", storeName, clusterName);
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
@@ -1076,8 +1096,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         storeRepository.updateStore(store);
       } catch (VeniceNoStoreException e) {
         // It's possible for a store to partially exist due to partial delete/creation failures.
-        LOGGER
-            .warn("Store object is missing for store: " + storeName + " will proceed with the rest of store deletion");
+        LOGGER.warn("Store object is missing for store: {} will proceed with the rest of store deletion", storeName);
+      }
+      if (isAbortMigrationCleanup && store != null && !store.isMigrating()) {
+        LOGGER.warn(
+            "Deletion of store: {} in cluster: {} was issued as part of abort migration resource cleanup, but the store's "
+                + "migrating flag is false. Please ensure the store's migrating flag is set to true in the destination "
+                + "cluster before issuing the delete command to prevent accidental deletion of shared resources.",
+            storeName,
+            clusterName);
+        return;
       }
       if (storeConfig != null) {
         setStoreConfigDeletingFlag(storeConfig, clusterName, storeName, store);
@@ -1093,7 +1121,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // Truncate all the version topics, this is a prerequisite to delete the RT topic
         truncateOldTopics(clusterName, store, true);
 
-        if (!store.isMigrating()) {
+        if (!store.isMigrating() && !isAbortMigrationCleanup) {
           // for RT topic block on deletion so that next create store does not see the lingering RT topic which could
           // have different partition count
           PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
@@ -1161,7 +1189,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           clusterName,
           currentlyDiscoveredClusterName);
     } else if (store != null && store.isMigrating()) {
-      // Cluster discovery is correct but store migration flag has not been set.
+      // Cluster discovery is correct but store migration flag has been set.
       // This is most likely a direct deletion command from admin-tool sent to the wrong cluster.
       // i.e. instead of using the proper --end-migration command, a --delete-store command was issued AND sent to the
       // wrong cluster
@@ -1292,10 +1320,40 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public void sendPushJobDetails(PushJobStatusRecordKey key, PushJobDetails value) {
+    sendPushJobDetailsToLocalRT(key, value);
+    if (isParent()) {
+      String lastDualWriteError = "";
+      for (Map.Entry<String, ControllerClient> entry: getControllerClientMap(getPushJobStatusStoreClusterName())
+          .entrySet()) {
+        LOGGER.info("Sending push job details: {} to region: {} for: {}", value, entry.getKey(), key);
+        ControllerResponse response = entry.getValue()
+            .sendPushJobDetails(
+                key.storeName.toString(),
+                key.versionNumber,
+                getPushJobDetailsSerializer().serialize(null, value));
+        if (response.isError()) {
+          LOGGER.error(
+              "Unable to send push job details to region: {}, for key: {}, value: {} for error: {}",
+              entry.getKey(),
+              key,
+              value,
+              response.getError());
+          lastDualWriteError = response.getError();
+        } else {
+          // When A/A is enabled, we only need to write to one child region and it will be replicated to all regions.
+          return;
+        }
+      }
+      throw new VeniceException(
+          "Unable to dual write push job details to any child region with last error:" + lastDualWriteError);
+    }
+  }
+
+  void sendPushJobDetailsToLocalRT(PushJobStatusRecordKey key, PushJobDetails value) {
     // Emit push job status metrics
     emitPushJobStatusMetrics(pushJobStatusStatsMap, key, value, pushJobUserErrorCheckpoints);
     // Send push job details to the push job status system store
-    if (pushJobStatusStoreClusterName.isEmpty()) {
+    if (getPushJobStatusStoreClusterName().isEmpty()) {
       throw new VeniceException(
           ("Unable to send the push job details because " + ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME)
               + " is not configured");
@@ -1934,6 +1992,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private void checkStoreNameConflict(String storeName, boolean allowSystemStore) {
     if (storeName.equals(AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT)) {
       throw new VeniceException("Store name: " + storeName + " clashes with the internal usage, please change it");
+    }
+
+    if (VeniceView.isViewStore(storeName)) {
+      throw new VeniceException(
+          "Store name: " + storeName + " clashes with the internal usage, please remove the prefix: "
+              + VeniceView.VIEW_STORE_PREFIX);
     }
 
     if (!allowSystemStore && VeniceSystemStoreUtils.isSystemStore(storeName)) {
@@ -3831,15 +3895,44 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     String rtTopicName = Utils.composeRealTimeTopic(storeName);
     Map<String, ControllerClient> controllerClientMap = getControllerClientMap(clusterName);
     for (Map.Entry<String, ControllerClient> controllerClientEntry: controllerClientMap.entrySet()) {
-      StoreResponse storeResponse = controllerClientEntry.getValue().getStore(storeName);
-      if (storeResponse.isError()) {
+      StoreResponse storeResponse;
+      try {
+        storeResponse = RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
+          StoreResponse response = controllerClientEntry.getValue().getStore(storeName);
+          if (response.isError() && response.getError().contains(DOES_NOT_EXISTS)) {
+            throw new VeniceNoStoreException(storeName);
+          }
+          return response;
+        },
+            5,
+            Duration.ofMillis(10),
+            Duration.ofMillis(500),
+            Duration.ofSeconds(5),
+            Collections.singletonList(VeniceNoStoreException.class));
+        if (storeResponse.isError()) {
+          if (storeResponse.getError().contains(DOES_NOT_EXISTS)) {
+            LOGGER.warn(
+                "Store {} does not exist in cluster {} in fabric {}, probably deleted already, skipping RT check",
+                storeName,
+                clusterName,
+                controllerClientEntry.getKey());
+            continue;
+          }
+          LOGGER.warn(
+              "Skipping RT cleanup check for store: {} in cluster: {} due to unable to get store from fabric: {} Error: {}",
+              storeName,
+              clusterName,
+              controllerClientEntry.getKey(),
+              storeResponse.getError());
+          return false;
+        }
+      } catch (VeniceNoStoreException e) {
         LOGGER.warn(
-            "Skipping RT cleanup check for store: {} in cluster: {} due to unable to get store from fabric: {} Error: {}",
+            "Store {} does not exist in cluster {} in fabric {}, probably deleted already, skipping RT check",
             storeName,
             clusterName,
-            controllerClientEntry.getKey(),
-            storeResponse.getError());
-        return false;
+            controllerClientEntry.getKey());
+        continue;
       }
       if (Version.containsHybridVersion(storeResponse.getStore().getVersions())) {
         LOGGER.warn(
@@ -5086,8 +5179,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Long> hybridTimeLagThreshold = params.getHybridTimeLagThreshold();
     Optional<DataReplicationPolicy> hybridDataReplicationPolicy = params.getHybridDataReplicationPolicy();
     Optional<BufferReplayPolicy> hybridBufferReplayPolicy = params.getHybridBufferReplayPolicy();
-    Optional<String> realTimeTopicName = Optional.empty(); // real time topic name should only be changed during
-                                                           // partition count update
+    Optional<String> realTimeTopicName = params.getRealTimeTopicName();
     Optional<Boolean> accessControlled = params.getAccessControlled();
     Optional<CompressionStrategy> compressionStrategy = params.getCompressionStrategy();
     Optional<Boolean> clientDecompressionEnabled = params.getClientDecompressionEnabled();
@@ -7997,7 +8089,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         deleteOneStoreVersion(clusterName, storeName.get(), versionNum.get(), true);
       } else {
         setStoreReadWriteability(clusterName, storeName.get(), false);
-        deleteStore(clusterName, storeName.get(), Store.IGNORE_VERSION, false, true);
+        deleteStore(clusterName, storeName.get(), Store.IGNORE_VERSION, false, true, false);
       }
     } else {
       try (AutoCloseableLock ignore = resources.getClusterLockManager().createClusterWriteLock()) {
@@ -8008,7 +8100,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             continue;
           }
           setStoreReadWriteability(clusterName, store.getName(), false);
-          deleteStore(clusterName, store.getName(), Store.IGNORE_VERSION, false, true);
+          deleteStore(clusterName, store.getName(), Store.IGNORE_VERSION, false, true, false);
         }
       }
     }
@@ -8776,5 +8868,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public PubSubTopicRepository getPubSubTopicRepository() {
     return pubSubTopicRepository;
+  }
+
+  String getPushJobStatusStoreClusterName() {
+    return pushJobStatusStoreClusterName;
+  }
+
+  InternalAvroSpecificSerializer<PushJobDetails> getPushJobDetailsSerializer() {
+    return pushJobDetailsSerializer;
   }
 }

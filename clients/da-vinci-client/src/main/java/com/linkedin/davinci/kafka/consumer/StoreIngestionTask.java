@@ -322,7 +322,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final Schema recordTransformerInputValueSchema;
   private final AvroGenericDeserializer recordTransformerKeyDeserializer;
   private final SparseConcurrentList<AvroGenericDeserializer> recordTransformerDeserializersByPutSchemaId;
-  private DaVinciRecordTransformer recordTransformer;
+  private BlockingDaVinciRecordTransformer recordTransformer;
 
   protected final String localKafkaServer;
   protected final int localKafkaClusterId;
@@ -481,15 +481,25 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       this.recordTransformerInputValueSchema = schemaRepository.getSupersetOrLatestValueSchema(storeName).getSchema();
       Schema outputValueSchema = recordTransformerConfig.getOutputValueSchema();
 
+      // User doesn't intend on transforming records. Use input value schema instead.
+      if (outputValueSchema == null) {
+        outputValueSchema = this.recordTransformerInputValueSchema;
+      }
+
       DaVinciRecordTransformer clientRecordTransformer = recordTransformerConfig.getRecordTransformerFunction()
-          .apply(versionNumber, keySchema, this.recordTransformerInputValueSchema, outputValueSchema);
+          .apply(
+              versionNumber,
+              keySchema,
+              this.recordTransformerInputValueSchema,
+              outputValueSchema,
+              recordTransformerConfig);
 
       this.recordTransformer = new BlockingDaVinciRecordTransformer(
           clientRecordTransformer,
           keySchema,
           this.recordTransformerInputValueSchema,
           outputValueSchema,
-          clientRecordTransformer.getStoreRecordsInDaVinci());
+          recordTransformerConfig);
       this.recordTransformerDeserializersByPutSchemaId = new SparseConcurrentList<>();
 
       versionedIngestionStats.registerTransformerLatencySensor(storeName, versionNumber);
@@ -649,7 +659,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     int partitionNumber = topicPartition.getPartitionNumber();
 
     if (recordTransformer != null) {
-      recordTransformer.onRecovery(storageEngine, partitionNumber, compressor);
+      recordTransformer.internalOnRecovery(storageEngine, partitionNumber, partitionStateSerializer, compressor);
     }
 
     partitionToPendingConsumerActionCountMap.computeIfAbsent(partitionNumber, x -> new AtomicInteger(0))
@@ -2158,6 +2168,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             offsetRecord,
             hybridStoreConfig.isPresent());
 
+        if (isCurrentVersion.getAsBoolean()) {
+          // Latch creation is in StateModelIngestionProgressNotifier#startConsumption() from the Helix transition
+          newPartitionConsumptionState.setLatchCreated();
+        }
+
         partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
 
         /**
@@ -2943,47 +2958,72 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     } else {
       sorted = startOfPush.sorted;
     }
-    beginBatchWrite(partition, sorted, partitionConsumptionState);
-    partitionConsumptionState.setStartOfPushTimestamp(startOfPushKME.producerMetadata.messageTimestamp);
+
+    StoreVersionState persistedStoreVersionState =
+        storageMetadataService.computeStoreVersionState(kafkaVersionTopic, previousStoreVersionState -> {
+          if (previousStoreVersionState == null) {
+            // No other partition of the same topic has started yet, let's initialize the StoreVersionState
+            StoreVersionState newStoreVersionState = new StoreVersionState();
+            newStoreVersionState.sorted = sorted;
+            newStoreVersionState.chunked = startOfPush.chunked;
+            newStoreVersionState.compressionStrategy = startOfPush.compressionStrategy;
+            newStoreVersionState.compressionDictionary = startOfPush.compressionDictionary;
+            if (startOfPush.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT.getValue()) {
+              if (startOfPush.compressionDictionary == null) {
+                throw new VeniceException(
+                    "compression Dictionary should not be empty if CompressionStrategy is ZSTD_WITH_DICT");
+              }
+            }
+            newStoreVersionState.batchConflictResolutionPolicy = startOfPush.timestampPolicy;
+            newStoreVersionState.startOfPushTimestamp = startOfPushKME.producerMetadata.messageTimestamp;
+
+            LOGGER.info(
+                "Persisted {} for the first time following a SOP for topic {} with sorted: {}.",
+                StoreVersionState.class.getSimpleName(),
+                kafkaVersionTopic,
+                newStoreVersionState.sorted);
+            return newStoreVersionState;
+          } else if (previousStoreVersionState.chunked != startOfPush.chunked) {
+            // Something very wrong is going on ): ...
+            throw new VeniceException(
+                "Unexpected: received multiple " + ControlMessageType.START_OF_PUSH.name()
+                    + " control messages with inconsistent 'chunked' fields within the same topic!");
+          } else if (previousStoreVersionState.sorted != sorted) {
+            if (!isHybridMode()) {
+              // Something very wrong is going on ): ...
+              throw new VeniceException(
+                  "Unexpected: received multiple " + ControlMessageType.START_OF_PUSH.name()
+                      + " control messages with inconsistent 'sorted' fields within the same topic!"
+                      + " And persisted sorted value: " + previousStoreVersionState.sorted
+                      + " is different from the current one: " + sorted);
+            }
+            /**
+             * Because of the blob-db integration, `SIT` will forcibly set `sorted` to `false` for hybrid stores (check the
+             * above javadoc) and inconsistent `sorted` can happen during the rolling out/rolling back blob-db features.
+             * Here is one case how it can happen during the rolling out of blob-db:
+             * 1. P1 processes `SOP` with `sorted=true` and persist it in `StoreVersionState`.
+             * 2. P2 hasn't started processing `SOP` yet.
+             * 3. Restart the cluster and roll out blob-db feature.
+             * 4. when P2 processes `SOP` with `sorted=true`, it will forcibly set `sorted=false`, and it will be different
+             *    from the previously persisted `StoreVersionState`.
+             * 5. This is fine as long as we just follow the previously persisted `StoreVersionState`.
+             * 6. Here are the reasons why step 5 is true:
+             *    a. If the input for a given partition is truly sorted, it can always be ingested as unsorted data.
+             *    b. If the input for a given partition is not sorted, the underlying `SSTFileWriter` will throw exception
+             *       when we try to ingest it as sorted data.
+             */
+            LOGGER.warn(
+                "Store version state for topic {} has already been initialized with a different value of 'sorted': {}",
+                kafkaVersionTopic,
+                previousStoreVersionState.sorted);
+          }
+          // No need to mutate it, so we return it as is
+          return previousStoreVersionState;
+        });
 
     ingestionNotificationDispatcher.reportStarted(partitionConsumptionState);
-    storageMetadataService.computeStoreVersionState(kafkaVersionTopic, previousStoreVersionState -> {
-      if (previousStoreVersionState == null) {
-        // No other partition of the same topic has started yet, let's initialize the StoreVersionState
-        StoreVersionState newStoreVersionState = new StoreVersionState();
-        newStoreVersionState.sorted = sorted;
-        newStoreVersionState.chunked = startOfPush.chunked;
-        newStoreVersionState.compressionStrategy = startOfPush.compressionStrategy;
-        newStoreVersionState.compressionDictionary = startOfPush.compressionDictionary;
-        if (startOfPush.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT.getValue()) {
-          if (startOfPush.compressionDictionary == null) {
-            throw new VeniceException(
-                "compression Dictionary should not be empty if CompressionStrategy is ZSTD_WITH_DICT");
-          }
-        }
-        newStoreVersionState.batchConflictResolutionPolicy = startOfPush.timestampPolicy;
-        newStoreVersionState.startOfPushTimestamp = startOfPushKME.producerMetadata.messageTimestamp;
-
-        LOGGER.info(
-            "Persisted {} for the first time following a SOP for topic {}.",
-            StoreVersionState.class.getSimpleName(),
-            kafkaVersionTopic);
-        return newStoreVersionState;
-      } else if (previousStoreVersionState.sorted != sorted) {
-        // Something very wrong is going on ): ...
-        throw new VeniceException(
-            "Unexpected: received multiple " + ControlMessageType.START_OF_PUSH.name()
-                + " control messages with inconsistent 'sorted' fields within the same topic!");
-      } else if (previousStoreVersionState.chunked != startOfPush.chunked) {
-        // Something very wrong is going on ): ...
-        throw new VeniceException(
-            "Unexpected: received multiple " + ControlMessageType.START_OF_PUSH.name()
-                + " control messages with inconsistent 'chunked' fields within the same topic!");
-      } else {
-        // No need to mutate it, so we return it as is
-        return previousStoreVersionState;
-      }
-    });
+    beginBatchWrite(partition, persistedStoreVersionState.sorted, partitionConsumptionState);
+    partitionConsumptionState.setStartOfPushTimestamp(startOfPushKME.producerMetadata.messageTimestamp);
   }
 
   protected void processEndOfPush(

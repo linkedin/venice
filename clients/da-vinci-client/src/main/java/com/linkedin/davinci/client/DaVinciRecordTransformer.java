@@ -4,6 +4,8 @@ import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.Closeable;
 import java.io.IOException;
@@ -42,6 +44,11 @@ public abstract class DaVinciRecordTransformer<K, V, O> implements Closeable {
   private final boolean storeRecordsInDaVinci;
 
   /**
+   * Boolean to determine if we should always bootstrap from the Version Topic.
+   */
+  private final boolean alwaysBootstrapFromVersionTopic;
+
+  /**
    * The key schema, which is immutable inside DaVinciClient. Users can modify the key if they are storing records in an external storage engine, but this must be managed by the user.
    */
   private final Schema keySchema;
@@ -63,17 +70,17 @@ public abstract class DaVinciRecordTransformer<K, V, O> implements Closeable {
    * @param keySchema the key schema, which is immutable inside DaVinciClient. Users can modify the key if they are storing records in an external storage engine, but this must be managed by the user
    * @param inputValueSchema the value schema before transformation
    * @param outputValueSchema the value schema after transformation
-   * @param storeRecordsInDaVinci set this to false if you intend to store records in a custom storage,
-   *                              and not in the Da Vinci Client
+   * @param recordTransformerConfig the config for the record transformer
    */
   public DaVinciRecordTransformer(
       int storeVersion,
       Schema keySchema,
       Schema inputValueSchema,
       Schema outputValueSchema,
-      boolean storeRecordsInDaVinci) {
+      DaVinciRecordTransformerConfig recordTransformerConfig) {
     this.storeVersion = storeVersion;
-    this.storeRecordsInDaVinci = storeRecordsInDaVinci;
+    this.storeRecordsInDaVinci = recordTransformerConfig.getStoreRecordsInDaVinci();
+    this.alwaysBootstrapFromVersionTopic = recordTransformerConfig.getAlwaysBootstrapFromVersionTopic();
     this.keySchema = keySchema;
     // ToDo: Make use of inputValueSchema to support reader/writer schemas
     this.inputValueSchema = inputValueSchema;
@@ -212,9 +219,10 @@ public abstract class DaVinciRecordTransformer<K, V, O> implements Closeable {
    */
   public final void onRecovery(
       AbstractStorageEngine storageEngine,
-      Integer partition,
+      int partitionId,
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       Lazy<VeniceCompressor> compressor) {
-    recordTransformerUtility.onRecovery(storageEngine, partition, compressor);
+    recordTransformerUtility.onRecovery(storageEngine, partitionId, partitionStateSerializer, compressor);
   }
 
   /**
@@ -222,6 +230,13 @@ public abstract class DaVinciRecordTransformer<K, V, O> implements Closeable {
    */
   public final boolean getStoreRecordsInDaVinci() {
     return storeRecordsInDaVinci;
+  }
+
+  /**
+   * @return {@link #alwaysBootstrapFromVersionTopic}
+   */
+  public final boolean getAlwaysBootstrapFromVersionTopic() {
+    return alwaysBootstrapFromVersionTopic;
   }
 
   /**

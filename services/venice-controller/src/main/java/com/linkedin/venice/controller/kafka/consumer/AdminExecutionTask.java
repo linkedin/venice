@@ -475,6 +475,7 @@ public class AdminExecutionTask implements Callable<Void> {
           .setHybridTimeLagThreshold(message.hybridStoreConfig.producerTimestampLagThresholdToGoOnlineInSeconds)
           .setHybridDataReplicationPolicy(
               DataReplicationPolicy.valueOf(message.hybridStoreConfig.dataReplicationPolicy))
+          .setRealTimeTopicName(message.hybridStoreConfig.realTimeTopicName.toString())
           .setHybridBufferReplayPolicy(BufferReplayPolicy.valueOf(message.hybridStoreConfig.bufferReplayPolicy));
     }
     params.setAccessControlled(message.accessControlled)

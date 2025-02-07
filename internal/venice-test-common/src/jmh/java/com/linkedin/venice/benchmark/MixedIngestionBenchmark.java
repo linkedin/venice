@@ -6,6 +6,7 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.PersistenceType;
@@ -60,7 +61,16 @@ public class MixedIngestionBenchmark {
     Utils.thisIsLocalhost();
     int numberOfController = 1;
 
-    cluster = ServiceFactory.getVeniceCluster(numberOfController, 0, 0, replicaFactor, partitionSize, false, false);
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(numberOfController)
+            .numberOfServers(0)
+            .numberOfRouters(0)
+            .replicationFactor(replicaFactor)
+            .partitionSize(partitionSize)
+            .sslToStorageNodes(false)
+            .sslToKafka(false)
+            .build();
+    cluster = ServiceFactory.getVeniceCluster(options);
     cluster.addVeniceServer(new Properties(getVeniceServerProperties()));
     // JMH benchmark relies on System.exit to finish one round of benchmark run, otherwise it will hang there.
     TestUtils.restoreSystemExit();

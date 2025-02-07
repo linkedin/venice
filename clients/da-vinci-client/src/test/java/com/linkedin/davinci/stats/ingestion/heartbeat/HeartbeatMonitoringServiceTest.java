@@ -171,7 +171,7 @@ public class HeartbeatMonitoringServiceTest {
     regions.add(LOCAL_FABRIC);
     regions.add(REMOTE_FABRIC);
     HeartbeatMonitoringService heartbeatMonitoringService =
-        new HeartbeatMonitoringService(mockMetricsRepository, mockReadOnlyRepository, regions, LOCAL_FABRIC);
+        new HeartbeatMonitoringService(mockMetricsRepository, mockReadOnlyRepository, regions, LOCAL_FABRIC, null);
 
     // Let's emit some heartbeats that don't exist in the registry yet
     heartbeatMonitoringService.recordLeaderHeartbeat(TEST_STORE, 1, 0, LOCAL_FABRIC, 1000L, true);

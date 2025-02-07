@@ -76,9 +76,10 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
   }
 
   @Override
-  public void computeStoreVersionState(String topicName, Function<StoreVersionState, StoreVersionState> mapFunction)
-      throws VeniceException {
-    topicStoreVersionStateMap.compute(topicName, (key, previousStoreVersionState) -> {
+  public StoreVersionState computeStoreVersionState(
+      String topicName,
+      Function<StoreVersionState, StoreVersionState> mapFunction) throws VeniceException {
+    return topicStoreVersionStateMap.compute(topicName, (key, previousStoreVersionState) -> {
       StoreVersionState newStoreVersionState = mapFunction.apply(previousStoreVersionState);
       storeVersionStateSyncer.accept(topicName, newStoreVersionState);
 

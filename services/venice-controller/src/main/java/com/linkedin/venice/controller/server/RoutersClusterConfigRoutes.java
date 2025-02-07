@@ -37,7 +37,7 @@ public class RoutersClusterConfigRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, ENABLE_THROTTLING.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         veniceResponse.setCluster(clusterName);
-        boolean status = Utils.parseBooleanFromString(request.queryParams(STATUS), "enableThrottling");
+        boolean status = Utils.parseBooleanOrThrow(request.queryParams(STATUS), "enableThrottling");
         admin.updateRoutersClusterConfig(
             clusterName,
             Optional.of(status),
@@ -62,7 +62,7 @@ public class RoutersClusterConfigRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, ENABLE_MAX_CAPACITY_PROTECTION.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         veniceResponse.setCluster(clusterName);
-        boolean status = Utils.parseBooleanFromString(request.queryParams(STATUS), "enableMaxCapacityProtection");
+        boolean status = Utils.parseBooleanOrThrow(request.queryParams(STATUS), "enableMaxCapacityProtection");
         admin.updateRoutersClusterConfig(
             clusterName,
             Optional.empty(),
@@ -87,7 +87,7 @@ public class RoutersClusterConfigRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, ENABLE_QUOTA_REBALANCED.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         veniceResponse.setCluster(clusterName);
-        boolean status = Utils.parseBooleanFromString(request.queryParams(STATUS), "enableQuotaRebalance");
+        boolean status = Utils.parseBooleanOrThrow(request.queryParams(STATUS), "enableQuotaRebalance");
         int expectedRouterCount =
             Utils.parseIntFromString(request.queryParams(EXPECTED_ROUTER_COUNT), "expectedRouterCount");
         admin.updateRoutersClusterConfig(

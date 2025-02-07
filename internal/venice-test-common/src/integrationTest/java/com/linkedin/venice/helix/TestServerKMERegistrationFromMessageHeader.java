@@ -6,6 +6,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
@@ -52,8 +53,15 @@ public class TestServerKMERegistrationFromMessageHeader {
 
   @BeforeClass
   public void setUp() {
-    cluster =
-        ServiceFactory.getVeniceCluster(numOfController, 0, numOfRouters, replicaFactor, partitionSize, false, false);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(numOfController)
+        .numberOfServers(0)
+        .numberOfRouters(numOfRouters)
+        .replicationFactor(replicaFactor)
+        .partitionSize(partitionSize)
+        .sslToStorageNodes(false)
+        .sslToKafka(false)
+        .build();
+    cluster = ServiceFactory.getVeniceCluster(options);
     clusterName = cluster.getClusterName();
 
     Properties serverProperties = new Properties();

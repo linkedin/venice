@@ -5,6 +5,7 @@ import static com.linkedin.venice.integration.utils.ServiceFactory.getGenericAvr
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -61,7 +62,9 @@ public class IngestionBenchmarkInSingleProcess {
   @Setup
   public void setUp() throws Exception {
     Utils.thisIsLocalhost();
-    cluster = ServiceFactory.getVeniceCluster(1, 1, 1);
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(1).numberOfRouters(1).build();
+    cluster = ServiceFactory.getVeniceCluster(options);
 
     if (valueType.equals("FLOAT_VECTOR")) {
       storeName = buildFloatVectorStore(cluster, Integer.parseInt(valueLength));

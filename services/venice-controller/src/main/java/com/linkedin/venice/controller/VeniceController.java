@@ -8,6 +8,8 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
+import com.linkedin.venice.controller.grpc.server.ClusterAdminOpsGrpcServiceImpl;
+import com.linkedin.venice.controller.grpc.server.StoreGrpcServiceImpl;
 import com.linkedin.venice.controller.grpc.server.interceptor.ControllerGrpcAuditLoggingInterceptor;
 import com.linkedin.venice.controller.grpc.server.interceptor.ControllerGrpcSslSessionInterceptor;
 import com.linkedin.venice.controller.grpc.server.interceptor.ParentControllerRegionValidationInterceptor;
@@ -16,6 +18,7 @@ import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentControll
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.server.VeniceControllerGrpcServiceImpl;
 import com.linkedin.venice.controller.server.VeniceControllerRequestHandler;
+import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controller.systemstore.SystemStoreRepairService;
@@ -71,6 +74,8 @@ public class VeniceController {
 
   private final Optional<StoreGraveyardCleanupService> storeGraveyardCleanupService;
   private final Optional<SystemStoreRepairService> systemStoreRepairService;
+
+  private Optional<DeferredVersionSwapService> deferredVersionSwapService;
 
   private VeniceControllerRequestHandler secureRequestHandler;
   private VeniceControllerRequestHandler unsecureRequestHandler;
@@ -162,6 +167,7 @@ public class VeniceController {
     this.unusedValueSchemaCleanupService = createUnusedValueSchemaCleanupService();
     this.storeGraveyardCleanupService = createStoreGraveyardCleanupService();
     this.systemStoreRepairService = createSystemStoreRepairService();
+    this.deferredVersionSwapService = createDeferredVersionSwapService();
     if (multiClusterConfigs.isGrpcServerEnabled()) {
       initializeGrpcServer();
     }
@@ -205,7 +211,7 @@ public class VeniceController {
         secure || multiClusterConfigs.isControllerEnforceSSLOnly(),
         secure ? multiClusterConfigs.getSslConfig() : Optional.empty(),
         secure && multiClusterConfigs.adminCheckReadMethodForKafka(),
-        accessController,
+        secure ? accessController : Optional.empty(),
         multiClusterConfigs.getDisabledRoutes(),
         multiClusterConfigs.getCommonConfig().getJettyConfigOverrides(),
         multiClusterConfigs.getCommonConfig().isDisableParentRequestTopicForStreamPushes(),
@@ -275,6 +281,18 @@ public class VeniceController {
     return Optional.empty();
   }
 
+  private Optional<DeferredVersionSwapService> createDeferredVersionSwapService() {
+    if (multiClusterConfigs.isParent() && multiClusterConfigs.isDeferredVersionSwapServiceEnabled()) {
+      Admin admin = controllerService.getVeniceHelixAdmin();
+      return Optional.of(
+          new DeferredVersionSwapService(
+              (VeniceParentHelixAdmin) admin,
+              multiClusterConfigs,
+              new DeferredVersionSwapStats(metricsRepository)));
+    }
+    return Optional.empty();
+  }
+
   // package-private for testing
   private void initializeGrpcServer() {
     LOGGER.info("Initializing gRPC server as it is enabled for the controller...");
@@ -285,6 +303,12 @@ public class VeniceController {
     interceptors.add(parentControllerRegionValidationInterceptor);
 
     VeniceControllerGrpcServiceImpl grpcService = new VeniceControllerGrpcServiceImpl(unsecureRequestHandler);
+    StoreGrpcServiceImpl storeGrpcServiceGrpc = new StoreGrpcServiceImpl(
+        unsecureRequestHandler.getStoreRequestHandler(),
+        unsecureRequestHandler.getControllerAccessManager());
+    ClusterAdminOpsGrpcServiceImpl clusterAdminOpsGrpcService = new ClusterAdminOpsGrpcServiceImpl(
+        unsecureRequestHandler.getClusterAdminOpsRequestHandler(),
+        unsecureRequestHandler.getControllerAccessManager());
     grpcExecutor = ThreadPoolFactory.createThreadPool(
         multiClusterConfigs.getGrpcServerThreadCount(),
         CONTROLLER_GRPC_SERVER_THREAD_NAME,
@@ -293,7 +317,9 @@ public class VeniceController {
 
     adminGrpcServer = new VeniceGrpcServer(
         new VeniceGrpcServerConfig.Builder().setPort(multiClusterConfigs.getAdminGrpcPort())
-            .setService(grpcService)
+            .addService(grpcService)
+            .addService(storeGrpcServiceGrpc)
+            .addService(clusterAdminOpsGrpcService)
             .setExecutor(grpcExecutor)
             .setInterceptors(interceptors)
             .build());
@@ -304,9 +330,17 @@ public class VeniceController {
           multiClusterConfigs.getSslConfig().get().getSslProperties(),
           multiClusterConfigs.getSslFactoryClassName());
       VeniceControllerGrpcServiceImpl secureGrpcService = new VeniceControllerGrpcServiceImpl(secureRequestHandler);
+      StoreGrpcServiceImpl secureStoreGrpcService = new StoreGrpcServiceImpl(
+          secureRequestHandler.getStoreRequestHandler(),
+          secureRequestHandler.getControllerAccessManager());
+      ClusterAdminOpsGrpcServiceImpl secureClusterAdminOpsGrpcService = new ClusterAdminOpsGrpcServiceImpl(
+          secureRequestHandler.getClusterAdminOpsRequestHandler(),
+          secureRequestHandler.getControllerAccessManager());
       adminSecureGrpcServer = new VeniceGrpcServer(
           new VeniceGrpcServerConfig.Builder().setPort(multiClusterConfigs.getAdminSecureGrpcPort())
-              .setService(secureGrpcService)
+              .addService(secureGrpcService)
+              .addService(secureStoreGrpcService)
+              .addService(secureClusterAdminOpsGrpcService)
               .setExecutor(grpcExecutor)
               .setSslFactory(sslFactory)
               .setInterceptors(interceptors)
@@ -353,6 +387,7 @@ public class VeniceController {
     unusedValueSchemaCleanupService.ifPresent(AbstractVeniceService::start);
     systemStoreRepairService.ifPresent(AbstractVeniceService::start);
     disabledPartitionEnablerService.ifPresent(AbstractVeniceService::start);
+    deferredVersionSwapService.ifPresent(AbstractVeniceService::start);
     // register with service discovery at the end
     asyncRetryingServiceDiscoveryAnnouncer.register();
     if (adminGrpcServer != null) {
@@ -417,6 +452,7 @@ public class VeniceController {
     unusedValueSchemaCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     storeBackupVersionCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     disabledPartitionEnablerService.ifPresent(Utils::closeQuietlyWithErrorLogged);
+    deferredVersionSwapService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     if (adminGrpcServer != null) {
       adminGrpcServer.stop();
     }

@@ -841,8 +841,7 @@ public class AdminTool {
     String valueSchemaFile = getRequiredArgument(cmd, Arg.VALUE_SCHEMA, Command.NEW_STORE);
     String valueSchema = readFile(valueSchemaFile);
     String owner = getOptionalArgument(cmd, Arg.OWNER, "");
-    boolean isVsonStore =
-        Utils.parseBooleanFromString(getOptionalArgument(cmd, Arg.VSON_STORE, "false"), "isVsonStore");
+    boolean isVsonStore = Utils.parseBooleanOrThrow(getOptionalArgument(cmd, Arg.VSON_STORE, "false"), "isVsonStore");
     if (isVsonStore) {
       keySchema = VsonAvroSchemaAdapter.parse(keySchema).toString();
       valueSchema = VsonAvroSchemaAdapter.parse(valueSchema).toString();
@@ -1126,7 +1125,7 @@ public class AdminTool {
   }
 
   private static void booleanParam(CommandLine cmd, Arg param, Consumer<Boolean> setter, Set<Arg> argSet) {
-    genericParam(cmd, param, s -> Utils.parseBooleanFromString(s, param.toString()), setter, argSet);
+    genericParam(cmd, param, s -> Utils.parseBooleanOrThrow(s, param.toString()), setter, argSet);
   }
 
   private static void stringMapParam(
@@ -2184,9 +2183,10 @@ public class AdminTool {
       throw new VeniceException("Source cluster and destination cluster cannot be the same!");
     }
     boolean terminate = false;
-
-    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl, sslFactory);
-    ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl, sslFactory);
+    ControllerClient srcControllerClient =
+        ControllerClient.constructClusterControllerClient(srcClusterName, veniceUrl, sslFactory);
+    ControllerClient destControllerClient =
+        ControllerClient.constructClusterControllerClient(destClusterName, veniceUrl, sslFactory);
     checkPreconditionForStoreMigration(srcControllerClient, destControllerClient);
 
     // Check arguments
@@ -2219,9 +2219,10 @@ public class AdminTool {
     // Reset original store, storeConfig, and cluster discovery
     if (promptsOverride.length > 1) {
       terminate = !promptsOverride[1];
+
     } else {
       terminate = !userGivesPermission(
-          "Next step is to reset store migration flag, storeConfig and cluster"
+          "Next step is to reset store migration flag, storeConfig and cluster "
               + "discovery mapping. Do you want to proceed?");
     }
     if (terminate) {
@@ -2260,7 +2261,7 @@ public class AdminTool {
           "Deleting cloned store " + storeName + " in " + destControllerClient.getLeaderControllerUrl() + " ...");
       destControllerClient
           .updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
-      TrackableControllerResponse deleteResponse = destControllerClient.deleteStore(storeName);
+      TrackableControllerResponse deleteResponse = destControllerClient.deleteStore(storeName, true);
       printObject(deleteResponse);
       if (deleteResponse.isError()) {
         System.err.println("ERROR: failed to delete store " + storeName + " in the dest cluster " + destClusterName);
@@ -2272,7 +2273,7 @@ public class AdminTool {
     }
   }
 
-  private static boolean userGivesPermission(String prompt) {
+  static boolean userGivesPermission(String prompt) {
     Console console = System.console();
     String response = console.readLine(prompt + " (y/n): ").toLowerCase();
     while (!response.equals("y") && !response.equals("n")) {
@@ -2534,8 +2535,7 @@ public class AdminTool {
     String valueSchema = readFile(valueSchemaFile);
     String aclPerms = getRequiredArgument(cmd, Arg.ACL_PERMS, Command.NEW_STORE);
     String owner = getOptionalArgument(cmd, Arg.OWNER, "");
-    boolean isVsonStore =
-        Utils.parseBooleanFromString(getOptionalArgument(cmd, Arg.VSON_STORE, "false"), "isVsonStore");
+    boolean isVsonStore = Utils.parseBooleanOrThrow(getOptionalArgument(cmd, Arg.VSON_STORE, "false"), "isVsonStore");
     if (isVsonStore) {
       keySchema = VsonAvroSchemaAdapter.parse(keySchema).toString();
       valueSchema = VsonAvroSchemaAdapter.parse(valueSchema).toString();

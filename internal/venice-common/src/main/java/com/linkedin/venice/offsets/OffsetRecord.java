@@ -305,6 +305,15 @@ public class OffsetRecord {
     partitionState.pendingReportIncrementalPushVersions = new ArrayList<>(incPushVersionList);
   }
 
+  public Integer getRecordTransformerClassHash() {
+    Integer classHash = partitionState.getRecordTransformerClassHash();
+    return classHash;
+  }
+
+  public void setRecordTransformerClassHash(int classHash) {
+    this.partitionState.setRecordTransformerClassHash(classHash);
+  }
+
   /**
    * It may be useful to cache this mapping. TODO: Explore GC tuning later.
    *
@@ -321,7 +330,8 @@ public class OffsetRecord {
         + getPartitionUpstreamOffsetString() + ", leaderTopic=" + getLeaderTopic() + ", offsetLag=" + getOffsetLag()
         + ", eventTimeEpochMs=" + getMaxMessageTimeInMs() + ", latestProducerProcessingTimeInMs="
         + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived=" + isEndOfPushReceived() + ", databaseInfo="
-        + getDatabaseInfo() + ", realTimeProducerState=" + getRealTimeProducerState() + '}';
+        + getDatabaseInfo() + ", realTimeProducerState=" + getRealTimeProducerState() + ", recordTransformerClassHash="
+        + getRecordTransformerClassHash() + '}';
   }
 
   /**

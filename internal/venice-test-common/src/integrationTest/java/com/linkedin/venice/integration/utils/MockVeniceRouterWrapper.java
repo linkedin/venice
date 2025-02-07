@@ -20,8 +20,8 @@ import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.HelixLiveInstanceMonitor;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
-import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
+import com.linkedin.venice.helix.HelixReadOnlyStoreViewConfigRepositoryAdapter;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PartitionerConfigImpl;
@@ -105,8 +105,8 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
     doReturn(CONTROLLER).when(mockControllerInstance).getUrl();
     doReturn(mockControllerInstance).when(mockRepo).getLeaderController();
 
-    HelixReadOnlyStoreConfigRepository mockStoreConfigRepository =
-        Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+    HelixReadOnlyStoreViewConfigRepositoryAdapter mockStoreConfigRepository =
+        Mockito.mock(HelixReadOnlyStoreViewConfigRepositoryAdapter.class);
 
     HelixLiveInstanceMonitor mockLiveInstanceMonitor = Mockito.mock(HelixLiveInstanceMonitor.class);
     doReturn(true).when(mockLiveInstanceMonitor).isInstanceAlive(any());

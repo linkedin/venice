@@ -2217,8 +2217,12 @@ public class ConfigKeys {
    */
   public static final String SERVER_DEDICATED_CONSUMER_POOL_FOR_AA_WC_LEADER_ENABLED =
       "server.dedicated.consumer.pool.for.aa.wc.leader.enabled";
+
   public static final String SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_AA_WC_LEADER =
       "server.dedicated.consumer.pool.size.for.aa.wc.leader";
+
+  public static final String SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_SEP_RT_LEADER =
+      "server.dedicated.consumer.pool.size.for.sep.rt.leader";
 
   /**
    * Consumer Pool allocation strategy to rely on pool size to prioritize specific traffic. There will be 3 different
@@ -2339,6 +2343,12 @@ public class ConfigKeys {
    */
   public static final String SERVER_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND =
       "server.aa.wc.leader.quota.records.per.second";
+  /**
+   * Quota for separate realtime topic leader replica as we know separate realtime topic messages are not prioritized
+   * compared to realtime topic messages, so we would like to use the following throttler to limit the resource usage.
+   */
+  public static final String SERVER_SEP_RT_LEADER_QUOTA_RECORDS_PER_SECOND =
+      "server.sep.rt.leader.quota.records.per.second";
 
   /**
    * The following finer quota enforcement will be used when {@literal ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION}
@@ -2388,4 +2398,8 @@ public class ConfigKeys {
    * Default: {@value com.linkedin.venice.meta.NameRepository#DEFAULT_MAXIMUM_ENTRY_COUNT}
    */
   public static final String NAME_REPOSITORY_MAX_ENTRY_COUNT = "name.repository.max.entry.count";
+
+  public static final String CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS = "controller.deferred.version.swap.sleep.ms";
+  public static final String CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED =
+      "controller.deferred.version.swap.service.enabled";
 }

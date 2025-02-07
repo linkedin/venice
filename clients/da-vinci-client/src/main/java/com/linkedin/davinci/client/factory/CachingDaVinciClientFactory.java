@@ -11,6 +11,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.views.VeniceView;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
 import java.util.ArrayList;
@@ -162,6 +163,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
   public <K, V> DaVinciClient<K, V> getGenericAvroClient(String storeName, DaVinciConfig config) {
     return getClient(
         storeName,
+        null,
         config,
         null,
         new GenericDaVinciClientConstructor<>(),
@@ -172,6 +174,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
   public <K, V> DaVinciClient<K, V> getGenericAvroClient(String storeName, DaVinciConfig config, Class<V> valueClass) {
     return getClient(
         storeName,
+        null,
         config,
         valueClass,
         new GenericDaVinciClientConstructor<>(),
@@ -183,6 +186,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
   public <K, V> DaVinciClient<K, V> getAndStartGenericAvroClient(String storeName, DaVinciConfig config) {
     return getClient(
         storeName,
+        null,
         config,
         null,
         new GenericDaVinciClientConstructor<>(),
@@ -196,6 +200,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
       Class<V> valueClass) {
     return getClient(
         storeName,
+        null,
         config,
         valueClass,
         new GenericDaVinciClientConstructor<>(),
@@ -210,6 +215,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
       Class<V> valueClass) {
     return getClient(
         storeName,
+        null,
         config,
         valueClass,
         new SpecificDaVinciClientConstructor<>(),
@@ -224,6 +230,66 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
       Class<V> valueClass) {
     return getClient(
         storeName,
+        null,
+        config,
+        valueClass,
+        new SpecificDaVinciClientConstructor<>(),
+        getClientClass(config, true),
+        true);
+  }
+
+  @Override
+  public <K, V> DaVinciClient<K, V> getGenericAvroClient(String storeName, String viewName, DaVinciConfig config) {
+    return getClient(
+        storeName,
+        viewName,
+        config,
+        null,
+        new GenericDaVinciClientConstructor<>(),
+        getClientClass(config, false),
+        false);
+  }
+
+  @Override
+  public <K, V> DaVinciClient<K, V> getAndStartGenericAvroClient(
+      String storeName,
+      String viewName,
+      DaVinciConfig config) {
+    return getClient(
+        storeName,
+        viewName,
+        config,
+        null,
+        new GenericDaVinciClientConstructor<>(),
+        getClientClass(config, false),
+        true);
+  }
+
+  @Override
+  public <K, V extends SpecificRecord> DaVinciClient<K, V> getSpecificAvroClient(
+      String storeName,
+      String viewName,
+      DaVinciConfig config,
+      Class<V> valueClass) {
+    return getClient(
+        storeName,
+        viewName,
+        config,
+        valueClass,
+        new SpecificDaVinciClientConstructor<>(),
+        getClientClass(config, true),
+        false);
+  }
+
+  @Override
+  public <K, V extends SpecificRecord> DaVinciClient<K, V> getAndStartSpecificAvroClient(
+      String storeName,
+      String viewName,
+      DaVinciConfig config,
+      Class<V> valueClass) {
+    return getClient(
+        storeName,
+        viewName,
         config,
         valueClass,
         new SpecificDaVinciClientConstructor<>(),
@@ -290,29 +356,31 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
 
   protected synchronized DaVinciClient getClient(
       String storeName,
+      String viewName,
       DaVinciConfig config,
       Class valueClass,
       DaVinciClientConstructor clientConstructor,
       Class clientClass,
       boolean startClient) {
+    String internalStoreName = viewName == null ? storeName : VeniceView.getViewStoreName(storeName, viewName);
     if (closed) {
-      throw new VeniceException("Unable to get a client from a closed factory, storeName=" + storeName);
+      throw new VeniceException("Unable to get a client from a closed factory, storeName=" + internalStoreName);
     }
 
-    DaVinciConfig originalConfig = configs.computeIfAbsent(storeName, k -> config);
+    DaVinciConfig originalConfig = configs.computeIfAbsent(internalStoreName, k -> config);
     if (originalConfig.isManaged() != config.isManaged()) {
       throw new VeniceException(
-          "Managed flag conflict" + ", storeName=" + storeName + ", original=" + originalConfig.isManaged()
+          "Managed flag conflict" + ", storeName=" + internalStoreName + ", original=" + originalConfig.isManaged()
               + ", requested=" + config.isManaged());
     }
 
     if (originalConfig.getStorageClass() != config.getStorageClass()) {
       throw new VeniceException(
-          "Storage class conflict" + ", storeName=" + storeName + ", original=" + originalConfig.getStorageClass()
-              + ", requested=" + config.getStorageClass());
+          "Storage class conflict" + ", storeName=" + internalStoreName + ", original="
+              + originalConfig.getStorageClass() + ", requested=" + config.getStorageClass());
     }
 
-    ClientConfig clientConfig = new ClientConfig(storeName).setD2Client(d2Client)
+    ClientConfig clientConfig = new ClientConfig(internalStoreName).setD2Client(d2Client)
         .setD2ServiceName(clusterDiscoveryD2ServiceName)
         .setMetricsRepository(metricsRepository)
         .setSpecificValueClass(valueClass);
@@ -325,12 +393,12 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
       isolatedClients.add(client);
     } else {
       client = sharedClients.computeIfAbsent(
-          storeName,
+          internalStoreName,
           k -> clientConstructor.apply(config, clientConfig, backendConfig, managedClients, icProvider));
 
       if (!clientClass.isInstance(client)) {
         throw new VeniceException(
-            "Client type conflict" + ", storeName=" + storeName + ", originalClientClass=" + client.getClass()
+            "Client type conflict" + ", storeName=" + internalStoreName + ", originalClientClass=" + client.getClass()
                 + ", requestedClientClass=" + clientClass);
       }
     }
