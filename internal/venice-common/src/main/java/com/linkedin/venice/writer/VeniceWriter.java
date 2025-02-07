@@ -35,6 +35,7 @@ import com.linkedin.venice.kafka.validation.Segment;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.partitioner.VeniceComplexPartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.api.EmptyPubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
@@ -59,6 +60,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.VeniceResourceCloseResult;
+import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -67,6 +69,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -78,6 +81,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.lang.Validate;
 import org.apache.logging.log4j.LogManager;
@@ -795,7 +799,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   @Override
-  public Future<PubSubProduceResult> put(
+  public CompletableFuture<PubSubProduceResult> put(
       K key,
       V value,
       int valueSchemaId,
@@ -914,6 +918,81 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     byte[] serializedKey = keySerializer.serialize(topicName, key);
     byte[] serializedValue = valueSerializer.serialize(topicName, value);
     int partition = getPartition(serializedKey);
+    return put(
+        serializedKey,
+        serializedValue,
+        partition,
+        valueSchemaId,
+        callback,
+        leaderMetadataWrapper,
+        logicalTs,
+        putMetadata,
+        oldValueManifest,
+        oldRmdManifest);
+  }
+
+  /**
+   * Write a message with the kafka message envelope (KME) passed in. This allows users re-using existing KME to
+   * speed up the performance. If this is called, VeniceWriter will also reuse the existing DIV data (producer
+   * metadata). It's the "pass-through" mode.
+   *
+   * TODO: move pass-through supports into a server-specific extension of VeniceWriter
+   */
+  @Deprecated
+  public Future<PubSubProduceResult> put(
+      KafkaKey kafkaKey,
+      KafkaMessageEnvelope kafkaMessageEnvelope,
+      PubSubProducerCallback callback,
+      int upstreamPartition,
+      LeaderMetadataWrapper leaderMetadataWrapper) {
+    // Self-adjust the chunking setting in pass-through mode
+    verifyChunkingSetting(kafkaMessageEnvelope);
+
+    byte[] serializedKey = kafkaKey.getKey();
+
+    KafkaMessageEnvelopeProvider kafkaMessageEnvelopeProvider =
+        getKafkaMessageEnvelopeProvider(kafkaMessageEnvelope, leaderMetadataWrapper);
+
+    if (callback instanceof ChunkAwareCallback) {
+      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null, null, null, null, null);
+    }
+
+    return sendMessage(producerMetadata -> kafkaKey, kafkaMessageEnvelopeProvider, upstreamPartition, callback, false);
+  }
+
+  /**
+   * Used by view writers to write records with new DIV to a predetermined partition.
+   */
+  public CompletableFuture<PubSubProduceResult> put(K key, V value, int valueSchemaId, int partition) {
+    byte[] serializedKey = keySerializer.serialize(topicName, key);
+    byte[] serializedValue = valueSerializer.serialize(topicName, value);
+    return put(
+        serializedKey,
+        serializedValue,
+        partition,
+        valueSchemaId,
+        null,
+        DEFAULT_LEADER_METADATA_WRAPPER,
+        APP_DEFAULT_LOGICAL_TS,
+        null,
+        null,
+        null);
+  }
+
+  /**
+   * Write a record with new DIV to a predetermined partition.
+   */
+  public CompletableFuture<PubSubProduceResult> put(
+      byte[] serializedKey,
+      byte[] serializedValue,
+      int partition,
+      int valueSchemaId,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      long logicalTs,
+      PutMetadata putMetadata,
+      ChunkedValueManifest oldValueManifest,
+      ChunkedValueManifest oldRmdManifest) {
     int replicationMetadataPayloadSize = putMetadata == null ? 0 : putMetadata.getSerializedSize();
     isChunkingFlagInvoked = true;
 
@@ -986,35 +1065,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     deleteDeprecatedChunksFromManifest(oldRmdManifest, partition, chunkCallback, leaderMetadataWrapper, deleteMetadata);
 
     return produceResultFuture;
-  }
-
-  /**
-   * Write a message with the kafka message envelope (KME) passed in. This allows users re-using existing KME to
-   * speed up the performance. If this is called, VeniceWriter will also reuse the existing DIV data (producer
-   * metadata). It's the "pass-through" mode.
-   *
-   * TODO: move pass-through supports into a server-specific extension of VeniceWriter
-   */
-  @Deprecated
-  public Future<PubSubProduceResult> put(
-      KafkaKey kafkaKey,
-      KafkaMessageEnvelope kafkaMessageEnvelope,
-      PubSubProducerCallback callback,
-      int upstreamPartition,
-      LeaderMetadataWrapper leaderMetadataWrapper) {
-    // Self-adjust the chunking setting in pass-through mode
-    verifyChunkingSetting(kafkaMessageEnvelope);
-
-    byte[] serializedKey = kafkaKey.getKey();
-
-    KafkaMessageEnvelopeProvider kafkaMessageEnvelopeProvider =
-        getKafkaMessageEnvelopeProvider(kafkaMessageEnvelope, leaderMetadataWrapper);
-
-    if (callback instanceof ChunkAwareCallback) {
-      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null, null, null, null, null);
-    }
-
-    return sendMessage(producerMetadata -> kafkaKey, kafkaMessageEnvelopeProvider, upstreamPartition, callback, false);
   }
 
   private KafkaMessageEnvelopeProvider getKafkaMessageEnvelopeProvider(
@@ -2152,5 +2202,45 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   public PubSubProducerAdapter getProducerAdapter() {
     return this.producerAdapter;
+  }
+
+  /**
+   * {@link VeniceComplexPartitioner} offers a more sophisticated getPartitionId API. It takes value as a parameter, and
+   * it could return a single, multiple or no partition(s). The delete behavior is also undefined, so we will ignore
+   * deletes via key for now. Proper delete can be performed via re-push or new version push.
+   */
+  public CompletableFuture<PubSubProduceResult> writeWithComplexPartitioner(
+      K key,
+      V value,
+      int valueSchemaId,
+      Lazy<GenericRecord> valueProvider,
+      VeniceComplexPartitioner complexPartitioner,
+      int numPartitions) {
+    CompletableFuture<PubSubProduceResult> finalCompletableFuture = new CompletableFuture<>();
+    if (value == null) {
+      // Ignore null value or delete operations
+      finalCompletableFuture.complete(null);
+    } else {
+      // Write updated/put record to materialized view topic partition(s)
+      Set<Integer> partitions = complexPartitioner.getPartitionId(valueProvider.get(), numPartitions);
+      if (partitions.isEmpty()) {
+        finalCompletableFuture.complete(null);
+      } else {
+        CompletableFuture<PubSubProduceResult>[] viewPartitionFutures = new CompletableFuture[partitions.size()];
+        int index = 0;
+        // TODO avoid re-chunking for different partitions for proper chunking support
+        for (int p: partitions) {
+          viewPartitionFutures[index++] = this.put(key, value, valueSchemaId, p);
+        }
+        CompletableFuture.allOf(viewPartitionFutures).whenCompleteAsync((ignored, writeException) -> {
+          if (writeException == null) {
+            finalCompletableFuture.complete(null);
+          } else {
+            finalCompletableFuture.completeExceptionally(writeException);
+          }
+        });
+      }
+    }
+    return finalCompletableFuture;
   }
 }

@@ -6,6 +6,7 @@ import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.partitioner.VeniceComplexPartitioner;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
@@ -33,6 +34,7 @@ public class MaterializedViewWriter extends VeniceViewWriter {
   private final String materializedViewTopicName;
   private Lazy<VeniceWriter> veniceWriter;
   private final KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
+  private final VeniceComplexPartitioner complexPartitioner;
 
   public MaterializedViewWriter(
       VeniceConfigLoader props,
@@ -48,6 +50,11 @@ public class MaterializedViewWriter extends VeniceViewWriter {
     this.veniceWriter = Lazy.of(
         () -> new VeniceWriterFactory(props.getCombinedProperties().toProperties(), pubSubProducerAdapterFactory, null)
             .createVeniceWriter(buildWriterOptions()));
+    if (internalView.getViewPartitioner() instanceof VeniceComplexPartitioner) {
+      complexPartitioner = (VeniceComplexPartitioner) internalView.getViewPartitioner();
+    } else {
+      complexPartitioner = null;
+    }
   }
 
   /**
@@ -64,8 +71,9 @@ public class MaterializedViewWriter extends VeniceViewWriter {
       byte[] key,
       int newValueSchemaId,
       int oldValueSchemaId,
-      GenericRecord replicationMetadataRecord) {
-    return processRecord(newValue, key, newValueSchemaId, false);
+      GenericRecord replicationMetadataRecord,
+      Lazy<GenericRecord> newValueProvider) {
+    return processRecord(newValue, key, newValueSchemaId, false, newValueProvider);
   }
 
   /**
@@ -81,16 +89,29 @@ public class MaterializedViewWriter extends VeniceViewWriter {
       ByteBuffer newValue,
       byte[] key,
       int newValueSchemaId,
-      boolean isChunkedKey) {
+      boolean isChunkedKey,
+      Lazy<GenericRecord> newValueProvider) {
     byte[] viewTopicKey = key;
     if (isChunkedKey) {
       viewTopicKey = keyWithChunkingSuffixSerializer.getKeyFromChunkedKey(key);
     }
-    if (newValue == null) {
-      // this is a delete operation
-      return veniceWriter.get().delete(viewTopicKey, null);
+    byte[] newValueBytes = newValue == null ? null : ByteUtils.extractByteArray(newValue);
+    if (complexPartitioner != null) {
+      return veniceWriter.get()
+          .writeWithComplexPartitioner(
+              viewTopicKey,
+              newValueBytes,
+              newValueSchemaId,
+              newValueProvider,
+              complexPartitioner,
+              internalView.getViewPartitionCount());
+    } else {
+      if (newValue == null) {
+        // this is a delete operation
+        return veniceWriter.get().delete(viewTopicKey, null);
+      }
+      return veniceWriter.get().put(viewTopicKey, newValueBytes, newValueSchemaId);
     }
-    return veniceWriter.get().put(viewTopicKey, ByteUtils.extractByteArray(newValue), newValueSchemaId);
   }
 
   @Override

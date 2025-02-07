@@ -450,6 +450,22 @@ public class TestWriteUtils {
     });
   }
 
+  public static Schema writeSimpleAvroFileWithStringToNameRecordV2Schema(File parentDir) throws IOException {
+    String firstName = "first_name_";
+    String lastName = "last_name_";
+
+    return writeSimpleAvroFile(parentDir, STRING_TO_NAME_RECORD_V2_SCHEMA, i -> {
+      GenericRecord keyValueRecord = new GenericData.Record(STRING_TO_NAME_RECORD_V2_SCHEMA);
+      keyValueRecord.put(DEFAULT_KEY_FIELD_PROP, String.valueOf(i)); // Key
+      GenericRecord valueRecord = new GenericData.Record(NAME_RECORD_V2_SCHEMA);
+      valueRecord.put("firstName", firstName + i);
+      valueRecord.put("lastName", lastName + i);
+      valueRecord.put("age", -1);
+      keyValueRecord.put(DEFAULT_VALUE_FIELD_PROP, valueRecord); // Value
+      return keyValueRecord;
+    });
+  }
+
   public static Schema writeSimpleAvroFile(
       File parentDir,
       Schema schema,
