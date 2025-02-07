@@ -46,7 +46,7 @@ public class DaVinciBlobFinder implements BlobFinder {
    * @param storeName
    * @return the store client
    */
-  AbstractAvroStoreClient startStoreClient(String storeName) {
+  AbstractAvroStoreClient getStoreClient(String storeName) {
     return storeToClientMap.computeIfAbsent(storeName, k -> {
       // update the config with respective store name
       ClientConfig storeClientConfig = ClientConfig.cloneConfig(clientConfig).setStoreName(storeName);
@@ -60,7 +60,7 @@ public class DaVinciBlobFinder implements BlobFinder {
 
   @Override
   public BlobPeersDiscoveryResponse discoverBlobPeers(String storeName, int version, int partition) {
-    AbstractAvroStoreClient storeClient = startStoreClient(storeName);
+    AbstractAvroStoreClient storeClient = getStoreClient(storeName);
 
     String uri = buildUriForBlobDiscovery(storeName, version, partition);
     CompletableFuture<BlobPeersDiscoveryResponse> futureResponse = CompletableFuture.supplyAsync(() -> {
