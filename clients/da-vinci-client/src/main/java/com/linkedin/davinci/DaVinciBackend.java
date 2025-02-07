@@ -401,7 +401,7 @@ public class DaVinciBackend implements Closeable {
 
   private synchronized void bootstrap() {
     List<AbstractStorageEngine> storageEngines =
-        storageService.getStorageEngineRepository().getAllLocalStorageEngines();
+        getStorageService().getStorageEngineRepository().getAllLocalStorageEngines();
     LOGGER.info("Starting bootstrap, storageEngines: {}", storageEngines);
     Map<String, Version> storeNameToBootstrapVersionMap = new HashMap<>();
     Map<String, List<Integer>> storeNameToPartitionListMap = new HashMap<>();
@@ -440,7 +440,7 @@ public class DaVinciBackend implements Closeable {
       if (!(storeNameToBootstrapVersionMap.containsKey(storeName)
           && (storeNameToBootstrapVersionMap.get(storeName).getNumber() < versionNumber))) {
         storeNameToBootstrapVersionMap.put(storeName, version);
-        storeNameToPartitionListMap.put(storeName, storageService.getUserPartitions(kafkaTopicName));
+        storeNameToPartitionListMap.put(storeName, getStorageService().getUserPartitions(kafkaTopicName));
       }
     }
 
@@ -455,12 +455,12 @@ public class DaVinciBackend implements Closeable {
          * In this case we will only need to close metadata partition, as it is supposed to be opened and managed by
          * forked ingestion process via following subscribe call.
          */
-        for (AbstractStorageEngine storageEngine: storageService.getStorageEngineRepository()
+        for (AbstractStorageEngine storageEngine: getStorageService().getStorageEngineRepository()
             .getAllLocalStorageEngines()) {
           storageEngine.closeMetadataPartition();
         }
       } else {
-        storageService.closeAllStorageEngines();
+        getStorageService().closeAllStorageEngines();
       }
     }
 
@@ -470,13 +470,13 @@ public class DaVinciBackend implements Closeable {
             metricsRepository,
             storageMetadataService,
             ingestionService,
-            storageService,
+            getStorageService(),
             blobTransferManager,
             this::getVeniceCurrentVersionNumber)
         : new DefaultIngestionBackend(
             storageMetadataService,
             ingestionService,
-            storageService,
+            getStorageService(),
             blobTransferManager,
             configLoader.getVeniceServerConfig());
     ingestionBackend.addIngestionNotifier(ingestionListener);
@@ -487,7 +487,7 @@ public class DaVinciBackend implements Closeable {
         List<Integer> partitions = storeNameToPartitionListMap.get(storeName);
         String versionTopic = version.kafkaTopicName();
         LOGGER.info("Bootstrapping partitions {} for {}", partitions, versionTopic);
-        AbstractStorageEngine storageEngine = storageService.getStorageEngine(versionTopic);
+        AbstractStorageEngine storageEngine = getStorageService().getStorageEngine(versionTopic);
         aggVersionedStorageEngineStats.setStorageEngine(versionTopic, storageEngine);
         StoreBackend storeBackend = getStoreOrThrow(storeName);
         storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));

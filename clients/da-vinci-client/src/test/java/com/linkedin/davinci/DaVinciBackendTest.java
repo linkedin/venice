@@ -189,6 +189,7 @@ public class DaVinciBackendTest {
     List<AbstractStorageEngine> localStorageEngines = new ArrayList<>();
     localStorageEngines.add(abstractStorageEngine);
 
+    when(backend.getStorageService()).thenReturn(mockStorageService);
     when(mockStorageService.getStorageEngineRepository()).thenReturn(mockStorageEngineRepository);
     when(mockStorageService.getStorageEngine(resourceName)).thenReturn(abstractStorageEngine);
     when(mockStorageEngineRepository.getAllLocalStorageEngines()).thenReturn(localStorageEngines);
