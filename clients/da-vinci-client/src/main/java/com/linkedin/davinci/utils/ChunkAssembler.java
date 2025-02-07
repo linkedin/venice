@@ -8,11 +8,10 @@ import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
-import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -46,8 +45,10 @@ public class ChunkAssembler {
   }
 
   /**
-   * Buffers and assembles chunks of a record, then decompresses and deserializes the record.
-   * @see #bufferAndAssembleRecord(PubSubTopicPartition, int, byte[], ByteBuffer, long, int, VeniceCompressor)
+   * Buffers and assembles chunks of a record.
+   *
+   * If the record is chunked, it stores the chunks and returns null.
+   * Once all chunks of a record are received, it assembles, decompresses, and deserializes the record.
    */
   public <T> T bufferAndAssembleRecord(
       PubSubTopicPartition pubSubTopicPartition,
@@ -55,9 +56,9 @@ public class ChunkAssembler {
       byte[] keyBytes,
       ByteBuffer valueBytes,
       long recordOffset,
+      Lazy<RecordDeserializer<T>> recordDeserializer,
       int readerSchemaId,
-      VeniceCompressor compressor,
-      Function<ByteBuffer, T> deserializationFunction) {
+      VeniceCompressor compressor) {
     ByteBuffer assembledRecord = bufferAndAssembleRecord(
         pubSubTopicPartition,
         schemaId,
@@ -66,25 +67,28 @@ public class ChunkAssembler {
         recordOffset,
         readerSchemaId,
         compressor);
+    T decompressedAndDeserializedRecord = null;
 
+    // Record is a chunk. Return null
     if (assembledRecord == null) {
-      return null; // the value is a chunk, and the full record cannot yet be assembled until the manifest is reached
+      return decompressedAndDeserializedRecord;
     }
 
     try {
-      return decompressAndDeserialize(deserializationFunction, compressor, assembledRecord);
+      decompressedAndDeserializedRecord =
+          decompressAndDeserialize(recordDeserializer.get(), compressor, assembledRecord);
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
+
+    return decompressedAndDeserializedRecord;
   }
 
   /**
-   * Buffers and assembles chunks of a record, returning the compressed and serialized version of the assembled record.
+   * Buffers and assembles chunks of a record.
    *
-   * 1. If the record is not chunked, the original record is returned without buffering it in-memory.
-   * 2. If the record is chunked, this function buffers the chunks in-memory and returns null.
-   * 3. Once all chunks specified by the {@link ChunkedValueManifest} of a record are received, this function returns
-   *    the compressed and serialized version of the assembled record.
+   * If the record is chunked, it stores the chunks and returns null.
+   * Once all chunks of a record are received, it returns the compressed and serialized assembled record.
    */
   public ByteBuffer bufferAndAssembleRecord(
       PubSubTopicPartition pubSubTopicPartition,
@@ -99,22 +103,19 @@ public class ChunkAssembler {
     if (!inMemoryStorageEngine.containsPartition(pubSubTopicPartition.getPartitionNumber())) {
       inMemoryStorageEngine.addStoragePartition(pubSubTopicPartition.getPartitionNumber());
     }
-
-    final Runnable putRecordToInMemoryStorageEngine = () -> {
+    // If this is a record chunk, store the chunk and return null for processing this record
+    if (schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()) {
       inMemoryStorageEngine.put(
           pubSubTopicPartition.getPartitionNumber(),
           keyBytes,
-          // We need to extract data from valueBytes, otherwise the array could contain non-data
-          ValueRecord.create(schemaId, ByteUtils.extractByteArray(valueBytes)).serialize());
-    };
-
-    if (schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()) {
-      // If this is a chunk, store the chunk and return null because the full record cannot yet be assembled
-      putRecordToInMemoryStorageEngine.run();
+          ValueRecord.create(schemaId, valueBytes.array()).serialize());
       return null;
     } else if (schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
-      // This is the last value. Store it and read it from the in-memory store as a fully assembled record
-      putRecordToInMemoryStorageEngine.run();
+      // This is the last value. Store it, and now read it from the in memory store as a fully assembled value
+      inMemoryStorageEngine.put(
+          pubSubTopicPartition.getPartitionNumber(),
+          keyBytes,
+          ValueRecord.create(schemaId, valueBytes.array()).serialize());
       try {
         assembledRecord = RawBytesChunkingAdapter.INSTANCE.get(
             inMemoryStorageEngine,
@@ -136,8 +137,7 @@ public class ChunkAssembler {
         LOGGER.warn(
             "Encountered error assembling chunked record, this can happen when seeking between chunked records. Skipping offset {} on topic {}",
             recordOffset,
-            pubSubTopicPartition.getPubSubTopic().getName(),
-            ex);
+            pubSubTopicPartition.getPubSubTopic().getName());
       }
     } else {
       // this is a fully specified record, no need to buffer and assemble it, just return the valueBytes
@@ -156,14 +156,11 @@ public class ChunkAssembler {
     return assembledRecord;
   }
 
-  /**
-   * Decompresses the value bytes using the input compressor and applies the provided deserialization function.
-   */
   protected <T> T decompressAndDeserialize(
-      Function<ByteBuffer, T> deserializationFunction,
+      RecordDeserializer<T> deserializer,
       VeniceCompressor compressor,
       ByteBuffer value) throws IOException {
-    return deserializationFunction.apply(compressor.decompress(value));
+    return deserializer.deserialize(compressor.decompress(value));
   }
 
   public void clearInMemoryDB() {

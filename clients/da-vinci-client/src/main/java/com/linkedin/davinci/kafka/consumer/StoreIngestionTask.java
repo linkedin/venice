@@ -2474,7 +2474,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return false;
     }
 
-    // Global RT DIV messages should only be in version topics, not realtime topics. Skip it and log a warning.
+    // Just a sanity check for something that shouldn't ever happen. Skip it and log a warning.
     if (record.getKey().isGlobalRtDiv() && record.getTopic().isRealTime()) {
       LOGGER.warn("Skipping Global RT DIV message from realtime topic partition: {}", record.getTopicPartition());
       return false;
