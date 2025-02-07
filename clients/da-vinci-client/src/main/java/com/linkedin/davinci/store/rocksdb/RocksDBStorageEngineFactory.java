@@ -150,7 +150,8 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     if (systemMemorySize > 0 && (systemMemorySize * 0.8 < cacheBytesNeeded)) {
       throw new RuntimeException(
           "Cannot setup rocksdb instance with block-cache size "
-              + generateHumanReadableByteCountString(cacheBytesNeeded));
+              + generateHumanReadableByteCountString(cacheBytesNeeded) + ". System memory : "
+              + generateHumanReadableByteCountString(systemMemorySize));
     }
     // Shared cache across all the RocksDB databases
     if (RocksDBBlockCacheImplementations.CLOCK.equals(rocksDBServerConfig.getRocksDBBlockCacheImplementation())) {
