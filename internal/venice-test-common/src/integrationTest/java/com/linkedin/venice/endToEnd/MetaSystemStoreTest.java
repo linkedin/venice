@@ -289,6 +289,15 @@ public class MetaSystemStoreTest {
     }
   }
 
+  // TODO PRANAV move this test and use the full DVC
+  // Can we add a new test file where we run a more
+  // comprehensive integration test with a DVC? i.e
+  // push some new versions or make some store config
+  // changes and make sure the DVC pick up those changes.
+  // You can see examples like the recently added
+  // testBatchOnlyMaterializedViewDVCConsumer.
+  // You probably don't need a VeniceTwoLayerMultiRegionMultiClusterWrapper,
+  // a single region will be sufficient.
   @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testRequestBasedMetaStoreBasedRepository() throws InterruptedException {
     String regularVeniceStoreName = Utils.getUniqueString("venice_store");
@@ -306,8 +315,7 @@ public class MetaSystemStoreTest {
           .build();
       nativeMetadataRepository = NativeMetadataRepository.getInstance(clientConfig, backendConfig);
       nativeMetadataRepository.start();
-      // ThinClientMetaStoreBasedRepository implementation should be used since CLIENT_USE_META_SYSTEM_STORE_REPOSITORY
-      // is set to true without enabling other feature flags.
+      // RequestBasedMetaRepository implementation should be used since
       Assert.assertTrue(nativeMetadataRepository instanceof RequestBasedMetaRepository);
       verifyRepository(nativeMetadataRepository, regularVeniceStoreName);
     } finally {
