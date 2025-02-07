@@ -51,6 +51,7 @@ import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.server.VeniceServerContext;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.tehuti.MetricsAware;
+import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
@@ -58,6 +59,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
+import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
@@ -78,6 +80,7 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.testng.Assert;
 
 
 /**
@@ -454,10 +457,26 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
   @Override
   protected void internalStop() throws Exception {
     if (!forkServer) {
+      verifyHelixParticipantServicePoolMetricsReporting(veniceServer);
       veniceServer.shutdown();
     } else {
       serverProcess.destroy();
     }
+  }
+
+  private void verifyHelixParticipantServicePoolMetricsReporting(VeniceServer veniceServer) {
+    MetricsRepository metricsRepository = veniceServer.getMetricsRepository();
+    MockTehutiReporter reporter = new MockTehutiReporter();
+    metricsRepository.addReporter(reporter);
+    Metric activeThreadNumber = reporter.query(".Venice_L/F_ST_thread_pool--active_thread_number.LambdaStat");
+    Assert.assertNotNull(activeThreadNumber);
+    Assert.assertTrue(activeThreadNumber.value() >= 0);
+    Metric maxThreadNumber = reporter.query(".Venice_L/F_ST_thread_pool--max_thread_number.LambdaStat");
+    Assert.assertNotNull(maxThreadNumber);
+    Assert.assertTrue(maxThreadNumber.value() > 0);
+    Metric queuedTaskNumber = reporter.query(".Venice_L/F_ST_thread_pool--queued_task_number.LambdaStat");
+    Assert.assertNotNull(queuedTaskNumber);
+    Assert.assertTrue(queuedTaskNumber.value() >= 0);
   }
 
   @Override
