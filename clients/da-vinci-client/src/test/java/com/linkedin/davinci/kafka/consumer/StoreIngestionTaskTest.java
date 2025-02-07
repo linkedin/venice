@@ -5487,25 +5487,6 @@ public abstract class StoreIngestionTaskTest {
 
   }
 
-  @Test(dataProvider = "aaConfigProvider")
-  public void testProcessGlobalRtDivMessage(AAConfig aaConfig) throws Exception {
-    runTest(Collections.singleton(PARTITION_FOO), () -> {
-      // Arrange
-      KafkaKey key = new KafkaKey(MessageType.GLOBAL_RT_DIV, "test_key".getBytes());
-      KafkaMessageEnvelope value = new KafkaMessageEnvelope();
-      Put put = new Put();
-      value.payloadUnion = put;
-      value.messageType = MessageType.PUT.getValue();
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record =
-          new ImmutablePubSubMessage<>(key, value, new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO), 0, 0, 0);
-      // Act
-      storeIngestionTaskUnderTest.processGlobalRtDivMessage(record);
-      // Assert
-      verify(storeIngestionTaskUnderTest.getDivChunkAssembler())
-          .bufferAndAssembleRecord(any(), anyInt(), any(), any(), anyLong(), anyInt(), any(), any());
-    }, aaConfig);
-  }
-
   @Test
   public void testResolveTopicPartitionWithKafkaURL() {
     StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);

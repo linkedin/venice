@@ -14,7 +14,6 @@ import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
-import com.linkedin.davinci.utils.ChunkAssembler;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -128,8 +127,6 @@ public class StoreIngestionTaskFactory {
     private Runnable runnableForKillIngestionTasksForNonCurrentVersions;
     private ExecutorService aaWCWorkLoadProcessingThreadPool;
     private ExecutorService aaWCIngestionStorageLookupThreadPool;
-
-    private ChunkAssembler divChunkAssembler;
 
     private interface Setter {
       void apply();
@@ -347,14 +344,6 @@ public class StoreIngestionTaskFactory {
 
     public ExecutorService getAAWCWorkLoadProcessingThreadPool() {
       return this.aaWCWorkLoadProcessingThreadPool;
-    }
-
-    public Builder setDivChunkAssembler(ChunkAssembler divChunkAssembler) {
-      return set(() -> this.divChunkAssembler = divChunkAssembler);
-    }
-
-    public ChunkAssembler getDivChunkAssembler() {
-      return divChunkAssembler;
     }
   }
 }
