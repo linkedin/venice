@@ -256,7 +256,6 @@ public class TestDeferredVersionSwapService {
     doReturn(3).when(store6).getLargestUsedVersionNumber();
 
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
-    ;
     doReturn(veniceHelixAdmin).when(admin).getVeniceHelixAdmin();
 
     HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
