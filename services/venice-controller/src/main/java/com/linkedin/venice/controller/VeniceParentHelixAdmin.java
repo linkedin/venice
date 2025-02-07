@@ -170,6 +170,7 @@ import com.linkedin.venice.exceptions.ResourceStillExistsException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
@@ -729,7 +730,7 @@ public class VeniceParentHelixAdmin implements Admin {
             "Timed out after waiting for " + waitingTimeForConsumptionMs + "ms for admin consumption to catch up.";
         errMsg += " Consumed execution id: " + consumedExecutionId + ", waiting to be consumed id: " + executionId;
         errMsg += (lastException == null) ? "" : " Last exception: " + lastException.getMessage();
-        throw new VeniceException(errMsg, lastException);
+        throw new VeniceTimeoutException(errMsg, lastException);
       }
 
       LOGGER.info("Waiting execution id: {} to be consumed, currently at: {}", executionId, consumedExecutionId);
@@ -978,8 +979,13 @@ public class VeniceParentHelixAdmin implements Admin {
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.DELETE_STORE.getValue();
       message.payloadUnion = deleteStore;
-
-      sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+      // When multiple store deletions happened in a short time range, it is possible that the store deletion message
+      // will not be consumed in time, as previous store deletion message is still being processed.
+      try {
+        sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+      } catch (VeniceTimeoutException e) {
+        LOGGER.warn("Encountering timeout during deleting store: {} from cluster: {}", storeName, clusterName, e);
+      }
 
       // Deleting ACL needs to be the last step in store deletion process.
       if (store != null) {
