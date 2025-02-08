@@ -3642,7 +3642,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return Version.parseVersionFromKafkaTopicName(offlinePush.get());
     }
     // If the push status is finished, then return the largest online version greater than current version
-    return getOnlineFutureVersion(clusterName, storeName);
+    return getFutureVersionWithStatus(clusterName, storeName, VersionStatus.ONLINE);
   }
 
   @Override
@@ -3655,14 +3655,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  public int getOnlineFutureVersion(String clusterName, String storeName) {
+  public int getFutureVersionWithStatus(String clusterName, String storeName, VersionStatus status) {
     Store store = getStoreForReadOnly(clusterName, storeName);
     if (store.getVersions().isEmpty()) {
       return NON_EXISTING_VERSION;
     }
 
     Version version = store.getVersions().stream().max(Comparable::compareTo).get();
-    if (version.getNumber() != store.getCurrentVersion() && version.getStatus().equals(ONLINE)) {
+    if (version.getNumber() != store.getCurrentVersion() && version.getStatus().equals(status)) {
       return version.getNumber();
     }
     return NON_EXISTING_VERSION;
@@ -4519,7 +4519,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return;
       }
     }
-    int futureVersion = getOnlineFutureVersion(clusterName, storeName);
+    int futureVersion = getFutureVersionWithStatus(clusterName, storeName, VersionStatus.PUSHED);
     if (futureVersion == Store.NON_EXISTING_VERSION) {
       return;
     }
@@ -4530,6 +4530,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(futureVersion);
+      store.updateVersionStatus(futureVersion, VersionStatus.ONLINE);
       LOGGER.info(
           "Rolling forward current version {} to version {} in store {}",
           previousVersion,
