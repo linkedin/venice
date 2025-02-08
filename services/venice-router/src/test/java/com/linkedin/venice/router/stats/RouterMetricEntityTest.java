@@ -28,7 +28,7 @@ public class RouterMetricEntityTest {
             "incoming_call_count",
             MetricType.COUNTER,
             MetricUnit.NUMBER,
-            "Count of all incoming requests",
+            "Count of all incoming requests in the request handling path",
             Utils.setOf(
                 VeniceMetricsDimensions.VENICE_STORE_NAME,
                 VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
@@ -39,7 +39,7 @@ public class RouterMetricEntityTest {
             "call_count",
             MetricType.COUNTER,
             MetricUnit.NUMBER,
-            "Count of all requests with response details",
+            "Count of all requests in the response handling path along with response codes",
             Utils.setOf(
                 VeniceMetricsDimensions.VENICE_STORE_NAME,
                 VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
@@ -67,7 +67,7 @@ public class RouterMetricEntityTest {
             "incoming_key_count",
             MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
             MetricUnit.NUMBER,
-            "Count of keys in all requests",
+            "Count of keys in incoming requests in the request handling path",
             Utils.setOf(
                 VeniceMetricsDimensions.VENICE_STORE_NAME,
                 VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
@@ -79,7 +79,7 @@ public class RouterMetricEntityTest {
             "key_count",
             MetricType.HISTOGRAM,
             MetricUnit.NUMBER,
-            "Count of keys in all responses",
+            "Count of keys in the response handling path along with response codes",
             Utils.setOf(
                 VeniceMetricsDimensions.VENICE_STORE_NAME,
                 VeniceMetricsDimensions.VENICE_CLUSTER_NAME,

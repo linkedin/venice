@@ -22,12 +22,20 @@ import java.util.Set;
  * List all Metric entities for router
  */
 public enum RouterMetricEntity {
+  /**
+   * Count of all incoming requests in the request handling path
+   */
   INCOMING_CALL_COUNT(
-      MetricType.COUNTER, MetricUnit.NUMBER, "Count of all incoming requests",
+      MetricType.COUNTER, MetricUnit.NUMBER, "Count of all incoming requests in the request handling path",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
   ),
+  /**
+   * Count of all requests in the response handling path along with response codes.
+   * This vs {@link #INCOMING_CALL_COUNT} will help to correlate the incoming vs properly handled requests.
+   */
   CALL_COUNT(
-      MetricType.COUNTER, MetricUnit.NUMBER, "Count of all requests with response details",
+      MetricType.COUNTER, MetricUnit.NUMBER,
+      "Count of all requests in the response handling path along with response codes",
       setOf(
           VENICE_STORE_NAME,
           VENICE_CLUSTER_NAME,
@@ -36,6 +44,9 @@ public enum RouterMetricEntity {
           HTTP_RESPONSE_STATUS_CODE_CATEGORY,
           VENICE_RESPONSE_STATUS_CODE_CATEGORY)
   ),
+  /**
+   * Latency based on all responses
+   */
   CALL_TIME(
       MetricType.HISTOGRAM, MetricUnit.MILLISECOND, "Latency based on all responses",
       setOf(
@@ -46,12 +57,19 @@ public enum RouterMetricEntity {
           HTTP_RESPONSE_STATUS_CODE_CATEGORY,
           VENICE_RESPONSE_STATUS_CODE_CATEGORY)
   ),
+  /**
+   * Count of keys in incoming requests in the request handling path
+   */
   INCOMING_KEY_COUNT(
-      MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER, "Count of keys in all requests",
+      MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
+      "Count of keys in incoming requests in the request handling path",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_VALIDATION_OUTCOME)
   ),
+  /**
+   * Count of keys in the response handling path along with response codes.
+   */
   KEY_COUNT(
-      MetricType.HISTOGRAM, MetricUnit.NUMBER, "Count of keys in all responses",
+      MetricType.HISTOGRAM, MetricUnit.NUMBER, "Count of keys in the response handling path along with response codes",
       setOf(
           VENICE_STORE_NAME,
           VENICE_CLUSTER_NAME,
@@ -60,25 +78,40 @@ public enum RouterMetricEntity {
           HTTP_RESPONSE_STATUS_CODE_CATEGORY,
           VENICE_RESPONSE_STATUS_CODE_CATEGORY)
   ),
+  /**
+   * Count of retries triggered
+   */
   RETRY_COUNT(
       MetricType.COUNTER, MetricUnit.NUMBER, "Count of retries triggered",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_RETRY_TYPE)
   ),
+  /**
+   * Count of allowed retry requests
+   */
   ALLOWED_RETRY_COUNT(
       MetricType.COUNTER, MetricUnit.NUMBER, "Count of allowed retry requests",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
   ),
+  /**
+   * Count of disallowed retry requests
+   */
   DISALLOWED_RETRY_COUNT(
       MetricType.COUNTER, MetricUnit.NUMBER, "Count of disallowed retry requests",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
   ),
-  RETRY_DELAY(
-      MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND, "Retry delay time",
-      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
-  ),
+  /**
+   * Count of aborted retry requests
+   */
   ABORTED_RETRY_COUNT(
       MetricType.COUNTER, MetricUnit.NUMBER, "Count of aborted retry requests",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_RETRY_ABORT_REASON)
+  ),
+  /**
+   * Retry delay time: Time in milliseconds between the original request and the retry request
+   */
+  RETRY_DELAY(
+      MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND, "Retry delay time",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
   );
 
   private final MetricEntity metricEntity;
