@@ -18,7 +18,6 @@ import static org.testng.Assert.fail;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
-import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageService;
@@ -236,10 +235,6 @@ public class DaVinciBackendTest {
     aggVersionedStorageEngineStatsField.setAccessible(true);
     aggVersionedStorageEngineStatsField.set(backend, mockAggVersionedStorageEngineStats);
 
-    VeniceNotifier ingestionListener = mock(VeniceNotifier.class);
-    Field ingestionListenerField = DaVinciBackend.class.getDeclaredField("ingestionListener");
-    ingestionListenerField.setAccessible(true);
-    ingestionListenerField.set(backend, ingestionListener);
     KafkaStoreIngestionService storeIngestionService = mock(KafkaStoreIngestionService.class);
     Field ingestionServiceField = DaVinciBackend.class.getDeclaredField("ingestionService");
     ingestionServiceField.setAccessible(true);
