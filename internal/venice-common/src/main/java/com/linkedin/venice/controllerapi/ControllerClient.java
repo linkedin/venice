@@ -1190,6 +1190,11 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.GET_STORE_LARGEST_USED_VERSION, params, VersionResponse.class);
   }
 
+  public VersionResponse getStoreLargestUsedRTVersion(String clusterName, String storeName) {
+    QueryParams params = newParams().add(CLUSTER, clusterName).add(NAME, storeName);
+    return request(ControllerRoute.GET_STORE_LARGEST_USED_VERSION, params, VersionResponse.class);
+  }
+
   public RegionPushDetailsResponse getRegionPushDetails(String storeName, boolean isPartitionDetailEnabled) {
     QueryParams params = newParams().add(NAME, storeName).add(PARTITION_DETAIL_ENABLED, isPartitionDetailEnabled);
     return request(ControllerRoute.GET_REGION_PUSH_DETAILS, params, RegionPushDetailsResponse.class);

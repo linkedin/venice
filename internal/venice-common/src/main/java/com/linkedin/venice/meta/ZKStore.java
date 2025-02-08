@@ -367,6 +367,18 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
 
   @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
   @Override
+  public int getLargestUsedRTVersionNumber() {
+    return this.storeProperties.largestUsedRTVersionNumber;
+  }
+
+  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
+  @Override
+  public void setLargestUsedRTVersionNumber(int largestUsedRTVersionNumber) {
+    this.storeProperties.largestUsedRTVersionNumber = largestUsedRTVersionNumber;
+  }
+
+  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
+  @Override
   public long getStorageQuotaInByte() {
     // This is a safeguard in case that some old stores do not have storage quota field
     return (this.storeProperties.storageQuotaInByte <= 0

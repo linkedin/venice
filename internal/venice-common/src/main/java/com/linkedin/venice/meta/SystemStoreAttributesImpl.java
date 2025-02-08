@@ -51,6 +51,16 @@ public class SystemStoreAttributesImpl implements SystemStoreAttributes {
   }
 
   @Override
+  public int getLargestUsedRTVersionNumber() {
+    return this.dataModel.largestUsedRTVersionNumber;
+  }
+
+  @Override
+  public void setLargestUsedRTVersionNumber(int largestUsedRTVersionNumber) {
+    this.dataModel.largestUsedRTVersionNumber = largestUsedRTVersionNumber;
+  }
+
+  @Override
   public int getCurrentVersion() {
     return this.dataModel.currentVersion;
   }
