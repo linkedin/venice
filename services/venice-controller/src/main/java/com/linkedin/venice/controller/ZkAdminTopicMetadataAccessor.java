@@ -35,30 +35,24 @@ public class ZkAdminTopicMetadataAccessor extends AdminTopicMetadataAccessor {
     zkMapAccessor = new ZkBaseDataAccessor<>(zkClient);
   }
 
-  public synchronized void partialUpdateMetadata(String clusterName, Map<String, Long> metadata) {
-    Map<String, Long> currentMetadata = getMetadata(clusterName);
-
-    // Update only the keys present in the metadata map.
-    metadata.forEach(currentMetadata::put);
-
-    updateMetadata(clusterName, currentMetadata);
-  }
-
   /**
-   * @see AdminTopicMetadataAccessor#updateMetadata(String, Map)
+   * Update the upstream metadata map for the given cluster with specific information provided in newMetadata
    */
   @Override
-  public synchronized void updateMetadata(String clusterName, Map<String, Long> metadata) {
+  public void updateMetadata(String clusterName, Map<String, Long> newMetadata) {
     String path = getAdminTopicMetadataNodePath(clusterName);
-    HelixUtils.update(zkMapAccessor, path, metadata, ZK_UPDATE_RETRY);
-    LOGGER.info("Persisted admin topic metadata map for cluster: {}, map: {}", clusterName, metadata);
+    HelixUtils.compareAndUpdate(zkMapAccessor, path, ZK_UPDATE_RETRY, currentMetadataMap -> {
+      currentMetadataMap.putAll(newMetadata);
+      return currentMetadataMap;
+    });
+    LOGGER.info("Persisted admin topic metadata map for cluster: {}, map: {}", clusterName, newMetadata);
   }
 
   /**
    * @see AdminTopicMetadataAccessor#getMetadata(String)
    */
   @Override
-  public synchronized Map<String, Long> getMetadata(String clusterName) {
+  public Map<String, Long> getMetadata(String clusterName) {
     int retry = ZK_UPDATE_RETRY;
     String path = getAdminTopicMetadataNodePath(clusterName);
     while (retry > 0) {

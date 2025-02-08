@@ -20,7 +20,8 @@ public abstract class AdminTopicMetadataAccessor {
 
   /**
    * @return a map with {@linkplain AdminTopicMetadataAccessor#OFFSET_KEY}, {@linkplain AdminTopicMetadataAccessor#UPSTREAM_OFFSET_KEY},
-   *         {@linkplain AdminTopicMetadataAccessor#EXECUTION_ID_KEY}, {@linkplain AdminTopicMetadataAccessor#ADMIN_OPERATION_PROTOCOL_VERSION_KEY} specified to input values.
+   *         {@linkplain AdminTopicMetadataAccessor#EXECUTION_ID_KEY}, {@linkplain AdminTopicMetadataAccessor#ADMIN_OPERATION_PROTOCOL_VERSION_KEY}
+   *         specified to input values.
    */
   public static Map<String, Long> generateMetadataMap(
       Optional<Long> localOffset,
@@ -72,12 +73,15 @@ public abstract class AdminTopicMetadataAccessor {
     return metadata.getOrDefault(EXECUTION_ID_KEY, UNDEFINED_VALUE);
   }
 
+  /**
+   * @return the value to which the specified key is mapped to {@linkplain AdminTopicMetadataAccessor#ADMIN_OPERATION_PROTOCOL_VERSION_KEY}.
+   */
   public static long getAdminOperationProtocolVersion(Map<String, Long> metadata) {
     return metadata.getOrDefault(ADMIN_OPERATION_PROTOCOL_VERSION_KEY, UNDEFINED_VALUE);
   }
 
   /**
-   * Update all relevant metadata for a given cluster in a single transaction.
+   * Update all relevant metadata for a given cluster in a single transaction with information provided in metadata.
    * @param clusterName of the cluster at interest.
    * @param metadata map containing relevant information.
    */

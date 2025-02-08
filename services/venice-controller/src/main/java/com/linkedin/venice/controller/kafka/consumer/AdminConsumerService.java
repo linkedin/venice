@@ -17,6 +17,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.Optional;
@@ -187,8 +188,12 @@ public class AdminConsumerService extends AbstractVeniceService {
    */
   public void updateAdminTopicMetadata(String clusterName, long executionId, long offset, long upstreamOffset) {
     if (clusterName.equals(config.getClusterName())) {
-      Map<String, Long> metadata = AdminTopicMetadataAccessor.generateMetadataMap(offset, upstreamOffset, executionId);
-      adminTopicMetadataAccessor.partialUpdateMetadata(clusterName, metadata);
+      try (AutoCloseableLock ignore =
+          admin.getHelixVeniceClusterResources(clusterName).getClusterLockManager().createClusterWriteLock()) {
+        Map<String, Long> metadata =
+            AdminTopicMetadataAccessor.generateMetadataMap(offset, upstreamOffset, executionId);
+        adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
+      }
     } else {
       throw new VeniceException(
           "This AdminConsumptionService is for cluster: " + config.getClusterName()
@@ -201,12 +206,15 @@ public class AdminConsumerService extends AbstractVeniceService {
    */
   public void updateAdminOperationProtocolVersion(String clusterName, long adminOperationProtocolVersion) {
     if (clusterName.equals(config.getClusterName())) {
-      Map<String, Long> metadata = AdminTopicMetadataAccessor.generateMetadataMap(
-          Optional.empty(),
-          Optional.empty(),
-          Optional.empty(),
-          Optional.of(adminOperationProtocolVersion));
-      adminTopicMetadataAccessor.partialUpdateMetadata(clusterName, metadata);
+      try (AutoCloseableLock ignore =
+          admin.getHelixVeniceClusterResources(clusterName).getClusterLockManager().createClusterWriteLock()) {
+        Map<String, Long> metadata = AdminTopicMetadataAccessor.generateMetadataMap(
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.of(adminOperationProtocolVersion));
+        adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
+      }
     } else {
       throw new VeniceException(
           "This AdminConsumptionService is for cluster: " + config.getClusterName()
