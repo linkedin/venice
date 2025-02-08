@@ -3,9 +3,9 @@ package com.linkedin.venice.pubsub.adapter.kafka.producer;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
-import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
 import org.apache.kafka.clients.producer.ProducerConfig;
@@ -22,7 +22,12 @@ import org.apache.logging.log4j.Logger;
 public class ApacheKafkaProducerConfig {
   private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaProducerConfig.class);
 
+  /**
+   * Legacy Kafka configs are using only kafka prefix. But now we are using pubsub.kafka prefix for all Kafka configs.
+   */
   public static final String KAFKA_CONFIG_PREFIX = "kafka.";
+  public static final String PUBSUB_KAFKA_CLIENT_CONFIG_PREFIX = "pubsub." + KAFKA_CONFIG_PREFIX;
+
   public static final String KAFKA_BOOTSTRAP_SERVERS = KAFKA_CONFIG_PREFIX + ProducerConfig.BOOTSTRAP_SERVERS_CONFIG;
   public static final String KAFKA_PRODUCER_RETRIES_CONFIG = KAFKA_CONFIG_PREFIX + ProducerConfig.RETRIES_CONFIG;
   public static final String KAFKA_LINGER_MS = KAFKA_CONFIG_PREFIX + ProducerConfig.LINGER_MS_CONFIG;
@@ -66,8 +71,9 @@ public class ApacheKafkaProducerConfig {
       boolean strictConfigs) {
     String brokerAddress =
         brokerAddressToOverride != null ? brokerAddressToOverride : getPubsubBrokerAddress(allVeniceProperties);
-    this.producerProperties =
-        getValidProducerProperties(allVeniceProperties.clipAndFilterNamespace(KAFKA_CONFIG_PREFIX).toProperties());
+    this.producerProperties = getValidProducerProperties(
+        allVeniceProperties.clipAndFilterNamespace(KAFKA_CONFIG_PREFIX, PUBSUB_KAFKA_CLIENT_CONFIG_PREFIX)
+            .toProperties());
     this.producerProperties.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, brokerAddress);
     validateAndUpdateProperties(this.producerProperties, strictConfigs);
     if (producerName != null) {
@@ -79,7 +85,7 @@ public class ApacheKafkaProducerConfig {
     }
 
     // Setup ssl config if needed.
-    if (KafkaSSLUtils.validateAndCopyKafkaSSLConfig(allVeniceProperties, this.producerProperties)) {
+    if (ApacheKafkaUtils.validateAndCopyKafkaSSLConfig(allVeniceProperties, this.producerProperties)) {
       LOGGER.info("Will initialize an SSL Kafka producer");
     } else {
       LOGGER.info("Will initialize a non-SSL Kafka producer");

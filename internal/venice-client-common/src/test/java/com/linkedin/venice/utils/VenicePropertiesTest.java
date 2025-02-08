@@ -4,7 +4,9 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Properties;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -39,5 +41,41 @@ public class VenicePropertiesTest {
         new PropertyBuilder().put("region.to.pubsub.broker.map", "prod:https://prod-broker:1234,dev;dev-broker")
             .build();
     assertThrows(VeniceException.class, () -> invalidVeniceProperties.getMap("region.to.pubsub.broker.map"));
+  }
+
+  @Test
+  public void testClipAndFilterNamespaceTwoNamespaces() {
+    Map<CharSequence, CharSequence> props = new HashMap<>();
+    props.put("kafka.key1", "value1");
+    props.put("pubsub.kafka.key1", "value1");
+    props.put("kafka.key2", "value2");
+    props.put("kafka.key3.key30", "value330");
+    props.put("pubsub.kafka.key3.key30", "value330");
+    props.put("pubsub.kafka.key3.key31", "value331");
+    props.put("bogus.kafka.key3.key32", "value332");
+    VeniceProperties veniceProperties = new VeniceProperties(props);
+
+    VeniceProperties kafkaPrefixProps = veniceProperties.clipAndFilterNamespace("kafka.");
+    Properties kafkaPrefixProperties = kafkaPrefixProps.toProperties();
+    assertEquals(kafkaPrefixProperties.size(), 3);
+    assertEquals(kafkaPrefixProperties.getProperty("key1"), "value1");
+    assertEquals(kafkaPrefixProperties.getProperty("key2"), "value2");
+    assertEquals(kafkaPrefixProperties.getProperty("key3.key30"), "value330");
+
+    VeniceProperties pubsubKafkaPrefixProps = veniceProperties.clipAndFilterNamespace("pubsub.kafka.");
+    Properties pubsubKafkaPrefixProperties = pubsubKafkaPrefixProps.toProperties();
+    assertEquals(pubsubKafkaPrefixProperties.size(), 3);
+    assertEquals(pubsubKafkaPrefixProperties.getProperty("key1"), "value1");
+    assertEquals(pubsubKafkaPrefixProperties.getProperty("key3.key30"), "value330");
+    assertEquals(pubsubKafkaPrefixProperties.getProperty("key3.key31"), "value331");
+
+    // Test both prefixes
+    VeniceProperties bothPrefixProps = veniceProperties.clipAndFilterNamespace("kafka.", "pubsub.kafka.");
+    Properties bothPrefixProperties = bothPrefixProps.toProperties();
+    assertEquals(bothPrefixProperties.size(), 4);
+    assertEquals(bothPrefixProperties.getProperty("key1"), "value1");
+    assertEquals(bothPrefixProperties.getProperty("key2"), "value2");
+    assertEquals(bothPrefixProperties.getProperty("key3.key30"), "value330");
+    assertEquals(bothPrefixProperties.getProperty("key3.key31"), "value331");
   }
 }

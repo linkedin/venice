@@ -107,6 +107,50 @@ public class VeniceProperties implements Serializable {
     return builder.build();
   }
 
+  /**
+   * This method looks for all properties that begin with either of the given
+   * namespaces. Once those properties are identified, it removes the matching
+   * namespace and returns the properties.
+   *
+   * This enables support for dynamic Kafka configurations. All Kafka
+   * properties can follow a convention of namespace, and the properties
+   * are extracted and supplied to the Kafka Producer/Consumer.
+   *
+   * @param nameSpace1 The first namespace to look for.
+   * @param nameSpace2 The second namespace to look for.
+   * @return Properties that match at least one namespace, with the namespace removed.
+   */
+  public VeniceProperties clipAndFilterNamespace(String nameSpace1, String nameSpace2) {
+    PropertyBuilder builder = new PropertyBuilder();
+
+    // Ensure both namespaces end with "."
+    if (!nameSpace1.endsWith(".")) {
+      nameSpace1 = nameSpace1 + ".";
+    }
+    if (!nameSpace2.endsWith(".")) {
+      nameSpace2 = nameSpace2 + ".";
+    }
+
+    for (Map.Entry<String, String> entry: this.props.entrySet()) {
+      String key = entry.getKey();
+      String extractedKey = null;
+
+      // Check if the key matches either namespace
+      if (key.startsWith(nameSpace1)) {
+        extractedKey = key.substring(nameSpace1.length());
+      } else if (key.startsWith(nameSpace2)) {
+        extractedKey = key.substring(nameSpace2.length());
+      }
+
+      // If a match was found, add it to the builder
+      if (extractedKey != null) {
+        builder.put(extractedKey, entry.getValue());
+      }
+    }
+
+    return builder.build();
+  }
+
   private static final String STORE_PREFIX = "store-";
 
   /**
