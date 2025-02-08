@@ -214,7 +214,7 @@ public class TestAdminToolEndToEnd {
 
       // Setup the original metadata
       AdminTopicMetadataResponse originalMetadata = controllerClient.getAdminTopicMetadata(Optional.empty());
-      Assert.assertEquals(originalMetadata.getAdminOperationProtocolVersion(), currentVersion);
+      Assert.assertEquals(originalMetadata.getAdminOperationProtocolVersion(), (long) currentVersion);
 
       // Update the admin operation version to newVersion - 80
       String[] updateAdminOperationVersionArgs =
@@ -226,7 +226,7 @@ public class TestAdminToolEndToEnd {
       // Verify the admin operation metadata version is updated
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         AdminTopicMetadataResponse updatedMetadata = controllerClient.getAdminTopicMetadata(Optional.empty());
-        Assert.assertEquals(updatedMetadata.getAdminOperationProtocolVersion(), newVersion);
+        Assert.assertEquals(updatedMetadata.getAdminOperationProtocolVersion(), (long) newVersion);
       });
     }
   }

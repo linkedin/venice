@@ -97,19 +97,6 @@ public class AdminTopicMetadataRoutes extends AbstractRoute {
             UpdateAdminTopicMetadataGrpcRequest.newBuilder().setMetadata(adminMetadataBuilder).build());
         responseObject.setCluster(internalResponse.getClusterName());
         responseObject.setName(internalResponse.hasStoreName() ? internalResponse.getStoreName() : null);
-        if (storeName.isPresent()) {
-          if (offset.isPresent() || upstreamOffset.isPresent()) {
-            throw new VeniceException("There is no store-level offsets to be updated");
-          }
-        } else {
-          if (!offset.isPresent() || !upstreamOffset.isPresent()) {
-            throw new VeniceException("Offsets must be provided to update cluster-level admin topic metadata");
-          }
-        }
-
-        responseObject.setCluster(clusterName);
-        storeName.ifPresent(responseObject::setName);
-
         admin.updateAdminTopicMetadata(clusterName, executionId, storeName, offset, upstreamOffset);
       } catch (Throwable e) {
         responseObject.setError(e);
@@ -121,7 +108,7 @@ public class AdminTopicMetadataRoutes extends AbstractRoute {
 
   public Route updateAdminOperationProtocolVersion(Admin admin) {
     return (request, response) -> {
-      ControllerResponse responseObject = new ControllerResponse();
+      AdminTopicMetadataResponse responseObject = new AdminTopicMetadataResponse();
       response.type(HttpConstants.JSON);
       try {
         if (!isAllowListUser(request)) {
@@ -136,9 +123,9 @@ public class AdminTopicMetadataRoutes extends AbstractRoute {
         Long adminOperationProtocolVersion = Long.parseLong(request.queryParams(ADMIN_OPERATION_PROTOCOL_VERSION));
 
         responseObject.setCluster(clusterName);
+        responseObject.setAdminOperationProtocolVersion(adminOperationProtocolVersion);
 
         admin.updateAdminOperationProtocolVersion(clusterName, adminOperationProtocolVersion);
-
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(new VeniceException(e), request, response);

@@ -51,7 +51,7 @@ public class AdminTopicMetadataResponse extends ControllerResponse {
     this.adminOperationProtocolVersion = adminOperationProtocolVersion;
   }
 
-  public Long getAdminOperationProtocolVersion() {
+  public long getAdminOperationProtocolVersion() {
     return adminOperationProtocolVersion;
   }
 }
