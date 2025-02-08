@@ -113,7 +113,6 @@ public class IngestionBatchProcessorTest {
         "store_v1",
         mock(ExecutorService.class),
         mockKeyLevelLocksManager,
-        (ignored1, ignored2, ignored3, ignored4, ignored5, ignored6, ignored7) -> null,
         true,
         true,
         mock(AggVersionedIngestionStats.class),
@@ -181,6 +180,19 @@ public class IngestionBatchProcessorTest {
         "store_v1",
         Executors.newFixedThreadPool(1, new DaemonThreadFactory("test")),
         mockKeyLevelLocksManager,
+        true,
+        true,
+        mockAggVersionedIngestionStats,
+        mockHostLevelIngestionStats);
+
+    List<PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long>> result = batchProcessor.process(
+        Arrays.asList(rtMessage1, rtMessage2),
+        mock(PartitionConsumptionState.class),
+        1,
+        "test_kafka",
+        1,
+        1,
+        1,
         (consumerRecord, ignored2, ignored3, ignored4, ignored5, ignored6, ignored7) -> {
           if (Arrays.equals(consumerRecord.getKey().getKey(), "key1".getBytes())) {
             Put put = new Put();
@@ -194,20 +206,7 @@ public class IngestionBatchProcessorTest {
             return new PubSubMessageProcessedResult(writeComputeResultWrapper);
           }
           return null;
-        },
-        true,
-        true,
-        mockAggVersionedIngestionStats,
-        mockHostLevelIngestionStats);
-
-    List<PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long>> result = batchProcessor.process(
-        Arrays.asList(rtMessage1, rtMessage2),
-        mock(PartitionConsumptionState.class),
-        1,
-        "test_kafka",
-        1,
-        1,
-        1);
+        });
 
     assertEquals(result.size(), 2);
     PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> resultForKey1 = result.get(0);
@@ -228,17 +227,6 @@ public class IngestionBatchProcessorTest {
         "store_v1",
         Executors.newFixedThreadPool(1, new DaemonThreadFactory("test")),
         mockKeyLevelLocksManager,
-        (consumerRecord, ignored2, ignored3, ignored4, ignored5, ignored6, ignored7) -> {
-          if (Arrays.equals(consumerRecord.getKey().getKey(), "key1".getBytes())) {
-            Put put = new Put();
-            put.setPutValue(ByteBuffer.wrap("value1".getBytes()));
-            WriteComputeResultWrapper writeComputeResultWrapper = new WriteComputeResultWrapper(put, null, true);
-            return new PubSubMessageProcessedResult(writeComputeResultWrapper);
-          } else if (Arrays.equals(consumerRecord.getKey().getKey(), "key2".getBytes())) {
-            throw new VeniceException("Fake");
-          }
-          return null;
-        },
         true,
         true,
         mockAggVersionedIngestionStats,
@@ -253,7 +241,18 @@ public class IngestionBatchProcessorTest {
             "test_kafka",
             1,
             1,
-            1));
+            1,
+            (consumerRecord, ignored2, ignored3, ignored4, ignored5, ignored6, ignored7) -> {
+              if (Arrays.equals(consumerRecord.getKey().getKey(), "key1".getBytes())) {
+                Put put = new Put();
+                put.setPutValue(ByteBuffer.wrap("value1".getBytes()));
+                WriteComputeResultWrapper writeComputeResultWrapper = new WriteComputeResultWrapper(put, null, true);
+                return new PubSubMessageProcessedResult(writeComputeResultWrapper);
+              } else if (Arrays.equals(consumerRecord.getKey().getKey(), "key2".getBytes())) {
+                throw new VeniceException("Fake");
+              }
+              return null;
+            }));
     assertTrue(exception.getMessage().contains("Failed to execute the batch processing"));
     verify(mockAggVersionedIngestionStats).recordBatchProcessingRequestError("store", 1);
     verify(mockHostLevelIngestionStats).recordBatchProcessingRequestError();

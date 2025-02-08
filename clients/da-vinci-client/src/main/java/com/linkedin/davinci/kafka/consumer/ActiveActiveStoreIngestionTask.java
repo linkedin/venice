@@ -59,7 +59,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   private final int rmdProtocolVersionId;
   private final MergeConflictResolver mergeConflictResolver;
   private final RmdSerDe rmdSerDe;
+  private final Lazy<KeyLevelLocksManager> keyLevelLocksManager;
   private final RemoteIngestionRepairService remoteIngestionRepairService;
+  private final Lazy<IngestionBatchProcessor> ingestionBatchProcessorLazy;
 
   public ActiveActiveStoreIngestionTask(
       StorageService storageService,
@@ -90,6 +92,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     this.rmdProtocolVersionId = version.getRmdVersionId();
 
+    int knownKafkaClusterNumber = serverConfig.getKafkaClusterIdToUrlMap().size();
+
+    int initialPoolSize = knownKafkaClusterNumber + 1;
+    this.keyLevelLocksManager = Lazy.of(
+        () -> new KeyLevelLocksManager(
+            getVersionTopic().getName(),
+            initialPoolSize,
+            getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, storeVersionPartitionCount)));
     StringAnnotatedStoreSchemaCache annotatedReadOnlySchemaRepository =
         new StringAnnotatedStoreSchemaCache(storeName, schemaRepository);
 
@@ -105,6 +115,21 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             isWriteComputationEnabled,
             getServerConfig().isComputeFastAvroEnabled());
     this.remoteIngestionRepairService = builder.getRemoteIngestionRepairService();
+    this.ingestionBatchProcessorLazy = Lazy.of(() -> {
+      if (!serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
+        LOGGER.info("AA/WC workload parallel processing is disabled for store version: {}", getKafkaVersionTopic());
+        return null;
+      }
+      LOGGER.info("AA/WC workload parallel processing is enabled for store version: {}", getKafkaVersionTopic());
+      return new IngestionBatchProcessor(
+          kafkaVersionTopic,
+          parallelProcessingThreadPool,
+          keyLevelLocksManager.get(),
+          isWriteComputationEnabled,
+          isActiveActiveReplicationEnabled(),
+          versionedIngestionStats,
+          getHostLevelIngestionStats());
+    });
   }
 
   public static int getKeyLevelLockMaxPoolSizeBasedOnServerConfig(VeniceServerConfig serverConfig, int partitionCount) {
@@ -131,7 +156,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   @Override
   protected void putInStorageEngine(int partition, byte[] keyBytes, Put put) {
     try {
-
       // TODO: Honor BatchConflictResolutionPolicy and maybe persist RMD for batch push records.
       StorageOperationType storageOperationType =
           getStorageOperationType(partition, put.putValue, put.replicationMetadataPayload);
@@ -222,6 +246,16 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     byte[] replicationMetadataBytesWithValueSchemaId = ByteUtils.extractByteArray(bufferWithHeader);
     bufferWithHeader.position(bufferWithHeader.position() + ByteUtils.SIZE_OF_INT);
     return replicationMetadataBytesWithValueSchemaId;
+  }
+
+  @Override
+  KeyLevelLocksManager getKeyLevelLocksManager() {
+    return keyLevelLocksManager.get();
+  }
+
+  @Override
+  IngestionBatchProcessor getIngestionBatchProcessor() {
+    return ingestionBatchProcessorLazy.get();
   }
 
   @Override

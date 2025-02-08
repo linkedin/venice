@@ -94,8 +94,6 @@ public class StorePartitionDataReceiver
   private final String kafkaUrl;
   private final String kafkaUrlForLogger;
   private final int kafkaClusterId;
-  private final Lazy<KeyLevelLocksManager> keyLevelLocksManager;
-  private final Lazy<IngestionBatchProcessor> ingestionBatchProcessorLazy;
 
   private long receivedRecordsCount;
 
@@ -120,39 +118,6 @@ public class StorePartitionDataReceiver
     this.kafkaClusterId = kafkaClusterId;
     this.LOGGER = LogManager.getLogger(this.getClass().getSimpleName() + " [" + kafkaUrlForLogger + "]");
     this.receivedRecordsCount = 0L;
-    this.keyLevelLocksManager = Lazy.of(() -> {
-      final int knownKafkaClusterNumber = storeIngestionTask.getServerConfig().getKafkaClusterIdToUrlMap().size();
-      final int initialPoolSize = knownKafkaClusterNumber + 1;
-      return new KeyLevelLocksManager(
-          storeIngestionTask.getVersionTopic().getName(),
-          initialPoolSize,
-          ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(
-              storeIngestionTask.getServerConfig(),
-              storeIngestionTask.getStoreVersionPartitionCount()));
-    });
-    this.ingestionBatchProcessorLazy = Lazy.of(() -> {
-      final String kafkaVersionTopic = storeIngestionTask.getKafkaVersionTopic();
-      if (!storeIngestionTask.getServerConfig().isAAWCWorkloadParallelProcessingEnabled()) {
-        LOGGER.info("AA/WC workload parallel processing is disabled for store version: {}", kafkaVersionTopic);
-        return null;
-      }
-      IngestionBatchProcessor.ProcessingFunction processingFunction =
-          (storeIngestionTask.isActiveActiveReplicationEnabled())
-              ? this::processActiveActiveMessage
-              : this::processMessage;
-      KeyLevelLocksManager lockManager =
-          (storeIngestionTask.isActiveActiveReplicationEnabled()) ? keyLevelLocksManager.get() : null;
-      LOGGER.info("AA/WC workload parallel processing is enabled for store version: {}", kafkaVersionTopic);
-      return new IngestionBatchProcessor(
-          storeIngestionTask.getKafkaVersionTopic(),
-          storeIngestionTask.getParallelProcessingThreadPool(),
-          lockManager,
-          processingFunction,
-          storeIngestionTask.isTransientRecordBufferUsed(),
-          storeIngestionTask.isActiveActiveReplicationEnabled(),
-          storeIngestionTask.getVersionIngestionStats(),
-          storeIngestionTask.getHostLevelIngestionStats());
-    });
   }
 
   @Override
@@ -308,7 +273,7 @@ public class StorePartitionDataReceiver
     if (batches.isEmpty()) {
       return;
     }
-    IngestionBatchProcessor ingestionBatchProcessor = ingestionBatchProcessorLazy.get();
+    IngestionBatchProcessor ingestionBatchProcessor = storeIngestionTask.getIngestionBatchProcessor();
     if (ingestionBatchProcessor == null) {
       throw new VeniceException(
           "IngestionBatchProcessor object should present for store version: "
@@ -329,7 +294,10 @@ public class StorePartitionDataReceiver
                 kafkaUrl,
                 kafkaClusterId,
                 beforeProcessingPerRecordTimestampNs,
-                beforeProcessingBatchRecordsTimestampMs);
+                beforeProcessingBatchRecordsTimestampMs,
+                (storeIngestionTask.isActiveActiveReplicationEnabled())
+                    ? this::processActiveActiveMessage
+                    : this::processMessage);
 
         for (PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> processedRecord: processedResults) {
           totalBytesRead += handleSingleMessage(
@@ -796,7 +764,7 @@ public class StorePartitionDataReceiver
        * -> [fabric A thread]produce to VT
        */
       final ByteArrayKey byteArrayKey = ByteArrayKey.wrap(consumerRecordWrapper.getMessage().getKey().getKey());
-      ReentrantLock keyLevelLock = keyLevelLocksManager.get().acquireLockByKey(byteArrayKey);
+      ReentrantLock keyLevelLock = storeIngestionTask.getKeyLevelLocksManager().acquireLockByKey(byteArrayKey);
       keyLevelLock.lock();
       try {
         return delegateConsumerRecord(
@@ -808,7 +776,7 @@ public class StorePartitionDataReceiver
             beforeProcessingBatchRecordsTimestampMs);
       } finally {
         keyLevelLock.unlock();
-        keyLevelLocksManager.get().releaseLock(byteArrayKey);
+        storeIngestionTask.getKeyLevelLocksManager().releaseLock(byteArrayKey);
       }
     }
   }
@@ -2549,9 +2517,5 @@ public class StorePartitionDataReceiver
   // for testing purpose only
   int getKafkaClusterId() {
     return this.kafkaClusterId;
-  }
-
-  IngestionBatchProcessor getIngestionBatchProcessor() {
-    return ingestionBatchProcessorLazy.get();
   }
 }

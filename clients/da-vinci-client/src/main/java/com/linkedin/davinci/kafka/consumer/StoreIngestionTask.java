@@ -4310,12 +4310,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected abstract boolean hasViewWriters();
 
-  void setWriteComputeFailureCode(int code) {
-    this.writeComputeFailureCode = code;
+  KeyLevelLocksManager getKeyLevelLocksManager() {
+    throw new VeniceException("getKeyLevelLocksManager() should only be called in active active mode");
   }
 
-  ExecutorService getParallelProcessingThreadPool() {
-    return parallelProcessingThreadPool;
+  abstract IngestionBatchProcessor getIngestionBatchProcessor();
+
+  void setWriteComputeFailureCode(int code) {
+    this.writeComputeFailureCode = code;
   }
 
   boolean isDataRecovery() {
@@ -4328,10 +4330,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   int getLocalKafkaClusterId() {
     return localKafkaClusterId;
-  }
-
-  int getStoreVersionPartitionCount() {
-    return storeVersionPartitionCount;
   }
 
   // For unit test purpose.

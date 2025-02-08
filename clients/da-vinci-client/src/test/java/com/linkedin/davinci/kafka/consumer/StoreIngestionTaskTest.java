@@ -3393,13 +3393,11 @@ public abstract class StoreIngestionTaskTest {
         null);
 
     if (hybridConfig.equals(HYBRID) && nodeType.equals(LEADER) && isAaWCParallelProcessingEnabled()) {
-      localConsumedDataReceiver = new StorePartitionDataReceiver(
-          storeIngestionTaskUnderTest,
-          fooTopicPartition,
-          inMemoryLocalKafkaBroker.getKafkaBootstrapServer(),
-          1);
-      assertNotNull(localConsumedDataReceiver.getIngestionBatchProcessor());
-      assertNotNull(localConsumedDataReceiver.getIngestionBatchProcessor().getLockManager());
+      assertTrue(storeIngestionTaskUnderTest instanceof ActiveActiveStoreIngestionTask);
+      ActiveActiveStoreIngestionTask activeActiveStoreIngestionTask =
+          (ActiveActiveStoreIngestionTask) storeIngestionTaskUnderTest;
+      assertNotNull(activeActiveStoreIngestionTask.getIngestionBatchProcessor());
+      assertNotNull(activeActiveStoreIngestionTask.getIngestionBatchProcessor().getLockManager());
     }
 
     String rtTopicName = Utils.getRealTimeTopicName(mockStore);
