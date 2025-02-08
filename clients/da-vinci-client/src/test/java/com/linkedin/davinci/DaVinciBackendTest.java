@@ -1,15 +1,12 @@
 package com.linkedin.davinci;
 
+import static com.linkedin.venice.ConfigKeys.DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_OTHER;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
 import static com.linkedin.venice.utils.DataProviderUtils.BOOLEAN;
 import static com.linkedin.venice.utils.DataProviderUtils.allPermutationGenerator;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -20,7 +17,6 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
-import com.linkedin.davinci.ingestion.DefaultIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
@@ -199,14 +195,14 @@ public class DaVinciBackendTest {
     userPartitionList.add(0);
     userPartitionList.add(1);
     userPartitionList.add(2);
-    when(mockStorageService.getUserPartitions(anyString())).thenReturn(userPartitionList);
+    when(mockStorageService.getUserPartitions(resourceName)).thenReturn(userPartitionList);
 
     HashSet<Integer> backendSubscription = new HashSet<>();
     backendSubscription.add(0);
     backendSubscription.add(1);
 
     StoreBackend mockStoreBackend = mock(StoreBackend.class);
-    when(backend.getStoreOrThrow(anyString())).thenReturn(mockStoreBackend);
+    when(backend.getStoreOrThrow(Version.parseStoreFromKafkaTopicName(resourceName))).thenReturn(mockStoreBackend);
     ComplementSet<Integer> backendSubscriptionSet = ComplementSet.wrap(backendSubscription);
     when(mockStoreBackend.getSubscription()).thenReturn(backendSubscriptionSet);
 
@@ -225,8 +221,8 @@ public class DaVinciBackendTest {
     Field storeRepositoryField = DaVinciBackend.class.getDeclaredField("storeRepository");
     storeRepositoryField.setAccessible(true);
     storeRepositoryField.set(backend, mockStoreRepository);
-    when(mockStoreRepository.getStoreOrThrow(anyString())).thenReturn(mockStore);
-    when(mockStore.getVersion(anyInt())).thenReturn(mockVersion);
+    when(mockStoreRepository.getStoreOrThrow(Version.parseStoreFromKafkaTopicName(resourceName))).thenReturn(mockStore);
+    when(mockStore.getVersion(Version.parseVersionFromKafkaTopicName(resourceName))).thenReturn(mockVersion);
 
     VeniceConfigLoader mockConfigLoader = mock(VeniceConfigLoader.class);
     Field configLoaderField = DaVinciBackend.class.getDeclaredField("configLoader");
@@ -240,28 +236,21 @@ public class DaVinciBackendTest {
     aggVersionedStorageEngineStatsField.setAccessible(true);
     aggVersionedStorageEngineStatsField.set(backend, mockAggVersionedStorageEngineStats);
 
-    DefaultIngestionBackend ingestionBackend = mock(DefaultIngestionBackend.class);
-    Field ingestionBackendField = DaVinciBackend.class.getDeclaredField("ingestionBackend");
-    ingestionBackendField.setAccessible(true);
-    ingestionBackendField.set(backend, ingestionBackend);
     VeniceNotifier ingestionListener = mock(VeniceNotifier.class);
     Field ingestionListenerField = DaVinciBackend.class.getDeclaredField("ingestionListener");
     ingestionListenerField.setAccessible(true);
     ingestionListenerField.set(backend, ingestionListener);
     KafkaStoreIngestionService storeIngestionService = mock(KafkaStoreIngestionService.class);
-    Field storeIngestionServiceField = DefaultIngestionBackend.class.getDeclaredField("storeIngestionService");
-    storeIngestionServiceField.setAccessible(true);
-    storeIngestionServiceField.set(ingestionBackend, storeIngestionService);
     Field ingestionServiceField = DaVinciBackend.class.getDeclaredField("ingestionService");
     ingestionServiceField.setAccessible(true);
     ingestionServiceField.set(backend, storeIngestionService);
-    doNothing().when(ingestionBackend).addIngestionNotifier(any());
 
     Method bootstrapMethod = DaVinciBackend.class.getDeclaredMethod("bootstrap");
     bootstrapMethod.setAccessible(true);
 
     // DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY == false
-    when(mockCombinedProperties.getBoolean(anyString(), anyBoolean())).thenReturn(false);
+    when(mockCombinedProperties.getBoolean(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, true))
+        .thenReturn(false);
     bootstrapMethod.invoke(backend);
 
     ComplementSet<Integer> subscription = mockStoreBackend.getSubscription();
@@ -269,10 +258,10 @@ public class DaVinciBackendTest {
     assertTrue(subscription.contains(1));
     assertFalse(subscription.contains(2));
 
-    when(mockCombinedProperties.getBoolean(anyString(), anyBoolean())).thenReturn(true);
+    // DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY == true
+    when(mockCombinedProperties.getBoolean(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, true)).thenReturn(true);
     bootstrapMethod.invoke(backend);
 
-    // DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY == true
     subscription = mockStoreBackend.getSubscription();
     assertTrue(subscription.contains(0));
     assertTrue(subscription.contains(1));
