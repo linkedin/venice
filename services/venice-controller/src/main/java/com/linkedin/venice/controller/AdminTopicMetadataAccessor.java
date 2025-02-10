@@ -81,7 +81,7 @@ public abstract class AdminTopicMetadataAccessor {
   }
 
   /**
-   * Update all relevant metadata for a given cluster in a single transaction with information provided in metadata.
+   * Update specific metadata for a given cluster in a single transaction with information provided in metadata.
    * @param clusterName of the cluster at interest.
    * @param metadata map containing relevant information.
    */

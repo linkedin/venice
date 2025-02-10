@@ -37,6 +37,8 @@ public class ZkAdminTopicMetadataAccessor extends AdminTopicMetadataAccessor {
 
   /**
    * Update the upstream metadata map for the given cluster with specific information provided in newMetadata
+   *
+   * @see AdminTopicMetadataAccessor#updateMetadata(String, Map)
    */
   @Override
   public void updateMetadata(String clusterName, Map<String, Long> newMetadata) {
