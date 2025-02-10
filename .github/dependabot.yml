@@ -1,17 +1,11 @@
 version: 2
 registries:
-  # Helps find updates for non Maven Central dependencies'
-  duckdb-snapshots:
-    type: maven-repository
-    url: https://oss.sonatype.org/content/repositories/snapshots/
 
 updates:
   - package-ecosystem: "gradle"
     directory: "/"
     schedule:
       interval: "daily"
-    registries:
-      - duckdb-snapshots
     # Automatically update these dependencies
     allow:
       - dependency-name: "org.duckdb:duckdb_jdbc"
