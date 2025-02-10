@@ -42,6 +42,9 @@ public class ZkAdminTopicMetadataAccessor extends AdminTopicMetadataAccessor {
   public void updateMetadata(String clusterName, Map<String, Long> newMetadata) {
     String path = getAdminTopicMetadataNodePath(clusterName);
     HelixUtils.compareAndUpdate(zkMapAccessor, path, ZK_UPDATE_RETRY, currentMetadataMap -> {
+      if (currentMetadataMap == null) {
+        currentMetadataMap = new HashMap<>();
+      }
       currentMetadataMap.putAll(newMetadata);
       return currentMetadataMap;
     });
