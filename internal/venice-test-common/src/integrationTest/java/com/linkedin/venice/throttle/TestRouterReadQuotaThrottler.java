@@ -12,6 +12,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Store;
@@ -50,7 +51,16 @@ public class TestRouterReadQuotaThrottler {
     Properties properties = new Properties();
     properties.put(ConfigKeys.ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER, 0.0);
 
-    cluster = ServiceFactory.getVeniceCluster(1, 1, numberOfRouter, 1, 10000, false, false, properties);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(1)
+        .numberOfRouters(numberOfRouter)
+        .replicationFactor(1)
+        .partitionSize(10000)
+        .sslToStorageNodes(false)
+        .sslToKafka(false)
+        .extraProperties(properties)
+        .build();
+    cluster = ServiceFactory.getVeniceCluster(options);
 
     VersionCreationResponse response = cluster.getNewStoreVersion();
     Assert.assertFalse(response.isError());

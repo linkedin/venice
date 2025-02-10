@@ -126,6 +126,12 @@ public class DaVinciBackend implements Closeable {
     LOGGER.info("Creating Da Vinci backend with managed clients: {}", managedClients);
     try {
       VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
+
+      if (backendConfig.isDatabaseChecksumVerificationEnabled() && recordTransformerConfig != null) {
+        // The checksum verification will fail because DVRT transforms the values
+        throw new VeniceException("DaVinciRecordTransformer cannot be used with database checksum verification.");
+      }
+
       useDaVinciSpecificExecutionStatusForError = backendConfig.useDaVinciSpecificExecutionStatusForError();
       writeBatchingPushStatus = backendConfig.getDaVinciPushStatusCheckIntervalInMs() >= 0;
       this.configLoader = configLoader;
@@ -295,10 +301,6 @@ public class DaVinciBackend implements Closeable {
       }
 
       if (backendConfig.isBlobTransferManagerEnabled()) {
-        if (recordTransformerConfig != null) {
-          throw new VeniceException("DaVinciRecordTransformer doesn't support blob transfer.");
-        }
-
         aggVersionedBlobTransferStats =
             new AggVersionedBlobTransferStats(metricsRepository, storeRepository, configLoader.getVeniceServerConfig());
 

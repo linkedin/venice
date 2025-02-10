@@ -39,7 +39,7 @@ public class SkipAdminRoute extends AbstractRoute {
         AdminSparkServer.validateParams(request, SKIP_ADMIN.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         long offset = Utils.parseLongFromString(request.queryParams(OFFSET), OFFSET);
-        boolean skipDIV = Utils.parseBooleanFromString(request.queryParams(SKIP_DIV), SKIP_DIV);
+        boolean skipDIV = Utils.parseBooleanOrThrow(request.queryParams(SKIP_DIV), SKIP_DIV);
         admin.skipAdminMessage(responseObject.getCluster(), offset, skipDIV);
       } catch (Throwable e) {
         responseObject.setError(e);

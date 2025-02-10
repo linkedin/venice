@@ -8,12 +8,15 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.client.DaVinciRecordTransformerUtility;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
-import java.io.File;
-import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -24,35 +27,32 @@ import java.util.Set;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class DuckDBDaVinciRecordTransformerTest {
   static final int storeVersion = 1;
+  static final int partitionId = 0;
+  static final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+      AvroProtocolDefinition.PARTITION_STATE.getSerializer();
   static final String storeName = "test_store";
   private final Set<String> columnsToProject = Collections.emptySet();
 
-  @BeforeMethod
-  @AfterClass
-  public void deleteClassHash() {
-    File file = new File(String.format("./classHash-%d.txt", storeVersion));
-    if (file.exists()) {
-      assertTrue(file.delete());
-    }
-  }
-
   @Test
-  public void testRecordTransformer() throws IOException {
+  public void testRecordTransformer() {
     String tempDir = Utils.getTempDataDirectory().getAbsolutePath();
+
+    DaVinciRecordTransformerConfig dummyRecordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
+        .setRecordTransformerFunction((storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> null)
+        .setStoreRecordsInDaVinci(false)
+        .build();
 
     try (DuckDBDaVinciRecordTransformer recordTransformer = new DuckDBDaVinciRecordTransformer(
         storeVersion,
         SINGLE_FIELD_RECORD_SCHEMA,
         NAME_RECORD_V1_SCHEMA,
         NAME_RECORD_V1_SCHEMA,
-        false,
+        dummyRecordTransformerConfig,
         tempDir,
         storeName,
         columnsToProject)) {
@@ -90,8 +90,13 @@ public class DuckDBDaVinciRecordTransformerTest {
 
       DaVinciRecordTransformerUtility<GenericRecord, GenericRecord> recordTransformerUtility =
           recordTransformer.getRecordTransformerUtility();
-      assertTrue(recordTransformerUtility.hasTransformerLogicChanged(classHash));
-      assertFalse(recordTransformerUtility.hasTransformerLogicChanged(classHash));
+      OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+
+      assertTrue(recordTransformerUtility.hasTransformerLogicChanged(classHash, offsetRecord));
+
+      offsetRecord.setRecordTransformerClassHash(classHash);
+
+      assertFalse(recordTransformerUtility.hasTransformerLogicChanged(classHash, offsetRecord));
     }
   }
 
@@ -99,12 +104,17 @@ public class DuckDBDaVinciRecordTransformerTest {
   public void testVersionSwap() throws SQLException {
     String tempDir = Utils.getTempDataDirectory().getAbsolutePath();
 
+    DaVinciRecordTransformerConfig dummyRecordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
+        .setRecordTransformerFunction((storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> null)
+        .setStoreRecordsInDaVinci(false)
+        .build();
+
     DuckDBDaVinciRecordTransformer recordTransformer_v1 = new DuckDBDaVinciRecordTransformer(
         1,
         SINGLE_FIELD_RECORD_SCHEMA,
         NAME_RECORD_V1_SCHEMA,
         NAME_RECORD_V1_SCHEMA,
-        false,
+        dummyRecordTransformerConfig,
         tempDir,
         storeName,
         columnsToProject);
@@ -113,7 +123,7 @@ public class DuckDBDaVinciRecordTransformerTest {
         SINGLE_FIELD_RECORD_SCHEMA,
         NAME_RECORD_V1_SCHEMA,
         NAME_RECORD_V1_SCHEMA,
-        false,
+        dummyRecordTransformerConfig,
         tempDir,
         storeName,
         columnsToProject);
@@ -162,12 +172,17 @@ public class DuckDBDaVinciRecordTransformerTest {
     String store1 = "store1";
     String store2 = "store2";
 
+    DaVinciRecordTransformerConfig dummyRecordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
+        .setRecordTransformerFunction((storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> null)
+        .setStoreRecordsInDaVinci(false)
+        .build();
+
     DuckDBDaVinciRecordTransformer recordTransformerForStore1 = new DuckDBDaVinciRecordTransformer(
         1,
         SINGLE_FIELD_RECORD_SCHEMA,
         NAME_RECORD_V1_SCHEMA,
         NAME_RECORD_V1_SCHEMA,
-        false,
+        dummyRecordTransformerConfig,
         tempDir,
         store1,
         columnsToProject);
@@ -176,7 +191,7 @@ public class DuckDBDaVinciRecordTransformerTest {
         TWO_FIELDS_RECORD_SCHEMA,
         NAME_RECORD_V1_SCHEMA,
         NAME_RECORD_V1_SCHEMA,
-        false,
+        dummyRecordTransformerConfig,
         tempDir,
         store2,
         columnsToProject);

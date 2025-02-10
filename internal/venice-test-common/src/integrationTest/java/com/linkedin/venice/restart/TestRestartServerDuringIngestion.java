@@ -14,6 +14,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
@@ -74,8 +75,16 @@ public abstract class TestRestartServerDuringIngestion {
     int numberOfRouter = 1;
     int replicaFactor = 1;
     int partitionSize = 1000;
-    cluster = ServiceFactory
-        .getVeniceCluster(numberOfController, 0, numberOfRouter, replicaFactor, partitionSize, false, false);
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(numberOfController)
+            .numberOfServers(0)
+            .numberOfRouters(numberOfRouter)
+            .replicationFactor(replicaFactor)
+            .partitionSize(partitionSize)
+            .sslToStorageNodes(false)
+            .sslToKafka(false)
+            .build();
+    cluster = ServiceFactory.getVeniceCluster(options);
     pubSubProducerAdapterFactory =
         cluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
 

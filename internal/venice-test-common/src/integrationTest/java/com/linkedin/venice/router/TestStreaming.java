@@ -29,6 +29,7 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
@@ -111,7 +112,15 @@ public class TestStreaming {
     System.setProperty("io.netty.leakDetection.level", "paranoid");
 
     Utils.thisIsLocalhost();
-    veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 0, 2, 100, true, false);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(2)
+        .numberOfRouters(0)
+        .replicationFactor(2)
+        .partitionSize(100)
+        .sslToStorageNodes(true)
+        .sslToKafka(false)
+        .build();
+    veniceCluster = ServiceFactory.getVeniceCluster(options);
 
     Properties serverFeatureProperties = new Properties();
     serverFeatureProperties.put(VeniceServerWrapper.SERVER_ENABLE_SSL, "true");

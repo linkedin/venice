@@ -15,6 +15,7 @@ import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.utils.ClientTestUtils;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
@@ -61,7 +62,16 @@ public class RequestBasedMetadataIntegrationTest {
     Utils.thisIsLocalhost();
     Properties props = new Properties();
     props.put(SERVER_HTTP2_INBOUND_ENABLED, "true");
-    veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 100, true, false, props);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(2)
+        .numberOfRouters(1)
+        .replicationFactor(2)
+        .partitionSize(100)
+        .sslToStorageNodes(true)
+        .sslToKafka(false)
+        .extraProperties(props)
+        .build();
+    veniceCluster = ServiceFactory.getVeniceCluster(options);
     r2Client = ClientTestUtils.getR2Client();
     d2Client = D2TestUtils.getAndStartHttpsD2Client(veniceCluster.getZk().getAddress());
     storeName = veniceCluster.createStore(KEY_COUNT);

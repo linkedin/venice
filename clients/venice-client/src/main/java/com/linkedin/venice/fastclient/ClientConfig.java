@@ -87,6 +87,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private boolean projectionFieldValidation;
   private Set<String> harClusters;
   private final InstanceHealthMonitor instanceHealthMonitor;
+  private final boolean retryBudgetEnabled;
 
   private final MetricsRepository metricsRepository;
 
@@ -121,7 +122,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       boolean projectionFieldValidation,
       long longTailRetryBudgetEnforcementWindowInMs,
       Set<String> harClusters,
-      InstanceHealthMonitor instanceHealthMonitor) {
+      InstanceHealthMonitor instanceHealthMonitor,
+      boolean retryBudgetEnabled) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
@@ -239,6 +241,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     } else {
       this.instanceHealthMonitor = instanceHealthMonitor;
     }
+    this.retryBudgetEnabled = retryBudgetEnabled;
   }
 
   public String getStoreName() {
@@ -375,6 +378,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return instanceHealthMonitor;
   }
 
+  public boolean isRetryBudgetEnabled() {
+    return retryBudgetEnabled;
+  }
+
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {
     private MetricsRepository metricsRepository;
     private String statsPrefix = "";
@@ -418,6 +425,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private Set<String> harClusters = Collections.EMPTY_SET;
 
     private InstanceHealthMonitor instanceHealthMonitor;
+
+    private boolean retryBudgetEnabled = true;
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
@@ -587,6 +596,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setRetryBudgetEnabled(boolean retryBudgetEnabled) {
+      this.retryBudgetEnabled = retryBudgetEnabled;
+      return this;
+    }
+
     public ClientConfigBuilder<K, V, T> clone() {
       return new ClientConfigBuilder().setStoreName(storeName)
           .setR2Client(r2Client)
@@ -619,7 +633,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setProjectionFieldValidationEnabled(projectionFieldValidation)
           .setLongTailRetryBudgetEnforcementWindowInMs(longTailRetryBudgetEnforcementWindowInMs)
           .setHARClusters(harClusters)
-          .setInstanceHealthMonitor(instanceHealthMonitor);
+          .setInstanceHealthMonitor(instanceHealthMonitor)
+          .setRetryBudgetEnabled(retryBudgetEnabled);
     }
 
     public ClientConfig<K, V, T> build() {
@@ -654,7 +669,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           projectionFieldValidation,
           longTailRetryBudgetEnforcementWindowInMs,
           harClusters,
-          instanceHealthMonitor);
+          instanceHealthMonitor,
+          retryBudgetEnabled);
     }
   }
 }

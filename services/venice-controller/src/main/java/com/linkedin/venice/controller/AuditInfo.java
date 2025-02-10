@@ -10,6 +10,7 @@ public class AuditInfo {
   private String url;
   private Map<String, String> params;
   private String method;
+  private String clientIp;
 
   public AuditInfo(Request request) {
     this.url = request.url();
@@ -18,49 +19,31 @@ public class AuditInfo {
       this.params.put(param, request.queryParams(param));
     }
     this.method = request.requestMethod();
+    this.clientIp = request.ip() + ":" + request.raw().getRemotePort();
   }
 
-  /**
-   * @return a string representation of {@link AuditInfo} object.
-   */
   @Override
   public String toString() {
-    StringJoiner joiner = new StringJoiner(" ");
-    joiner.add("[AUDIT]");
-    joiner.add(method);
-    joiner.add(url);
-    joiner.add(params.toString());
-    return joiner.toString();
+    return formatAuditMessage("[AUDIT]", null);
   }
 
-  /**
-   * @return a audit-successful string.
-   */
   public String successString() {
-    return toString(true, null);
+    return formatAuditMessage("[AUDIT]", "SUCCESS");
   }
 
-  /**
-   * @return a audit-failure string.
-   */
   public String failureString(String errMsg) {
-    return toString(false, errMsg);
+    return formatAuditMessage("[AUDIT]", "FAILURE: " + (errMsg != null ? errMsg : ""));
   }
 
-  private String toString(boolean success, String errMsg) {
-    StringJoiner joiner = new StringJoiner(" ");
-    joiner.add("[AUDIT]");
-    if (success) {
-      joiner.add("SUCCESS");
-    } else {
-      joiner.add("FAILURE: ");
-      if (errMsg != null) {
-        joiner.add(errMsg);
-      }
+  private String formatAuditMessage(String prefix, String status) {
+    StringJoiner joiner = new StringJoiner(" ").add(prefix);
+
+    if (status != null) {
+      joiner.add(status);
     }
-    joiner.add(method);
-    joiner.add(url);
-    joiner.add(params.toString());
+
+    joiner.add(method).add(url).add(params.toString()).add("ClientIP: " + clientIp);
+
     return joiner.toString();
   }
 }

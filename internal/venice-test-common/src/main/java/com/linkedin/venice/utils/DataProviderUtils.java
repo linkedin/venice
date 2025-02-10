@@ -25,6 +25,7 @@ import org.testng.collections.Lists;
 public class DataProviderUtils {
   public static final Object[] BOOLEAN = { false, true };
   public static final Object[] BOOLEAN_FALSE = { false };
+  public static final Object[] OPTIONAL_BOOLEAN = { false, true, null };
   public static final Object[] COMPRESSION_STRATEGIES = { NO_OP, GZIP, ZSTD_WITH_DICT };
   public static final Object[] PARTITION_COUNTS = { 1, 2, 3, 4, 8, 10, 16, 19, 92, 128 };
 
@@ -47,6 +48,11 @@ public class DataProviderUtils {
   @DataProvider(name = "Two-True-and-False")
   public static Object[][] twoBoolean() {
     return allPermutationGenerator(BOOLEAN, BOOLEAN);
+  }
+
+  @DataProvider(name = "Boolean-and-Optional-Boolean")
+  public static Object[][] booleanAndOptionalBoolean() {
+    return allPermutationGenerator(BOOLEAN, OPTIONAL_BOOLEAN);
   }
 
   @DataProvider(name = "Three-True-and-False")

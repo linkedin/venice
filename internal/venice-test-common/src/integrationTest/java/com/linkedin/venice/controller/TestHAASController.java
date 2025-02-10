@@ -21,6 +21,7 @@ import com.linkedin.venice.helix.SafeHelixDataAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.integration.utils.HelixAsAServiceWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
@@ -73,7 +74,12 @@ public class TestHAASController {
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testClusterResourceInstanceTag() {
-    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(0, 0, 0, 1);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(0)
+        .numberOfServers(0)
+        .numberOfRouters(0)
+        .replicationFactor(1)
+        .build();
+    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(options);
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
       String instanceTag = "GENERAL";
       String controllerClusterName = "venice-controllers";
@@ -94,7 +100,12 @@ public class TestHAASController {
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testClusterResourceEmptyInstanceTag() {
-    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(0, 0, 0, 1);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(0)
+        .numberOfServers(0)
+        .numberOfRouters(0)
+        .replicationFactor(1)
+        .build();
+    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(options);
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
       String instanceTag = "";
       String controllerClusterName = "venice-controllers";
@@ -115,7 +126,12 @@ public class TestHAASController {
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testStartHAASHelixControllerAsControllerClusterLeader() {
-    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(0, 0, 0, 1);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(0)
+        .numberOfServers(0)
+        .numberOfRouters(0)
+        .replicationFactor(1)
+        .build();
+    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(options);
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
       VeniceControllerWrapper controllerWrapper = venice.addVeniceController(enableControllerClusterHAASProperties);
       waitForNonDeterministicAssertion(
@@ -146,7 +162,12 @@ public class TestHAASController {
 
   @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testTransitionToHAASControllerAsControllerClusterLeader() {
-    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(3, 1, 0, 1);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(3)
+        .numberOfServers(1)
+        .numberOfRouters(0)
+        .replicationFactor(1)
+        .build();
+    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(options);
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
       NewStoreResponse response = venice.getNewStore(Utils.getUniqueString("venice-store"));
       venice.useControllerClient(
@@ -187,7 +208,12 @@ public class TestHAASController {
 
   @Test(timeOut = 90 * Time.MS_PER_SECOND)
   public void testStartHAASControllerAsStorageClusterLeader() {
-    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(0, 0, 0, 1);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(0)
+        .numberOfServers(0)
+        .numberOfRouters(0)
+        .replicationFactor(1)
+        .build();
+    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(options);
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
       VeniceControllerWrapper controllerWrapper =
           venice.addVeniceController(enableControllerAndStorageClusterHAASProperties);
@@ -217,7 +243,12 @@ public class TestHAASController {
 
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testTransitionToHAASControllerAsStorageClusterLeader() {
-    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(3, 1, 0, 1);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(3)
+        .numberOfServers(1)
+        .numberOfRouters(0)
+        .replicationFactor(1)
+        .build();
+    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(options);
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
 
       NewStoreResponse response = venice.getNewStore(Utils.getUniqueString("venice-store"));
@@ -426,7 +457,12 @@ public class TestHAASController {
 
   @Test(timeOut = 90 * Time.MS_PER_SECOND)
   public void testHelixUnknownInstanceOperation() {
-    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(0, 0, 0, 1);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(0)
+        .numberOfServers(0)
+        .numberOfRouters(0)
+        .replicationFactor(1)
+        .build();
+    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(options);
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
       VeniceControllerWrapper controllerWrapper =
           venice.addVeniceController(enableControllerAndStorageClusterHAASProperties);

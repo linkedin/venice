@@ -12,6 +12,7 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.PersistenceType;
@@ -294,7 +295,12 @@ public class BlobP2PTransferAmongServersTest {
       port2 = TestUtils.getFreePort();
     }
 
-    VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(1, 0, 0, 2);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(0)
+        .numberOfRouters(0)
+        .replicationFactor(2)
+        .build();
+    VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(options);
     // add first server
     Properties serverProperties = new Properties();
     serverProperties.put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB);

@@ -259,6 +259,7 @@ import org.apache.logging.log4j.Logger;
 import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
+import org.mockito.stubbing.Answer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
@@ -1305,6 +1306,7 @@ public abstract class StoreIngestionTaskTest {
     setupMockAbstractStorageEngine(metadataPartition);
     doReturn(svs).when(mockAbstractStorageEngine).getStoreVersionState();
     doReturn(svs).when(mockStorageMetadataService).getStoreVersionState(topic);
+    doReturn(svs).when(mockStorageMetadataService).computeStoreVersionState(eq(topic), any());
   }
 
   void setStoreVersionStateSupplier(boolean sorted) {
@@ -2495,8 +2497,23 @@ public abstract class StoreIngestionTaskTest {
     }, aaConfig);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testVeniceMessagesProcessingWithSortedInputWithBlobMode(boolean blobMode) throws Exception {
+  @Test(dataProvider = "Boolean-and-Optional-Boolean", dataProviderClass = DataProviderUtils.class)
+  public void testVeniceMessagesProcessingWithSortedInputWithBlobMode(boolean blobMode, Boolean sortedFlagInSVS)
+      throws Exception {
+    if (sortedFlagInSVS != null) {
+      setStoreVersionStateSupplier(sortedFlagInSVS);
+    } else {
+      doReturn(null).when(mockStorageMetadataService).getStoreVersionState(any());
+    }
+    doAnswer((Answer<StoreVersionState>) invocationOnMock -> {
+      String topicName = invocationOnMock.getArgument(0, String.class);
+      Function<StoreVersionState, StoreVersionState> mapFunction = invocationOnMock.getArgument(1, Function.class);
+      StoreVersionState updatedStoreVersionState =
+          mapFunction.apply(mockStorageMetadataService.getStoreVersionState(topicName));
+      doReturn(updatedStoreVersionState).when(mockStorageMetadataService).getStoreVersionState(any());
+      return updatedStoreVersionState;
+    }).when(mockStorageMetadataService).computeStoreVersionState(anyString(), any());
+
     localVeniceWriter.broadcastStartOfPush(true, new HashMap<>());
     PubSubProduceResult putMetadata =
         (PubSubProduceResult) localVeniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID).get();
@@ -2518,7 +2535,13 @@ public abstract class StoreIngestionTaskTest {
           .put(topic, PARTITION_FOO, getOffsetRecord(putMetadata.getOffset() - 1));
       // Check database mode switches from deferred-write to transactional after EOP control message
       StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
-      deferredWritePartitionConfig.setDeferredWrite(!blobMode);
+      boolean deferredWrite;
+      if (!blobMode) {
+        deferredWrite = sortedFlagInSVS != null ? sortedFlagInSVS : true;
+      } else {
+        deferredWrite = sortedFlagInSVS != null ? sortedFlagInSVS : false;
+      }
+      deferredWritePartitionConfig.setDeferredWrite(deferredWrite);
       verify(mockAbstractStorageEngine, times(1))
           .beginBatchWrite(eq(deferredWritePartitionConfig), any(), eq(Optional.empty()));
       StoragePartitionConfig transactionalPartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
@@ -4785,7 +4808,7 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test(dataProvider = "aaConfigProvider")
-  public void testStoreIngestionRecordTransformer(AAConfig aaConfig) throws Exception {
+  public void testSITRecordTransformer(AAConfig aaConfig) throws Exception {
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, putKeyFoo);
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
     kafkaMessageEnvelope.messageType = MessageType.PUT.getValue();
@@ -4838,16 +4861,79 @@ public abstract class StoreIngestionTaskTest {
       }
     }, aaConfig);
 
-    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-        (storeVersion, keySchema, inputValueSchema, outputValueSchema) -> new TestStringRecordTransformer(
-            storeVersion,
-            keySchema,
-            inputValueSchema,
-            outputValueSchema,
-            true),
-        String.class,
-        Schema.create(Schema.Type.STRING));
+    DaVinciRecordTransformerConfig recordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .setOutputValueClass(String.class)
+            .setOutputValueSchema(Schema.create(Schema.Type.STRING))
+            .build();
     config.setRecordTransformerConfig(recordTransformerConfig);
+
+    runTest(config);
+
+    // Transformer error should never be recorded
+    verify(mockVersionedStorageIngestionStats, never())
+        .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
+  }
+
+  @Test(dataProvider = "aaConfigProvider")
+  public void testSITRecordTransformerUndefinedOutputValueClassAndSchema(AAConfig aaConfig) throws Exception {
+    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, putKeyFoo);
+    KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
+    kafkaMessageEnvelope.messageType = MessageType.PUT.getValue();
+    Put put = new Put();
+
+    put.putValue = ByteBuffer.wrap(putValue);
+    put.replicationMetadataPayload = ByteBuffer.allocate(10);
+    kafkaMessageEnvelope.payloadUnion = put;
+    kafkaMessageEnvelope.producerMetadata = new ProducerMetadata();
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = new ImmutablePubSubMessage(
+        kafkaKey,
+        kafkaMessageEnvelope,
+        new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO),
+        0,
+        0,
+        0);
+
+    LeaderProducedRecordContext leaderProducedRecordContext = mock(LeaderProducedRecordContext.class);
+    when(leaderProducedRecordContext.getMessageType()).thenReturn(MessageType.PUT);
+    when(leaderProducedRecordContext.getValueUnion()).thenReturn(put);
+    when(leaderProducedRecordContext.getKeyBytes()).thenReturn(putKeyFoo);
+
+    Schema myKeySchema = Schema.create(Schema.Type.INT);
+    SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
+    when(keySchemaEntry.getSchema()).thenReturn(myKeySchema);
+    when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
+
+    Schema myValueSchema = Schema.create(Schema.Type.STRING);
+    SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
+    when(valueSchemaEntry.getSchema()).thenReturn(myValueSchema);
+    when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
+    when(mockSchemaRepo.getSupersetOrLatestValueSchema(eq(storeNameWithoutVersionInfo))).thenReturn(valueSchemaEntry);
+
+    StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> assertTrue(storeIngestionTaskUnderTest.hasAnySubscription()));
+
+      try {
+        storeIngestionTaskUnderTest.produceToStoreBufferService(
+            pubSubMessage,
+            leaderProducedRecordContext,
+            PARTITION_FOO,
+            localKafkaConsumerService.kafkaUrl,
+            System.nanoTime(),
+            System.currentTimeMillis());
+      } catch (InterruptedException e) {
+        throw new VeniceException(e);
+      }
+    }, aaConfig);
+
+    DaVinciRecordTransformerConfig recordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .build();
+    config.setRecordTransformerConfig(recordTransformerConfig);
+
     runTest(config);
 
     // Transformer error should never be recorded
@@ -4857,7 +4943,7 @@ public abstract class StoreIngestionTaskTest {
 
   // Test to throw type error when performing record transformation with incompatible types
   @Test(dataProvider = "aaConfigProvider")
-  public void testStoreIngestionRecordTransformerError(AAConfig aaConfig) throws Exception {
+  public void testSITRecordTransformerError(AAConfig aaConfig) throws Exception {
     byte[] keyBytes = new byte[1];
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, keyBytes);
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
@@ -4914,15 +5000,9 @@ public abstract class StoreIngestionTaskTest {
           .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
     }, aaConfig);
 
-    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-        (storeVersion, keySchema, inputValueSchema, outputValueSchema) -> new TestStringRecordTransformer(
-            storeVersion,
-            keySchema,
-            inputValueSchema,
-            outputValueSchema,
-            true),
-        String.class,
-        Schema.create(Schema.Type.STRING));
+    DaVinciRecordTransformerConfig recordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .build();
     config.setRecordTransformerConfig(recordTransformerConfig);
     runTest(config);
   }

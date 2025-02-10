@@ -28,6 +28,7 @@ import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -339,19 +340,20 @@ public class TestHybridMultiRegion {
     serverProperties.setProperty(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, "3");
     serverProperties.setProperty(SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED, "true");
 
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+            .numberOfClusters(1)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(2)
+            .numberOfRouters(1)
+            .replicationFactor(1)
+            .forkServer(false)
+            .parentControllerProperties(Optional.of(parentControllerProps).orElse(null))
+            .childControllerProperties(Optional.of(childControllerProperties).orElse(null))
+            .serverProperties(serverProperties);
     VeniceTwoLayerMultiRegionMultiClusterWrapper cluster =
-        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-            1,
-            1,
-            1,
-            1,
-            2,
-            1,
-            1,
-            Optional.of(parentControllerProps),
-            Optional.of(childControllerProperties),
-            Optional.of(serverProperties),
-            false);
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
 
     return cluster;
   }

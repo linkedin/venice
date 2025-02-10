@@ -29,6 +29,7 @@ import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -70,7 +71,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -115,16 +115,6 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
     Utils.closeQuietlyWithErrorLogged(this.cluster);
   }
 
-  @BeforeMethod
-  @AfterClass
-  public void deleteClassHash() {
-    int storeVersion = 1;
-    File file = new File(String.format("./classHash-%d.txt", storeVersion));
-    if (file.exists()) {
-      assertTrue(file.delete());
-    }
-  }
-
   @Test(timeOut = TEST_TIMEOUT)
   public void testRecordTransformer() throws Exception {
     DaVinciConfig clientConfig = new DaVinciConfig();
@@ -147,18 +137,22 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
         metricsRepository,
         backendConfig)) {
       Set<String> columnsToProject = Collections.emptySet();
-      DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-          (storeVersion, keySchema, inputValueSchema, outputValueSchema) -> new DuckDBDaVinciRecordTransformer(
+
+      DaVinciRecordTransformerFunctionalInterface recordTransformerFunction =
+          (storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> new DuckDBDaVinciRecordTransformer(
               storeVersion,
               keySchema,
               inputValueSchema,
               outputValueSchema,
-              false,
+              config,
               tmpDir.getAbsolutePath(),
               storeName,
-              columnsToProject),
-          GenericRecord.class,
-          NAME_RECORD_V1_SCHEMA);
+              columnsToProject);
+
+      DaVinciRecordTransformerConfig recordTransformerConfig =
+          new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(recordTransformerFunction)
+              .setStoreRecordsInDaVinci(false)
+              .build();
       clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
       DaVinciClient<Integer, Object> clientWithRecordTransformer =

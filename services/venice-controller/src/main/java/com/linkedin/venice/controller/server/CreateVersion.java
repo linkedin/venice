@@ -82,20 +82,19 @@ public class CreateVersion extends AbstractRoute {
     request.setPartitioners(httpRequest.queryParamOrDefault(PARTITIONERS, null));
 
     request.setSendStartOfPush(
-        Utils.parseBooleanFromString(httpRequest.queryParamOrDefault(SEND_START_OF_PUSH, "false"), SEND_START_OF_PUSH));
+        Utils.parseBooleanOrThrow(httpRequest.queryParamOrDefault(SEND_START_OF_PUSH, "false"), SEND_START_OF_PUSH));
 
     request.setSorted(
-        Utils.parseBooleanFromString(
-            httpRequest.queryParamOrDefault(PUSH_IN_SORTED_ORDER, "false"),
-            PUSH_IN_SORTED_ORDER));
+        Utils
+            .parseBooleanOrThrow(httpRequest.queryParamOrDefault(PUSH_IN_SORTED_ORDER, "false"), PUSH_IN_SORTED_ORDER));
 
     request.setWriteComputeEnabled(
-        Utils.parseBooleanFromString(
+        Utils.parseBooleanOrThrow(
             httpRequest.queryParamOrDefault(IS_WRITE_COMPUTE_ENABLED, "false"),
             IS_WRITE_COMPUTE_ENABLED));
 
     request.setSeparateRealTimeTopicEnabled(
-        Utils.parseBooleanFromString(
+        Utils.parseBooleanOrThrow(
             httpRequest.queryParamOrDefault(SEPARATE_REAL_TIME_TOPIC_ENABLED, "false"),
             SEPARATE_REAL_TIME_TOPIC_ENABLED));
 
@@ -109,7 +108,7 @@ public class CreateVersion extends AbstractRoute {
      * Version level override to defer marking this new version to the serving version post push completion.
      */
     request.setDeferVersionSwap(
-        Utils.parseBooleanFromString(httpRequest.queryParamOrDefault(DEFER_VERSION_SWAP, "false"), DEFER_VERSION_SWAP));
+        Utils.parseBooleanOrThrow(httpRequest.queryParamOrDefault(DEFER_VERSION_SWAP, "false"), DEFER_VERSION_SWAP));
 
     request.setTargetedRegions(httpRequest.queryParamOrDefault(TARGETED_REGIONS, null));
 

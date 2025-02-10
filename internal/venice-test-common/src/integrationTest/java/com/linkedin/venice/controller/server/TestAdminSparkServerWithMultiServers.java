@@ -9,6 +9,7 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.DataReplicationPolicy;
@@ -49,7 +50,11 @@ public class TestAdminSparkServerWithMultiServers {
 
   @BeforeClass
   public void setUp() {
-    cluster = ServiceFactory.getVeniceCluster(1, STORAGE_NODE_COUNT, 0);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(STORAGE_NODE_COUNT)
+        .numberOfRouters(0)
+        .build();
+    cluster = ServiceFactory.getVeniceCluster(options);
     controllerClient =
         ControllerClient.constructClusterControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
   }

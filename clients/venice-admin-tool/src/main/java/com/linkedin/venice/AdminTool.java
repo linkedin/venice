@@ -841,8 +841,7 @@ public class AdminTool {
     String valueSchemaFile = getRequiredArgument(cmd, Arg.VALUE_SCHEMA, Command.NEW_STORE);
     String valueSchema = readFile(valueSchemaFile);
     String owner = getOptionalArgument(cmd, Arg.OWNER, "");
-    boolean isVsonStore =
-        Utils.parseBooleanFromString(getOptionalArgument(cmd, Arg.VSON_STORE, "false"), "isVsonStore");
+    boolean isVsonStore = Utils.parseBooleanOrThrow(getOptionalArgument(cmd, Arg.VSON_STORE, "false"), "isVsonStore");
     if (isVsonStore) {
       keySchema = VsonAvroSchemaAdapter.parse(keySchema).toString();
       valueSchema = VsonAvroSchemaAdapter.parse(valueSchema).toString();
@@ -1126,7 +1125,7 @@ public class AdminTool {
   }
 
   private static void booleanParam(CommandLine cmd, Arg param, Consumer<Boolean> setter, Set<Arg> argSet) {
-    genericParam(cmd, param, s -> Utils.parseBooleanFromString(s, param.toString()), setter, argSet);
+    genericParam(cmd, param, s -> Utils.parseBooleanOrThrow(s, param.toString()), setter, argSet);
   }
 
   private static void stringMapParam(
@@ -2536,8 +2535,7 @@ public class AdminTool {
     String valueSchema = readFile(valueSchemaFile);
     String aclPerms = getRequiredArgument(cmd, Arg.ACL_PERMS, Command.NEW_STORE);
     String owner = getOptionalArgument(cmd, Arg.OWNER, "");
-    boolean isVsonStore =
-        Utils.parseBooleanFromString(getOptionalArgument(cmd, Arg.VSON_STORE, "false"), "isVsonStore");
+    boolean isVsonStore = Utils.parseBooleanOrThrow(getOptionalArgument(cmd, Arg.VSON_STORE, "false"), "isVsonStore");
     if (isVsonStore) {
       keySchema = VsonAvroSchemaAdapter.parse(keySchema).toString();
       valueSchema = VsonAvroSchemaAdapter.parse(valueSchema).toString();
