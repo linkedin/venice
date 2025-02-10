@@ -367,7 +367,6 @@ public class TestVeniceControllerClusterConfig {
 
   @Test
   public void testPartiallyDefinedRebalancePreferenceAndCapacityKeys() {
-    Properties clusterProperties = getBaseSingleRegionProperties(false);
 
     int helixRebalancePreferenceEvenness = 10;
     int helixRebalancePreferenceLessMovement = 2;
@@ -376,38 +375,39 @@ public class TestVeniceControllerClusterConfig {
     int helixResourceCapacityWeight = 100;
 
     // EVENNESS must be defined with LESS_MOVEMENT
-    clusterProperties.put(ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS, helixRebalancePreferenceEvenness);
+    Properties clusterProperties1 = getBaseSingleRegionProperties(false);
+    clusterProperties1.put(ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS, helixRebalancePreferenceEvenness);
     assertThrows(
         ConfigurationException.class,
-        () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties)));
-    clusterProperties.remove(ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS);
+        () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties1)));
 
     // LESS_MOVEMENT must be defined with EVENNESS
-    clusterProperties
+    Properties clusterProperties2 = getBaseSingleRegionProperties(false);
+    clusterProperties2
         .put(ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT, helixRebalancePreferenceLessMovement);
     assertThrows(
         ConfigurationException.class,
-        () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties)));
-    clusterProperties.remove(ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT);
+        () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties2)));
 
     // You can set FORCE_BASELINE_CONVERGE without EVENNESS and LESS_MOVEMENT
-    clusterProperties.put(
+    Properties clusterProperties3 = getBaseSingleRegionProperties(false);
+    clusterProperties3.put(
         ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_FORCE_BASELINE_CONVERGE,
         helixRebalancePreferenceForceBaselineConverge);
     VeniceControllerClusterConfig clusterConfig =
-        new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties));
+        new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties3));
     Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> helixGlobalRebalancePreference =
         clusterConfig.getHelixGlobalRebalancePreference();
     assertEquals(helixGlobalRebalancePreference.size(), 1);
     assertEquals(
         (int) helixGlobalRebalancePreference.get(ClusterConfig.GlobalRebalancePreferenceKey.FORCE_BASELINE_CONVERGE),
         helixRebalancePreferenceForceBaselineConverge);
-    clusterProperties.remove(ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_FORCE_BASELINE_CONVERGE);
 
     // You can set capacities without rebalance preference
-    clusterProperties.put(ConfigKeys.CONTROLLER_HELIX_INSTANCE_CAPACITY, helixInstanceCapacity);
-    clusterProperties.put(ConfigKeys.CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT, helixResourceCapacityWeight);
-    clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties));
+    Properties clusterProperties4 = getBaseSingleRegionProperties(false);
+    clusterProperties4.put(ConfigKeys.CONTROLLER_HELIX_INSTANCE_CAPACITY, helixInstanceCapacity);
+    clusterProperties4.put(ConfigKeys.CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT, helixResourceCapacityWeight);
+    clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties4));
 
     Map<String, Integer> helixDefaultInstanceCapacityMap = clusterConfig.getHelixDefaultInstanceCapacityMap();
     assertEquals(
@@ -422,8 +422,6 @@ public class TestVeniceControllerClusterConfig {
 
   @Test
   public void testInvalidRebalancePreferenceAndCapacityKeys() {
-    Properties clusterProperties = getBaseSingleRegionProperties(false);
-
     int helixRebalancePreferenceEvenness = 10;
     int helixRebalancePreferenceLessMovement = -1;
     int helixRebalancePreferenceForceBaselineConverge = -1;
@@ -431,42 +429,47 @@ public class TestVeniceControllerClusterConfig {
     int helixResourceCapacityWeight = 10;
 
     // Rebalance preference cannot be negative
-    clusterProperties.put(ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS, helixRebalancePreferenceEvenness);
-    clusterProperties
+    Properties clusterProperties1 = getBaseSingleRegionProperties(false);
+    clusterProperties1.put(ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS, helixRebalancePreferenceEvenness);
+    clusterProperties1
         .put(ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT, helixRebalancePreferenceLessMovement);
     assertThrows(
         ConfigurationException.class,
-        () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties)));
+        () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties1)));
 
     // Rebalance preference must be < 1000
-    clusterProperties.put(ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT, 1001);
+    Properties clusterProperties2 = getBaseSingleRegionProperties(false);
+    clusterProperties2.put(ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS, helixRebalancePreferenceEvenness);
+    clusterProperties2.put(ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT, 1001);
     assertThrows(
         ConfigurationException.class,
-        () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties)));
+        () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties2)));
 
     // Rebalance preference cannot be negative
-    clusterProperties
+    Properties clusterProperties3 = getBaseSingleRegionProperties(false);
+    clusterProperties3
         .put(ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT, helixRebalancePreferenceLessMovement);
-    clusterProperties.put(
+    clusterProperties3.put(
         ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_FORCE_BASELINE_CONVERGE,
         helixRebalancePreferenceForceBaselineConverge);
     assertThrows(
         ConfigurationException.class,
-        () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties)));
-    clusterProperties.remove(ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_FORCE_BASELINE_CONVERGE);
+        () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties3)));
 
     // CONTROLLER_HELIX_INSTANCE_CAPACITY cannot be less than CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT
-    clusterProperties.put(ConfigKeys.CONTROLLER_HELIX_INSTANCE_CAPACITY, helixInstanceCapacity);
-    clusterProperties.put(ConfigKeys.CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT, helixResourceCapacityWeight);
+    Properties clusterProperties4 = getBaseSingleRegionProperties(false);
+    clusterProperties4.put(ConfigKeys.CONTROLLER_HELIX_INSTANCE_CAPACITY, helixInstanceCapacity);
+    clusterProperties4.put(ConfigKeys.CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT, helixResourceCapacityWeight);
     assertThrows(
         ConfigurationException.class,
-        () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties)));
+        () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties4)));
 
     // CONTROLLER_HELIX_INSTANCE_CAPACITY and CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT must be defined together
-    clusterProperties.remove(ConfigKeys.CONTROLLER_HELIX_INSTANCE_CAPACITY);
+    Properties clusterProperties5 = getBaseSingleRegionProperties(false);
+    clusterProperties5.put(ConfigKeys.CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT, helixResourceCapacityWeight);
     assertThrows(
         ConfigurationException.class,
-        () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties)));
+        () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties5)));
   }
 
 }

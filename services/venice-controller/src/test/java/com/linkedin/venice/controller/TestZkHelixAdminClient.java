@@ -59,9 +59,7 @@ public class TestZkHelixAdminClient {
         helixAdminField.setAccessible(true);
         helixAdminField.set(zkHelixAdminClient, mockHelixAdmin);
 
-        Field helixConfigAccessorField = ZkHelixAdminClient.class.getDeclaredField("helixConfigAccessor");
-        helixConfigAccessorField.setAccessible(true);
-        helixConfigAccessorField.set(zkHelixAdminClient, mockHelixConfigAccessor);
+        zkHelixAdminClient.helixConfigAccessor = mockHelixConfigAccessor;
 
         Field multiClusterConfigsField = ZkHelixAdminClient.class.getDeclaredField("multiClusterConfigs");
         multiClusterConfigsField.setAccessible(true);
