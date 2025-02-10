@@ -6,8 +6,11 @@ import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -18,6 +21,7 @@ import java.time.ZoneOffset;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -73,6 +77,17 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     Set<String> remainingRegions = new HashSet<>(candidateRegions.keySet());
     remainingRegions.removeAll(targetRegions);
     return remainingRegions;
+  }
+
+  private String getTargetRegion(Set<String> targetRegions) {
+    return targetRegions.iterator().next();
+  }
+
+  private StoreResponse getStoreForRegion(String clusterName, String targetRegion, String storeName) {
+    Map<String, ControllerClient> controllerClientMap =
+        veniceParentHelixAdmin.getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    ControllerClient targetRegionControllerClient = controllerClientMap.get(targetRegion);
+    return targetRegionControllerClient.getStore(storeName);
   }
 
   private boolean didWaitTimeElapseInTargetRegions(
@@ -143,6 +158,36 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               Map<String, Integer> coloToVersions =
                   veniceParentHelixAdmin.getCurrentVersionsForMultiColos(cluster, storeName);
               Set<String> remainingRegions = getRegionsForVersionSwap(coloToVersions, targetRegions);
+
+              // Do not perform version swap for davinci stores
+              // TODO remove this check once DVC delayed ingestion is completed
+              if (veniceControllerMultiClusterConfig.isDeferredVersionSwapServiceWithDvcCheckEnabled()) {
+                StoreResponse targetRegionStoreResponse =
+                    getStoreForRegion(cluster, getTargetRegion(targetRegions), storeName);
+                if (targetRegionStoreResponse.isError()) {
+                  LOGGER.warn("Got error when fetching targetRegionStore: {}", targetRegionStoreResponse.getError());
+                  continue;
+                }
+
+                StoreInfo targetRegionStore = targetRegionStoreResponse.getStore();
+                Optional<Version> version = targetRegionStore.getVersion(targetVersionNum);
+                if (!version.isPresent()) {
+                  LOGGER.warn(
+                      "Unable to find version {} for store: {} in regions: {}",
+                      targetVersionNum,
+                      storeName,
+                      store.getTargetSwapRegion());
+                  continue;
+                }
+
+                if (version.get().getIsDavinciHeartbeatReported()) {
+                  LOGGER.info(
+                      "Skipping version swap for store: {} on version: {} as it is davinci",
+                      storeName,
+                      targetVersionNum);
+                  continue;
+                }
+              }
 
               // Check that push is completed in target regions
               Admin.OfflinePushStatusInfo pushStatusInfo =

@@ -2402,4 +2402,6 @@ public class ConfigKeys {
   public static final String CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS = "controller.deferred.version.swap.sleep.ms";
   public static final String CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED =
       "controller.deferred.version.swap.service.enabled";
+  public static final String DEFERRED_VERSION_SWAP_SERVICE_WITH_DVC_CHECK_ENABLED =
+      "deferred.version.swap.service.with.dvc.check.enabled";
 }
