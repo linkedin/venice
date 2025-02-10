@@ -15,5 +15,5 @@ public interface RepushOrchestrator {
    */
   void init(RepushOrchestratorConfig config);
 
-  RepushJobResponse repush(String storeName) throws Exception; // TODO LC: probably need to throw Exception
+  RepushJobResponse repush(String storeName) throws Exception;
 }
