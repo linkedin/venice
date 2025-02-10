@@ -64,6 +64,7 @@ ext.libraries = [
     apacheSparkAvro: "org.apache.spark:spark-avro_${scala}:${apacheSparkVersion}",
     apacheSparkCore: "org.apache.spark:spark-core_${scala}:${apacheSparkVersion}",
     apacheSparkSql: "org.apache.spark:spark-sql_${scala}:${apacheSparkVersion}",
+    asm: "org.ow2.asm:asm:9.7",
     avro: "org.apache.avro:avro:${avroVersion}",
     avroCompiler: "org.apache.avro:avro-compiler:${avroVersion}",
     avroMapred: "org.apache.avro:avro-mapred:${avroVersion}",
@@ -82,7 +83,7 @@ ext.libraries = [
     commonsLang: 'commons-lang:commons-lang:2.6',
     conscrypt: 'org.conscrypt:conscrypt-openjdk-uber:2.5.2',
     d2: "com.linkedin.pegasus:d2:${pegasusVersion}",
-    duckdbJdbc: "org.duckdb:duckdb_jdbc:1.2.0-20250130.011706-145", // TODO: Remove SNAPSHOT when the real release is published!
+    duckdbJdbc: "org.duckdb:duckdb_jdbc:1.2.0",
     failsafe: 'net.jodah:failsafe:2.4.0',
     fastUtil: 'it.unimi.dsi:fastutil:8.3.0',
     grpcNettyShaded: "io.grpc:grpc-netty-shaded:${grpcVersion}",
@@ -291,7 +292,6 @@ subprojects {
     implementation libraries.grpcProtobuf
     implementation libraries.grpcServices
     implementation libraries.grpcStub
-    implementation 'org.ow2.asm:asm:9.7'
     compileOnly libraries.tomcatAnnotations
   }
 

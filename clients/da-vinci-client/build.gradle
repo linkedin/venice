@@ -33,6 +33,7 @@ dependencies {
   implementation project(':clients:venice-thin-client')
 
   implementation libraries.avroUtilFastserde
+  implementation libraries.asm
   implementation libraries.caffeine
   implementation libraries.fastUtil
   implementation libraries.httpAsyncClient
