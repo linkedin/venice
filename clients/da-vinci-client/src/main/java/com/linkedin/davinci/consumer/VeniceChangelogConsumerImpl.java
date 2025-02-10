@@ -200,7 +200,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   @Override
   public int getPartitionCount() {
     Store store = getStore();
-    return store.getPartitionCount();
+    return store.getVersion(store.getCurrentVersion()).getPartitionCount();
   }
 
   @Override
@@ -453,8 +453,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public CompletableFuture<Void> subscribeAll() {
-    Store store = getStore();
-    return this.subscribe(IntStream.range(0, store.getPartitionCount()).boxed().collect(Collectors.toSet()));
+    return this.subscribe(IntStream.range(0, getPartitionCount()).boxed().collect(Collectors.toSet()));
   }
 
   @Override
@@ -579,8 +578,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   @Override
   public void unsubscribeAll() {
     Set<Integer> allPartitions = new HashSet<>();
-    Store store = getStore();
-    for (int partition = 0; partition < store.getPartitionCount(); partition++) {
+    for (int partition = 0; partition < getPartitionCount(); partition++) {
       allPartitions.add(partition);
     }
     this.unsubscribe(allPartitions);

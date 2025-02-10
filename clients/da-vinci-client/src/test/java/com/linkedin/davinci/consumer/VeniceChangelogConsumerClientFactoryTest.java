@@ -270,9 +270,11 @@ public class VeniceChangelogConsumerClientFactoryTest {
     NativeMetadataRepositoryViewAdapter mockRepository = mock(NativeMetadataRepositoryViewAdapter.class);
     Store store = mock(Store.class);
     Version mockVersion = new VersionImpl(STORE_NAME, 1, "foo");
+    mockVersion.setPartitionCount(2);
     Mockito.when(store.getCurrentVersion()).thenReturn(1);
     Mockito.when(store.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
     Mockito.when(store.getPartitionCount()).thenReturn(2);
+    Mockito.when(store.getVersion(anyInt())).thenReturn(mockVersion);
     Mockito.when(mockRepository.getStore(anyString())).thenReturn(store);
     Mockito.when(store.getVersionOrThrow(Mockito.anyInt())).thenReturn(mockVersion);
 

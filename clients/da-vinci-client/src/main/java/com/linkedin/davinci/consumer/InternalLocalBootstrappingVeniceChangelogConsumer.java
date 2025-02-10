@@ -525,7 +525,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
       throw new VeniceException("Failed to start bootstrapping changelog consumer with error:", e);
     }
     Store store = storeRepository.getStore(storeName);
-    for (int partition = 0; partition < store.getPartitionCount(); partition++) {
+    for (int partition = 0; partition < store.getVersion(store.getCurrentVersion()).getPartitionCount(); partition++) {
       allPartitions.add(partition);
     }
     return this.start(allPartitions);

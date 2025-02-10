@@ -189,11 +189,13 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     metadataRepository = mock(NativeMetadataRepositoryViewAdapter.class);
     Store store = mock(Store.class);
     Version mockVersion = new VersionImpl(storeName, 1, "foo");
+    mockVersion.setPartitionCount(2);
     when(store.getCurrentVersion()).thenReturn(1);
     when(store.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
     when(store.getPartitionCount()).thenReturn(2);
     when(metadataRepository.getStore(anyString())).thenReturn(store);
     when(store.getVersionOrThrow(Mockito.anyInt())).thenReturn(mockVersion);
+    when(store.getVersion(Mockito.anyInt())).thenReturn(mockVersion);
     when(metadataRepository.getValueSchema(storeName, TEST_SCHEMA_ID))
         .thenReturn(new SchemaEntry(TEST_SCHEMA_ID, valueSchema));
     bootstrappingVeniceChangelogConsumer.setStoreRepository(metadataRepository);
