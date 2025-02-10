@@ -62,6 +62,7 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
+import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
@@ -959,18 +960,18 @@ public class StoresRoutes extends AbstractRoute {
    * @see Admin#compactStore(String)
    */
   public Route compactStore(Admin admin) {
-    return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
+    return new VeniceRouteHandler<RepushJobResponse>(RepushJobResponse.class) {
       @Override
-      public void internalHandle(Request request, ControllerResponse veniceResponse) {
+      public void internalHandle(Request request, RepushJobResponse veniceResponse) {
         AdminSparkServer.validateParams(request, COMPACT_STORE.getParams(), admin);
         String storeName = request.queryParams(NAME);
         try {
           admin.compactStore(storeName);
+
+          veniceResponse.setName(storeName);
         } catch (Exception e) {
-          throw new RuntimeException(e);
-          // TODO LC: AdminSparkServer.handleError & send error response back to client
+          veniceResponse.setError("Failed to compact store: " + storeName, e);
         }
-        veniceResponse.setName(storeName);
       }
     };
   }

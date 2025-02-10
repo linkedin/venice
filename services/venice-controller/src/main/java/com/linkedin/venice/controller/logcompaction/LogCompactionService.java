@@ -98,7 +98,7 @@ public class LogCompactionService extends AbstractVeniceService {
                 "{} log compaction triggered for cluster: {} store: {} | execution URL: {}",
                 triggerSource,
                 clusterName,
-                response.getStoreName(),
+                response.getName(),
                 response.getExecUrl());
           } catch (Exception e) {
             LOGGER.error(

@@ -34,8 +34,8 @@ public class CompactionManager {
    * This function iterates over a list of child controllers,
    * in order to obtain the list of stores in each child controller,
    * and then filter out the stores that are ready for compaction with function {@link CompactionManager#filterStoresForCompaction}.
-   * @param clusterName
-   * @param childControllers
+   * @param clusterName cluster to look for compaction-ready stores in
+   * @param childControllers list of controllers to look for compaction-ready stores in
    * @return list of StoreInfo of stores ready for log compaction in clusterName
    */
   public List<StoreInfo> getStoresForCompaction(String clusterName, Map<String, ControllerClient> childControllers) {
@@ -110,7 +110,7 @@ public class CompactionManager {
       RepushJobResponse response = repushOrchestrator.repush(storeName);
       LOGGER.info(
           "Repush job triggered for store: {} | exec id: {} | exec url: {}",
-          response.getStoreName(),
+          response.getName(),
           response.getExecId(),
           response.getExecUrl());
       return response;

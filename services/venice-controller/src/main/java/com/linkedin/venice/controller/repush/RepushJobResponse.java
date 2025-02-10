@@ -1,21 +1,18 @@
 package com.linkedin.venice.controller.repush;
 
+import com.linkedin.venice.controllerapi.ControllerResponse;
+
+
 /**
  * Data model of response from a repush job trigger request for a store
  */
-public class RepushJobResponse {
-  private final String storeName;
+public class RepushJobResponse extends ControllerResponse {
   private final String execId;
   private final String execUrl;
 
-  public RepushJobResponse(String storeName, String execId, String execUrl) {
-    this.storeName = storeName;
+  public RepushJobResponse(String execId, String execUrl) {
     this.execId = execId;
     this.execUrl = execUrl;
-  }
-
-  public String getStoreName() {
-    return storeName;
   }
 
   public String getExecId() {
