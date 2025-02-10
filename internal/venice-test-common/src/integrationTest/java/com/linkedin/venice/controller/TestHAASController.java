@@ -293,7 +293,9 @@ public class TestHAASController {
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testRebalancePreferenceAndCapacityKeys() {
-    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(0, 0, 0, 1);
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(0).numberOfServers(0).numberOfRouters(0).build();
+    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(options);
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
       String controllerClusterName = "venice-controllers";
 
