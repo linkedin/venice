@@ -169,9 +169,6 @@ public class DaVinciBackendTest {
     DaVinciBackend backend = mock(DaVinciBackend.class);
     StorageService mockStorageService = mock(StorageService.class);
 
-    Field storageServiceField = DaVinciBackend.class.getDeclaredField("storageService");
-    storageServiceField.setAccessible(true);
-    storageServiceField.set(backend, mockStorageService);
     StorageEngineRepository mockStorageEngineRepository = mock(StorageEngineRepository.class);
     AbstractStorageEngine abstractStorageEngine = mock(AbstractStorageEngine.class);
     mockStorageEngineRepository.addLocalStorageEngine(abstractStorageEngine);
