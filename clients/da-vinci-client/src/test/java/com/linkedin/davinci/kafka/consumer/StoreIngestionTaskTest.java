@@ -1127,7 +1127,9 @@ public abstract class StoreIngestionTaskTest {
         .setPartitionStateSerializer(partitionStateSerializer)
         .setRunnableForKillIngestionTasksForNonCurrentVersions(runnableForKillNonCurrentVersion)
         .setAAWCWorkLoadProcessingThreadPool(
-            Executors.newFixedThreadPool(2, new DaemonThreadFactory("AA_WC_PARALLEL_PROCESSING")));
+            Executors.newFixedThreadPool(2, new DaemonThreadFactory("AA_WC_PARALLEL_PROCESSING")))
+        .setAAWCIngestionStorageLookupThreadPool(
+            Executors.newFixedThreadPool(1, new DaemonThreadFactory("AA_WC_INGESTION_STORAGE_LOOKUP")));
   }
 
   abstract KafkaConsumerService.ConsumerAssignmentStrategy getConsumerAssignmentStrategy();

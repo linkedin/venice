@@ -126,6 +126,7 @@ public class StoreIngestionTaskFactory {
     private PubSubTopicRepository pubSubTopicRepository;
     private Runnable runnableForKillIngestionTasksForNonCurrentVersions;
     private ExecutorService aaWCWorkLoadProcessingThreadPool;
+    private ExecutorService aaWCIngestionStorageLookupThreadPool;
 
     private interface Setter {
       void apply();
@@ -331,6 +332,14 @@ public class StoreIngestionTaskFactory {
 
     public Builder setAAWCWorkLoadProcessingThreadPool(ExecutorService executorService) {
       return set(() -> this.aaWCWorkLoadProcessingThreadPool = executorService);
+    }
+
+    public Builder setAAWCIngestionStorageLookupThreadPool(ExecutorService executorService) {
+      return set(() -> this.aaWCIngestionStorageLookupThreadPool = executorService);
+    }
+
+    public ExecutorService getAaWCIngestionStorageLookupThreadPool() {
+      return aaWCIngestionStorageLookupThreadPool;
     }
 
     public ExecutorService getAAWCWorkLoadProcessingThreadPool() {
