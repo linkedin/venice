@@ -298,9 +298,8 @@ public class RouterStoreAclHandlerTest {
 
   @Test
   public void testAllRequestTypes() throws SSLPeerUnverifiedException, AclException {
-    Store store = mock(Store.class);
     ReadOnlyStoreRepository metadataRepo = mock(ReadOnlyStoreRepository.class);
-    when(metadataRepo.getStore(storeName)).thenReturn(store);
+    when(metadataRepo.hasStore(storeName)).thenReturn(true);
     HelixReadOnlyStoreConfigRepository storeConfigRepository = mock(HelixReadOnlyStoreConfigRepository.class);
     StoreConfig storeConfig = mock(StoreConfig.class);
     when(storeConfig.getCluster()).thenReturn(clusterName);
