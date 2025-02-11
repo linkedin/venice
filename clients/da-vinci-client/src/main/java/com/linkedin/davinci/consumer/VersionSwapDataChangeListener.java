@@ -6,6 +6,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.views.VeniceView;
 import java.util.HashSet;
 import java.util.Set;
 import org.apache.logging.log4j.LogManager;
@@ -51,7 +52,12 @@ class VersionSwapDataChangeListener<K, V> implements StoreDataChangedListener {
 
         // for all partition subscriptions that are not subscribed to the current version, resubscribe them
         for (PubSubTopicPartition topicPartition: subscriptions) {
-          int version = Version.parseVersionFromVersionTopicName(topicPartition.getPubSubTopic().getName());
+          int version;
+          if (topicPartition.getPubSubTopic().isViewTopic()) {
+            version = VeniceView.parseVersionFromViewTopic(topicPartition.getPubSubTopic().getName());
+          } else {
+            version = Version.parseVersionFromVersionTopicName(topicPartition.getPubSubTopic().getName());
+          }
           if (version != currentVersion) {
             partitions.add(topicPartition.getPartitionNumber());
           }

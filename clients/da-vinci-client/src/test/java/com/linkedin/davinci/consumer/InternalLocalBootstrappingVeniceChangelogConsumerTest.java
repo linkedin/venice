@@ -129,7 +129,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
   @BeforeMethod
   public void setUp() {
     storeName = Utils.getUniqueString();
-    localStateTopicName = storeName + "_Bootstrap_v1";
+    localStateTopicName = storeName + "-changeCaptureView" + "_Bootstrap_v1";
     schemaReader = mock(SchemaReader.class);
     Schema keySchema = AvroCompatibilityHelper.parse("\"string\"");
     doReturn(keySchema).when(schemaReader).getKeySchema();

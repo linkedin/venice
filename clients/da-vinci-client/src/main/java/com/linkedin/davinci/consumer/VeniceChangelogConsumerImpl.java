@@ -52,6 +52,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.ChangeCaptureView;
+import com.linkedin.venice.views.VeniceView;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -151,7 +152,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       this.storeName = changelogClientConfig.getStoreName();
     } else {
       this.storeName =
-          ChangeCaptureView.getViewStoreName(changelogClientConfig.getStoreName(), changelogClientConfig.getViewName());
+          VeniceView.getViewStoreName(changelogClientConfig.getStoreName(), changelogClientConfig.getViewName());
     }
 
     this.d2ControllerClient = changelogClientConfig.getD2ControllerClient();
@@ -280,7 +281,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected VeniceCompressor getVersionCompressor(PubSubTopicPartition topicPartition) {
     Store store = storeRepository.getStore(storeName);
     String topicName = topicPartition.getPubSubTopic().getName();
-    Version version = store.getVersionOrThrow(Version.parseVersionFromVersionTopicName(topicName));
+    Version version = store.getVersionOrThrow(Version.parseVersionFromKafkaTopicName(topicName));
     VeniceCompressor compressor;
     if (CompressionStrategy.ZSTD_WITH_DICT.equals(version.getCompressionStrategy())) {
       compressor = compressorFactory.getVersionSpecificCompressor(topicName);
@@ -396,7 +397,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   private PubSubTopic getCurrentServingVersionTopic() {
     Store store = storeRepository.getStore(storeName);
     int currentVersion = store.getCurrentVersion();
-    return pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, currentVersion));
+    if (changelogClientConfig.getViewName() == null || changelogClientConfig.getViewName().isEmpty()) {
+      return pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, currentVersion));
+    }
+
+    return pubSubTopicRepository.getTopic(store.getVersion(currentVersion).kafkaTopicName());
   }
 
   @Override
@@ -784,25 +789,33 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     }
     if (messageType.equals(MessageType.PUT)) {
       Put put = (Put) message.getValue().payloadUnion;
-      // Select appropriate deserializers
+      // Select appropriate deserializers and compressors
       Lazy deserializerProvider;
       int readerSchemaId;
-      if (pubSubTopicPartition.getPubSubTopic().isVersionTopic()) {
-        deserializerProvider = Lazy.of(() -> storeDeserializerCache.getDeserializer(put.schemaId, put.schemaId));
-        readerSchemaId = put.schemaId;
-      } else {
+      VeniceCompressor compressor;
+      if (pubSubTopicPartition.getPubSubTopic().isViewTopic() && changelogClientConfig.isBeforeImageView()) {
         deserializerProvider = Lazy.of(() -> recordChangeDeserializer);
         readerSchemaId = this.schemaReader.getLatestValueSchemaId();
+        compressor = NO_OP_COMPRESSOR;
+      } else {
+        deserializerProvider = Lazy.of(() -> storeDeserializerCache.getDeserializer(put.schemaId, put.schemaId));
+        readerSchemaId = put.schemaId;
+        compressor = compressorMap.get(pubSubTopicPartition.getPartitionNumber());
       }
 
-      // Select compressor. We'll only construct compressors for version topics so this will return null for
-      // events from change capture. This is fine as today they are not compressed.
-      VeniceCompressor compressor;
-      if (pubSubTopicPartition.getPubSubTopic().isVersionTopic()) {
-        compressor = compressorMap.get(pubSubTopicPartition.getPartitionNumber());
-      } else {
-        compressor = NO_OP_COMPRESSOR;
-      }
+      // if (pubSubTopicPartition.getPubSubTopic().isVersionTopic()) {
+      // deserializerProvider = Lazy.of(() -> storeDeserializerCache.getDeserializer(put.schemaId, put.schemaId));
+      // readerSchemaId = put.schemaId;
+      // } else {
+      // deserializerProvider = Lazy.of(() -> recordChangeDeserializer);
+      // readerSchemaId = this.schemaReader.getLatestValueSchemaId();
+      // }
+      //
+      // if (pubSubTopicPartition.getPubSubTopic().isVersionTopic()) {
+      // compressor = compressorMap.get(pubSubTopicPartition.getPartitionNumber());
+      // } else {
+      // compressor = NO_OP_COMPRESSOR;
+      // }
 
       assembledObject = chunkAssembler.bufferAndAssembleRecord(
           pubSubTopicPartition,

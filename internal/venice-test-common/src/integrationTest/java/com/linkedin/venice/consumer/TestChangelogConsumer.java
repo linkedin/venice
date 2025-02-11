@@ -56,6 +56,7 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
@@ -70,6 +71,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.view.TestView;
 import com.linkedin.venice.views.ChangeCaptureView;
+import com.linkedin.venice.views.MaterializedView;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.time.Instant;
@@ -225,14 +227,29 @@ public class TestChangelogConsumer {
     setupControllerClient
         .retryableRequest(5, controllerClient1 -> setupControllerClient.updateStore(storeName, storeParams4));
 
+    UpdateStoreQueryParams storeParams5 = new UpdateStoreQueryParams().setViewName("materializedView")
+        .setViewClassName(MaterializedView.class.getCanonicalName())
+        .setViewClassParams(
+            Collections.singletonMap(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name(), "1"));
+    setupControllerClient
+        .retryableRequest(5, controllerClient1 -> setupControllerClient.updateStore(storeName, storeParams5));
+
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       Map<String, ViewConfig> viewConfigMap = setupControllerClient.getStore(storeName).getStore().getViewConfigs();
-      Assert.assertEquals(viewConfigMap.size(), 2);
+      Assert.assertEquals(viewConfigMap.size(), 3);
       Assert.assertEquals(viewConfigMap.get("testView").getViewClassName(), TestView.class.getCanonicalName());
       Assert.assertEquals(
           viewConfigMap.get("changeCaptureView").getViewClassName(),
           ChangeCaptureView.class.getCanonicalName());
       Assert.assertEquals(viewConfigMap.get("changeCaptureView").getViewParameters().size(), 1);
+      Assert.assertEquals(
+          viewConfigMap.get("materializedView").getViewClassName(),
+          MaterializedView.class.getCanonicalName());
+      Assert.assertEquals(
+          viewConfigMap.get("materializedView")
+              .getViewParameters()
+              .get(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name()),
+          "1");
     });
 
     // Write Records to the store for version v1, the push job will contain 100 records.
@@ -269,10 +286,28 @@ public class TestChangelogConsumer {
     Assert.assertTrue(versionTopicConsumer instanceof VeniceAfterImageConsumerImpl);
     versionTopicConsumer.subscribeAll().get();
 
+    ChangelogClientConfig viewChangeLogClientConfig = new ChangelogClientConfig().setViewName("materializedView")
+        .setConsumerProperties(consumerProperties)
+        .setControllerD2ServiceName(D2_SERVICE_NAME)
+        .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+        .setLocalD2ZkHosts(localZkServer.getAddress())
+        .setControllerRequestRetryCount(3);
+    VeniceChangelogConsumerClientFactory veniceViewChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(viewChangeLogClientConfig, metricsRepository);
+
+    VeniceChangelogConsumer<Utf8, Utf8> viewTopicConsumer =
+        veniceViewChangelogConsumerClientFactory.getChangelogConsumer(storeName);
+    Assert.assertTrue(viewTopicConsumer instanceof VeniceAfterImageConsumerImpl);
+    viewTopicConsumer.subscribeAll().get();
+
     // Let's consume those 100 records off of version 1
     Map<String, Utf8> versionTopicEvents = new HashMap<>();
     pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
     Assert.assertEquals(versionTopicEvents.size(), 100);
+
+    Map<String, Utf8> viewTopicEvents = new HashMap<>();
+    pollAfterImageEventsFromChangeCaptureConsumer(viewTopicEvents, viewTopicConsumer);
+    Assert.assertEquals(viewTopicEvents.size(), 100);
 
     VeniceChangelogConsumer<Utf8, Utf8> veniceChangelogConsumer =
         veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName);

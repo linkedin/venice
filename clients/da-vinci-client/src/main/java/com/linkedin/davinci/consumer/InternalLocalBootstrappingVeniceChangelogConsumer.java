@@ -94,7 +94,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
     bootstrapStateMap = new VeniceConcurrentHashMap<>();
     syncBytesInterval = changelogClientConfig.getDatabaseSyncBytesInterval();
     metricsRepository = changelogClientConfig.getInnerClientConfig().getMetricsRepository();
-    String viewNamePath = changelogClientConfig.getViewName() == null ? "" : "- " + changelogClientConfig.getViewName();
+    String viewNamePath = changelogClientConfig.getViewName() == null ? "" : "-" + changelogClientConfig.getViewName();
     String localStateTopicNameTemp = changelogClientConfig.getStoreName() + viewNamePath + LOCAL_STATE_TOPIC_SUFFIX;
     String bootstrapFileSystemPath = changelogClientConfig.getBootstrapFileSystemPath();
     if (StringUtils.isNotEmpty(consumerId)) {
