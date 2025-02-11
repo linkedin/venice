@@ -24,7 +24,6 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ServerAdminAction;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import io.grpc.Attributes;
@@ -207,9 +206,8 @@ public class ServerStoreAclHandlerTest {
 
   @Test
   public void testAllRequestTypes() throws SSLPeerUnverifiedException, AclException {
-    Store store = mock(Store.class);
     ReadOnlyStoreRepository metadataRepo = mock(ReadOnlyStoreRepository.class);
-    when(metadataRepo.getStore(TEST_STORE_NAME)).thenReturn(store);
+    when(metadataRepo.hasStore(TEST_STORE_NAME)).thenReturn(true);
     ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
     HttpRequest request = mock(HttpRequest.class);
     Channel channel = mock(Channel.class);
