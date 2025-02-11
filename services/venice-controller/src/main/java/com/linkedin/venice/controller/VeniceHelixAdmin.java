@@ -7681,6 +7681,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return this.getPubSubSSLPropertiesFromControllerConfig(pubSubBrokerAddress);
   }
 
+  // public for testing purpose
   public AdminConsumerService getAdminConsumerService(String clusterName) {
     return adminConsumerServices.get(clusterName);
   }
