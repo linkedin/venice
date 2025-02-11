@@ -7498,7 +7498,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @return cluster-level execution id, offset and upstream offset. If store name is specified, it returns store-level execution id.
+   * @return cluster-level execution id, offset, upstream offset, and admin operation protocol version.
+   *        If store name is specified, it returns store-level execution id.
    */
   public Map<String, Long> getAdminTopicMetadata(String clusterName, Optional<String> storeName) {
     Map<String, Long> metadata = getAdminConsumerService(clusterName).getAdminTopicMetadata(clusterName);
