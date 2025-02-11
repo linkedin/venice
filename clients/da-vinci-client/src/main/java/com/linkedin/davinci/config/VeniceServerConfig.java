@@ -17,6 +17,7 @@ import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPP
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_RECORD_SIZE_BYTES;
+import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_SERVICE_WITH_DVC_CHECK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DIV_PRODUCER_STATE_MAX_AGE_MS;
 import static com.linkedin.venice.ConfigKeys.ENABLE_GRPC_READ_SERVER;
 import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
@@ -584,6 +585,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int zstdDictCompressionLevel;
   private final long maxWaitAfterUnsubscribeMs;
   private final boolean deleteUnassignedPartitionsOnStartup;
+  private final boolean deferredVersionSwapServiceWithDvcCheckEnabled;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -988,6 +990,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
     deleteUnassignedPartitionsOnStartup =
         serverProperties.getBoolean(SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP, false);
+    deferredVersionSwapServiceWithDvcCheckEnabled =
+        serverProperties.getBoolean(DEFERRED_VERSION_SWAP_SERVICE_WITH_DVC_CHECK_ENABLED, true);
   }
 
   long extractIngestionMemoryLimit(
@@ -1800,5 +1804,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isDeleteUnassignedPartitionsOnStartupEnabled() {
     return deleteUnassignedPartitionsOnStartup;
+  }
+
+  public boolean isTargetRegionPushWithDelayedIngestionEnabled() {
+    return !deferredVersionSwapServiceWithDvcCheckEnabled;
   }
 }

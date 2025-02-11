@@ -4,6 +4,7 @@ import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFR
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
+import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_SERVICE_WITH_DVC_CHECK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V3_SCHEMA;
@@ -37,8 +38,6 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -55,13 +54,13 @@ public class TestDeferredVersionSwap {
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
 
   private static final int TEST_TIMEOUT = 120_000;
-  private static final Logger LOGGER = LogManager.getLogger(TestDeferredVersionSwap.class);
 
   @BeforeClass
   public void setUp() {
     Properties controllerProps = new Properties();
     controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, 30000);
     controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, true);
+    controllerProps.put(DEFERRED_VERSION_SWAP_SERVICE_WITH_DVC_CHECK_ENABLED, false);
     Properties serverProperties = new Properties();
 
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
@@ -168,7 +167,6 @@ public class TestDeferredVersionSwap {
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
       createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, valueSchemaStr, props, storeParms).close();
-      LOGGER.info("DvcDeferredVersionSwap starting normal push job");
       TestWriteUtils.runPushJob("Test push job", props);
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 1),
@@ -213,7 +211,6 @@ public class TestDeferredVersionSwap {
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath2, storeName);
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
       props2.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
-      LOGGER.info("DvcDeferredVersionSwap starting target region push job");
       TestWriteUtils.runPushJob("Test push job", props2);
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 2),
@@ -264,7 +261,6 @@ public class TestDeferredVersionSwap {
       });
 
       // Version should be swapped in all regions
-      LOGGER.info("DvcDeferredVersionSwap check that target region push is complete");
       TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
         Map<String, Integer> coloVersions =
             parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();

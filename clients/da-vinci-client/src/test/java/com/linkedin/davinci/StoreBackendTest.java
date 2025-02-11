@@ -33,6 +33,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -77,6 +78,7 @@ public class StoreBackendTest {
         .put(ConfigKeys.ZOOKEEPER_ADDRESS, "test-zookeeper")
         .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "test-kafka")
         .put(ConfigKeys.DATA_BASE_PATH, baseDataPath.getAbsolutePath())
+        .put(ConfigKeys.LOCAL_REGION_NAME, "dc-0")
         .build();
 
     ScheduledExecutorService executor = mock(ScheduledExecutorService.class);
@@ -416,5 +418,52 @@ public class StoreBackendTest {
         assertEquals(versionRef.get().getVersion().getNumber(), version3.getNumber());
       }
     });
+  }
+
+  @Test
+  public void testSubscribeWithDelayedIngestionEnabled() throws Exception {
+    // delayed ingestion is not enabled; no target regions are set
+    CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(0));
+    versionMap.get(version1.kafkaTopicName()).completePartition(0);
+    subscribeResult.get(3, TimeUnit.SECONDS);
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
+      assertEquals(versionRef.get().getVersion().getNumber(), version1.getNumber());
+    }
+
+    versionMap.get(version2.kafkaTopicName()).completePartition(0);
+    store.setCurrentVersion(version2.getNumber());
+    backend.handleStoreChanged(storeBackend);
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
+      assertEquals(versionRef.get().getVersion().getNumber(), version2.getNumber());
+    }
+
+    // delayed ingestion is enabled, target region is the current region
+    store.setTargetSwapRegion("dc-0");
+    Version version3 = new VersionImpl(store.getName(), store.peekNextVersion().getNumber(), null, 15);
+    store.addVersion(version3);
+    backend.handleStoreChanged(storeBackend);
+
+    store.setCurrentVersion(version3.getNumber());
+    versionMap.get(version3.kafkaTopicName()).completePartition(0);
+    backend.handleStoreChanged(storeBackend);
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
+      assertEquals(versionRef.get().getVersion().getNumber(), version3.getNumber());
+    }
+
+    // delayed ingestion is enabled, target region is not the current region
+    store.setTargetSwapRegion("dc-1");
+    Version version4 = new VersionImpl(store.getName(), store.peekNextVersion().getNumber(), null, 15);
+    store.addVersion(version4);
+    backend.handleStoreChanged(storeBackend);
+
+    store.setCurrentVersion(version4.getNumber());
+    store.updateVersionStatus(version4.getNumber(), VersionStatus.ONLINE);
+    backend.handleStoreChanged(storeBackend);
+
+    versionMap.get(version4.kafkaTopicName()).completePartition(0);
+    backend.handleStoreChanged(storeBackend);
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
+      assertEquals(versionRef.get().getVersion().getNumber(), version4.getNumber());
+    }
   }
 }

@@ -1,6 +1,7 @@
 package com.linkedin.davinci;
 
 import com.linkedin.davinci.config.StoreBackendConfig;
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -246,8 +247,10 @@ public class StoreBackend {
 
     Store store = backend.getStoreRepository().getStoreOrThrow(storeName);
     Set<String> targetRegions = RegionUtils.parseRegionsFilterList(store.getTargetSwapRegion());
-    String currentRegion = backend.getConfigLoader().getVeniceServerConfig().getRegionName();
-    boolean isTargetRegionEnabled = !StringUtils.isEmpty(store.getTargetSwapRegion());
+    VeniceServerConfig veniceServerConfig = backend.getConfigLoader().getVeniceServerConfig();
+    String currentRegion = veniceServerConfig.getRegionName();
+    boolean isTargetRegionEnabled = !StringUtils.isEmpty(store.getTargetSwapRegion())
+        && veniceServerConfig.isTargetRegionPushWithDelayedIngestionEnabled();
     boolean startIngestionInNonTargetRegion =
         isTargetRegionEnabled && targetVersion.getStatus() == VersionStatus.ONLINE;
 
@@ -260,6 +263,13 @@ public class StoreBackend {
       LOGGER.info("Subscribing to future version {}", targetVersion.kafkaTopicName());
       setDaVinciFutureVersion(new VersionBackend(backend, targetVersion, stats));
       daVinciFutureVersion.subscribe(subscription).whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
+    } else {
+      LOGGER.info(
+          "Skipping subscribe to future version: {} in region: {} because the target version status is: {} and the target regions are: {}",
+          targetVersion.kafkaTopicName(),
+          currentRegion,
+          targetVersion.getStatus(),
+          store.getTargetSwapRegion());
     }
   }
 

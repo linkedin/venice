@@ -4519,10 +4519,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return;
       }
     }
-    int futureVersion = getFutureVersionWithStatus(clusterName, storeName, VersionStatus.PUSHED);
-    if (futureVersion == Store.NON_EXISTING_VERSION) {
+
+    int onlineFutureVersion = getFutureVersionWithStatus(clusterName, storeName, ONLINE);
+    int pushedFutureVersion = getFutureVersionWithStatus(clusterName, storeName, PUSHED); // Check for PUSHED status too
+                                                                                          // for target region pushes
+    if (onlineFutureVersion == Store.NON_EXISTING_VERSION && pushedFutureVersion == NON_EXISTING_VERSION) {
       return;
     }
+
+    int futureVersion = onlineFutureVersion == Store.NON_EXISTING_VERSION ? pushedFutureVersion : onlineFutureVersion;
     storeMetadataUpdate(clusterName, storeName, store -> {
       if (!store.isEnableWrites()) {
         throw new VeniceException(
@@ -4530,7 +4535,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(futureVersion);
-      store.updateVersionStatus(futureVersion, VersionStatus.ONLINE);
+
+      if (pushedFutureVersion != Store.NON_EXISTING_VERSION) {
+        store.updateVersionStatus(futureVersion, VersionStatus.ONLINE);
+      }
+
       LOGGER.info(
           "Rolling forward current version {} to version {} in store {}",
           previousVersion,
