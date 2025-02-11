@@ -167,15 +167,17 @@ public class ServerStoreAclHandlerTest {
         1000);
 
     assertTrue(
-        handler.isAccessAlreadyApproved(ctx),
+        handler.isAccessAlreadyApproved(channel),
         "Should return true if it is already approved by previous acl handler");
 
     doReturn(false).when(accessAttr).get();
     assertFalse(
-        handler.isAccessAlreadyApproved(ctx),
+        handler.isAccessAlreadyApproved(channel),
         "Should return false if it is already denied by previous acl handler");
     doReturn(null).when(accessAttr).get();
-    assertFalse(handler.isAccessAlreadyApproved(ctx), "Should return false if it hasn't been processed by acl handler");
+    assertFalse(
+        handler.isAccessAlreadyApproved(channel),
+        "Should return false if it hasn't been processed by acl handler");
   }
 
   @Test
