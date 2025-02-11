@@ -39,6 +39,11 @@ dependencies {
   implementation libraries.log4j2api
   implementation libraries.zstd
   implementation libraries.conscrypt
+  implementation libraries.opentelemetryApi
+  implementation libraries.opentelemetrySdk
+  implementation libraries.opentelemetryExporterLogging
+  implementation libraries.opentelemetryExporterOtlp
+  implementation libraries.opentelemetryExporterCommon
 
   testImplementation project(':internal:venice-test-common')
   testImplementation project(':clients:venice-thin-client')
@@ -47,4 +52,11 @@ dependencies {
 
 ext {
   jacocoCoverageThreshold = 0.36
+}
+
+checkerFramework {
+  extraJavacArgs = ['-Xmaxerrs', '256']
+  checkers = ['org.checkerframework.checker.nullness.NullnessChecker']
+  skipCheckerFramework = true
+  excludeTests = true
 }

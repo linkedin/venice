@@ -50,6 +50,7 @@ public class ClientConfig<T extends SpecificRecord> {
   private boolean retryOnAllErrors = false;
   private int retryCount = 1;
   private long retryBackOffInMs = 0;
+  private Executor retryExecutor = null;
   private boolean useBlackHoleDeserializer = false;
   private boolean forceClusterDiscoveryAtStartTime = false;
   private boolean projectionFieldValidation = true;
@@ -111,6 +112,7 @@ public class ClientConfig<T extends SpecificRecord> {
         .setRetryOnAllErrors(config.isRetryOnAllErrorsEnabled())
         .setRetryCount(config.getRetryCount())
         .setRetryBackOffInMs(config.getRetryBackOffInMs())
+        .setRetryExecutor(config.getRetryExecutor())
         .setUseBlackHoleDeserializer(config.isUseBlackHoleDeserializer())
         // Security settings
         .setHttps(config.isHttps())
@@ -415,6 +417,15 @@ public class ClientConfig<T extends SpecificRecord> {
 
   public long getRetryBackOffInMs() {
     return retryBackOffInMs;
+  }
+
+  public Executor getRetryExecutor() {
+    return retryExecutor;
+  }
+
+  public ClientConfig<T> setRetryExecutor(Executor retryExecutor) {
+    this.retryExecutor = retryExecutor;
+    return this;
   }
 
   public boolean isUseBlackHoleDeserializer() {

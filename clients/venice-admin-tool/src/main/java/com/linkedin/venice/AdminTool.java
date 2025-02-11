@@ -15,7 +15,7 @@ import com.fasterxml.jackson.databind.ObjectWriter;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.linkedin.davinci.listener.response.TopicPartitionIngestionContextResponse;
+import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
 import com.linkedin.venice.admin.protocol.response.AdminResponseRecord;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -88,10 +88,13 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
+import com.linkedin.venice.metadata.response.StorePropertiesResponseRecord;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerContext;
@@ -114,6 +117,7 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import java.io.BufferedReader;
 import java.io.Console;
@@ -122,8 +126,8 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -141,7 +145,10 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.StringJoiner;
-import java.util.TimeZone;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -160,15 +167,18 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.apache.commons.lang.StringUtils;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class AdminTool {
+  private static final Logger LOGGER = LogManager.getLogger(AdminTool.class);
   private static ObjectWriter jsonWriter = ObjectMapperFactory.getInstance().writerWithDefaultPrettyPrinter();
   private static final String STATUS = "status";
   private static final String ERROR = "error";
   private static final String SUCCESS = "success";
 
-  private static final PubSubTopicRepository PUB_SUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
+  private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
 
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
@@ -185,6 +195,8 @@ public class AdminTool {
       "zookeeper.ssl.trustStore.location",
       "zookeeper.ssl.trustStore.password",
       "zookeeper.ssl.trustStore.type");
+  private static final String DEFAULT_DATE_FORMAT = "yyyy-MM-dd hh:mm:ss";
+  private static final String PST_TIME_ZONE = "America/Los_Angeles";
 
   public static void main(String[] args) throws Exception {
     // Generate PubSubClientsFactory from java system properties, apache kafka adapter is the default one.
@@ -552,6 +564,9 @@ public class AdminTool {
         case REQUEST_BASED_METADATA:
           getRequestBasedMetadata(cmd);
           break;
+        case REQUEST_BASED_STORE_PROPERTIES:
+          getRequestBasedStoreProperties(cmd);
+          break;
         case DUMP_INGESTION_STATE:
           dumpIngestionState(cmd);
           break;
@@ -572,6 +587,15 @@ public class AdminTool {
           break;
         case EXTRACT_VENICE_ZK_PATHS:
           extractVeniceZKPaths(cmd);
+          break;
+        case AGGREGATED_HEALTH_STATUS:
+          getAggregatedHealthStatus(cmd);
+          break;
+        case DUMP_HOST_HEARTBEAT:
+          dumpHostHeartbeat(cmd);
+          break;
+        case CLUSTER_BATCH_TASK:
+          clusterBatchTask(cmd);
           break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
@@ -817,8 +841,7 @@ public class AdminTool {
     String valueSchemaFile = getRequiredArgument(cmd, Arg.VALUE_SCHEMA, Command.NEW_STORE);
     String valueSchema = readFile(valueSchemaFile);
     String owner = getOptionalArgument(cmd, Arg.OWNER, "");
-    boolean isVsonStore =
-        Utils.parseBooleanFromString(getOptionalArgument(cmd, Arg.VSON_STORE, "false"), "isVsonStore");
+    boolean isVsonStore = Utils.parseBooleanOrThrow(getOptionalArgument(cmd, Arg.VSON_STORE, "false"), "isVsonStore");
     if (isVsonStore) {
       keySchema = VsonAvroSchemaAdapter.parse(keySchema).toString();
       valueSchema = VsonAvroSchemaAdapter.parse(valueSchema).toString();
@@ -835,6 +858,96 @@ public class AdminTool {
     verifyStoreExistence(store, true);
     TrackableControllerResponse response = controllerClient.deleteStore(store);
     printObject(response);
+  }
+
+  private static void clusterBatchTask(CommandLine cmd) {
+    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER, Command.CLUSTER_BATCH_TASK);
+    String task = getRequiredArgument(cmd, Arg.TASK_NAME, Command.CLUSTER_BATCH_TASK);
+    String checkpointFile = getRequiredArgument(cmd, Arg.CHECKPOINT_FILE, Command.CLUSTER_BATCH_TASK);
+    int parallelism = Integer.parseInt(getOptionalArgument(cmd, Arg.THREAD_COUNT, "1"));
+    LOGGER.info(
+        "[**** Cluster Command Params ****] Cluster: {}, Task: {}, Checkpoint: {}, Parallelism: {}",
+        clusterName,
+        task,
+        checkpointFile,
+        parallelism);
+    // Create child data center controller client map.
+    ChildAwareResponse childAwareResponse = controllerClient.listChildControllers(clusterName);
+    Map<String, ControllerClient> controllerClientMap = getControllerClientMap(clusterName, childAwareResponse);
+
+    // Fetch list cluster store list from parent region.
+    Map<String, Boolean> progressMap = new VeniceConcurrentHashMap<>();
+    MultiStoreResponse clusterStoreResponse = controllerClient.queryStoreList(false);
+    if (clusterStoreResponse.isError()) {
+      throw new VeniceException("Unable to fetch cluster store list: " + clusterStoreResponse.getError());
+    }
+    for (String storeName: clusterStoreResponse.getStores()) {
+      progressMap.put(storeName, Boolean.FALSE);
+    }
+
+    // Load progress from checkpoint file. If file does not exist, it will create new one during checkpointing.
+    try {
+      Path checkpointFilePath = Paths.get(checkpointFile);
+      if (!Files.exists(checkpointFilePath.toAbsolutePath())) {
+        LOGGER.info(
+            "Checkpoint file path does not exist, will create a new checkpoint file: {}",
+            checkpointFilePath.toAbsolutePath());
+      } else {
+        List<String> fileLines = Files.readAllLines(checkpointFilePath);
+        for (String line: fileLines) {
+          String storeName = line.split(",")[0];
+          // For now, it is boolean to start with, we can add more states to support retry.
+          boolean status = false;
+          if (line.split(",").length > 1) {
+            status = Boolean.parseBoolean(line.split(",")[1]);
+          }
+          progressMap.put(storeName, status);
+        }
+      }
+    } catch (IOException e) {
+      throw new VeniceException(e);
+    }
+    List<String> taskList =
+        progressMap.entrySet().stream().filter(e -> !e.getValue()).map(Map.Entry::getKey).collect(Collectors.toList());
+
+    // Validate task type. For now, we only has one task, if we have more task in the future, we can extend this logic.
+    Supplier<Function<String, Boolean>> functionSupplier = null;
+    if (SystemStorePushTask.TASK_NAME.equals(task)) {
+      String systemStoreType = getOptionalArgument(cmd, Arg.SYSTEM_STORE_TYPE);
+      if (systemStoreType != null) {
+        if (!(systemStoreType.equalsIgnoreCase(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.toString())
+            || systemStoreType.equalsIgnoreCase(VeniceSystemStoreType.META_STORE.toString()))) {
+          printErrAndExit("System store type: " + systemStoreType + " is not supported.");
+        }
+      }
+      System.out.println(
+          functionSupplier = () -> new SystemStorePushTask(
+              controllerClient,
+              controllerClientMap,
+              clusterName,
+              systemStoreType == null ? Optional.empty() : Optional.of(systemStoreType)));
+    } else {
+      printErrAndExit("Undefined task: " + task);
+    }
+
+    // Create thread pool and start parallel processing.
+    ExecutorService executorService = Executors.newFixedThreadPool(parallelism);
+    List<Future> futureList = new ArrayList<>();
+    for (int i = 0; i < parallelism; i++) {
+      BatchMaintenanceTaskRunner batchMaintenanceTaskRunner =
+          new BatchMaintenanceTaskRunner(progressMap, checkpointFile, taskList, functionSupplier.get());
+      futureList.add(executorService.submit(batchMaintenanceTaskRunner));
+    }
+    for (int i = 0; i < parallelism; i++) {
+      try {
+        futureList.get(i).get();
+        LOGGER.info("Cluster task completed for thread : {}", i);
+      } catch (InterruptedException | ExecutionException e) {
+        LOGGER.warn(e.getMessage());
+        executorService.shutdownNow();
+      }
+    }
+    executorService.shutdownNow();
   }
 
   private static void backfillSystemStores(CommandLine cmd) {
@@ -1012,7 +1125,7 @@ public class AdminTool {
   }
 
   private static void booleanParam(CommandLine cmd, Arg param, Consumer<Boolean> setter, Set<Arg> argSet) {
-    genericParam(cmd, param, s -> Utils.parseBooleanFromString(s, param.toString()), setter, argSet);
+    genericParam(cmd, param, s -> Utils.parseBooleanOrThrow(s, param.toString()), setter, argSet);
   }
 
   private static void stringMapParam(
@@ -1119,6 +1232,7 @@ public class AdminTool {
     booleanParam(cmd, Arg.SEPARATE_REALTIME_TOPIC_ENABLED, p -> params.setSeparateRealTimeTopicEnabled(p), argSet);
     booleanParam(cmd, Arg.WRITE_COMPUTATION_ENABLED, p -> params.setWriteComputationEnabled(p), argSet);
     booleanParam(cmd, Arg.READ_COMPUTATION_ENABLED, p -> params.setReadComputationEnabled(p), argSet);
+    booleanParam(cmd, Arg.ENABLE_STORE_MIGRATION, p -> params.setStoreMigration(p), argSet);
     integerParam(
         cmd,
         Arg.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR,
@@ -1155,6 +1269,15 @@ public class AdminTool {
     integerParam(cmd, Arg.MAX_NEARLINE_RECORD_SIZE_BYTES, params::setMaxNearlineRecordSizeBytes, argSet);
     booleanParam(cmd, Arg.UNUSED_SCHEMA_DELETION_ENABLED, p -> params.setUnusedSchemaDeletionEnabled(p), argSet);
     booleanParam(cmd, Arg.BLOB_TRANSFER_ENABLED, p -> params.setBlobTransferEnabled(p), argSet);
+    booleanParam(
+        cmd,
+        Arg.NEARLINE_PRODUCER_COMPRESSION_ENABLED,
+        p -> params.setNearlineProducerCompressionEnabled(p),
+        argSet);
+    integerParam(cmd, Arg.NEARLINE_PRODUCER_COUNT_PER_WRITER, p -> params.setNearlineProducerCountPerWriter(p), argSet);
+    genericParam(cmd, Arg.TARGET_SWAP_REGION, s -> s, p -> params.setTargetRegionSwap(p), argSet);
+    integerParam(cmd, Arg.TARGET_SWAP_REGION_WAIT_TIME, p -> params.setTargetRegionSwapWaitTime(p), argSet);
+    booleanParam(cmd, Arg.DAVINCI_HEARTBEAT_REPORTED, p -> params.setIsDavinciHeartbeatReported(p), argSet);
 
     /**
      * {@link Arg#REPLICATE_ALL_CONFIGS} doesn't require parameters; once specified, it means true.
@@ -1523,7 +1646,6 @@ public class AdminTool {
     Properties properties = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
     properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServer);
     VeniceProperties veniceProperties = new VeniceProperties(properties);
-    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     int kafkaTimeOut = 30 * Time.MS_PER_SECOND;
     int topicDeletionStatusPollingInterval = 2 * Time.MS_PER_SECOND;
     if (cmd.hasOption(Arg.KAFKA_OPERATION_TIMEOUT.toString())) {
@@ -1537,7 +1659,7 @@ public class AdminTool {
             .setTopicMinLogCompactionLagMs(0L)
             .setPubSubConsumerAdapterFactory(pubSubClientsFactory.getConsumerAdapterFactory())
             .setPubSubAdminAdapterFactory(pubSubClientsFactory.getAdminAdapterFactory())
-            .setPubSubTopicRepository(pubSubTopicRepository)
+            .setPubSubTopicRepository(TOPIC_REPOSITORY)
             .setTopicMetadataFetcherConsumerPoolSize(1)
             .setTopicMetadataFetcherThreadPoolSize(1)
             .build();
@@ -1546,7 +1668,7 @@ public class AdminTool {
         new TopicManagerRepository(topicManagerContext, kafkaBootstrapServer).getLocalTopicManager()) {
       String topicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
       try {
-        topicManager.ensureTopicIsDeletedAndBlock(PUB_SUB_TOPIC_REPOSITORY.getTopic(topicName));
+        topicManager.ensureTopicIsDeletedAndBlock(TOPIC_REPOSITORY.getTopic(topicName));
         long runTime = System.currentTimeMillis() - startTime;
         printObject("Topic '" + topicName + "' is deleted. Run time: " + runTime + " ms.");
       } catch (PubSubOpTimeoutException e) {
@@ -1604,21 +1726,22 @@ public class AdminTool {
     String progressInterval = getOptionalArgument(cmd, Arg.PROGRESS_INTERVAL);
     String keyString = getRequiredArgument(cmd, Arg.KEY);
 
-    SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss");
-    dateFormat.setTimeZone(TimeZone.getTimeZone("America/Los_Angeles"));
     try (PubSubConsumerAdapter consumer = getConsumer(consumerProps, pubSubClientsFactory)) {
       TopicMessageFinder.find(
           controllerClient,
           consumer,
           kafkaTopic,
           keyString,
-          dateFormat.parse(startDateInPST).getTime(),
-          endDateInPST == null ? Long.MAX_VALUE : dateFormat.parse(endDateInPST).getTime(),
+          Utils.parseDateTimeToEpoch(startDateInPST, DEFAULT_DATE_FORMAT, PST_TIME_ZONE),
+          endDateInPST == null
+              ? Long.MAX_VALUE
+              : Utils.parseDateTimeToEpoch(endDateInPST, DEFAULT_DATE_FORMAT, PST_TIME_ZONE),
           progressInterval == null ? 1000000 : Long.parseLong(progressInterval));
     }
   }
 
-  private static void dumpKafkaTopic(CommandLine cmd, PubSubClientsFactory pubSubClientsFactory) {
+  private static void dumpKafkaTopic(CommandLine cmd, PubSubClientsFactory pubSubClientsFactory)
+      throws java.text.ParseException {
     Properties consumerProps = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
     String kafkaUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
 
@@ -1645,24 +1768,47 @@ public class AdminTool {
     if (getOptionalArgument(cmd, Arg.MAX_POLL_ATTEMPTS) != null) {
       maxConsumeAttempts = Integer.parseInt(getOptionalArgument(cmd, Arg.MAX_POLL_ATTEMPTS));
     }
+    String startDatetime = getOptionalArgument(cmd, Arg.START_DATE);
+    long startTimestamp =
+        startDatetime == null ? -1 : Utils.parseDateTimeToEpoch(startDatetime, DEFAULT_DATE_FORMAT, PST_TIME_ZONE);
+    if (startTimestamp != -1 && startingOffset != -1) {
+      throw new VeniceException("Only one of start date and starting offset can be specified");
+    }
+
+    String endDatetime = getOptionalArgument(cmd, Arg.END_DATE);
+    long endTimestamp =
+        endDatetime == null ? -1 : Utils.parseDateTimeToEpoch(endDatetime, DEFAULT_DATE_FORMAT, PST_TIME_ZONE);
 
     boolean logMetadata = cmd.hasOption(Arg.LOG_METADATA.toString());
     boolean logDataRecord = cmd.hasOption(Arg.LOG_DATA_RECORD.toString());
     boolean logRmdRecord = cmd.hasOption(Arg.LOG_RMD_RECORD.toString());
+    boolean logTsRecord = cmd.hasOption(Arg.LOG_TS_RECORD.toString());
     try (PubSubConsumerAdapter consumer = getConsumer(consumerProps, pubSubClientsFactory)) {
+      PubSubTopicPartition topicPartition =
+          new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic(kafkaTopic), partitionNumber);
+      long startOffset =
+          KafkaTopicDumper.calculateStartingOffset(consumer, topicPartition, startingOffset, startTimestamp);
+      long endOffset = KafkaTopicDumper.calculateEndingOffset(consumer, topicPartition, endTimestamp);
+      if (messageCount <= 0) {
+        messageCount = (int) (endOffset - startOffset);
+      }
+      LOGGER.info(
+          "TopicPartition: {} Start offset: {}, End offset: {}, Message count: {}",
+          topicPartition,
+          startOffset,
+          endOffset,
+          messageCount);
       try (KafkaTopicDumper ktd = new KafkaTopicDumper(
           controllerClient,
           consumer,
-          kafkaTopic,
-          partitionNumber,
-          startingOffset,
-          messageCount,
+          topicPartition,
           parentDir,
           maxConsumeAttempts,
           logMetadata,
           logDataRecord,
-          logRmdRecord)) {
-        ktd.fetchAndProcess();
+          logRmdRecord,
+          logTsRecord)) {
+        ktd.fetchAndProcess(startOffset, endOffset, messageCount);
       } catch (Exception e) {
         System.err.println("Something went wrong during topic dump");
         e.printStackTrace();
@@ -2037,9 +2183,10 @@ public class AdminTool {
       throw new VeniceException("Source cluster and destination cluster cannot be the same!");
     }
     boolean terminate = false;
-
-    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl, sslFactory);
-    ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl, sslFactory);
+    ControllerClient srcControllerClient =
+        ControllerClient.constructClusterControllerClient(srcClusterName, veniceUrl, sslFactory);
+    ControllerClient destControllerClient =
+        ControllerClient.constructClusterControllerClient(destClusterName, veniceUrl, sslFactory);
     checkPreconditionForStoreMigration(srcControllerClient, destControllerClient);
 
     // Check arguments
@@ -2072,9 +2219,10 @@ public class AdminTool {
     // Reset original store, storeConfig, and cluster discovery
     if (promptsOverride.length > 1) {
       terminate = !promptsOverride[1];
+
     } else {
       terminate = !userGivesPermission(
-          "Next step is to reset store migration flag, storeConfig and cluster"
+          "Next step is to reset store migration flag, storeConfig and cluster "
               + "discovery mapping. Do you want to proceed?");
     }
     if (terminate) {
@@ -2113,7 +2261,7 @@ public class AdminTool {
           "Deleting cloned store " + storeName + " in " + destControllerClient.getLeaderControllerUrl() + " ...");
       destControllerClient
           .updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
-      TrackableControllerResponse deleteResponse = destControllerClient.deleteStore(storeName);
+      TrackableControllerResponse deleteResponse = destControllerClient.deleteStore(storeName, true);
       printObject(deleteResponse);
       if (deleteResponse.isError()) {
         System.err.println("ERROR: failed to delete store " + storeName + " in the dest cluster " + destClusterName);
@@ -2125,7 +2273,7 @@ public class AdminTool {
     }
   }
 
-  private static boolean userGivesPermission(String prompt) {
+  static boolean userGivesPermission(String prompt) {
     Console console = System.console();
     String response = console.readLine(prompt + " (y/n): ").toLowerCase();
     while (!response.equals("y") && !response.equals("n")) {
@@ -2387,8 +2535,7 @@ public class AdminTool {
     String valueSchema = readFile(valueSchemaFile);
     String aclPerms = getRequiredArgument(cmd, Arg.ACL_PERMS, Command.NEW_STORE);
     String owner = getOptionalArgument(cmd, Arg.OWNER, "");
-    boolean isVsonStore =
-        Utils.parseBooleanFromString(getOptionalArgument(cmd, Arg.VSON_STORE, "false"), "isVsonStore");
+    boolean isVsonStore = Utils.parseBooleanOrThrow(getOptionalArgument(cmd, Arg.VSON_STORE, "false"), "isVsonStore");
     if (isVsonStore) {
       keySchema = VsonAvroSchemaAdapter.parse(keySchema).toString();
       valueSchema = VsonAvroSchemaAdapter.parse(valueSchema).toString();
@@ -3023,6 +3170,27 @@ public class AdminTool {
     }
   }
 
+  private static void getRequestBasedStoreProperties(CommandLine cmd) throws JsonProcessingException {
+    String url = getRequiredArgument(cmd, Arg.URL);
+    String serverUrl = getRequiredArgument(cmd, Arg.SERVER_URL);
+    String storeName = getRequiredArgument(cmd, Arg.STORE);
+    TransportClient transportClient = null;
+    try {
+      transportClient = getTransportClientForServer(storeName, serverUrl);
+      getAndPrintRequestBasedStoreProperties(
+          transportClient,
+          () -> ControllerClientFactory.discoverAndConstructControllerClient(
+              AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE.getSystemStoreName(),
+              url,
+              sslFactory,
+              1),
+          serverUrl,
+          storeName);
+    } finally {
+      Utils.closeQuietlyWithErrorLogged(transportClient);
+    }
+  }
+
   private static TransportClient getTransportClientForServer(String storeName, String serverUrl) {
     ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(serverUrl);
     if (clientConfig.isHttps()) {
@@ -3065,6 +3233,43 @@ public class AdminTool {
     }
   }
 
+  static void dumpHostHeartbeatLag(
+      TransportClient transportClient,
+      String topicFilter,
+      String partitionFilter,
+      String lagFilter) throws Exception {
+    String topicName = topicFilter == null ? "" : topicFilter;
+    String partition = partitionFilter == null ? "-1" : partitionFilter;
+    String filterLag = lagFilter == null ? "false" : lagFilter;
+    StringBuilder sb = new StringBuilder(QueryAction.HOST_HEARTBEAT_LAG.toString().toLowerCase()).append("/")
+        .append(topicName)
+        .append("/")
+        .append(partition)
+        .append("/")
+        .append(filterLag);
+    String requestUrl = sb.toString();
+    byte[] responseBody;
+    TransportClientResponse transportClientResponse = transportClient.get(requestUrl).get();
+    responseBody = transportClientResponse.getBody();
+    ReplicaIngestionResponse currentVersionResponse =
+        OBJECT_MAPPER.readValue(responseBody, ReplicaIngestionResponse.class);
+    System.out.println(new String(currentVersionResponse.getPayload()));
+  }
+
+  private static void dumpHostHeartbeat(CommandLine cmd) throws Exception {
+    TransportClient transportClient = null;
+    try {
+      transportClient = getTransportClientForServer("dummy", getRequiredArgument(cmd, Arg.SERVER_URL));
+      dumpHostHeartbeatLag(
+          transportClient,
+          getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME),
+          getOptionalArgument(cmd, Arg.PARTITION),
+          getOptionalArgument(cmd, Arg.LAG_FILTER_ENABLED));
+    } finally {
+      Utils.closeQuietlyWithErrorLogged(transportClient);
+    }
+  }
+
   private static void migrateVeniceZKPaths(CommandLine cmd) throws Exception {
     Set<String> clusterNames = Utils.parseCommaSeparatedStringToSet(getRequiredArgument(cmd, Arg.CLUSTER_LIST));
     String srcZKUrl = getRequiredArgument(cmd, Arg.SRC_ZOOKEEPER_URL);
@@ -3088,6 +3293,18 @@ public class AdminTool {
         getRequiredArgument(cmd, Arg.OUTFILE),
         clusterNames,
         getRequiredArgument(cmd, Arg.BASE_PATH));
+  }
+
+  private static void getAggregatedHealthStatus(CommandLine cmd) throws JsonProcessingException {
+    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
+    String instances = getRequiredArgument(cmd, Arg.INSTANCES);
+    String toBeStoppedNodes = getRequiredArgument(cmd, Arg.TO_BE_STOPPED_NODES);
+    ControllerResponse response = controllerClient.getAggregatedHealthStatus(
+        clusterName,
+        Utils.parseCommaSeparatedStringToList(instances),
+        Utils.parseCommaSeparatedStringToList(toBeStoppedNodes));
+    printObject(response);
+
   }
 
   private static void configureStoreView(CommandLine cmd) {
@@ -3145,9 +3362,9 @@ public class AdminTool {
     byte[] responseBody;
     TransportClientResponse transportClientResponse = transportClient.get(requestUrl).get();
     responseBody = transportClientResponse.getBody();
-    TopicPartitionIngestionContextResponse currentVersionResponse =
-        OBJECT_MAPPER.readValue(responseBody, TopicPartitionIngestionContextResponse.class);
-    System.out.println(new String(currentVersionResponse.getTopicPartitionIngestionContext()));
+    ReplicaIngestionResponse currentVersionResponse =
+        OBJECT_MAPPER.readValue(responseBody, ReplicaIngestionResponse.class);
+    System.out.println(new String(currentVersionResponse.getPayload()));
   }
 
   static void getAndPrintRequestBasedMetadata(
@@ -3186,6 +3403,45 @@ public class AdminTool {
     // Using the jsonWriter to print Avro objects directly does not handle the collection types (List and Map) well.
     // Use the Avro record's toString() instead and pretty print it.
     Object printObject = ObjectMapperFactory.getInstance().readValue(metadataResponse.toString(), Object.class);
+    System.out.println(jsonWriter.writeValueAsString(printObject));
+  }
+
+  static void getAndPrintRequestBasedStoreProperties(
+      TransportClient transportClient,
+      Supplier<ControllerClient> controllerClientSupplier,
+      String serverUrl,
+      String storeName) throws JsonProcessingException {
+    String requestBasedStorePropertiesURL = QueryAction.STORE_PROPERTIES.toString().toLowerCase() + "/" + storeName;
+    byte[] body;
+    int writerSchemaId;
+    try {
+      TransportClientResponse transportClientResponse = transportClient.get(requestBasedStorePropertiesURL).get();
+      writerSchemaId = transportClientResponse.getSchemaId();
+      body = transportClientResponse.getBody();
+    } catch (Exception e) {
+      throw new VeniceException(
+          "Encountered exception while trying to send store properties request to: " + serverUrl + "/"
+              + requestBasedStorePropertiesURL,
+          e);
+    }
+    Schema writerSchema;
+    if (writerSchemaId != AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE.getCurrentProtocolVersion()) {
+      SchemaResponse schemaResponse = controllerClientSupplier.get()
+          .getValueSchema(AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE.getSystemStoreName(), writerSchemaId);
+      if (schemaResponse.isError()) {
+        throw new VeniceException(
+            "Failed to fetch store properties response schema from controller, error: " + schemaResponse.getError());
+      }
+      writerSchema = parseSchemaFromJSONLooseValidation(schemaResponse.getSchemaStr());
+    } else {
+      writerSchema = StorePropertiesResponseRecord.SCHEMA$;
+    }
+    RecordDeserializer<GenericRecord> storePropertiesResponseDeserializer =
+        FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema, writerSchema);
+    GenericRecord storePropertiesResponse = storePropertiesResponseDeserializer.deserialize(body);
+    // Using the jsonWriter to print Avro objects directly does not handle the collection types (List and Map) well.
+    // Use the Avro record's toString() instead and pretty print it.
+    Object printObject = ObjectMapperFactory.getInstance().readValue(storePropertiesResponse.toString(), Object.class);
     System.out.println(jsonWriter.writeValueAsString(printObject));
   }
 

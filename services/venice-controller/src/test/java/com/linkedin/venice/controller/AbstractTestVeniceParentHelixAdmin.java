@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -107,14 +108,14 @@ public class AbstractTestVeniceParentHelixAdmin {
     // list of store configs for the sake of correctness, but async scheduled threads can be the bane
     // of reliable unit tests. TODO: Return a real list of store configs in this mock.
     readOnlyStoreConfigRepository = mock(HelixReadOnlyStoreConfigRepository.class);
-    doReturn(Collections.emptyList()).when(readOnlyStoreConfigRepository).getAllStoreConfigs();
     doReturn(readOnlyStoreConfigRepository).when(internalAdmin).getStoreConfigRepo();
 
     personaRepository = mock(StoragePersonaRepository.class);
 
-    store = mock(Store.class);
+    store = mock(Store.class, RETURNS_DEEP_STUBS);
     doReturn(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION).when(store).getOffLinePushStrategy();
     doReturn(false).when(store).isMigrating();
+    when(store.getHybridStoreConfig().getRealTimeTopicName()).thenReturn("test_real_time_topic_rt");
     doReturn(store).when(internalAdmin).checkPreConditionForAclOp(any(), any());
 
     HelixReadWriteStoreRepository storeRepository = mock(HelixReadWriteStoreRepository.class);

@@ -7,8 +7,9 @@ import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.listener.response.ReadResponseStats;
+import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
-import com.linkedin.davinci.listener.response.TopicPartitionIngestionContextResponse;
+import com.linkedin.davinci.listener.response.StorePropertiesResponse;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.IngestionMetadataRetriever;
 import com.linkedin.davinci.storage.ReadMetadataRetriever;
@@ -36,10 +37,12 @@ import com.linkedin.venice.listener.request.CurrentVersionRequest;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
+import com.linkedin.venice.listener.request.HeartbeatRequest;
 import com.linkedin.venice.listener.request.MetadataFetchRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.MultiKeyRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
+import com.linkedin.venice.listener.request.StorePropertiesFetchRequest;
 import com.linkedin.venice.listener.request.TopicPartitionIngestionContextRequest;
 import com.linkedin.venice.listener.response.BinaryResponse;
 import com.linkedin.venice.listener.response.ComputeResponseWrapper;
@@ -367,12 +370,25 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
             ((MetadataFetchRequest) message).getStoreName());
         context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.FORBIDDEN));
       }
+    } else if (message instanceof StorePropertiesFetchRequest) {
+      try {
+        StorePropertiesResponse response = handleStorePropertiesFetchRequest((StorePropertiesFetchRequest) message);
+        context.writeAndFlush(response);
+      } catch (UnsupportedOperationException e) {
+        LOGGER.warn(
+            "Store Properties requested by a storage node read quota not enabled store: {}",
+            ((StorePropertiesFetchRequest) message).getStoreName());
+        context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.FORBIDDEN));
+      }
     } else if (message instanceof CurrentVersionRequest) {
       ServerCurrentVersionResponse response = handleCurrentVersionRequest((CurrentVersionRequest) message);
       context.writeAndFlush(response);
     } else if (message instanceof TopicPartitionIngestionContextRequest) {
-      TopicPartitionIngestionContextResponse response =
+      ReplicaIngestionResponse response =
           handleTopicPartitionIngestionContextRequest((TopicPartitionIngestionContextRequest) message);
+      context.writeAndFlush(response);
+    } else if (message instanceof HeartbeatRequest) {
+      ReplicaIngestionResponse response = handleHeartbeatRequest((HeartbeatRequest) message);
       context.writeAndFlush(response);
     } else {
       context.writeAndFlush(
@@ -686,8 +702,10 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       this.valueSchemaEntry = handler.getComputeValueSchema(request);
       this.resultSchema = handler.getComputeResultSchema(request.getComputeRequest(), valueSchemaEntry.getSchema());
       this.resultSerializer = handler.genericSerializerGetter.apply(resultSchema);
-      this.compressor = handler.compressorFactory
-          .getCompressor(storeVersion.storageEngine.getCompressionStrategy(), request.getResourceName());
+      this.compressor = handler.compressorFactory.getCompressor(
+          storeVersion.storageEngine.getCompressionStrategy(),
+          request.getResourceName(),
+          handler.serverConfig.getZstdDictCompressionLevel());
       this.operations = request.getComputeRequest().getOperations();
       this.operationResultFields = ComputeUtils.getOperationResultFields(operations, resultSchema);
     }
@@ -777,6 +795,10 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     return readMetadataRetriever.getMetadata(request.getStoreName());
   }
 
+  private StorePropertiesResponse handleStorePropertiesFetchRequest(StorePropertiesFetchRequest request) {
+    return readMetadataRetriever.getStoreProperties(request.getStoreName(), request.getLargestKnownSchemaId());
+  }
+
   private ServerCurrentVersionResponse handleCurrentVersionRequest(CurrentVersionRequest request) {
     return readMetadataRetriever.getCurrentVersionResponse(request.getStoreName());
   }
@@ -844,11 +866,18 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     }
   }
 
-  private TopicPartitionIngestionContextResponse handleTopicPartitionIngestionContextRequest(
+  private ReplicaIngestionResponse handleTopicPartitionIngestionContextRequest(
       TopicPartitionIngestionContextRequest topicPartitionIngestionContextRequest) {
     Integer partition = topicPartitionIngestionContextRequest.getPartition();
     String versionTopic = topicPartitionIngestionContextRequest.getVersionTopic();
     String topicName = topicPartitionIngestionContextRequest.getTopic();
     return ingestionMetadataRetriever.getTopicPartitionIngestionContext(versionTopic, topicName, partition);
+  }
+
+  private ReplicaIngestionResponse handleHeartbeatRequest(HeartbeatRequest heartbeatRequest) {
+    return ingestionMetadataRetriever.getHeartbeatLag(
+        heartbeatRequest.getTopic(),
+        heartbeatRequest.getPartition(),
+        heartbeatRequest.isFilterLagReplica());
   }
 }

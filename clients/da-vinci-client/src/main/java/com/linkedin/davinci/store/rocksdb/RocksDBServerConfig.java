@@ -3,11 +3,14 @@ package com.linkedin.davinci.store.rocksdb;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Arrays;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.rocksdb.CompactionStyle;
 import org.rocksdb.CompressionType;
 
 
 public class RocksDBServerConfig {
+  private static final Logger LOGGER = LogManager.getLogger(RocksDBServerConfig.class);
   /**
    * Ability to use direct IO for disk reads, might yield better performance on Azure disks.
    * Also makes caching behavior more consistent, by limiting the caching to only RocksDB.
@@ -95,6 +98,9 @@ public class RocksDBServerConfig {
    * Max memtable count per database;
    */
   public static final String ROCKSDB_MAX_MEMTABLE_COUNT = "rocksdb.max.memtable.count";
+
+  public static final String ROCKSDB_MIN_WRITE_BUFFER_NUMBER_TO_MERGE = "rocksdb.min.write.buffer.number.to.merge";
+
   /**
    * Max total WAL log size per database;
    */
@@ -219,6 +225,18 @@ public class RocksDBServerConfig {
   public static final String ROCKSDB_MAX_LOG_FILE_SIZE = "rocksdb.max.log.file.size";
   public static final String RECORD_TRANSFORMER_VALUE_SCHEMA = "record.transformer.value.schema";
 
+  /**
+   * Check this page to find more details:
+   * https://github.com/facebook/rocksdb/wiki/BlobDB
+   */
+  public static final String ROCKSDB_BLOB_FILES_ENABLED = "rocksdb.blob.files.enabled";
+  public static final String ROCKSDB_MIN_BLOB_SIZE_IN_BYTES = "rocksdb.min.blob.size.in.bytes";
+  public static final String ROCKSDB_BLOB_FILE_SIZE_IN_BYTES = "rocksdb.blob.file.size.in.bytes";
+  public static final String ROCKSDB_BLOB_GARBAGE_COLLECTION_AGE_CUTOFF = "rocksdb.blob.garbage.collection.age.cutoff";
+  public static final String ROCKSDB_BLOB_GARBAGE_COLLECTION_FORCE_THRESHOLD =
+      "rocksdb.blob.garbage.collection.force.threshold";
+  public static final String ROCKSDB_BLOB_FILE_STARTING_LEVEL = "rocksdb.blob.file.starting.level";
+
   private final boolean rocksDBUseDirectReads;
 
   private final int rocksDBEnvFlushPoolSize;
@@ -238,6 +256,8 @@ public class RocksDBServerConfig {
 
   private final long rocksDBMemtableSizeInBytes;
   private final int rocksDBMaxMemtableCount;
+
+  private final int rocksDBMinWriteBufferNumberToMerge;
   private final long rocksDBMaxTotalWalSizeInBytes;
 
   private final long rocksDBMaxBytesForLevelBase;
@@ -286,6 +306,13 @@ public class RocksDBServerConfig {
   private final long maxLogFileSize;
   private final String transformerValueSchema;
 
+  private final boolean blobFilesEnabled;
+  private final long minBlobSizeInBytes;
+  private final long blobFileSizeInBytes;
+  private final double blobGarbageCollectionAgeCutOff;
+  private final double blobGarbageCollectionForceThreshold;
+  private final int blobFileStartingLevel;
+
   public RocksDBServerConfig(VeniceProperties props) {
     // Do not use Direct IO for reads by default
     this.rocksDBUseDirectReads = props.getBoolean(ROCKSDB_OPTIONS_USE_DIRECT_READS, false);
@@ -329,6 +356,7 @@ public class RocksDBServerConfig {
 
     this.rocksDBMemtableSizeInBytes = props.getSizeInBytes(ROCKSDB_MEMTABLE_SIZE_IN_BYTES, 32 * 1024 * 1024L); // 32MB
     this.rocksDBMaxMemtableCount = props.getInt(ROCKSDB_MAX_MEMTABLE_COUNT, 2);
+    this.rocksDBMinWriteBufferNumberToMerge = props.getInt(ROCKSDB_MIN_WRITE_BUFFER_NUMBER_TO_MERGE, 1);
     /**
      * Default: 0 means letting RocksDB to decide the proper WAL size.
      * Here is the related docs in RocksDB C++ lib:
@@ -406,8 +434,22 @@ public class RocksDBServerConfig {
      */
     this.maxLogFileNum = props.getInt(ROCKSDB_MAX_LOG_FILE_NUM, 3);
     this.maxLogFileSize = props.getSizeInBytes(ROCKSDB_MAX_LOG_FILE_SIZE, 10 * 1024 * 1024); // 10MB;
-    this.transformerValueSchema =
-        props.containsKey(RECORD_TRANSFORMER_VALUE_SCHEMA) ? props.getString(RECORD_TRANSFORMER_VALUE_SCHEMA) : "null";
+    this.transformerValueSchema = props.getString(RECORD_TRANSFORMER_VALUE_SCHEMA, "null");
+
+    /**
+     *  Check this page to find more details:
+     *  https://github.com/facebook/rocksdb/wiki/BlobDB
+     */
+    this.blobFilesEnabled = props.getBoolean(ROCKSDB_BLOB_FILES_ENABLED, false);
+    if (this.blobFilesEnabled) {
+      LOGGER.info("RocksDB Blob files feature is enabled");
+    }
+    this.minBlobSizeInBytes = props.getSizeInBytes(ROCKSDB_MIN_BLOB_SIZE_IN_BYTES, 4 * 1024); // default: 4KB
+    this.blobFileSizeInBytes = props.getSizeInBytes(ROCKSDB_BLOB_FILE_SIZE_IN_BYTES, 256 * 1024 * 1024); // default:
+                                                                                                         // 256MB
+    this.blobGarbageCollectionAgeCutOff = props.getDouble(ROCKSDB_BLOB_GARBAGE_COLLECTION_AGE_CUTOFF, 0.25);
+    this.blobGarbageCollectionForceThreshold = props.getDouble(ROCKSDB_BLOB_GARBAGE_COLLECTION_FORCE_THRESHOLD, 0.8);
+    this.blobFileStartingLevel = props.getInt(ROCKSDB_BLOB_FILE_STARTING_LEVEL, 0);
   }
 
   public int getLevel0FileNumCompactionTriggerWriteOnlyVersion() {
@@ -504,6 +546,10 @@ public class RocksDBServerConfig {
 
   public int getRocksDBMaxMemtableCount() {
     return rocksDBMaxMemtableCount;
+  }
+
+  public int getRocksDBMinWriteBufferNumberToMerge() {
+    return rocksDBMinWriteBufferNumberToMerge;
   }
 
   public long getRocksDBMaxTotalWalSizeInBytes() {
@@ -617,4 +663,27 @@ public class RocksDBServerConfig {
     return transformerValueSchema;
   }
 
+  public boolean isBlobFilesEnabled() {
+    return blobFilesEnabled;
+  }
+
+  public long getMinBlobSizeInBytes() {
+    return minBlobSizeInBytes;
+  }
+
+  public long getBlobFileSizeInBytes() {
+    return blobFileSizeInBytes;
+  }
+
+  public double getBlobGarbageCollectionAgeCutOff() {
+    return blobGarbageCollectionAgeCutOff;
+  }
+
+  public double getBlobGarbageCollectionForceThreshold() {
+    return blobGarbageCollectionForceThreshold;
+  }
+
+  public int getBlobFileStartingLevel() {
+    return blobFileStartingLevel;
+  }
 }

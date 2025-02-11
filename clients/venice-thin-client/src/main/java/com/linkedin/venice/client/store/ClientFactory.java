@@ -22,7 +22,7 @@ public class ClientFactory {
   private static Function<ClientConfig, TransportClient> configToTransportClientProviderForTests = null;
 
   // Visible for testing
-  static void setUnitTestMode() {
+  public static void setUnitTestMode() {
     unitTestMode = true;
   }
 
@@ -33,7 +33,7 @@ public class ClientFactory {
 
   // Allow for overriding with mock D2Client for unit tests. The caller must release the object to prevent side-effects
   // VisibleForTesting
-  static void setTransportClientProvider(Function<ClientConfig, TransportClient> transportClientProvider) {
+  public static void setTransportClientProvider(Function<ClientConfig, TransportClient> transportClientProvider) {
     if (!unitTestMode) {
       throw new VeniceUnsupportedOperationException("setTransportClientProvider in non-unit-test-mode");
     }

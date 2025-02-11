@@ -7,6 +7,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.PersistenceType;
@@ -26,7 +27,9 @@ public class TestRocksDBOffsetStore {
 
   @BeforeClass
   public void setUp() {
-    veniceCluster = ServiceFactory.getVeniceCluster(1, 0, 1);
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(0).numberOfRouters(1).build();
+    veniceCluster = ServiceFactory.getVeniceCluster(options);
   }
 
   @AfterClass

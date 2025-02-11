@@ -3,6 +3,7 @@ package com.linkedin.davinci.store.view;
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
+import static org.mockito.Mockito.mock;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -12,7 +13,9 @@ import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
+import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
@@ -60,14 +63,14 @@ public class ChangeCaptureViewWriterTest {
     highWaterMarks.put(LOR_1, 111L);
     highWaterMarks.put(LTX_1, 99L);
     highWaterMarks.put(LVA_1, 22222L);
-    PartitionConsumptionState mockLeaderPartitionConsumptionState = Mockito.mock(PartitionConsumptionState.class);
+    PartitionConsumptionState mockLeaderPartitionConsumptionState = mock(PartitionConsumptionState.class);
     Mockito.when(mockLeaderPartitionConsumptionState.getLeaderFollowerState())
         .thenReturn(LeaderFollowerStateType.LEADER);
     Mockito.when(mockLeaderPartitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap())
         .thenReturn(highWaterMarks);
     Mockito.when(mockLeaderPartitionConsumptionState.getPartition()).thenReturn(1);
 
-    PartitionConsumptionState mockFollowerPartitionConsumptionState = Mockito.mock(PartitionConsumptionState.class);
+    PartitionConsumptionState mockFollowerPartitionConsumptionState = mock(PartitionConsumptionState.class);
     Mockito.when(mockFollowerPartitionConsumptionState.getLeaderFollowerState())
         .thenReturn(LeaderFollowerStateType.STANDBY);
     Mockito.when(mockFollowerPartitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap())
@@ -78,46 +81,58 @@ public class ChangeCaptureViewWriterTest {
     versionSwapMessage.oldServingVersionTopic = Version.composeKafkaTopic(STORE_NAME, 1);
     versionSwapMessage.newServingVersionTopic = Version.composeKafkaTopic(STORE_NAME, 2);
 
+    KafkaKey kafkaKey = mock(KafkaKey.class);
+    KafkaMessageEnvelope kafkaMessageEnvelope = mock(KafkaMessageEnvelope.class);
     ControlMessage controlMessage = new ControlMessage();
     controlMessage.controlMessageUnion = versionSwapMessage;
 
-    Store mockStore = Mockito.mock(Store.class);
+    Version version = new VersionImpl(STORE_NAME, 1, PUSH_JOB_ID);
     VeniceProperties props = VeniceProperties.empty();
     Object2IntMap<String> urlMappingMap = new Object2IntOpenHashMap<>();
     // Add ID's to the region's to name the sort order of the RMD
     urlMappingMap.put(LTX_1, 0);
     urlMappingMap.put(LVA_1, 1);
     urlMappingMap.put(LOR_1, 2);
-    CompletableFuture<PubSubProduceResult> mockFuture = Mockito.mock(CompletableFuture.class);
+    CompletableFuture<PubSubProduceResult> mockFuture = mock(CompletableFuture.class);
 
-    VeniceWriter mockVeniceWriter = Mockito.mock(VeniceWriter.class);
+    VeniceWriter mockVeniceWriter = mock(VeniceWriter.class);
     Mockito.when(mockVeniceWriter.put(Mockito.any(), Mockito.any(), Mockito.anyInt())).thenReturn(mockFuture);
 
-    VeniceServerConfig mockVeniceServerConfig = Mockito.mock(VeniceServerConfig.class);
+    VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
     Mockito.when(mockVeniceServerConfig.getKafkaClusterUrlToIdMap()).thenReturn(urlMappingMap);
-    PubSubProducerAdapterFactory mockPubSubProducerAdapterFactory = Mockito.mock(PubSubProducerAdapterFactory.class);
-    PubSubClientsFactory mockPubSubClientsFactory = Mockito.mock(PubSubClientsFactory.class);
+    PubSubProducerAdapterFactory mockPubSubProducerAdapterFactory = mock(PubSubProducerAdapterFactory.class);
+    PubSubClientsFactory mockPubSubClientsFactory = mock(PubSubClientsFactory.class);
     Mockito.when(mockPubSubClientsFactory.getProducerAdapterFactory()).thenReturn(mockPubSubProducerAdapterFactory);
     Mockito.when(mockVeniceServerConfig.getPubSubClientsFactory()).thenReturn(mockPubSubClientsFactory);
 
-    VeniceConfigLoader mockVeniceConfigLoader = Mockito.mock(VeniceConfigLoader.class);
+    VeniceConfigLoader mockVeniceConfigLoader = mock(VeniceConfigLoader.class);
     Mockito.when(mockVeniceConfigLoader.getCombinedProperties()).thenReturn(props);
     Mockito.when(mockVeniceConfigLoader.getVeniceServerConfig()).thenReturn(mockVeniceServerConfig);
 
     // Build the change capture writer and set the mock writer
     ChangeCaptureViewWriter changeCaptureViewWriter =
-        new ChangeCaptureViewWriter(mockVeniceConfigLoader, mockStore, SCHEMA, Collections.emptyMap());
+        new ChangeCaptureViewWriter(mockVeniceConfigLoader, version, SCHEMA, Collections.emptyMap());
     changeCaptureViewWriter.setVeniceWriter(mockVeniceWriter);
 
     // Verify that we never produce the version swap from a follower replica
-    changeCaptureViewWriter.processControlMessage(controlMessage, 1, mockFollowerPartitionConsumptionState, 1);
+    changeCaptureViewWriter.processControlMessage(
+        kafkaKey,
+        kafkaMessageEnvelope,
+        controlMessage,
+        1,
+        mockFollowerPartitionConsumptionState);
     Mockito.verify(mockVeniceWriter, Mockito.never())
         .sendControlMessage(Mockito.any(), Mockito.anyInt(), Mockito.anyMap(), Mockito.any(), Mockito.any());
 
     // Verify that we never produce anything if it's not a VersionSwap Message
     ControlMessage ignoredControlMessage = new ControlMessage();
     ignoredControlMessage.controlMessageUnion = new EndOfIncrementalPush();
-    changeCaptureViewWriter.processControlMessage(ignoredControlMessage, 1, mockLeaderPartitionConsumptionState, 1);
+    changeCaptureViewWriter.processControlMessage(
+        kafkaKey,
+        kafkaMessageEnvelope,
+        ignoredControlMessage,
+        1,
+        mockLeaderPartitionConsumptionState);
     Mockito.verify(mockVeniceWriter, Mockito.never())
         .sendControlMessage(Mockito.any(), Mockito.anyInt(), Mockito.anyMap(), Mockito.any(), Mockito.any());
 
@@ -126,11 +141,17 @@ public class ChangeCaptureViewWriterTest {
     ignoredVersionSwapMessage.oldServingVersionTopic = Version.composeKafkaTopic(STORE_NAME, 2);
     ignoredVersionSwapMessage.newServingVersionTopic = Version.composeKafkaTopic(STORE_NAME, 3);
     ignoredControlMessage.controlMessageUnion = ignoredVersionSwapMessage;
-    changeCaptureViewWriter.processControlMessage(ignoredControlMessage, 1, mockLeaderPartitionConsumptionState, 1);
+    changeCaptureViewWriter.processControlMessage(
+        kafkaKey,
+        kafkaMessageEnvelope,
+        ignoredControlMessage,
+        1,
+        mockLeaderPartitionConsumptionState);
     Mockito.verify(mockVeniceWriter, Mockito.never())
         .sendControlMessage(Mockito.any(), Mockito.anyInt(), Mockito.anyMap(), Mockito.any(), Mockito.any());
 
-    changeCaptureViewWriter.processControlMessage(controlMessage, 1, mockLeaderPartitionConsumptionState, 1);
+    changeCaptureViewWriter
+        .processControlMessage(kafkaKey, kafkaMessageEnvelope, controlMessage, 1, mockLeaderPartitionConsumptionState);
     ArgumentCaptor<ControlMessage> messageArgumentCaptor = ArgumentCaptor.forClass(ControlMessage.class);
 
     // Verify and capture input
@@ -156,7 +177,7 @@ public class ChangeCaptureViewWriterTest {
   @Test
   public void testBuildWriterOptions() {
     // Set up mocks
-    Store mockStore = Mockito.mock(Store.class);
+    Store mockStore = mock(Store.class);
 
     Version version = new VersionImpl(STORE_NAME, 1, PUSH_JOB_ID);
     Mockito.when(mockStore.getVersionOrThrow(1)).thenReturn(version);
@@ -164,26 +185,26 @@ public class ChangeCaptureViewWriterTest {
 
     VeniceProperties props = VeniceProperties.empty();
     Object2IntMap<String> urlMappingMap = new Object2IntOpenHashMap<>();
-    CompletableFuture<PubSubProduceResult> mockFuture = Mockito.mock(CompletableFuture.class);
+    CompletableFuture<PubSubProduceResult> mockFuture = mock(CompletableFuture.class);
 
-    VeniceWriter mockVeniceWriter = Mockito.mock(VeniceWriter.class);
+    VeniceWriter mockVeniceWriter = mock(VeniceWriter.class);
     Mockito.when(mockVeniceWriter.put(Mockito.any(), Mockito.any(), Mockito.anyInt())).thenReturn(mockFuture);
 
-    VeniceServerConfig mockVeniceServerConfig = Mockito.mock(VeniceServerConfig.class);
+    VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
     Mockito.when(mockVeniceServerConfig.getKafkaClusterUrlToIdMap()).thenReturn(urlMappingMap);
 
-    VeniceConfigLoader mockVeniceConfigLoader = Mockito.mock(VeniceConfigLoader.class);
+    VeniceConfigLoader mockVeniceConfigLoader = mock(VeniceConfigLoader.class);
     Mockito.when(mockVeniceConfigLoader.getCombinedProperties()).thenReturn(props);
-    PubSubProducerAdapterFactory mockPubSubProducerAdapterFactory = Mockito.mock(PubSubProducerAdapterFactory.class);
-    PubSubClientsFactory mockPubSubClientsFactory = Mockito.mock(PubSubClientsFactory.class);
+    PubSubProducerAdapterFactory mockPubSubProducerAdapterFactory = mock(PubSubProducerAdapterFactory.class);
+    PubSubClientsFactory mockPubSubClientsFactory = mock(PubSubClientsFactory.class);
     Mockito.when(mockPubSubClientsFactory.getProducerAdapterFactory()).thenReturn(mockPubSubProducerAdapterFactory);
     Mockito.when(mockVeniceServerConfig.getPubSubClientsFactory()).thenReturn(mockPubSubClientsFactory);
     Mockito.when(mockVeniceConfigLoader.getVeniceServerConfig()).thenReturn(mockVeniceServerConfig);
 
     ChangeCaptureViewWriter changeCaptureViewWriter =
-        new ChangeCaptureViewWriter(mockVeniceConfigLoader, mockStore, SCHEMA, Collections.emptyMap());
+        new ChangeCaptureViewWriter(mockVeniceConfigLoader, version, SCHEMA, Collections.emptyMap());
 
-    VeniceWriterOptions writerOptions = changeCaptureViewWriter.buildWriterOptions(1);
+    VeniceWriterOptions writerOptions = changeCaptureViewWriter.buildWriterOptions();
 
     Assert
         .assertEquals(writerOptions.getTopicName(), STORE_NAME + "_v1" + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
@@ -196,27 +217,27 @@ public class ChangeCaptureViewWriterTest {
   @Test
   public void testProcessRecord() throws ExecutionException, InterruptedException {
     // Set up mocks
-    Store mockStore = Mockito.mock(Store.class);
+    Version version = new VersionImpl(STORE_NAME, 1, PUSH_JOB_ID);
     VeniceProperties props = VeniceProperties.empty();
     Object2IntMap<String> urlMappingMap = new Object2IntOpenHashMap<>();
-    CompletableFuture<PubSubProduceResult> mockFuture = Mockito.mock(CompletableFuture.class);
+    CompletableFuture<PubSubProduceResult> mockFuture = mock(CompletableFuture.class);
 
-    VeniceWriter mockVeniceWriter = Mockito.mock(VeniceWriter.class);
+    VeniceWriter mockVeniceWriter = mock(VeniceWriter.class);
     Mockito.when(mockVeniceWriter.put(Mockito.any(), Mockito.any(), Mockito.anyInt())).thenReturn(mockFuture);
 
-    VeniceServerConfig mockVeniceServerConfig = Mockito.mock(VeniceServerConfig.class);
+    VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
     Mockito.when(mockVeniceServerConfig.getKafkaClusterUrlToIdMap()).thenReturn(urlMappingMap);
 
-    VeniceConfigLoader mockVeniceConfigLoader = Mockito.mock(VeniceConfigLoader.class);
-    PubSubProducerAdapterFactory mockPubSubProducerAdapterFactory = Mockito.mock(PubSubProducerAdapterFactory.class);
-    PubSubClientsFactory mockPubSubClientsFactory = Mockito.mock(PubSubClientsFactory.class);
+    VeniceConfigLoader mockVeniceConfigLoader = mock(VeniceConfigLoader.class);
+    PubSubProducerAdapterFactory mockPubSubProducerAdapterFactory = mock(PubSubProducerAdapterFactory.class);
+    PubSubClientsFactory mockPubSubClientsFactory = mock(PubSubClientsFactory.class);
     Mockito.when(mockPubSubClientsFactory.getProducerAdapterFactory()).thenReturn(mockPubSubProducerAdapterFactory);
     Mockito.when(mockVeniceServerConfig.getPubSubClientsFactory()).thenReturn(mockPubSubClientsFactory);
     Mockito.when(mockVeniceConfigLoader.getCombinedProperties()).thenReturn(props);
     Mockito.when(mockVeniceConfigLoader.getVeniceServerConfig()).thenReturn(mockVeniceServerConfig);
 
     ChangeCaptureViewWriter changeCaptureViewWriter =
-        new ChangeCaptureViewWriter(mockVeniceConfigLoader, mockStore, SCHEMA, Collections.emptyMap());
+        new ChangeCaptureViewWriter(mockVeniceConfigLoader, version, SCHEMA, Collections.emptyMap());
 
     Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(SCHEMA, 1);
     List<Long> vectors = Arrays.asList(1L, 2L, 3L);
@@ -226,13 +247,13 @@ public class ChangeCaptureViewWriterTest {
     changeCaptureViewWriter.setVeniceWriter(mockVeniceWriter);
 
     // Update Case
-    changeCaptureViewWriter.processRecord(NEW_VALUE, OLD_VALUE, KEY, 1, 1, 1, rmdRecordWithValueLevelTimeStamp).get();
+    changeCaptureViewWriter.processRecord(NEW_VALUE, OLD_VALUE, KEY, 1, 1, rmdRecordWithValueLevelTimeStamp).get();
 
     // Insert Case
-    changeCaptureViewWriter.processRecord(NEW_VALUE, null, KEY, 1, 1, 1, rmdRecordWithValueLevelTimeStamp).get();
+    changeCaptureViewWriter.processRecord(NEW_VALUE, null, KEY, 1, 1, rmdRecordWithValueLevelTimeStamp).get();
 
     // Deletion Case
-    changeCaptureViewWriter.processRecord(null, OLD_VALUE, KEY, 1, 1, 1, rmdRecordWithValueLevelTimeStamp).get();
+    changeCaptureViewWriter.processRecord(null, OLD_VALUE, KEY, 1, 1, rmdRecordWithValueLevelTimeStamp).get();
 
     // Set up argument captors
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);

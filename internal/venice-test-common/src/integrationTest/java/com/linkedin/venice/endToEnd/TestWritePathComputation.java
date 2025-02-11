@@ -11,6 +11,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -72,8 +73,15 @@ public class TestWritePathComputation {
 
   @Test(timeOut = 90 * Time.MS_PER_SECOND)
   public void testFeatureFlagMultipleDC() {
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+            .numberOfClusters(1)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(1)
+            .numberOfRouters(0);
     try (VeniceTwoLayerMultiRegionMultiClusterWrapper twoLayerMultiRegionMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(1, 1, 1, 1, 1, 0)) {
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build())) {
 
       VeniceMultiClusterWrapper multiCluster = twoLayerMultiRegionMultiClusterWrapper.getChildRegions().get(0);
       VeniceControllerWrapper parentController = twoLayerMultiRegionMultiClusterWrapper.getParentControllers().get(0);

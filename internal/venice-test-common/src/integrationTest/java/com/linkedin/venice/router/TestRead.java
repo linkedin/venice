@@ -28,6 +28,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
@@ -156,8 +157,18 @@ public abstract class TestRead {
     extraProperties.put(ConfigKeys.ROUTER_HTTP2_INBOUND_ENABLED, isRouterHttp2Enabled());
     extraProperties.put(ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED, true);
     extraProperties.put(ConfigKeys.ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER, 0.0);
+    extraProperties.put(ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED, false);
 
-    veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 1, 2, 100, true, false, extraProperties);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(1)
+        .numberOfRouters(1)
+        .replicationFactor(2)
+        .partitionSize(100)
+        .sslToStorageNodes(true)
+        .sslToKafka(false)
+        .extraProperties(extraProperties)
+        .build();
+    veniceCluster = ServiceFactory.getVeniceCluster(options);
     routerAddr = veniceCluster.getRandomRouterSslURL();
 
     Properties serverProperties = new Properties();
@@ -450,6 +461,8 @@ public abstract class TestRead {
         storeClient.batchGet(keySet).get();
         fail("Should receive exception since the batch request key count exceeds cluster-level threshold");
       } catch (Exception e) {
+        double unhealthyRequestCount = getAggregateRouterMetricValue(".total--multiget_unhealthy_request.Count");
+        Assert.assertEquals(unhealthyRequestCount, 0.0, "There should not be any unhealthy requests!");
         LOGGER.info(e);
       }
       // Bump up store-level max key count in batch-get request
@@ -465,8 +478,7 @@ public abstract class TestRead {
       });
 
       // Single get quota test
-      int throttledRequestsForSingleGet =
-          (int) getAggregateRouterMetricValue(".total--multiget_throttled_request.Count");
+      int throttledRequestsForSingleGet = (int) getAggregateRouterMetricValue(".total--throttled_request.Count");
       Assert.assertEquals(
           throttledRequestsForSingleGet,
           0,

@@ -15,6 +15,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -42,7 +43,15 @@ public class TestHolisticSeverHealthCheck {
   @BeforeClass
   public void setUp() {
     int numOfController = 1;
-    cluster = ServiceFactory.getVeniceCluster(numOfController, 2, 1, replicaFactor, partitionSize, false, false);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(numOfController)
+        .numberOfServers(2)
+        .numberOfRouters(1)
+        .replicationFactor(replicaFactor)
+        .partitionSize(partitionSize)
+        .sslToStorageNodes(false)
+        .sslToKafka(false)
+        .build();
+    cluster = ServiceFactory.getVeniceCluster(options);
 
     Properties routerProperties = new Properties();
     cluster.addVeniceRouter(routerProperties);

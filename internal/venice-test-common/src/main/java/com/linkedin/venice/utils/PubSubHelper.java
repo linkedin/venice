@@ -168,5 +168,10 @@ public class PubSubHelper {
     public long getTimestampAfterProduce() {
       return timestampAfterProduce;
     }
+
+    @Override
+    public int getHeapSize() {
+      throw new UnsupportedOperationException("getHeapSize is not supported on " + this.getClass().getSimpleName());
+    }
   }
 }

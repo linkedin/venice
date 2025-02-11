@@ -26,5 +26,9 @@ public interface HybridStoreConfig extends DataModelBackedStructure<StoreHybridC
 
   BufferReplayPolicy getBufferReplayPolicy();
 
+  String getRealTimeTopicName();
+
+  void setRealTimeTopicName(String realTimeTopicName);
+
   HybridStoreConfig clone();
 }

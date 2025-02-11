@@ -10,13 +10,14 @@ plugins {
   id 'maven-publish'
   id 'com.diffplug.spotless' version '6.12.0'
   id 'com.dorongold.task-tree' version '2.1.0'
-  id 'com.github.johnrengelman.shadow' version '6.1.0' apply false
+  id 'com.github.johnrengelman.shadow' version '7.1.2' apply false
   id 'com.github.spotbugs' version '4.8.0' apply false
-  id 'org.gradle.test-retry' version '1.5.0' apply false
+  id 'org.gradle.test-retry' version '1.6.0' apply false
   id 'com.form.diff-coverage' version '0.9.5' apply false
   id 'me.champeau.jmh' version '0.6.7' apply false
   id 'io.github.lhotari.gradle-nar-plugin' version '0.5.1' apply false
   id 'com.google.protobuf' version '0.9.3' apply false
+  id 'org.checkerframework' version '0.6.47' // Checker Framework pluggable type-checking
 }
 
 apply from: "$rootDir/gradle/helper/git.gradle"
@@ -38,10 +39,11 @@ if (project.hasProperty('overrideBuildEnvironment')) {
 }
 
 def avroVersion = '1.10.2'
-def avroUtilVersion = '0.3.21'
+def avroUtilVersion = '0.4.22'
 def grpcVersion = '1.49.2'
-def kafkaGroup = 'com.linkedin.kafka'
-def kafkaVersion = '2.4.1.65'
+// N.B.: The build should also work when substituting Kafka from the Apache fork to LinkedIn's fork:
+def kafkaGroup = 'org.apache.kafka' // 'com.linkedin.kafka'
+def kafkaVersion = '2.4.1' // '2.4.1.65'
 def log4j2Version = '2.17.1'
 def pegasusVersion = '29.31.0'
 def protobufVersion = '3.21.7'
@@ -52,14 +54,17 @@ def alpnAgentVersion = '2.0.10'
 def hadoopVersion = '2.10.2'
 def apacheSparkVersion = '3.3.3'
 def antlrVersion = '4.8'
+def scala = '2.12'
+def openTelemetryVersion = '1.33.0'
 
 ext.libraries = [
     alpnAgent: "org.mortbay.jetty.alpn:jetty-alpn-agent:${alpnAgentVersion}",
     antlr4: "org.antlr:antlr4:${antlrVersion}",
     antlr4Runtime: "org.antlr:antlr4-runtime:${antlrVersion}",
-    apacheSparkAvro: "org.apache.spark:spark-avro_2.12:${apacheSparkVersion}",
-    apacheSparkCore: "org.apache.spark:spark-core_2.12:${apacheSparkVersion}",
-    apacheSparkSql: "org.apache.spark:spark-sql_2.12:${apacheSparkVersion}",
+    apacheSparkAvro: "org.apache.spark:spark-avro_${scala}:${apacheSparkVersion}",
+    apacheSparkCore: "org.apache.spark:spark-core_${scala}:${apacheSparkVersion}",
+    apacheSparkSql: "org.apache.spark:spark-sql_${scala}:${apacheSparkVersion}",
+    asm: "org.ow2.asm:asm:9.7",
     avro: "org.apache.avro:avro:${avroVersion}",
     avroCompiler: "org.apache.avro:avro-compiler:${avroVersion}",
     avroMapred: "org.apache.avro:avro-mapred:${avroVersion}",
@@ -78,12 +83,14 @@ ext.libraries = [
     commonsLang: 'commons-lang:commons-lang:2.6',
     conscrypt: 'org.conscrypt:conscrypt-openjdk-uber:2.5.2',
     d2: "com.linkedin.pegasus:d2:${pegasusVersion}",
+    duckdbJdbc: "org.duckdb:duckdb_jdbc:1.2.0",
     failsafe: 'net.jodah:failsafe:2.4.0',
     fastUtil: 'it.unimi.dsi:fastutil:8.3.0',
     grpcNettyShaded: "io.grpc:grpc-netty-shaded:${grpcVersion}",
     grpcProtobuf: "io.grpc:grpc-protobuf:${grpcVersion}",
     grpcServices: "io.grpc:grpc-services:${grpcVersion}",
     grpcStub: "io.grpc:grpc-stub:${grpcVersion}",
+    grpcTesting: "io.grpc:grpc-testing:${grpcVersion}",
     hadoopCommon: "org.apache.hadoop:hadoop-common:${hadoopVersion}",
     hadoopHdfs: "org.apache.hadoop:hadoop-hdfs:${hadoopVersion}",
     httpAsyncClient: 'org.apache.httpcomponents:httpasyncclient:4.1.5',
@@ -101,7 +108,7 @@ ext.libraries = [
     jna: 'net.java.dev.jna:jna:4.5.1',
     jsr305: 'com.google.code.findbugs:jsr305:3.0.2',
     joptSimple: 'net.sf.jopt-simple:jopt-simple:3.2',
-    kafka: "${kafkaGroup}:kafka_2.12:${kafkaVersion}",
+    kafka: "${kafkaGroup}:kafka_${scala}:${kafkaVersion}",
     kafkaClients: "${kafkaGroup}:kafka-clients:${kafkaVersion}",
     kafkaClientsTest: "${kafkaGroup}:kafka-clients:${kafkaVersion}:test",
     log4j2api: "org.apache.logging.log4j:log4j-api:${log4j2Version}",
@@ -112,6 +119,11 @@ ext.libraries = [
     mapreduceClientJobClient: "org.apache.hadoop:hadoop-mapreduce-client-jobclient:${hadoopVersion}",
     mockito: 'org.mockito:mockito-core:4.11.0',
     netty: 'io.netty:netty-all:4.1.74.Final',
+    opentelemetryApi: "io.opentelemetry:opentelemetry-api:${openTelemetryVersion}",
+    opentelemetrySdk: "io.opentelemetry:opentelemetry-sdk:${openTelemetryVersion}",
+    opentelemetryExporterLogging: "io.opentelemetry:opentelemetry-exporter-logging:${openTelemetryVersion}",
+    opentelemetryExporterOtlp: "io.opentelemetry:opentelemetry-exporter-otlp:${openTelemetryVersion}",
+    opentelemetryExporterCommon: "io.opentelemetry:opentelemetry-exporter-common:${openTelemetryVersion}",
     oss: 'org.sonatype.oss:oss-parent:7',
     pulsarClient: "${pulsarGroup}:pulsar-client:${pulsarVersion}",
     pulsarIoCore: "${pulsarGroup}:pulsar-io-core:${pulsarVersion}",
@@ -120,13 +132,15 @@ ext.libraries = [
     restliCommon: "com.linkedin.pegasus:restli-common:${pegasusVersion}",
     rocksdbjni: 'org.rocksdb:rocksdbjni:8.8.1',
     samzaApi: 'org.apache.samza:samza-api:1.5.1',
+    beamSdk: 'org.apache.beam:beam-sdks-java-core:2.60.0',
+    beamExtensionAvro: 'org.apache.beam:beam-sdks-java-extensions-avro:2.60.0',
     slf4j: 'org.slf4j:slf4j:1.7.36',
     slf4jApi: 'org.slf4j:slf4j-api:1.7.36',
     slf4jSimple: 'org.slf4j:slf4j-simple:1.7.36',
     snappy: 'org.iq80.snappy:snappy:0.4',
     spark: 'com.sparkjava:spark-core:2.9.4', // Spark-Java Rest framework
     spotbugs: 'com.github.spotbugs:spotbugs:4.5.2',
-    tehuti: 'io.tehuti:tehuti:0.12.2',
+    tehuti: 'io.tehuti:tehuti:0.12.3',
     testcontainers: 'org.testcontainers:testcontainers:1.18.0',
     testng: 'org.testng:testng:6.14.3',
     tomcatAnnotations: 'org.apache.tomcat:annotations-api:6.0.53',
@@ -136,7 +150,7 @@ ext.libraries = [
     xerces: 'xerces:xercesImpl:2.9.1',
     zkclient: 'com.101tec:zkclient:0.7', // For Kafka AdminUtils
     zookeeper: 'org.apache.zookeeper:zookeeper:3.6.3',
-    zstd: 'com.github.luben:zstd-jni:1.5.2-3',
+    zstd: 'com.github.luben:zstd-jni:1.5.2-3'
 ]
 
 group = 'com.linkedin.venice'
@@ -177,23 +191,32 @@ subprojects {
 
   def isLeafSubModule = project.childProjects.isEmpty()
 
+  // We consider a sub-module to be a "proto module" if it has any proto schemas defined under the right path.
+  def protoDir = new File(project.projectDir, "src/main/proto");
+  def isProtoModule = protoDir != null && protoDir.list() != null && protoDir.list().size() != 0
+
   apply {
     plugin 'idea'
     plugin 'java-library'
+    plugin 'com.form.diff-coverage'
     plugin 'com.github.spotbugs'
     plugin 'org.gradle.test-retry'
+    plugin 'org.checkerframework'
   }
 
   if (isLeafSubModule) {
     apply {
       plugin 'jacoco'
-      plugin 'com.form.diff-coverage'
-      plugin 'com.google.protobuf'
+      if (isProtoModule) {
+        plugin 'com.google.protobuf'
+      }
     }
   }
 
   if (JavaVersion.current() >= JavaVersion.VERSION_1_9) {
     tasks.withType(JavaCompile) {
+      // Compiler arguments can be injected here...
+      // options.compilerArgs << '-Xlint:unchecked'
       options.release = 8
     }
   }
@@ -204,7 +227,7 @@ subprojects {
     //withJavadocJar()
   }
 
-  if (isLeafSubModule) {
+  if (isLeafSubModule && isProtoModule) {
     protobuf {
       protoc {
         artifact = 'com.google.protobuf:protoc:' + protobufVersion
@@ -291,6 +314,8 @@ subprojects {
     doFirst {
       def versionOverrides = [
 //        project(':internal:venice-common').file('src/main/resources/avro/StoreVersionState/v5', PathValidation.DIRECTORY)
+        project(':internal:venice-common').file('src/main/resources/avro/PartitionState/v15', PathValidation.DIRECTORY),
+        project(':internal:venice-common').file('src/main/resources/avro/KafkaMessageEnvelope/v11', PathValidation.DIRECTORY)
       ]
 
       def schemaDirs = [sourceDir]
@@ -364,7 +389,8 @@ subprojects {
         }
         classes = classDirs.asFileTree.matching { exclude generatedClasses }
         auxClassPaths += classDirs.asFileTree.matching { include generatedClasses }.each {
-          println "Excluding generated class ${project.relativePath(it)}"
+          // Muted to reduce noise, but can be uncommented to debug exclusions
+          // println "Excluding generated class ${project.relativePath(it)}"
         }
       }
     }
@@ -373,7 +399,6 @@ subprojects {
   def ALPINI_TEST_FILTER = 'com.linkedin.alpini.*'
   def ALPINI_NETTY_TEST_FILTER = 'io.netty.*'
   def ALPINI_UNIT_TEST_TASK_NAME = 'alpiniUnitTest'
-  def ALPINI_FUNCTIONAL_TEST_TASK_NAME = 'alpiniFunctionalTest'
 
   tasks.withType(Test) {
     mustRunAfter tasks.withType(SpotBugsTask)
@@ -405,7 +430,7 @@ subprojects {
       println "jvmArgs=$allJvmArgs"
     }
 
-    if (name != ALPINI_UNIT_TEST_TASK_NAME && name != ALPINI_FUNCTIONAL_TEST_TASK_NAME) {
+    if (name != ALPINI_UNIT_TEST_TASK_NAME) {
       filter {
         excludeTestsMatching ALPINI_TEST_FILTER
         excludeTestsMatching ALPINI_NETTY_TEST_FILTER
@@ -483,10 +508,6 @@ subprojects {
         xml.enabled = true
         html.enabled = true
       }
-
-      doLast {
-        parseJacocoXml("$buildDir/reports/jacoco/test/jacocoTestReport.xml")
-      }
     }
 
     afterEvaluate {
@@ -501,6 +522,12 @@ subprojects {
               counter = 'BRANCH'
               value = 'COVEREDRATIO'
               minimum = threshold
+            }
+            // Ignore generate files
+            afterEvaluate {
+              classDirectories.setFrom(files(classDirectories.files.collect { fileTree(dir: it, exclude: [
+                  '**/com/linkedin/venice/protocols/**',
+              ])}))
             }
           }
         }
@@ -550,17 +577,6 @@ subprojects {
     }
   }
 
-  task "$ALPINI_FUNCTIONAL_TEST_TASK_NAME"(type: Test) {
-    useTestNG() {
-      includeGroups 'functional'
-    }
-    filter {
-      includeTestsMatching ALPINI_TEST_FILTER
-      includeTestsMatching ALPINI_NETTY_TEST_FILTER
-      failOnNoMatchingTests = false
-    }
-  }
-
   tasks.withType(Jar) {
     zip64 = true
     duplicatesStrategy = DuplicatesStrategy.FAIL
@@ -575,6 +591,13 @@ subprojects {
   // Only publish artifacts for projects that are at the leaf level
   if (isLeafSubModule) {
     publishing.configureArtifactPublishing(project, testJar)
+  }
+}
+
+// 2nd round of subprojects configuration... the 1st round must be fully done for all submodules for this one to work.
+subprojects {
+  task recursiveDiffCoverage {
+    dependsOn subprojects.diffCoverage
   }
 }
 
@@ -816,4 +839,13 @@ task verifyJdkVersion {
 gradle.taskGraph.whenReady {
   // Ensure the JDK version is verified before any other tasks
   verifyJdkVersion
+}
+
+task listSubprojects {
+  doLast {
+    println "Subprojects:"
+    subprojects.each { subproject ->
+      println "${subproject.name}"
+    }
+  }
 }

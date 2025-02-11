@@ -250,6 +250,12 @@ public class SparseConcurrentList<E> extends CopyOnWriteArrayList<E> {
         if (element == null) {
           element = mappingFunction.apply(index);
           /**
+           * Don't update the list if the computed result is `null`.
+           */
+          if (element == null) {
+            return null;
+          }
+          /**
            * It's important NOT to call {@link #handleSizeDuringMutation(Object, Object)} since {@link #set(int, Object)}
            * already calls it.
            */

@@ -1,0 +1,15 @@
+  $FlowName:
+    strategy:
+      fail-fast: false
+      matrix:
+        jdk: [17]
+    runs-on: ubuntu-latest
+    needs: $Dependency
+    if: $Conditional
+    timeout-minutes: $TimeOut
+    steps:
+    - name: NoOp
+      shell: bash
+      run: |
+        echo "Successfully ran all E2E tests!"
+

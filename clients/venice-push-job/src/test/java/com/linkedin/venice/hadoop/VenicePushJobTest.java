@@ -27,6 +27,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
@@ -71,9 +72,12 @@ import com.linkedin.venice.hadoop.exceptions.VeniceValidationException;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
+import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.meta.ViewConfig;
+import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
@@ -83,6 +87,9 @@ import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.views.ChangeCaptureView;
+import com.linkedin.venice.views.MaterializedView;
+import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.Collections;
 import java.util.HashMap;
@@ -173,6 +180,7 @@ public class VenicePushJobTest {
       PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
       Assert.assertTrue(pushJobSetting.repushTTLEnabled);
       Assert.assertEquals(pushJobSetting.repushTTLStartTimeMs, -1);
+      Assert.assertTrue(Version.isPushIdTTLRePush(pushJob.getPushJobDetails().getPushId().toString()));
     }
 
     // Test with explicit TTL start timestamp
@@ -183,6 +191,7 @@ public class VenicePushJobTest {
       PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
       Assert.assertTrue(pushJobSetting.repushTTLEnabled);
       Assert.assertEquals(pushJobSetting.repushTTLStartTimeMs, 100);
+      Assert.assertTrue(Version.isPushIdTTLRePush(pushJob.getPushJobDetails().getPushId().toString()));
     }
 
     // Test with explicit TTL age
@@ -216,6 +225,7 @@ public class VenicePushJobTest {
       PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
       Assert.assertFalse(pushJobSetting.repushTTLEnabled);
       Assert.assertEquals(pushJobSetting.repushTTLStartTimeMs, -1);
+      Assert.assertTrue(Version.isPushIdRePush(pushJob.getPushJobDetails().getPushId().toString()));
     }
   }
 
@@ -452,9 +462,11 @@ public class VenicePushJobTest {
     if (applyFirst) {
       info.accept(storeInfo);
     }
-    Version version = new VersionImpl(TEST_STORE, REPUSH_VERSION, TEST_PUSH);
-    version.setHybridStoreConfig(storeInfo.getHybridStoreConfig());
-    storeInfo.setVersions(Collections.singletonList(version));
+    if (storeInfo.getVersions() == null) {
+      Version version = new VersionImpl(TEST_STORE, REPUSH_VERSION, TEST_PUSH);
+      version.setHybridStoreConfig(storeInfo.getHybridStoreConfig());
+      storeInfo.setVersions(Collections.singletonList(version));
+    }
     if (!applyFirst) {
       info.accept(storeInfo);
     }
@@ -923,6 +935,78 @@ public class VenicePushJobTest {
     }
   }
 
+  @Test
+  public void testTargetRegionPushWithDeferredSwapSettings() {
+    Properties props = getVpjRequiredProperties();
+    String regions = "test1, test2";
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
+    props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+    props.put(TARGETED_REGION_PUSH_LIST, regions);
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, getClient())) {
+      PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
+      Assert.assertEquals(pushJobSetting.deferVersionSwap, true);
+      Assert.assertEquals(pushJobSetting.isTargetRegionPushWithDeferredSwapEnabled, true);
+      Assert.assertEquals(pushJobSetting.targetedRegions, regions);
+    }
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*cannot be enabled at the same time.*")
+  public void testEnableBothTargetRegionConfigs() {
+    Properties props = getVpjRequiredProperties();
+    String regions = "test1, test2";
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
+    props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+    props.put(TARGETED_REGION_PUSH_ENABLED, true);
+    props.put(TARGETED_REGION_PUSH_LIST, regions);
+
+    getSpyVenicePushJob(props, getClient());
+  }
+
+  @Test
+  public void testConfigureWithMaterializedViewConfigs() throws Exception {
+    Properties properties = getVpjRequiredProperties();
+    properties.put(KEY_FIELD_PROP, "id");
+    properties.put(VALUE_FIELD_PROP, "name");
+    JobStatusQueryResponse response = mockJobStatusQuery();
+    ControllerClient client = getClient();
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), eq(null));
+    try (final VenicePushJob vpj = getSpyVenicePushJob(properties, client)) {
+      skipVPJValidation(vpj);
+      vpj.run();
+      PushJobSetting pushJobSetting = vpj.getPushJobSetting();
+      Assert.assertNull(pushJobSetting.materializedViewConfigFlatMap);
+    }
+    Map<String, ViewConfig> viewConfigs = new HashMap<>();
+    MaterializedViewParameters.Builder builder =
+        new MaterializedViewParameters.Builder("testView").setPartitionCount(12)
+            .setPartitioner(DefaultVenicePartitioner.class.getCanonicalName());
+    viewConfigs.put("testView", new ViewConfigImpl(MaterializedView.class.getCanonicalName(), builder.build()));
+    viewConfigs
+        .put("dummyView", new ViewConfigImpl(ChangeCaptureView.class.getCanonicalName(), Collections.emptyMap()));
+    Version version = new VersionImpl(TEST_STORE, 1, TEST_PUSH);
+    version.setViewConfigs(viewConfigs);
+    client = getClient(storeInfo -> {
+      storeInfo.setViewConfigs(viewConfigs);
+      storeInfo.setVersions(Collections.singletonList(version));
+    }, true);
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), eq(null));
+    try (final VenicePushJob vpj = getSpyVenicePushJob(properties, client)) {
+      skipVPJValidation(vpj);
+      vpj.run();
+      PushJobSetting pushJobSetting = vpj.getPushJobSetting();
+      Assert.assertNotNull(pushJobSetting.materializedViewConfigFlatMap);
+      Map<String, ViewConfig> viewConfigMap =
+          ViewUtils.parseViewConfigMapString(pushJobSetting.materializedViewConfigFlatMap);
+      // Ensure only materialized view configs are propagated to the job settings
+      Assert.assertEquals(viewConfigMap.size(), 1);
+      Assert.assertTrue(viewConfigMap.containsKey("testView"));
+      Assert.assertEquals(viewConfigMap.get("testView").getViewClassName(), MaterializedView.class.getCanonicalName());
+    }
+  }
+
   private JobStatusQueryResponse mockJobStatusQuery() {
     JobStatusQueryResponse response = new JobStatusQueryResponse();
     response.setStatus(ExecutionStatus.COMPLETED.toString());
@@ -967,7 +1051,8 @@ public class VenicePushJobTest {
               anyLong(),
               anyBoolean(),
               any(),
-              anyInt());
+              anyInt(),
+              anyBoolean());
     }
 
     return versionCreationResponse;

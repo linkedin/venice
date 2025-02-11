@@ -5,6 +5,7 @@ import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_
 
 import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
+import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
@@ -46,6 +47,8 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
   // mutable states for a single file transfer. It will be updated for each file transfer.
   private FileChannel outputFileChannel;
   private String fileName;
+  private String fileChecksum;
+  private Path file;
   private long fileContentLength;
 
   public P2PFileTransferClientHandler(
@@ -53,18 +56,26 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
       CompletionStage<InputStream> inputStreamFuture,
       String storeName,
       int version,
-      int partition) {
+      int partition,
+      BlobTransferUtils.BlobTransferTableFormat tableFormat) {
     this.inputStreamFuture = inputStreamFuture;
-    this.payload = new BlobTransferPayload(baseDir, storeName, version, partition);
+    this.payload = new BlobTransferPayload(baseDir, storeName, version, partition, tableFormat);
   }
 
   @Override
   protected void channelRead0(ChannelHandlerContext ctx, HttpObject msg) throws Exception {
     if (msg instanceof HttpResponse) {
       HttpResponse response = (HttpResponse) msg;
+
       if (!response.status().equals(HttpResponseStatus.OK)) {
-        throw new VeniceException("Failed to fetch file from remote peer. Response: " + response.status());
+        if (response.status().equals(HttpResponseStatus.NOT_FOUND)) {
+          throw new VeniceBlobTransferFileNotFoundException(
+              "Requested files from remote peer are not found. Response: " + response.status());
+        } else {
+          throw new VeniceException("Failed to fetch file from remote peer. Response: " + response.status());
+        }
       }
+
       // redirect the message to the next handler if it's a metadata transfer
       boolean isMetadataMessage = BlobTransferUtils.isMetadataMessage(response);
       if (isMetadataMessage) {
@@ -80,11 +91,14 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
         return;
       }
 
-      // Parse the file name
+      // Parse the file name and checksum from the response
       this.fileName = getFileNameFromHeader(response);
+      this.fileChecksum = response.headers().get(HttpHeaderNames.CONTENT_MD5);
+
       if (this.fileName == null) {
         throw new VeniceException("No file name specified in the response for " + payload.getFullResourceName());
       }
+
       LOGGER.debug("Starting blob transfer for file: {}", fileName);
       this.fileContentLength = Long.parseLong(response.headers().get(HttpHeaderNames.CONTENT_LENGTH));
 
@@ -92,8 +106,17 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
       Path partitionDir = Paths.get(payload.getPartitionDir());
       Files.createDirectories(partitionDir);
 
-      // Prepare the file
-      Path file = Files.createFile(partitionDir.resolve(fileName));
+      // Prepare the file, remove it if it exists
+      if (Files.deleteIfExists(partitionDir.resolve(fileName))) {
+        LOGGER.debug(
+            "File {} already exists for topic {} partition {}. Overwriting it.",
+            fileName,
+            payload.getTopicName(),
+            payload.getPartition());
+      }
+
+      this.file = Files.createFile(partitionDir.resolve(fileName));
+
       outputFileChannel = FileChannel.open(file, StandardOpenOption.WRITE, StandardOpenOption.APPEND);
 
     } else if (msg instanceof HttpContent) {
@@ -136,6 +159,15 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
               "File size mismatch for " + fileName + ". Expected: " + fileContentLength + ", Actual: "
                   + outputFileChannel.size());
         }
+
+        // Checksum validation
+        String receivedFileChecksum = BlobTransferUtils.generateFileChecksum(file);
+        if (!receivedFileChecksum.equals(fileChecksum)) {
+          throw new VeniceException(
+              "File checksum mismatch for " + fileName + ". Expected: " + fileChecksum + ", Actual: "
+                  + receivedFileChecksum);
+        }
+
         resetState();
       }
     } else {
@@ -155,7 +187,10 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
 
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-    LOGGER.error("Exception caught in when transferring files for {}", payload.getFullResourceName());
+    LOGGER.error(
+        "Exception caught in when transferring files for {} with cause {}",
+        payload.getFullResourceName(),
+        cause);
     inputStreamFuture.toCompletableFuture().completeExceptionally(cause);
     ctx.close();
   }

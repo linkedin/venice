@@ -7,23 +7,26 @@ import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.alpini.router.api.RouterException;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.meta.RetryManager;
+import com.linkedin.venice.meta.StoreVersionName;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
+import com.linkedin.venice.router.RouterRetryConfig;
 import com.linkedin.venice.router.RouterThrottleHandler;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.router.api.VenicePartitionFinder;
 import com.linkedin.venice.router.api.VenicePathParser;
+import com.linkedin.venice.router.api.VeniceResponseDecompressor;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
-import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import java.nio.ByteBuffer;
+import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
 
@@ -40,38 +43,31 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
   private static final RecordDeserializer<ByteBuffer> EXPECTED_PROTOCOL_DESERIALIZER = FastSerializerDeserializerFactory
       .getFastAvroGenericDeserializer(EXPECTED_PROTOCOL.getSchema(), EXPECTED_PROTOCOL.getSchema());
 
+  private final String clientComputeHeader;
+
   public VeniceMultiGetPath(
-      String storeName,
-      int versionNumber,
-      String resourceName,
+      StoreVersionName storeVersionName,
       BasicFullHttpRequest request,
       VenicePartitionFinder partitionFinder,
       int maxKeyCount,
-      boolean smartLongTailRetryEnabled,
-      int smartLongTailRetryAbortThresholdMs,
-      RouterStats<AggRouterHttpRequestStats> stats,
-      int longTailRetryMaxRouteForMultiKeyReq,
-      RetryManager retryManager) throws RouterException {
-    super(
-        storeName,
-        versionNumber,
-        resourceName,
-        smartLongTailRetryEnabled,
-        smartLongTailRetryAbortThresholdMs,
-        longTailRetryMaxRouteForMultiKeyReq,
-        retryManager);
+      AggRouterHttpRequestStats stats,
+      RouterRetryConfig retryConfig,
+      RetryManager retryManager,
+      VeniceResponseDecompressor responseDecompressor,
+      String clientComputeHeader) throws RouterException {
+    super(storeVersionName, retryConfig, retryManager, responseDecompressor);
+    this.clientComputeHeader = clientComputeHeader;
 
     // Validate API version
     int apiVersion = Integer.parseInt(request.headers().get(HttpConstants.VENICE_API_VERSION));
     if (apiVersion != EXPECTED_PROTOCOL.getProtocolVersion()) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-          Optional.of(getStoreName()),
-          Optional.of(getRequestType()),
+          getStoreName(),
+          getRequestType(),
           BAD_REQUEST,
           "Expected api version: " + EXPECTED_PROTOCOL.getProtocolVersion() + ", but received: " + apiVersion);
     }
 
-    Iterable<ByteBuffer> keys;
     byte[] content;
 
     if (request.hasAttr(RouterThrottleHandler.THROTTLE_HANDLER_BYTE_ATTRIBUTE_KEY)) {
@@ -81,28 +77,19 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
       request.content().readBytes(content);
     }
 
-    keys = deserialize(content);
-    initialize(storeName, resourceName, keys, partitionFinder, maxKeyCount, stats);
+    List<ByteBuffer> keys = deserialize(content);
+    initialize(storeVersionName.getName(), keys, partitionFinder, maxKeyCount, stats);
   }
 
   VeniceMultiGetPath(
-      String storeName,
-      int versionNumber,
-      String resourceName,
+      StoreVersionName storeVersionName,
       Map<RouterKey, MultiGetRouterRequestKeyV1> routerKeyMap,
-      boolean smartLongTailRetryEnabled,
-      int smartLongTailRetryAbortThresholdMs,
-      int longTailRetryMaxRouteForMultiKeyReq,
-      RetryManager retryManager) {
-    super(
-        storeName,
-        versionNumber,
-        resourceName,
-        smartLongTailRetryEnabled,
-        smartLongTailRetryAbortThresholdMs,
-        routerKeyMap,
-        longTailRetryMaxRouteForMultiKeyReq,
-        retryManager);
+      RouterRetryConfig retryConfig,
+      RetryManager retryManager,
+      VeniceResponseDecompressor responseDecompressor,
+      String clientComputeHeader) {
+    super(storeVersionName, routerKeyMap, retryConfig, retryManager, responseDecompressor);
+    this.clientComputeHeader = clientComputeHeader;
     setPartitionKeys(routerKeyMap.keySet());
   }
 
@@ -131,14 +118,12 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
    */
   protected VeniceMultiGetPath fixRetryRequestForSubPath(Map<RouterKey, MultiGetRouterRequestKeyV1> routerKeyMap) {
     VeniceMultiGetPath subPath = new VeniceMultiGetPath(
-        storeName,
-        versionNumber,
-        getResourceName(),
+        this.storeVersionName,
         routerKeyMap,
-        isSmartLongTailRetryEnabled(),
-        getSmartLongTailRetryAbortThresholdMs(),
-        getLongTailRetryMaxRouteForMultiKeyReq(),
-        retryManager);
+        this.retryConfig,
+        this.retryManager,
+        getResponseDecompressor(),
+        getClientComputeHeader());
     subPath.setupRetryRelatedInfo(this);
     return subPath;
   }
@@ -157,7 +142,7 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
     return MULTI_GET_ROUTER_REQUEST_KEY_V1_SERIALIZER.serializeObjects(routerKeyMap.values());
   }
 
-  private static Iterable<ByteBuffer> deserialize(byte[] content) {
+  private static List<ByteBuffer> deserialize(byte[] content) {
     return EXPECTED_PROTOCOL_DESERIALIZER.deserializeObjects(
         OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(content, 0, content.length));
   }
@@ -165,5 +150,10 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
   @Override
   public String getVeniceApiVersionHeader() {
     return ROUTER_REQUEST_VERSION;
+  }
+
+  @Override
+  public @Nullable String getClientComputeHeader() {
+    return this.clientComputeHeader;
   }
 }

@@ -1,4 +1,4 @@
-# GitHub Actions workflow for running compatibility tests: Avro, Alpini unit, Alpini functional tests, and Pulsar Venice integration tests
+# GitHub Actions workflow for running compatibility tests: Avro and Pulsar Venice integration tests
 
 name:  TestsDeCompatibilite
 
@@ -18,7 +18,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -28,10 +28,12 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
         with:
-          arguments: "-DmaxParallelForks=2 --parallel :internal:venice-avro-compatibility-test:test --continue"
+          add-job-summary: never
+      - name: Run Avro Compatibility Tests
+        run: ./gradlew -DmaxParallelForks=2 --parallel :internal:venice-avro-compatibility-test:test --continue
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -42,138 +44,42 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  AlpiniUnitTests:
-    strategy:
-      fail-fast: false
-      matrix:
-        jdk: [8, 11, 17]
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    outputs:
-      alpini_touched: ${{ steps.check_alpini_files_changed.outputs.alpini }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          # Checkout as many commits as needed for the diff
-          fetch-depth: 2
-      - name: Check if files have changed
-        uses: dorny/paths-filter@v2
-        id: check_alpini_files_changed
-        with:
-          filters: |
-            alpini:
-              - 'internal/alpini/**'
-      - uses: actions/checkout@v4
-        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
-        with:
-          fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v3
-        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
-        with:
-          java-version: ${{ matrix.jdk }}
-          distribution: 'temurin'
-          cache: 'gradle'
-      # - name: Allow Deprecated TLS versions for Alpini tests
-      #   run: |
-      #     echo "java.security file before modifications: "
-      #     cat "$JAVA_HOME/conf/security/java.security"
-
-      #     # This is possibly flaky but
-      #     sed -i 's/TLSv1, //g' "$JAVA_HOME/conf/security/java.security" # Allow TLSv1
-      #     sed -i 's/TLSv1.1, //g' "$JAVA_HOME/conf/security/java.security" # Allow TLSv1.1
-
-      #     echo "java.security file after modifications: "
-      #     cat "$JAVA_HOME/conf/security/java.security"
-      - shell: bash
-        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Build with Gradle
-        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "--continue --no-daemon -DmaxParallelForks=1 alpiniUnitTest"
-      - name: Package Build Artifacts
-        if: steps.check_alpini_files_changed.outputs.alpini == 'true' && (success() || failure())
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: steps.check_alpini_files_changed.outputs.alpini == 'true' && (success() || failure())
-        uses: actions/upload-artifact@v3
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
-          retention-days: 30
-
-  AlpiniFunctionalTests:
+  DuckVinciIntegrationTests:
     strategy:
       fail-fast: false
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
-    timeout-minutes: 120
-    outputs:
-      alpini_touched: ${{ steps.check_alpini_files_changed.outputs.alpini }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
-          # Checkout as many commits as needed for the diff
-          fetch-depth: 2
-      - name: Check if files have changed
-        uses: dorny/paths-filter@v2
-        id: check_alpini_files_changed
-        with:
-          filters: |
-            alpini:
-              - 'internal/alpini/**'
-      - uses: actions/checkout@v4
-        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
-        with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
-        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
           cache: 'gradle'
-      # - name: Allow Deprecated TLS versions for Alpini tests
-      #   run: |
-      #     echo "java.security file before modifications: "
-      #     cat "$JAVA_HOME/conf/security/java.security"
-
-      #     # This is possibly flaky but
-      #     sed -i 's/TLSv1, //g' "$JAVA_HOME/conf/security/java.security" # Allow TLSv1
-      #     sed -i 's/TLSv1.1, //g' "$JAVA_HOME/conf/security/java.security" # Allow TLSv1.1
-
-      #     echo "java.security file after modifications: "
-      #     cat "$JAVA_HOME/conf/security/java.security"
       - shell: bash
-        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
         run: |
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
-        uses: gradle/gradle-build-action@v2
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
         with:
-          arguments: "--continue --no-daemon -DmaxParallelForks=1 alpiniFunctionalTest"
+          add-job-summary: never
+      - name: Run DuckDB Integration Tests
+        run: ./gradlew -DforkEvery=1 -DmaxParallelForks=1 :integrations:venice-duckdb:integrationTest --continue
       - name: Package Build Artifacts
-        if: steps.check_alpini_files_changed.outputs.alpini == 'true' && (success() || failure())
+        if: success() || failure()
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
@@ -181,8 +87,8 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
-        if: steps.check_alpini_files_changed.outputs.alpini == 'true' && (success() || failure())
-        uses: actions/upload-artifact@v3
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -200,7 +106,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -211,7 +117,9 @@ jobs:
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Setup Gradle
-        uses: gradle/gradle-build-action@v2
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
       - name: Build with gradle
         run: ./gradlew assemble --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1
 
@@ -244,18 +152,17 @@ jobs:
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
 
-
   CompatibilityTestsCompletionCheck:
     strategy:
       fail-fast: false
     runs-on: ubuntu-latest
-    needs: [AvroCompatibilityTests, AlpiniUnitTests, AlpiniFunctionalTests, PulsarVeniceIntegrationTests]
+    needs: [AvroCompatibilityTests, DuckVinciIntegrationTests, PulsarVeniceIntegrationTests]
     timeout-minutes: 120
     steps:
       - name: AllIsWell

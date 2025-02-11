@@ -28,12 +28,14 @@ import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
@@ -107,6 +109,8 @@ public class TestHybridMultiRegion {
 
       // Create store at parent, make it a hybrid store
       controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString());
+      StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
+      String realTimeTopicName = Utils.getRealTimeTopicName(storeInfo);
       controllerClient.updateStore(
           storeName,
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
@@ -142,7 +146,7 @@ public class TestHybridMultiRegion {
       // And real-time topic should exist now.
       assertTrue(
           topicManager.containsTopicAndAllPartitionsAreOnline(
-              sharedVeniceClusterWrapper.getPubSubTopicRepository().getTopic(Version.composeRealTimeTopic(storeName))));
+              sharedVeniceClusterWrapper.getPubSubTopicRepository().getTopic(realTimeTopicName)));
       // Creating a store object with default values since we're not updating bootstrap to online timeout
       StoreProperties storeProperties = AvroRecordUtils.prefillAvroRecordWithDefaultValue(new StoreProperties());
       storeProperties.name = storeName;
@@ -150,8 +154,8 @@ public class TestHybridMultiRegion {
       storeProperties.createdTime = System.currentTimeMillis();
       Store store = new ZKStore(storeProperties);
       assertEquals(
-          topicManager.getTopicRetention(
-              sharedVeniceClusterWrapper.getPubSubTopicRepository().getTopic(Version.composeRealTimeTopic(storeName))),
+          topicManager
+              .getTopicRetention(sharedVeniceClusterWrapper.getPubSubTopicRepository().getTopic(realTimeTopicName)),
           StoreUtils.getExpectedRetentionTimeInMs(store, hybridStoreConfig),
           "RT retention not configured properly");
       // Make sure RT retention is updated when the rewind time is updated
@@ -160,8 +164,8 @@ public class TestHybridMultiRegion {
       controllerClient
           .updateStore(storeName, new UpdateStoreQueryParams().setHybridRewindSeconds(newStreamingRewindSeconds));
       assertEquals(
-          topicManager.getTopicRetention(
-              sharedVeniceClusterWrapper.getPubSubTopicRepository().getTopic(Version.composeRealTimeTopic(storeName))),
+          topicManager
+              .getTopicRetention(sharedVeniceClusterWrapper.getPubSubTopicRepository().getTopic(realTimeTopicName)),
           StoreUtils.getExpectedRetentionTimeInMs(store, hybridStoreConfig),
           "RT retention not updated properly");
     }
@@ -336,19 +340,20 @@ public class TestHybridMultiRegion {
     serverProperties.setProperty(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, "3");
     serverProperties.setProperty(SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED, "true");
 
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+            .numberOfClusters(1)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(2)
+            .numberOfRouters(1)
+            .replicationFactor(1)
+            .forkServer(false)
+            .parentControllerProperties(Optional.of(parentControllerProps).orElse(null))
+            .childControllerProperties(Optional.of(childControllerProperties).orElse(null))
+            .serverProperties(serverProperties);
     VeniceTwoLayerMultiRegionMultiClusterWrapper cluster =
-        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-            1,
-            1,
-            1,
-            1,
-            2,
-            1,
-            1,
-            Optional.of(parentControllerProps),
-            Optional.of(childControllerProperties),
-            Optional.of(serverProperties),
-            false);
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
 
     return cluster;
   }

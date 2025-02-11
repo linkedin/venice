@@ -14,6 +14,8 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   private String viewName;
 
   private String consumerName = "";
+
+  private boolean compactMessages = false;
   private ClientConfig<T> innerClientConfig;
   private D2ControllerClient d2ControllerClient;
 
@@ -79,12 +81,21 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  public ChangelogClientConfig<T> setShouldCompactMessages(boolean compactMessages) {
+    this.compactMessages = compactMessages;
+    return this;
+  }
+
   public String getViewName() {
     return viewName;
   }
 
   public String getConsumerName() {
     return consumerName;
+  }
+
+  public boolean shouldCompactMessages() {
+    return compactMessages;
   }
 
   public ChangelogClientConfig<T> setControllerD2ServiceName(String controllerD2ServiceName) {
@@ -207,7 +218,8 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setVersionSwapDetectionIntervalTimeInMs(config.getVersionSwapDetectionIntervalTimeInMs())
         .setRocksDBBlockCacheSizeInBytes(config.getRocksDBBlockCacheSizeInBytes())
         .setConsumerName(config.consumerName)
-        .setDatabaseSyncBytesInterval(config.getDatabaseSyncBytesInterval());
+        .setDatabaseSyncBytesInterval(config.getDatabaseSyncBytesInterval())
+        .setShouldCompactMessages(config.shouldCompactMessages());
     return newConfig;
   }
 }

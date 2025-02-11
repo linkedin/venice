@@ -5,6 +5,7 @@ import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_SCHEMA
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
 import static java.lang.Thread.currentThread;
 
+import com.linkedin.davinci.stats.NativeMetadataRepositoryStats;
 import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreType;
@@ -30,6 +31,7 @@ import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -57,9 +59,6 @@ import org.apache.logging.log4j.Logger;
  */
 public abstract class NativeMetadataRepository
     implements SubscriptionBasedReadOnlyStoreRepository, ReadOnlySchemaRepository, ClusterInfoProvider {
-  protected static final int THIN_CLIENT_RETRY_COUNT = 3;
-  protected static final long THIN_CLIENT_RETRY_BACKOFF_MS = 10000;
-
   private static final long DEFAULT_REFRESH_INTERVAL_IN_SECONDS = 60;
   private static final Logger LOGGER = LogManager.getLogger(NativeMetadataRepository.class);
 
@@ -78,13 +77,23 @@ public abstract class NativeMetadataRepository
 
   private final long refreshIntervalInSeconds;
 
+  private final NativeMetadataRepositoryStats nativeMetadataRepositoryStats;
+
+  private final Clock clock;
   private AtomicBoolean started = new AtomicBoolean(false);
 
   protected NativeMetadataRepository(ClientConfig clientConfig, VeniceProperties backendConfig) {
+    this(clientConfig, backendConfig, Clock.systemUTC());
+  }
+
+  protected NativeMetadataRepository(ClientConfig clientConfig, VeniceProperties backendConfig, Clock clock) {
     refreshIntervalInSeconds = backendConfig.getLong(
         CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS,
         NativeMetadataRepository.DEFAULT_REFRESH_INTERVAL_IN_SECONDS);
     this.clientConfig = clientConfig;
+    this.nativeMetadataRepositoryStats =
+        new NativeMetadataRepositoryStats(clientConfig.getMetricsRepository(), "native_metadata_repository", clock);
+    this.clock = clock;
   }
 
   public synchronized void start() {
@@ -172,6 +181,7 @@ public abstract class NativeMetadataRepository
       if (newStore != null && !storeConfig.isDeleting()) {
         putStore(newStore);
         getAndCacheSchemaDataFromSystemStore(storeName);
+        nativeMetadataRepositoryStats.updateCacheTimestamp(storeName, clock.millis());
       } else {
         removeStore(storeName);
       }
@@ -467,6 +477,7 @@ public abstract class NativeMetadataRepository
   protected Store removeStore(String storeName) {
     // Remove the store name from the subscription.
     Store oldStore = subscribedStoreMap.remove(storeName);
+    nativeMetadataRepositoryStats.removeCacheTimestamp(storeName);
     if (oldStore != null) {
       totalStoreReadQuota.addAndGet(-oldStore.getReadQuotaInCU());
       notifyStoreDeleted(oldStore);

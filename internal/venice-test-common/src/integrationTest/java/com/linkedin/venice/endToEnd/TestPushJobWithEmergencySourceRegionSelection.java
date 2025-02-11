@@ -21,6 +21,7 @@ import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -29,7 +30,6 @@ import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.util.List;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
@@ -85,18 +85,20 @@ public class TestPushJobWithEmergencySourceRegionSelection {
     controllerProps.put(NATIVE_REPLICATION_SOURCE_FABRIC, "dc-0");
     controllerProps.put(EMERGENCY_SOURCE_REGION, "dc-2");
 
-    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-        NUMBER_OF_CHILD_DATACENTERS,
-        NUMBER_OF_CLUSTERS,
-        1,
-        1,
-        2,
-        1,
-        2,
-        Optional.of(controllerProps),
-        Optional.of(controllerProps),
-        Optional.of(serverProperties),
-        false);
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
+            .numberOfClusters(NUMBER_OF_CLUSTERS)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(2)
+            .numberOfRouters(1)
+            .replicationFactor(2)
+            .forkServer(false)
+            .parentControllerProperties(controllerProps)
+            .childControllerProperties(controllerProps)
+            .serverProperties(serverProperties);
+    multiRegionMultiClusterWrapper =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
   }

@@ -75,4 +75,9 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
     return "PubSubMessage{" + topicPartition + ", offset=" + offset + ", timestamp=" + timestamp + ", isEndOfBootstrap="
         + isEndOfBootstrap + '}';
   }
+
+  @Override
+  public int getHeapSize() {
+    throw new UnsupportedOperationException("getHeapSize is not supported on " + this.getClass().getSimpleName());
+  }
 }

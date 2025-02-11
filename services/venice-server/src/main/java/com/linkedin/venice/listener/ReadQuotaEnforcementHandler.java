@@ -19,6 +19,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
+import com.linkedin.venice.stats.ServerReadQuotaUsageStats;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.throttle.GuavaRateLimiter;
 import com.linkedin.venice.throttle.TokenBucket;
@@ -172,6 +173,8 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       for (Version version: versions) {
         customizedViewRepository.subscribeRoutingDataChange(version.kafkaTopicName(), this);
       }
+      // also invoke handle store change to ensure corresponding token bucket and stats are initialized.
+      handleStoreChanged(store);
     }
     this.initializedVolatile = true;
   }
@@ -226,9 +229,10 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
      * First check per store version level quota; don't throttle retried request at store version level
      */
     VeniceRateLimiter veniceRateLimiter = storeVersionRateLimiters.get(request.getResourceName());
+    int version = Version.parseVersionFromKafkaTopicName(request.getResourceName());
     if (veniceRateLimiter != null) {
       if (!request.isRetryRequest() && !veniceRateLimiter.tryAcquirePermit(readCapacityUnits)) {
-        stats.recordRejected(request.getStoreName(), readCapacityUnits);
+        stats.recordRejected(request.getStoreName(), version, readCapacityUnits);
         return QuotaEnforcementResult.REJECTED;
       }
     } else {
@@ -245,7 +249,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       return QuotaEnforcementResult.OVER_CAPACITY;
     }
 
-    stats.recordAllowed(storeName, readCapacityUnits);
+    stats.recordAllowed(storeName, version, readCapacityUnits);
     return QuotaEnforcementResult.ALLOWED;
   }
 
@@ -300,6 +304,8 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
    */
   private void updateQuota(PartitionAssignment partitionAssignment) {
     String topic = partitionAssignment.getTopic();
+    String storeName = Version.parseStoreFromKafkaTopicName(topic);
+    int version = Version.parseVersionFromKafkaTopicName(topic);
     if (partitionAssignment.getAllPartitions().isEmpty()) {
       LOGGER.warn(
           "QuotaEnforcementHandler updated with an empty partition map for topic: {}. Skipping update process",
@@ -312,9 +318,9 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
           "Routing data changed on quota enforcement handler with 0 replicas assigned to this node, removing quota for resource: {}",
           topic);
       storeVersionRateLimiters.remove(topic);
+      stats.getStoreStats(storeName).removeVersion(version);
       return;
     }
-    String storeName = Version.parseStoreFromKafkaTopicName(topic);
     long quotaInRcu = storeRepository.getStore(storeName).getReadQuotaInCU();
     storeVersionRateLimiters.compute(topic, (k, v) -> {
       VeniceRateLimiter rateLimiter = getRateLimiter(
@@ -328,7 +334,8 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
           clock);
 
       if (rateLimiter != v) {
-        stats.setNodeQuotaResponsibility(storeName, (long) Math.ceil(quotaInRcu * thisNodeQuotaResponsibility));
+        stats
+            .setNodeQuotaResponsibility(storeName, version, (long) Math.ceil(quotaInRcu * thisNodeQuotaResponsibility));
       }
       return rateLimiter;
     });
@@ -379,6 +386,11 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   @Override
   public void onRoutingDataDeleted(String kafkaTopic) {
     storeVersionRateLimiters.remove(kafkaTopic);
+    ServerReadQuotaUsageStats storeStats =
+        stats.getNullableStoreStats(Version.parseStoreFromKafkaTopicName(kafkaTopic));
+    if (storeStats != null) {
+      storeStats.removeVersion(Version.parseVersionFromKafkaTopicName(kafkaTopic));
+    }
   }
 
   @Override
@@ -403,9 +415,12 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
 
     List<String> topics =
         store.getVersions().stream().map((version) -> version.kafkaTopicName()).collect(Collectors.toList());
+    int currentVersion = store.getCurrentVersion();
+    int backupVersion = 0;
     for (String topic: topics) {
       toBeRemovedTopics.remove(topic);
       customizedViewRepository.subscribeRoutingDataChange(topic, this);
+      int versionNumber = Version.parseVersionFromKafkaTopicName(topic);
       try {
         /**
          * make sure we're up-to-date after registering as a listener
@@ -413,12 +428,16 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
          * During a new push, a new version is added to the version list of the Store metadata before the push actually
          * starts, so this function (ReadQuotaEnforcementHandler#handleStoreChanged()) is invoked before the new
          * resource assignment shows up in the external view, so calling customizedViewRepository.getPartitionAssignments() for
-         * a the future version will fail in most cases, because the new topic is not in the external view at all.
+         * a future version will fail in most cases, because the new topic is not in the external view at all.
          *
          */
         this.onCustomizedViewChange(customizedViewRepository.getPartitionAssignments(topic));
+        if (versionNumber != currentVersion && versionNumber > backupVersion
+            && VersionStatus.isBootstrapCompleted(store.getVersionStatus(versionNumber))) {
+          backupVersion = versionNumber;
+        }
       } catch (VeniceNoHelixResourceException e) {
-        Version version = store.getVersion(Version.parseVersionFromKafkaTopicName(topic));
+        Version version = store.getVersion(versionNumber);
         if (version != null && version.getStatus().equals(VersionStatus.ONLINE)) {
           /**
            * The store metadata believes this version is online, but the partition assignment is not in the
@@ -452,6 +471,12 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       }
     }
     removeTopics(toBeRemovedTopics);
+    if (currentVersion > 0) {
+      stats.setCurrentVersion(store.getName(), currentVersion);
+    }
+    if (backupVersion > 0) {
+      stats.setBackupVersion(store.getName(), backupVersion);
+    }
   }
 
   private Set<String> getStoreTopics(String storeName) {
@@ -465,6 +490,10 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     for (String topic: topicsToRemove) {
       customizedViewRepository.unSubscribeRoutingDataChange(topic, this);
       storeVersionRateLimiters.remove(topic);
+      ServerReadQuotaUsageStats storeStats = stats.getNullableStoreStats(Version.parseStoreFromKafkaTopicName(topic));
+      if (storeStats != null) {
+        storeStats.removeVersion(Version.parseVersionFromKafkaTopicName(topic));
+      }
     }
   }
 

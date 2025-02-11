@@ -67,6 +67,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final Sensor resubscriptionFailureSensor;
 
   private final Sensor viewProducerLatencySensor;
+  private final Sensor viewProducerAckLatencySensor;
   /**
    * Sensors for emitting if/when we detect DCR violations (such as a backwards timestamp or receding offset vector)
    */
@@ -145,6 +146,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final LongAdderRateGauge totalTombstoneCreationDCRRate;
 
   private final Sensor leaderProduceLatencySensor;
+  private final Sensor leaderCompressLatencySensor;
   private final LongAdderRateGauge batchProcessingRequestSensor;
   private final Sensor batchProcessingRequestSizeSensor;
   private final LongAdderRateGauge batchProcessingRequestRecordsSensor;
@@ -310,6 +312,12 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         () -> totalStats.viewProducerLatencySensor,
         avgAndMax());
 
+    this.viewProducerAckLatencySensor = registerPerStoreAndTotalSensor(
+        "total_view_writer_ack_latency",
+        totalStats,
+        () -> totalStats.viewProducerAckLatencySensor,
+        avgAndMax());
+
     registerSensor(
         "storage_quota_used",
         new AsyncGauge((ignored, ignored2) -> hybridQuotaUsageGauge, "storage_quota_used"));
@@ -454,6 +462,11 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         totalStats,
         () -> totalStats.leaderProduceLatencySensor,
         avgAndMax());
+    this.leaderCompressLatencySensor = registerPerStoreAndTotalSensor(
+        "leader_compress_latency",
+        totalStats,
+        () -> totalStats.leaderCompressLatencySensor,
+        avgAndMax());
     this.batchProcessingRequestSensor = registerOnlyTotalRate(
         BATCH_PROCESSING_REQUEST,
         totalStats,
@@ -505,6 +518,10 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordViewProducerLatency(double latency) {
     viewProducerLatencySensor.record(latency);
+  }
+
+  public void recordViewProducerAckLatency(double latency) {
+    viewProducerAckLatencySensor.record(latency);
   }
 
   public void recordUnexpectedMessage() {
@@ -661,6 +678,10 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordLeaderProduceLatency(double latency) {
     leaderProduceLatencySensor.record(latency);
+  }
+
+  public void recordLeaderCompressLatency(double latency) {
+    leaderCompressLatencySensor.record(latency);
   }
 
   public void recordBatchProcessingRequest(int size) {

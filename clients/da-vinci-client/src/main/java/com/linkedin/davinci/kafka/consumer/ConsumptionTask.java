@@ -250,8 +250,8 @@ class ConsumptionTask implements Runnable {
       // Defensive coding. Should never happen except in case of a regression.
       throw new IllegalStateException(
           "It is not allowed to set multiple " + ConsumedDataReceiver.class.getSimpleName() + " instances for the same "
-              + "topic-partition of a given consumer. Previous: " + previousConsumedDataReceiver.destinationIdentifier()
-              + ", New: " + consumedDataReceiver.destinationIdentifier());
+              + "topic-partition of a given consumer. Previous: " + previousConsumedDataReceiver + ", New: "
+              + consumedDataReceiver);
     }
     synchronized (this) {
       notifyAll();

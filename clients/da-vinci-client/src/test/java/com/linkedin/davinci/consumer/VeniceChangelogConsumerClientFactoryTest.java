@@ -3,7 +3,8 @@ package com.linkedin.davinci.consumer;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linkedin.d2.balancer.D2Client;

@@ -3,6 +3,7 @@ package com.linkedin.davinci.notifier;
 import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pushmonitor.OfflinePushAccessor;
@@ -23,7 +24,13 @@ public class LeaderErrorNotifier extends PushStatusNotifier {
       PushStatusStoreWriter writer,
       ReadOnlyStoreRepository repository,
       String instanceId) {
-    super(accessor, helixPartitionStatusAccessor, writer, repository, instanceId);
+    super(
+        accessor,
+        helixPartitionStatusAccessor,
+        writer,
+        repository,
+        instanceId,
+        VeniceServerConfig.IncrementalPushStatusWriteMode.DUAL);
     this.accessor = accessor;
     this.instanceId = instanceId;
   }

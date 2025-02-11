@@ -1,24 +1,47 @@
 package com.linkedin.davinci.transformer;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
+import java.io.IOException;
 import org.apache.avro.Schema;
+import org.apache.avro.util.Utf8;
 
 
 public class TestStringRecordTransformer extends DaVinciRecordTransformer<Integer, String, String> {
-  public TestStringRecordTransformer(int storeVersion) {
-    super(storeVersion);
+  public TestStringRecordTransformer(
+      int storeVersion,
+      Schema keySchema,
+      Schema inputValueSchema,
+      Schema outputValueSchema,
+      DaVinciRecordTransformerConfig recordTransformerConfig) {
+    super(storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
   }
 
-  public Schema getKeyOutputSchema() {
-    return Schema.create(Schema.Type.INT);
+  @Override
+  public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<String> value) {
+    Object valueObj = value.get();
+    String valueStr;
+
+    if (valueObj instanceof Utf8) {
+      valueStr = valueObj.toString();
+    } else {
+      valueStr = (String) valueObj;
+    }
+
+    String transformedValue = valueStr + "Transformed";
+
+    return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.TRANSFORMED, transformedValue);
   }
 
-  public Schema getValueOutputSchema() {
-    return Schema.create(Schema.Type.STRING);
+  @Override
+  public void processPut(Lazy<Integer> key, Lazy<String> value) {
+    return;
   }
 
-  public String put(Lazy<Integer> key, Lazy<String> value) {
-    return value.get() + "Transformed";
+  @Override
+  public void close() throws IOException {
+
   }
 }

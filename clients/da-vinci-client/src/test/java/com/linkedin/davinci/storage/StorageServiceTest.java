@@ -1,11 +1,16 @@
 package com.linkedin.davinci.storage;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -14,6 +19,8 @@ import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.StorageEngineFactory;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.helix.SafeHelixDataAccessor;
+import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PartitionerConfig;
@@ -23,13 +30,21 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.Utils;
+import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.apache.helix.PropertyKey;
+import org.apache.helix.model.IdealState;
+import org.apache.helix.zookeeper.datamodel.ZNRecord;
 import org.mockito.internal.util.collections.Sets;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -120,5 +135,94 @@ public class StorageServiceTest {
     Map<String, Set<Integer>> expectedMapping = new HashMap<>();
     expectedMapping.put(resourceName, partitionSet);
     Assert.assertEquals(storageService.getStoreAndUserPartitionsMapping(), expectedMapping);
+  }
+
+  @Test
+  public void testCheckWhetherStoragePartitionsShouldBeKeptOrNot() throws NoSuchFieldException, IllegalAccessException {
+    StorageService mockStorageService = mock(StorageService.class);
+    SafeHelixManager manager = mock(SafeHelixManager.class);
+    StorageEngineRepository mockStorageEngineRepository = mock(StorageEngineRepository.class);
+    AbstractStorageEngine abstractStorageEngine = mock(AbstractStorageEngine.class);
+    mockStorageEngineRepository.addLocalStorageEngine(abstractStorageEngine);
+
+    String resourceName = "test_store_v1";
+
+    when(abstractStorageEngine.getStoreVersionName()).thenReturn(resourceName);
+    abstractStorageEngine.addStoragePartition(0);
+    abstractStorageEngine.addStoragePartition(1);
+
+    String clusterName = "test_cluster";
+    VeniceConfigLoader mockVeniceConfigLoader = mock(VeniceConfigLoader.class);
+    VeniceClusterConfig mockClusterConfig = mock(VeniceClusterConfig.class);
+    when(mockVeniceConfigLoader.getVeniceClusterConfig()).thenReturn(mockClusterConfig);
+    when(mockVeniceConfigLoader.getVeniceClusterConfig().getClusterName()).thenReturn(clusterName);
+
+    List<AbstractStorageEngine> localStorageEngines = new ArrayList<>();
+    localStorageEngines.add(abstractStorageEngine);
+
+    SafeHelixDataAccessor helixDataAccessor = mock(SafeHelixDataAccessor.class);
+    when(manager.getHelixDataAccessor()).thenReturn(helixDataAccessor);
+    IdealState idealState = mock(IdealState.class);
+    when(helixDataAccessor.getProperty((PropertyKey) any())).thenReturn(idealState);
+    ZNRecord record = new ZNRecord("testId");
+    Map<String, Map<String, String>> mapFields = new HashMap<>();
+    Map<String, String> testPartitionZero = new HashMap<>();
+    Map<String, String> testPartitionOne = new HashMap<>();
+    testPartitionZero.put("host_1430", "LEADER");
+    testPartitionZero.put("host_1435", "STANDBY");
+    testPartitionZero.put("host_1440", "STANDBY");
+    testPartitionOne.put("host_1520", "LEADER");
+    testPartitionOne.put("host_1525", "STANDBY");
+    testPartitionOne.put("host_1530", "STANDBY");
+    mapFields.put("test_store_v1_0", testPartitionZero);
+    mapFields.put("test_store_v1_1", testPartitionOne);
+    record.setMapFields(mapFields);
+
+    Map<String, List<String>> listFields = new HashMap<>();
+    List<String> testPartitionZeroHostList = new ArrayList<>();
+    testPartitionZeroHostList.add("host_1430");
+    testPartitionZeroHostList.add("host_1435");
+    testPartitionZeroHostList.add("host_1440");
+    List<String> testPartitionOneHostList = new ArrayList<>();
+    testPartitionOneHostList.add("host_1520");
+    testPartitionOneHostList.add("host_1525");
+    testPartitionOneHostList.add("host_1530");
+    listFields.put("test_store_v1_0", testPartitionZeroHostList);
+    listFields.put("test_store_v1_1", testPartitionOneHostList);
+    record.setListFields(listFields);
+
+    when(idealState.getRecord()).thenReturn(record);
+    when(manager.getInstanceName()).thenReturn("host_1520");
+
+    Set<Integer> partitionSet = new HashSet<>(Arrays.asList(0, 1));
+    when(abstractStorageEngine.getPartitionIds()).thenReturn(partitionSet);
+    doAnswer(new Answer() {
+      @Override
+      public Object answer(InvocationOnMock invocation) throws Throwable {
+        int partitionId = invocation.getArgument(0);
+        abstractStorageEngine.getPartitionIds().remove(partitionId);
+        return null;
+      }
+    }).when(abstractStorageEngine).dropPartition(anyInt());
+
+    Field storageEngineRepositoryField = StorageService.class.getDeclaredField("storageEngineRepository");
+    storageEngineRepositoryField.setAccessible(true);
+    storageEngineRepositoryField.set(mockStorageService, mockStorageEngineRepository);
+    when(mockStorageService.getStorageEngineRepository()).thenReturn(mockStorageEngineRepository);
+    when(mockStorageService.getStorageEngineRepository().getAllLocalStorageEngines()).thenReturn(localStorageEngines);
+    Field configLoaderField = StorageService.class.getDeclaredField("configLoader");
+    configLoaderField.setAccessible(true);
+    configLoaderField.set(mockStorageService, mockVeniceConfigLoader);
+
+    VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
+    when(mockServerConfig.isDeleteUnassignedPartitionsOnStartupEnabled()).thenReturn(true);
+    Field serverConfigField = StorageService.class.getDeclaredField("serverConfig");
+    serverConfigField.setAccessible(true);
+    serverConfigField.set(mockStorageService, mockServerConfig);
+
+    doCallRealMethod().when(mockStorageService).checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
+    mockStorageService.checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
+    verify(abstractStorageEngine).dropPartition(0);
+    Assert.assertFalse(abstractStorageEngine.getPartitionIds().contains(0));
   }
 }

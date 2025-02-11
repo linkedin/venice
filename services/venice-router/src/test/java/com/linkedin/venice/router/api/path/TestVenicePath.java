@@ -6,16 +6,18 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.alpini.base.concurrency.Executors;
+import com.linkedin.venice.meta.NameRepository;
 import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.router.RouterRetryConfig;
 import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import io.tehuti.metrics.MetricsRepository;
 import java.time.Clock;
 import java.util.Collection;
 import java.util.concurrent.ScheduledExecutorService;
@@ -32,13 +34,16 @@ public class TestVenicePath {
   private static final int SMART_LONG_TAIL_RETRY_ABORT_THRESHOLD_MS = 20;
   private static final String STORAGE_NODE1 = "s1";
   private static final String STORAGE_NODE2 = "s2";
+  private static final NameRepository nameRepository = new NameRepository();
 
   private static class SmartRetryVenicePath extends VenicePath {
     private final String ROUTER_REQUEST_VERSION =
         Integer.toString(ReadAvroProtocolDefinition.SINGLE_GET_ROUTER_REQUEST_V1.getProtocolVersion());
+    private final Time time;
 
     public SmartRetryVenicePath(Time time, RetryManager retryManager) {
-      super("fake_resource", 1, "fake_resource_v1", true, SMART_LONG_TAIL_RETRY_ABORT_THRESHOLD_MS, time, retryManager);
+      super(nameRepository.getStoreVersionName("fake_resource_v1"), mock(RouterRetryConfig.class), retryManager, null);
+      this.time = time;
     }
 
     @Override
@@ -80,16 +85,36 @@ public class TestVenicePath {
     public String getLocation() {
       return "fake_location";
     }
+
+    @Override
+    public boolean isSmartLongTailRetryEnabled() {
+      return true;
+    }
+
+    @Override
+    public int getSmartLongTailRetryAbortThresholdMs() {
+      return SMART_LONG_TAIL_RETRY_ABORT_THRESHOLD_MS;
+    }
+
+    @Override
+    public int getLongTailRetryThresholdMs() {
+      return 20;
+    }
+
+    @Override
+    protected Time getTime() {
+      return this.time;
+    }
   }
 
   private RetryManager disabledRetryManager;
-  private MetricsRepository metricsRepository;
+  private VeniceMetricsRepository metricsRepository;
 
   private final ScheduledExecutorService retryManagerScheduler = Executors.newScheduledThreadPool(1);
 
   @BeforeMethod
   public void setUp() {
-    metricsRepository = new MetricsRepository();
+    metricsRepository = new VeniceMetricsRepository();
     // retry manager is disabled by default
     disabledRetryManager =
         new RetryManager(metricsRepository, "disabled-test-retry-manager", 0, 0, retryManagerScheduler);
@@ -105,7 +130,6 @@ public class TestVenicePath {
     TestMockTime time = new TestMockTime();
     time.setTime(1);
     SmartRetryVenicePath orgPath = new SmartRetryVenicePath(time, disabledRetryManager);
-    orgPath.setLongTailRetryThresholdMs(20);
     assertTrue(orgPath.canRequestStorageNode(STORAGE_NODE1));
     assertTrue(orgPath.canRequestStorageNode(STORAGE_NODE2));
     orgPath.recordOriginalRequestStartTimestamp();
@@ -124,7 +148,6 @@ public class TestVenicePath {
     TestMockTime time = new TestMockTime();
     time.setTime(1);
     SmartRetryVenicePath orgPath = new SmartRetryVenicePath(time, disabledRetryManager);
-    orgPath.setLongTailRetryThresholdMs(20);
     assertTrue(orgPath.canRequestStorageNode(STORAGE_NODE1));
     orgPath.requestStorageNode(STORAGE_NODE1);
     assertTrue(
@@ -147,7 +170,6 @@ public class TestVenicePath {
     TestMockTime time = new TestMockTime();
     time.setTime(1);
     SmartRetryVenicePath orgPath = new SmartRetryVenicePath(time, disabledRetryManager);
-    orgPath.setLongTailRetryThresholdMs(20);
     assertTrue(orgPath.canRequestStorageNode(STORAGE_NODE1));
     orgPath.requestStorageNode(STORAGE_NODE1);
 
@@ -169,7 +191,6 @@ public class TestVenicePath {
     TestMockTime time = new TestMockTime();
     time.setTime(1);
     SmartRetryVenicePath orgPath = new SmartRetryVenicePath(time, disabledRetryManager);
-    orgPath.setLongTailRetryThresholdMs(20);
     assertTrue(orgPath.canRequestStorageNode(STORAGE_NODE1));
     assertTrue(orgPath.canRequestStorageNode(STORAGE_NODE2));
     orgPath.recordOriginalRequestStartTimestamp();
@@ -208,7 +229,6 @@ public class TestVenicePath {
         TimeUnit.SECONDS,
         () -> Assert.assertNotNull(retryManager.getRetryTokenBucket()));
     SmartRetryVenicePath orgPath = new SmartRetryVenicePath(time, retryManager);
-    orgPath.setLongTailRetryThresholdMs(20);
     for (int i = 0; i < 6; i++) {
       SmartRetryVenicePath retryPath = new SmartRetryVenicePath(time, retryManager);
       retryPath.setRetryRequest();

@@ -162,11 +162,6 @@ public class ScatterGatherRequestHandler4<H, P extends ResourcePath<K>, K, R> ex
   }
 
   @Override
-  protected HttpResponseStatus tooManyRequests() {
-    return HttpResponseStatus.TOO_MANY_REQUESTS;
-  }
-
-  @Override
   protected HttpResponseStatus serviceUnavailable() {
     return HttpResponseStatus.SERVICE_UNAVAILABLE;
   }
@@ -184,11 +179,6 @@ public class ScatterGatherRequestHandler4<H, P extends ResourcePath<K>, K, R> ex
   @Override
   protected boolean isRequestRetriable(@Nonnull P path, @Nonnull R role, HttpResponseStatus httpResponseStatus) {
     return getScatterGatherHelper().isRequestRetriable(path, role, httpResponseStatus);
-  }
-
-  @Override
-  protected boolean isServiceUnavailable(HttpResponseStatus httpResponseStatus) {
-    return serviceUnavailable().equals(httpResponseStatus);
   }
 
   @Override

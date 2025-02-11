@@ -15,7 +15,7 @@ public class PushHealthStats extends AbstractVeniceStats {
 
   private final Sensor successfulPushDurationSensorGauge;
 
-  public PushHealthStats(MetricsRepository metricsRepository, String storeName) {
+  public PushHealthStats(MetricsRepository metricsRepository, String storeName, String clusterName) {
     super(metricsRepository, storeName);
     failedPushDurationSensor = registerSensorIfAbsent("failed_push_duration_sec", new Avg(), new Max());
     successfulPushDurationSensor = registerSensorIfAbsent("successful_push_duration_sec", new Avg(), new Max());

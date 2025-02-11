@@ -75,6 +75,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   private RecordDeserializer<StreamingFooterRecordV1> streamingFooterRecordDeserializer;
   private TransportClient transportClient;
   private final Executor deserializationExecutor;
+  private final Executor veniceClientWarmUpExecutor;
   private final CompressorFactory compressorFactory;
   private final String storageRequestPath;
   private final String computeRequestPath;
@@ -100,7 +101,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
    * Also, we don't want to use the default thread pool: CompletableFuture#useCommonPool since it is being shared,
    * and the deserialization could be blocked by the logic not belonging to Venice Client.
    **/
-  private static Executor DESERIALIZATION_EXECUTOR;
+  static Executor DESERIALIZATION_EXECUTOR;
 
   private volatile boolean whetherStoreInitTriggeredByRequestFail = false;
 
@@ -132,6 +133,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     this.compressorFactory = new CompressorFactory();
     this.storageRequestPath = TYPE_STORAGE + "/" + clientConfig.getStoreName();
     this.computeRequestPath = TYPE_COMPUTE + "/" + clientConfig.getStoreName();
+    this.veniceClientWarmUpExecutor = Executors
+        .newFixedThreadPool(1, new DaemonThreadFactory("Venice-Client-Warmup-For-" + clientConfig.getStoreName()));
   }
 
   @Override
@@ -714,7 +717,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
          * If the D2 client isn't retry in the async warm-up phase, it will be delayed to the first query.
          * Essentially, this is a best-effort.
          */
-        CompletableFuture.runAsync(this::getKeySerializerWithRetryWithLongInterval);
+        CompletableFuture.runAsync(this::getKeySerializerWithRetryWithLongInterval, veniceClientWarmUpExecutor);
       }
     }
   }

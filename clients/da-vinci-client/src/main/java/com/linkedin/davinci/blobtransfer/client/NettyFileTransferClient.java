@@ -1,6 +1,8 @@
 package com.linkedin.davinci.blobtransfer.client;
 
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
@@ -14,6 +16,7 @@ import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpClientCodec;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
+import io.netty.handler.timeout.IdleStateHandler;
 import java.io.InputStream;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -50,22 +53,42 @@ public class NettyFileTransferClient {
     });
   }
 
-  public CompletionStage<InputStream> get(String host, String storeName, int version, int partition) {
+  public CompletionStage<InputStream> get(
+      String host,
+      String storeName,
+      int version,
+      int partition,
+      BlobTransferTableFormat requestedTableFormat) {
     CompletionStage<InputStream> inputStream = new CompletableFuture<>();
-    // Connects to the remote host
     try {
-      Channel ch = clientBootstrap.connect(host, serverPort).sync().channel();
+      // Connects to the remote host
+      Channel ch = connectToHost(host, storeName, version, partition);
+
       // Request to get the blob file and metadata
       // Attach the file handler to the pipeline
       // Attach the metadata handler to the pipeline
       ch.pipeline()
+          .addLast(new IdleStateHandler(0, 0, 60))
           .addLast(new MetadataAggregator(MAX_METADATA_CONTENT_LENGTH))
-          .addLast(new P2PFileTransferClientHandler(baseDir, inputStream, storeName, version, partition))
-          .addLast(new P2PMetadataTransferHandler(storageMetadataService, baseDir, storeName, version, partition));
+          .addLast(
+              new P2PFileTransferClientHandler(
+                  baseDir,
+                  inputStream,
+                  storeName,
+                  version,
+                  partition,
+                  requestedTableFormat))
+          .addLast(
+              new P2PMetadataTransferHandler(
+                  storageMetadataService,
+                  baseDir,
+                  storeName,
+                  version,
+                  partition,
+                  requestedTableFormat));
       // Send a GET request
-      ch.writeAndFlush(prepareRequest(storeName, version, partition));
+      ch.writeAndFlush(prepareRequest(storeName, version, partition, requestedTableFormat));
     } catch (Exception e) {
-      LOGGER.error("Failed to connect to the host: {}", host, e);
       if (!inputStream.toCompletableFuture().isCompletedExceptionally()) {
         inputStream.toCompletableFuture().completeExceptionally(e);
       }
@@ -77,10 +100,32 @@ public class NettyFileTransferClient {
     workerGroup.shutdownGracefully();
   }
 
-  private FullHttpRequest prepareRequest(String storeName, int version, int partition) {
+  private FullHttpRequest prepareRequest(
+      String storeName,
+      int version,
+      int partition,
+      BlobTransferTableFormat requestTableFormat) {
     return new DefaultFullHttpRequest(
         HttpVersion.HTTP_1_1,
         HttpMethod.GET,
-        String.format("/%s/%d/%d", storeName, version, partition));
+        String.format("/%s/%d/%d/%s", storeName, version, partition, requestTableFormat.name()));
+  }
+
+  /**
+   * Connects to the host
+   */
+  private Channel connectToHost(String host, String storeName, int version, int partition) {
+    try {
+      return clientBootstrap.connect(host, serverPort).sync().channel();
+    } catch (Exception e) {
+      String errorMsg = String.format(
+          "Failed to connect to the host: %s for blob transfer for store: %s, version: %d, partition: %d",
+          host,
+          storeName,
+          version,
+          partition);
+      LOGGER.error(errorMsg, e);
+      throw new VenicePeersConnectionException(errorMsg, e);
+    }
   }
 }

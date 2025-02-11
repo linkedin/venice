@@ -7,11 +7,11 @@ import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
@@ -27,22 +27,21 @@ public class InstanceStatusDecider {
   private static final Logger LOGGER = LogManager.getLogger(InstanceStatusDecider.class);
 
   static List<Replica> getReplicasForInstance(HelixVeniceClusterResources resources, String instanceId) {
-    RoutingDataRepository routingDataRepository = resources.getRoutingDataRepository();
+    RoutingDataRepository routingDataRepository = resources.getCustomizedViewRepository();
     return Utils.getReplicasForInstance(routingDataRepository, instanceId);
   }
 
   static NodeRemovableResult isRemovable(HelixVeniceClusterResources resources, String clusterName, String instanceId) {
-    return isRemovable(resources, clusterName, instanceId, Collections.emptyList(), false);
+    return isRemovable(resources, clusterName, instanceId, Collections.emptyList());
   }
 
   private static PartitionAssignment removeLockedResources(
       PartitionAssignment partitionAssignment,
       List<String> lockedNodes,
-      String resourceName,
-      boolean isInstanceView) {
+      String resourceName) {
     PartitionAssignment assignment = partitionAssignment;
     for (String lockedNodeId: lockedNodes) {
-      assignment = getPartitionAssignmentAfterRemoving(lockedNodeId, assignment, resourceName, isInstanceView);
+      assignment = getPartitionAssignmentAfterRemoving(lockedNodeId, assignment, resourceName, true);
     }
     return assignment;
   }
@@ -61,104 +60,140 @@ public class InstanceStatusDecider {
       HelixVeniceClusterResources resources,
       String clusterName,
       String instanceId,
-      List<String> lockedNodes,
-      boolean isInstanceView) {
-    try {
-      // If instance is not alive, it's removable.
-      if (!HelixUtils.isLiveInstance(clusterName, instanceId, resources.getHelixManager())) {
-        return NodeRemovableResult
-            .removableResult("Instance " + instanceId + " not found in liveinstance set of cluster " + clusterName);
-      }
+      List<String> lockedNodes) {
+    List<NodeRemovableResult> list =
+        getInstanceStoppableStatuses(resources, clusterName, Collections.singletonList(instanceId), lockedNodes);
+    if (list.isEmpty()) {
+      throw new VeniceException("Error in finding isRemovable call for instance " + instanceId);
+    }
+    return list.get(0);
+  }
 
-      RoutingDataRepository routingDataRepository = resources.getRoutingDataRepository();
-
-      // Get all replicas held by given instance.
-      List<Replica> replicas = getReplicasForInstance(resources, instanceId);
-      // Get and lock the resource assignment to avoid it's changed during the checking.
-      ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
-      long startTimeForAcquiringLockInMs = System.currentTimeMillis();
-      synchronized (resourceAssignment) {
-        LOGGER.info(
-            "Spent {}ms on acquiring ResourceAssignment lock.",
-            LatencyUtils.getElapsedTimeFromMsToMs(startTimeForAcquiringLockInMs));
-        // Get resource names from replicas hold by this instance.
-        Set<String> resourceNameSet = replicas.stream().map(Replica::getResource).collect(Collectors.toSet());
-
-        for (String resourceName: resourceNameSet) {
-          if (Utils.isCurrentVersion(resourceName, resources.getStoreMetadataRepository())) {
-            // Get partition assignments that if we removed the given instance from cluster.
-            PartitionAssignment partitionAssignmentAfterRemoving =
-                getPartitionAssignmentAfterRemoving(instanceId, resourceAssignment, resourceName, isInstanceView);
-
-            partitionAssignmentAfterRemoving =
-                removeLockedResources(partitionAssignmentAfterRemoving, lockedNodes, resourceName, isInstanceView);
-
-            // Push has been completed normally. The version of this push is ready to serve read requests. It is the
-            // current version of a store (at least when it was checked recently).
-            // Venice can not remove the given instance once:
-            // 1. Venice would lose data. If server hold the last ONLINE replica, we can NOT remove it otherwise data
-            // would be lost.
-            // 2. And a re-balance would be triggered. If there is not enough active replicas(including ONLINE,
-            // BOOTSTRAP and ERROR replicas), helix will do re-balance immediately even we enabled delayed re-balance.
-            // In that case partition would be moved to other instances and might cause the consumption from the begin
-            // of topic.
-            Pair<Boolean, String> result = willLoseData(resources.getPushMonitor(), partitionAssignmentAfterRemoving);
-            if (result.getFirst()) {
-              LOGGER.info(
-                  "Instance: {} is not removable because Version: {} would lose data "
-                      + "if this instance was removed from cluster: {} details: {}",
+  static List<NodeRemovableResult> getInstanceStoppableStatuses(
+      HelixVeniceClusterResources resources,
+      String clusterName,
+      List<String> instanceIds,
+      List<String> lockedNodes) {
+    List<NodeRemovableResult> removableResults = new ArrayList<>();
+    List<String> toBeStoppedNodes = new ArrayList<>(lockedNodes);
+    RoutingDataRepository routingDataRepository = resources.getCustomizedViewRepository();
+    for (String instanceId: instanceIds) {
+      boolean instanceNonStoppable = false;
+      try {
+        // If instance is not alive, it's removable.
+        if (!HelixUtils.isLiveInstance(clusterName, instanceId, resources.getHelixManager())) {
+          toBeStoppedNodes.add(instanceId);
+          removableResults.add(
+              NodeRemovableResult.removableResult(
                   instanceId,
-                  resourceName,
-                  clusterName,
-                  result.getSecond());
-              return NodeRemovableResult.nonRemovableResult(
-                  resourceName,
-                  NodeRemovableResult.BlockingRemoveReason.WILL_LOSE_DATA,
-                  result.getSecond());
-            }
+                  "Instance " + instanceId + " not found in liveinstance set of cluster " + clusterName));
+          continue;
+        }
 
-            Version version = resources.getStoreMetadataRepository()
-                .getStore(Version.parseStoreFromKafkaTopicName(resourceName))
-                .getVersion(Version.parseVersionFromKafkaTopicName(resourceName));
+        // Get all replicas held by given instance.
+        List<Replica> replicas = getReplicasForInstance(resources, instanceId);
+        // Get and lock the resource assignment to avoid it's changed during the checking.
+        ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
+        long startTimeForAcquiringLockInMs = System.currentTimeMillis();
+        synchronized (resourceAssignment) {
+          LOGGER.info(
+              "Spent {}ms on acquiring ResourceAssignment lock.",
+              LatencyUtils.getElapsedTimeFromMsToMs(startTimeForAcquiringLockInMs));
+          // Get resource names from replicas hold by this instance.
+          Set<String> resourceNameSet = replicas.stream().map(Replica::getResource).collect(Collectors.toSet());
 
-            if (version != null) {
-              result = willTriggerRebalance(partitionAssignmentAfterRemoving, version.getMinActiveReplicas());
-            } else {
-              result = new Pair<>(
-                  false,
-                  "Cannot find the version info. Ignore it since it's been deleted. " + "Resource: " + resourceName);
-            }
+          for (String resourceName: resourceNameSet) {
+            if (Utils.isCurrentVersion(resourceName, resources.getStoreMetadataRepository())) {
+              PartitionAssignment partitionAssignment = resourceAssignment.getPartitionAssignment(resourceName);
 
-            if (result.getFirst()) {
-              LOGGER.info(
-                  "Instance: {} is not removable because Version: {} would be re-balanced "
-                      + "if this instance was removed from cluster: {} details: {}",
-                  instanceId,
-                  resourceName,
-                  clusterName,
-                  result.getSecond());
-              return NodeRemovableResult.nonRemovableResult(
-                  resourceName,
-                  NodeRemovableResult.BlockingRemoveReason.WILL_TRIGGER_LOAD_REBALANCE,
-                  result.getSecond());
+              // Get partition assignments that if we removed the given instance from cluster.
+              PartitionAssignment partitionAssignmentAfterRemoving =
+                  getPartitionAssignmentAfterRemoving(instanceId, partitionAssignment, resourceName, false);
+
+              partitionAssignmentAfterRemoving =
+                  removeLockedResources(partitionAssignmentAfterRemoving, toBeStoppedNodes, resourceName);
+
+              // Push has been completed normally. The version of this push is ready to serve read requests. It is the
+              // current version of a store (at least when it was checked recently).
+              // Venice can not remove the given instance once:
+              // 1. Venice would lose data. If server hold the last ONLINE replica, we can NOT remove it otherwise data
+              // would be lost.
+              // 2. And a re-balance would be triggered. If there is not enough active replicas(including ONLINE,
+              // BOOTSTRAP and ERROR replicas), helix will do re-balance immediately even we enabled delayed re-balance.
+              // In that case partition would be moved to other instances and might cause the consumption from the begin
+              // of topic.
+              Pair<Boolean, String> result = willLoseData(resources, partitionAssignmentAfterRemoving);
+              if (result.getFirst()) {
+                LOGGER.info(
+                    "Instance: {} is not removable because Version: {} would lose data "
+                        + "if this instance was removed from cluster: {} details: {}",
+                    instanceId,
+                    resourceName,
+                    clusterName,
+                    result.getSecond());
+                instanceNonStoppable = true;
+                removableResults.add(
+                    NodeRemovableResult.nonRemovableResult(
+                        instanceId,
+                        resourceName,
+                        NodeRemovableResult.BlockingRemoveReason.WILL_LOSE_DATA,
+                        result.getSecond()));
+                break;
+              }
+
+              Version version = resources.getStoreMetadataRepository()
+                  .getStore(Version.parseStoreFromKafkaTopicName(resourceName))
+                  .getVersion(Version.parseVersionFromKafkaTopicName(resourceName));
+
+              if (version != null) {
+                result = willTriggerRebalance(partitionAssignmentAfterRemoving, version.getMinActiveReplicas());
+              } else {
+                result = new Pair<>(
+                    false,
+                    "Cannot find the version info. Ignore it since it's been deleted. " + "Resource: " + resourceName);
+              }
+
+              if (result.getFirst()) {
+                LOGGER.info(
+                    "Instance: {} is not removable because Version: {} would be re-balanced "
+                        + "if this instance was removed from cluster: {} details: {}",
+                    instanceId,
+                    resourceName,
+                    clusterName,
+                    result.getSecond());
+                instanceNonStoppable = true;
+                removableResults.add(
+                    NodeRemovableResult.nonRemovableResult(
+                        instanceId,
+                        resourceName,
+                        NodeRemovableResult.BlockingRemoveReason.WILL_TRIGGER_LOAD_REBALANCE,
+                        result.getSecond()));
+                break;
+              }
             }
           }
         }
+        if (!instanceNonStoppable) {
+          removableResults
+              .add(NodeRemovableResult.removableResult(instanceId, "Instance " + instanceId + " can be removed."));
+          toBeStoppedNodes.add(instanceId);
+        }
+      } catch (Exception e) {
+        String errorMsg = "Can not verify whether instance " + instanceId + " is removable.";
+        LOGGER.error(errorMsg, e);
       }
-      return NodeRemovableResult.removableResult("Instance " + instanceId + " can be removed.");
-    } catch (Exception e) {
-      String errorMsg = "Can not verify whether instance " + instanceId + " is removable.";
-      LOGGER.error(errorMsg, e);
-      throw new VeniceException(errorMsg, e);
     }
+    return removableResults;
   }
 
   private static Pair<Boolean, String> willLoseData(
-      PushMonitor pushMonitor,
+      HelixVeniceClusterResources resources,
       PartitionAssignment partitionAssignmentAfterRemoving) {
+    RoutingDataRepository routingDataRepository = resources.getCustomizedViewRepository();
     for (Partition partitionAfterRemoving: partitionAssignmentAfterRemoving.getAllPartitions()) {
-      if (pushMonitor.getReadyToServeInstances(partitionAssignmentAfterRemoving, partitionAfterRemoving.getId())
-          .size() < 1) {
+      if (routingDataRepository
+          .getReadyToServeInstances(partitionAssignmentAfterRemoving, partitionAfterRemoving.getId())
+          .isEmpty()) {
         // After removing the instance, no online replica exists. Venice will lose data in this case.
         return new Pair<>(
             true,
@@ -173,7 +208,7 @@ public class InstanceStatusDecider {
       PartitionAssignment partitionAssignmentAfterRemoving,
       int minActiveReplicas) {
     for (Partition partitionAfterRemoving: partitionAssignmentAfterRemoving.getAllPartitions()) {
-      int activeReplicaCount = partitionAfterRemoving.getWorkingInstances().size();
+      int activeReplicaCount = partitionAfterRemoving.getReadyToServeInstances().size();
       activeReplicaCount += partitionAfterRemoving.getErrorInstances().size();
       if (activeReplicaCount < minActiveReplicas) {
         // After removing the instance, Venice would not have enough active replicas so a re-balance would be triggered.
@@ -190,14 +225,18 @@ public class InstanceStatusDecider {
       String instanceId,
       PartitionAssignment partitionAssignment,
       String resourceName,
-      boolean isInstanceView) {
+      boolean lockedInstance) {
     PartitionAssignment partitionAssignmentAfterRemoving =
         new PartitionAssignment(resourceName, partitionAssignment.getExpectedNumberOfPartitions());
     for (Partition partition: partitionAssignment.getAllPartitions()) {
-      if (isInstanceView) {
+      if (!lockedInstance) {
         /*
-         * If the instance does not hold any replica of this partition, skip it. As in the instance' view, we only care
-         * about the partitions that has been assigned to this instance.
+         * If an instance is locked, we need to assume that the instance will eventually be removed. So, we need to
+         * remove all partitions hosted by that instance.
+         *
+         * For instances that are not locked, we only need to ensure that the removal of those instances does not lead
+         * to unsafe conditions. Hence, if there are no replicas of a partition, skip it. We only care about the
+         * partitions that have been assigned to this instance.
          */
         if (partition.getHelixStateByInstanceId(instanceId) == null
             && partition.getExecutionStatusByInstanceId(instanceId) == null) {
@@ -209,14 +248,4 @@ public class InstanceStatusDecider {
     }
     return partitionAssignmentAfterRemoving;
   }
-
-  private static PartitionAssignment getPartitionAssignmentAfterRemoving(
-      String instanceId,
-      ResourceAssignment resourceAssignment,
-      String resourceName,
-      boolean isInstanceView) {
-    PartitionAssignment partitionAssignment = resourceAssignment.getPartitionAssignment(resourceName);
-    return getPartitionAssignmentAfterRemoving(instanceId, partitionAssignment, resourceName, isInstanceView);
-  }
-
 }

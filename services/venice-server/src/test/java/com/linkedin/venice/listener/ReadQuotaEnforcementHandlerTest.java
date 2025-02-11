@@ -4,10 +4,12 @@ import static com.linkedin.venice.response.VeniceReadResponseStatus.BAD_REQUEST;
 import static com.linkedin.venice.throttle.VeniceRateLimiter.RateLimiterType;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.atMostOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
@@ -38,11 +40,13 @@ import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.protocols.VeniceServerResponse;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.response.VeniceReadResponseStatus;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
+import com.linkedin.venice.stats.ServerReadQuotaUsageStats;
 import com.linkedin.venice.throttle.GuavaRateLimiter;
 import com.linkedin.venice.throttle.TokenBucket;
 import com.linkedin.venice.throttle.VeniceRateLimiter;
@@ -81,6 +85,7 @@ public class ReadQuotaEnforcementHandlerTest {
   private MetricsRepository metricsRepository;
   private RouterRequest routerRequest;
   private VeniceServerGrpcHandler mockNextHandler;
+  private VeniceServerConfig serverConfig;
 
   @BeforeMethod
   public void setUp() {
@@ -93,7 +98,7 @@ public class ReadQuotaEnforcementHandlerTest {
     customizedViewRepository = mock(HelixCustomizedViewOfflinePushRepository.class);
     stats = mock(AggServerQuotaUsageStats.class);
     metricsRepository = new MetricsRepository();
-    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    serverConfig = mock(VeniceServerConfig.class);
     when(serverConfig.getQuotaEnforcementIntervalInMs()).thenReturn(10000);
     when(serverConfig.getQuotaEnforcementCapacityMultiple()).thenReturn(5);
     doReturn(nodeCapacity).when(serverConfig).getNodeCapacityInRcu();
@@ -124,8 +129,8 @@ public class ReadQuotaEnforcementHandlerTest {
     when(storeRepository.getStore(storeName)).thenReturn(null);
     assertEquals(quotaEnforcementHandler.enforceQuota(routerRequest), QuotaEnforcementResult.BAD_REQUEST);
 
-    verify(stats, never()).recordAllowed(eq(storeName), eq(1L));
-    verify(stats, never()).recordRejected(eq(storeName), eq(1L));
+    verify(stats, never()).recordAllowed(eq(storeName), anyInt(), eq(1L));
+    verify(stats, never()).recordRejected(eq(storeName), anyInt(), eq(1L));
 
     // for Netty handler
     ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
@@ -159,8 +164,8 @@ public class ReadQuotaEnforcementHandlerTest {
     when(storeRepository.getStore(storeName)).thenReturn(store);
     assertEquals(quotaEnforcementHandler.enforceQuota(routerRequest), QuotaEnforcementResult.ALLOWED);
 
-    verify(stats, never()).recordAllowed(eq(storeName), eq(1L));
-    verify(stats, never()).recordRejected(eq(storeName), eq(1L));
+    verify(stats, never()).recordAllowed(eq(storeName), anyInt(), eq(1L));
+    verify(stats, never()).recordRejected(eq(storeName), anyInt(), eq(1L));
 
     // for Netty handler
     ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
@@ -191,8 +196,8 @@ public class ReadQuotaEnforcementHandlerTest {
     when(store.isStorageNodeReadQuotaEnabled()).thenReturn(false);
     assertEquals(quotaEnforcementHandler.enforceQuota(routerRequest), QuotaEnforcementResult.ALLOWED);
 
-    verify(stats, never()).recordAllowed(eq(storeName), eq(1L));
-    verify(stats, never()).recordRejected(eq(storeName), eq(1L));
+    verify(stats, never()).recordAllowed(eq(storeName), anyInt(), eq(1L));
+    verify(stats, never()).recordRejected(eq(storeName), anyInt(), eq(1L));
 
     // for Netty handler
     ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
@@ -216,8 +221,9 @@ public class ReadQuotaEnforcementHandlerTest {
   @Test
   public void testQuotaEnforcementWhenStoreVersionQuotaIsExceeded() {
     // Case 1: If request is not a retry request, it should be rejected
-    String resourceName = "test_store_v1";
     String storeName = "test_store";
+    int version = 1;
+    String resourceName = Version.composeKafkaTopic(storeName, version);
     Store store = mock(Store.class);
     when(routerRequest.getStoreName()).thenReturn(storeName);
     when(routerRequest.getResourceName()).thenReturn(resourceName);
@@ -231,8 +237,8 @@ public class ReadQuotaEnforcementHandlerTest {
     when(veniceRateLimiter.tryAcquirePermit(1)).thenReturn(false);
     assertEquals(quotaEnforcementHandler.enforceQuota(routerRequest), QuotaEnforcementResult.REJECTED);
 
-    verify(stats).recordRejected(eq(storeName), eq(1L));
-    verify(stats, never()).recordAllowed(eq(storeName), eq(1L));
+    verify(stats).recordRejected(eq(storeName), eq(version), eq(1L));
+    verify(stats, never()).recordAllowed(eq(storeName), anyInt(), eq(1L));
 
     // for Netty handler
     ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
@@ -255,13 +261,14 @@ public class ReadQuotaEnforcementHandlerTest {
     // Case 2: If request is a retry request, it should be allowed
     when(routerRequest.isRetryRequest()).thenReturn(true);
     assertEquals(quotaEnforcementHandler.enforceQuota(routerRequest), QuotaEnforcementResult.ALLOWED);
-    verify(stats).recordAllowed(eq(storeName), eq(1L));
+    verify(stats).recordAllowed(eq(storeName), eq(version), eq(1L));
   }
 
   @Test
   public void testQuotaEnforcementWhenServerIsOverCapacity() {
-    String resourceName = "test_store_v1";
     String storeName = "test_store";
+    int version = 1;
+    String resourceName = Version.composeKafkaTopic(storeName, version);
     Store store = mock(Store.class);
     when(routerRequest.getStoreName()).thenReturn(storeName);
     when(routerRequest.getResourceName()).thenReturn(resourceName);
@@ -276,8 +283,8 @@ public class ReadQuotaEnforcementHandlerTest {
     when(storageNodeRateLimiter.tryAcquirePermit(1)).thenReturn(false);
     assertEquals(quotaEnforcementHandler.enforceQuota(routerRequest), QuotaEnforcementResult.OVER_CAPACITY);
 
-    verify(stats, never()).recordAllowed(eq(storeName), eq(1L));
-    verify(stats, never()).recordRejected(eq(storeName), eq(1L));
+    verify(stats, never()).recordAllowed(eq(storeName), anyInt(), eq(1L));
+    verify(stats, never()).recordRejected(eq(storeName), anyInt(), eq(1L));
 
     // for Netty handler
     ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
@@ -301,8 +308,9 @@ public class ReadQuotaEnforcementHandlerTest {
   // both storeVersion quota and server capacity are sufficient to allow the request
   @Test
   public void testQuotaEnforcement() {
-    String resourceName = "test_store_v1";
     String storeName = "test_store";
+    int version = 1;
+    String resourceName = Version.composeKafkaTopic(storeName, version);
     Store store = mock(Store.class);
     when(routerRequest.getStoreName()).thenReturn(storeName);
     when(routerRequest.getResourceName()).thenReturn(resourceName);
@@ -319,8 +327,8 @@ public class ReadQuotaEnforcementHandlerTest {
     quotaEnforcementHandler.setStorageNodeRateLimiter(storageNodeRateLimiter);
     assertEquals(quotaEnforcementHandler.enforceQuota(routerRequest), QuotaEnforcementResult.ALLOWED);
 
-    verify(stats).recordAllowed(eq(storeName), eq(1L));
-    verify(stats, never()).recordRejected(eq(storeName), eq(1L));
+    verify(stats).recordAllowed(eq(storeName), eq(version), eq(1L));
+    verify(stats, never()).recordRejected(eq(storeName), anyInt(), eq(1L));
 
     // for Netty handler
     ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
@@ -359,6 +367,15 @@ public class ReadQuotaEnforcementHandlerTest {
 
   @Test
   public void testInitWithPreExistingResource() {
+    // Do initialize the quota enforcement handler with a real stats for this test
+    quotaEnforcementHandler = new ReadQuotaEnforcementHandler(
+        serverConfig,
+        storeRepository,
+        CompletableFuture.completedFuture(customizedViewRepository),
+        thisNodeId,
+        new AggServerQuotaUsageStats(serverConfig.getClusterName(), metricsRepository),
+        metricsRepository,
+        clock);
     String storeName = "testStore";
     String topic = Version.composeKafkaTopic(storeName, 1);
     Version version = mock(Version.class);
@@ -366,11 +383,18 @@ public class ReadQuotaEnforcementHandlerTest {
     Store store = setUpStoreMock(storeName, 1, Collections.singletonList(version), 100, true);
     doReturn(store).when(storeRepository).getStore(storeName);
     doReturn(Collections.singletonList(store)).when(storeRepository).getAllStores();
-
+    Instance thisInstance = mock(Instance.class);
+    doReturn(thisNodeId).when(thisInstance).getNodeId();
+    Partition partition = setUpPartitionMock(topic, thisInstance, true, 0);
+    doReturn(0).when(partition).getId();
+    PartitionAssignment pa = setUpPartitionAssignmentMock(topic, Collections.singletonList(partition));
+    doReturn(pa).when(customizedViewRepository).getPartitionAssignments(topic);
     quotaEnforcementHandler.init();
 
     verify(storeRepository, atLeastOnce()).registerStoreDataChangedListener(any());
     verify(customizedViewRepository, atLeastOnce()).subscribeRoutingDataChange(eq(topic), any());
+    Assert.assertEquals(quotaEnforcementHandler.getStats().getStoreStats(storeName).getCurrentVersion(), 1);
+    Assert.assertEquals(quotaEnforcementHandler.getStats().getStoreStats(storeName).getBackupVersion(), 0);
   }
 
   /**
@@ -474,6 +498,9 @@ public class ReadQuotaEnforcementHandlerTest {
   @Test
   public void testReadQuotaOnVersionChange() {
     String storeName = Utils.getUniqueString("test-store");
+    ServerReadQuotaUsageStats storeStats = mock(ServerReadQuotaUsageStats.class);
+    doReturn(storeStats).when(stats).getStoreStats(storeName);
+    doReturn(storeStats).when(stats).getNullableStoreStats(storeName);
     int currentVersion = 1;
     String topic = Version.composeKafkaTopic(storeName, currentVersion);
     String nextTopic = Version.composeKafkaTopic(storeName, currentVersion + 1);
@@ -495,22 +522,29 @@ public class ReadQuotaEnforcementHandlerTest {
     long newStoreReadQuota = storeReadQuota * 2;
     Store store = setUpStoreMock(storeName, currentVersion, Arrays.asList(version, nextVersion), storeReadQuota, true);
     Store storeAfterVersionBump =
-        setUpStoreMock(storeName, currentVersion + 1, Collections.singletonList(nextVersion), storeReadQuota, true);
-    Store storeAfterQuotaBump =
+        setUpStoreMock(storeName, currentVersion + 1, Arrays.asList(version, nextVersion), storeReadQuota, true);
+    Store storeAfterQuotaBumpAndBackupDeletion =
         setUpStoreMock(storeName, currentVersion + 1, Collections.singletonList(nextVersion), newStoreReadQuota, true);
     // The store repository is called to initialize/update the token buckets, we need to make sure it doesn't return the
     // store state with higher quota prior to the test to verify quota change.
     // Get store is also called by getBucketForStore to update stats every time when handleStoreChanged is called.
-    when(storeRepository.getStore(eq(storeName)))
-        .thenReturn(store, store, store, storeAfterVersionBump, storeAfterVersionBump, storeAfterQuotaBump);
+    when(storeRepository.getStore(eq(storeName))).thenReturn(
+        store,
+        store,
+        store,
+        storeAfterVersionBump,
+        storeAfterVersionBump,
+        storeAfterQuotaBumpAndBackupDeletion);
 
     quotaEnforcementHandler.handleStoreChanged(store);
     Assert.assertTrue(quotaEnforcementHandler.getActiveStoreVersions().contains(topic));
     Assert.assertTrue(quotaEnforcementHandler.getActiveStoreVersions().contains(nextTopic));
 
     quotaEnforcementHandler.handleStoreChanged(storeAfterVersionBump);
-    Assert.assertFalse(quotaEnforcementHandler.getActiveStoreVersions().contains(topic));
+    int newCurrentVersion = currentVersion + 1;
+    Assert.assertTrue(quotaEnforcementHandler.getActiveStoreVersions().contains(topic));
     Assert.assertTrue(quotaEnforcementHandler.getActiveStoreVersions().contains(nextTopic));
+    verify(stats, atLeastOnce()).setCurrentVersion(eq(storeName), eq(newCurrentVersion));
 
     AtomicInteger allowed = new AtomicInteger(0);
     AtomicInteger blocked = new AtomicInteger(0);
@@ -525,25 +559,28 @@ public class ReadQuotaEnforcementHandlerTest {
     }
     assertEquals(allowed.get(), capacity);
     assertEquals(blocked.get(), 0);
-    verify(stats, times((int) capacity)).recordAllowed(eq(storeName), anyLong());
+    verify(stats, times((int) capacity)).recordAllowed(eq(storeName), eq(newCurrentVersion), anyLong());
     verify(stats, never()).recordAllowedUnintentionally(eq(storeName), anyLong());
-    verify(stats, never()).recordRejected(eq(storeName), anyLong());
+    verify(stats, never()).recordRejected(eq(storeName), anyInt(), anyLong());
 
     quotaEnforcementHandler.channelRead0(ctx, request);
     assertEquals(allowed.get(), capacity);
     assertEquals(blocked.get(), 1);
-    verify(stats, times((int) capacity)).recordAllowed(eq(storeName), anyLong());
+    verify(stats, times((int) capacity)).recordAllowed(eq(storeName), eq(newCurrentVersion), anyLong());
     verify(stats, never()).recordAllowedUnintentionally(eq(storeName), anyLong());
-    verify(stats, times(1)).recordRejected(eq(storeName), anyLong());
+    verify(stats, times(1)).recordRejected(eq(storeName), eq(newCurrentVersion), anyLong());
 
     quotaEnforcementHandler.channelRead0(ctx, oldVersionRequest);
     assertEquals(allowed.get(), capacity + 1);
     assertEquals(blocked.get(), 1);
-    verify(stats, times((int) capacity + 1)).recordAllowed(eq(storeName), anyLong());
-    verify(stats, times(1)).recordAllowedUnintentionally(eq(storeName), anyLong());
-    verify(stats, times(1)).recordRejected(eq(storeName), anyLong());
+    verify(stats, atMostOnce()).recordAllowed(eq(storeName), eq(currentVersion), anyLong());
+    verify(stats, never()).recordAllowedUnintentionally(eq(storeName), anyLong());
+    verify(stats, never()).recordRejected(eq(storeName), eq(currentVersion), anyLong());
 
-    quotaEnforcementHandler.handleStoreChanged(storeAfterQuotaBump);
+    quotaEnforcementHandler.handleStoreChanged(storeAfterQuotaBumpAndBackupDeletion);
+    Assert.assertFalse(quotaEnforcementHandler.getActiveStoreVersions().contains(topic));
+    Assert.assertTrue(quotaEnforcementHandler.getActiveStoreVersions().contains(nextTopic));
+    verify(storeStats, atLeastOnce()).removeVersion(eq(currentVersion));
     long newCapacity = newStoreReadQuota * 5 * 10;
     for (int i = 0; i < newCapacity; i++) {
       quotaEnforcementHandler.channelRead0(ctx, request);
@@ -551,9 +588,12 @@ public class ReadQuotaEnforcementHandlerTest {
     int expectedAllowedCount = (int) capacity + 1 + (int) newCapacity;
     assertEquals(allowed.get(), expectedAllowedCount);
     assertEquals(blocked.get(), 1);
-    verify(stats, times(expectedAllowedCount)).recordAllowed(eq(storeName), anyLong());
-    verify(stats, times(1)).recordAllowedUnintentionally(eq(storeName), anyLong());
-    verify(stats, times(1)).recordRejected(eq(storeName), anyLong());
+    // one of the allowed request was towards the old current (backup) version
+    verify(stats, times(expectedAllowedCount - 1)).recordAllowed(eq(storeName), eq(newCurrentVersion), anyLong());
+    verify(stats, never()).recordAllowedUnintentionally(eq(storeName), anyLong());
+    verify(stats, times(1)).recordRejected(eq(storeName), eq(newCurrentVersion), anyLong());
+    quotaEnforcementHandler.onRoutingDataDeleted(nextTopic);
+    verify(storeStats, atLeastOnce()).removeVersion(eq(currentVersion + 1));
   }
 
   @DataProvider(name = "Enable-Grpc-Test-Boolean")
@@ -646,6 +686,48 @@ public class ReadQuotaEnforcementHandlerTest {
     assertNull(bucketForInvalidStore);
   }
 
+  @Test
+  public void testNodeResponsibility() {
+    String storeName = Utils.getUniqueString("test-store");
+    int currentVersion = 1;
+    int nextVersionNumber = 2;
+    String topic = Version.composeKafkaTopic(storeName, currentVersion);
+    String nextTopic = Version.composeKafkaTopic(storeName, nextVersionNumber);
+    Version version = mock(Version.class);
+    doReturn(topic).when(version).kafkaTopicName();
+    Version nextVersion = mock(Version.class);
+    doReturn(nextTopic).when(nextVersion).kafkaTopicName();
+    Store store = setUpStoreMock(storeName, 1, Arrays.asList(version, nextVersion), 10, true);
+    doReturn(store).when(storeRepository).getStore(eq(storeName));
+    Instance thisInstance = mock(Instance.class);
+    doReturn(thisNodeId).when(thisInstance).getNodeId();
+    Partition partition = setUpPartitionMock(topic, thisInstance, true, 0);
+    PartitionAssignment pa = setUpPartitionAssignmentMock(topic, Collections.singletonList(partition));
+    quotaEnforcementHandler.onCustomizedViewChange(pa);
+    verify(stats, atMostOnce()).setNodeQuotaResponsibility(eq(storeName), eq(currentVersion), eq(10L));
+    Instance instance2 = mock(Instance.class);
+    doReturn("node2").when(instance2).getNodeId();
+    Partition nextVersionPartition = setUpPartitionMock(topic, Arrays.asList(thisInstance, instance2), true, 0);
+    PartitionAssignment nextVersionPa =
+        setUpPartitionAssignmentMock(nextTopic, Collections.singletonList(nextVersionPartition));
+    quotaEnforcementHandler.onCustomizedViewChange(nextVersionPa);
+    // Partition assignment change for the next version should not change store stats node responsibility
+    verify(stats, never()).setNodeQuotaResponsibility(eq(storeName), eq(currentVersion), eq(5L));
+    verify(stats, atMostOnce()).setNodeQuotaResponsibility(eq(storeName), eq(nextVersionNumber), eq(10L));
+    Instance instance3 = mock(Instance.class);
+    doReturn("node3").when(instance3).getNodeId();
+    partition = setUpPartitionMock(topic, Arrays.asList(thisInstance, instance2, instance3), true, 0);
+    pa = setUpPartitionAssignmentMock(topic, Collections.singletonList(partition));
+    quotaEnforcementHandler.onCustomizedViewChange(pa);
+    // Partition assignment change for the current version should change store stats node responsibility
+    verify(stats, atMostOnce()).setNodeQuotaResponsibility(eq(storeName), eq(currentVersion), eq(4L));
+    doReturn(nextVersionNumber).when(store).getCurrentVersion();
+    doReturn(pa).when(customizedViewRepository).getPartitionAssignments(eq(topic));
+    doReturn(nextVersionPa).when(customizedViewRepository).getPartitionAssignments(eq(nextTopic));
+    quotaEnforcementHandler.handleStoreChanged(store);
+    verify(stats, atLeastOnce()).setCurrentVersion(eq(storeName), eq(nextVersionNumber));
+  }
+
   /**
    * After appropriate setup, this test ensures we can read the initial capacity of the TokenBucket, cannot read
    * beyond that, then increments time to allow for a bucket refill, and again ensures we can read the amount that was
@@ -734,6 +816,27 @@ public class ReadQuotaEnforcementHandlerTest {
     return partition;
   }
 
+  private Partition setUpPartitionMock(
+      String topic,
+      List<Instance> instances,
+      boolean isReadyToServe,
+      int partitionId) {
+    Partition partition = mock(Partition.class);
+    doReturn(partitionId).when(partition).getId();
+    List<ReplicaState> replicaStates = new ArrayList<>();
+    for (Instance instance: instances) {
+      ReplicaState thisReplicaState = mock(ReplicaState.class);
+      doReturn(instance.getNodeId()).when(thisReplicaState).getParticipantId();
+      doReturn(isReadyToServe).when(thisReplicaState).isReadyToServe();
+      replicaStates.add(thisReplicaState);
+    }
+    if (isReadyToServe) {
+      doReturn(instances).when(partition).getReadyToServeInstances();
+    }
+    when(customizedViewRepository.getReplicaStates(topic, partition.getId())).thenReturn(replicaStates);
+    return partition;
+  }
+
   private Store setUpStoreMock(
       String storeName,
       int currentVersion,
@@ -746,6 +849,7 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(versionList).when(store).getVersions();
     doReturn(readQuota).when(store).getReadQuotaInCU();
     doReturn(readQuotaEnabled).when(store).isStorageNodeReadQuotaEnabled();
+    doReturn(VersionStatus.ONLINE).when(store).getVersionStatus(anyInt());
     return store;
   }
 

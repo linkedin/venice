@@ -20,6 +20,10 @@ public class CloseableThreadLocal<T extends AutoCloseable> implements AutoClosea
   private final Set<T> valueSet = new ConcurrentSkipListSet<>(new HashCodeComparator<>());
   private final ThreadLocal<T> threadLocal;
 
+  public static <T extends AutoCloseable> CloseableThreadLocal<T> withInitial(Supplier<T> initialValue) {
+    return new CloseableThreadLocal<>(initialValue);
+  }
+
   /**
    * Creates a closeable thread local. The initial value of the
    * variable is determined by invoking the {@code get} method

@@ -1,24 +1,42 @@
 package com.linkedin.venice.utils;
 
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
+import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceHttpException;
+import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import org.apache.http.HttpStatus;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import org.testng.collections.Lists;
 
 
 /**
@@ -66,7 +84,7 @@ public class UtilsTest {
   public void testGetDebugInfo() {
     Map<CharSequence, CharSequence> debugInfo = Utils.getDebugInfo();
     debugInfo.forEach((k, v) -> System.out.println(k + ": " + v));
-    Assert.assertFalse(debugInfo.isEmpty(), "debugInfo should not be empty.");
+    assertFalse(debugInfo.isEmpty(), "debugInfo should not be empty.");
     // N.B.: The "version" entry is not available in unit tests because of the way the classpath is built...
     String[] expectedKeys = { "path", "host", "pid", "user", "JDK major version" };
     assertTrue(
@@ -143,8 +161,8 @@ public class UtilsTest {
     Path filePath = Files.createTempFile(null, null);
     Path nonExistingPath = Paths.get(Utils.getUniqueTempPath());
     assertTrue(Utils.directoryExists(directoryPath.toString()));
-    Assert.assertFalse(Utils.directoryExists(filePath.toString()));
-    Assert.assertFalse(Utils.directoryExists(nonExistingPath.toString()));
+    assertFalse(Utils.directoryExists(filePath.toString()));
+    assertFalse(Utils.directoryExists(nonExistingPath.toString()));
     Files.delete(directoryPath);
     Files.delete(filePath);
   }
@@ -182,7 +200,7 @@ public class UtilsTest {
 
   @Test
   public void testSanitizingStringForLogger() {
-    Assert.assertEquals(Utils.getSanitizedStringForLogger(".abc.123."), "_abc_123_");
+    assertEquals(Utils.getSanitizedStringForLogger(".abc.123."), "_abc_123_");
   }
 
   @Test
@@ -191,15 +209,369 @@ public class UtilsTest {
     Assert.assertTrue(Utils.parseCommaSeparatedStringToSet("").isEmpty());
 
     Set<String> set = Utils.parseCommaSeparatedStringToSet("a,b,c");
-    Assert.assertEquals(set.size(), 3);
+    assertEquals(set.size(), 3);
     Assert.assertTrue(set.contains("a"));
     Assert.assertTrue(set.contains("b"));
     Assert.assertTrue(set.contains("c"));
 
     Set<String> setWithSpaces = Utils.parseCommaSeparatedStringToSet("a, b, c");
-    Assert.assertEquals(setWithSpaces.size(), 3);
+    assertEquals(setWithSpaces.size(), 3);
     Assert.assertTrue(setWithSpaces.contains("a"));
     Assert.assertTrue(setWithSpaces.contains("b"));
     Assert.assertTrue(setWithSpaces.contains("c"));
+  }
+
+  @Test
+  public void testParseCommaSeparatedStringToList() {
+    Assert.assertTrue(Utils.parseCommaSeparatedStringToList(null).isEmpty());
+    Assert.assertTrue(Utils.parseCommaSeparatedStringToList("").isEmpty());
+
+    List<String> list = Utils.parseCommaSeparatedStringToList("a,b,c");
+    assertEquals(list.size(), 3);
+    assertEquals(list.get(0), "a");
+    assertEquals(list.get(1), "b");
+    assertEquals(list.get(2), "c");
+
+    List<String> stringList = Utils.parseCommaSeparatedStringToList("a, b, c");
+    assertEquals(stringList.size(), 3);
+    assertEquals(list.get(0), "a");
+    assertEquals(list.get(1), "b");
+    assertEquals(list.get(2), "c");
+  }
+
+  @Test
+  public void testResolveKafkaUrlForSepTopic() {
+    String originalKafkaUrl = "localhost:12345";
+    String originalKafkaUrlForSep = "localhost:12345_sep";
+    assertEquals(Utils.resolveKafkaUrlForSepTopic(""), "");
+    assertEquals(Utils.resolveKafkaUrlForSepTopic(originalKafkaUrlForSep), originalKafkaUrl);
+    assertEquals(Utils.resolveKafkaUrlForSepTopic(originalKafkaUrl), originalKafkaUrl);
+  }
+
+  @Test
+  void testGetRealTimeTopicNameWithStore() {
+    Store mockStore = mock(Store.class);
+    List<Version> mockVersions = Collections.singletonList(mock(Version.class));
+    HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
+
+    when(mockStore.getName()).thenReturn("TestStore");
+    when(mockStore.getVersions()).thenReturn(mockVersions);
+    when(mockStore.getCurrentVersion()).thenReturn(1);
+    when(mockStore.getHybridStoreConfig()).thenReturn(mockHybridConfig);
+
+    when(mockHybridConfig.getRealTimeTopicName()).thenReturn("RealTimeTopic");
+
+    String result = Utils.getRealTimeTopicName(mockStore);
+    assertEquals(result, "RealTimeTopic");
+  }
+
+  @Test
+  void testGetRealTimeTopicNameWithStoreInfo() {
+    StoreInfo mockStoreInfo = mock(StoreInfo.class);
+    List<Version> mockVersions = Collections.singletonList(mock(Version.class));
+    HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
+
+    when(mockStoreInfo.getName()).thenReturn("TestStore");
+    when(mockStoreInfo.getVersions()).thenReturn(mockVersions);
+    when(mockStoreInfo.getCurrentVersion()).thenReturn(1);
+    when(mockStoreInfo.getHybridStoreConfig()).thenReturn(mockHybridConfig);
+
+    when(mockHybridConfig.getRealTimeTopicName()).thenReturn("RealTimeTopic");
+
+    String result = Utils.getRealTimeTopicName(mockStoreInfo);
+    assertEquals(result, "RealTimeTopic");
+  }
+
+  @Test
+  void testGetRealTimeTopicNameWithHybridConfig() {
+    HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
+
+    when(mockHybridConfig.getRealTimeTopicName()).thenReturn("RealTimeTopic");
+    String result = Utils.getRealTimeTopicName("TestStore", Collections.EMPTY_LIST, 1, mockHybridConfig);
+
+    assertEquals(result, "RealTimeTopic");
+  }
+
+  @Test
+  void testGetRealTimeTopicNameWithoutHybridConfig() {
+    String result = Utils.getRealTimeTopicName("TestStore", Collections.EMPTY_LIST, 0, null);
+    assertEquals(result, "TestStore" + Version.REAL_TIME_TOPIC_SUFFIX);
+  }
+
+  @Test
+  void testGetRealTimeTopicNameWithConflictingVersions() {
+    Version mockVersion1 = mock(Version.class);
+    Version mockVersion2 = mock(Version.class);
+    HybridStoreConfig mockConfig1 = mock(HybridStoreConfig.class);
+    HybridStoreConfig mockConfig2 = mock(HybridStoreConfig.class);
+
+    when(mockVersion1.isHybrid()).thenReturn(true);
+    when(mockVersion2.isHybrid()).thenReturn(true);
+    when(mockVersion1.getHybridStoreConfig()).thenReturn(mockConfig1);
+    when(mockVersion2.getHybridStoreConfig()).thenReturn(mockConfig2);
+    when(mockConfig1.getRealTimeTopicName()).thenReturn("RealTimeTopic1");
+    when(mockConfig2.getRealTimeTopicName()).thenReturn("RealTimeTopic2");
+
+    String result = Utils.getRealTimeTopicName("TestStore", Lists.newArrayList(mockVersion1, mockVersion2), 1, null);
+    assertTrue(result.equals("RealTimeTopic1") || result.equals("RealTimeTopic2"));
+  }
+
+  @Test
+  void testGetRealTimeTopicNameWithExceptionHandling() {
+    Version mockVersion1 = mock(Version.class);
+    Version mockVersion2 = mock(Version.class);
+
+    when(mockVersion1.isHybrid()).thenReturn(true);
+    when(mockVersion1.getHybridStoreConfig()).thenThrow(new VeniceException("Test Exception"));
+
+    when(mockVersion2.isHybrid()).thenReturn(false);
+
+    String result = Utils.getRealTimeTopicName("TestStore", Lists.newArrayList(mockVersion1, mockVersion2), 1, null);
+    assertEquals(result, "TestStore" + Version.REAL_TIME_TOPIC_SUFFIX);
+  }
+
+  @Test
+  void testGetRealTimeTopicNameWithVersion() {
+    Version mockVersion = mock(Version.class);
+    HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
+
+    when(mockVersion.getHybridStoreConfig()).thenReturn(mockHybridConfig);
+    when(mockVersion.getStoreName()).thenReturn("TestStore");
+    when(mockHybridConfig.getRealTimeTopicName()).thenReturn("RealTimeTopic");
+
+    String result = Utils.getRealTimeTopicName(mockVersion);
+    assertEquals(result, "RealTimeTopic");
+  }
+
+  @Test
+  void testGetRealTimeTopicNameWithNonHybridVersion() {
+    // Mocking the Version object
+    Version mockVersion = mock(Version.class);
+
+    // Mock setup to trigger the exception path
+    when(mockVersion.getHybridStoreConfig()).thenReturn(null);
+    when(mockVersion.getStoreName()).thenReturn("TestStore");
+    String result = Utils.getRealTimeTopicName(mockVersion);
+    assertEquals(result, "TestStore" + Version.REAL_TIME_TOPIC_SUFFIX);
+  }
+
+  @Test
+  void testRealTimeTopicNameWithHybridConfig() {
+    // Mock the Store and HybridStoreConfig
+    Store store = mock(Store.class);
+    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
+
+    // Define behavior
+    when(store.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
+    when(store.getName()).thenReturn("test-store");
+    when(hybridStoreConfig.getRealTimeTopicName()).thenReturn("real-time-topic");
+
+    // Test
+    String result = Utils.getRealTimeTopicNameFromStoreConfig(store);
+
+    // Validate
+    assertEquals(result, "real-time-topic");
+
+    // Verify calls
+    verify(store).getHybridStoreConfig();
+    verify(store).getName();
+    verify(hybridStoreConfig).getRealTimeTopicName();
+  }
+
+  @Test
+  void testRealTimeTopicNameEmptyWithHybridConfig() {
+    // Mock the Store and HybridStoreConfig
+    Store store = mock(Store.class);
+    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
+
+    // Define behavior
+    when(store.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
+    when(store.getName()).thenReturn("test-store");
+    when(hybridStoreConfig.getRealTimeTopicName()).thenReturn("");
+
+    String result = Utils.getRealTimeTopicNameFromStoreConfig(store);
+
+    assertEquals(result, "test-store_rt");
+  }
+
+  @Test
+  void testRealTimeTopicNameWithoutHybridConfig() {
+    // Mock the Store
+    Store store = mock(Store.class);
+
+    // Define behavior
+    when(store.getHybridStoreConfig()).thenReturn(null);
+    when(store.getName()).thenReturn("test-store");
+
+    String result = Utils.getRealTimeTopicNameFromStoreConfig(store);
+
+    assertEquals(result, "test-store_rt");
+  }
+
+  @Test
+  public void testParseDateTimeToEpoch() throws Exception {
+    // Case 1: Valid Input
+    String dateTimePst = "2024-12-02 15:30:00";
+    String dateTimeUtc = "2024-12-02 23:30:00";
+    String format = "yyyy-MM-dd HH:mm:ss";
+    String timeZone = "America/Los_Angeles";
+    long expectedEpoch = 1733182200000L;
+
+    long epochTime = Utils.parseDateTimeToEpoch(dateTimePst, format, timeZone);
+    assertEquals(epochTime, expectedEpoch, "The epoch time does not match the expected value.");
+
+    // Case 2: Invalid Date Format
+    assertThrows(ParseException.class, () -> Utils.parseDateTimeToEpoch("2024-12-02T15:30:00", format, timeZone));
+
+    // Case 3: Invalid Time Zone; fallback to GMT
+    long gmtEpochTime = Utils.parseDateTimeToEpoch(dateTimeUtc, format, "InvalidTimeZone");
+    assertEquals(gmtEpochTime, expectedEpoch, "The epoch time does not match the expected value for GMT.");
+
+    // Case 4: Different Time Zone
+    String utcTimeZone = "UTC";
+    long utcEpochTime = Utils.parseDateTimeToEpoch(dateTimeUtc, format, utcTimeZone);
+    assertEquals(utcEpochTime, expectedEpoch, "The epoch time does not match the expected value for UTC.");
+  }
+
+  @Test
+  public void testIsSeparateTopicRegion() {
+    Assert.assertTrue(Utils.isSeparateTopicRegion("dc-0_sep"));
+    assertFalse(Utils.isSeparateTopicRegion("dc-0"));
+  }
+
+  @Test
+  public void testGetLeaderTopicFromPubSubTopic() {
+    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    String store = "test_store";
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(store, 1));
+    PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(store));
+    PubSubTopic separateRealTimeTopic = pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(store));
+    Assert.assertEquals(Utils.resolveLeaderTopicFromPubSubTopic(pubSubTopicRepository, versionTopic), versionTopic);
+    Assert.assertEquals(Utils.resolveLeaderTopicFromPubSubTopic(pubSubTopicRepository, realTimeTopic), realTimeTopic);
+    Assert.assertEquals(
+        Utils.resolveLeaderTopicFromPubSubTopic(pubSubTopicRepository, separateRealTimeTopic),
+        realTimeTopic);
+  }
+
+  @Test
+  void testValidOldNameWithVersionIncrement() {
+    String oldName = "storeName_v1_rt";
+    String expectedNewName = "storeName_v2_rt";
+
+    String result = Utils.createNewRealTimeTopicName(oldName);
+
+    assertEquals(result, expectedNewName);
+  }
+
+  @Test
+  void testWithVersionIncrement() {
+    String oldName = "storeName_v11_v55_rt";
+    String expectedNewName = "storeName_v11_v56_rt";
+
+    String result = Utils.createNewRealTimeTopicName(oldName);
+
+    assertEquals(result, expectedNewName);
+  }
+
+  @Test
+  void testValidOldNameStartingNewVersion() {
+    String oldName = "storeName_rt";
+    String expectedNewName = "storeName_v2_rt";
+
+    String result = Utils.createNewRealTimeTopicName(oldName);
+
+    assertEquals(result, expectedNewName);
+  }
+
+  @Test
+  void testInvalidOldNameNull() {
+    assertThrows(IllegalArgumentException.class, () -> Utils.createNewRealTimeTopicName(null));
+  }
+
+  @Test
+  void testInvalidOldNameWithoutSuffix() {
+    String oldName = "storeName_v1";
+    assertThrows(IllegalArgumentException.class, () -> Utils.createNewRealTimeTopicName(oldName));
+  }
+
+  @Test
+  void testInvalidOldNameIncorrectFormat() {
+    String oldName = "storeName_v1_rt_extra";
+    assertThrows(IllegalArgumentException.class, () -> Utils.createNewRealTimeTopicName(oldName));
+  }
+
+  @Test
+  void testInvalidOldNameWithNonNumericVersion() {
+    String oldName = "storeName_vX_rt";
+    assertThrows(NumberFormatException.class, () -> Utils.createNewRealTimeTopicName(oldName));
+  }
+
+  @DataProvider(name = "booleanParsingData")
+  public Object[][] booleanParsingData() {
+    return new Object[][] {
+        // Valid cases
+        { "true", "testField", true }, // Valid "true"
+        { "false", "testField", false }, // Valid "false"
+        { "TRUE", "testField", true }, // Valid case-insensitive "TRUE"
+        { "FALSE", "testField", false }, // Valid case-insensitive "FALSE"
+
+        // Invalid cases
+        { "notABoolean", "testField", null }, // Invalid string
+        { "123", "testField", null }, // Non-boolean numeric string
+        { "", "testField", null }, // Empty string
+        { null, "testField", null }, // Null input
+    };
+  }
+
+  @DataProvider(name = "booleanOrFalseParsingData")
+  public Object[][] booleanOrFalseParsingData() {
+    return new Object[][] {
+        // Valid cases
+        { "true", "testField", true }, // Valid "true"
+        { "false", "testField", false }, // Valid "false"
+        { "TRUE", "testField", true }, // Valid case-insensitive "TRUE"
+        { "FALSE", "testField", false }, // Valid case-insensitive "FALSE"
+        { null, "testField", false }, // Null input
+
+        // Invalid cases
+        { "notABoolean", "testField", null }, // Invalid string
+        { "123", "testField", null }, // Non-boolean numeric string
+        { "", "testField", null }, // Empty string
+    };
+  }
+
+  @Test(dataProvider = "booleanParsingData")
+  public void testParseBooleanOrThrow(String value, String fieldName, Boolean expectedResult) {
+    if (expectedResult != null) {
+      // For valid cases
+      boolean result = Utils.parseBooleanOrThrow(value, fieldName);
+      assertEquals(result, (boolean) expectedResult, "Parsed boolean value does not match expected value.");
+      return;
+    }
+    VeniceHttpException e = expectThrows(VeniceHttpException.class, () -> Utils.parseBooleanOrThrow(value, fieldName));
+    assertEquals(e.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST, "Invalid status code.");
+    if (value == null) {
+      assertEquals(e.getMessage(), "Http Status 400 - testField must be a boolean, but value is null.");
+    } else {
+      assertEquals(
+          e.getMessage(),
+          "Http Status 400 - testField must be a boolean, but value: " + value + " is invalid.");
+    }
+    assertEquals(e.getErrorType(), ErrorType.BAD_REQUEST);
+  }
+
+  @Test(dataProvider = "booleanOrFalseParsingData")
+  public void testParseBooleanOrFalse(String value, String fieldName, Boolean expectedResult) {
+    // For valid cases
+    if (expectedResult != null) {
+      boolean result = Utils.parseBooleanOrFalse(value, fieldName);
+      assertEquals(result, (boolean) expectedResult, "Parsed boolean value does not match expected value.");
+      return;
+    }
+    // For invalid cases
+    VeniceHttpException e = expectThrows(VeniceHttpException.class, () -> Utils.parseBooleanOrThrow(value, fieldName));
+    assertEquals(e.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST, "Invalid status code.");
+    assertEquals(e.getMessage(), "Http Status 400 - testField must be a boolean, but value: " + value + " is invalid.");
+    assertEquals(e.getErrorType(), ErrorType.BAD_REQUEST);
   }
 }

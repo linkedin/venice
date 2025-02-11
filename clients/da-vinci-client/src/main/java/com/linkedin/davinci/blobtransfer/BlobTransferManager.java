@@ -1,5 +1,7 @@
 package com.linkedin.davinci.blobtransfer;
 
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
+import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import java.io.InputStream;
@@ -25,13 +27,17 @@ public interface BlobTransferManager<T> extends AutoCloseable {
    * @param storeName
    * @param version
    * @param partition
+   * @param requestTableFormat the table format defined in config (PLAIN_TABLE or BLOCK_BASED_TABLE).
    * @return the InputStream of the blob. The return type is experimental and may change in the future.
    * @throws VenicePeersNotFoundException when the peers are not found for the requested blob. Other exceptions may be
    * thrown, but it's wrapped inside the CompletionStage.
    */
   @Experimental
-  CompletionStage<? extends InputStream> get(String storeName, int version, int partition)
-      throws VenicePeersNotFoundException;
+  CompletionStage<? extends InputStream> get(
+      String storeName,
+      int version,
+      int partition,
+      BlobTransferTableFormat requestTableFormat) throws VenicePeersNotFoundException;
 
   /**
    * Put the blob for the given storeName and partition
@@ -46,4 +52,10 @@ public interface BlobTransferManager<T> extends AutoCloseable {
    * Close the blob transfer manager and related resources
    */
   void close() throws Exception;
+
+  /**
+   * Get the blob transfer stats
+   * @return the blob transfer stats
+   */
+  AggVersionedBlobTransferStats getAggVersionedBlobTransferStats();
 }

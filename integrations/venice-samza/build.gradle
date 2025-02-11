@@ -1,0 +1,32 @@
+configurations.implementation {
+  // jetty 6 conflicts with spark-java used in controller api
+  exclude group: 'org.mortbay.jetty'
+}
+
+dependencies {
+  // Schema related dependencies
+  implementation (project(':internal:venice-common')) {
+    //TODO, pull venice writer out of venice common so this is a smaller dependency
+    exclude module: 'kafka_2.10'
+    exclude group: 'org.scala-lang'
+  }
+
+  implementation project(':internal:venice-client-common')
+  implementation project(':clients:venice-thin-client')
+
+  implementation libraries.httpAsyncClient
+
+  implementation libraries.log4j2api
+  implementation libraries.samzaApi
+}
+
+ext {
+  jacocoCoverageThreshold = 0.01
+}
+
+checkerFramework {
+  extraJavacArgs = ['-Xmaxerrs', '256']
+  checkers = ['org.checkerframework.checker.nullness.NullnessChecker']
+  skipCheckerFramework = true
+  excludeTests = true
+}

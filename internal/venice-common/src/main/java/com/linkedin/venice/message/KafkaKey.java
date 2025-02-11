@@ -3,6 +3,9 @@ package com.linkedin.venice.message;
 import com.linkedin.venice.guid.HeartbeatGuidV3Generator;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.memory.ClassSizeEstimator;
+import com.linkedin.venice.memory.InstanceSizeEstimator;
+import com.linkedin.venice.memory.Measurable;
 import com.linkedin.venice.utils.ByteUtils;
 import java.nio.ByteBuffer;
 import javax.annotation.Nonnull;
@@ -13,7 +16,8 @@ import org.apache.avro.specific.FixedSize;
  * Class which stores the components of a Kafka Key, and is the format specified in the
  * {@link com.linkedin.venice.serialization.KafkaKeySerializer}.
  */
-public class KafkaKey {
+public class KafkaKey implements Measurable {
+  private static final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(KafkaKey.class);
   /**
    * For control messages, the Key part of the {@link KafkaKey} includes the producer GUID, segment and sequence number.
    *
@@ -32,11 +36,11 @@ public class KafkaKey {
   private final byte keyHeaderByte;
   private final byte[] key; // TODO: Consider whether we may want to use a ByteBuffer here
 
-  public KafkaKey(@Nonnull MessageType messageType, byte[] key) {
+  public KafkaKey(@Nonnull MessageType messageType, @Nonnull byte[] key) {
     this(messageType.getKeyHeaderByte(), key);
   }
 
-  public KafkaKey(byte keyHeaderByte, byte[] key) {
+  public KafkaKey(byte keyHeaderByte, @Nonnull byte[] key) {
     this.keyHeaderByte = keyHeaderByte;
     this.key = key;
   }
@@ -73,14 +77,12 @@ public class KafkaKey {
     return key == null ? 0 : key.length;
   }
 
-  public int getEstimatedObjectSizeOnHeap() {
-    // This constant is the estimated size of the enclosing object + the byte[]'s overhead.
-    // TODO: Find a library that would allow us to precisely measure this and store it in a static constant.
-    return getKeyLength() + 36;
-  }
-
   public String toString() {
     return getClass().getSimpleName() + "(" + (isControlMessage() ? "CONTROL_MESSAGE" : "PUT or DELETE") + ", "
         + ByteUtils.toHexString(key) + ")";
+  }
+
+  public int getHeapSize() {
+    return SHALLOW_CLASS_OVERHEAD + InstanceSizeEstimator.getSize(this.key);
   }
 }

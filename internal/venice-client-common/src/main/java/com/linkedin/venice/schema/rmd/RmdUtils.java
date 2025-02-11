@@ -87,13 +87,13 @@ public class RmdUtils {
    * @return                True if the advancedOffset vector has grown beyond the baseOffset
    */
   static public boolean hasOffsetAdvanced(@NotNull List<Long> baseOffset, @NotNull List<Long> advancedOffset) {
-    if (baseOffset.size() > advancedOffset.size()) {
-      // the baseoffset has more entries then the advanced one, meaning that it's seen entries from more colos
-      // meaning that it's automatically further along then the second argument. We break early to avoid any
-      // array out of bounds exception
-      return false;
-    }
     for (int i = 0; i < baseOffset.size(); i++) {
+      if (advancedOffset.size() - 1 < i) {
+        if (baseOffset.get(i) > 0) {
+          return false;
+        }
+        continue;
+      }
       if (advancedOffset.get(i) < baseOffset.get(i)) {
         return false;
       }

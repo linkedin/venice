@@ -74,6 +74,11 @@ public class StoreInfo {
     storeInfo.setMaxNearlineRecordSizeBytes(store.getMaxNearlineRecordSizeBytes());
     storeInfo.setUnusedSchemaDeletionEnabled(store.isUnusedSchemaDeletionEnabled());
     storeInfo.setBlobTransferEnabled(store.isBlobTransferEnabled());
+    storeInfo.setNearlineProducerCompressionEnabled(store.isNearlineProducerCompressionEnabled());
+    storeInfo.setNearlineProducerCountPerWriter(store.getNearlineProducerCountPerWriter());
+    storeInfo.setTargetRegionSwap(store.getTargetSwapRegion());
+    storeInfo.setTargetRegionSwapWaitTime(store.getTargetSwapRegionWaitTime());
+    storeInfo.setIsDavinciHeartbeatReported(store.getIsDavinciHeartbeatReported());
     return storeInfo;
   }
 
@@ -321,6 +326,12 @@ public class StoreInfo {
   private boolean unusedSchemaDeletionEnabled;
 
   private boolean blobTransferEnabled;
+
+  private boolean nearlineProducerCompressionEnabled;
+  private int nearlineProducerCountPerWriter;
+  private String targetRegionSwap;
+  private int targetRegionSwapWaitTime;
+  private boolean isDavinciHeartbeatReported;
 
   public StoreInfo() {
   }
@@ -809,5 +820,45 @@ public class StoreInfo {
 
   public boolean isBlobTransferEnabled() {
     return this.blobTransferEnabled;
+  }
+
+  public boolean isNearlineProducerCompressionEnabled() {
+    return nearlineProducerCompressionEnabled;
+  }
+
+  public void setNearlineProducerCompressionEnabled(boolean nearlineProducerCompressionEnabled) {
+    this.nearlineProducerCompressionEnabled = nearlineProducerCompressionEnabled;
+  }
+
+  public int getNearlineProducerCountPerWriter() {
+    return nearlineProducerCountPerWriter;
+  }
+
+  public void setNearlineProducerCountPerWriter(int nearlineProducerCountPerWriter) {
+    this.nearlineProducerCountPerWriter = nearlineProducerCountPerWriter;
+  }
+
+  public String getTargetRegionSwap() {
+    return this.targetRegionSwap;
+  }
+
+  public void setTargetRegionSwap(String targetRegion) {
+    this.targetRegionSwap = targetRegion;
+  }
+
+  public int getTargetRegionSwapWaitTime() {
+    return this.targetRegionSwapWaitTime;
+  }
+
+  public void setTargetRegionSwapWaitTime(int waitTime) {
+    this.targetRegionSwapWaitTime = waitTime;
+  }
+
+  public void setIsDavinciHeartbeatReported(boolean isReported) {
+    this.isDavinciHeartbeatReported = isReported;
+  }
+
+  public boolean getIsDavinciHeartbeatReported() {
+    return this.isDavinciHeartbeatReported;
   }
 }

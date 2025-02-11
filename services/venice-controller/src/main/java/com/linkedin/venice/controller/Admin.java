@@ -181,7 +181,12 @@ public interface Admin extends AutoCloseable, Closeable {
   * Delete the entire store including both metadata and real user's data. Before deleting a store, we should disable
   * the store manually to ensure there is no reading/writing request hitting this tore.
   */
-  void deleteStore(String clusterName, String storeName, int largestUsedVersionNumber, boolean waitOnRTTopicDeletion);
+  void deleteStore(
+      String clusterName,
+      String storeName,
+      boolean isAbortMigrationCleanup,
+      int largestUsedVersionNumber,
+      boolean waitOnRTTopicDeletion);
 
   /**
    * This method behaves differently in {@link VeniceHelixAdmin} and {@link VeniceParentHelixAdmin}.
@@ -290,18 +295,9 @@ public interface Admin extends AutoCloseable, Closeable {
       String targetedRegions,
       int repushSourceVersion);
 
-  String getRealTimeTopic(String clusterName, String storeName);
+  Version getIncrementalPushVersion(String clusterName, String storeName, String pushJobId);
 
-  String getSeparateRealTimeTopic(String clusterName, String storeName);
-
-  /**
-   * Right now, it will return the latest version recorded in parent controller. There are a couple of edge cases.
-   * 1. If a push fails in some colos, the version will be inconsistent among colos
-   * 2. If rollback happens, latest version will not be the current version.
-   *
-   * TODO: figure out how we'd like to cover these edge cases
-   */
-  Version getIncrementalPushVersion(String clusterName, String storeName);
+  Version getReferenceVersionForStreamingWrites(String clusterName, String storeName, String pushJobId);
 
   int getCurrentVersion(String clusterName, String storeName);
 
@@ -534,6 +530,14 @@ public interface Admin extends AutoCloseable, Closeable {
 
   TopicManager getTopicManager(String pubSubServerAddress);
 
+  InstanceRemovableStatuses getAggregatedHealthStatus(
+      String cluster,
+      List<String> instances,
+      List<String> toBeStoppedInstances,
+      boolean isSSLEnabled);
+
+  boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, String storeName);
+
   /**
    * Check if this controller itself is the leader controller for a given cluster or not. Note that the controller can be
    * either a parent controller or a child controller since a cluster must have a leader child controller and a leader
@@ -565,18 +569,11 @@ public interface Admin extends AutoCloseable, Closeable {
    * This instance should not be removed out of cluster, otherwise Venice will lose data.
    * For detail criteria please refer to {@link InstanceStatusDecider}
    *
+   * @param clusterName The cluster were the hosts belong.
    * @param helixNodeId nodeId of helix participant. HOST_PORT.
    * @param lockedNodes A list of helix nodeIds whose resources are assumed to be unusable (stopped).
-   * @param isFromInstanceView If the value is true, it means we will only check the partitions this instance hold.
-   *                           E.g. if all replicas of a partition are error, but this instance does not hold any
-   *                           replica in this partition, we will skip this partition in the checking.
-   *                           If the value is false, we will check all partitions of resources this instance hold.
    */
-  NodeRemovableResult isInstanceRemovable(
-      String clusterName,
-      String helixNodeId,
-      List<String> lockedNodes,
-      boolean isFromInstanceView);
+  NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId, List<String> lockedNodes);
 
   /**
    * Get instance of leader controller. If there is no leader controller for the given cluster, throw a

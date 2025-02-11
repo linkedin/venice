@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -24,7 +25,8 @@ public class TopicExistenceCheckerTest {
 
     ReadOnlyStoreRepository repository = mock(ReadOnlyStoreRepository.class);
     Store store = mock(Store.class);
-    doReturn(new VersionImpl("existingTopic", 123)).when(store).getVersion(123);
+    doReturn(new VersionImpl("existingTopic", 123, "existingTopic" + Version.REAL_TIME_TOPIC_SUFFIX)).when(store)
+        .getVersion(123);
     doReturn(store).when(repository).getStoreOrThrow("existingTopic");
     doThrow(new VeniceNoStoreException(nontExitingTopic1)).when(repository).getStoreOrThrow("non-existingTopic");
     doReturn(true).when(store).isHybrid();

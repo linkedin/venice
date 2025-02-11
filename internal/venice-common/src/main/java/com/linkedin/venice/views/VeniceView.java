@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Properties;
@@ -29,15 +30,21 @@ import java.util.Properties;
  * this interface for lifecycle management of arbitrary resources (not just kafka topics).
  */
 public abstract class VeniceView {
+  public static final String VIEW_STORE_PREFIX = "view_store_";
+  public static final String VIEW_NAME_SEPARATOR = "_";
   protected final Properties props;
-  protected final Store store;
+  protected final String storeName;
   protected final Map<String, String> viewParameters;
 
-  public VeniceView(Properties props, Store store, Map<String, String> viewParameters) {
+  public VeniceView(Properties props, String storeName, Map<String, String> viewParameters) {
     this.props = props;
-    this.store = store;
+    this.storeName = storeName;
     this.viewParameters = viewParameters;
     this.props.putAll(viewParameters);
+  }
+
+  public VeniceWriterOptions.Builder getWriterOptionsBuilder(String viewTopicName, Version version) {
+    throw new VeniceException("Cannot get VeniceWriterOptions.Builder with VeniceView base class!");
   }
 
   /**
@@ -64,13 +71,10 @@ public abstract class VeniceView {
 
   /**
    * Validate that the configs set up for this view for this store are valid.  If not, throw an exception. Implementors
-   * should override this function to add their own validation logic, and need only call this base implementation optionally.
+   * should override this function to add their own validation logic.
    */
-  public void validateConfigs() {
-    // All views which publish data only work with A/A. Views which don't publish data should override this validation
-    if (!store.isActiveActiveReplicationEnabled()) {
-      throw new VeniceException("Views are not supported with non Active/Active stores!");
-    }
+  public void validateConfigs(Store store) {
+    // validation based on view implementation
   }
 
   public void close() {
@@ -88,7 +92,8 @@ public abstract class VeniceView {
     // So for now, we'll keep this static, but needs a better approach. Perhaps, a config
     // that's passed into the server that lists the types of views supported, and then
     // for each type having an uniformly named static method that doesn't override.
-    return topicName.endsWith(ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
+    return topicName.endsWith(ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX)
+        || topicName.endsWith(MaterializedView.MATERIALIZED_VIEW_TOPIC_SUFFIX);
   }
 
   // TODO: see above TODO for isViewtopic function, same applies here.
@@ -98,8 +103,67 @@ public abstract class VeniceView {
 
   // TODO: see above TODO for isViewTopic function, same applies here
   public static int parseVersionFromViewTopic(String topicName) {
+    if (!isViewTopic(topicName)) {
+      throw new VeniceException("Cannot parse version because this is not a view topic, topic name: " + topicName);
+    }
     int versionStartIndex = Version.getLastIndexOfVersionSeparator(topicName) + Version.VERSION_SEPARATOR.length();
-    return Integer.parseInt(
-        topicName.substring(versionStartIndex, topicName.lastIndexOf(ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX)));
+    int versionEndIndex = versionStartIndex + topicName.substring(versionStartIndex).indexOf(VIEW_NAME_SEPARATOR);
+    return Integer.parseInt(topicName.substring(versionStartIndex, versionEndIndex));
+  }
+
+  /**
+   * @param topicName for the view topic, e.g. batchStore_148ff3a146001_v1_MaterializedViewTest_mv
+   * @return the corresponding store name and view name for the given view topic in a single string.
+   */
+  public static String parseStoreAndViewFromViewTopic(String topicName) {
+    if (!isViewTopic(topicName)) {
+      throw new IllegalArgumentException(
+          "Cannot parse store and view because this is not a view topic, topic name: " + topicName);
+    }
+    String storeName = parseStoreFromViewTopic(topicName);
+    int viewTopicSuffixIndex = topicName.lastIndexOf(VIEW_NAME_SEPARATOR);
+    int viewNameStartIndex = topicName.substring(0, viewTopicSuffixIndex).lastIndexOf(VIEW_NAME_SEPARATOR);
+    return VIEW_STORE_PREFIX + storeName + topicName.substring(viewNameStartIndex, viewTopicSuffixIndex);
+  }
+
+  public static String getViewStoreName(String storeName, String viewName) {
+    if (isViewStore(storeName)) {
+      throw new IllegalArgumentException(storeName + " is already associated with a view");
+    }
+    return VIEW_STORE_PREFIX + storeName + VIEW_NAME_SEPARATOR + viewName;
+  }
+
+  public static String getStoreNameFromViewStoreName(String viewStoreName) {
+    if (!isViewStore(viewStoreName)) {
+      throw new IllegalArgumentException(viewStoreName + " is not a view store");
+    }
+    String viewStoreNameWithoutPrefix = viewStoreName.substring(VIEW_STORE_PREFIX.length());
+    int storeNameEndIndex = viewStoreNameWithoutPrefix.lastIndexOf(VIEW_NAME_SEPARATOR);
+    return viewStoreNameWithoutPrefix.substring(0, storeNameEndIndex);
+  }
+
+  public static String getViewNameFromViewStoreName(String viewStoreName) {
+    if (!isViewStore(viewStoreName)) {
+      throw new IllegalArgumentException(viewStoreName + " is not a view store");
+    }
+    int viewNameStartIndex = viewStoreName.lastIndexOf(VIEW_NAME_SEPARATOR);
+    return viewStoreName.substring(viewNameStartIndex + 1);
+  }
+
+  public static boolean isViewStore(String storeName) {
+    return storeName.startsWith(VIEW_STORE_PREFIX);
+  }
+
+  /**
+   * @param storeName
+   * @return storeName if the provided store name is a regular Venice store name or extract the regular Venice store
+   * name if the provided storeName is a view store name.
+   */
+  public static String getStoreName(String storeName) {
+    if (isViewStore(storeName)) {
+      return getStoreNameFromViewStoreName(storeName);
+    } else {
+      return storeName;
+    }
   }
 }

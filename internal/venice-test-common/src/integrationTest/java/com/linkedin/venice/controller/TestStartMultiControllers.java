@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.utils.HelixUtils;
@@ -27,7 +28,11 @@ public class TestStartMultiControllers {
 
   @BeforeClass
   public void setUp() throws Exception {
-    cluster = ServiceFactory.getVeniceCluster(controllerCount, 0, 0);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(controllerCount)
+        .numberOfServers(0)
+        .numberOfRouters(0)
+        .build();
+    cluster = ServiceFactory.getVeniceCluster(options);
     helixManager = new SafeHelixManager(
         new ZKHelixManager(
             cluster.getClusterName(),

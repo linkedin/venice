@@ -1,6 +1,11 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.davinci.kafka.consumer.KafkaConsumerService.ConsumerAssignmentStrategy.TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
+import static com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.DEFAULT;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -16,17 +21,24 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerContext.PubSubPropertiesSupplier;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.Sensor;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Properties;
 import java.util.function.Consumer;
+import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -44,7 +56,8 @@ public class AggKafkaConsumerServiceTest {
   private ReadOnlyStoreRepository metadataRepository;
   private PubSubTopicRepository topicRepository;
   private AggKafkaConsumerService aggKafkaConsumerService;
-  private String pubSubUrl = "pubsub.venice.db";
+  private String PUBSUB_URL = "pubsub.venice.db";
+  private String PUBSUB_URL_SEP = "pubsub.venice.db_sep";
   private PubSubTopic topic;
   private PubSubTopicPartition topicPartition;
 
@@ -63,8 +76,20 @@ public class AggKafkaConsumerServiceTest {
     killIngestionTaskRunnable = mock(Consumer.class);
     metadataRepository = mock(ReadOnlyStoreRepository.class);
     serverConfig = mock(VeniceServerConfig.class);
-    when(serverConfig.getKafkaClusterUrlToIdMap()).thenReturn(Object2IntMaps.EMPTY_MAP);
-
+    Object2IntMap<String> tmpKafkaClusterUrlToIdMap = new Object2IntOpenHashMap<>();
+    tmpKafkaClusterUrlToIdMap.put(PUBSUB_URL, 0);
+    tmpKafkaClusterUrlToIdMap.put(PUBSUB_URL_SEP, 1);
+    when(serverConfig.getKafkaClusterUrlToIdMap()).thenReturn(Object2IntMaps.unmodifiable(tmpKafkaClusterUrlToIdMap));
+    // note that this isn't the exact same as the one in VeniceClusterConfig, but it should be sufficient for most cases
+    when(serverConfig.getKafkaClusterUrlResolver()).thenReturn(Utils::resolveKafkaUrlForSepTopic);
+    when(serverConfig.getConsumerPoolStrategyType()).thenReturn(DEFAULT);
+    when(serverConfig.getConsumerPoolSizePerKafkaCluster()).thenReturn(5);
+    when(serverConfig.isUnregisterMetricForDeletedStoreEnabled()).thenReturn(Boolean.FALSE);
+    when(serverConfig.getSharedConsumerAssignmentStrategy()).thenReturn(TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY);
+    Sensor dummySensor = mock(Sensor.class);
+    when(metricsRepository.sensor(anyString(), any())).thenReturn(dummySensor);
+    PubSubConsumerAdapter adapter = mock(PubSubConsumerAdapter.class);
+    when(consumerFactory.create(any(), anyBoolean(), any(), any())).thenReturn(adapter);
     aggKafkaConsumerService = new AggKafkaConsumerService(
         consumerFactory,
         pubSubPropertiesSupplier,
@@ -82,47 +107,64 @@ public class AggKafkaConsumerServiceTest {
   // test subscribeConsumerFor
   @Test
   public void testSubscribeConsumerFor() {
+    doReturn(new VeniceProperties(new Properties())).when(pubSubPropertiesSupplier).get(PUBSUB_URL);
+
     AggKafkaConsumerService aggKafkaConsumerServiceSpy = spy(aggKafkaConsumerService);
     StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
     TopicManager topicManager = mock(TopicManager.class);
 
-    doReturn(mock(AbstractKafkaConsumerService.class)).when(aggKafkaConsumerServiceSpy).getKafkaConsumerService(any());
+    Properties props = new Properties();
+    props.put(KAFKA_BOOTSTRAP_SERVERS, PUBSUB_URL);
+    aggKafkaConsumerService.createKafkaConsumerService(props);
     when(storeIngestionTask.getVersionTopic()).thenReturn(topic);
-    when(storeIngestionTask.getTopicManager(pubSubUrl)).thenReturn(topicManager);
+    when(storeIngestionTask.getTopicManager(PUBSUB_URL)).thenReturn(topicManager);
     PartitionReplicaIngestionContext partitionReplicaIngestionContext = new PartitionReplicaIngestionContext(
         topic,
         topicPartition,
         PartitionReplicaIngestionContext.VersionRole.CURRENT,
         PartitionReplicaIngestionContext.WorkloadType.NON_AA_OR_WRITE_COMPUTE);
-    aggKafkaConsumerServiceSpy
-        .subscribeConsumerFor(pubSubUrl, storeIngestionTask, partitionReplicaIngestionContext, -1);
+    StorePartitionDataReceiver dataReceiver = (StorePartitionDataReceiver) aggKafkaConsumerServiceSpy
+        .subscribeConsumerFor(PUBSUB_URL, storeIngestionTask, partitionReplicaIngestionContext, -1);
 
+    // regular pubsub url uses the default cluster id
+    Assert.assertEquals(dataReceiver.getKafkaClusterId(), 0);
     verify(topicManager).prefetchAndCacheLatestOffset(topicPartition);
+
+    dataReceiver = (StorePartitionDataReceiver) aggKafkaConsumerServiceSpy
+        .subscribeConsumerFor(PUBSUB_URL_SEP, storeIngestionTask, partitionReplicaIngestionContext, -1);
+    // pubsub url for sep topic uses a different cluster id
+    Assert.assertEquals(dataReceiver.getKafkaClusterId(), 1);
+
+    // Sep topic should share the same kafka consumer service
+    AbstractKafkaConsumerService kafkaConsumerService = aggKafkaConsumerService.getKafkaConsumerService(PUBSUB_URL);
+    AbstractKafkaConsumerService kafkaConsumerServiceForSep =
+        aggKafkaConsumerService.getKafkaConsumerService(PUBSUB_URL_SEP);
+    Assert.assertSame(kafkaConsumerService, kafkaConsumerServiceForSep);
   }
 
   @Test
   public void testGetOffsetLagBasedOnMetrics() {
     AggKafkaConsumerService aggKafkaConsumerServiceSpy = spy(aggKafkaConsumerService);
 
-    doReturn(null).when(aggKafkaConsumerServiceSpy).getKafkaConsumerService(pubSubUrl);
-    assertEquals(aggKafkaConsumerServiceSpy.getOffsetLagBasedOnMetrics(pubSubUrl, topic, topicPartition), -1);
+    doReturn(null).when(aggKafkaConsumerServiceSpy).getKafkaConsumerService(PUBSUB_URL);
+    assertEquals(aggKafkaConsumerServiceSpy.getOffsetLagBasedOnMetrics(PUBSUB_URL, topic, topicPartition), -1);
 
     AbstractKafkaConsumerService consumerService = mock(AbstractKafkaConsumerService.class);
     when(consumerService.getOffsetLagBasedOnMetrics(topic, topicPartition)).thenReturn(123L);
     doReturn(consumerService).when(aggKafkaConsumerServiceSpy).getKafkaConsumerService(any());
-    assertEquals(aggKafkaConsumerServiceSpy.getOffsetLagBasedOnMetrics(pubSubUrl, topic, topicPartition), 123L);
+    assertEquals(aggKafkaConsumerServiceSpy.getOffsetLagBasedOnMetrics(PUBSUB_URL, topic, topicPartition), 123L);
   }
 
   @Test
   public void testGetLatestOffsetBasedOnMetrics() {
     AggKafkaConsumerService aggKafkaConsumerServiceSpy = spy(aggKafkaConsumerService);
-    doReturn(null).when(aggKafkaConsumerServiceSpy).getKafkaConsumerService(pubSubUrl);
-    assertEquals(aggKafkaConsumerServiceSpy.getLatestOffsetBasedOnMetrics(pubSubUrl, topic, topicPartition), -1);
+    doReturn(null).when(aggKafkaConsumerServiceSpy).getKafkaConsumerService(PUBSUB_URL);
+    assertEquals(aggKafkaConsumerServiceSpy.getLatestOffsetBasedOnMetrics(PUBSUB_URL, topic, topicPartition), -1);
 
     AbstractKafkaConsumerService consumerService = mock(AbstractKafkaConsumerService.class);
     when(consumerService.getLatestOffsetBasedOnMetrics(topic, topicPartition)).thenReturn(1234L);
     doReturn(consumerService).when(aggKafkaConsumerServiceSpy).getKafkaConsumerService(any());
-    assertEquals(aggKafkaConsumerServiceSpy.getLatestOffsetBasedOnMetrics(pubSubUrl, topic, topicPartition), 1234L);
+    assertEquals(aggKafkaConsumerServiceSpy.getLatestOffsetBasedOnMetrics(PUBSUB_URL, topic, topicPartition), 1234L);
   }
 
   @Test

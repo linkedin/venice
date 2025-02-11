@@ -13,10 +13,10 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.StoreInfo;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -56,7 +56,7 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
     StoreInfo storeInfo = heartBeatStoreResponse.getStore();
     PartitionerConfig partitionerConfig = storeInfo.getPartitionerConfig();
     int partitionNum = storeInfo.getPartitionCount();
-    String heartbeatKafkaTopicName = Version.composeRealTimeTopic(heartbeatStoreName);
+    String heartbeatKafkaTopicName = Utils.composeRealTimeTopic(heartbeatStoreName);
     VeniceWriter<byte[], byte[], byte[]> veniceWriter = getVeniceWriter(
         heartbeatKafkaTopicName,
         partitionerConfig,

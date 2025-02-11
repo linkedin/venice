@@ -35,6 +35,7 @@ import com.linkedin.venice.integration.utils.TestVeniceServer;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
@@ -123,18 +124,18 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
       serverProperties.put(
           CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME,
           "localhost:" + TestUtils.getFreePort());
-      multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-          NUMBER_OF_COLOS,
-          1,
-          1,
-          2,
-          numServers,
-          1,
-          NUMBER_OF_REPLICAS,
-          Optional.empty(),
-          Optional.empty(),
-          Optional.of(serverProperties),
-          false);
+      VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+          new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_COLOS)
+              .numberOfClusters(1)
+              .numberOfParentControllers(1)
+              .numberOfChildControllers(2)
+              .numberOfServers(numServers)
+              .numberOfRouters(1)
+              .replicationFactor(NUMBER_OF_REPLICAS)
+              .forkServer(false)
+              .serverProperties(serverProperties);
+      multiRegionMultiClusterWrapper =
+          ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
 
       List<VeniceMultiClusterWrapper> childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
       List<VeniceControllerWrapper> parentControllers = multiRegionMultiClusterWrapper.getParentControllers();

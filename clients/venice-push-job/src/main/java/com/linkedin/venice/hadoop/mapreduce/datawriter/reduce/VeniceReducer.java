@@ -13,6 +13,7 @@ import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.utils.IteratorUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.IOException;
 import java.util.Iterator;
 import org.apache.hadoop.io.BytesWritable;
@@ -173,5 +174,17 @@ public class VeniceReducer extends AbstractPartitionWriter
   // Visible for testing
   protected void setHadoopJobClientProvider(HadoopJobClientProvider hadoopJobClientProvider) {
     this.hadoopJobClientProvider = hadoopJobClientProvider;
+  }
+
+  // Visible for testing
+  @Override
+  protected AbstractVeniceWriter<byte[], byte[], byte[]> createBasicVeniceWriter() {
+    return super.createBasicVeniceWriter();
+  }
+
+  // Visible for testing
+  @Override
+  protected void setVeniceWriterFactory(VeniceWriterFactory factory) {
+    super.setVeniceWriterFactory(factory);
   }
 }

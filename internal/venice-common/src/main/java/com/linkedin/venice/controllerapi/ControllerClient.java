@@ -20,14 +20,13 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_B;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HEARTBEAT_TIMESTAMP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_VERSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_ABORT_MIGRATION_CLEANUP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_SYSTEM_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_WRITE_COMPUTE_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_RETENTION_IN_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOCKED_NODE_ID_LIST_SEPARATOR;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOCKED_STORAGE_NODE_IDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OFFSET;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OPERATION;
@@ -53,6 +52,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TI
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_COMPAT_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEND_START_OF_PUSH;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEPARATE_REAL_TIME_TOPIC_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SKIP_DIV;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_FABRIC_VERSION_INCLUDED;
@@ -65,6 +65,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_SIZ
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGETED_REGIONS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TO_BE_STOPPED_INSTANCES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPSTREAM_OFFSET;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
@@ -72,6 +73,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.VOLDEMORT
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_OPERATION;
 import static com.linkedin.venice.meta.Version.PushType;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
@@ -85,6 +88,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
@@ -111,6 +115,7 @@ import org.apache.logging.log4j.Logger;
 
 public class ControllerClient implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(ControllerClient.class);
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
   private static final int DEFAULT_MAX_ATTEMPTS = 10;
   private static final int QUERY_JOB_STATUS_TIMEOUT = 60 * Time.MS_PER_SECOND;
@@ -197,7 +202,8 @@ public class ControllerClient implements Closeable {
           String leaderControllerUrl =
               transport.request(url, ControllerRoute.LEADER_CONTROLLER, newParams(), LeaderControllerResponse.class)
                   .getUrl();
-          LOGGER.info("Discovered leader controller {} from {}", leaderControllerUrl, url);
+          LOGGER
+              .info("Discovered leader controller: {} from: {} for cluster: {}", leaderControllerUrl, url, clusterName);
           return leaderControllerUrl;
         } catch (Exception e) {
           LOGGER.warn("Unable to discover leader controller from {}", url);
@@ -305,7 +311,8 @@ public class ControllerClient implements Closeable {
         rewindTimeInSecondsOverride,
         false,
         null,
-        -1);
+        -1,
+        false);
   }
 
   public VersionCreationResponse requestTopicForWrites(
@@ -337,7 +344,8 @@ public class ControllerClient implements Closeable {
         rewindTimeInSecondsOverride,
         deferVersionSwap,
         null,
-        -1);
+        -1,
+        false);
   }
 
   /**
@@ -380,7 +388,8 @@ public class ControllerClient implements Closeable {
       long rewindTimeInSecondsOverride,
       boolean deferVersionSwap,
       String targetedRegions,
-      int repushSourceVersion) {
+      int repushSourceVersion,
+      boolean pushToSeparateRealtimeTopic) {
     QueryParams params = newParams().add(NAME, storeName)
         // TODO: Store size is not used anymore. Remove it after the next round of controller deployment.
         .add(STORE_SIZE, Long.toString(storeSize))
@@ -395,7 +404,8 @@ public class ControllerClient implements Closeable {
         .add(BATCH_JOB_HEARTBEAT_ENABLED, batchJobHeartbeatEnabled)
         .add(REWIND_TIME_IN_SECONDS_OVERRIDE, rewindTimeInSecondsOverride)
         .add(DEFER_VERSION_SWAP, deferVersionSwap)
-        .add(REPUSH_SOURCE_VERSION, repushSourceVersion);
+        .add(REPUSH_SOURCE_VERSION, repushSourceVersion)
+        .add(SEPARATE_REAL_TIME_TOPIC_ENABLED, pushToSeparateRealtimeTopic);
     if (StringUtils.isNotEmpty(targetedRegions)) {
       params.add(TARGETED_REGIONS, targetedRegions);
     }
@@ -593,7 +603,11 @@ public class ControllerClient implements Closeable {
   }
 
   public TrackableControllerResponse deleteStore(String storeName) {
-    QueryParams params = newParams().add(NAME, storeName);
+    return deleteStore(storeName, false);
+  }
+
+  public TrackableControllerResponse deleteStore(String storeName, boolean isAbortMigrationCleanup) {
+    QueryParams params = newParams().add(NAME, storeName).add(IS_ABORT_MIGRATION_CLEANUP, isAbortMigrationCleanup);
     return request(ControllerRoute.DELETE_STORE, params, TrackableControllerResponse.class);
   }
 
@@ -889,8 +903,8 @@ public class ControllerClient implements Closeable {
   }
 
   public NodeStatusResponse isNodeRemovable(String instanceId, List<String> lockedNodeIds) {
-    QueryParams params = newParams().add(STORAGE_NODE_ID, instanceId)
-        .add(LOCKED_STORAGE_NODE_IDS, String.join(LOCKED_NODE_ID_LIST_SEPARATOR, lockedNodeIds));
+    QueryParams params =
+        newParams().add(STORAGE_NODE_ID, instanceId).add(TO_BE_STOPPED_INSTANCES, String.join(",", lockedNodeIds));
     return request(ControllerRoute.NODE_REMOVABLE, params, NodeStatusResponse.class);
   }
 
@@ -911,6 +925,21 @@ public class ControllerClient implements Closeable {
 
   public MultiNodeResponse listStorageNodes() {
     return request(ControllerRoute.LIST_NODES, newParams(), MultiNodeResponse.class);
+  }
+
+  public StoppableNodeStatusResponse getAggregatedHealthStatus(
+      String clusterName,
+      List<String> instances,
+      List<String> toBeStoppedInstances) throws JsonProcessingException {
+
+    AggregatedHealthStatusRequest request =
+        new AggregatedHealthStatusRequest(clusterName, instances, toBeStoppedInstances);
+    String requestString = OBJECT_MAPPER.writeValueAsString(request);
+    return request(
+        ControllerRoute.AGGREGATED_HEALTH_STATUS,
+        newParams(),
+        StoppableNodeStatusResponse.class,
+        requestString.getBytes());
   }
 
   public MultiNodesStatusResponse listInstancesStatuses(boolean enableReplicas) {

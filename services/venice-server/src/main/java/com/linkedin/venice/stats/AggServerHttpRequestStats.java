@@ -12,6 +12,7 @@ import io.tehuti.metrics.MetricsRepository;
  */
 public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<ServerHttpRequestStats> {
   public AggServerHttpRequestStats(
+      String clusterName,
       MetricsRepository metricsRepository,
       RequestType requestType,
       boolean isKeyValueProfilingEnabled,
@@ -19,10 +20,12 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
       boolean unregisterMetricForDeletedStoreEnabled,
       boolean isDaVinciClient) {
     super(
+        clusterName,
         metricsRepository,
         new ServerHttpRequestStatsSupplier(requestType, isKeyValueProfilingEnabled, isDaVinciClient),
         metadataRepository,
-        unregisterMetricForDeletedStoreEnabled);
+        unregisterMetricForDeletedStoreEnabled,
+        false);
   }
 
   static class ServerHttpRequestStatsSupplier implements StatsSupplier<ServerHttpRequestStats> {
@@ -41,7 +44,7 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
     }
 
     @Override
-    public ServerHttpRequestStats get(MetricsRepository metricsRepository, String storeName) {
+    public ServerHttpRequestStats get(MetricsRepository metricsRepository, String storeName, String clusterName) {
       throw new VeniceException("Should not be called.");
     }
 
@@ -49,6 +52,7 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
     public ServerHttpRequestStats get(
         MetricsRepository metricsRepository,
         String storeName,
+        String clusterName,
         ServerHttpRequestStats totalStats) {
       return new ServerHttpRequestStats(
           metricsRepository,

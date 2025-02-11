@@ -1,13 +1,10 @@
 package com.linkedin.venice.schema;
 
-import com.linkedin.alpini.io.IOUtils;
 import com.linkedin.venice.utils.TestUtils;
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -20,22 +17,11 @@ import org.testng.annotations.Test;
 public class SchemaAdapterTest {
   private static final Logger LOGGER = LogManager.getLogger(SchemaAdapterTest.class);
   private static final Schema SIMPLE_RECORD_SCHEMA = AvroSchemaParseUtils
-      .parseSchemaFromJSONStrictValidation(loadFileAsString("AvroRecordUtilsTest/SimpleRecordSchema.avsc"));
+      .parseSchemaFromJSONStrictValidation(TestUtils.loadFileAsString("AvroRecordUtilsTest/SimpleRecordSchema.avsc"));
   private static final Schema OLD_RECORD_SCHEMA = AvroSchemaParseUtils
-      .parseSchemaFromJSONStrictValidation(loadFileAsString("AvroRecordUtilsTest/OldRecordSchema.avsc"));
+      .parseSchemaFromJSONStrictValidation(TestUtils.loadFileAsString("AvroRecordUtilsTest/OldRecordSchema.avsc"));
   private static final Schema EVOLVED_RECORD_SCHEMA = AvroSchemaParseUtils
-      .parseSchemaFromJSONStrictValidation(loadFileAsString("AvroRecordUtilsTest/EvolvedRecordSchema.avsc"));
-
-  private static String loadFileAsString(String fileName) {
-    try {
-      return IOUtils.toString(
-          Objects.requireNonNull(Thread.currentThread().getContextClassLoader().getResourceAsStream(fileName)),
-          StandardCharsets.UTF_8);
-    } catch (Exception e) {
-      LOGGER.error(e);
-      return null;
-    }
-  }
+      .parseSchemaFromJSONStrictValidation(TestUtils.loadFileAsString("AvroRecordUtilsTest/EvolvedRecordSchema.avsc"));
 
   @Test
   public void testAdaptRecordWithSameSchema() {

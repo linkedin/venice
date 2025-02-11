@@ -80,8 +80,8 @@ public class KafkaInputRecordReaderTest {
     Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> recordsMap = new HashMap<>();
     recordsMap.put(pubSubTopicPartition, consumerRecordList);
     when(consumer.poll(anyLong())).thenReturn(recordsMap, new HashMap<>());
-
-    KafkaInputSplit split = new KafkaInputSplit(topic, 0, 0, 102);
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), 0);
+    KafkaInputSplit split = new KafkaInputSplit(pubSubTopicRepository, topicPartition, 0, 102);
     DataWriterTaskTracker taskTracker = new ReporterBackedMapReduceDataWriterTaskTracker(Reporter.NULL);
     try (KafkaInputRecordReader reader =
         new KafkaInputRecordReader(split, conf, taskTracker, consumer, pubSubTopicRepository)) {

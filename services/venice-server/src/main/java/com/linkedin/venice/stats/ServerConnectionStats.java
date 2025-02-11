@@ -15,6 +15,7 @@ public class ServerConnectionStats extends AbstractVeniceStats {
 
   private final Sensor routerConnectionRequestSensor;
   private final Sensor clientConnectionRequestSensor;
+  private final Sensor connectionRequestSensor;
 
   private final AtomicLong routerConnectionCount = new AtomicLong();
   private final AtomicLong clientConnectionCount = new AtomicLong();
@@ -27,6 +28,7 @@ public class ServerConnectionStats extends AbstractVeniceStats {
     registerSensorIfAbsent(
         new AsyncGauge((ignored, ignored2) -> clientConnectionCount.get(), CLIENT_CONNECTION_COUNT_GAUGE));
     clientConnectionRequestSensor = registerSensorIfAbsent(CLIENT_CONNECTION_REQUEST, new OccurrenceRate());
+    connectionRequestSensor = registerSensorIfAbsent("connection_request", new OccurrenceRate());
   }
 
   public void incrementRouterConnectionCount() {
@@ -45,5 +47,9 @@ public class ServerConnectionStats extends AbstractVeniceStats {
 
   public void decrementClientConnectionCount() {
     clientConnectionCount.decrementAndGet();
+  }
+
+  public void newConnectionRequest() {
+    connectionRequestSensor.record();
   }
 }

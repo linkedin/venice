@@ -8,6 +8,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_A;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_B;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HEARTBEAT_TIMESTAMP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCLUDE_SYSTEM_STORES;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_ABORT_MIGRATION_CLEANUP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OPERATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
@@ -112,11 +113,15 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.http.HttpStatus;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import spark.Request;
 import spark.Route;
 
 
 public class StoresRoutes extends AbstractRoute {
+  private static final Logger LOGGER = LogManager.getLogger(StoresRoutes.class);
+
   private final PubSubTopicRepository pubSubTopicRepository;
 
   public StoresRoutes(
@@ -509,29 +514,35 @@ public class StoresRoutes extends AbstractRoute {
     return new VeniceRouteHandler<TrackableControllerResponse>(TrackableControllerResponse.class) {
       @Override
       public void internalHandle(Request request, TrackableControllerResponse veniceResponse) {
-        // Only allow allowlist users to run this command
-        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
-          return;
-        }
-        AdminSparkServer.validateParams(request, DELETE_STORE.getParams(), admin);
-        String clusterName = request.queryParams(CLUSTER);
-        String storeName = request.queryParams(NAME);
-
-        veniceResponse.setCluster(clusterName);
-        veniceResponse.setName(storeName);
-
-        Optional<AdminCommandExecutionTracker> adminCommandExecutionTracker =
-            admin.getAdminCommandExecutionTracker(clusterName);
-        if (adminCommandExecutionTracker.isPresent()) {
-          // Lock the tracker to get the execution id for the last admin command.
-          // If will not make our performance worse, because we lock the whole cluster while handling the admin
-          // operation in parent admin.
-          synchronized (adminCommandExecutionTracker) {
-            admin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION, false);
-            veniceResponse.setExecutionId(adminCommandExecutionTracker.get().getLastExecutionId());
+        try {
+          // Only allow allowlist users to run this command
+          if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
+            return;
           }
-        } else {
-          admin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION, false);
+          AdminSparkServer.validateParams(request, DELETE_STORE.getParams(), admin);
+          String clusterName = request.queryParams(CLUSTER);
+          String storeName = request.queryParams(NAME);
+          boolean abortMigratingStore =
+              Utils.parseBooleanOrFalse(request.queryParams(IS_ABORT_MIGRATION_CLEANUP), IS_ABORT_MIGRATION_CLEANUP);
+          veniceResponse.setCluster(clusterName);
+          veniceResponse.setName(storeName);
+
+          Optional<AdminCommandExecutionTracker> adminCommandExecutionTracker =
+              admin.getAdminCommandExecutionTracker(clusterName);
+
+          if (adminCommandExecutionTracker.isPresent()) {
+            // Lock the tracker to get the execution id for the last admin command.
+            // It will not make our performance worse, because we lock the whole cluster while handling the admin
+            // operation in parent admin.
+            synchronized (adminCommandExecutionTracker) {
+              admin.deleteStore(clusterName, storeName, abortMigratingStore, Store.IGNORE_VERSION, false);
+              veniceResponse.setExecutionId(adminCommandExecutionTracker.get().getLastExecutionId());
+            }
+          } else {
+            admin.deleteStore(clusterName, storeName, abortMigratingStore, Store.IGNORE_VERSION, false);
+          }
+        } catch (Throwable e) {
+          veniceResponse.setError(e);
         }
       }
     };
@@ -688,7 +699,7 @@ public class StoresRoutes extends AbstractRoute {
         String cluster = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         String operation = request.queryParams(OPERATION);
-        boolean status = Utils.parseBooleanFromString(request.queryParams(STATUS), "storeAccessStatus");
+        boolean status = Utils.parseBooleanOrThrow(request.queryParams(STATUS), "storeAccessStatus");
 
         veniceResponse.setCluster(cluster);
         veniceResponse.setName(storeName);
@@ -804,7 +815,7 @@ public class StoresRoutes extends AbstractRoute {
 
         String cluster = request.queryParams(CLUSTER);
         boolean enableActiveActiveReplicationForCluster =
-            Utils.parseBooleanFromString(request.queryParams(STATUS), STATUS);
+            Utils.parseBooleanOrThrow(request.queryParams(STATUS), STATUS);
         String regionsFilterParams = request.queryParamOrDefault(REGIONS_FILTER, null);
 
         admin.configureActiveActiveReplication(
@@ -860,7 +871,15 @@ public class StoresRoutes extends AbstractRoute {
           List<String> deletableTopicsList = new ArrayList<>();
           int minNumberOfUnusedKafkaTopicsToPreserve = admin.getMinNumberOfUnusedKafkaTopicsToPreserve();
           allStoreTopics.forEach((storeName, topicsWithRetention) -> {
-            PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
+            String cluster;
+            try {
+              cluster = admin.discoverCluster(storeName).getFirst();
+            } catch (VeniceNoStoreException e) {
+              LOGGER.warn("Store " + storeName + " does not exist. Skipping it.");
+              return;
+            }
+            Store store = admin.getStore(cluster, storeName);
+            PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
             if (topicsWithRetention.containsKey(realTimeTopic)) {
               if (admin.isTopicTruncatedBasedOnRetention(topicsWithRetention.get(realTimeTopic))) {
                 deletableTopicsList.add(realTimeTopic.getName());

@@ -53,6 +53,7 @@ public class PushJobSetting implements Serializable {
   public String kafkaInputTopic;
   public int repushSourceVersion;
   public long rewindTimeInSecondsOverride;
+  public boolean pushToSeparateRealtimeTopicEnabled;
   public boolean kafkaInputCombinerEnabled;
   public boolean kafkaInputBuildNewDictEnabled;
   public BufferReplayPolicy validateRemoteReplayPolicy;
@@ -78,6 +79,7 @@ public class PushJobSetting implements Serializable {
   public boolean d2Routing;
   public String targetedRegions;
   public boolean isTargetedRegionPushEnabled;
+  public boolean isTargetRegionPushWithDeferredSwapEnabled;
   public boolean isSystemSchemaReaderEnabled;
   public String systemSchemaClusterD2ServiceName;
   public String systemSchemaClusterD2ZKHost;
@@ -157,4 +159,6 @@ public class PushJobSetting implements Serializable {
     // Default for preserving backward compatibility
     this.jobStartTimeMs = System.currentTimeMillis();
   }
+
+  public String materializedViewConfigFlatMap;
 }

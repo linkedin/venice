@@ -55,6 +55,14 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getAdminSecurePort();
   }
 
+  public int getAdminGrpcPort() {
+    return getCommonConfig().getAdminGrpcPort();
+  }
+
+  public int getAdminSecureGrpcPort() {
+    return getCommonConfig().getAdminSecureGrpcPort();
+  }
+
   public boolean adminCheckReadMethodForKafka() {
     return getCommonConfig().adminCheckReadMethodForKafka();
   }
@@ -215,8 +223,24 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getBackupVersionCleanupSleepMs();
   }
 
+  public long getDeferredVersionSwapSleepMs() {
+    return getCommonConfig().getDeferredVersionSwapSleepMs();
+  }
+
+  public boolean isDeferredVersionSwapServiceEnabled() {
+    return getCommonConfig().isDeferredVersionSwapServiceEnabled();
+  }
+
   public boolean isControllerEnforceSSLOnly() {
     return getCommonConfig().isControllerEnforceSSLOnly();
+  }
+
+  public boolean isGrpcServerEnabled() {
+    return getCommonConfig().isGrpcServerEnabled();
+  }
+
+  public int getGrpcServerThreadCount() {
+    return getCommonConfig().getGrpcServerThreadCount();
   }
 
   public long getTerminalStateTopicCheckerDelayMs() {

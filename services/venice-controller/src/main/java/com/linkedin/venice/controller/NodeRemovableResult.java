@@ -1,13 +1,14 @@
 package com.linkedin.venice.controller;
 
 public class NodeRemovableResult {
+  private String instanceId;
   private boolean isRemovable = true;
   private String blockingResource;
   private BlockingRemoveReason blockingReason;
   private String details;
 
-  private NodeRemovableResult() {
-
+  private NodeRemovableResult(String instanceId) {
+    this.instanceId = instanceId;
   }
 
   public boolean isRemovable() {
@@ -26,8 +27,8 @@ public class NodeRemovableResult {
     return details;
   }
 
-  public static NodeRemovableResult removableResult(String details) {
-    NodeRemovableResult result = new NodeRemovableResult();
+  public static NodeRemovableResult removableResult(String instanceId, String details) {
+    NodeRemovableResult result = new NodeRemovableResult(instanceId);
     result.details = details;
     return result;
   }
@@ -36,15 +37,20 @@ public class NodeRemovableResult {
    * @return a {@link NodeRemovableResult} object with specified parameters.
    */
   public static NodeRemovableResult nonRemovableResult(
+      String instanceId,
       String blockingResource,
       BlockingRemoveReason blockingReason,
       String details) {
-    NodeRemovableResult result = new NodeRemovableResult();
+    NodeRemovableResult result = new NodeRemovableResult(instanceId);
     result.isRemovable = false;
     result.blockingResource = blockingResource;
     result.blockingReason = blockingReason;
     result.details = details;
     return result;
+  }
+
+  public String getInstanceId() {
+    return instanceId;
   }
 
   public enum BlockingRemoveReason {

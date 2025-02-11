@@ -1,15 +1,20 @@
 package com.linkedin.venice.blobtransfer;
 
+import static com.linkedin.venice.client.store.ClientFactory.getTransportClient;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_PARTITION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VERSION;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
+import com.linkedin.venice.client.store.AvroGenericStoreClientImpl;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.utils.ObjectMapperFactory;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -28,14 +33,35 @@ public class DaVinciBlobFinder implements BlobFinder {
   private static final String TYPE_BLOB_DISCOVERY = "blob_discovery";
   private static final String ERROR_DISCOVERY_MESSAGE =
       "Error finding DVC peers for blob transfer in store: %s, version: %d, partition: %d";
-  private final AbstractAvroStoreClient storeClient;
+  private final ClientConfig clientConfig;
+  private VeniceConcurrentHashMap<String, AbstractAvroStoreClient> storeToClientMap;
 
-  public DaVinciBlobFinder(AbstractAvroStoreClient storeClient) {
-    this.storeClient = storeClient;
+  public DaVinciBlobFinder(ClientConfig clientConfig) {
+    this.storeToClientMap = new VeniceConcurrentHashMap<>();
+    this.clientConfig = clientConfig;
+  }
+
+  /**
+   * Get the store client for the given store name
+   * @param storeName
+   * @return the store client
+   */
+  AbstractAvroStoreClient getStoreClient(String storeName) {
+    return storeToClientMap.computeIfAbsent(storeName, k -> {
+      // update the config with respective store name
+      ClientConfig storeClientConfig = ClientConfig.cloneConfig(clientConfig).setStoreName(storeName);
+      AbstractAvroStoreClient storeLevelClient =
+          new AvroGenericStoreClientImpl<>(getTransportClient(storeClientConfig), false, storeClientConfig);
+      storeLevelClient.start();
+      LOGGER.info("Started store client for store: {}", storeName);
+      return storeLevelClient;
+    });
   }
 
   @Override
   public BlobPeersDiscoveryResponse discoverBlobPeers(String storeName, int version, int partition) {
+    AbstractAvroStoreClient storeClient = getStoreClient(storeName);
+
     String uri = buildUriForBlobDiscovery(storeName, version, partition);
     CompletableFuture<BlobPeersDiscoveryResponse> futureResponse = CompletableFuture.supplyAsync(() -> {
       try {
@@ -47,7 +73,15 @@ public class DaVinciBlobFinder implements BlobFinder {
       }
     }).exceptionally(throwable -> handleError(ERROR_DISCOVERY_MESSAGE, storeName, version, partition, throwable));
 
-    return futureResponse.join();
+    // Shuffle the list to avoid always picking the same host
+    BlobPeersDiscoveryResponse response = futureResponse.join();
+    List<String> discoveryResult = response.getDiscoveryResult();
+    if (discoveryResult != null && !discoveryResult.isEmpty()) {
+      Collections.shuffle(discoveryResult);
+      response.setDiscoveryResult(discoveryResult);
+    }
+
+    return response;
   }
 
   private String buildUriForBlobDiscovery(String storeName, int version, int partition) {
@@ -76,6 +110,8 @@ public class DaVinciBlobFinder implements BlobFinder {
 
   @Override
   public void close() throws IOException {
-    storeClient.close();
+    for (AbstractAvroStoreClient storeClient: storeToClientMap.values()) {
+      storeClient.close();
+    }
   }
 }

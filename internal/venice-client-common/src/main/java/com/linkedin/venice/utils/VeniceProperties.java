@@ -427,26 +427,22 @@ public class VeniceProperties implements Serializable {
     if (!containsKey(key)) {
       throw new UndefinedPropertyException(key);
     }
-    Map<String, String> map = new HashMap<>();
     List<String> keyValuePairs = this.getList(key);
+    Map<String, String> map = new HashMap<>(keyValuePairs.size());
 
-    for (String pair: keyValuePairs) {
-      Pair<String, String> keyValuePair = splitAnEntryToKeyValuePair(pair);
-      map.put(keyValuePair.getFirst(), keyValuePair.getSecond());
+    for (String keyValuePair: keyValuePairs) {
+      // One entry could have multiple ":". For example, "<ID>:<Kafka URL>:<port>". In this case, we split the String by
+      // its first ":" so that we get key=<ID> and value=<Kafka URL>:<port>
+      int indexOfFirstColon = keyValuePair.indexOf(':');
+      if (indexOfFirstColon == -1) {
+        throw new VeniceException(
+            "Invalid config. Expect each entry to contain at least one \":\". Got: " + keyValuePair);
+      }
+      String mapKey = keyValuePair.substring(0, indexOfFirstColon);
+      String mapValue = keyValuePair.substring(indexOfFirstColon + 1);
+      map.put(mapKey, mapValue);
     }
-    return map;
-  }
-
-  private Pair<String, String> splitAnEntryToKeyValuePair(String entry) {
-    if (!entry.contains(":")) {
-      throw new VeniceException("Invalid config. Expect each entry to contain at least one \":\". Got: " + entry);
-    }
-    // One entry could have multiple ":". For example, "<ID>:<Kafka URL>:<port>". In this case, we split the String by
-    // its first ":" so that we get key=<ID> and value=<Kafka URL>:<port>
-    int indexOfFirstColon = entry.indexOf(':');
-    String key = entry.substring(0, indexOfFirstColon);
-    String value = entry.substring(indexOfFirstColon + 1);
-    return new Pair<>(key, value);
+    return Collections.unmodifiableMap(map);
   }
 
   public Properties toProperties() {
@@ -457,5 +453,9 @@ public class VeniceProperties implements Serializable {
 
   public boolean isEmpty() {
     return this.props.isEmpty();
+  }
+
+  public Map<String, String> getAsMap() {
+    return props;
   }
 }

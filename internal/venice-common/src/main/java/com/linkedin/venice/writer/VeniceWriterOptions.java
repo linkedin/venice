@@ -29,6 +29,10 @@ public class VeniceWriterOptions {
   private final int maxRecordSizeBytes;
   // Set this field if you want to use different broker address than the local broker address
   private final String brokerAddress;
+  private final boolean producerCompressionEnabled;
+  private final int producerCount;
+  private final int producerThreadCount;
+  private final int producerQueueSize;
 
   public String getBrokerAddress() {
     return brokerAddress;
@@ -74,6 +78,22 @@ public class VeniceWriterOptions {
     return maxRecordSizeBytes;
   }
 
+  public boolean isProducerCompressionEnabled() {
+    return producerCompressionEnabled;
+  }
+
+  public int getProducerCount() {
+    return producerCount;
+  }
+
+  public int getProducerThreadCount() {
+    return producerThreadCount;
+  }
+
+  public int getProducerQueueSize() {
+    return producerQueueSize;
+  }
+
   private VeniceWriterOptions(Builder builder) {
     topicName = builder.topicName;
     keySerializer = builder.keySerializer;
@@ -86,6 +106,10 @@ public class VeniceWriterOptions {
     rmdChunkingEnabled = builder.rmdChunkingEnabled;
     maxRecordSizeBytes = builder.maxRecordSizeBytes;
     brokerAddress = builder.brokerAddress;
+    producerCompressionEnabled = builder.producerCompressionEnabled;
+    producerCount = builder.producerCount;
+    producerThreadCount = builder.producerThreadCount;
+    producerQueueSize = builder.producerQueueSize;
   }
 
   @Override
@@ -110,6 +134,18 @@ public class VeniceWriterOptions {
         .append(", ")
         .append("maxRecordSizeBytes:")
         .append(maxRecordSizeBytes)
+        .append(", ")
+        .append("producerCompressionEnabled:")
+        .append(producerCompressionEnabled)
+        .append(", ")
+        .append("producerCount:")
+        .append(producerCount)
+        .append(", ")
+        .append("producerThreadCount:")
+        .append(producerThreadCount)
+        .append(", ")
+        .append("producerQueueSize:")
+        .append(producerQueueSize)
         .append("}")
         .toString();
   }
@@ -126,6 +162,10 @@ public class VeniceWriterOptions {
     private boolean rmdChunkingEnabled; // default false
     private int maxRecordSizeBytes = VeniceWriter.UNLIMITED_MAX_RECORD_SIZE; // default -1
     private String brokerAddress = null; // default null
+    private boolean producerCompressionEnabled = true;
+    private int producerCount = 1;
+    private int producerThreadCount = 1;
+    private int producerQueueSize = 5 * 1024 * 1024; // 5MB by default
 
     private void addDefaults() {
       if (keySerializer == null) {
@@ -208,6 +248,26 @@ public class VeniceWriterOptions {
 
     public Builder setMaxRecordSizeBytes(int maxRecordSizeBytes) {
       this.maxRecordSizeBytes = maxRecordSizeBytes;
+      return this;
+    }
+
+    public Builder setProducerCompressionEnabled(boolean producerCompressionEnabled) {
+      this.producerCompressionEnabled = producerCompressionEnabled;
+      return this;
+    }
+
+    public Builder setProducerCount(int producerCount) {
+      this.producerCount = producerCount;
+      return this;
+    }
+
+    public Builder setProducerThreadCount(int producerThreadCount) {
+      this.producerThreadCount = producerThreadCount;
+      return this;
+    }
+
+    public Builder setProducerQueueSize(int producerQueueSize) {
+      this.producerQueueSize = producerQueueSize;
       return this;
     }
   }

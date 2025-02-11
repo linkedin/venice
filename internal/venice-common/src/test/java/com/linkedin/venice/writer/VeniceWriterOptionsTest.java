@@ -55,6 +55,10 @@ public class VeniceWriterOptionsTest {
         .setChunkingEnabled(true)
         .setRmdChunkingEnabled(true)
         .setBrokerAddress("kafka.broker.addr")
+        .setProducerCompressionEnabled(false)
+        .setProducerCount(10)
+        .setProducerThreadCount(10)
+        .setProducerQueueSize(1024 * 1024)
         .build();
 
     assertNotNull(options);
@@ -68,6 +72,10 @@ public class VeniceWriterOptionsTest {
     assertTrue(options.isChunkingEnabled());
     assertTrue(options.isRmdChunkingEnabled());
     assertEquals(options.getBrokerAddress(), "kafka.broker.addr");
+    assertFalse(options.isProducerCompressionEnabled());
+    assertEquals(options.getProducerCount(), 10);
+    assertEquals(options.getProducerThreadCount(), 10);
+    assertEquals(options.getProducerQueueSize(), 1024 * 1024);
   }
 
   @Test

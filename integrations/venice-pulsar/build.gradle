@@ -1,0 +1,61 @@
+plugins {
+  id 'io.github.lhotari.gradle-nar-plugin'
+}
+
+dependencies {
+  // Schema related dependencies
+  implementation(project(':internal:venice-common')) {
+    exclude module: 'kafka_2.10'
+    exclude group: 'org.scala-lang'
+  }
+  implementation project(':clients:venice-thin-client')
+
+  // TODO: clean this... Pulsar should not depend on Samza
+  implementation project(':integrations:venice-samza')
+
+  implementation libraries.samzaApi
+
+  implementation libraries.pulsarIoCore
+  implementation libraries.pulsarIoCommon
+  implementation libraries.jacksonDatabind
+
+  implementation libraries.log4j2api
+  implementation libraries.log4j2core
+
+  testImplementation libraries.mockito
+  testImplementation libraries.testng
+  implementation('org.apache.helix:helix-core:1.4.1:jdk8') {
+    exclude group: 'org.apache.helix'
+  }
+  implementation('org.apache.helix:helix-common:1.4.1:jdk8')  {
+    exclude group: 'org.apache.helix'
+  }
+  implementation('org.apache.helix:zookeeper-api:1.4.1:jdk8') {
+    exclude group: 'org.apache.helix'
+  }
+  implementation('org.apache.helix:metadata-store-directory-common:1.4.1:jdk8') {
+    exclude group: 'org.apache.helix'
+  }
+}
+
+nar {
+  archivesBaseName = 'pulsar-venice-sink'
+  manifest {
+    attributes 'Nar-Id': 'pulsar-venice-sink-nar'
+  }
+}
+
+test.dependsOn(nar)
+assemble.dependsOn(nar)
+
+ext {
+  // tested in integration test
+  jacocoCoverageThreshold = 0.00
+}
+
+checkerFramework {
+  extraJavacArgs = ['-Xmaxerrs', '256']
+  checkers = ['org.checkerframework.checker.nullness.NullnessChecker']
+  skipCheckerFramework = true
+  excludeTests = true
+}

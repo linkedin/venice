@@ -3,21 +3,39 @@ package com.linkedin.davinci.client;
 import static com.linkedin.davinci.client.AvroGenericDaVinciClient.READ_CHUNK_EXECUTOR;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertThrows;
 
 import com.linkedin.alpini.base.concurrency.Executors;
+import com.linkedin.davinci.DaVinciBackend;
 import com.linkedin.davinci.StoreBackend;
 import com.linkedin.davinci.VersionBackend;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
+import com.linkedin.davinci.transformer.TestStringRecordTransformer;
+import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.lang.reflect.Field;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -28,11 +46,62 @@ import java.util.TreeSet;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import org.apache.avro.Schema;
+import org.apache.logging.log4j.LogManager;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class AvroGenericDaVinciClientTest {
+  public AvroGenericDaVinciClient setUpClientWithRecordTransformer(
+      ClientConfig clientConfig,
+      DaVinciConfig daVinciConfig) throws IllegalAccessException, NoSuchFieldException {
+
+    if (daVinciConfig == null) {
+      daVinciConfig = new DaVinciConfig();
+    }
+
+    DaVinciRecordTransformerConfig recordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .setOutputValueClass(String.class)
+            .setOutputValueSchema(Schema.create(Schema.Type.STRING))
+            .build();
+    daVinciConfig.setRecordTransformerConfig(recordTransformerConfig);
+
+    VeniceProperties backendConfig = mock(VeniceProperties.class);
+    when(backendConfig.toProperties()).thenReturn(new java.util.Properties());
+
+    AvroGenericDaVinciClient<Integer, String> dvcClient =
+        spy(new AvroGenericDaVinciClient<>(daVinciConfig, clientConfig, backendConfig, Optional.empty()));
+    doReturn(false).when(dvcClient).isReady();
+    doNothing().when(dvcClient).initBackend(any(), any(), any(), any(), any(), any());
+
+    D2ServiceDiscoveryResponse mockDiscoveryResponse = mock(D2ServiceDiscoveryResponse.class);
+    when(mockDiscoveryResponse.getCluster()).thenReturn("test_cluster");
+    when(mockDiscoveryResponse.getZkAddress()).thenReturn("mock_zk_address");
+    when(mockDiscoveryResponse.getKafkaBootstrapServers()).thenReturn("mock_kafka_bootstrap_servers");
+    doReturn(mockDiscoveryResponse).when(dvcClient).discoverService();
+
+    DaVinciBackend mockBackend = mock(DaVinciBackend.class);
+    when(mockBackend.getSchemaRepository()).thenReturn(mock(ReadOnlySchemaRepository.class));
+    when(mockBackend.getStoreOrThrow(anyString())).thenReturn(mock(StoreBackend.class));
+    when(mockBackend.getObjectCache()).thenReturn(null);
+
+    ReadOnlySchemaRepository mockSchemaRepository = mock(ReadOnlySchemaRepository.class);
+    Schema mockKeySchema = new Schema.Parser().parse("{\"type\": \"int\"}");
+    when(mockSchemaRepository.getKeySchema(anyString())).thenReturn(new SchemaEntry(1, mockKeySchema));
+    when(mockBackend.getSchemaRepository()).thenReturn(mockSchemaRepository);
+
+    // Use reflection to set the private static daVinciBackend field
+    Field backendField = AvroGenericDaVinciClient.class.getDeclaredField("daVinciBackend");
+    AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+      backendField.setAccessible(true);
+      return null;
+    });
+    backendField.set(null, new ReferenceCounted<>(mockBackend, ignored -> {}));
+
+    return dvcClient;
+  }
+
   @Test
   public void testPropertyBuilderWithRecordTransformer() {
     String schema = "{\n" + "  \"type\": \"string\"\n" + "}\n";
@@ -40,7 +109,37 @@ public class AvroGenericDaVinciClientTest {
         new PropertyBuilder().put("kafka.admin.class", "name").put("record.transformer.value.schema", schema).build();
     RocksDBServerConfig dbconfig = new RocksDBServerConfig(config);
     Assert.assertEquals(schema, dbconfig.getTransformerValueSchema());
+  }
 
+  @Test
+  public void testRecordTransformerClient() throws NoSuchFieldException, IllegalAccessException {
+    ClientConfig clientConfig = mock(ClientConfig.class);
+    when(clientConfig.getStoreName()).thenReturn("test_store");
+    when(clientConfig.getSpecificValueClass()).thenReturn(String.class);
+    when(clientConfig.isSpecificClient()).thenReturn(true);
+
+    AvroGenericDaVinciClient dvcClient = setUpClientWithRecordTransformer(clientConfig, null);
+    dvcClient.start();
+  }
+
+  @Test
+  public void testRecordTransformerClientValueClassMismatch() throws NoSuchFieldException, IllegalAccessException {
+    ClientConfig clientConfig = mock(ClientConfig.class);
+    when(clientConfig.getStoreName()).thenReturn("test_store");
+    when(clientConfig.getSpecificValueClass()).thenReturn(Integer.class);
+    when(clientConfig.isSpecificClient()).thenReturn(true);
+
+    AvroGenericDaVinciClient dvcClient = setUpClientWithRecordTransformer(clientConfig, null);
+    assertThrows(VeniceClientException.class, () -> dvcClient.start());
+  }
+
+  @Test
+  public void testRecordTransformerWithIngestionIsolation() {
+    ClientConfig clientConfig = mock(ClientConfig.class);
+    DaVinciConfig daVinciConfig = new DaVinciConfig();
+    daVinciConfig.setIsolated(true);
+
+    assertThrows(VeniceClientException.class, () -> setUpClientWithRecordTransformer(clientConfig, daVinciConfig));
   }
 
   @Test
@@ -137,5 +236,20 @@ public class AvroGenericDaVinciClientTest {
         readChunkExecutor);
     assertEquals(daVinciClient.getReadChunkExecutorForLargeRequest(), readChunkExecutor);
 
+    // Close a not-ready client won't throw exception.
+    daVinciClient.close();
+  }
+
+  @Test
+  public void closeTest() {
+    AvroGenericDaVinciClient client = mock(AvroGenericDaVinciClient.class);
+    doCallRealMethod().when(client).close();
+    doReturn(LogManager.getLogger(AvroGenericDaVinciClient.class)).when(client).getClientLogger();
+    doReturn(false).when(client).isReady();
+    client.close();
+    verify(client, never()).closeInner();
+    doReturn(true).when(client).isReady();
+    client.close();
+    verify(client, times(1)).closeInner();
   }
 }

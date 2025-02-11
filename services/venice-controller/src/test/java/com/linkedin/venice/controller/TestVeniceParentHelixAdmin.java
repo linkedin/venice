@@ -3,10 +3,12 @@ package com.linkedin.venice.controller;
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
 import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_SOP;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
+import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -20,6 +22,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -57,6 +60,7 @@ import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
+import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
@@ -82,6 +86,9 @@ import com.linkedin.venice.pushmonitor.StatusSnapshot;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.status.protocol.PushJobDetails;
+import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
@@ -92,6 +99,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.views.ChangeCaptureView;
+import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import java.time.LocalDateTime;
@@ -127,6 +135,36 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @AfterMethod
   public void cleanupTestCase() {
     super.cleanupTestCase();
+  }
+
+  @Test
+  public void testDualWriteSendPushJobDetails() {
+    parentAdmin.initStorageCluster(clusterName);
+    PushJobStatusRecordKey key = new PushJobStatusRecordKey();
+    key.versionNumber = 1;
+    key.storeName = "abc";
+    PushJobDetails value = new PushJobDetails();
+    doCallRealMethod().when(internalAdmin).sendPushJobDetails(any(), any());
+    ControllerClient controllerClient = mock(ControllerClient.class);
+    ControllerResponse controllerResponse = mock(ControllerResponse.class);
+    when(controllerResponse.isError()).thenReturn(false);
+    doReturn(controllerResponse).when(controllerClient).sendPushJobDetails(anyString(), anyInt(), any(byte[].class));
+    Assert.assertNotNull(controllerClient.sendPushJobDetails("abc", 1, "abc".getBytes()));
+    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
+    controllerClientMap.put("test-region", controllerClient);
+    doReturn(controllerClientMap).when(internalAdmin).getControllerClientMap(anyString());
+    doReturn(true).when(internalAdmin).isParent();
+    InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsInternalAvroSpecificSerializer =
+        mock(InternalAvroSpecificSerializer.class);
+    doReturn("abc".getBytes()).when(pushJobDetailsInternalAvroSpecificSerializer).serialize(any(), any());
+    doReturn(pushJobDetailsInternalAvroSpecificSerializer).when(internalAdmin).getPushJobDetailsSerializer();
+    doReturn("test-cluster").when(internalAdmin).getPushJobStatusStoreClusterName();
+    parentAdmin.sendPushJobDetails(key, value);
+    verify(internalAdmin, atLeast(1)).sendPushJobDetails(key, value);
+    verify(internalAdmin, atLeast(1)).sendPushJobDetailsToLocalRT(any(), any());
+    verify(controllerClient, atLeast(1)).sendPushJobDetails(anyString(), anyInt(), any());
+    doReturn(controllerClients).when(internalAdmin).getControllerClientMap(any());
+
   }
 
   @Test
@@ -1518,6 +1556,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @Test
   public void testGetIncrementalPushVersion() {
     String storeName = "testStore";
+    parentAdmin.getStore(storeName, clusterName);
     Version incrementalPushVersion = new VersionImpl(storeName, 1);
     assertEquals(
         parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.COMPLETED),
@@ -1535,12 +1574,12 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     } catch (VeniceException e) {
     }
 
-    doReturn(false).when(internalAdmin).isTopicTruncated(Version.composeRealTimeTopic(storeName));
+    doReturn(false).when(internalAdmin).isTopicTruncated(eq(Utils.composeRealTimeTopic(storeName)));
     assertEquals(
         parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.COMPLETED),
         incrementalPushVersion);
 
-    doReturn(true).when(internalAdmin).isTopicTruncated(Version.composeRealTimeTopic(storeName));
+    doReturn(true).when(internalAdmin).isTopicTruncated(anyString());
     assertThrows(
         VeniceException.class,
         () -> parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.COMPLETED));
@@ -1746,8 +1785,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
 
-    UpdateStoreQueryParams storeQueryParams1 =
-        new UpdateStoreQueryParams().setIncrementalPushEnabled(true).setBlobTransferEnabled(true);
+    UpdateStoreQueryParams storeQueryParams1 = new UpdateStoreQueryParams().setBlobTransferEnabled(true);
     parentAdmin.initStorageCluster(clusterName);
     parentAdmin.updateStore(clusterName, storeName, storeQueryParams1);
 
@@ -1767,7 +1805,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertEquals(adminMessage.operationType, AdminMessageType.UPDATE_STORE.getValue());
 
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
-    assertEquals(updateStore.incrementalPushEnabled, true);
     Assert.assertTrue(updateStore.blobTransferEnabled);
 
     long readQuota = 100L;
@@ -1882,19 +1919,38 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     parentAdmin
         .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setNativeReplicationSourceFabric("dc1"));
 
-    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
-
-    verify(veniceWriter, times(1)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
-    byte[] valueBytes = valueCaptor.getValue();
-    int schemaId = schemaCaptor.getValue();
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
+    AdminOperation adminMessage = verifyAndGetSingleAdminOperation();
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
     assertEquals(
         updateStore.nativeReplicationSourceFabric.toString(),
         "dc1",
         "Native replication source fabric does not match after updating the store!");
+  }
+
+  @Test(description = "Test that update store sets target region swap configs correctly")
+  public void testUpdateStoreTargetSwapRegion() {
+    String storeName = Utils.getUniqueString("testUpdateStore");
+    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+
+    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
+        .when(veniceWriter)
+        .put(any(), any(), anyInt());
+
+    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
+
+    UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams().setTargetRegionSwap("prod")
+        .setTargetRegionSwapWaitTime(100)
+        .setIsDavinciHeartbeatReported(false);
+    parentAdmin.initStorageCluster(clusterName);
+    parentAdmin.updateStore(clusterName, storeName, updateStoreQueryParams);
+
+    AdminOperation adminMessage = verifyAndGetSingleAdminOperation();
+    UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
+    Assert.assertEquals(updateStore.targetSwapRegion.toString(), "prod");
+    Assert.assertEquals(updateStore.targetSwapRegionWaitTime, 100);
+    Assert.assertEquals(updateStore.isDaVinciHeartBeatReported, false);
   }
 
   @Test
@@ -1945,14 +2001,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         storeName,
         new UpdateStoreQueryParams().setHybridOffsetLagThreshold(-1).setHybridRewindSeconds(-1));
 
-    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
-
-    verify(veniceWriter, times(1)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
-    byte[] valueBytes = valueCaptor.getValue();
-    int schemaId = schemaCaptor.getValue();
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
+    AdminOperation adminMessage = verifyAndGetSingleAdminOperation();
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
     Assert.assertFalse(internalAdmin.isHybrid(updateStore.getHybridStoreConfig()));
     Assert.assertFalse(updateStore.incrementalPushEnabled);
@@ -1962,69 +2011,70 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @Test
   public void testSetStoreViewConfig() {
     String storeName = Utils.getUniqueString("testUpdateStore");
-    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
-    store.setActiveActiveReplicationEnabled(true);
-    store.setChunkingEnabled(true);
-    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-
-    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
-
-    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
-        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
-
-    parentAdmin.initStorageCluster(clusterName);
+    setupForStoreViewConfigUpdateTest(storeName);
     Map<String, String> viewConfig = new HashMap<>();
     viewConfig.put(
         "changeCapture",
         "{\"viewClassName\" : \"" + ChangeCaptureView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setStoreViews(viewConfig));
 
-    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
-
-    verify(veniceWriter, times(1)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
-    byte[] valueBytes = valueCaptor.getValue();
-    int schemaId = schemaCaptor.getValue();
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
+    AdminOperation adminMessage = verifyAndGetSingleAdminOperation();
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
     Assert.assertTrue(updateStore.getViews().containsKey("changeCapture"));
   }
 
   @Test
+  public void testSetRePartitionViewConfig() {
+    String storeName = Utils.getUniqueString("testUpdateStore");
+    setupForStoreViewConfigUpdateTest(storeName);
+    Map<String, String> viewConfig = new HashMap<>();
+    String rePartitionViewConfigString = "{\"viewClassName\" : \"%s\", \"viewParameters\" : {\"%s\":\"%s\"}}";
+    String rePartitionViewName = "rePartitionViewA";
+    int rePartitionViewPartitionCount = 10;
+    String viewString = String.format(
+        rePartitionViewConfigString,
+        MaterializedView.class.getCanonicalName(),
+        MaterializedViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name(),
+        rePartitionViewPartitionCount);
+
+    // Invalid re-partition view name
+    viewConfig.put(rePartitionViewName + VERSION_SEPARATOR, viewString);
+    Assert.assertThrows(
+        () -> parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setStoreViews(viewConfig)));
+
+    viewConfig.clear();
+    viewConfig.put(rePartitionViewName, viewString);
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setStoreViews(viewConfig));
+
+    AdminOperation adminMessage = verifyAndGetSingleAdminOperation();
+    UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
+    Assert.assertTrue(updateStore.getViews().containsKey(rePartitionViewName));
+    Map<String, CharSequence> rePartitionViewParameters =
+        updateStore.getViews().get(rePartitionViewName).viewParameters;
+    Assert.assertNotNull(rePartitionViewParameters.get(MaterializedViewParameters.MATERIALIZED_VIEW_NAME.name()));
+    Assert.assertEquals(
+        rePartitionViewParameters.get(MaterializedViewParameters.MATERIALIZED_VIEW_NAME.name()).toString(),
+        rePartitionViewName);
+    Assert.assertEquals(
+        Integer.parseInt(
+            rePartitionViewParameters.get(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name())
+                .toString()),
+        rePartitionViewPartitionCount);
+  }
+
+  @Test
   public void testInsertStoreViewConfig() {
     String storeName = Utils.getUniqueString("testUpdateStore");
-    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
-    store.setActiveActiveReplicationEnabled(true);
-    store.setChunkingEnabled(true);
+    Store store = setupForStoreViewConfigUpdateTest(storeName);
     store.setViewConfigs(
         Collections.singletonMap("testView", new ViewConfigImpl("testViewClassDummyName", Collections.emptyMap())));
-    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-
-    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
-
-    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
-        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
-
-    parentAdmin.initStorageCluster(clusterName);
     parentAdmin.updateStore(
         clusterName,
         storeName,
         new UpdateStoreQueryParams().setViewName("changeCapture")
             .setViewClassName(ChangeCaptureView.class.getCanonicalName()));
 
-    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
-
-    verify(veniceWriter, times(1)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
-    byte[] valueBytes = valueCaptor.getValue();
-    int schemaId = schemaCaptor.getValue();
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
+    AdminOperation adminMessage = verifyAndGetSingleAdminOperation();
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
     assertEquals(updateStore.getViews().size(), 2);
     Assert.assertTrue(updateStore.getViews().containsKey("changeCapture"));
@@ -2032,6 +2082,52 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         updateStore.getViews().get("changeCapture").viewClassName.toString(),
         ChangeCaptureView.class.getCanonicalName());
     Assert.assertTrue(updateStore.getViews().get("changeCapture").viewParameters.isEmpty());
+  }
+
+  @Test
+  public void testInsertMaterializedViewConfig() {
+    String storeName = Utils.getUniqueString("testUpdateStore");
+    Store store = setupForStoreViewConfigUpdateTest(storeName);
+    store.setViewConfigs(
+        Collections.singletonMap("testView", new ViewConfigImpl("testViewClassDummyName", Collections.emptyMap())));
+    String rePartitionViewName = "rePartitionViewA";
+    int rePartitionViewPartitionCount = 10;
+    Map<String, String> viewClassParams = new HashMap<>();
+    viewClassParams.put(
+        MaterializedViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name(),
+        Integer.toString(rePartitionViewPartitionCount));
+
+    // Invalid re-partition view name
+    Assert.assertThrows(
+        () -> parentAdmin.updateStore(
+            clusterName,
+            storeName,
+            new UpdateStoreQueryParams().setViewName(rePartitionViewName + VERSION_SEPARATOR)
+                .setViewClassName(MaterializedView.class.getCanonicalName())
+                .setViewClassParams(viewClassParams)));
+
+    parentAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setViewName(rePartitionViewName)
+            .setViewClassName(MaterializedView.class.getCanonicalName())
+            .setViewClassParams(viewClassParams));
+
+    AdminOperation adminMessage = verifyAndGetSingleAdminOperation();
+    UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
+    assertEquals(updateStore.getViews().size(), 2);
+    Assert.assertTrue(updateStore.getViews().containsKey(rePartitionViewName));
+    Map<String, CharSequence> rePartitionViewParameters =
+        updateStore.getViews().get(rePartitionViewName).viewParameters;
+    Assert.assertNotNull(rePartitionViewParameters.get(MaterializedViewParameters.MATERIALIZED_VIEW_NAME.name()));
+    Assert.assertEquals(
+        rePartitionViewParameters.get(MaterializedViewParameters.MATERIALIZED_VIEW_NAME.name()).toString(),
+        rePartitionViewName);
+    Assert.assertEquals(
+        Integer.parseInt(
+            rePartitionViewParameters.get(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name())
+                .toString()),
+        rePartitionViewPartitionCount);
   }
 
   @Test
@@ -2104,6 +2200,24 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
+  public void testAbortMigrationDeleteStore() {
+    String storeName = "test-testAbortMigrationCreateStore";
+    String owner = "unitTest";
+    Store store = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
+
+    doReturn(store).when(internalAdmin).getStore(eq(clusterName), eq(storeName));
+    doReturn(store).when(internalAdmin).checkPreConditionForDeletion(eq(clusterName), eq(storeName));
+    assertTrue(!store.isMigrating());
+    parentAdmin.initStorageCluster(clusterName);
+    Exception exp = Assert
+        .expectThrows(VeniceException.class, () -> parentAdmin.deleteStore(clusterName, storeName, true, 0, true));
+    assertEquals(
+        "Store test-testAbortMigrationCreateStore's migrating flag is false. Not safe to delete a store "
+            + "that is assumed to be migrating without the migrating flag setup as true.",
+        exp.getMessage());
+  }
+
+  @Test
   public void testDeleteStore() {
     String storeName = "test-testReCreateStore";
     String owner = "unittest";
@@ -2119,7 +2233,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
 
     parentAdmin.initStorageCluster(clusterName);
-    parentAdmin.deleteStore(clusterName, storeName, 0, true);
+    parentAdmin.deleteStore(clusterName, storeName, false, 0, true);
 
     verify(veniceWriter).put(any(), any(), anyInt());
     verify(zkClient, times(1)).readData(zkMetadataNodePath, null);
@@ -2602,8 +2716,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         () -> parentAdmin.deleteAclForStore(clusterName, storeName));
   }
 
-  @Test
-  public void testHybridAndIncrementalUpdateStoreCommands() {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testHybridAndIncrementalUpdateStoreCommands(boolean aaEnabled) {
     String storeName = Utils.getUniqueString("testUpdateStore");
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
@@ -2640,6 +2754,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertEquals(updateStore.hybridStoreConfig.offsetLagThresholdToGoOnline, 20000);
     assertEquals(updateStore.hybridStoreConfig.rewindTimeInSeconds, 60);
 
+    store.setActiveActiveReplicationEnabled(aaEnabled);
     store.setHybridStoreConfig(
         new HybridStoreConfigImpl(
             60,
@@ -2648,10 +2763,15 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             DataReplicationPolicy.NON_AGGREGATE,
             BufferReplayPolicy.REWIND_FROM_EOP));
     // Incremental push can be enabled on a hybrid store, default inc push policy is inc push to RT now
-    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
-
-    // veniceWriter.put will be called again for the second update store command
-    verify(veniceWriter, times(2)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    if (aaEnabled) {
+      parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+      // veniceWriter.put will be called again for the second update store command
+      verify(veniceWriter, times(2)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    } else {
+      assertThrows(
+          () -> parentAdmin
+              .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true)));
+    }
   }
 
   @Test
@@ -2834,5 +2954,33 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     statuses.put("region3", ExecutionStatus.DVC_INGESTION_ERROR_OTHER);
     finalStatus = VeniceParentHelixAdmin.getFinalReturnStatus(statuses, childRegions, 0, new StringBuilder());
     assertEquals(finalStatus, ExecutionStatus.DVC_INGESTION_ERROR_OTHER);
+  }
+
+  private Store setupForStoreViewConfigUpdateTest(String storeName) {
+    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    store.setActiveActiveReplicationEnabled(true);
+    store.setChunkingEnabled(true);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+
+    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
+        .when(veniceWriter)
+        .put(any(), any(), anyInt());
+
+    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
+
+    parentAdmin.initStorageCluster(clusterName);
+    return store;
+  }
+
+  private AdminOperation verifyAndGetSingleAdminOperation() {
+    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
+
+    verify(veniceWriter, times(1)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    byte[] valueBytes = valueCaptor.getValue();
+    int schemaId = schemaCaptor.getValue();
+    return adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
   }
 }

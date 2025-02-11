@@ -1,5 +1,6 @@
 package com.linkedin.venice.meta;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -17,15 +18,33 @@ public class HybridStoreConfigImpl implements HybridStoreConfig {
   public static final long DEFAULT_REWIND_TIME_IN_SECONDS = Time.SECONDS_PER_DAY;
   public static final long DEFAULT_HYBRID_TIME_LAG_THRESHOLD = -1L;
   public static final long DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD = 1000L;
+  public static final String DEFAULT_REAL_TIME_TOPIC_NAME = "";
 
   private final StoreHybridConfig hybridConfig;
 
+  public HybridStoreConfigImpl(
+      long rewindTimeInSeconds,
+      long offsetLagThresholdToGoOnline,
+      long producerTimestampLagThresholdToGoOnlineInSeconds,
+      DataReplicationPolicy dataReplicationPolicy,
+      BufferReplayPolicy bufferReplayPolicy) {
+    this(
+        rewindTimeInSeconds,
+        offsetLagThresholdToGoOnline,
+        producerTimestampLagThresholdToGoOnlineInSeconds,
+        dataReplicationPolicy,
+        bufferReplayPolicy,
+        DEFAULT_REAL_TIME_TOPIC_NAME);
+  }
+
+  @JsonCreator
   public HybridStoreConfigImpl(
       @JsonProperty("rewindTimeInSeconds") long rewindTimeInSeconds,
       @JsonProperty("offsetLagThresholdToGoOnline") long offsetLagThresholdToGoOnline,
       @JsonProperty("producerTimestampLagThresholdToGoOnlineInSeconds") long producerTimestampLagThresholdToGoOnlineInSeconds,
       @JsonProperty("dataReplicationPolicy") DataReplicationPolicy dataReplicationPolicy,
-      @JsonProperty("bufferReplayPolicy") BufferReplayPolicy bufferReplayPolicy) {
+      @JsonProperty("bufferReplayPolicy") BufferReplayPolicy bufferReplayPolicy,
+      @JsonProperty("realTimeTopicName") String realTimeTopicName) {
     this.hybridConfig = new StoreHybridConfig();
     this.hybridConfig.rewindTimeInSeconds = rewindTimeInSeconds;
     this.hybridConfig.offsetLagThresholdToGoOnline = offsetLagThresholdToGoOnline;
@@ -37,6 +56,7 @@ public class HybridStoreConfigImpl implements HybridStoreConfig {
         : dataReplicationPolicy.getValue();
     this.hybridConfig.bufferReplayPolicy =
         bufferReplayPolicy == null ? BufferReplayPolicy.REWIND_FROM_EOP.getValue() : bufferReplayPolicy.getValue();
+    this.hybridConfig.realTimeTopicName = realTimeTopicName == null ? DEFAULT_REAL_TIME_TOPIC_NAME : realTimeTopicName;
   }
 
   HybridStoreConfigImpl(StoreHybridConfig config) {
@@ -84,6 +104,16 @@ public class HybridStoreConfigImpl implements HybridStoreConfig {
   }
 
   @Override
+  public String getRealTimeTopicName() {
+    return this.hybridConfig.realTimeTopicName.toString();
+  }
+
+  @Override
+  public void setRealTimeTopicName(String realTimeTopicName) {
+    this.hybridConfig.realTimeTopicName = realTimeTopicName;
+  }
+
+  @Override
   public StoreHybridConfig dataModel() {
     return this.hybridConfig;
   }
@@ -112,6 +142,7 @@ public class HybridStoreConfigImpl implements HybridStoreConfig {
         getOffsetLagThresholdToGoOnline(),
         getProducerTimestampLagThresholdToGoOnlineInSeconds(),
         getDataReplicationPolicy(),
-        getBufferReplayPolicy());
+        getBufferReplayPolicy(),
+        getRealTimeTopicName());
   }
 }

@@ -139,6 +139,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   public static final String MAX_RECORD_SIZE_BYTES = VENICE_WRITER_CONFIG_PREFIX + "max.record.size.bytes";
 
+  public static final String PRODUCER_THREAD_COUNT = VENICE_WRITER_CONFIG_PREFIX + "producer.thread.count";
+  public static final String PRODUCER_QUEUE_SIZE = VENICE_WRITER_CONFIG_PREFIX + "producer.queue.size";
+
   // Config value defaults
 
   /**
@@ -258,7 +261,18 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private final Map<CharSequence, CharSequence> defaultDebugInfo;
   private final boolean elapsedTimeForClosingSegmentEnabled;
   private final Object[] partitionLocks;
-  private String writerId;
+  private final String writerId;
+
+  public static class DefaultLeaderMetadata extends LeaderMetadata {
+    public DefaultLeaderMetadata(CharSequence hostName) {
+      this.hostName = hostName;
+      this.upstreamOffset = DEFAULT_LEADER_METADATA_WRAPPER.getUpstreamOffset();
+      this.upstreamKafkaClusterId = DEFAULT_LEADER_METADATA_WRAPPER.getUpstreamKafkaClusterId();
+    }
+  }
+
+  /** Used to reduce memory allocation in cases where the metadata is always going to be the same. */
+  private final DefaultLeaderMetadata defaultLeaderMetadata;
   private volatile boolean isClosed = false;
   private final Object closeLock = new Object();
 
@@ -339,13 +353,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     // if INSTANCE_ID is not set, we'd use "hostname:port" as the default writer id
     if (props.containsKey(INSTANCE_ID)) {
       this.writerId = props.getString(INSTANCE_ID);
+    } else if (props.containsKey(LISTENER_PORT)) {
+      this.writerId = Utils.getHostName() + ":" + props.getInt(LISTENER_PORT);
     } else {
       this.writerId = Utils.getHostName();
-
-      if (props.containsKey(LISTENER_PORT)) {
-        this.writerId += ":" + props.getInt(LISTENER_PORT);
-      }
     }
+    this.defaultLeaderMetadata = new DefaultLeaderMetadata(this.writerId);
     this.producerGUID = GuidUtils.getGUID(props);
     this.logger = LogManager.getLogger("VeniceWriter [" + GuidUtils.getHexFromGuid(producerGUID) + "]");
     // Create a thread pool which can have max 2 threads.
@@ -390,7 +403,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       OPEN_VENICE_WRITER_COUNT.incrementAndGet();
       heartBeatMessage = generateHeartbeatMessage(checkSumType);
     } catch (Exception e) {
-      logger.error("VeniceWriter cannot be constructed with the props: {}", props);
+      logger.error("VeniceWriter cannot be constructed with the props: {}", props, e);
       throw new VeniceException("Error while constructing VeniceWriter for store name: " + topicName, e);
     }
   }
@@ -541,11 +554,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    *
    * @param key - The key to delete in storage.
    * @param callback - callback will be executed after Kafka producer completes on sending the message.
-   * @return a java.util.concurrent.Future Future for the RecordMetadata that will be assigned to this
+   * @return a java.util.concurrent.CompletableFuture Future for the RecordMetadata that will be assigned to this
    * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
    * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
    */
-  public Future<PubSubProduceResult> delete(K key, PubSubProducerCallback callback) {
+  public CompletableFuture<PubSubProduceResult> delete(K key, PubSubProducerCallback callback) {
     return delete(key, callback, DEFAULT_LEADER_METADATA_WRAPPER, APP_DEFAULT_LOGICAL_TS, null);
   }
 
@@ -555,11 +568,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param key - The key to delete in storage.
    * @param logicalTs - An timestamp field to indicate when this record was produced from apps point of view.
    * @param callback - callback will be executed after Kafka producer completes on sending the message.
-   * @return a java.util.concurrent.Future Future for the RecordMetadata that will be assigned to this
+   * @return a java.util.concurrent.CompletableFuture Future for the RecordMetadata that will be assigned to this
    * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
    * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
    */
-  public Future<PubSubProduceResult> delete(K key, long logicalTs, PubSubProducerCallback callback) {
+  public CompletableFuture<PubSubProduceResult> delete(K key, long logicalTs, PubSubProducerCallback callback) {
     return delete(key, callback, DEFAULT_LEADER_METADATA_WRAPPER, logicalTs, null);
   }
 
@@ -573,11 +586,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    *                              sending the message in VPJ plugin to the version topic;
    *                         >=0: Leader replica consumes a delete message from real-time topic, VeniceWriter in leader
    *                              is sending this message to version topic with extra info: offset in the real-time topic.
-   * @return a java.util.concurrent.Future Future for the RecordMetadata that will be assigned to this
+   * @return a java.util.concurrent.CompletableFuture Future for the RecordMetadata that will be assigned to this
    * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
    * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
    */
-  public Future<PubSubProduceResult> delete(
+  public CompletableFuture<PubSubProduceResult> delete(
       K key,
       PubSubProducerCallback callback,
       LeaderMetadataWrapper leaderMetadataWrapper) {
@@ -595,11 +608,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    *                             >=0: Leader replica consumes a delete message from real-time topic, VeniceWriter in leader
    *                                  is sending this message to version topic with extra info: offset in the real-time topic.
    * @param logicalTs - An timestamp field to indicate when this record was produced from apps point of view.
-   * @return a java.util.concurrent.Future Future for the RecordMetadata that will be assigned to this
+   * @return a java.util.concurrent.CompletableFuture Future for the RecordMetadata that will be assigned to this
    * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
    * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
    */
-  public Future<PubSubProduceResult> delete(
+  public CompletableFuture<PubSubProduceResult> delete(
       K key,
       PubSubProducerCallback callback,
       LeaderMetadataWrapper leaderMetadataWrapper,
@@ -618,11 +631,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    *                             >=0: Leader replica consumes a delete message from real-time topic, VeniceWriter in leader
    *                                  is sending this message to version topic with extra info: offset in the real-time topic.
    * @param deleteMetadata - a DeleteMetadata containing replication metadata related fields.
-   * @return a java.util.concurrent.Future Future for the RecordMetadata that will be assigned to this
+   * @return a java.util.concurrent.CompletableFuture Future for the RecordMetadata that will be assigned to this
    * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
    * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
    */
-  public Future<PubSubProduceResult> delete(
+  public CompletableFuture<PubSubProduceResult> delete(
       K key,
       PubSubProducerCallback callback,
       LeaderMetadataWrapper leaderMetadataWrapper,
@@ -631,7 +644,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   @Override
-  public Future<PubSubProduceResult> delete(K key, PubSubProducerCallback callback, DeleteMetadata deleteMetadata) {
+  public CompletableFuture<PubSubProduceResult> delete(
+      K key,
+      PubSubProducerCallback callback,
+      DeleteMetadata deleteMetadata) {
     return delete(key, callback, DEFAULT_LEADER_METADATA_WRAPPER, APP_DEFAULT_LOGICAL_TS, deleteMetadata);
   }
 
@@ -665,7 +681,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         APP_DEFAULT_LOGICAL_TS);
   }
 
-  private Future<PubSubProduceResult> delete(
+  private CompletableFuture<PubSubProduceResult> delete(
       K key,
       PubSubProducerCallback callback,
       LeaderMetadataWrapper leaderMetadataWrapper,
@@ -686,11 +702,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    *                              is sending this message to version topic with extra info: offset in the real-time topic.
    * @param logicalTs - An timestamp field to indicate when this record was produced from apps point of view.
    * @param deleteMetadata - a DeleteMetadata containing replication metadata related fields (can be null).
-   * @return a java.util.concurrent.Future. Future for the RecordMetadata that will be assigned to this
-   * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
+   * @return a java.util.concurrent.CompletableFuture. Future for the RecordMetadata that will be assigned to this
+   * record. Invoking java.util.concurrent.CompletableFuture's get() on this future will block until the associated request
    * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
    */
-  public Future<PubSubProduceResult> delete(
+  public CompletableFuture<PubSubProduceResult> delete(
       K key,
       PubSubProducerCallback callback,
       LeaderMetadataWrapper leaderMetadataWrapper,
@@ -731,7 +747,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       delete.replicationMetadataPayload = deleteMetadata.getRmdPayload();
     }
 
-    Future<PubSubProduceResult> produceResultFuture = sendMessage(
+    CompletableFuture<PubSubProduceResult> produceResultFuture = sendMessage(
         producerMetadata -> kafkaKey,
         MessageType.DELETE,
         delete,
@@ -1432,7 +1448,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     if (addLeaderCompleteState) {
       // copy protocolSchemaHeaders locally and add extra header for leaderCompleteState
       returnPubSubMessageHeaders = new PubSubMessageHeaders();
-      for (PubSubMessageHeader header: pubSubMessageHeaders.toList()) {
+      for (PubSubMessageHeader header: pubSubMessageHeaders) {
         returnPubSubMessageHeaders.add(header);
       }
       returnPubSubMessageHeaders.add(getLeaderCompleteStateHeader(leaderCompleteState));
@@ -1882,11 +1898,36 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       boolean addLeaderCompleteState,
       LeaderCompleteState leaderCompleteState,
       long originTimeStampMs) {
+    if (isClosed) {
+      CompletableFuture<PubSubProduceResult> future = new CompletableFuture<>();
+      future.completedFuture(null);
+      logger.warn("VeniceWriter already closed for topic partition " + topicPartition);
+      return future;
+    }
     KafkaMessageEnvelope kafkaMessageEnvelope =
         getHeartbeatKME(originTimeStampMs, leaderMetadataWrapper, heartBeatMessage, writerId);
     return producerAdapter.sendMessage(
         topicPartition.getPubSubTopic().getName(),
         topicPartition.getPartitionNumber(),
+        KafkaKey.HEART_BEAT,
+        kafkaMessageEnvelope,
+        getHeaders(kafkaMessageEnvelope.getProducerMetadata(), addLeaderCompleteState, leaderCompleteState),
+        callback);
+  }
+
+  public CompletableFuture<PubSubProduceResult> sendHeartbeat(
+      String topicName,
+      int partitionNumber,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      boolean addLeaderCompleteState,
+      LeaderCompleteState leaderCompleteState,
+      long originTimeStampMs) {
+    KafkaMessageEnvelope kafkaMessageEnvelope =
+        getHeartbeatKME(originTimeStampMs, leaderMetadataWrapper, heartBeatMessage, writerId);
+    return producerAdapter.sendMessage(
+        topicName,
+        partitionNumber,
         KafkaKey.HEART_BEAT,
         kafkaMessageEnvelope,
         getHeaders(kafkaMessageEnvelope.getProducerMetadata(), addLeaderCompleteState, leaderCompleteState),
@@ -1945,10 +1986,14 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     producerMetadata.messageTimestamp = time.getMilliseconds();
     producerMetadata.logicalTimestamp = logicalTs;
     kafkaValue.producerMetadata = producerMetadata;
-    kafkaValue.leaderMetadataFooter = new LeaderMetadata();
-    kafkaValue.leaderMetadataFooter.hostName = writerId;
-    kafkaValue.leaderMetadataFooter.upstreamOffset = leaderMetadataWrapper.getUpstreamOffset();
-    kafkaValue.leaderMetadataFooter.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
+    if (leaderMetadataWrapper == DEFAULT_LEADER_METADATA_WRAPPER) {
+      kafkaValue.leaderMetadataFooter = this.defaultLeaderMetadata;
+    } else {
+      kafkaValue.leaderMetadataFooter = new LeaderMetadata();
+      kafkaValue.leaderMetadataFooter.hostName = writerId;
+      kafkaValue.leaderMetadataFooter.upstreamOffset = leaderMetadataWrapper.getUpstreamOffset();
+      kafkaValue.leaderMetadataFooter.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
+    }
 
     return kafkaValue;
   }
@@ -2103,5 +2148,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   public String getDestination() {
     return topicName + "@" + producerAdapter.getBrokerAddress();
+  }
+
+  public PubSubProducerAdapter getProducerAdapter() {
+    return this.producerAdapter;
   }
 }

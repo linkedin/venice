@@ -28,6 +28,49 @@ import org.testng.annotations.Test;
  */
 public class TestStoreJsonSerializer {
   @Test
+  void testRealTimeTopicNameDefault() throws IOException {
+    StoreJSONSerializer serializer = new StoreJSONSerializer();
+    Store store = serializer
+        .deserialize(TestUtils.loadFileAsString("TestStoreJsonSerializer/testHybridStore.json").getBytes(), "");
+
+    Assert.assertNotNull(store.getHybridStoreConfig().getRealTimeTopicName(), "realTimeTopicName should not be null");
+    Assert.assertEquals(
+        HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME,
+        store.getHybridStoreConfig().getRealTimeTopicName(),
+        "realTimeTopicName should have default value of an empty string");
+
+    store.getVersions().forEach(v -> {
+      Assert.assertNotNull(v.getHybridStoreConfig().getRealTimeTopicName(), "realTimeTopicName should not be null");
+      Assert.assertEquals(
+          HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME,
+          v.getHybridStoreConfig().getRealTimeTopicName(),
+          "realTimeTopicName should have default value of an empty string");
+    });
+  }
+
+  @Test
+  void testRealTimeTopicName() throws IOException {
+    StoreJSONSerializer serializer = new StoreJSONSerializer();
+    Store store = serializer
+        .deserialize(TestUtils.loadFileAsString("TestStoreJsonSerializer/testHybridStore2.json").getBytes(), "");
+
+    Assert.assertEquals(
+        "TEST_RT_TOPIC_NAME",
+        store.getHybridStoreConfig().getRealTimeTopicName(),
+        "realTimeTopicName should have default value of an empty string");
+
+    store.getVersions().forEach(v -> {
+      if (v.getNumber() == 817) {
+        Assert.assertEquals("TEST_RT_TOPIC_NAME_817", v.getHybridStoreConfig().getRealTimeTopicName());
+      } else if (v.getNumber() == 818) {
+        Assert.assertEquals("TEST_RT_TOPIC_NAME_818", v.getHybridStoreConfig().getRealTimeTopicName());
+      } else {
+        Assert.fail("Unexpected version number!");
+      }
+    });
+  }
+
+  @Test
   public void testSerializeAndDeserializeStore() throws IOException {
     Store store = TestUtils.createTestStore("s1", "owner", 1l);
     store.addVersion(new VersionImpl(store.getName(), store.getLargestUsedVersionNumber() + 1, "pushJobId"));

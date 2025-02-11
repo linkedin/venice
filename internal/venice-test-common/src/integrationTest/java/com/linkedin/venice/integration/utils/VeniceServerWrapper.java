@@ -14,6 +14,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.ConfigKeys.LOCAL_CONTROLLER_D2_SERVICE_NAME;
 import static com.linkedin.venice.ConfigKeys.LOCAL_D2_ZK_HOST;
+import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.MAX_ONLINE_OFFLINE_STATE_TRANSITION_THREAD_NUMBER;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
@@ -21,6 +22,7 @@ import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_HEARTBEAT_INTERVAL_MS;
@@ -35,6 +37,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SOURCE_TOPIC_OFFSET_CHECK_IN
 import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
+import static com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper.addKafkaClusterIDMappingToServerConfigs;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -42,11 +45,13 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.AllowlistAccessor;
 import com.linkedin.venice.helix.ZkAllowlistAccessor;
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.server.VeniceServerContext;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.tehuti.MetricsAware;
+import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
@@ -54,6 +59,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
+import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
@@ -72,9 +78,9 @@ import org.apache.commons.cli.DefaultParser;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 import org.apache.commons.io.FileUtils;
-import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.testng.Assert;
 
 
 /**
@@ -195,6 +201,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       Map<String, Map<String, String>> kafkaClusterMap,
       String serverD2ServiceName) {
     return (serviceName, dataDirectory) -> {
+      boolean serverDeleteUnassignedPartitionsOnStartup =
+          Boolean.parseBoolean(featureProperties.getProperty(SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP, "false"));
       boolean enableServerAllowlist =
           Boolean.parseBoolean(featureProperties.getProperty(SERVER_ENABLE_SERVER_ALLOW_LIST, "false"));
       boolean sslToKafka = Boolean.parseBoolean(featureProperties.getProperty(SERVER_SSL_TO_KAFKA, "false"));
@@ -224,6 +232,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       PropertyBuilder serverPropsBuilder = new PropertyBuilder().put(LISTENER_PORT, listenPort)
           .put(ADMIN_PORT, TestUtils.getFreePort())
           .put(DATA_BASE_PATH, dataDirectory.getAbsolutePath())
+          .put(LOCAL_REGION_NAME, regionName)
           .put(ENABLE_SERVER_ALLOW_LIST, enableServerAllowlist)
           .put(SERVER_REST_SERVICE_STORAGE_THREAD_NUM, 4)
           .put(MAX_ONLINE_OFFLINE_STATE_TRANSITION_THREAD_NUMBER, 100)
@@ -254,9 +263,10 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
               pubSubBrokerWrapper.getPubSubClientsFactory().getAdminAdapterFactory().getClass().getName())
           .put(SERVER_INGESTION_HEARTBEAT_INTERVAL_MS, 5000)
           .put(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS, 5000)
-          .put(SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED, true);
+          .put(SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED, true)
+          .put(SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP, serverDeleteUnassignedPartitionsOnStartup);
       if (sslToKafka) {
-        serverPropsBuilder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);
+        serverPropsBuilder.put(KAFKA_SECURITY_PROTOCOL, PubSubSecurityProtocol.SSL.name());
         serverPropsBuilder.put(KafkaTestUtils.getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));
       }
 
@@ -296,8 +306,17 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       List<ServiceDiscoveryAnnouncer> d2Servers =
           new ArrayList<>(D2TestUtils.getD2Servers(zkAddress, d2ClusterName, httpURI, httpsURI));
 
+      Map<String, Map<String, String>> finalKafkaClusterMap = kafkaClusterMap;
+      if (finalKafkaClusterMap == null || finalKafkaClusterMap.isEmpty()) {
+        finalKafkaClusterMap = addKafkaClusterIDMappingToServerConfigs(
+            Optional.ofNullable(serverProps.toProperties()),
+            Collections.singletonList(regionName),
+            Arrays.asList(pubSubBrokerWrapper, pubSubBrokerWrapper));
+        LOGGER.info("PubSub cluster map was not provided. Constructed the following map: {}", finalKafkaClusterMap);
+      }
+
       // generate the kafka cluster map in config directory
-      VeniceConfigLoader.storeKafkaClusterMap(configDirectory, kafkaClusterMap);
+      VeniceConfigLoader.storeKafkaClusterMap(configDirectory, finalKafkaClusterMap);
 
       if (!forkServer) {
         VeniceConfigLoader veniceConfigLoader =
@@ -438,10 +457,26 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
   @Override
   protected void internalStop() throws Exception {
     if (!forkServer) {
+      verifyHelixParticipantServicePoolMetricsReporting(veniceServer);
       veniceServer.shutdown();
     } else {
       serverProcess.destroy();
     }
+  }
+
+  private void verifyHelixParticipantServicePoolMetricsReporting(VeniceServer veniceServer) {
+    MetricsRepository metricsRepository = veniceServer.getMetricsRepository();
+    MockTehutiReporter reporter = new MockTehutiReporter();
+    metricsRepository.addReporter(reporter);
+    Metric activeThreadNumber = reporter.query(".Venice_L/F_ST_thread_pool--active_thread_number.LambdaStat");
+    Assert.assertNotNull(activeThreadNumber);
+    Assert.assertTrue(activeThreadNumber.value() >= 0);
+    Metric maxThreadNumber = reporter.query(".Venice_L/F_ST_thread_pool--max_thread_number.LambdaStat");
+    Assert.assertNotNull(maxThreadNumber);
+    Assert.assertTrue(maxThreadNumber.value() > 0);
+    Metric queuedTaskNumber = reporter.query(".Venice_L/F_ST_thread_pool--queued_task_number.LambdaStat");
+    Assert.assertNotNull(queuedTaskNumber);
+    Assert.assertTrue(queuedTaskNumber.value() >= 0);
   }
 
   @Override

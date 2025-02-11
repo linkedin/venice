@@ -39,7 +39,7 @@ import org.testng.annotations.Test;
 
 public class StoreBufferServiceTest {
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-  private final KafkaKey key = new KafkaKey(MessageType.PUT, null);
+  private final KafkaKey key = new KafkaKey(MessageType.PUT, new byte[0]);
   private final Put put = new Put(ByteBuffer.allocate(0), 0, 0, ByteBuffer.allocate(0));
   private final KafkaMessageEnvelope value =
       new KafkaMessageEnvelope(MessageType.PUT.getValue(), new ProducerMetadata(), put, null);

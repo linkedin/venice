@@ -9,9 +9,9 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapter;
@@ -104,7 +104,9 @@ public abstract class ConsumerIntegrationTest {
 
   @BeforeClass
   public void sharedSetUp() {
-    cluster = ServiceFactory.getVeniceCluster();
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(1).numberOfRouters(1).build();
+    cluster = ServiceFactory.getVeniceCluster(options);
     controllerClient =
         ControllerClient.constructClusterControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
 
@@ -118,7 +120,6 @@ public abstract class ConsumerIntegrationTest {
   public void testSetUp() {
     store = Utils.getUniqueString("consumer_integ_test");
     version = 1;
-    topicName = Version.composeRealTimeTopic(store);
     cluster.getNewStore(store);
     long streamingRewindSeconds = 25L;
     long streamingMessageLag = 2L;
@@ -126,9 +127,13 @@ public abstract class ConsumerIntegrationTest {
         store,
         new UpdateStoreQueryParams().setHybridRewindSeconds(streamingRewindSeconds)
             .setHybridOffsetLagThreshold(streamingMessageLag));
+    topicName = Utils.getRealTimeTopicName(
+        cluster.getLeaderVeniceController().getVeniceAdmin().getStore(cluster.getClusterName(), store));
     controllerClient.emptyPush(store, "test_push", 1);
+    TestUtils.assertCommand(controllerClient.emptyPush(this.store, "test_push", 1), "empty push failed");
+
     TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
-      StoreResponse freshStoreResponse = controllerClient.getStore(store);
+      StoreResponse freshStoreResponse = controllerClient.getStore(this.store);
       Assert.assertFalse(freshStoreResponse.isError());
       Assert.assertEquals(
           freshStoreResponse.getStore().getCurrentVersion(),

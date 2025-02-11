@@ -30,7 +30,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import javax.annotation.Nonnull;
 
@@ -125,8 +124,8 @@ public class VeniceDelegateMode extends ScatterGatherMode {
   public void initHelixGroupSelector(HelixGroupSelector helixGroupSelector) {
     if (this.helixGroupSelector != null) {
       throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
-          Optional.empty(),
-          Optional.empty(),
+          null,
+          null,
           INTERNAL_SERVER_ERROR,
           "HelixGroupSelector has already been initialized before, and no further update expected!");
     }
@@ -145,24 +144,24 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       @Nonnull R roles) throws RouterException {
     if (readRequestThrottler == null) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-          Optional.empty(),
-          Optional.empty(),
+          null,
+          null,
           INTERNAL_SERVER_ERROR,
           "Read request throttler has not been setup yet");
     }
     if (multiKeyRoutingStrategy.equals(VeniceMultiKeyRoutingStrategy.HELIX_ASSISTED_ROUTING)
         && helixGroupSelector == null) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-          Optional.empty(),
-          Optional.empty(),
+          null,
+          null,
           INTERNAL_SERVER_ERROR,
           "HelixGroupSelector has not been setup yet");
     }
     P path = scatter.getPath();
     if (!(path instanceof VenicePath)) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-          Optional.empty(),
-          Optional.empty(),
+          null,
+          null,
           INTERNAL_SERVER_ERROR,
           "VenicePath is expected, but received " + path.getClass());
     }
@@ -179,8 +178,8 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     // Check whether retry request is too late or not
     if (venicePath.isRetryRequestTooLate()) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-          Optional.of(storeName),
-          Optional.of(venicePath.getRequestType()),
+          storeName,
+          venicePath.getRequestType(),
           SERVICE_UNAVAILABLE,
           "The retry request aborted because of delay constraint of smart long-tail retry",
           RouterExceptionAndTrackingUtils.FailureType.SMART_RETRY_ABORTED_BY_DELAY_CONSTRAINT);
@@ -198,8 +197,8 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         break;
       default:
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-            Optional.of(storeName),
-            Optional.of(venicePath.getRequestType()),
+            storeName,
+            venicePath.getRequestType(),
             INTERNAL_SERVER_ERROR,
             "Unknown request type: " + venicePath.getRequestType());
     }
@@ -228,8 +227,8 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         String errMsg = resourceName + ", partition " + partition + " is not available to serve " + isRetry
             + "request of type: " + venicePath.getRequestType();
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-            Optional.of(storeName),
-            Optional.of(venicePath.getRequestType()),
+            storeName,
+            venicePath.getRequestType(),
             SERVICE_UNAVAILABLE,
             errMsg,
             failureType);
@@ -240,8 +239,8 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       int hostCount = part.getHosts().size();
       if (hostCount == 0) {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-            Optional.of(storeName),
-            Optional.of(venicePath.getRequestType()),
+            storeName,
+            venicePath.getRequestType(),
             SERVICE_UNAVAILABLE,
             "Could not find ready-to-serve replica for request: " + part);
       }
@@ -256,8 +255,8 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       }
       if (!(host instanceof Instance)) {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-            Optional.of(storeName),
-            Optional.of(venicePath.getRequestType()),
+            storeName,
+            venicePath.getRequestType(),
             INTERNAL_SERVER_ERROR,
             "Ready-to-serve host must be an 'Instance'");
       }
@@ -279,8 +278,8 @@ public class VeniceDelegateMode extends ScatterGatherMode {
            * with the corresponding response status directly.
            */
           throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-              Optional.of(storeName),
-              Optional.of(venicePath.getRequestType()),
+              storeName,
+              venicePath.getRequestType(),
               TOO_MANY_REQUESTS,
               "Quota exceeded for '" + storeName + "' while serving a " + venicePath.getRequestType()
                   + " request! msg: " + e.getMessage());
@@ -297,8 +296,8 @@ public class VeniceDelegateMode extends ScatterGatherMode {
           || !venicePath.isLongTailRetryWithinBudget(onlineRequestNum)) {
         routerStats.getStatsByType(venicePath.getRequestType()).recordDisallowedRetryRequest(storeName);
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-            Optional.of(storeName),
-            Optional.of(venicePath.getRequestType()),
+            storeName,
+            venicePath.getRequestType(),
             SERVICE_UNAVAILABLE,
             "The retry request aborted because there are too many retries for current request",
             RouterExceptionAndTrackingUtils.FailureType.SMART_RETRY_ABORTED_BY_MAX_RETRY_ROUTE_LIMIT);
@@ -328,15 +327,15 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     if (minHost == null) {
       if (path.isRetryRequest()) {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-            Optional.of(path.getStoreName()),
-            Optional.of(path.getRequestType()),
+            path.getStoreName(),
+            path.getRequestType(),
             SERVICE_UNAVAILABLE,
             "Retry request aborted because of slow route for request path: " + path.getResourceName(),
             RouterExceptionAndTrackingUtils.FailureType.SMART_RETRY_ABORTED_BY_SLOW_ROUTE);
       } else {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-            Optional.of(path.getStoreName()),
-            Optional.of(path.getRequestType()),
+            path.getStoreName(),
+            path.getRequestType(),
             SERVICE_UNAVAILABLE,
             "Could not find ready-to-serve replica for request path: " + path.getResourceName());
       }
@@ -376,8 +375,8 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         veniceHostHealthMonitor = (HostHealthMonitor<Instance>) hostHealthMonitor;
       } catch (ClassCastException e) {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-            Optional.empty(),
-            Optional.empty(),
+            null,
+            null,
             INTERNAL_SERVER_ERROR,
             "VenicePath, VeniceHostFinder and HostHealthMonitor<Instance> are expected, " + "but received: "
                 + path.getClass() + " and " + hostFinder.getClass() + ", " + hostHealthMonitor.getClass());
@@ -479,8 +478,8 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         veniceHostHealthMonitor = (HostHealthMonitor<Instance>) hostHealthMonitor;
       } catch (ClassCastException e) {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-            Optional.empty(),
-            Optional.empty(),
+            null,
+            null,
             INTERNAL_SERVER_ERROR,
             "Scatter<Instance, VenicePath, RouterKey>, VenicePath, VeniceHostFinder and "
                 + "HostHealthMonitor<Instance> are expected, but received: " + scatter.getClass() + ", "
@@ -513,6 +512,8 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       Map<Instance, KeyPartitionSet<Instance, RouterKey>> hostMap = new HashMap<>();
       int helixGroupNum = getHelixGroupNum();
       int assignedHelixGroupId = getAssignedHelixGroupId(venicePath);
+      // This is used to record the request start time for the whole Router request.
+      venicePath.recordOriginalRequestStartTimestamp();
       currentPartition = 0;
       try {
         for (; currentPartition < partitionCount; currentPartition++) {
@@ -658,8 +659,8 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       for (H host: partitionReplicas) {
         if (!(host instanceof Instance)) {
           throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-              Optional.of(venicePath.getStoreName()),
-              Optional.of(venicePath.getRequestType()),
+              venicePath.getStoreName(),
+              venicePath.getRequestType(),
               INTERNAL_SERVER_ERROR,
               "The chosen host is not an 'Instance'");
         }
@@ -685,15 +686,15 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       if (selectedHost == null) {
         if (venicePath.isRetryRequest()) {
           throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-              Optional.of(venicePath.getStoreName()),
-              Optional.of(venicePath.getRequestType()),
+              venicePath.getStoreName(),
+              venicePath.getRequestType(),
               SERVICE_UNAVAILABLE,
               "Retry request aborted! Could not find any healthy replica.",
               RouterExceptionAndTrackingUtils.FailureType.SMART_RETRY_ABORTED_BY_SLOW_ROUTE);
         } else {
           throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-              Optional.of(venicePath.getStoreName()),
-              Optional.of(venicePath.getRequestType()),
+              venicePath.getStoreName(),
+              venicePath.getRequestType(),
               SERVICE_UNAVAILABLE,
               "Could not find any healthy replica.");
         }

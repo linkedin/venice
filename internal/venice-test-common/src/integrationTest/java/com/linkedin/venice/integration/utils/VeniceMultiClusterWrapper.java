@@ -117,6 +117,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
               .clusterToServerD2(clusterToServerD2)
               .sslToKafka(false)
               .d2Enabled(true)
+              .dynamicAccessController(options.getAccessController())
               .extraProperties(controllerProperties)
               .build();
       for (int i = 0; i < options.getNumberOfControllers(); i++) {
@@ -231,7 +232,15 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
     return zkServerWrapper;
   }
 
+  /**
+   * @deprecated Use {@link #getPubSubBrokerWrapper()} instead.
+   */
+  @Deprecated
   public PubSubBrokerWrapper getKafkaBrokerWrapper() {
+    return pubSubBrokerWrapper;
+  }
+
+  public PubSubBrokerWrapper getPubSubBrokerWrapper() {
     return pubSubBrokerWrapper;
   }
 

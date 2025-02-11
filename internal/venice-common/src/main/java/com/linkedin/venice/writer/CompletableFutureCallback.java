@@ -1,5 +1,8 @@
 package com.linkedin.venice.writer;
 
+import static com.linkedin.venice.memory.ClassSizeEstimator.getClassOverhead;
+
+import com.linkedin.venice.memory.Measurable;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import java.util.concurrent.CompletableFuture;
@@ -11,7 +14,10 @@ import java.util.concurrent.CompletableFuture;
  * changed and the callback will be called. The caller can pass a {@code CompletableFutureCallback} to a function
  * accepting a {@code Callback} parameter to get a {@code CompletableFuture} after the function returns.
  */
-public class CompletableFutureCallback implements PubSubProducerCallback {
+public class CompletableFutureCallback implements PubSubProducerCallback, Measurable {
+  private static final int SHALLOW_CLASS_OVERHEAD = getClassOverhead(CompletableFutureCallback.class);
+  private static final int COMPLETABLE_FUTURE_SHALLOW_CLASS_OVERHEAD = getClassOverhead(CompletableFuture.class);
+
   private final CompletableFuture<Void> completableFuture;
   private PubSubProducerCallback callback = null;
 
@@ -35,5 +41,17 @@ public class CompletableFutureCallback implements PubSubProducerCallback {
 
   public void setCallback(PubSubProducerCallback callback) {
     this.callback = callback;
+  }
+
+  @Override
+  public int getHeapSize() {
+    int size = SHALLOW_CLASS_OVERHEAD;
+    if (this.completableFuture != null) {
+      size += COMPLETABLE_FUTURE_SHALLOW_CLASS_OVERHEAD;
+    }
+    if (this.callback instanceof Measurable) {
+      size += ((Measurable) this.callback).getHeapSize();
+    }
+    return size;
   }
 }

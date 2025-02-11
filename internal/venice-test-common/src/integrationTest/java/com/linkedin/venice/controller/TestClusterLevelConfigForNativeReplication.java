@@ -97,6 +97,7 @@ public class TestClusterLevelConfigForNativeReplication {
         parentControllerClient.updateStore(
             storeName,
             new UpdateStoreQueryParams().setIncrementalPushEnabled(true)
+                .setActiveActiveReplicationEnabled(true)
                 .setHybridRewindSeconds(1L)
                 .setHybridOffsetLagThreshold(10)));
     TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {

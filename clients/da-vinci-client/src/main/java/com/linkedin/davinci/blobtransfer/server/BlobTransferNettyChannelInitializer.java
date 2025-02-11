@@ -1,6 +1,6 @@
 package com.linkedin.davinci.blobtransfer.server;
 
-import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.blobtransfer.BlobSnapshotManager;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.socket.SocketChannel;
@@ -12,11 +12,16 @@ import io.netty.handler.timeout.IdleStateHandler;
 
 public class BlobTransferNettyChannelInitializer extends ChannelInitializer<SocketChannel> {
   private final String baseDir;
-  private StorageMetadataService storageMetadataService;
+  private final int blobTransferMaxTimeoutInMin;
+  private BlobSnapshotManager blobSnapshotManager;
 
-  public BlobTransferNettyChannelInitializer(String baseDir, StorageMetadataService storageMetadataService) {
+  public BlobTransferNettyChannelInitializer(
+      String baseDir,
+      int blobTransferMaxTimeoutInMin,
+      BlobSnapshotManager blobSnapshotManager) {
     this.baseDir = baseDir;
-    this.storageMetadataService = storageMetadataService;
+    this.blobTransferMaxTimeoutInMin = blobTransferMaxTimeoutInMin;
+    this.blobSnapshotManager = blobSnapshotManager;
   }
 
   @Override
@@ -32,6 +37,8 @@ public class BlobTransferNettyChannelInitializer extends ChannelInitializer<Sock
         // for safe writing of chunks for responses
         .addLast("chunker", new ChunkedWriteHandler())
         // for handling p2p file transfer
-        .addLast("p2pFileTransferHandler", new P2PFileTransferServerHandler(baseDir, storageMetadataService));
+        .addLast(
+            "p2pFileTransferHandler",
+            new P2PFileTransferServerHandler(baseDir, blobTransferMaxTimeoutInMin, blobSnapshotManager));
   }
 }

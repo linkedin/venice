@@ -13,14 +13,14 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_MAX_POLL_RECORDS_CONFIG;
 import static java.lang.Thread.currentThread;
 import static java.lang.Thread.sleep;
 
-import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.listener.response.AdminResponse;
-import com.linkedin.davinci.listener.response.TopicPartitionIngestionContextResponse;
+import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
 import com.linkedin.davinci.notifier.LogNotifier;
 import com.linkedin.davinci.notifier.PushStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
@@ -29,8 +29,8 @@ import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.ParticipantStoreConsumptionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
-import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
 import com.linkedin.venice.SSLConfig;
@@ -58,6 +58,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManagerContext;
@@ -83,6 +84,7 @@ import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ResourceAutoClosableLockManager;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
@@ -111,10 +113,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
-import java.util.function.Function;
 import org.apache.avro.Schema;
+import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.kafka.clients.CommonClientConfigs;
-import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -131,6 +132,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private static final String GROUP_ID_FORMAT = "%s_%s";
 
   private static final Logger LOGGER = LogManager.getLogger(KafkaStoreIngestionService.class);
+  private final StorageService storageService;
 
   private final VeniceConfigLoader veniceConfigLoader;
 
@@ -175,7 +177,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   // source. This could be a view of the data, or in our case a cache, or both potentially.
   private final Optional<ObjectCacheBackend> cacheBackend;
 
-  private final Function<Integer, DaVinciRecordTransformer> getRecordTransformer;
+  private final DaVinciRecordTransformerConfig recordTransformerConfig;
 
   private final PubSubProducerAdapterFactory producerAdapterFactory;
 
@@ -189,9 +191,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private KafkaValueSerializer kafkaValueSerializer;
   private final IngestionThrottler ingestionThrottler;
   private final ExecutorService aaWCWorkLoadProcessingThreadPool;
+  private final AdaptiveThrottlerSignalService adaptiveThrottlerSignalService;
+
+  private VeniceServerConfig serverConfig;
+
+  private Lazy<ZKHelixAdmin> zkHelixAdmin;
 
   public KafkaStoreIngestionService(
-      StorageEngineRepository storageEngineRepository,
+      StorageService storageService,
       VeniceConfigLoader veniceConfigLoader,
       StorageMetadataService storageMetadataService,
       ClusterInfoProvider clusterInfoProvider,
@@ -207,14 +214,17 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       boolean isIsolatedIngestion,
       StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ObjectCacheBackend> cacheBackend,
-      Function<Integer, DaVinciRecordTransformer> getRecordTransformer,
+      DaVinciRecordTransformerConfig recordTransformerConfig,
       boolean isDaVinciClient,
       RemoteIngestionRepairService remoteIngestionRepairService,
       PubSubClientsFactory pubSubClientsFactory,
       Optional<SSLFactory> sslFactory,
-      HeartbeatMonitoringService heartbeatMonitoringService) {
+      HeartbeatMonitoringService heartbeatMonitoringService,
+      Lazy<ZKHelixAdmin> zkHelixAdmin,
+      AdaptiveThrottlerSignalService adaptiveThrottlerSignalService) {
+    this.storageService = storageService;
     this.cacheBackend = cacheBackend;
-    this.getRecordTransformer = getRecordTransformer;
+    this.recordTransformerConfig = recordTransformerConfig;
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
     this.topicNameToIngestionTaskMap = new ConcurrentSkipListMap<>();
@@ -222,10 +232,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.isIsolatedIngestion = isIsolatedIngestion;
     this.partitionStateSerializer = partitionStateSerializer;
     this.compressorFactory = compressorFactory;
+    this.zkHelixAdmin = zkHelixAdmin;
     // Each topic that has any partition ingested by this class has its own lock.
     this.topicLockManager = new ResourceAutoClosableLockManager<>(ReentrantLock::new);
-
-    VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
+    this.serverConfig = veniceConfigLoader.getVeniceServerConfig();
     Properties veniceWriterProperties =
         veniceConfigLoader.getVeniceClusterConfig().getClusterProperties().toProperties();
 
@@ -235,11 +245,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         new VeniceWriterFactory(veniceWriterProperties, producerAdapterFactory, metricsRepository);
     VeniceWriterFactory veniceWriterFactoryForMetaStoreWriter =
         new VeniceWriterFactory(veniceWriterProperties, producerAdapterFactory, null);
-
+    this.adaptiveThrottlerSignalService = adaptiveThrottlerSignalService;
     this.ingestionThrottler = new IngestionThrottler(
         isDaVinciClient,
         serverConfig,
-        () -> Collections.unmodifiableMap(topicNameToIngestionTaskMap));
+        () -> Collections.unmodifiableMap(topicNameToIngestionTaskMap),
+        adaptiveThrottlerSignalService);
 
     final Map<String, EventThrottler> kafkaUrlToRecordsThrottler;
     if (liveClusterConfigRepository != null) {
@@ -433,9 +444,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
      * Use the same diskUsage instance for all ingestion tasks; so that all the ingestion tasks can update the same
      * remaining disk space state to provide a more accurate alert.
      */
-    DiskUsage diskUsage = new DiskUsage(
-        veniceConfigLoader.getVeniceServerConfig().getDataBasePath(),
-        veniceConfigLoader.getVeniceServerConfig().getDiskFullThreshold());
+    DiskUsage diskUsage = new DiskUsage(serverConfig.getDataBasePath(), serverConfig.getDiskFullThreshold());
 
     VeniceViewWriterFactory viewWriterFactory = new VeniceViewWriterFactory(veniceConfigLoader);
 
@@ -449,7 +458,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     ingestionTaskFactory = StoreIngestionTaskFactory.builder()
         .setVeniceWriterFactory(veniceWriterFactory)
-        .setStorageEngineRepository(storageEngineRepository)
+        .setStorageEngineRepository(storageService.getStorageEngineRepository())
         .setStorageMetadataService(storageMetadataService)
         .setLeaderFollowerNotifiersQueue(leaderFollowerNotifiers)
         .setSchemaRepository(schemaRepo)
@@ -520,6 +529,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     };
 
     return ingestionTaskFactory.getNewIngestionTask(
+        storageService,
         store,
         version,
         getKafkaConsumerProperties(veniceStoreVersionConfig),
@@ -528,7 +538,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         partitionId,
         isIsolatedIngestion,
         cacheBackend,
-        getRecordTransformer);
+        recordTransformerConfig,
+        zkHelixAdmin);
   }
 
   private static void shutdownExecutorService(ExecutorService executor, String name, boolean force) {
@@ -675,9 +686,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    */
   public void shutdownStoreIngestionTask(String topicName) {
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topicName)) {
-      if (topicNameToIngestionTaskMap.containsKey(topicName)) {
-        StoreIngestionTask storeIngestionTask = topicNameToIngestionTaskMap.remove(topicName);
-        storeIngestionTask.shutdown(10000);
+      StoreIngestionTask storeIngestionTask = topicNameToIngestionTaskMap.remove(topicName);
+      if (storeIngestionTask != null) {
+        storeIngestionTask.shutdownAndWait(30);
         LOGGER.info("Successfully shut down ingestion task for {}", topicName);
       } else {
         LOGGER.info("Ignoring close request for not-existing consumption task {}", topicName);
@@ -766,7 +777,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   public boolean isLiveUpdateSuppressionEnabled() {
-    return veniceConfigLoader.getVeniceServerConfig().freezeIngestionIfReadyToServeOrLocalDataExists();
+    return serverConfig.freezeIngestionIfReadyToServeOrLocalDataExists();
   }
 
   @Override
@@ -917,6 +928,32 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       } else {
         LOGGER.info("Shutting down ingestion task of topic {}", topicName);
         shutdownStoreIngestionTask(topicName);
+      }
+    }
+  }
+
+  /**
+   * Drops the corresponding Venice Partition gracefully.
+   * This should only be called after {@link #stopConsumptionAndWait} has been called
+   * @param veniceStore Venice Store for the partition.
+   * @param partitionId Venice partition's id.
+   * @return a future for the drop partition action.
+   */
+  public CompletableFuture<Void> dropStoragePartitionGracefully(VeniceStoreVersionConfig veniceStore, int partitionId) {
+    final String topic = veniceStore.getStoreVersionName();
+
+    try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
+      StoreIngestionTask ingestionTask = topicNameToIngestionTaskMap.get(topic);
+      if (ingestionTask != null) {
+        return ingestionTask.dropStoragePartitionGracefully(
+            new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
+      } else {
+        LOGGER.info(
+            "Ingestion task for Topic {} is null. Dropping partition {} synchronously",
+            veniceStore.getStoreVersionName(),
+            partitionId);
+        this.storageService.dropStorePartition(veniceStore, partitionId, true);
+        return CompletableFuture.completedFuture(null);
       }
     }
   }
@@ -1105,7 +1142,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   private VeniceProperties getPubSubSSLPropertiesFromServerConfig(String kafkaBootstrapUrls) {
-    VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     if (!kafkaBootstrapUrls.equals(serverConfig.getKafkaBootstrapServers())) {
       Properties clonedProperties = serverConfig.getClusterProperties().toProperties();
       clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrls);
@@ -1120,7 +1156,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       kafkaBootstrapUrls = resolvedKafkaUrl;
     }
     properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrls);
-    SecurityProtocol securityProtocol = serverConfig.getKafkaSecurityProtocol(kafkaBootstrapUrls);
+    PubSubSecurityProtocol securityProtocol = serverConfig.getKafkaSecurityProtocol(kafkaBootstrapUrls);
     if (KafkaSSLUtils.isKafkaSSLProtocol(securityProtocol)) {
       Optional<SSLConfig> sslConfig = serverConfig.getSslConfig();
       if (!sslConfig.isPresent()) {
@@ -1128,7 +1164,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       }
       properties.putAll(sslConfig.get().getKafkaSSLConfig());
     }
-    properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, securityProtocol.name);
+    properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, securityProtocol.name());
     return new VeniceProperties(properties);
   }
 
@@ -1148,7 +1184,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return kafkaConsumerProperties;
   }
 
-  @Override
   public ByteBuffer getStoreVersionCompressionDictionary(String topicName) {
     return storageMetadataService.getStoreVersionCompressionDictionary(topicName);
   }
@@ -1157,7 +1192,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return topicNameToIngestionTaskMap.get(topicName);
   }
 
-  @Override
   public AdminResponse getConsumptionSnapshots(String topicName, ComplementSet<Integer> partitions) {
     AdminResponse response = new AdminResponse();
     StoreIngestionTask ingestionTask = getStoreIngestionTask(topicName);
@@ -1173,26 +1207,25 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return response;
   }
 
-  public TopicPartitionIngestionContextResponse getTopicPartitionIngestionContext(
+  public ReplicaIngestionResponse getTopicPartitionIngestionContext(
       String versionTopic,
       String topicName,
       int partitionId) {
-    TopicPartitionIngestionContextResponse topicPartitionIngestionContextResponse =
-        new TopicPartitionIngestionContextResponse();
+    ReplicaIngestionResponse replicaIngestionResponse = new ReplicaIngestionResponse();
     PubSubTopic pubSubVersionTopic = pubSubTopicRepository.getTopic(versionTopic);
     PubSubTopic requestTopic = pubSubTopicRepository.getTopic(topicName);
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(requestTopic, partitionId);
     try {
       byte[] topicPartitionInfo = aggKafkaConsumerService.getIngestionInfoFor(pubSubVersionTopic, pubSubTopicPartition);
-      topicPartitionIngestionContextResponse.setTopicPartitionIngestionContext(topicPartitionInfo);
+      replicaIngestionResponse.setPayload(topicPartitionInfo);
     } catch (Exception e) {
-      topicPartitionIngestionContextResponse.setError(true);
-      topicPartitionIngestionContextResponse.setMessage(e.getMessage());
+      replicaIngestionResponse.setError(true);
+      replicaIngestionResponse.setMessage(e.getMessage());
       LOGGER.error(
           "Error on get topic partition ingestion context for resource: " + Utils.getReplicaId(topicName, partitionId),
           e);
     }
-    return topicPartitionIngestionContextResponse;
+    return replicaIngestionResponse;
   }
 
   /**
@@ -1209,7 +1242,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       LOGGER.error(
           "Caught exception when deserializing offset record byte array: {} for replica: {}",
           Arrays.toString(offsetRecordByteArray),
-          Utils.getReplicaId(topicName, partition));
+          Utils.getReplicaId(topicName, partition),
+          e);
       throw e;
     }
     storageMetadataService.put(topicName, partition, offsetRecord);

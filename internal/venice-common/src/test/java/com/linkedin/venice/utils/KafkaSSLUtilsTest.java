@@ -1,8 +1,9 @@
 package com.linkedin.venice.utils;
 
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
-import org.apache.kafka.common.protocol.SecurityProtocol;
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import org.testng.annotations.Test;
 
 
@@ -25,9 +26,9 @@ public class KafkaSSLUtilsTest {
 
   @Test
   public void testTestIsKafkaSSLProtocol() {
-    assertTrue(KafkaSSLUtils.isKafkaSSLProtocol(SecurityProtocol.SSL));
-    assertFalse(KafkaSSLUtils.isKafkaSSLProtocol(SecurityProtocol.PLAINTEXT));
-    assertTrue(KafkaSSLUtils.isKafkaSSLProtocol(SecurityProtocol.SASL_SSL));
-    assertFalse(KafkaSSLUtils.isKafkaSSLProtocol(SecurityProtocol.SASL_PLAINTEXT));
+    assertTrue(KafkaSSLUtils.isKafkaSSLProtocol(PubSubSecurityProtocol.SSL));
+    assertFalse(KafkaSSLUtils.isKafkaSSLProtocol(PubSubSecurityProtocol.PLAINTEXT));
+    assertTrue(KafkaSSLUtils.isKafkaSSLProtocol(PubSubSecurityProtocol.SASL_SSL));
+    assertFalse(KafkaSSLUtils.isKafkaSSLProtocol(PubSubSecurityProtocol.SASL_PLAINTEXT));
   }
 }

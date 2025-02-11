@@ -1,6 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -11,6 +11,7 @@ import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -23,13 +24,14 @@ import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.DiskUsage;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.concurrent.ExecutorService;
 import java.util.function.BooleanSupplier;
-import java.util.function.Function;
+import org.apache.helix.manager.zk.ZKHelixAdmin;
 
 
 public class StoreIngestionTaskFactory {
@@ -44,6 +46,7 @@ public class StoreIngestionTaskFactory {
   }
 
   public StoreIngestionTask getNewIngestionTask(
+      StorageService storageService,
       Store store,
       Version version,
       Properties kafkaConsumerProperties,
@@ -52,9 +55,11 @@ public class StoreIngestionTaskFactory {
       int partitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
-      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) {
+      DaVinciRecordTransformerConfig recordTransformerConfig,
+      Lazy<ZKHelixAdmin> zkHelixAdmin) {
     if (version.isActiveActiveReplicationEnabled()) {
       return new ActiveActiveStoreIngestionTask(
+          storageService,
           builder,
           store,
           version,
@@ -64,9 +69,11 @@ public class StoreIngestionTaskFactory {
           partitionId,
           isIsolatedIngestion,
           cacheBackend,
-          getRecordTransformer);
+          recordTransformerConfig,
+          zkHelixAdmin);
     }
     return new LeaderFollowerStoreIngestionTask(
+        storageService,
         builder,
         store,
         version,
@@ -76,7 +83,8 @@ public class StoreIngestionTaskFactory {
         partitionId,
         isIsolatedIngestion,
         cacheBackend,
-        getRecordTransformer);
+        recordTransformerConfig,
+        zkHelixAdmin);
   }
 
   /**

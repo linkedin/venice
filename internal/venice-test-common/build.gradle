@@ -36,7 +36,6 @@ configurations {
     }
   }
   implementation {
-    exclude group: 'org.apache.kafka'
     exclude group: 'org.mortbay.jetty', module: 'servlet-api'
   }
   integrationTestImplementation.extendsFrom testImplementation
@@ -68,7 +67,7 @@ dependencies {
   implementation project(':internal:venice-common')
   implementation project(':services:venice-controller')
   implementation project(':services:venice-router')
-  implementation project(':clients:venice-samza')
+  implementation project(':integrations:venice-samza')
   implementation project(':clients:venice-producer')
   implementation project(':internal:venice-client-common')
   implementation project(':services:venice-server')
@@ -109,6 +108,7 @@ dependencies {
   implementation libraries.samzaApi
   implementation libraries.spark
   implementation libraries.testng
+  implementation libraries.zstd
 
   implementation (libraries.mapreduceClientJobClient) {
     exclude group: 'org.apache.avro'
@@ -119,6 +119,7 @@ dependencies {
   testImplementation project(':internal:venice-common').sourceSets.test.output
   testImplementation libraries.log4j2core
   testImplementation libraries.log4j2api
+  testImplementation libraries.kafkaClients
 
   jmhAnnotationProcessor 'org.openjdk.jmh:jmh-generator-annprocess:' + jmh.jmhVersion.get()
   jmhImplementation project(path: ':internal:venice-test-common', configuration: 'integrationTestUtils')
@@ -136,7 +137,8 @@ def integrationTestBuckets = [
   "1000": [
       "com.linkedin.davinci.*",
       "com.linkedin.venice.endToEnd.DaVinciClientDiskFullTest",
-      "com.linkedin.venice.endToEnd.DaVinciClientMemoryLimitTest"],
+      "com.linkedin.venice.endToEnd.DaVinciClientMemoryLimitTest",
+      "com.linkedin.venice.endToEnd.DaVinciClientRecordTransformerTest"],
   "1010": [
        "com.linkedin.venice.endToEnd.DaVinciClientTest"],
   "1020": [
@@ -171,7 +173,8 @@ def integrationTestBuckets = [
       "com.linkedin.venice.endToEnd.TestStuckConsumerRepair",
       "com.linkedin.venice.endToEnd.TestSuperSetSchemaRegistration",
       "com.linkedin.venice.endToEnd.TestTopicWiseSharedConsumerPoolResilience",
-      "com.linkedin.venice.endToEnd.TestUnusedValueSchemaCleanup"],
+      "com.linkedin.venice.endToEnd.TestUnusedValueSchemaCleanup",
+      "com.linkedin.venice.endToEnd.BlobP2PTransferAmongServersTest"],
   "1200":[
       "com.linkedin.venice.endToEnd.TestVson*",
       "com.linkedin.venice.endToEnd.Push*"],
@@ -241,12 +244,12 @@ integrationTestBuckets.each { name, patterns ->
       excludeGroups 'flaky'
       listeners = ['com.linkedin.venice.testng.VeniceSuiteListener', 'com.linkedin.venice.testng.VeniceTestListener']
     }
-    doFirst {
+    beforeSuite { descriptor ->
       suiteStartTime = System.currentTimeMillis()
     }
     afterSuite { descriptor, result ->
       if (descriptor.name.startsWith("com.linkedin")) {
-        println "Test Suite ${descriptor.name} completed in ${(System.currentTimeMillis() - suiteStartTime )/1000} s"
+        println "Test Suite ${descriptor.name} completed (${result.getResultType()}) in ${(System.currentTimeMillis() - suiteStartTime )/1000} s"
       }
     }
   }
@@ -263,7 +266,7 @@ task integrationTests_9999(type: Test) {
       }
     }
   }
-  doFirst {
+  beforeSuite { descriptor ->
     suiteStartTime = System.currentTimeMillis()
   }
   configure integrationTestConfigs
@@ -273,7 +276,7 @@ task integrationTests_9999(type: Test) {
   }
   afterSuite { descriptor, result ->
     if (descriptor.name.startsWith("com.linkedin")) {
-      println "Test Suite ${descriptor.name} completed in ${(System.currentTimeMillis() - suiteStartTime )/1000} s"
+      println "Test Suite ${descriptor.name} completed (${result.getResultType()}) in ${(System.currentTimeMillis() - suiteStartTime )/1000} s"
     }
   }
 }
@@ -286,6 +289,9 @@ task generateGHCI() {
   def paramFile = new File(targetDir, "gh-ci-parameterized-flow.txt")
   def paramFilePath = Paths.get(paramFile.getPath())
   def paramFileContent = new String(Files.readAllBytes(paramFilePath))
+
+  def completionFile = new File(targetDir, "gh-ci-completion-flow.txt")
+  def completionFileContent = new String(Files.readAllBytes(Paths.get(completionFile.getPath())))
 
   targetFile.delete()
   targetFile.createNewFile()
@@ -313,7 +319,7 @@ task generateGHCI() {
   jobs << otherTest
 
   // define a job that depends others to manage the status check
-  appendToGHCI(paramFileContent, targetFilePath, "E2ETestsCompletion", 120, "clean", jobs)
+  appendToGHCI(completionFileContent, targetFilePath, "E2ETestsCompletion", 20, "null", jobs)
 
   def finalDestinationPath = Paths.get(rootDir.getPath() + "/.github/workflows/VeniceCI-E2ETests.yml")
   Files.move(targetFilePath, finalDestinationPath, StandardCopyOption.REPLACE_EXISTING)

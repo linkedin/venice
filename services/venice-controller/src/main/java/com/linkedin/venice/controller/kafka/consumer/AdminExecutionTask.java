@@ -84,8 +84,6 @@ public class AdminExecutionTask implements Callable<Void> {
   private final ConcurrentHashMap<String, Long> lastSucceededExecutionIdMap;
   private final long lastPersistedExecutionId;
 
-  private final Map<String, AdminExecutionTask> storeToScheduledTask;
-
   AdminExecutionTask(
       Logger LOGGER,
       String clusterName,
@@ -97,8 +95,7 @@ public class AdminExecutionTask implements Callable<Void> {
       ExecutionIdAccessor executionIdAccessor,
       boolean isParentController,
       AdminConsumptionStats stats,
-      String regionName,
-      Map<String, AdminExecutionTask> storeToScheduledTask) {
+      String regionName) {
     this.LOGGER = LOGGER;
     this.clusterName = clusterName;
     this.storeName = storeName;
@@ -110,7 +107,6 @@ public class AdminExecutionTask implements Callable<Void> {
     this.isParentController = isParentController;
     this.stats = stats;
     this.regionName = regionName;
-    this.storeToScheduledTask = storeToScheduledTask;
   }
 
   @Override
@@ -159,10 +155,13 @@ public class AdminExecutionTask implements Callable<Void> {
         LOGGER.error("Error {}", logMessage, e);
       }
       throw e;
-    } finally {
-      storeToScheduledTask.remove(storeName);
     }
     return null;
+  }
+
+  // Package private for testing only
+  String getStoreName() {
+    return this.storeName;
   }
 
   private void processMessage(AdminOperation adminOperation) {
@@ -476,6 +475,7 @@ public class AdminExecutionTask implements Callable<Void> {
           .setHybridTimeLagThreshold(message.hybridStoreConfig.producerTimestampLagThresholdToGoOnlineInSeconds)
           .setHybridDataReplicationPolicy(
               DataReplicationPolicy.valueOf(message.hybridStoreConfig.dataReplicationPolicy))
+          .setRealTimeTopicName(message.hybridStoreConfig.realTimeTopicName.toString())
           .setHybridBufferReplayPolicy(BufferReplayPolicy.valueOf(message.hybridStoreConfig.bufferReplayPolicy));
     }
     params.setAccessControlled(message.accessControlled)
@@ -498,7 +498,15 @@ public class AdminExecutionTask implements Callable<Void> {
         .setMigrationDuplicateStore(message.migrationDuplicateStore)
         .setLatestSupersetSchemaId(message.latestSuperSetValueSchemaId)
         .setBlobTransferEnabled(message.blobTransferEnabled)
-        .setUnusedSchemaDeletionEnabled(message.unusedSchemaDeletionEnabled);
+        .setUnusedSchemaDeletionEnabled(message.unusedSchemaDeletionEnabled)
+        .setNearlineProducerCompressionEnabled(message.nearlineProducerCompressionEnabled)
+        .setNearlineProducerCountPerWriter(message.nearlineProducerCountPerWriter)
+        .setTargetRegionSwapWaitTime(message.targetSwapRegionWaitTime)
+        .setIsDavinciHeartbeatReported(message.isDaVinciHeartBeatReported);
+
+    if (message.targetSwapRegion != null) {
+      params.setTargetRegionSwap(message.getTargetSwapRegion().toString());
+    }
 
     if (message.ETLStoreConfig != null) {
       params.setRegularVersionETLEnabled(message.ETLStoreConfig.regularVersionETLEnabled)
@@ -634,6 +642,13 @@ public class AdminExecutionTask implements Callable<Void> {
         message.pushStreamSourceAddress == null ? null : message.pushStreamSourceAddress.toString();
     long rewindTimeInSecondsOverride = message.rewindTimeInSecondsOverride;
     int replicationMetadataVersionId = message.timestampMetadataVersionId;
+    // Log the message
+    LOGGER.info(
+        "Processing add version message for store: {} in cluster: {} with version number: {}.",
+        storeName,
+        clusterName,
+        versionNumber);
+
     if (isParentController) {
       if (checkPreConditionForReplicateAddVersion(clusterName, storeName)) {
         // Parent controller mirrors new version to src or dest cluster if the store is migrating
@@ -651,7 +666,9 @@ public class AdminExecutionTask implements Callable<Void> {
     } else {
       boolean skipConsumption = message.targetedRegions != null && !message.targetedRegions.isEmpty()
           && message.targetedRegions.stream().map(Object::toString).noneMatch(regionName::equals);
-      if (skipConsumption) {
+      boolean isTargetRegionPushWithDeferredSwap = message.targetedRegions != null && message.versionSwapDeferred;
+      String targetedRegions = message.targetedRegions != null ? String.join(",", message.targetedRegions) : "";
+      if (skipConsumption && !isTargetRegionPushWithDeferredSwap) {
         // for targeted region push, only allow specified region to process add version message
         LOGGER.info(
             "Skip the add version message for store {} in region {} since this is targeted region push and "
@@ -672,6 +689,7 @@ public class AdminExecutionTask implements Callable<Void> {
             rewindTimeInSecondsOverride,
             replicationMetadataVersionId,
             message.versionSwapDeferred,
+            targetedRegions,
             repushSourceVersion);
       }
     }

@@ -1,6 +1,9 @@
 package com.linkedin.venice.meta;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
@@ -68,6 +71,20 @@ public class RetryManagerTest {
     // We should eventually be able to perform retries again
     TestUtils
         .waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> Assert.assertTrue(retryManager.isRetryAllowed()));
+
+    // Make sure the empty request count kicks in
+    doReturn(start + 3001).when(mockClock).millis();
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      verify(mockClock, atLeast(10)).millis();
+    });
+
+    // Send more traffic
+    doReturn(start + 4001).when(mockClock).millis();
+    retryManager.recordRequests(100);
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        () -> Assert.assertTrue(retryManager.isRetryAllowed(40)));
   }
 
   @Test(timeOut = TEST_TIMEOUT_IN_MS)

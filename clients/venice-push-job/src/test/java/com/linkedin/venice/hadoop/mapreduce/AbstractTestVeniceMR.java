@@ -1,5 +1,7 @@
 package com.linkedin.venice.hadoop.mapreduce;
 
+import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS;
+import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_STRATEGY;
@@ -85,6 +87,8 @@ public class AbstractTestVeniceMR {
     config.set(VeniceReducer.MAP_REDUCE_JOB_ID_PROP, "job_200707121733_0003");
     config.setBoolean(VeniceWriter.ENABLE_CHUNKING, false);
     config.setInt(PARTITION_COUNT, partitionCount);
+    config.setLong(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, 1L);
+    config.setLong(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, 1L);
     return new JobConf(config);
   }
 

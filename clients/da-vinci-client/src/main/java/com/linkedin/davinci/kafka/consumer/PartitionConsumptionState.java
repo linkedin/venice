@@ -15,7 +15,9 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.LeaderCompleteState;
+import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.List;
@@ -23,6 +25,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -31,6 +34,8 @@ import org.apache.avro.generic.GenericRecord;
  */
 public class PartitionConsumptionState {
   private static final int MAX_INCREMENTAL_PUSH_ENTRY_NUM = 50;
+  private static final String PREVIOUSLY_READY_TO_SERVE = "previouslyReadyToServe";
+  private static final String TRUE = "true";
 
   private final String replicaId;
   private final int partition;
@@ -62,6 +67,16 @@ public class PartitionConsumptionState {
   private CompletableFuture<Void> lastVTProduceCallFuture;
 
   /**
+   * State machine that can only transition to LATCH_CREATED if LatchStatus is NONE, and transition to LATCH_RELEASED
+   * if LatchStatus is LATCH_CREATED. The latch will only be created in {@link LeaderFollowerPartitionStateModel} if
+   * consumption begins on a partition that is the current version. It will not be created if the future version
+   * (being consumed) later becomes the current version.
+   */
+  enum LatchStatus {
+    NONE, LATCH_CREATED, LATCH_RELEASED
+  }
+
+  /**
    * Only used in L/F model. Check if the partition has released the latch.
    * In L/F ingestion task, Optionally, the state model holds a latch that
    * is used to determine when it should transit from offline to follower.
@@ -70,7 +85,7 @@ public class PartitionConsumptionState {
    * See {@link LeaderFollowerPartitionStateModel} for the
    * details why we need latch for certain resources.
    */
-  private boolean isLatchReleased = false;
+  private final AtomicReference<LatchStatus> latchStatus = new AtomicReference<>(LatchStatus.NONE);
 
   /**
    * This future is completed in drainer thread after persisting the associated record and offset to DB.
@@ -208,6 +223,9 @@ public class PartitionConsumptionState {
 
   private List<String> pendingReportIncPushVersionList;
 
+  // veniceWriterLazyRef could be set and get in different threads, mark it volatile.
+  private volatile Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriterLazyRef;
+
   public PartitionConsumptionState(String replicaId, int partition, OffsetRecord offsetRecord, boolean hybrid) {
     this.replicaId = replicaId;
     this.partition = partition;
@@ -326,12 +344,20 @@ public class PartitionConsumptionState {
     this.isSubscribed = false;
   }
 
+  public boolean isLatchCreated() {
+    return latchStatus.get() != LatchStatus.NONE;
+  }
+
+  public void setLatchCreated() {
+    latchStatus.compareAndSet(LatchStatus.NONE, LatchStatus.LATCH_CREATED);
+  }
+
   public boolean isLatchReleased() {
-    return isLatchReleased;
+    return latchStatus.get() == LatchStatus.LATCH_RELEASED;
   }
 
   public void releaseLatch() {
-    this.isLatchReleased = true;
+    latchStatus.compareAndSet(LatchStatus.LATCH_CREATED, LatchStatus.LATCH_RELEASED);
   }
 
   public void errorReported() {
@@ -452,6 +478,14 @@ public class PartitionConsumptionState {
 
   public void finalizeExpectedChecksum() {
     this.expectedSSTFileChecksum = null;
+  }
+
+  public Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriterLazyRef() {
+    return veniceWriterLazyRef;
+  }
+
+  public void setVeniceWriterLazyRef(Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriterLazyRef) {
+    this.veniceWriterLazyRef = veniceWriterLazyRef;
   }
 
   /**
@@ -585,6 +619,19 @@ public class PartitionConsumptionState {
 
   public void setSkipKafkaMessage(boolean skipKafkaMessage) {
     this.skipKafkaMessage = skipKafkaMessage;
+  }
+
+  /**
+   * This persists to the offsetRecord associated to this partitionConsumptionState that the ready to serve check has
+   * passed.  This will be persisted to disk once the offsetRecord is checkpointed, and subsequent restarts will
+   * consult this information when determining if the node should come online or not to serve traffic
+   */
+  public void recordReadyToServeInOffsetRecord() {
+    offsetRecord.setPreviousStatusesEntry(PREVIOUSLY_READY_TO_SERVE, TRUE);
+  }
+
+  public boolean getReadyToServeInOffsetRecord() {
+    return offsetRecord.getPreviousStatusesEntry(PREVIOUSLY_READY_TO_SERVE).equals(TRUE);
   }
 
   /**

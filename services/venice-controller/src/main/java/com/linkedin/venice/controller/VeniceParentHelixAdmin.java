@@ -20,11 +20,13 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.DATA_REPL
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_DAVINCI_PUSH_STATUS_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_META_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_READS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_DAVINCI_HEARTBEAT_REPORTED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LATEST_SUPERSET_SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_COMPACTION_LAG_SECONDS;
@@ -34,6 +36,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIGRATION
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIN_COMPACTION_LAG_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_SOURCE_FABRIC;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.NEARLINE_PRODUCER_COMPRESSION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.NEARLINE_PRODUCER_COUNT_PER_WRITER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NUM_VERSIONS_TO_PRESERVE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OFFSET_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
@@ -44,6 +48,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_N
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_STREAM_SOURCE_ADDRESS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_COMPUTATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_QUOTA_IN_CU;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.REAL_TIME_TOPIC_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGULAR_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_FACTOR;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_PROTOCOL_VERSION_ID;
@@ -54,17 +59,22 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_N
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION_WAIT_TIME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UNUSED_SCHEMA_DELETION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
+import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.BATCH_JOB_HEARTBEAT;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PUSH_JOB_DETAILS;
+import static com.linkedin.venice.views.VeniceView.VIEW_NAME_SEPARATOR;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -177,6 +187,7 @@ import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RegionPushDetails;
@@ -232,6 +243,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -485,7 +497,6 @@ public class VeniceParentHelixAdmin implements Admin {
     boolean initializePushJobDetailsStore = !StringUtils.isEmpty(pushJobDetailsStoreClusterName);
     if (initRoutineForPushJobDetailsSystemStore != null) {
       if (initializePushJobDetailsStore) {
-        // TODO: When we plan to enable active-active push details store in future, we need to enable it by default.
         UpdateStoreQueryParams updateStoreQueryParamsForPushJobDetails =
             new UpdateStoreQueryParams().setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE);
         initRoutineForPushJobDetailsSystemStore.setDelegate(
@@ -949,8 +960,28 @@ public class VeniceParentHelixAdmin implements Admin {
   public void deleteStore(
       String clusterName,
       String storeName,
+      boolean isAbortMigrationCleanup,
       int largestUsedVersionNumber,
       boolean waitOnRTTopicDeletion) {
+    if (isAbortMigrationCleanup) {
+      HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+      try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreReadLock(storeName)) {
+        ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+        Store store = repository.getStore(storeName);
+        if (store != null && !store.isMigrating()) {
+          LOGGER.warn(
+              "Deletion of store: {} in cluster: {} was issued as part of abort migration resource cleanup, but the store's "
+                  + "migrating flag is false. Please ensure the store's migrating flag is set to true in the destination "
+                  + "cluster before issuing the deleteStore to prevent accidental deletion of shared resources.",
+              storeName,
+              clusterName);
+          throw new VeniceException(
+              "Store " + storeName + "'s migrating flag is false. Not safe to delete a store "
+                  + "that is assumed to be migrating without the migrating flag setup as true.",
+              ErrorType.INVALID_CONFIG);
+        }
+      }
+    }
     acquireAdminMessageLock(clusterName, storeName);
     try {
       LOGGER.info("Deleting store: {} from cluster: {}", storeName, clusterName);
@@ -1522,7 +1553,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
     Version newVersion;
     if (pushType.isIncremental()) {
-      newVersion = getVeniceHelixAdmin().getIncrementalPushVersion(clusterName, storeName);
+      newVersion = getVeniceHelixAdmin().getIncrementalPushVersion(clusterName, storeName, pushJobId);
     } else {
       validateTargetedRegions(targetedRegions, clusterName);
 
@@ -1700,19 +1731,6 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see VeniceHelixAdmin#getRealTimeTopic(String, String)
-   */
-  @Override
-  public String getRealTimeTopic(String clusterName, String storeName) {
-    return getVeniceHelixAdmin().getRealTimeTopic(clusterName, storeName);
-  }
-
-  @Override
-  public String getSeparateRealTimeTopic(String clusterName, String storeName) {
-    return getVeniceHelixAdmin().getSeparateRealTimeTopic(clusterName, storeName);
-  }
-
-  /**
    * A couple of extra checks are needed in parent controller
    * 1. check batch job statuses across child controllers. (We cannot only check the version status
    * in parent controller since they are marked as STARTED)
@@ -1720,12 +1738,17 @@ public class VeniceParentHelixAdmin implements Admin {
    * preserve incremental push topic in parent Kafka anymore
    */
   @Override
-  public Version getIncrementalPushVersion(String clusterName, String storeName) {
-    Version incrementalPushVersion = getVeniceHelixAdmin().getIncrementalPushVersion(clusterName, storeName);
+  public Version getIncrementalPushVersion(String clusterName, String storeName, String pushJobId) {
+    Version incrementalPushVersion = getVeniceHelixAdmin().getIncrementalPushVersion(clusterName, storeName, pushJobId);
     String incrementalPushTopic = incrementalPushVersion.kafkaTopicName();
     ExecutionStatus status = getOffLinePushStatus(clusterName, incrementalPushTopic).getExecutionStatus();
 
     return getIncrementalPushVersion(incrementalPushVersion, status);
+  }
+
+  @Override
+  public Version getReferenceVersionForStreamingWrites(String clusterName, String storeName, String pushJobId) {
+    return getVeniceHelixAdmin().getReferenceVersionForStreamingWrites(clusterName, storeName, pushJobId);
   }
 
   // This method is only for internal / test use case
@@ -1735,7 +1758,7 @@ public class VeniceParentHelixAdmin implements Admin {
       throw new VeniceException("Cannot start incremental push since batch push is on going." + " store: " + storeName);
     }
 
-    String incrementalPushTopic = Version.composeRealTimeTopic(storeName);
+    String incrementalPushTopic = Utils.composeRealTimeTopic(storeName);
     if (status.isError() || getVeniceHelixAdmin().isTopicTruncated(incrementalPushTopic)) {
       throw new VeniceException(
           "Cannot start incremental push since previous batch push has failed. Please run another bash job."
@@ -2229,6 +2252,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Long> hybridTimeLagThreshold = params.getHybridTimeLagThreshold();
       Optional<DataReplicationPolicy> hybridDataReplicationPolicy = params.getHybridDataReplicationPolicy();
       Optional<BufferReplayPolicy> hybridBufferReplayPolicy = params.getHybridBufferReplayPolicy();
+      Optional<String> realTimeTopicName = params.getRealTimeTopicName();
       Optional<Boolean> accessControlled = params.getAccessControlled();
       Optional<CompressionStrategy> compressionStrategy = params.getCompressionStrategy();
       Optional<Boolean> clientDecompressionEnabled = params.getClientDecompressionEnabled();
@@ -2291,7 +2315,9 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.storeName = storeName;
       setStore.owner = owner.map(addToUpdatedConfigList(updatedConfigsList, OWNER)).orElseGet(currStore::getOwner);
 
-      if (!currStore.isHybrid() && (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent())) {
+      boolean isUpdateForStoreMigration = storeMigration.orElse(false);
+      if (!isUpdateForStoreMigration && !currStore.isHybrid()
+          && (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent())) {
         // Today target colo pushjob cannot handle hybrid stores, so if a batch push is running, fail the request
         Optional<String> currentPushTopic = getTopicForCurrentPushJob(clusterName, storeName, false, false);
         if (currentPushTopic.isPresent()) {
@@ -2341,8 +2367,9 @@ public class VeniceParentHelixAdmin implements Admin {
           }
           // If View parameter is not provided, use emtpy map instead. It does not inherit from existing config.
           ViewConfig viewConfig = new ViewConfigImpl(viewClassName.get(), viewParams.orElse(Collections.emptyMap()));
-          validateStoreViewConfig(currStore, viewConfig);
-          updatedViewSettings = VeniceHelixAdmin.addNewViewConfigsIntoOldConfigs(currStore, viewName.get(), viewConfig);
+          ViewConfig validatedViewConfig = validateAndDecorateStoreViewConfig(currStore, viewConfig, viewName.get());
+          updatedViewSettings =
+              VeniceHelixAdmin.addNewViewConfigsIntoOldConfigs(currStore, viewName.get(), validatedViewConfig);
         } else {
           updatedViewSettings = VeniceHelixAdmin.removeViewConfigFromStoreViewConfigMap(currStore, viewName.get());
         }
@@ -2352,8 +2379,9 @@ public class VeniceParentHelixAdmin implements Admin {
 
       if (storeViewConfig.isPresent()) {
         // Validate and overwrite store views if they're getting set
-        validateStoreViewConfigs(storeViewConfig.get(), currStore);
-        setStore.views = StoreViewUtils.convertStringMapViewToStoreViewConfigRecordMap(storeViewConfig.get());
+        Map<String, ViewConfig> validatedViewConfigs =
+            validateAndDecorateStoreViewConfigs(storeViewConfig.get(), currStore);
+        setStore.views = StoreViewUtils.convertViewConfigMapToStoreViewRecordMap(validatedViewConfigs);
         updatedConfigsList.add(STORE_VIEW);
       }
 
@@ -2412,13 +2440,15 @@ public class VeniceParentHelixAdmin implements Admin {
       hybridTimeLagThreshold.map(addToUpdatedConfigList(updatedConfigsList, TIME_LAG_TO_GO_ONLINE));
       hybridDataReplicationPolicy.map(addToUpdatedConfigList(updatedConfigsList, DATA_REPLICATION_POLICY));
       hybridBufferReplayPolicy.map(addToUpdatedConfigList(updatedConfigsList, BUFFER_REPLAY_POLICY));
+      realTimeTopicName.map(addToUpdatedConfigList(updatedConfigsList, REAL_TIME_TOPIC_NAME));
       HybridStoreConfig updatedHybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(
           currStore,
           hybridRewindSeconds,
           hybridOffsetLagThreshold,
           hybridTimeLagThreshold,
           hybridDataReplicationPolicy,
-          hybridBufferReplayPolicy);
+          hybridBufferReplayPolicy,
+          realTimeTopicName);
 
       // Get VeniceControllerClusterConfig for the cluster
       VeniceControllerClusterConfig controllerConfig =
@@ -2493,6 +2523,7 @@ public class VeniceParentHelixAdmin implements Admin {
             updatedHybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds();
         hybridStoreConfigRecord.dataReplicationPolicy = updatedHybridStoreConfig.getDataReplicationPolicy().getValue();
         hybridStoreConfigRecord.bufferReplayPolicy = updatedHybridStoreConfig.getBufferReplayPolicy().getValue();
+        hybridStoreConfigRecord.realTimeTopicName = updatedHybridStoreConfig.getRealTimeTopicName();
         setStore.hybridStoreConfig = hybridStoreConfigRecord;
       }
 
@@ -2500,7 +2531,7 @@ public class VeniceParentHelixAdmin implements Admin {
           && !veniceHelixAdmin.isHybrid(currStore.getHybridStoreConfig())
           && !veniceHelixAdmin.isHybrid(updatedHybridStoreConfig)) {
         LOGGER.info(
-            "Enabling incremental push for a batch store:{}. Converting it to a hybrid store with default configs.",
+            "Enabling incremental push for a batch store:{}. Converting it to Active/Active hybrid store with default configs.",
             storeName);
         HybridStoreConfigRecord hybridStoreConfigRecord = new HybridStoreConfigRecord();
         hybridStoreConfigRecord.rewindTimeInSeconds = DEFAULT_REWIND_TIME_IN_SECONDS;
@@ -2513,7 +2544,12 @@ public class VeniceParentHelixAdmin implements Admin {
         updatedConfigsList.add(DATA_REPLICATION_POLICY);
         hybridStoreConfigRecord.bufferReplayPolicy = BufferReplayPolicy.REWIND_FROM_EOP.getValue();
         updatedConfigsList.add(BUFFER_REPLAY_POLICY);
+        hybridStoreConfigRecord.realTimeTopicName = DEFAULT_REAL_TIME_TOPIC_NAME;
         setStore.hybridStoreConfig = hybridStoreConfigRecord;
+        if (!currStore.isSystemStore() && controllerConfig.isActiveActiveReplicationEnabledAsDefaultForHybrid()) {
+          setStore.activeActiveReplicationEnabled = true;
+          updatedConfigsList.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
+        }
       }
 
       /**
@@ -2539,8 +2575,10 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.numVersionsToPreserve =
           numVersionsToPreserve.map(addToUpdatedConfigList(updatedConfigsList, NUM_VERSIONS_TO_PRESERVE))
               .orElseGet(currStore::getNumVersionsToPreserve);
-      setStore.isMigrating = storeMigration.map(addToUpdatedConfigList(updatedConfigsList, STORE_MIGRATION))
-          .orElseGet(currStore::isMigrating);
+      setStore.isMigrating =
+          storeMigration.map(addToUpdatedConfigList(updatedConfigsList, STORE_MIGRATION, ENABLE_STORE_MIGRATION))
+
+              .orElseGet(currStore::isMigrating);
       setStore.replicationMetadataVersionID = replicationMetadataVersionID
           .map(addToUpdatedConfigList(updatedConfigsList, REPLICATION_METADATA_PROTOCOL_VERSION_ID))
           .orElse(currStore.getRmdVersion());
@@ -2603,6 +2641,26 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.separateRealTimeTopicEnabled =
           separateRealTimeTopicEnabled.map(addToUpdatedConfigList(updatedConfigsList, SEPARATE_REAL_TIME_TOPIC_ENABLED))
               .orElseGet(currStore::isSeparateRealTimeTopicEnabled);
+
+      setStore.nearlineProducerCompressionEnabled = params.getNearlineProducerCompressionEnabled()
+          .map(addToUpdatedConfigList(updatedConfigsList, NEARLINE_PRODUCER_COMPRESSION_ENABLED))
+          .orElseGet(currStore::isNearlineProducerCompressionEnabled);
+
+      setStore.nearlineProducerCountPerWriter = params.getNearlineProducerCountPerWriter()
+          .map(addToUpdatedConfigList(updatedConfigsList, NEARLINE_PRODUCER_COUNT_PER_WRITER))
+          .orElseGet(currStore::getNearlineProducerCountPerWriter);
+
+      setStore.targetSwapRegion = params.getTargetSwapRegion()
+          .map(addToUpdatedConfigList(updatedConfigsList, TARGET_SWAP_REGION))
+          .orElseGet(currStore::getTargetSwapRegion);
+
+      setStore.targetSwapRegionWaitTime = params.getTargetRegionSwapWaitTime()
+          .map(addToUpdatedConfigList(updatedConfigsList, TARGET_SWAP_REGION_WAIT_TIME))
+          .orElseGet((currStore::getTargetSwapRegionWaitTime));
+
+      setStore.isDaVinciHeartBeatReported = params.getIsDavinciHeartbeatReported()
+          .map(addToUpdatedConfigList(updatedConfigsList, IS_DAVINCI_HEARTBEAT_REPORTED))
+          .orElseGet((currStore::getIsDavinciHeartbeatReported));
 
       // Check whether the passed param is valid or not
       if (latestSupersetSchemaId.isPresent()) {
@@ -2728,6 +2786,18 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       /**
+       * Pre-flight check for incremental push config update. We only allow incremental push config to be turned on
+       * when store is A/A. Otherwise, we should fail store update.
+       */
+      if (setStore.hybridStoreConfig != null && setStore.incrementalPushEnabled
+          && !setStore.activeActiveReplicationEnabled) {
+        throw new VeniceHttpException(
+            HttpStatus.SC_BAD_REQUEST,
+            "Hybrid store config invalid. Cannot have incremental push enabled while A/A not enabled",
+            ErrorType.BAD_REQUEST);
+      }
+
+      /**
        * By default, parent controllers will not try to replicate the unchanged store configs to child controllers;
        * an updatedConfigsList will be used to represent which configs are updated by users.
        */
@@ -2782,18 +2852,48 @@ public class VeniceParentHelixAdmin implements Admin {
     }
   }
 
-  private void validateStoreViewConfigs(Map<String, String> stringMap, Store store) {
+  private Map<String, ViewConfig> validateAndDecorateStoreViewConfigs(Map<String, String> stringMap, Store store) {
     Map<String, ViewConfig> configs = StoreViewUtils.convertStringMapViewToViewConfigMap(stringMap);
+    Map<String, ViewConfig> validatedConfigs = new HashMap<>();
     for (Map.Entry<String, ViewConfig> viewConfigEntry: configs.entrySet()) {
-      validateStoreViewConfig(store, viewConfigEntry.getValue());
+      ViewConfig validatedViewConfig =
+          validateAndDecorateStoreViewConfig(store, viewConfigEntry.getValue(), viewConfigEntry.getKey());
+      validatedConfigs.put(viewConfigEntry.getKey(), validatedViewConfig);
     }
+    return validatedConfigs;
   }
 
-  private void validateStoreViewConfig(Store store, ViewConfig viewConfig) {
+  private ViewConfig validateAndDecorateStoreViewConfig(Store store, ViewConfig viewConfig, String viewName) {
     // TODO: Pass a proper properties object here. Today this isn't used in this context
-    VeniceView view =
-        ViewUtils.getVeniceView(viewConfig.getViewClassName(), new Properties(), store, viewConfig.getViewParameters());
-    view.validateConfigs();
+    if (viewConfig.getViewClassName().equals(MaterializedView.class.getCanonicalName())) {
+      if (viewName.contains(VERSION_SEPARATOR)) {
+        throw new VeniceException(String.format("View name cannot contain version separator: %s", VERSION_SEPARATOR));
+      }
+      if (viewName.contains(VIEW_NAME_SEPARATOR)) {
+        throw new VeniceException(
+            String.format("View name cannot contain view name separator: %s", VIEW_NAME_SEPARATOR));
+      }
+      Map<String, String> viewParams = viewConfig.getViewParameters();
+      MaterializedViewParameters.Builder decoratedViewParamBuilder =
+          new MaterializedViewParameters.Builder(viewName, viewParams);
+      if (!viewParams.containsKey(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITIONER.name())) {
+        decoratedViewParamBuilder.setPartitioner(store.getPartitionerConfig().getPartitionerClass());
+        if (!store.getPartitionerConfig().getPartitionerParams().isEmpty()) {
+          decoratedViewParamBuilder.setPartitionerParams(store.getPartitionerConfig().getPartitionerParams());
+        }
+      }
+      if (!viewParams.containsKey(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name())) {
+        decoratedViewParamBuilder.setPartitionCount(store.getPartitionCount());
+      }
+      viewConfig.setViewParameters(decoratedViewParamBuilder.build());
+    }
+    VeniceView view = ViewUtils.getVeniceView(
+        viewConfig.getViewClassName(),
+        new Properties(),
+        store.getName(),
+        viewConfig.getViewParameters());
+    view.validateConfigs(store);
+    return viewConfig;
   }
 
   private SupersetSchemaGenerator getSupersetSchemaGenerator(String clusterName) {
@@ -3578,7 +3678,7 @@ public class VeniceParentHelixAdmin implements Admin {
         Store parentStore = repository.getStore(storeName);
         Version version = parentStore.getVersion(versionNum);
         boolean isDeferredSwap = version != null && version.isVersionSwapDeferred();
-        if (!isDeferredSwap) {
+        if (!isDeferredSwap || !StringUtils.isEmpty(targetedRegions)) {
           // targetedRegions is non-empty for target region push of batch store
           boolean isTargetRegionPush = !StringUtils.isEmpty(targetedRegions);
           Version storeVersion = parentStore.getVersion(versionNum);
@@ -3602,12 +3702,15 @@ public class VeniceParentHelixAdmin implements Admin {
           }
           // status PUSHED is set when batch store's target region push is completed, but other region are yet to
           // complete
-          if (isTargetRegionPush && !isVersionPushed) {
-            parentStore.updateVersionStatus(versionNum, PUSHED);
-            repository.updateStore(parentStore);
-          } else { // status ONLINE is set when all region finishes ingestion for either regular or target region push.
-            parentStore.updateVersionStatus(versionNum, ONLINE);
-            repository.updateStore(parentStore);
+          if (currentReturnStatus.equals(ExecutionStatus.COMPLETED)) {
+            if (isTargetRegionPush && !isVersionPushed) {
+              parentStore.updateVersionStatus(versionNum, PUSHED);
+              repository.updateStore(parentStore);
+            } else { // status ONLINE is set when all region finishes ingestion for either regular or target region
+                     // push.
+              parentStore.updateVersionStatus(versionNum, ONLINE);
+              repository.updateStore(parentStore);
+            }
           }
         }
       }
@@ -3789,6 +3892,20 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().getTopicManager(pubSubServerAddress);
   }
 
+  @Override
+  public InstanceRemovableStatuses getAggregatedHealthStatus(
+      String cluster,
+      List<String> instances,
+      List<String> toBeStoppedInstances,
+      boolean isSSLEnabled) {
+    throw new VeniceUnsupportedOperationException("getAggregatedHealthStatus");
+  }
+
+  @Override
+  public boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, String storeName) {
+    return false;
+  }
+
   /**
    * @see VeniceHelixAdmin#isLeaderControllerFor(String)
    */
@@ -3841,11 +3958,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * Unsupported operation in the parent controller.
    */
   @Override
-  public NodeRemovableResult isInstanceRemovable(
-      String clusterName,
-      String instanceId,
-      List<String> lockedNodes,
-      boolean isFromInstanceView) {
+  public NodeRemovableResult isInstanceRemovable(String clusterName, String instanceId, List<String> lockedNodes) {
     throw new VeniceException("isInstanceRemovable is not supported!");
   }
 
@@ -5023,6 +5136,17 @@ public class VeniceParentHelixAdmin implements Admin {
   private <T> Function<T, T> addToUpdatedConfigList(List<CharSequence> updatedConfigList, String config) {
     return (configValue) -> {
       updatedConfigList.add(config);
+      return configValue;
+    };
+  }
+
+  static private <T> Function<T, T> addToUpdatedConfigList(
+      List<CharSequence> updatedConfigList,
+      String config,
+      String legacyConfigName) {
+    return (configValue) -> {
+      updatedConfigList.add(config);
+      updatedConfigList.add(legacyConfigName);
       return configValue;
     };
   }

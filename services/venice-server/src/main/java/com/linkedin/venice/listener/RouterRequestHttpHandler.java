@@ -7,9 +7,11 @@ import com.linkedin.venice.listener.request.CurrentVersionRequest;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
+import com.linkedin.venice.listener.request.HeartbeatRequest;
 import com.linkedin.venice.listener.request.MetadataFetchRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
+import com.linkedin.venice.listener.request.StorePropertiesFetchRequest;
 import com.linkedin.venice.listener.request.TopicPartitionIngestionContextRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.meta.QueryAction;
@@ -131,6 +133,13 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           statsHandler.setStoreName(metadataFetchRequest.getStoreName());
           ctx.fireChannelRead(metadataFetchRequest);
           break;
+        case STORE_PROPERTIES:
+          statsHandler.setMetadataRequest(true);
+          StorePropertiesFetchRequest storePropertiesFetchRequest =
+              StorePropertiesFetchRequest.parseGetHttpRequest(uri.getPath(), requestParts);
+          statsHandler.setStoreName(storePropertiesFetchRequest.getStoreName());
+          ctx.fireChannelRead(storePropertiesFetchRequest);
+          break;
         case CURRENT_VERSION:
           statsHandler.setMetadataRequest(true);
           CurrentVersionRequest currentVersionRequest = CurrentVersionRequest.parseGetHttpRequest(uri, requestParts);
@@ -143,6 +152,12 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           statsHandler.setStoreName(
               Version.parseStoreFromVersionTopic(topicPartitionIngestionContextRequest.getVersionTopic()));
           ctx.fireChannelRead(topicPartitionIngestionContextRequest);
+          break;
+        case HOST_HEARTBEAT_LAG:
+          statsHandler.setMetadataRequest(true);
+          HeartbeatRequest heartbeatRequest = HeartbeatRequest.parseGetHttpRequest(uri.getPath(), requestParts);
+          ctx.fireChannelRead(heartbeatRequest);
+          break;
         default:
           throw new VeniceException("Unrecognized query action");
       }

@@ -171,6 +171,17 @@ public class PushStatusCollector {
       } else {
         topicToNoDaVinciStatusRetryCountMap.remove(pushStatus.topicName);
       }
+
+      // If there is some status for a davinci push, mark that there is a dvc heartbeat reported for the latest version
+      String storeName = Version.parseStoreFromKafkaTopicName(pushStatus.topicName);
+      Store store = storeRepository.getStore(storeName);
+      if (!store.getIsDavinciHeartbeatReported() && daVinciStatus.getStatus() != ExecutionStatus.NOT_CREATED) {
+        int versionNum = Version.parseVersionFromVersionTopicName(pushStatus.topicName);
+        store.updateVersionForDaVinciHeartbeat(versionNum, true);
+        store.setIsDavinciHeartbeatReported(true);
+        storeRepository.updateStore(store);
+      }
+
       LOGGER.info(
           "Received DaVinci status: {} with details: {} for topic: {}",
           daVinciStatus.getStatus(),

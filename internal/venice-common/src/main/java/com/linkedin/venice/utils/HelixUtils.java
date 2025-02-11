@@ -12,11 +12,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.lang.StringUtils;
 import org.apache.helix.AccessOption;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.PropertyKey;
+import org.apache.helix.cloud.constants.CloudProvider;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
+import org.apache.helix.model.CloudConfig;
 import org.apache.helix.model.CustomizedStateConfig;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.InstanceConfig;
@@ -380,5 +383,33 @@ public class HelixUtils {
    */
   public static String instanceIdToUrl(String instanceId) {
     return "https://" + instanceId.replace("_", ":");
+  }
+
+  public static CloudConfig getCloudConfig(
+      CloudProvider cloudProvider,
+      String cloudId,
+      List<String> cloudInfoSources,
+      String cloudInfoProcessorPackage,
+      String cloudInfoProcessorName) {
+    CloudConfig.Builder cloudConfigBuilder =
+        new CloudConfig.Builder().setCloudEnabled(true).setCloudProvider(cloudProvider);
+
+    if (!StringUtils.isEmpty(cloudId)) {
+      cloudConfigBuilder.setCloudID(cloudId);
+    }
+
+    if (cloudInfoSources != null && !cloudInfoSources.isEmpty()) {
+      cloudConfigBuilder.setCloudInfoSources(cloudInfoSources);
+    }
+
+    if (!StringUtils.isEmpty(cloudInfoProcessorPackage)) {
+      cloudConfigBuilder.setCloudInfoProcessorPackageName(cloudInfoProcessorPackage);
+    }
+
+    if (!StringUtils.isEmpty(cloudInfoProcessorName)) {
+      cloudConfigBuilder.setCloudInfoProcessorName(cloudInfoProcessorName);
+    }
+
+    return cloudConfigBuilder.build();
   }
 }

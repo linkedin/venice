@@ -56,6 +56,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
@@ -141,18 +142,20 @@ public class ActiveActiveReplicationForHybridTest {
     Properties controllerProps = new Properties();
     controllerProps.put(NATIVE_REPLICATION_SOURCE_FABRIC, "dc-0");
     controllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
-    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-        NUMBER_OF_CHILD_DATACENTERS,
-        NUMBER_OF_CLUSTERS,
-        1,
-        1,
-        2,
-        1,
-        2,
-        Optional.of(controllerProps),
-        Optional.of(controllerProps),
-        Optional.of(serverProperties),
-        false);
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
+            .numberOfClusters(NUMBER_OF_CLUSTERS)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(2)
+            .numberOfRouters(1)
+            .replicationFactor(2)
+            .forkServer(false)
+            .parentControllerProperties(controllerProps)
+            .childControllerProperties(controllerProps)
+            .serverProperties(serverProperties);
+    multiRegionMultiClusterWrapper =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
 
@@ -188,12 +191,10 @@ public class ActiveActiveReplicationForHybridTest {
     String storeName1 = Utils.getUniqueString("test-batch-store");
     String storeName2 = Utils.getUniqueString("test-hybrid-agg-store");
     String storeName3 = Utils.getUniqueString("test-hybrid-non-agg-store");
-    String storeName4 = Utils.getUniqueString("test-incremental-push-store");
     try {
       createAndVerifyStoreInAllRegions(storeName1, parentControllerClient, dcControllerClientList);
       createAndVerifyStoreInAllRegions(storeName2, parentControllerClient, dcControllerClientList);
       createAndVerifyStoreInAllRegions(storeName3, parentControllerClient, dcControllerClientList);
-      createAndVerifyStoreInAllRegions(storeName4, parentControllerClient, dcControllerClientList);
 
       assertCommand(
           parentControllerClient.updateStore(
@@ -206,9 +207,6 @@ public class ActiveActiveReplicationForHybridTest {
           parentControllerClient.updateStore(
               storeName3,
               new UpdateStoreQueryParams().setHybridRewindSeconds(10).setHybridOffsetLagThreshold(2)));
-
-      assertCommand(
-          parentControllerClient.updateStore(storeName4, new UpdateStoreQueryParams().setIncrementalPushEnabled(true)));
 
       // Test batch
       assertCommand(
@@ -249,18 +247,8 @@ public class ActiveActiveReplicationForHybridTest {
       verifyDCConfigAARepl(parentControllerClient, storeName3, true, true, false);
       verifyDCConfigAARepl(dc0Client, storeName3, true, true, false);
       verifyDCConfigAARepl(dc1Client, storeName3, true, true, false);
-
-      // Test incremental
-      assertCommand(
-          parentControllerClient.configureActiveActiveReplicationForCluster(
-              true,
-              VeniceUserStoreType.INCREMENTAL_PUSH.toString(),
-              Optional.empty()));
-      verifyDCConfigAARepl(parentControllerClient, storeName4, false, false, true);
-      verifyDCConfigAARepl(dc0Client, storeName4, false, false, true);
-      verifyDCConfigAARepl(dc1Client, storeName4, false, false, true);
     } finally {
-      deleteStores(storeName1, storeName2, storeName3, storeName4);
+      deleteStores(storeName1, storeName2, storeName3);
     }
   }
 

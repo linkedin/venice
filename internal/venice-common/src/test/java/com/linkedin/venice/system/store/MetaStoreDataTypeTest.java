@@ -1,6 +1,6 @@
 package com.linkedin.venice.system.store;
 
-import com.linkedin.alpini.base.misc.CollectionUtil;
+import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.VeniceEnumValueTest;
 import java.util.Map;
 
@@ -12,7 +12,7 @@ public class MetaStoreDataTypeTest extends VeniceEnumValueTest<MetaStoreDataType
 
   @Override
   protected Map<Integer, MetaStoreDataType> expectedMapping() {
-    return CollectionUtil.<Integer, MetaStoreDataType>mapBuilder()
+    return CollectionUtils.<Integer, MetaStoreDataType>mapBuilder()
         .put(0, MetaStoreDataType.STORE_PROPERTIES)
         .put(1, MetaStoreDataType.STORE_KEY_SCHEMAS)
         .put(2, MetaStoreDataType.STORE_VALUE_SCHEMAS)

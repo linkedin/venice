@@ -1,9 +1,12 @@
 package com.linkedin.davinci.helix;
 
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import java.util.Arrays;
@@ -39,5 +42,16 @@ public class HelixParticipationServiceTest {
     verify(mockAccessor).deleteReplicaStatus(resourceV2, 1);
     verify(mockAccessor).deleteReplicaStatus(resourceV2, 2);
     verify(mockAccessor).deleteReplicaStatus(resourceV2, 3);
+  }
+
+  @Test
+  public void testUnknownHelixInstanceOperation() {
+    HelixParticipationService mockHelixParticipationService = mock(HelixParticipationService.class);
+    VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
+
+    when(mockServerConfig.isHelixJoinAsUnknownEnabled()).thenReturn(true);
+
+    doCallRealMethod().when(mockHelixParticipationService).buildHelixManagerProperty(mockServerConfig);
+    mockHelixParticipationService.buildHelixManagerProperty(mockServerConfig);
   }
 }

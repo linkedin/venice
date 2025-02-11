@@ -5,12 +5,14 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atMostOnce;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
@@ -22,6 +24,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -44,6 +47,7 @@ import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -51,9 +55,11 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.locks.ResourceAutoClosableLockManager;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
+import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.NavigableMap;
@@ -61,9 +67,10 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import org.apache.avro.Schema;
-import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
@@ -72,6 +79,7 @@ import org.testng.annotations.Test;
 
 @Test
 public abstract class KafkaStoreIngestionServiceTest {
+  private StorageService mockStorageService;
   private StorageEngineRepository mockStorageEngineRepository;
   private VeniceConfigLoader mockVeniceConfigLoader;
   private StorageMetadataService storageMetadataService;
@@ -88,7 +96,9 @@ public abstract class KafkaStoreIngestionServiceTest {
 
   @BeforeClass
   public void setUp() {
+    mockStorageService = mock(StorageService.class);
     mockStorageEngineRepository = mock(StorageEngineRepository.class);
+    when(mockStorageService.getStorageEngineRepository()).thenReturn(mockStorageEngineRepository);
     doReturn(mock(AbstractStorageEngine.class)).when(mockStorageEngineRepository).getLocalStorageEngine(anyString());
     storageMetadataService = mock(StorageMetadataService.class);
     mockClusterInfoProvider = mock(ClusterInfoProvider.class);
@@ -129,7 +139,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     doReturn(VeniceProperties.empty()).when(mockVeniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
     doReturn(getConsumerAssignmentStrategy()).when(mockVeniceServerConfig).getSharedConsumerAssignmentStrategy();
     doReturn(1).when(mockVeniceServerConfig).getConsumerPoolSizePerKafkaCluster();
-    doReturn(SecurityProtocol.PLAINTEXT).when(mockVeniceServerConfig).getKafkaSecurityProtocol(dummyKafkaUrl);
+    doReturn(PubSubSecurityProtocol.PLAINTEXT).when(mockVeniceServerConfig).getKafkaSecurityProtocol(dummyKafkaUrl);
     doReturn(10).when(mockVeniceServerConfig).getKafkaMaxPollRecords();
     doReturn(2).when(mockVeniceServerConfig).getTopicManagerMetadataFetcherConsumerPoolSize();
     doReturn(2).when(mockVeniceServerConfig).getTopicManagerMetadataFetcherThreadPoolSize();
@@ -149,7 +159,7 @@ public abstract class KafkaStoreIngestionServiceTest {
   @Test
   public void testDisableMetricsEmission() {
     kafkaStoreIngestionService = new KafkaStoreIngestionService(
-        mockStorageEngineRepository,
+        mockStorageService,
         mockVeniceConfigLoader,
         storageMetadataService,
         mockClusterInfoProvider,
@@ -170,6 +180,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         null,
         mockPubSubClientsFactory,
         Optional.empty(),
+        null,
+        null,
         null);
 
     String mockStoreName = "test";
@@ -233,7 +245,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     // Without starting the ingestion service test getIngestingTopicsWithVersionStatusNotOnline would return the correct
     // topics under different scenarios.
     kafkaStoreIngestionService = new KafkaStoreIngestionService(
-        mockStorageEngineRepository,
+        mockStorageService,
         mockVeniceConfigLoader,
         storageMetadataService,
         mockClusterInfoProvider,
@@ -254,6 +266,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         null,
         mockPubSubClientsFactory,
         Optional.empty(),
+        null,
+        null,
         null);
     String topic1 = "test-store_v1";
     String topic2 = "test-store_v2";
@@ -321,7 +335,7 @@ public abstract class KafkaStoreIngestionServiceTest {
   @Test
   public void testCloseStoreIngestionTask() {
     kafkaStoreIngestionService = new KafkaStoreIngestionService(
-        mockStorageEngineRepository,
+        mockStorageService,
         mockVeniceConfigLoader,
         storageMetadataService,
         mockClusterInfoProvider,
@@ -342,6 +356,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         null,
         mockPubSubClientsFactory,
         Optional.empty(),
+        null,
+        null,
         null);
     String topicName = "test-store_v1";
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
@@ -381,12 +397,20 @@ public abstract class KafkaStoreIngestionServiceTest {
     Assert.assertNotNull(newStoreIngestionTask);
     Assert.assertNotEquals(storeIngestionTask, newStoreIngestionTask);
     assertEquals(newStoreIngestionTask.getStorageEngine(), storageEngine2);
+
+    // Mimic a graceful shutdown timeout
+    kafkaStoreIngestionService.startConsumption(new VeniceStoreVersionConfig(topicName, veniceProperties), 0);
+    StoreIngestionTask shutdownTimeoutTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
+    // Initialize the latch forcefully to mimic task is running
+    shutdownTimeoutTask.getGracefulShutdownLatch().get();
+    // Graceful shutdown wait should time out
+    Assert.assertFalse(shutdownTimeoutTask.shutdownAndWait(1));
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testStoreIngestionTaskShutdownLastPartition(boolean isIsolatedIngestion) {
     kafkaStoreIngestionService = new KafkaStoreIngestionService(
-        mockStorageEngineRepository,
+        mockStorageService,
         mockVeniceConfigLoader,
         storageMetadataService,
         mockClusterInfoProvider,
@@ -407,6 +431,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         null,
         mockPubSubClientsFactory,
         Optional.empty(),
+        null,
+        null,
         null);
     String topicName = "test-store_v1";
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
@@ -450,7 +476,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     AbstractKafkaConsumerService kafkaConsumerService =
         spy(storeIngestionTask.aggKafkaConsumerService.createKafkaConsumerService(consumerProperties));
     kafkaStoreIngestionService.getTopicPartitionIngestionContext(topicName, topicName, 0);
-    verify(kafkaConsumerService, atMostOnce()).getIngestionInfoFromConsumer(pubSubTopic, pubSubTopicPartition);
+    verify(kafkaConsumerService, atMostOnce()).getIngestionInfoFor(pubSubTopic, pubSubTopicPartition);
   }
 
   @Test
@@ -488,5 +514,63 @@ public abstract class KafkaStoreIngestionServiceTest {
     mapContainsCurrentBootstrappingTask.put("current_version_bootstrapping", currentVersionBootstrappingTask);
 
     assertTrue(KafkaStoreIngestionService.hasCurrentVersionBootstrapping(mapContainsCurrentBootstrappingTask));
+  }
+
+  @Test
+  public void testDropStoragePartitionGracefully() throws NoSuchFieldException, IllegalAccessException {
+    kafkaStoreIngestionService = mock(KafkaStoreIngestionService.class);
+    String topicName = "test-store_v1";
+    int partitionId = 0;
+    VeniceProperties veniceProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    VeniceStoreVersionConfig config = new VeniceStoreVersionConfig(topicName, veniceProperties);
+    doCallRealMethod().when(kafkaStoreIngestionService).dropStoragePartitionGracefully(config, partitionId);
+
+    Field topicLockManagerField = kafkaStoreIngestionService.getClass().getDeclaredField("topicLockManager");
+    topicLockManagerField.setAccessible(true);
+    topicLockManagerField.set(kafkaStoreIngestionService, new ResourceAutoClosableLockManager<>(ReentrantLock::new));
+
+    NavigableMap topicNameToIngestionTaskMap = mock(NavigableMap.class);
+    Field topicNameToIngestionTaskMapField =
+        kafkaStoreIngestionService.getClass().getDeclaredField("topicNameToIngestionTaskMap");
+    topicNameToIngestionTaskMapField.setAccessible(true);
+    topicNameToIngestionTaskMapField.set(kafkaStoreIngestionService, topicNameToIngestionTaskMap);
+
+    PubSubTopicRepository pubSubTopicRepository = mock(PubSubTopicRepository.class);
+    Field pubSubTopicRepositoryField = kafkaStoreIngestionService.getClass().getDeclaredField("pubSubTopicRepository");
+    pubSubTopicRepositoryField.setAccessible(true);
+    pubSubTopicRepositoryField.set(kafkaStoreIngestionService, pubSubTopicRepository);
+
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+
+    PriorityBlockingQueue consumerActionsQueue = mock(PriorityBlockingQueue.class);
+    Field consumerActionsQueueField = StoreIngestionTask.class.getDeclaredField("consumerActionsQueue");
+    consumerActionsQueueField.setAccessible(true);
+    consumerActionsQueueField.set(storeIngestionTask, consumerActionsQueue);
+
+    when(topicNameToIngestionTaskMap.get(topicName)).thenReturn(storeIngestionTask);
+    doCallRealMethod().when(storeIngestionTask).dropStoragePartitionGracefully(any());
+
+    PubSubTopic pubSubTopic = mock(PubSubTopic.class);
+    when(pubSubTopicRepository.getTopic(topicName)).thenReturn(pubSubTopic);
+
+    StorageService storageService = mock(StorageService.class);
+    Field storageServiceField = StoreIngestionTask.class.getDeclaredField("storageService");
+    storageServiceField.setAccessible(true);
+    storageServiceField.set(storeIngestionTask, storageService);
+
+    Field storeConfigField = StoreIngestionTask.class.getDeclaredField("storeVersionConfig");
+    storeConfigField.setAccessible(true);
+    storeConfigField.set(storeIngestionTask, config);
+
+    // Verify that when the ingestion task is running, it drops the store partition asynchronously
+    when(storeIngestionTask.isRunning()).thenReturn(true);
+    kafkaStoreIngestionService.dropStoragePartitionGracefully(config, partitionId);
+    verify(storeIngestionTask).dropStoragePartitionGracefully(any());
+    verify(consumerActionsQueue).add(any());
+
+    // Verify that when the ingestion task isn't running, it drops the store partition synchronously
+    when(storeIngestionTask.isRunning()).thenReturn(false);
+    kafkaStoreIngestionService.dropStoragePartitionGracefully(config, partitionId);
+    verify(storageService).dropStorePartition(config, partitionId, true);
   }
 }

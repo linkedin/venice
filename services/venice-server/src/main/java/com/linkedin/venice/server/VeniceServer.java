@@ -3,19 +3,24 @@ package com.linkedin.venice.server;
 import com.linkedin.avro.fastserde.FastDeserializerGeneratorAccessor;
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtil;
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.helix.HelixParticipationService;
+import com.linkedin.davinci.kafka.consumer.AdaptiveThrottlerSignalService;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
+import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
+import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.IngestionMetadataRetriever;
+import com.linkedin.davinci.storage.IngestionMetadataRetrieverDelegator;
 import com.linkedin.davinci.storage.ReadMetadataRetriever;
 import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
@@ -71,6 +76,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -115,8 +121,11 @@ public class VeniceServer {
   private ICProvider icProvider;
   StorageEngineBackedCompressorFactory compressorFactory;
   private HeartbeatMonitoringService heartbeatMonitoringService;
+  private AdaptiveThrottlerSignalService adaptiveThrottlerSignalService;
   private ServerReadMetadataRepository serverReadMetadataRepository;
   private BlobTransferManager<Void> blobTransferManager;
+  private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
+  private Lazy<ZKHelixAdmin> zkHelixAdmin;
 
   /**
    * @deprecated Use {@link VeniceServer#VeniceServer(VeniceServerContext)} instead.
@@ -325,7 +334,8 @@ public class VeniceServer {
     services.add(storageService);
 
     // Create stats for RocksDB
-    storageService.getRocksDBAggregatedStatistics().ifPresent(stat -> new AggRocksDBStats(metricsRepository, stat));
+    storageService.getRocksDBAggregatedStatistics()
+        .ifPresent(stat -> new AggRocksDBStats(serverConfig.getClusterName(), metricsRepository, stat));
 
     compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
 
@@ -355,16 +365,32 @@ public class VeniceServer {
       return helixData;
     });
 
+    managerFuture.thenApply(manager -> {
+      storageService.checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
+      return true;
+    });
+
+    HeartbeatMonitoringServiceStats heartbeatMonitoringServiceStats =
+        new HeartbeatMonitoringServiceStats(metricsRepository, clusterConfig.getClusterName());
+
     heartbeatMonitoringService = new HeartbeatMonitoringService(
         metricsRepository,
         metadataRepo,
         serverConfig.getRegionNames(),
-        serverConfig.getRegionName());
+        serverConfig.getRegionName(),
+        heartbeatMonitoringServiceStats);
     services.add(heartbeatMonitoringService);
 
+    this.zkHelixAdmin = Lazy.of(() -> new ZKHelixAdmin(serverConfig.getZookeeperAddress()));
+    this.adaptiveThrottlerSignalService = null;
+    if (serverConfig.isAdaptiveThrottlerEnabled()) {
+      adaptiveThrottlerSignalService =
+          new AdaptiveThrottlerSignalService(serverConfig, metricsRepository, heartbeatMonitoringService);
+      services.add(adaptiveThrottlerSignalService);
+    }
     // create and add KafkaSimpleConsumerService
     this.kafkaStoreIngestionService = new KafkaStoreIngestionService(
-        storageService.getStorageEngineRepository(),
+        storageService,
         veniceConfigLoader,
         storageMetadataService,
         new StaticClusterInfoProvider(Collections.singleton(clusterConfig.getClusterName())),
@@ -385,7 +411,9 @@ public class VeniceServer {
         remoteIngestionRepairService,
         pubSubClientsFactory,
         sslFactory,
-        heartbeatMonitoringService);
+        heartbeatMonitoringService,
+        zkHelixAdmin,
+        adaptiveThrottlerSignalService);
 
     this.diskHealthCheckService = new DiskHealthCheckService(
         serverConfig.isDiskHealthCheckServiceEnabled(),
@@ -432,7 +460,7 @@ public class VeniceServer {
         metadataRepo,
         storeValueSchemasCacheService,
         customizedViewFuture,
-        kafkaStoreIngestionService,
+        new IngestionMetadataRetrieverDelegator(kafkaStoreIngestionService, heartbeatMonitoringService),
         serverReadMetadataRepository,
         serverConfig,
         metricsRepository,
@@ -448,13 +476,24 @@ public class VeniceServer {
      * Initialize Blob transfer manager for Service
      */
     if (serverConfig.isBlobTransferManagerEnabled()) {
+      aggVersionedBlobTransferStats = new AggVersionedBlobTransferStats(metricsRepository, metadataRepo, serverConfig);
       blobTransferManager = BlobTransferUtil.getP2PBlobTransferManagerForServerAndStart(
           serverConfig.getDvcP2pBlobTransferServerPort(),
           serverConfig.getDvcP2pBlobTransferClientPort(),
           serverConfig.getRocksDBPath(),
           customizedViewFuture,
-          storageMetadataService);
+          storageMetadataService,
+          metadataRepo,
+          storageService.getStorageEngineRepository(),
+          serverConfig.getMaxConcurrentSnapshotUser(),
+          serverConfig.getSnapshotRetentionTimeInMin(),
+          serverConfig.getBlobTransferMaxTimeoutInMin(),
+          aggVersionedBlobTransferStats,
+          serverConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
+              ? BlobTransferTableFormat.PLAIN_TABLE
+              : BlobTransferTableFormat.BLOCK_BASED_TABLE);
     } else {
+      aggVersionedBlobTransferStats = null;
       blobTransferManager = null;
     }
 
@@ -541,6 +580,14 @@ public class VeniceServer {
       return this.helixParticipationService;
     }
     throw new VeniceException("Cannot get helix participation service if server is not started");
+  }
+
+  public HeartbeatMonitoringService getHeartbeatMonitoringService() {
+    if (isStarted()) {
+      return heartbeatMonitoringService;
+    } else {
+      throw new VeniceException("Cannot get heartbeat monitoring service if server is not started");
+    }
   }
 
   /**

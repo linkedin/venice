@@ -1,5 +1,6 @@
 package com.linkedin.davinci;
 
+import static com.linkedin.venice.ConfigKeys.DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_INSTANCE_NAME_SUFFIX;
 import static com.linkedin.venice.ConfigKeys.VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL;
@@ -9,7 +10,8 @@ import static java.lang.Thread.currentThread;
 
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtil;
-import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.StoreBackendConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -23,6 +25,7 @@ import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
+import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.MetadataUpdateStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
@@ -111,6 +114,7 @@ public class DaVinciBackend implements Closeable {
   private final AggVersionedStorageEngineStats aggVersionedStorageEngineStats;
   private final boolean useDaVinciSpecificExecutionStatusForError;
   private BlobTransferManager<Void> blobTransferManager;
+  private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
   private final boolean writeBatchingPushStatus;
 
   public DaVinciBackend(
@@ -119,10 +123,16 @@ public class DaVinciBackend implements Closeable {
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
       Optional<ObjectCacheConfig> cacheConfig,
-      Function<Integer, DaVinciRecordTransformer> getRecordTransformer) {
+      DaVinciRecordTransformerConfig recordTransformerConfig) {
     LOGGER.info("Creating Da Vinci backend with managed clients: {}", managedClients);
     try {
       VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
+
+      if (backendConfig.isDatabaseChecksumVerificationEnabled() && recordTransformerConfig != null) {
+        // The checksum verification will fail because DVRT transforms the values
+        throw new VeniceException("DaVinciRecordTransformer cannot be used with database checksum verification.");
+      }
+
       useDaVinciSpecificExecutionStatusForError = backendConfig.useDaVinciSpecificExecutionStatusForError();
       writeBatchingPushStatus = backendConfig.getDaVinciPushStatusCheckIntervalInMs() >= 0;
       this.configLoader = configLoader;
@@ -207,6 +217,7 @@ public class DaVinciBackend implements Closeable {
       String pid = Utils.getPid();
       String instanceSuffix =
           configLoader.getCombinedProperties().getString(PUSH_STATUS_INSTANCE_NAME_SUFFIX, (pid == null ? "NA" : pid));
+      // Current instance name.
       String instanceName = Utils.getHostName() + "_" + instanceSuffix;
 
       // Fetch latest update schema's protocol ID for Push Status Store from Router.
@@ -252,7 +263,7 @@ public class DaVinciBackend implements Closeable {
           .map(objectCacheConfig -> new ObjectCacheBackend(clientConfig, objectCacheConfig, schemaRepository));
 
       ingestionService = new KafkaStoreIngestionService(
-          storageService.getStorageEngineRepository(),
+          storageService,
           configLoader,
           storageMetadataService,
           clusterInfoProvider,
@@ -268,13 +279,15 @@ public class DaVinciBackend implements Closeable {
           false,
           compressorFactory,
           cacheBackend,
-          getRecordTransformer,
+          recordTransformerConfig,
           true,
           // TODO: consider how/if a repair task would be valid for Davinci users?
           null,
           pubSubClientsFactory,
           Optional.empty(),
           // TODO: It would be good to monitor heartbeats like this from davinci, but needs some work
+          null,
+          null,
           null);
 
       ingestionService.start();
@@ -290,13 +303,26 @@ public class DaVinciBackend implements Closeable {
       }
 
       if (backendConfig.isBlobTransferManagerEnabled()) {
+        aggVersionedBlobTransferStats =
+            new AggVersionedBlobTransferStats(metricsRepository, storeRepository, configLoader.getVeniceServerConfig());
+
         blobTransferManager = BlobTransferUtil.getP2PBlobTransferManagerForDVCAndStart(
             configLoader.getVeniceServerConfig().getDvcP2pBlobTransferServerPort(),
             configLoader.getVeniceServerConfig().getDvcP2pBlobTransferClientPort(),
             configLoader.getVeniceServerConfig().getRocksDBPath(),
             clientConfig,
-            storageMetadataService);
+            storageMetadataService,
+            readOnlyStoreRepository,
+            storageService.getStorageEngineRepository(),
+            backendConfig.getMaxConcurrentSnapshotUser(),
+            backendConfig.getSnapshotRetentionTimeInMin(),
+            backendConfig.getBlobTransferMaxTimeoutInMin(),
+            aggVersionedBlobTransferStats,
+            backendConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
+                ? BlobTransferTableFormat.PLAIN_TABLE
+                : BlobTransferTableFormat.BLOCK_BASED_TABLE);
       } else {
+        aggVersionedBlobTransferStats = null;
         blobTransferManager = null;
       }
 
@@ -377,7 +403,7 @@ public class DaVinciBackend implements Closeable {
 
   private synchronized void bootstrap() {
     List<AbstractStorageEngine> storageEngines =
-        storageService.getStorageEngineRepository().getAllLocalStorageEngines();
+        getStorageService().getStorageEngineRepository().getAllLocalStorageEngines();
     LOGGER.info("Starting bootstrap, storageEngines: {}", storageEngines);
     Map<String, Version> storeNameToBootstrapVersionMap = new HashMap<>();
     Map<String, List<Integer>> storeNameToPartitionListMap = new HashMap<>();
@@ -416,7 +442,7 @@ public class DaVinciBackend implements Closeable {
       if (!(storeNameToBootstrapVersionMap.containsKey(storeName)
           && (storeNameToBootstrapVersionMap.get(storeName).getNumber() < versionNumber))) {
         storeNameToBootstrapVersionMap.put(storeName, version);
-        storeNameToPartitionListMap.put(storeName, storageService.getUserPartitions(kafkaTopicName));
+        storeNameToPartitionListMap.put(storeName, getStorageService().getUserPartitions(kafkaTopicName));
       }
     }
 
@@ -431,12 +457,12 @@ public class DaVinciBackend implements Closeable {
          * In this case we will only need to close metadata partition, as it is supposed to be opened and managed by
          * forked ingestion process via following subscribe call.
          */
-        for (AbstractStorageEngine storageEngine: storageService.getStorageEngineRepository()
+        for (AbstractStorageEngine storageEngine: getStorageService().getStorageEngineRepository()
             .getAllLocalStorageEngines()) {
           storageEngine.closeMetadataPartition();
         }
       } else {
-        storageService.closeAllStorageEngines();
+        getStorageService().closeAllStorageEngines();
       }
     }
 
@@ -446,26 +472,29 @@ public class DaVinciBackend implements Closeable {
             metricsRepository,
             storageMetadataService,
             ingestionService,
-            storageService,
+            getStorageService(),
             blobTransferManager,
             this::getVeniceCurrentVersionNumber)
         : new DefaultIngestionBackend(
             storageMetadataService,
             ingestionService,
-            storageService,
+            getStorageService(),
             blobTransferManager,
             configLoader.getVeniceServerConfig());
     ingestionBackend.addIngestionNotifier(ingestionListener);
 
-    // Subscribe all bootstrap version partitions.
-    storeNameToBootstrapVersionMap.forEach((storeName, version) -> {
-      List<Integer> partitions = storeNameToPartitionListMap.get(storeName);
-      String versionTopic = version.kafkaTopicName();
-      LOGGER.info("Bootstrapping partitions {} for {}", partitions, versionTopic);
-      aggVersionedStorageEngineStats.setStorageEngine(versionTopic, storageService.getStorageEngine(versionTopic));
-      StoreBackend storeBackend = getStoreOrThrow(storeName);
-      storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
-    });
+    if (configLoader.getCombinedProperties().getBoolean(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, true)) {
+      // Subscribe all bootstrap version partitions.
+      storeNameToBootstrapVersionMap.forEach((storeName, version) -> {
+        List<Integer> partitions = storeNameToPartitionListMap.get(storeName);
+        String versionTopic = version.kafkaTopicName();
+        LOGGER.info("Bootstrapping partitions {} for {}", partitions, versionTopic);
+        AbstractStorageEngine storageEngine = getStorageService().getStorageEngine(versionTopic);
+        aggVersionedStorageEngineStats.setStorageEngine(versionTopic, storageEngine);
+        StoreBackend storeBackend = getStoreOrThrow(storeName);
+        storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
+      });
+    }
   }
 
   @Override
@@ -607,10 +636,10 @@ public class DaVinciBackend implements Closeable {
     VersionBackend versionBackend = versionByTopicMap.get(kafkaTopic);
     if (versionBackend != null && versionBackend.isReportingPushStatus()) {
       Version version = versionBackend.getVersion();
-      if (writeBatchingPushStatus && !incrementalPushVersion.isPresent()) {
-        // Batching the push statuses from all partitions for batch pushes;
+      if (writeBatchingPushStatus) {
+        // Batching the push statuses from all partitions;
         // VersionBackend will handle the push status update to Venice backend
-        versionBackend.updatePartitionStatus(partition, status);
+        versionBackend.updatePartitionStatus(partition, status, incrementalPushVersion);
       } else {
         pushStatusStoreWriter
             .writePushStatus(version.getStoreName(), version.getNumber(), partition, status, incrementalPushVersion);

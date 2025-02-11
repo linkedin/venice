@@ -53,7 +53,7 @@ public class OfflinePushStatus {
   private List<StatusSnapshot> statusHistory;
   private String incrementalPushVersion = "";
   // Key is Partition Id (0 to n-1); value is the corresponding partition status.
-  private Map<Integer, PartitionStatus> partitionIdToStatus;
+  private final Map<Integer, PartitionStatus> partitionIdToStatus;
 
   private Map<String, String> pushProperties;
 
@@ -430,14 +430,13 @@ public class OfflinePushStatus {
    * Checks whether at least one replica of each partition has returned {@link ExecutionStatus#END_OF_PUSH_RECEIVED}
    *
    * This is intended for {@link OfflinePushStatus} instances which belong to Hybrid Stores, though there
-   * should be no negative side-effects if called on an instance tied to a non-hybrid store, as the logic
-   * should consistently return false in that case.
+   * should be no negative side-effects if called on an instance tied to a non-hybrid store.
    *
    * @return true if at least one replica of each partition has consumed an EOP control message, false otherwise
    */
-  public boolean isReadyToStartBufferReplay(boolean isDataRecovery) {
+  public boolean isEOPReceivedInEveryPartition(boolean isDataRecovery) {
     // Only allow the push in STARTED status to start buffer replay. It could avoid:
-    // 1. Send duplicated start buffer replay message.
+    // 1. Send duplicated CM such as the start buffer replay message.
     // 2. Send start buffer replay message when a push had already been terminated.
     if (!getCurrentStatus().equals(STARTED)) {
       return false;

@@ -4,6 +4,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.views.VeniceView;
 import io.tehuti.metrics.MetricsRepository;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -30,11 +31,14 @@ public class AggVersionedIngestionStats
   }
 
   public void setIngestionTask(String storeVersionTopic, StoreIngestionTask ingestionTask) {
-    if (!Version.isVersionTopicOrStreamReprocessingTopic(storeVersionTopic)) {
+    if (!Version.isATopicThatIsVersioned(storeVersionTopic)) {
       LOGGER.warn("Invalid store version topic name: {}", storeVersionTopic);
       return;
     }
-    String storeName = Version.parseStoreFromKafkaTopicName(storeVersionTopic);
+    // For metrics reporting purpose the store name for Venice view ingestion will be <storeName>_<viewName>
+    String storeName = VeniceView.isViewTopic(storeVersionTopic)
+        ? VeniceView.parseStoreAndViewFromViewTopic(storeVersionTopic)
+        : Version.parseStoreFromKafkaTopicName(storeVersionTopic);
     int version = Version.parseVersionFromKafkaTopicName(storeVersionTopic);
     try {
       /**

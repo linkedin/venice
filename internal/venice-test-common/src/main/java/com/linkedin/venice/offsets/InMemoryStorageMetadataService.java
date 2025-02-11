@@ -19,10 +19,12 @@ public class InMemoryStorageMetadataService extends InMemoryOffsetManager implem
   private final ConcurrentMap<String, StoreVersionState> topicToStoreVersionStateMap = new ConcurrentHashMap<>();
 
   @Override
-  public void computeStoreVersionState(String topicName, Function<StoreVersionState, StoreVersionState> mapFunction)
-      throws VeniceException {
+  public StoreVersionState computeStoreVersionState(
+      String topicName,
+      Function<StoreVersionState, StoreVersionState> mapFunction) throws VeniceException {
     LOGGER.info("InMemoryStorageMetadataService.compute(StoreVersionState) called for topicName: {}", topicName);
-    topicToStoreVersionStateMap.compute(topicName, (s, storeVersionState) -> mapFunction.apply(storeVersionState));
+    return topicToStoreVersionStateMap
+        .compute(topicName, (s, storeVersionState) -> mapFunction.apply(storeVersionState));
   }
 
   @Override

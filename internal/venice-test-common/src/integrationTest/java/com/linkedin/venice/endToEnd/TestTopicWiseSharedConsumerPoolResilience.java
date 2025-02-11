@@ -18,6 +18,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.meta.Version;
@@ -54,7 +55,16 @@ public class TestTopicWiseSharedConsumerPoolResilience {
     extraProperties.setProperty(
         SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY,
         KafkaConsumerService.ConsumerAssignmentStrategy.TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY.name());
-    veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 1000000, false, false, extraProperties);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(2)
+        .numberOfRouters(1)
+        .replicationFactor(2)
+        .partitionSize(1000000)
+        .sslToStorageNodes(false)
+        .sslToKafka(false)
+        .extraProperties(extraProperties)
+        .build();
+    veniceCluster = ServiceFactory.getVeniceCluster(options);
   }
 
   @AfterClass(alwaysRun = true)

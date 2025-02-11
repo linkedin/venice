@@ -1,6 +1,7 @@
 package com.linkedin.venice.router.stats;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
@@ -13,7 +14,7 @@ import org.testng.annotations.Test;
 public class AdminOperationsStatsTest {
   @Test
   public void testAdminOperationsStats() {
-    MetricsRepository metrics = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    MetricsRepository metrics = MetricsRepositoryUtils.createSingleThreadedVeniceMetricsRepository();
     MockTehutiReporter reporter = new MockTehutiReporter();
     metrics.addReporter(reporter);
     VeniceRouterConfig mockConfig = mock(VeniceRouterConfig.class);

@@ -2,6 +2,9 @@ package com.linkedin.venice.controller;
 
 import java.util.List;
 import java.util.Map;
+import org.apache.helix.constants.InstanceConstants;
+import org.apache.helix.model.ClusterConfig;
+import org.apache.helix.model.RESTConfig;
 
 
 /**
@@ -29,9 +32,10 @@ public interface HelixAdminClient {
   /**
    * Create and configure the Venice storage cluster.
    * @param clusterName of the Venice storage cluster.
-   * @param helixClusterProperties to be applied to the new cluster.
+   * @param clusterConfig {@link ClusterConfig} for the new cluster.
+   * @param restConfig {@link RESTConfig} for the new cluster.
    */
-  void createVeniceStorageCluster(String clusterName, Map<String, String> helixClusterProperties);
+  void createVeniceStorageCluster(String clusterName, ClusterConfig clusterConfig, RESTConfig restConfig);
 
   /**
    * Check if the given Venice storage cluster's cluster resource is in the Venice controller cluster.
@@ -62,9 +66,16 @@ public interface HelixAdminClient {
   /**
    * Update some Helix cluster properties for the given cluster.
    * @param clusterName of the cluster to be updated.
-   * @param helixClusterProperties to be applied to the given cluster.
+   * @param clusterConfig {@link ClusterConfig} for the new cluster.
    */
-  void updateClusterConfigs(String clusterName, Map<String, String> helixClusterProperties);
+  void updateClusterConfigs(String clusterName, ClusterConfig clusterConfig);
+
+  /**
+   * Update some Helix cluster properties for the given cluster.
+   * @param clusterName of the cluster to be updated.
+   * @param restConfig {@link RESTConfig} for the new cluster.
+   */
+  void updateRESTConfigs(String clusterName, RESTConfig restConfig);
 
   /**
    * Disable or enable a list of partitions on an instance.
@@ -125,7 +136,26 @@ public interface HelixAdminClient {
   void close();
 
   /**
-   * Adds a tag to an instance
+   * Manually enable maintenance mode. To be called by the REST client that accepts KV mappings as
+   * the payload.
    */
-  void addInstanceTag(String clusterName, String instanceName, String tag);
+  void manuallyEnableMaintenanceMode(
+      String clusterName,
+      boolean enabled,
+      String reason,
+      Map<String, String> customFields);
+
+  /**
+   * Set the instanceOperation of and instance with {@link InstanceConstants.InstanceOperation}.
+   *
+   * @param clusterName       The cluster name
+   * @param instanceName      The instance name
+   * @param instanceOperation The instance operation type
+   * @param reason            The reason for the operation
+   */
+  void setInstanceOperation(
+      String clusterName,
+      String instanceName,
+      InstanceConstants.InstanceOperation instanceOperation,
+      String reason);
 }

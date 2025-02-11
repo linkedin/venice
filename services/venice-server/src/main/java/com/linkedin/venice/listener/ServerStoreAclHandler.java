@@ -21,8 +21,7 @@ import io.grpc.Status;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.util.Attribute;
 import java.security.cert.X509Certificate;
-import java.util.Arrays;
-import java.util.HashSet;
+import java.util.EnumSet;
 import java.util.Set;
 import java.util.function.Consumer;
 import javax.net.ssl.SSLPeerUnverifiedException;
@@ -42,16 +41,17 @@ public class ServerStoreAclHandler extends AbstractStoreAclHandler<QueryAction> 
   private final static Logger LOGGER = LogManager.getLogger(ServerStoreAclHandler.class);
 
   /**
-   *  Skip ACL for requests to /metadata, /admin, /current_version, /health and /topic_partition_ingestion_context
-   *  as there's no sensitive information in the response.
+   *  Skip ACL for requests to /metadata, /admin, /current_version, /health, /topic_partition_ingestion_context and
+   *  /host_heartbeat_lag as there's no sensitive information in the response.
    */
-  private static final Set<QueryAction> QUERIES_TO_SKIP_ACL = new HashSet<>(
-      Arrays.asList(
-          QueryAction.METADATA,
-          QueryAction.ADMIN,
-          QueryAction.HEALTH,
-          QueryAction.CURRENT_VERSION,
-          QueryAction.TOPIC_PARTITION_INGESTION_CONTEXT));
+  private static final Set<QueryAction> QUERIES_TO_SKIP_ACL = EnumSet.of(
+      QueryAction.METADATA,
+      QueryAction.STORE_PROPERTIES,
+      QueryAction.ADMIN,
+      QueryAction.HEALTH,
+      QueryAction.CURRENT_VERSION,
+      QueryAction.TOPIC_PARTITION_INGESTION_CONTEXT,
+      QueryAction.HOST_HEARTBEAT_LAG);
 
   public ServerStoreAclHandler(
       IdentityParser identityParser,

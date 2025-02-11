@@ -62,7 +62,6 @@ public abstract class AbstractStoreAclHandler<REQUEST_TYPE> extends SimpleChanne
     }
 
     String uri = req.uri();
-    String method = req.method().name();
 
     // Parse resource type and store name
     String[] requestParts = URI.create(uri).getPath().split("/");
@@ -84,14 +83,14 @@ public abstract class AbstractStoreAclHandler<REQUEST_TYPE> extends SimpleChanne
 
     // When there is no store present in the metadata repository, pass the ACL check and let the next handler handle the
     // case of deleted or migrated store
-    if (metadataRepository.getStore(storeName) == null) {
+    if (!metadataRepository.hasStore(storeName)) {
       ReferenceCountUtil.retain(req);
       ctx.fireChannelRead(req);
       return;
     }
 
     X509Certificate clientCert = extractClientCert(ctx);
-
+    String method = req.method().name();
     AccessResult accessResult = checkAccess(uri, clientCert, storeName, method);
     switch (accessResult) {
       case GRANTED:
@@ -126,18 +125,19 @@ public abstract class AbstractStoreAclHandler<REQUEST_TYPE> extends SimpleChanne
    */
   protected abstract REQUEST_TYPE validateRequest(String[] requestParts);
 
+  /**
+   * N.B.: This function is called on the hot path, so it's important to make it as efficient as possible. The order of
+   *       operations is carefully considered so that short-circuiting comes into play as much as possible. We also try
+   *       to minimize the overhead of logging wherever possible (e.g., by minimizing expensive calls, such as the one
+   *       to {@link IdentityParser#parseIdentityFromCert(X509Certificate)}).
+   */
   protected AccessResult checkAccess(String uri, X509Certificate clientCert, String storeName, String method) {
-    if (VeniceSystemStoreUtils.isSystemStore(storeName)) {
-      return AccessResult.GRANTED;
-    }
-
-    String client = identityParser.parseIdentityFromCert(clientCert);
     try {
-      /**
-       * TODO: Consider making this the first check, so that we optimize for the hot path. If rejected, then we
-       *       could check whether the request is for a system store, METADATA, etc.
-       */
       if (accessController.hasAccess(clientCert, storeName, method)) {
+        return AccessResult.GRANTED;
+      }
+
+      if (VeniceSystemStoreUtils.isSystemStore(storeName)) {
         return AccessResult.GRANTED;
       }
 
@@ -146,7 +146,6 @@ public abstract class AbstractStoreAclHandler<REQUEST_TYPE> extends SimpleChanne
       // Possible Reasons:
       // A. ACL not found. OR,
       // B. ACL exists but caller does not have permission.
-      String errLine = String.format("%s requested %s %s", client, method, uri);
 
       if (!accessController.isFailOpen() && !accessController.hasAcl(storeName)) { // short circuit, order matters
         // Case A
@@ -160,13 +159,21 @@ public abstract class AbstractStoreAclHandler<REQUEST_TYPE> extends SimpleChanne
         // Requested resource exists but does not have ACL.
         // Action:
         // return 401 Unauthorized
-        LOGGER.warn("Requested store does not have ACL: {}", errLine);
-        LOGGER.debug(
-            "Existing stores: {}",
-            () -> metadataRepository.getAllStores().stream().map(Store::getName).sorted().collect(Collectors.toList()));
-        LOGGER.debug(
-            "Access-controlled stores: {}",
-            () -> accessController.getAccessControlledResources().stream().sorted().collect(Collectors.toList()));
+        if (LOGGER.isWarnEnabled()) {
+          LOGGER.warn(
+              "Requested store does not have ACL: {} requested {} {}",
+              identityParser.parseIdentityFromCert(clientCert),
+              method,
+              uri);
+          if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug(
+                "Existing stores: {}",
+                metadataRepository.getAllStores().stream().map(Store::getName).sorted().collect(Collectors.toList()));
+            LOGGER.debug(
+                "Access-controlled stores: {}",
+                accessController.getAccessControlledResources().stream().sorted().collect(Collectors.toList()));
+          }
+        }
         return AccessResult.UNAUTHORIZED;
       } else {
         // Case B
@@ -186,17 +193,35 @@ public abstract class AbstractStoreAclHandler<REQUEST_TYPE> extends SimpleChanne
         // Caller does not have permission to access the resource.
         // Action:
         // return 403 Forbidden
-        LOGGER.debug("Unauthorized access rejected: {}", errLine);
+        if (LOGGER.isDebugEnabled()) {
+          LOGGER.debug(
+              "Unauthorized access rejected: {} requested {} {}",
+              identityParser.parseIdentityFromCert(clientCert),
+              method,
+              uri);
+        }
         return AccessResult.FORBIDDEN;
       }
     } catch (AclException e) {
-      String errLine = String.format("%s requested %s %s", client, method, uri);
-
       if (accessController.isFailOpen()) {
-        LOGGER.warn("Exception occurred! Access granted: {} {}", errLine, e);
+        if (LOGGER.isWarnEnabled()) {
+          LOGGER.warn(
+              "Exception occurred! Access granted: {} requested {} {}",
+              identityParser.parseIdentityFromCert(clientCert),
+              method,
+              uri,
+              e);
+        }
         return AccessResult.GRANTED;
       } else {
-        LOGGER.warn("Exception occurred! Access rejected: {} {}", errLine, e);
+        if (LOGGER.isWarnEnabled()) {
+          LOGGER.warn(
+              "Exception occurred! Access rejected: {} requested {} {}",
+              identityParser.parseIdentityFromCert(clientCert),
+              method,
+              uri,
+              e);
+        }
         return AccessResult.ERROR_FORBIDDEN;
       }
     }

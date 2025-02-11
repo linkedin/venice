@@ -1,0 +1,27 @@
+dependencies {
+  implementation(project(':internal:venice-common')) {
+    exclude module: 'kafka_2.10'
+    exclude group: 'org.scala-lang'
+  }
+  implementation project(':clients:da-vinci-client')
+  implementation project(':clients:venice-thin-client')
+  implementation project(':clients:venice-client')
+
+  implementation libraries.log4j2api
+  implementation libraries.log4j2core
+
+  implementation libraries.beamSdk
+  implementation libraries.beamExtensionAvro
+}
+
+ext {
+  // to be tested in integration test
+  jacocoCoverageThreshold = 0.00
+}
+
+checkerFramework {
+  extraJavacArgs = ['-Xmaxerrs', '256']
+  checkers = ['org.checkerframework.checker.nullness.NullnessChecker']
+  skipCheckerFramework = true
+  excludeTests = true
+}

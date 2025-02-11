@@ -1,0 +1,66 @@
+configurations {
+  integrationTestImplementation.extendsFrom testImplementation
+}
+
+dependencies {
+  api libraries.avro
+  api libraries.avroUtilCompatHelper
+  api libraries.duckdbJdbc
+  api libraries.log4j2api
+
+  api project(':clients:da-vinci-client')
+  api project(':internal:venice-client-common')
+
+  api project(':internal:venice-common')
+
+  testImplementation project(':internal:venice-common')
+
+  integrationTestImplementation project(path: ':internal:venice-test-common', configuration: 'integrationTestUtils')
+  integrationTestImplementation project(':clients:venice-producer')
+  integrationTestImplementation project(':clients:venice-push-job')
+  integrationTestImplementation project(':clients:venice-thin-client')
+  integrationTestImplementation project(':integrations:venice-duckdb')
+}
+
+
+sourceSets {
+  integrationTest {
+    // 'src/integrationTest/java' is in srcDir by default. Just add the proto directory
+    resources
+  }
+}
+
+def integrationTestConfigs = {
+  mustRunAfter test
+  classpath = sourceSets.integrationTest.runtimeClasspath
+  testClassesDirs = sourceSets.integrationTest.output.classesDirs
+  forkEvery = Integer.parseInt(project.properties.get('integrationTest.forkEvery', "$forkEvery"))
+  maxParallelForks = Integer.parseInt(project.properties.get('integrationTest.maxParallelForks', "$maxParallelForks"))
+}
+
+task integrationTest(type: Test) {
+  configure integrationTestConfigs
+}
+check.dependsOn(integrationTest)
+
+idea {
+  module {
+    testSourceDirs += project.sourceSets.integrationTest.java.srcDirs
+  }
+}
+
+task integrationTestJar(type: Jar) {
+  classifier 'integrationTest'
+  from sourceSets.integrationTest.output
+}
+
+artifacts {
+  integrationTestJar
+}
+
+checkerFramework {
+  extraJavacArgs = ['-Xmaxerrs', '256']
+  checkers = ['org.checkerframework.checker.nullness.NullnessChecker']
+  skipCheckerFramework = true
+  excludeTests = true
+}

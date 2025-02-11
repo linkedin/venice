@@ -42,7 +42,8 @@ public class IngestionThrottlerTest {
     ConcurrentHashMap<String, StoreIngestionTask> tasks = new ConcurrentHashMap<>();
     tasks.put("non_current_version_task", nonCurrentVersionTask);
 
-    IngestionThrottler throttler = new IngestionThrottler(true, serverConfig, () -> tasks, 10, TimeUnit.MILLISECONDS);
+    IngestionThrottler throttler =
+        new IngestionThrottler(true, serverConfig, () -> tasks, 10, TimeUnit.MILLISECONDS, null);
     TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
       assertFalse(
           throttler.isUsingSpeedupThrottler(),
@@ -70,7 +71,7 @@ public class IngestionThrottlerTest {
 
     tasks.clear();
     IngestionThrottler throttlerForNonDaVinciClient =
-        new IngestionThrottler(false, serverConfig, () -> tasks, 10, TimeUnit.MILLISECONDS);
+        new IngestionThrottler(false, serverConfig, () -> tasks, 10, TimeUnit.MILLISECONDS, null);
     tasks.put("current_version_bootstrapping_task", currentVersionBootstrappingTask);
     tasks.put("current_version_completed_task", currentVersionCompletedTask);
     TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
@@ -85,11 +86,11 @@ public class IngestionThrottlerTest {
   @Test
   public void testDifferentThrottler() {
     VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
-    doReturn(100l).when(serverConfig).getKafkaFetchQuotaRecordPerSecond();
-    doReturn(60l).when(serverConfig).getKafkaFetchQuotaTimeWindow();
-    doReturn(1024l).when(serverConfig).getKafkaFetchQuotaBytesPerSecond();
+    doReturn(100L).when(serverConfig).getKafkaFetchQuotaRecordPerSecond();
+    doReturn(60L).when(serverConfig).getKafkaFetchQuotaTimeWindow();
+    doReturn(1024L).when(serverConfig).getKafkaFetchQuotaBytesPerSecond();
     IngestionThrottler ingestionThrottler =
-        new IngestionThrottler(true, serverConfig, () -> Collections.emptyMap(), 10, TimeUnit.MILLISECONDS);
+        new IngestionThrottler(true, serverConfig, () -> Collections.emptyMap(), 10, TimeUnit.MILLISECONDS, null);
     EventThrottler throttlerForAAWCLeader = mock(EventThrottler.class);
     EventThrottler throttlerForCurrentVersionAAWCLeader = mock(EventThrottler.class);
     EventThrottler throttlerForCurrentVersionNonAAWCLeader = mock(EventThrottler.class);

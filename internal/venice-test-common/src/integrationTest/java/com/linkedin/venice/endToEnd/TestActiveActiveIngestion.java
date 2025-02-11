@@ -37,6 +37,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.VeniceUserStoreType;
@@ -103,6 +104,10 @@ public class TestActiveActiveIngestion {
     return false;
   }
 
+  protected boolean whetherToEnableNearlineProducerThroughputOptimizationInServer() {
+    return false;
+  }
+
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     serializer = new AvroSerializer(STRING_SCHEMA);
@@ -122,18 +127,20 @@ public class TestActiveActiveIngestion {
     serverProperties.put(SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED, isAAWCParallelProcessingEnabled());
     Properties controllerProps = new Properties();
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 20);
-    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        Optional.of(controllerProps),
-        Optional.of(controllerProps),
-        Optional.of(serverProperties),
-        false);
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+            .numberOfClusters(1)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(1)
+            .numberOfRouters(1)
+            .replicationFactor(1)
+            .forkServer(false)
+            .parentControllerProperties(controllerProps)
+            .childControllerProperties(controllerProps)
+            .serverProperties(serverProperties);
+    multiRegionMultiClusterWrapper =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
 
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
@@ -179,6 +186,10 @@ public class TestActiveActiveIngestion {
         .setChunkingEnabled(true)
         .setNativeReplicationEnabled(true)
         .setPartitionCount(1);
+    if (whetherToEnableNearlineProducerThroughputOptimizationInServer()) {
+      storeParms.setNearlineProducerCountPerWriter(2);
+      storeParms.setNearlineProducerCompressionEnabled(false);
+    }
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
     TestWriteUtils.runPushJob("Run push job", props);
 
@@ -253,11 +264,17 @@ public class TestActiveActiveIngestion {
         .setChunkingEnabled(isChunkingEnabled)
         .setNativeReplicationEnabled(true)
         .setPartitionCount(1);
+    if (whetherToEnableNearlineProducerThroughputOptimizationInServer()) {
+      storeParms.setNearlineProducerCountPerWriter(2);
+      storeParms.setNearlineProducerCompressionEnabled(false);
+    }
     MetricsRepository metricsRepository = new MetricsRepository();
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
     TestWriteUtils.runPushJob("Run push job", props);
 
     Map<String, String> samzaConfig = getSamzaProducerConfig(childDatacenters, 0, storeName);
+    // Enable concurrent producer
+    samzaConfig.put(VeniceWriter.PRODUCER_THREAD_COUNT, "2");
     VeniceSystemFactory factory = new VeniceSystemFactory();
     // Use a unique key for DELETE with RMD validation
     int deleteWithRmdKeyIndex = 1000;
@@ -425,6 +442,10 @@ public class TestActiveActiveIngestion {
         .setHybridRewindSeconds(5)
         .setHybridOffsetLagThreshold(2)
         .setNativeReplicationEnabled(true);
+    if (whetherToEnableNearlineProducerThroughputOptimizationInServer()) {
+      storeParms.setNearlineProducerCountPerWriter(2);
+      storeParms.setNearlineProducerCompressionEnabled(false);
+    }
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
     // Create a new version
     VersionCreationResponse versionCreationResponse;

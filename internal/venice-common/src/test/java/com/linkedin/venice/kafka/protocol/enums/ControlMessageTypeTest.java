@@ -1,6 +1,6 @@
 package com.linkedin.venice.kafka.protocol.enums;
 
-import com.linkedin.alpini.base.misc.CollectionUtil;
+import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.VeniceEnumValueTest;
 import java.util.Map;
 
@@ -12,7 +12,7 @@ public class ControlMessageTypeTest extends VeniceEnumValueTest<ControlMessageTy
 
   @Override
   protected Map<Integer, ControlMessageType> expectedMapping() {
-    return CollectionUtil.<Integer, ControlMessageType>mapBuilder()
+    return CollectionUtils.<Integer, ControlMessageType>mapBuilder()
         .put(0, ControlMessageType.START_OF_PUSH)
         .put(1, ControlMessageType.END_OF_PUSH)
         .put(2, ControlMessageType.START_OF_SEGMENT)

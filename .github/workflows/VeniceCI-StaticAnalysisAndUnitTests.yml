@@ -9,12 +9,15 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@v1
+        uses: gradle/actions/wrapper-validation@v3
 
   StaticAnalysis:
     strategy:
@@ -28,7 +31,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -38,10 +41,12 @@ jobs:
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
         with:
-          arguments: "--continue --no-daemon clean check --parallel -Pspotallbugs -x test -x integrationTest -x jacocoTestCoverageVerification"
+          add-job-summary: never
+      - name: Run Static Analysis
+        run: ./gradlew --continue --no-daemon clean check --parallel -Pspotallbugs -x test -x integrationTest -x jacocoTestCoverageVerification
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -52,65 +57,116 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
-  UnitTestsAndCodeCoverage:
-    strategy:
-      fail-fast: false
-      matrix:
-        jdk: [8, 11, 17]
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v3
-        with:
-          java-version: ${{ matrix.jdk }}
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: "-x :internal:venice-avro-compatibility-test:test jacocoTestCoverageVerification diffCoverage --continue"
-      - name: Package Build Artifacts
-        if: success() || failure()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: success() || failure()
-        uses: actions/upload-artifact@v3
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
-          retention-days: 30
+  Clients:
+   uses: ./.github/workflows/UnitTests-core.yml
+   with:
+    artifact_suffix: clients
+    arg:
+     # Cannot use :clients:recursiveDiffCoverage because that would include DVC, and we want this one to run in server...
+     :clients:venice-admin-tool:diffCoverage
+     :clients:venice-producer:diffCoverage
+     :clients:venice-client:diffCoverage
+     :clients:venice-push-job:diffCoverage
+     :clients:venice-thin-client:diffCoverage 
+     --continue
+
+  Integrations:
+    uses: ./.github/workflows/UnitTests-core.yml
+    with:
+      artifact_suffix: integrations
+      arg:
+       :integrations:recursiveDiffCoverage
+       --continue
+
+  Internal:
+   uses: ./.github/workflows/UnitTests-core.yml
+   with:
+    artifact_suffix: internal
+    arg:
+     # Cannot use :internal:recursiveDiffCoverage because that would include the avro compat test, and we want this one to run in the Compatibility group (TODO: move it out of internal?)...
+     :internal:venice-client-common:diffCoverage
+     :internal:venice-common:diffCoverage
+     :internal:venice-jdk-compatibility-test:diffCoverage
+     :internal:venice-test-common:diffCoverage 
+      --continue
+
+  Controller:
+   uses: ./.github/workflows/UnitTests-core.yml
+   with:
+    artifact_suffix: controller
+    arg:
+     :services:venice-controller:diffCoverage 
+     --continue
+
+  Server:
+   uses: ./.github/workflows/UnitTests-core.yml
+   with:
+    artifact_suffix: server
+    arg:
+     :clients:da-vinci-client:diffCoverage
+     :services:venice-server:diffCoverage 
+     --continue
+
+  Router:
+   uses: ./.github/workflows/UnitTests-core.yml
+   with:
+    artifact_suffix: router
+    arg:
+     :services:venice-router:diffCoverage
+     alpiniUnitTest
+     --continue
 
   StaticAnalysisAndUnitTestsCompletionCheck:
     strategy:
       fail-fast: false
     runs-on: ubuntu-latest
-    needs: [ValidateGradleWrapper, StaticAnalysis, UnitTestsAndCodeCoverage]
+    needs: [ValidateGradleWrapper, StaticAnalysis, Clients, Integrations, Internal, Controller, Server, Router]
     timeout-minutes: 120
+    if: success() || failure()  # Always run this job, regardless of previous job status
     steps:
-      - name: AllIsWell
-        shell: bash
+      - name: Check previous job statuses
         run: |
-          echo "LGTM!"
+         if [ "${{ needs.ValidateGradleWrapper.result }}" != "success" ]; then
+           echo "ValidateGradleWrapper failed."
+           exit 1
+         fi
+         if [ "${{ needs.StaticAnalysis.result }}" != "success" ]; then
+           echo "StaticAnalysis failed."
+           exit 1
+         fi
+         if [ "${{ needs.Clients.result }}" != "success" ]; then
+           echo "Clients module unit tests failed."
+           exit 1
+         fi
+         if [ "${{ needs.Internal.result }}" != "success" ]; then
+           echo "Internal module unit tests failed."
+           exit 1
+         fi
+         if [ "${{ needs.Integrations.result }}" != "success" ]; then
+           echo "Integrations module unit tests failed."
+           exit 1
+         fi
+         if [ "${{ needs.Controller.result }}" != "success" ]; then
+           echo "Controller module unit tests failed."
+           exit 1
+         fi
+         if [ "${{ needs.Server.result }}" != "success" ]; then
+           echo "Server module unit tests failed."
+           exit 1
+         fi
+         if [ "${{ needs.Router.result }}" != "success" ]; then
+           echo "Router module unit tests failed."
+           exit 1
+         fi
+      # If all previous jobs were successful, proceed
+      - name: Final Completion Check
+        run: echo "All checks passed successfully!"
 
 
 

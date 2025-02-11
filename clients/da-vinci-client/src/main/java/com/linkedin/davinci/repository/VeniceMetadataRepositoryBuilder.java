@@ -59,6 +59,9 @@ public class VeniceMetadataRepositoryBuilder {
       boolean isIngestionIsolation) {
     this.configLoader = configLoader;
     this.clientConfig = clientConfig;
+    if (clientConfig != null) {
+      clientConfig.setMetricsRepository(metricsRepository);
+    }
     this.metricsRepository = metricsRepository;
     this.isIngestionIsolation = isIngestionIsolation;
     this.icProvider = icProvider;
@@ -110,9 +113,11 @@ public class VeniceMetadataRepositoryBuilder {
         NativeMetadataRepository.getInstance(clientConfig, veniceProperties, icProvider);
     systemStoreBasedRepository.start();
     systemStoreBasedRepository.refresh();
-    clusterInfoProvider = systemStoreBasedRepository;
-    storeRepo = systemStoreBasedRepository;
-    schemaRepo = systemStoreBasedRepository;
+    NativeMetadataRepositoryViewAdapter repositoryViewAdapter =
+        new NativeMetadataRepositoryViewAdapter(systemStoreBasedRepository);
+    clusterInfoProvider = repositoryViewAdapter;
+    storeRepo = repositoryViewAdapter;
+    schemaRepo = repositoryViewAdapter;
     liveClusterConfigRepo = null;
   }
 
@@ -142,11 +147,7 @@ public class VeniceMetadataRepositoryBuilder {
     // Load existing store config and setup watches
     storeRepo.refresh();
 
-    storeConfigRepo = new HelixReadOnlyStoreConfigRepository(
-        zkClient,
-        adapter,
-        clusterConfig.getRefreshAttemptsForZkReconnect(),
-        clusterConfig.getRefreshIntervalForZkReconnectInMs());
+    storeConfigRepo = new HelixReadOnlyStoreConfigRepository(zkClient, adapter);
     storeConfigRepo.refresh();
 
     readOnlyZKSharedSchemaRepository = new HelixReadOnlyZKSharedSchemaRepository(

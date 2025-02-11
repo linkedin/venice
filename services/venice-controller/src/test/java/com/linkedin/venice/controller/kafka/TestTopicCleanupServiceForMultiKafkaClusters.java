@@ -59,6 +59,7 @@ public class TestTopicCleanupServiceForMultiKafkaClusters {
     doReturn(kafkaUrlMap).when(config).getChildDataCenterKafkaUrlMap();
 
     admin = mock(Admin.class);
+    doReturn(true).when(admin).isParent();
     topicManager1 = mock(TopicManager.class);
     doReturn(kafkaClusterServerUrl1).when(topicManager1).getPubSubClusterAddress();
     doReturn(topicManager1).when(admin).getTopicManager(kafkaClusterServerUrl1);

@@ -210,7 +210,7 @@ public class MergeConflictResolver {
     if (useFieldLevelTimestamp || RmdUtils.getRmdTimestampType(oldTimestampObject).equals(PER_FIELD_TIMESTAMP)) {
       return mergeDeleteWithFieldLevelTimestamp(
           oldValueBytesProvider,
-          (GenericRecord) oldTimestampObject,
+          oldTimestampObject,
           oldValueSchemaID,
           oldRmdRecord,
           deleteOperationColoID,
@@ -328,12 +328,14 @@ public class MergeConflictResolver {
     final SchemaEntry mergeResultValueSchemaEntry =
         mergeResultValueSchemaResolver.getMergeResultValueSchema(oldValueSchemaID, newValueSchemaID);
     /**
-     * Note that it is important that the new value record should NOT use {@link mergeResultValueSchema}.
-     * {@link newValueWriterSchema} is either the same as {@link mergeResultValueSchema} or it is a subset of
-     * {@link mergeResultValueSchema}.
+     * New value record should use {@link mergeResultValueSchemaEntry} as reader schema for potential schema up-convert.
+     * {@link mergeResultValueSchemaEntry} is either the same as new value schema, if old value schema is the same as
+     * the new value schema, or it will be the superset schema. In the latter case, new value should be up-converted, so
+     * that it contains all the fields and updated value can be properly serialized.
      */
     GenericRecord newValueRecord =
-        deserializerCacheForFullValue.get(newValueSchemaID, newValueSchemaID).deserialize(newValueBytes);
+        deserializerCacheForFullValue.get(newValueSchemaID, mergeResultValueSchemaEntry.getId())
+            .deserialize(newValueBytes);
     ValueAndRmd<GenericRecord> oldValueAndRmd = createOldValueAndRmd(
         mergeResultValueSchemaEntry.getSchema(),
         mergeResultValueSchemaEntry.getId(),
@@ -382,15 +384,19 @@ public class MergeConflictResolver {
 
   private MergeConflictResult mergeDeleteWithFieldLevelTimestamp(
       Lazy<ByteBuffer> oldValueBytesProvider,
-      GenericRecord oldValueFieldTimestampsRecord,
+      Object oldTimestampObject,
       int oldValueSchemaID,
       GenericRecord oldRmdRecord,
       int deleteOperationColoID,
       long deleteOperationTimestamp,
       long deleteOperationSourceOffset,
       int deleteOperationSourceBrokerID) {
-    if (ignoreNewDelete(oldValueFieldTimestampsRecord, deleteOperationTimestamp)) {
-      return MergeConflictResult.getIgnoredResult();
+
+    if (oldTimestampObject instanceof GenericRecord) {
+      final GenericRecord oldValueFieldTimestampsRecord = (GenericRecord) oldTimestampObject;
+      if (ignoreNewDelete(oldValueFieldTimestampsRecord, deleteOperationTimestamp)) {
+        return MergeConflictResult.getIgnoredResult();
+      }
     }
     // In this case, the writer and reader schemas are the same because deletion does not introduce any new schema.
     final Schema oldValueSchema = getValueSchema(oldValueSchemaID);

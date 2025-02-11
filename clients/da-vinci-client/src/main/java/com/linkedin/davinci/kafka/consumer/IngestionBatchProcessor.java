@@ -14,9 +14,10 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableMap;
+import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 
 
@@ -27,6 +28,8 @@ import java.util.concurrent.locks.ReentrantLock;
  * resources to speed up the leader ingestion.
  */
 public class IngestionBatchProcessor {
+  private static final TreeMap EMPTY_TREE_MAP = new TreeMap();
+
   interface ProcessingFunction {
     PubSubMessageProcessedResult apply(
         PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
@@ -71,32 +74,41 @@ public class IngestionBatchProcessor {
     this.version = Version.parseVersionFromKafkaTopicName(storeVersionName);
   }
 
+  // For testing
+  KeyLevelLocksManager getLockManager() {
+    return this.lockManager;
+  }
+
   /**
    * When {@link #lockManager} is not null, this function will try to lock all the keys
    * (except Control Messages) passed by the params.
    */
-  public List<ReentrantLock> lockKeys(List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records) {
+  public NavigableMap<ByteArrayKey, ReentrantLock> lockKeys(
+      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records) {
     if (lockManager != null) {
-      List<ReentrantLock> locks = new ArrayList<>(records.size());
+      /**
+       * Need to use a {@link TreeMap} to make sure the locking will be executed in a deterministic order, otherwise
+       * deadlock can happen.
+       * Considering there could be multiple consumers, which are executing this function concurrently, and if they
+       * are trying to lock the same set of keys with different orders, deadlock can happen.
+       */
+      TreeMap<ByteArrayKey, ReentrantLock> keyLockMap = new TreeMap<>();
       records.forEach(r -> {
         if (!r.getKey().isControlMessage()) {
-          ReentrantLock lock = lockManager.acquireLockByKey(ByteArrayKey.wrap(r.getKey().getKey()));
-          locks.add(lock);
-          lock.lock();
+          keyLockMap.computeIfAbsent(ByteArrayKey.wrap(r.getKey().getKey()), k -> lockManager.acquireLockByKey(k));
         }
       });
-      return locks;
+      keyLockMap.forEach((k, v) -> v.lock());
+      return keyLockMap;
     }
-    return Collections.emptyList();
+    return Collections.emptyNavigableMap();
   }
 
-  public void unlockKeys(List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records, List<ReentrantLock> locks) {
+  public void unlockKeys(NavigableMap<ByteArrayKey, ReentrantLock> keyLockMap) {
     if (lockManager != null) {
-      locks.forEach(lock -> lock.unlock());
-      records.forEach(r -> {
-        if (!r.getKey().isControlMessage()) {
-          lockManager.releaseLock(ByteArrayKey.wrap(r.getKey().getKey()));
-        }
+      keyLockMap.descendingMap().forEach((key, lock) -> {
+        lock.unlock();
+        lockManager.releaseLock(key);
       });
     }
   }
@@ -123,23 +135,9 @@ public class IngestionBatchProcessor {
     if (records.isEmpty()) {
       return Collections.emptyList();
     }
-    AtomicBoolean isAllMessagesFromRTTopic = new AtomicBoolean(true);
+    boolean isAllMessagesFromRTTopic = true;
     List<PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long>> resultList =
         new ArrayList<>(records.size());
-    records.forEach(r -> {
-      resultList.add(new PubSubMessageProcessedResultWrapper<>(r));
-      if (!r.getTopicPartition().getPubSubTopic().isRealTime()) {
-        isAllMessagesFromRTTopic.set(false);
-      }
-    });
-    if (!isWriteComputationEnabled && !isActiveActiveReplicationEnabled) {
-      return resultList;
-    }
-    // Only handle records from the real-time topic
-    if (!isAllMessagesFromRTTopic.get()) {
-      return resultList;
-    }
-
     /**
      * We would like to process the messages belonging to the same key sequentially to avoid race conditions.
      */
@@ -147,13 +145,24 @@ public class IngestionBatchProcessor {
     Map<ByteArrayKey, List<PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long>>> keyGroupMap =
         new HashMap<>(records.size());
 
-    for (PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> r: resultList) {
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message = r.getMessage();
-      if (!message.getKey().isControlMessage()) {
+    for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: records) {
+      if (!message.getTopicPartition().getPubSubTopic().isRealTime()) {
+        isAllMessagesFromRTTopic = false;
+      }
+      PubSubMessageProcessedResultWrapper resultWrapper = new PubSubMessageProcessedResultWrapper<>(message);
+      resultList.add(resultWrapper);
+      if (!message.getKey().isControlMessage() && isAllMessagesFromRTTopic) {
         ByteArrayKey byteArrayKey = ByteArrayKey.wrap(message.getKey().getKey());
-        keyGroupMap.computeIfAbsent(byteArrayKey, (ignored) -> new ArrayList<>()).add(r);
+        keyGroupMap.computeIfAbsent(byteArrayKey, (ignored) -> new ArrayList<>()).add(resultWrapper);
         totalNumOfRecords++;
       }
+    }
+    if (!isWriteComputationEnabled && !isActiveActiveReplicationEnabled) {
+      return resultList;
+    }
+    // Only handle records from the real-time topic
+    if (!isAllMessagesFromRTTopic) {
+      return resultList;
     }
     aggVersionedIngestionStats
         .recordBatchProcessingRequest(storeName, version, totalNumOfRecords, System.currentTimeMillis());

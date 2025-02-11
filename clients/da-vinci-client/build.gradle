@@ -33,12 +33,14 @@ dependencies {
   implementation project(':clients:venice-thin-client')
 
   implementation libraries.avroUtilFastserde
+  implementation libraries.asm
   implementation libraries.caffeine
   implementation libraries.fastUtil
   implementation libraries.httpAsyncClient
   implementation libraries.kafkaClients
   implementation libraries.rocksdbjni
   implementation libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
+  implementation libraries.zstd
 
   testImplementation project(':internal:venice-test-common')
   testImplementation project(':internal:venice-client-common').sourceSets.test.output
@@ -47,4 +49,11 @@ dependencies {
 
 ext {
   jacocoCoverageThreshold = 0.40
+}
+
+checkerFramework {
+  extraJavacArgs = ['-Xmaxerrs', '256']
+  checkers = ['org.checkerframework.checker.nullness.NullnessChecker']
+  skipCheckerFramework = true
+  excludeTests = true
 }

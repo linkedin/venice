@@ -15,6 +15,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.utils.TestUtils;
@@ -56,18 +57,19 @@ public class TestFabricBuildout {
     childControllerProperties.setProperty(ALLOW_CLUSTER_WIPE, "true");
     Properties serverProperties = new Properties();
     serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
-    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-        NUMBER_OF_CHILD_DATACENTERS,
-        NUMBER_OF_CLUSTERS,
-        1,
-        1,
-        1,
-        1,
-        1,
-        Optional.empty(),
-        Optional.of(childControllerProperties),
-        Optional.of(serverProperties),
-        false);
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
+            .numberOfClusters(NUMBER_OF_CLUSTERS)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(1)
+            .numberOfRouters(1)
+            .replicationFactor(1)
+            .forkServer(false)
+            .childControllerProperties(childControllerProperties)
+            .serverProperties(serverProperties);
+    multiRegionMultiClusterWrapper =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
 
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     parentControllers = multiRegionMultiClusterWrapper.getParentControllers();

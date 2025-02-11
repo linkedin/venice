@@ -7,6 +7,8 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.fastclient.meta.ClientRoutingStrategyType;
+import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
+import com.linkedin.venice.fastclient.meta.InstanceHealthMonitorConfig;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
@@ -20,7 +22,6 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executor;
-import java.util.concurrent.TimeUnit;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -43,15 +44,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final AvroGenericStoreClient<K, V> genericThinClient;
   private final AvroSpecificStoreClient<K, T> specificThinClient;
 
-  /**
-   * For Client Routing.
-   * Please check {@link com.linkedin.venice.fastclient.meta.InstanceHealthMonitor} to find more details.
-   */
-  private final long routingLeakedRequestCleanupThresholdMS;
-  private final long routingQuotaExceededRequestCounterResetDelayMS;
-  private final long routingErrorRequestCounterResetDelayMS;
-  private final long routingUnavailableRequestCounterResetDelayMS;
-  private final int routingPendingRequestCounterInstanceBlockThreshold;
   private final DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
   /**
    * Config to enable/disable warm up connection to instances from fetched metadata.
@@ -94,6 +86,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
   private boolean projectionFieldValidation;
   private Set<String> harClusters;
+  private final InstanceHealthMonitor instanceHealthMonitor;
+  private final boolean retryBudgetEnabled;
 
   private final MetricsRepository metricsRepository;
 
@@ -109,11 +103,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       boolean dualReadEnabled,
       AvroGenericStoreClient<K, V> genericThinClient,
       AvroSpecificStoreClient<K, T> specificThinClient,
-      long routingLeakedRequestCleanupThresholdMS,
-      long routingQuotaExceededRequestCounterResetDelayMS,
-      long routingErrorRequestCounterResetDelayMS,
-      long routingUnavailableRequestCounterResetDelayMS,
-      int routingPendingRequestCounterInstanceBlockThreshold,
       DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore,
       boolean isMetadataConnWarmupEnabled,
       long metadataRefreshIntervalInSeconds,
@@ -132,7 +121,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       GrpcClientConfig grpcClientConfig,
       boolean projectionFieldValidation,
       long longTailRetryBudgetEnforcementWindowInMs,
-      Set<String> harClusters) {
+      Set<String> harClusters,
+      InstanceHealthMonitor instanceHealthMonitor,
+      boolean retryBudgetEnabled) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
@@ -178,25 +169,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
                 + " should not be specified when dual read is not enabled");
       }
     }
-
-    this.routingLeakedRequestCleanupThresholdMS = routingLeakedRequestCleanupThresholdMS > 0
-        ? routingLeakedRequestCleanupThresholdMS
-        : TimeUnit.SECONDS.toMillis(30); // 30 seconds by default
-    this.routingQuotaExceededRequestCounterResetDelayMS =
-        routingQuotaExceededRequestCounterResetDelayMS > 0 ? routingQuotaExceededRequestCounterResetDelayMS : 50; // 50
-                                                                                                                  // ms
-                                                                                                                  // by
-                                                                                                                  // default
-    this.routingErrorRequestCounterResetDelayMS = routingErrorRequestCounterResetDelayMS > 0
-        ? routingErrorRequestCounterResetDelayMS
-        : TimeUnit.SECONDS.toMillis(10); // 10 seconds
-    this.routingUnavailableRequestCounterResetDelayMS = routingUnavailableRequestCounterResetDelayMS > 0
-        ? routingUnavailableRequestCounterResetDelayMS
-        : TimeUnit.SECONDS.toMillis(10); // 10 seconds
-    this.routingPendingRequestCounterInstanceBlockThreshold = routingPendingRequestCounterInstanceBlockThreshold > 0
-        ? routingPendingRequestCounterInstanceBlockThreshold
-        : 50;
-
     this.daVinciClientForMetaStore = daVinciClientForMetaStore;
     this.isMetadataConnWarmupEnabled = isMetadataConnWarmupEnabled;
     this.metadataRefreshIntervalInSeconds = metadataRefreshIntervalInSeconds;
@@ -263,6 +235,13 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.projectionFieldValidation = projectionFieldValidation;
     this.longTailRetryBudgetEnforcementWindowInMs = longTailRetryBudgetEnforcementWindowInMs;
     this.harClusters = harClusters;
+    if (instanceHealthMonitor == null) {
+      this.instanceHealthMonitor =
+          new InstanceHealthMonitor(InstanceHealthMonitorConfig.builder().setClient(this.r2Client).build());
+    } else {
+      this.instanceHealthMonitor = instanceHealthMonitor;
+    }
+    this.retryBudgetEnabled = retryBudgetEnabled;
   }
 
   public String getStoreName() {
@@ -303,26 +282,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
   public AvroSpecificStoreClient<K, T> getSpecificThinClient() {
     return specificThinClient;
-  }
-
-  public long getRoutingLeakedRequestCleanupThresholdMS() {
-    return routingLeakedRequestCleanupThresholdMS;
-  }
-
-  public long getRoutingQuotaExceededRequestCounterResetDelayMS() {
-    return routingQuotaExceededRequestCounterResetDelayMS;
-  }
-
-  public long getRoutingErrorRequestCounterResetDelayMS() {
-    return routingErrorRequestCounterResetDelayMS;
-  }
-
-  public long getRoutingUnavailableRequestCounterResetDelayMS() {
-    return routingUnavailableRequestCounterResetDelayMS;
-  }
-
-  public int getRoutingPendingRequestCounterInstanceBlockThreshold() {
-    return routingPendingRequestCounterInstanceBlockThreshold;
   }
 
   public DaVinciClient<StoreMetaKey, StoreMetaValue> getDaVinciClientForMetaStore() {
@@ -415,6 +374,14 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return this;
   }
 
+  public InstanceHealthMonitor getInstanceHealthMonitor() {
+    return instanceHealthMonitor;
+  }
+
+  public boolean isRetryBudgetEnabled() {
+    return retryBudgetEnabled;
+  }
+
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {
     private MetricsRepository metricsRepository;
     private String statsPrefix = "";
@@ -427,12 +394,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private boolean dualReadEnabled = false;
     private AvroGenericStoreClient<K, V> genericThinClient;
     private AvroSpecificStoreClient<K, T> specificThinClient;
-
-    private long routingLeakedRequestCleanupThresholdMS = -1;
-    private long routingQuotaExceededRequestCounterResetDelayMS = -1;
-    private long routingErrorRequestCounterResetDelayMS = -1;
-    private long routingUnavailableRequestCounterResetDelayMS = -1;
-    private int routingPendingRequestCounterInstanceBlockThreshold = -1;
     private DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
 
     private AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> thinClientForMetaStore;
@@ -462,6 +423,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private long longTailRetryBudgetEnforcementWindowInMs = 60000; // 1 minute
 
     private Set<String> harClusters = Collections.EMPTY_SET;
+
+    private InstanceHealthMonitor instanceHealthMonitor;
+
+    private boolean retryBudgetEnabled = true;
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
@@ -516,36 +481,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     public ClientConfigBuilder<K, V, T> setSpecificThinClient(AvroSpecificStoreClient<K, T> specificThinClient) {
       this.specificThinClient = specificThinClient;
-      return this;
-    }
-
-    public ClientConfigBuilder<K, V, T> setRoutingLeakedRequestCleanupThresholdMS(
-        long routingLeakedRequestCleanupThresholdMS) {
-      this.routingLeakedRequestCleanupThresholdMS = routingLeakedRequestCleanupThresholdMS;
-      return this;
-    }
-
-    public ClientConfigBuilder<K, V, T> setRoutingQuotaExceededRequestCounterResetDelayMS(
-        long routingQuotaExceededRequestCounterResetDelayMS) {
-      this.routingQuotaExceededRequestCounterResetDelayMS = routingQuotaExceededRequestCounterResetDelayMS;
-      return this;
-    }
-
-    public ClientConfigBuilder<K, V, T> setRoutingErrorRequestCounterResetDelayMS(
-        long routingErrorRequestCounterResetDelayMS) {
-      this.routingErrorRequestCounterResetDelayMS = routingErrorRequestCounterResetDelayMS;
-      return this;
-    }
-
-    public ClientConfigBuilder<K, V, T> setRoutingUnavailableRequestCounterResetDelayMS(
-        long routingUnavailableRequestCounterResetDelayMS) {
-      this.routingUnavailableRequestCounterResetDelayMS = routingUnavailableRequestCounterResetDelayMS;
-      return this;
-    }
-
-    public ClientConfigBuilder<K, V, T> setRoutingPendingRequestCounterInstanceBlockThreshold(
-        int routingPendingRequestCounterInstanceBlockThreshold) {
-      this.routingPendingRequestCounterInstanceBlockThreshold = routingPendingRequestCounterInstanceBlockThreshold;
       return this;
     }
 
@@ -656,6 +591,16 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setInstanceHealthMonitor(InstanceHealthMonitor instanceHealthMonitor) {
+      this.instanceHealthMonitor = instanceHealthMonitor;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setRetryBudgetEnabled(boolean retryBudgetEnabled) {
+      this.retryBudgetEnabled = retryBudgetEnabled;
+      return this;
+    }
+
     public ClientConfigBuilder<K, V, T> clone() {
       return new ClientConfigBuilder().setStoreName(storeName)
           .setR2Client(r2Client)
@@ -668,11 +613,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setDualReadEnabled(dualReadEnabled)
           .setGenericThinClient(genericThinClient)
           .setSpecificThinClient(specificThinClient)
-          .setRoutingLeakedRequestCleanupThresholdMS(routingLeakedRequestCleanupThresholdMS)
-          .setRoutingQuotaExceededRequestCounterResetDelayMS(routingQuotaExceededRequestCounterResetDelayMS)
-          .setRoutingErrorRequestCounterResetDelayMS(routingErrorRequestCounterResetDelayMS)
-          .setRoutingUnavailableRequestCounterResetDelayMS(routingUnavailableRequestCounterResetDelayMS)
-          .setRoutingPendingRequestCounterInstanceBlockThreshold(routingPendingRequestCounterInstanceBlockThreshold)
           .setDaVinciClientForMetaStore(daVinciClientForMetaStore)
           .setThinClientForMetaStore(thinClientForMetaStore)
           .setIsMetadataConnWarmupEnabled(isMetadataConnWarmupEnabled)
@@ -692,7 +632,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setGrpcClientConfig(grpcClientConfig)
           .setProjectionFieldValidationEnabled(projectionFieldValidation)
           .setLongTailRetryBudgetEnforcementWindowInMs(longTailRetryBudgetEnforcementWindowInMs)
-          .setHARClusters(harClusters);
+          .setHARClusters(harClusters)
+          .setInstanceHealthMonitor(instanceHealthMonitor)
+          .setRetryBudgetEnabled(retryBudgetEnabled);
     }
 
     public ClientConfig<K, V, T> build() {
@@ -708,11 +650,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           dualReadEnabled,
           genericThinClient,
           specificThinClient,
-          routingLeakedRequestCleanupThresholdMS,
-          routingQuotaExceededRequestCounterResetDelayMS,
-          routingErrorRequestCounterResetDelayMS,
-          routingUnavailableRequestCounterResetDelayMS,
-          routingPendingRequestCounterInstanceBlockThreshold,
           daVinciClientForMetaStore,
           isMetadataConnWarmupEnabled,
           metadataRefreshIntervalInSeconds,
@@ -731,7 +668,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           grpcClientConfig,
           projectionFieldValidation,
           longTailRetryBudgetEnforcementWindowInMs,
-          harClusters);
+          harClusters,
+          instanceHealthMonitor,
+          retryBudgetEnabled);
     }
   }
 }

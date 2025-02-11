@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOB_FILES_ENABLED;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
@@ -66,6 +67,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.kafka.protocol.GUID;
@@ -491,8 +493,16 @@ public class TestHybrid {
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
 
     SystemProducer veniceBatchProducer = null;
-    try (VeniceClusterWrapper veniceClusterWrapper =
-        ServiceFactory.getVeniceCluster(1, 3, 1, 2, 1000000, false, false, extraProperties)) {
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(3)
+        .numberOfRouters(1)
+        .replicationFactor(2)
+        .partitionSize(1000000)
+        .sslToStorageNodes(false)
+        .sslToKafka(false)
+        .extraProperties(extraProperties)
+        .build();
+    try (VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(options)) {
       try {
         Admin admin = veniceClusterWrapper.getLeaderVeniceController().getVeniceAdmin();
         String clusterName = veniceClusterWrapper.getClusterName();
@@ -741,9 +751,16 @@ public class TestHybrid {
   public void testLeaderHonorLastTopicSwitchMessage() throws Exception {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(10L));
-    try (
-        VeniceClusterWrapper venice =
-            ServiceFactory.getVeniceCluster(1, 2, 1, 2, 1000000, false, false, extraProperties);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(2)
+        .numberOfRouters(1)
+        .replicationFactor(2)
+        .partitionSize(1000000)
+        .sslToStorageNodes(false)
+        .sslToKafka(false)
+        .extraProperties(extraProperties)
+        .build();
+    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(options);
         ControllerClient controllerClient =
             new ControllerClient(venice.getClusterName(), venice.getAllControllersURLs())) {
       long streamingRewindSeconds = 25L;
@@ -820,15 +837,17 @@ public class TestHybrid {
         Assert.assertEquals(store.getStore().getCurrentVersion(), 1);
       });
 
+      StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
+
       /**
        * Verify that all messages from {@link tmpTopic2} are in store and no message from {@link tmpTopic1} is in store.
        */
       try (
           AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
               ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
-          VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter = TestUtils
-              .getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
-              .createVeniceWriter(new VeniceWriterOptions.Builder(Version.composeRealTimeTopic(storeName)).build());) {
+          VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter =
+              TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
+                  .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
         // Build a producer to produce 2 TS messages into RT
         realTimeTopicWriter.broadcastTopicSwitch(
             Collections.singletonList(venice.getPubSubBrokerWrapper().getAddress()),
@@ -1230,6 +1249,7 @@ public class TestHybrid {
 
       try (
           ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties)) {
+        StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
         // Have 1 partition only, so that all keys are produced to the same partition
         ControllerResponse response = controllerClient.updateStore(
             storeName,
@@ -1262,7 +1282,7 @@ public class TestHybrid {
             new AvroGenericDeserializer<>(STRING_SCHEMA, STRING_SCHEMA);
         try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter =
             TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
-                .createVeniceWriter(new VeniceWriterOptions.Builder(Version.composeRealTimeTopic(storeName)).build())) {
+                .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
           // Send <key1, value1, seq: 1>
           Pair<KafkaKey, KafkaMessageEnvelope> record = getKafkaKeyAndValueEnvelope(
               stringSerializer.serialize(key1),
@@ -1417,6 +1437,7 @@ public class TestHybrid {
     try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
         AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
+      StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
       // Have 1 partition only, so that all keys are produced to the same partition
       ControllerResponse response = controllerClient.updateStore(
           storeName,
@@ -1446,7 +1467,7 @@ public class TestHybrid {
       for (int i = 0; i < 2; i++) {
         try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter =
             TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
-                .createVeniceWriter(new VeniceWriterOptions.Builder(Version.composeRealTimeTopic(storeName)).build())) {
+                .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
           for (int j = i * 50 + 1; j <= i * 50 + 50; j++) {
             realTimeTopicWriter
                 .put(stringSerializer.serialize(String.valueOf(j)), stringSerializer.serialize(prefix + j), 1);
@@ -1491,6 +1512,7 @@ public class TestHybrid {
     try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
         AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
+      StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
       // Have 1 partition only, so that all keys are produced to the same partition
       ControllerResponse response = controllerClient.updateStore(
           storeName,
@@ -1519,7 +1541,7 @@ public class TestHybrid {
       for (int i = 0; i < 2; i++) {
         try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter =
             TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
-                .createVeniceWriter(new VeniceWriterOptions.Builder(Version.composeRealTimeTopic(storeName)).build())) {
+                .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
           for (int j = i * 50 + 1; j <= i * 50 + 50; j++) {
             realTimeTopicWriter
                 .put(stringSerializer.serialize(String.valueOf(j)), stringSerializer.serialize(prefix + j), 1);
@@ -1669,8 +1691,16 @@ public class TestHybrid {
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(20L));
     final int partitionCount = 1;
     final int keyCount = 10;
-    try (VeniceClusterWrapper cluster =
-        ServiceFactory.getVeniceCluster(1, 1, 1, 1, 1000000, false, false, extraProperties)) {
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(1)
+        .numberOfRouters(1)
+        .replicationFactor(1)
+        .partitionSize(1000000)
+        .sslToStorageNodes(false)
+        .sslToKafka(false)
+        .extraProperties(extraProperties)
+        .build();
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(options)) {
       UpdateStoreQueryParams params = new UpdateStoreQueryParams()
           // set hybridRewindSecond to a big number so following versions won't ignore old records in RT
           .setHybridRewindSeconds(10)
@@ -1770,8 +1800,17 @@ public class TestHybrid {
     extraProperties.setProperty(
         TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS,
         String.valueOf(TEST_TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS));
-
-    VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 0, 0, 2, 1000000, false, false, extraProperties);
+    
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(0)
+        .numberOfRouters(0)
+        .replicationFactor(2)
+        .partitionSize(1000000)
+        .sslToStorageNodes(false)
+        .sslToKafka(false)
+        .extraProperties(extraProperties)
+        .build();
+    VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(options);
 
     // Add Venice Router
     Properties routerProperties = new Properties();
@@ -1799,6 +1838,8 @@ public class TestHybrid {
           KafkaConsumerService.ConsumerAssignmentStrategy.PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY.name());
     }
     cluster.addVeniceServer(new Properties(), serverProperties);
+    // Enable blob files in one server
+    serverProperties.setProperty(ROCKSDB_BLOB_FILES_ENABLED, "true");
     cluster.addVeniceServer(new Properties(), serverProperties);
 
     return cluster;

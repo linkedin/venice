@@ -6,6 +6,7 @@ import com.linkedin.davinci.blobtransfer.BlobSnapshotManager;
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
+import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
@@ -370,6 +371,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     options.setMaxOpenFiles(rocksDBServerConfig.getMaxOpenFiles());
     options.setTargetFileSizeBase(rocksDBServerConfig.getTargetFileSizeInBytes());
     options.setMaxFileOpeningThreads(rocksDBServerConfig.getMaxFileOpeningThreads());
+    options.setMinWriteBufferNumberToMerge(rocksDBServerConfig.getRocksDBMinWriteBufferNumberToMerge());
 
     /**
      * Disable the stat dump threads, which will create excessive threads, which will eventually crash
@@ -400,6 +402,19 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       tableConfig.setCacheIndexAndFilterBlocks(rocksDBServerConfig.isRocksDBSetCacheIndexAndFilterBlocks());
       tableConfig.setFormatVersion(rocksDBServerConfig.getBlockBaseFormatVersion());
       options.setTableFormatConfig(tableConfig);
+
+      /**
+       * Only enable blob files for block-based format.
+       */
+      if (rocksDBServerConfig.isBlobFilesEnabled()) {
+        options.setEnableBlobFiles(true);
+        options.setEnableBlobGarbageCollection(true);
+        options.setMinBlobSize(rocksDBServerConfig.getMinBlobSizeInBytes());
+        options.setBlobFileSize(rocksDBServerConfig.getBlobFileSizeInBytes());
+        options.setBlobGarbageCollectionAgeCutoff(rocksDBServerConfig.getBlobGarbageCollectionAgeCutOff());
+        options.setBlobGarbageCollectionForceThreshold(rocksDBServerConfig.getBlobGarbageCollectionForceThreshold());
+        options.setBlobFileStartingLevel(rocksDBServerConfig.getBlobFileStartingLevel());
+      }
     }
 
     if (storagePartitionConfig.isWriteOnlyConfig()) {
@@ -489,7 +504,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   @Override
   public synchronized void createSnapshot() {
     if (blobTransferEnabled) {
-      BlobSnapshotManager.createSnapshotForBatch(rocksDB, fullPathForPartitionDBSnapshot);
+      BlobSnapshotManager.createSnapshot(rocksDB, fullPathForPartitionDBSnapshot);
     }
   }
 
@@ -986,5 +1001,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   // Visible for testing
   public RocksDBSstFileWriter getRocksDBSstFileWriter() {
     return rocksDBSstFileWriter;
+  }
+
+  @Override
+  public AbstractStorageIterator getIterator() {
+    return new RocksDBStorageIterator(rocksDB.newIterator());
   }
 }

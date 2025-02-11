@@ -23,6 +23,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -48,7 +49,7 @@ public class SharedKafkaConsumerTest {
   public void testSubscriptionEmptyPoll() {
     PubSubTopic nonExistingTopic1 = pubSubTopicRepository.getTopic("nonExistingTopic1_v3");
 
-    SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, stats, () -> {}, (c, tp) -> {});
+    SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, stats, () -> {}, (c, vt, tp) -> {});
 
     Set<PubSubTopicPartition> assignmentReturnedConsumer = new HashSet<>();
     PubSubTopicPartition nonExistentPubSubTopicPartition = new PubSubTopicPartitionImpl(nonExistingTopic1, 1);
@@ -72,7 +73,7 @@ public class SharedKafkaConsumerTest {
 
   private void setUpSharedConsumer() {
     consumerAdapter = mock(PubSubConsumerAdapter.class);
-    AggKafkaConsumerServiceStats stats = mock(AggKafkaConsumerServiceStats.class);
+    stats = mock(AggKafkaConsumerServiceStats.class);
     Runnable assignmentChangeListener = mock(Runnable.class);
     SharedKafkaConsumer.UnsubscriptionListener unsubscriptionListener =
         mock(SharedKafkaConsumer.UnsubscriptionListener.class);
@@ -91,13 +92,11 @@ public class SharedKafkaConsumerTest {
   public void testWaitAfterUnsubscribe() {
     setUpSharedConsumer();
     Supplier<Set<PubSubTopicPartition>> supplier = () -> topicPartitions;
-
-    long poolTimesBeforeUnsubscribe = sharedKafkaConsumer.getPollTimes();
-    sharedKafkaConsumer.setNextPollTimeoutSeconds(1);
-    sharedKafkaConsumer.unSubscribeAction(supplier);
+    long pollTimesBeforeUnsubscribe = sharedKafkaConsumer.getPollTimes();
+    sharedKafkaConsumer.unSubscribeAction(supplier, TimeUnit.SECONDS.toMillis(1));
 
     // This is to test that if the poll time is not incremented when the consumer is unsubscribed the correct log can
     // be found in the logs.
-    Assert.assertEquals(poolTimesBeforeUnsubscribe, sharedKafkaConsumer.getPollTimes());
+    Assert.assertEquals(pollTimesBeforeUnsubscribe, sharedKafkaConsumer.getPollTimes());
   }
 }

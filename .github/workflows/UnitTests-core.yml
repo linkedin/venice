@@ -1,0 +1,76 @@
+on:
+  workflow_call:
+    inputs:
+      arg:
+        required: true
+        type: string
+      artifact_suffix:
+        required: true
+        type: string
+
+
+jobs:
+  reusable_job:
+    name: "UT & CodeCov"
+    strategy:
+      fail-fast: false
+      matrix:
+        jdk: [ 8, 11, 17 ]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      checks: write
+      id-token: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'temurin'
+          cache: 'gradle'
+      - shell: bash
+        run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
+      - name: Run Unit Tests with Code Coverage
+        run: ./gradlew  -x :internal:venice-avro-compatibility-test:test  ${{ inputs.arg }}
+      - name: Package Build Artifacts
+        if: success() || failure()
+        shell: bash
+        run: |
+          mkdir ${{ inputs.artifact_suffix }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ inputs.artifact_suffix }}-artifacts
+          tar -zcvf ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ inputs.artifact_suffix }}-artifacts
+      - name: Publish Test Report
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max_old_space_size=8192"
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+         check_name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }} Report
+         comment: false
+         annotate_only: true
+         flaky_summary: true
+         commit: ${{github.event.workflow_run.head_sha}}
+         detailed_summary: true
+         report_paths: '**/build/test-results/test/TEST-*.xml'
+      - name: Upload Build Artifacts
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }}
+          path: ${{ inputs.artifact_suffix }}-jdk${{ matrix.jdk }}-logs.tar.gz
+          retention-days: 30

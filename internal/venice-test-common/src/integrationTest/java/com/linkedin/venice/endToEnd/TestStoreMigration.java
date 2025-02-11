@@ -38,6 +38,7 @@ import com.linkedin.venice.client.store.StatTrackingStoreClient;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -51,7 +52,9 @@ import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
@@ -60,6 +63,9 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
@@ -102,6 +108,7 @@ public class TestStoreMigration {
   private static final int RECORD_COUNT = 20;
   private static final String NEW_OWNER = "newtest@linkedin.com";
   private static final String FABRIC0 = "dc-0";
+  private static final PubSubTopicRepository PUBSUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
 
   private VeniceTwoLayerMultiRegionMultiClusterWrapper twoLayerMultiRegionMultiClusterWrapper;
   private VeniceMultiClusterWrapper multiClusterWrapper;
@@ -127,19 +134,21 @@ public class TestStoreMigration {
 
     // 1 parent controller, 1 child region, 2 clusters per child region, 2 servers per cluster
     // RF=2 to test both leader and follower SNs
-    twoLayerMultiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-        1,
-        2,
-        1,
-        1,
-        2,
-        1,
-        2,
-        Optional.of(parentControllerProperties),
-        Optional.empty(),
-        Optional.of(serverProperties),
-        false,
-        true);
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+            .numberOfClusters(2)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(2)
+            .numberOfRouters(1)
+            .replicationFactor(2)
+            .sslToStorageNodes(true)
+            .forkServer(false)
+            .parentControllerProperties(parentControllerProperties)
+            .childControllerProperties(null)
+            .serverProperties(serverProperties);
+    twoLayerMultiRegionMultiClusterWrapper =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
 
     multiClusterWrapper = twoLayerMultiRegionMultiClusterWrapper.getChildRegions().get(0);
     String[] clusterNames = multiClusterWrapper.getClusterNames();
@@ -624,6 +633,104 @@ public class TestStoreMigration {
     destClusterVhaDc0.clearIngestionKillMessageAndVerify(destClusterName, currentVersionTopicName);
     // Verify the kill push message is removed from the participant message store.
     verifyKillMessageInParticipantStore(destClusterWrapper, currentVersionTopicName, false);
+  }
+
+  /**
+   * Verifies the behavior where a hybrid store migration fails if there is an ongoing batch push job
+   * with a non-truncated version topic in the parent region.
+   * The failure occurs because a safeguard, intended to prevent hybrid-to-batch conversion during
+   * an ongoing push job with deferred version swapping functionality, does not account for the store migration
+   * scenario where hybrid configurations are added as part of the update store operation.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStoreMigrationWithPushJobTrackingVTInParentRegion() throws Exception {
+    String storeName = Utils.getUniqueString("testWithFailedAttempt");
+    createAndPushStore(srcClusterName, storeName);
+
+    try (ControllerClient srcParentControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
+        ControllerClient destParentControllerClient = new ControllerClient(destClusterName, parentControllerUrl)) {
+      StoreResponse storeResponse = TestUtils.assertCommand(srcParentControllerClient.getStore(storeName));
+      StoreInfo storeInfo = storeResponse.getStore();
+      assertNotNull(storeInfo);
+
+      // Create a dummy version topic to simulate the edge case where a push job is in progress, and the version
+      // topic exists in the parent region. VT in parent region is used for tracking ongoing batch push job.
+      VeniceControllerWrapper parentControllerWrapper =
+          twoLayerMultiRegionMultiClusterWrapper.getLeaderParentControllerWithRetries(srcClusterName);
+      PubSubTopic dummyVersionTopic = PUBSUB_TOPIC_REPOSITORY.getTopic(Version.composeKafkaTopic(storeName, 9999));
+      Admin admin = parentControllerWrapper.getVeniceAdmin();
+      TopicManager parentTopicManager = admin.getTopicManager();
+      parentTopicManager.createTopic(dummyVersionTopic, 1, 1, true);
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        assertTrue(
+            parentTopicManager.containsTopic(dummyVersionTopic),
+            "Dummy version topic: " + dummyVersionTopic + " not created");
+      });
+
+      assertFalse(
+          admin.isTopicTruncated(dummyVersionTopic.getName()),
+          "Dummy version topic: " + dummyVersionTopic + " should not be truncated");
+
+      StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
+      // Ensure migration status is updated in source parent controller
+      TestUtils.waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          () -> assertTrue(srcParentControllerClient.getStore(storeName).getStore().isMigrating()));
+
+      // Store migration status output via closure PrintFunction
+      Set<String> statusOutput = new HashSet<String>();
+      AdminTool.PrintFunction printFunction = (message) -> {
+        statusOutput.add(message.trim());
+        System.err.println(message);
+      };
+
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        statusOutput.clear();
+        StoreMigrationTestUtil
+            .checkMigrationStatus(parentControllerUrl, storeName, srcClusterName, destClusterName, printFunction);
+        assertTrue(
+            statusOutput
+                .contains(storeName + " belongs to cluster " + srcClusterName + " according to cluster discovery"));
+        assertTrue(statusOutput.contains(storeName + " exists in this cluster " + destClusterName));
+      });
+
+      StoreMigrationTestUtil
+          .completeMigration(parentControllerUrl, storeName, srcClusterName, destClusterName, FABRIC0);
+      StoreMigrationTestUtil
+          .endMigration(parentControllerUrl, childControllerUrl0, storeName, srcClusterName, destClusterName);
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        // Store migration status output via closure PrintFunction
+        statusOutput.clear();
+        StoreMigrationTestUtil
+            .checkMigrationStatus(parentControllerUrl, storeName, srcClusterName, destClusterName, printFunction);
+        assertTrue(
+            statusOutput
+                .contains(storeName + " belongs to cluster " + destClusterName + " according to cluster discovery"));
+        assertTrue(statusOutput.contains(storeName + " exists in this cluster " + destClusterName));
+      });
+
+      assertTrue(srcParentControllerClient.getStore(storeName).isError());
+      StoreResponse destStoreResponse = TestUtils.assertCommand(destParentControllerClient.getStore(storeName));
+      StoreInfo destStoreInfo = destStoreResponse.getStore();
+      assertNotNull(destStoreInfo);
+      assertFalse(destStoreInfo.isMigrating());
+      assertFalse(destStoreInfo.isMigrationDuplicateStore());
+    }
+
+    try (ControllerClient childControllerClient0 = new ControllerClient(destClusterName, childControllerUrl0)) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        StoreResponse response = childControllerClient0.getStore(storeName);
+        StoreInfo storeInfo = response.getStore();
+        assertNotNull(storeInfo);
+        StoreResponse destStoreResponse = TestUtils.assertCommand(childControllerClient0.getStore(storeName));
+        StoreInfo destStoreInfo = destStoreResponse.getStore();
+        assertNotNull(destStoreInfo);
+        assertFalse(destStoreInfo.isMigrating());
+        assertFalse(destStoreInfo.isMigrationDuplicateStore());
+        assertEquals(destStoreInfo.getCurrentVersion(), 1);
+      });
+    }
   }
 
   /**

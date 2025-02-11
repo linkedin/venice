@@ -18,6 +18,10 @@ public class MockTehutiReporter implements MetricsReporter {
 
   @Override
   public void init(List<TehutiMetric> metrics) {
+    // Ensure lately added reporter has all metrics.
+    for (TehutiMetric metric: metrics) {
+      this.metrics.put(metric.name(), metric);
+    }
   }
 
   @Override

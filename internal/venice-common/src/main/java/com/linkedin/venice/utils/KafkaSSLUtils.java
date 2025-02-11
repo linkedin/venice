@@ -1,12 +1,12 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.common.config.SslConfigs;
-import org.apache.kafka.common.protocol.SecurityProtocol;
 
 
 public class KafkaSSLUtils {
@@ -26,26 +26,20 @@ public class KafkaSSLUtils {
       SslConfigs.SSL_TRUSTMANAGER_ALGORITHM_CONFIG,
       SslConfigs.SSL_SECURE_RANDOM_IMPLEMENTATION_CONFIG);
 
-  /**
-   * Right now, Venice only supports two Kafka protocols:
-   * {@link SecurityProtocol#PLAINTEXT}
-   * {@link SecurityProtocol#SSL}
-   *
-   * @param kafkaProtocol
-   * @return
-   */
   public static boolean isKafkaProtocolValid(String kafkaProtocol) {
-    return kafkaProtocol.equals(SecurityProtocol.PLAINTEXT.name()) || kafkaProtocol.equals(SecurityProtocol.SSL.name())
-        || kafkaProtocol.equals(SecurityProtocol.SASL_PLAINTEXT.name())
-        || kafkaProtocol.equals(SecurityProtocol.SASL_SSL.name());
+    return kafkaProtocol.equals(PubSubSecurityProtocol.PLAINTEXT.name())
+        || kafkaProtocol.equals(PubSubSecurityProtocol.SSL.name())
+        || kafkaProtocol.equals(PubSubSecurityProtocol.SASL_PLAINTEXT.name())
+        || kafkaProtocol.equals(PubSubSecurityProtocol.SASL_SSL.name());
   }
 
   public static boolean isKafkaSSLProtocol(String kafkaProtocol) {
-    return kafkaProtocol.equals(SecurityProtocol.SSL.name()) || kafkaProtocol.equals(SecurityProtocol.SASL_SSL.name());
+    return kafkaProtocol.equals(PubSubSecurityProtocol.SSL.name())
+        || kafkaProtocol.equals(PubSubSecurityProtocol.SASL_SSL.name());
   }
 
-  public static boolean isKafkaSSLProtocol(SecurityProtocol kafkaProtocol) {
-    return kafkaProtocol == SecurityProtocol.SSL || kafkaProtocol == SecurityProtocol.SASL_SSL;
+  public static boolean isKafkaSSLProtocol(PubSubSecurityProtocol kafkaProtocol) {
+    return kafkaProtocol == PubSubSecurityProtocol.SSL || kafkaProtocol == PubSubSecurityProtocol.SASL_SSL;
   }
 
   /**

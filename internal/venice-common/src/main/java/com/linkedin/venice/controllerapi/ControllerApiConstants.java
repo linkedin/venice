@@ -7,7 +7,12 @@ public class ControllerApiConstants {
   public static final String SOURCE_GRID_FABRIC = "source_grid_fabric";
   public static final String BATCH_JOB_HEARTBEAT_ENABLED = "batch_job_heartbeat_enabled";
 
-  public static final String NAME = "store_name";
+  public static final String IS_ABORT_MIGRATION_CLEANUP = "is_abort_migration_cleanup";
+  public static final String STORE_NAME = "store_name";
+  /**
+   * @deprecated Use {@link #STORE_NAME} instead.
+   */
+  public static final String NAME = STORE_NAME;
   public static final String STORE_PARTITION = "store_partition";
   public static final String STORE_VERSION = "store_version";
   public static final String OWNER = "owner";
@@ -25,8 +30,12 @@ public class ControllerApiConstants {
   public static final String FROZEN = "frozen";
   public static final String ERROR = "error";
   public static final String STORAGE_NODE_ID = "storage_node_id"; /* host_port */
-  public static final String LOCKED_STORAGE_NODE_IDS = "locked_storage_node_ids";
-  public static final String INSTANCE_VIEW = "instance_view";
+
+  // We need the following 3 constants for Helix API aggregatedHealthStatus
+  public static final String CLUSTER_ID = "cluster_id";
+  public static final String INSTANCES = "instances";
+  public static final String TO_BE_STOPPED_INSTANCES = "to_be_stopped_instances";
+
   public static final String KEY_SCHEMA = "key_schema";
   public static final String VALUE_SCHEMA = "value_schema";
   public static final String DERIVED_SCHEMA = "derived_schema";
@@ -51,6 +60,7 @@ public class ControllerApiConstants {
   public static final String TIME_LAG_TO_GO_ONLINE = "time_lag_to_go_online";
   public static final String DATA_REPLICATION_POLICY = "data_replication_policy";
   public static final String BUFFER_REPLAY_POLICY = "buffer_replay_policy";
+  public static final String REAL_TIME_TOPIC_NAME = "real_time_topic_name";
   public static final String COMPRESSION_STRATEGY = "compression_strategy";
   public static final String CLIENT_DECOMPRESSION_ENABLED = "client_decompression_enabled";
   public static final String CHUNKING_ENABLED = "chunking_enabled";
@@ -78,7 +88,17 @@ public class ControllerApiConstants {
   public static final String PUSH_STRATEGY = "push_strategy";
 
   public static final String ACCESS_CONTROLLED = "access_controlled";
+  /**
+   * @deprecated Use {@link #ENABLE_STORE_MIGRATION} instead. This constant is kept for backward compatibility
+   * and will be removed in a future release.
+   */
+  @Deprecated
   public static final String STORE_MIGRATION = "store_migration";
+
+  /**
+   * Constant for enabling store migration. Replaces the deprecated {@link #STORE_MIGRATION}.
+   */
+  public static final String ENABLE_STORE_MIGRATION = "enable_store_migration";
 
   public static final String PUSH_JOB_STATUS = "push_job_status";
   public static final String PUSH_JOB_DURATION = "push_job_duration";
@@ -201,8 +221,6 @@ public class ControllerApiConstants {
    */
   public static final String SOURCE_FABRIC_VERSION_INCLUDED = "source.fabric.version.included";
 
-  public static final String LOCKED_NODE_ID_LIST_SEPARATOR = ",";
-
   public static final String KAFKA_TOPIC_LOG_COMPACTION_ENABLED = "kafka.topic.log.compaction.enabled";
   public static final String KAFKA_TOPIC_RETENTION_IN_MS = "kafka.topic.retention.in.ms";
   public static final String KAFKA_TOPIC_MIN_IN_SYNC_REPLICA = "kafka.topic.min.in.sync.replica";
@@ -236,4 +254,10 @@ public class ControllerApiConstants {
   public static final String BLOB_TRANSFER_ENABLED = "blob_transfer_enabled";
 
   public static final String HEARTBEAT_TIMESTAMP = "heartbeat_timestamp";
+
+  public static final String NEARLINE_PRODUCER_COMPRESSION_ENABLED = "nearline_producer_compression_enabled";
+  public static final String NEARLINE_PRODUCER_COUNT_PER_WRITER = "nearline_producer_count_per_writer";
+  public static final String TARGET_SWAP_REGION = "target_swap_region";
+  public static final String TARGET_SWAP_REGION_WAIT_TIME = "target_swap_region_wait_time";
+  public static final String IS_DAVINCI_HEARTBEAT_REPORTED = "is_davinci_heartbeat_reported";
 }

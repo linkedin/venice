@@ -7,6 +7,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -63,6 +64,7 @@ public final class SystemStoreInitializationHelper {
       UpdateStoreQueryParams updateStoreQueryParams,
       Admin admin,
       VeniceControllerMultiClusterConfig multiClusterConfigs) {
+    LOGGER.info("Setting up system store: {} in cluster: {}", systemStoreName, clusterName);
     Map<Integer, Schema> protocolSchemaMap = Utils.getAllSchemasFromResources(protocolDefinition);
     Store store = admin.getStore(clusterName, systemStoreName);
     String keySchemaString = keySchema != null ? keySchema.toString() : DEFAULT_KEY_SCHEMA_STR;
@@ -85,7 +87,7 @@ public final class SystemStoreInitializationHelper {
         throw new VeniceException("Unable to create or fetch store " + systemStoreName);
       }
     } else {
-      LOGGER.info("Internal store {} already exists in cluster {}", systemStoreName, clusterName);
+      LOGGER.info("Internal store: {} already exists in cluster: {}", systemStoreName, clusterName);
       if (keySchema != null) {
         /**
          * Only verify the key schema if it is explicitly specified by the caller, and we don't care
@@ -178,7 +180,9 @@ public final class SystemStoreInitializationHelper {
       LOGGER.info("Updated internal store " + systemStoreName + " in cluster " + clusterName);
     }
 
-    if (store.getCurrentVersion() <= 0) {
+    long onlineVersionCount =
+        store.getVersions().stream().filter(version -> version.getStatus() == VersionStatus.ONLINE).count();
+    if (onlineVersionCount == 0) {
       int partitionCount = multiClusterConfigs.getControllerConfig(clusterName).getMinNumberOfPartitions();
       int replicationFactor = admin.getReplicationFactor(clusterName, systemStoreName);
       Version version = admin.incrementVersionIdempotent(
@@ -200,6 +204,8 @@ public final class SystemStoreInitializationHelper {
 
       LOGGER.info("Created a version for internal store {} in cluster {}", systemStoreName, clusterName);
     }
+
+    LOGGER.info("System store: {} in cluster: {} is set up", systemStoreName, clusterName);
   }
 
   // Visible for testing

@@ -4,20 +4,18 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.alpini.io.IOUtils;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.VeniceSerializationException;
-import java.nio.charset.StandardCharsets;
+import com.linkedin.venice.utils.TestUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -30,9 +28,9 @@ import org.testng.annotations.Test;
 public class UpdateBuilderImplTest {
   private static final Logger LOGGER = LogManager.getLogger(UpdateBuilderImplTest.class);
   private static final Schema VALUE_SCHEMA =
-      AvroCompatibilityHelper.parse(loadFileAsString("TestWriteComputeBuilder.avsc"));
+      AvroCompatibilityHelper.parse(TestUtils.loadFileAsString("TestWriteComputeBuilder.avsc"));
   private static final Schema EVOLVED_VALUE_SCHEMA =
-      AvroCompatibilityHelper.parse(loadFileAsString("TestEvolvedWriteComputeBuilder.avsc"));
+      AvroCompatibilityHelper.parse(TestUtils.loadFileAsString("TestEvolvedWriteComputeBuilder.avsc"));
   private static final Schema UPDATE_SCHEMA =
       WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(VALUE_SCHEMA);
   private static final Schema EVOLVED_UPDATE_SCHEMA =
@@ -471,16 +469,5 @@ public class UpdateBuilderImplTest {
   private GenericRecord createFieldNoOpRecord(String fieldName) {
     Schema noOpSchema = UPDATE_SCHEMA.getField(fieldName).schema().getTypes().get(0);
     return new GenericData.Record(noOpSchema);
-  }
-
-  private static String loadFileAsString(String fileName) {
-    try {
-      return IOUtils.toString(
-          Objects.requireNonNull(Thread.currentThread().getContextClassLoader().getResourceAsStream(fileName)),
-          StandardCharsets.UTF_8);
-    } catch (Exception e) {
-      LOGGER.error(e);
-      return null;
-    }
   }
 }

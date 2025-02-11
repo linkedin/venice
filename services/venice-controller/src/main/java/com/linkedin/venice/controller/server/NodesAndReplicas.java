@@ -2,11 +2,9 @@ package com.linkedin.venice.controller.server;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_DISABLED_REPLICAS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.INSTANCE_VIEW;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOCKED_NODE_ID_LIST_SEPARATOR;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOCKED_STORAGE_NODE_IDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_ID;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TO_BE_STOPPED_INSTANCES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ALLOW_LIST_ADD_NODE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ALLOW_LIST_REMOVE_NODE;
@@ -34,13 +32,10 @@ import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.stream.Collectors;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -162,7 +157,7 @@ public class NodesAndReplicas extends AbstractRoute {
 
   /**
    * No ACL check; any user is allowed to check whether a node is removable.
-   * @see Admin#isInstanceRemovable(String, String, List, boolean)
+   * @see Admin#isInstanceRemovable(String, String, List)
    */
   public Route isNodeRemovable(Admin admin) {
     return (request, response) -> {
@@ -173,17 +168,10 @@ public class NodesAndReplicas extends AbstractRoute {
         responseObject.setCluster(request.queryParams(CLUSTER));
         String nodeId = request.queryParams(STORAGE_NODE_ID);
 
-        String lockedNodeIds = AdminSparkServer.getOptionalParameterValue(request, LOCKED_STORAGE_NODE_IDS);
-        List<String> lockedNodes = lockedNodeIds == null
-            ? Collections.emptyList()
-            : Arrays.asList(lockedNodeIds.split(LOCKED_NODE_ID_LIST_SEPARATOR))
-                .stream()
-                .map(String::trim)
-                .collect(Collectors.toList());
-        String[] instanceView = request.queryMap().toMap().get(INSTANCE_VIEW);
+        String lockedNodeIds = AdminSparkServer.getOptionalParameterValue(request, TO_BE_STOPPED_INSTANCES);
+        List<String> lockedNodes = Utils.parseCommaSeparatedStringToList(lockedNodeIds);
         NodeRemovableResult result;
-        boolean isFromInstanceView = instanceView != null && Boolean.valueOf(instanceView[0]);
-        result = admin.isInstanceRemovable(responseObject.getCluster(), nodeId, lockedNodes, isFromInstanceView);
+        result = admin.isInstanceRemovable(responseObject.getCluster(), nodeId, lockedNodes);
         responseObject.setRemovable(result.isRemovable());
         // Add detail reason why this instance could not be removed.
         if (!result.isRemovable()) {

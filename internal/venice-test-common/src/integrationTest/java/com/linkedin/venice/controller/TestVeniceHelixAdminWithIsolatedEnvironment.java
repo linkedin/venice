@@ -8,13 +8,11 @@ import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.integration.utils.D2TestUtils;
-import com.linkedin.venice.meta.PartitionAssignment;
-import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
-import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
@@ -23,7 +21,6 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -130,186 +127,12 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     getLeader(allAdmins, clusterName).createStore(clusterName, "failedStore", "dev", KEY_SCHEMA, VALUE_SCHEMA);
   }
 
-  @Test(timeOut = LEADER_CHANGE_TIMEOUT_MS)
-  public void testIsInstanceRemovable() throws Exception {
-    // Create another participant so we will get two running instances.
-    String newNodeId = "localhost_9900";
-    startParticipant(false, newNodeId);
-    int partitionCount = 2;
-    int replicationFactor = 2;
-    String storeName = "testMovable";
-
-    veniceAdmin.createStore(clusterName, storeName, "test", KEY_SCHEMA, VALUE_SCHEMA);
-    veniceAdmin
-        .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReplicationFactor(replicationFactor));
-    Version version = veniceAdmin.incrementVersionIdempotent(
-        clusterName,
-        storeName,
-        Version.guidBasedDummyPushId(),
-        partitionCount,
-        replicationFactor);
-
-    TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () -> {
-      PartitionAssignment partitionAssignment = veniceAdmin.getHelixVeniceClusterResources(clusterName)
-          .getRoutingDataRepository()
-          .getPartitionAssignments(version.kafkaTopicName());
-      if (partitionAssignment.getAssignedNumberOfPartitions() != partitionCount) {
-        return false;
-      }
-      for (int i = 0; i < partitionCount; i++) {
-        if (partitionAssignment.getPartition(i).getWorkingInstances().size() != replicationFactor) {
-          return false;
-        }
-      }
-      return true;
-    });
-
-    // Without waiting for offline push status to be COMPLETED, isCurrentVersion check will fail, then node removable
-    // check will not work as expected.
-    TestUtils.waitForNonDeterministicCompletion(
-        10,
-        TimeUnit.SECONDS,
-        () -> !resourceMissingTopState(
-            veniceAdmin.getHelixVeniceClusterResources(clusterName).getHelixManager(),
-            clusterName,
-            version.kafkaTopicName()));
-    // Make version ONLINE
-    ReadWriteStoreRepository storeRepository =
-        veniceAdmin.getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
-    Store store = storeRepository.getStore(storeName);
-    store.updateVersionStatus(version.getNumber(), VersionStatus.ONLINE);
-    storeRepository.updateStore(store);
-    // Enough number of replicas, any of instance is able to moved out.
-    Assert.assertTrue(
-        veniceAdmin.isInstanceRemovable(clusterName, NODE_ID, Collections.emptyList(), false).isRemovable());
-    Assert.assertTrue(
-        veniceAdmin.isInstanceRemovable(clusterName, newNodeId, Collections.emptyList(), false).isRemovable());
-
-    // Shutdown one instance
-    stopParticipant(NODE_ID);
-    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> {
-      PartitionAssignment partitionAssignment = veniceAdmin.getHelixVeniceClusterResources(clusterName)
-          .getRoutingDataRepository()
-          .getPartitionAssignments(version.kafkaTopicName());
-      return partitionAssignment.getPartition(0).getWorkingInstances().size() == 1;
-    });
-
-    NodeRemovableResult result =
-        veniceAdmin.isInstanceRemovable(clusterName, newNodeId, Collections.emptyList(), false);
-    Assert.assertFalse(result.isRemovable(), "Only one instance is alive, can not be moved out.");
-    Assert.assertEquals(result.getBlockingReason(), NodeRemovableResult.BlockingRemoveReason.WILL_LOSE_DATA.toString());
-    Assert.assertTrue(
-        veniceAdmin.isInstanceRemovable(clusterName, NODE_ID, Collections.emptyList(), false).isRemovable(),
-        "Instance is shutdown.");
-  }
-
-  @Test
-  public void testIsInstanceRemovableOnOldVersion() throws Exception {
-    int partitionCount = 2;
-    int replicaCount = 1;
-    String storeName = "testIsInstanceRemovableOnOldVersion";
-
-    veniceAdmin.createStore(clusterName, storeName, "test", KEY_SCHEMA, VALUE_SCHEMA);
-    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReplicationFactor(1));
-    Version version = veniceAdmin.incrementVersionIdempotent(
-        clusterName,
-        storeName,
-        Version.guidBasedDummyPushId(),
-        partitionCount,
-        replicaCount);
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      Assert.assertFalse(
-          resourceMissingTopState(
-              veniceAdmin.getHelixVeniceClusterResources(clusterName).getHelixManager(),
-              clusterName,
-              version.kafkaTopicName()));
-    });
-
-    Assert.assertFalse(
-        veniceAdmin.isInstanceRemovable(clusterName, NODE_ID, Collections.emptyList(), false).isRemovable());
-    // Add a new node and increase the replica count to 2.
-    String newNodeId = "localhost_9900";
-    startParticipant(false, newNodeId);
-    int newVersionReplicaCount = 2;
-    veniceAdmin
-        .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReplicationFactor(newVersionReplicaCount));
-    veniceAdmin.incrementVersionIdempotent(
-        clusterName,
-        storeName,
-        Version.guidBasedDummyPushId(),
-        partitionCount,
-        newVersionReplicaCount);
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      Assert.assertFalse(
-          resourceMissingTopState(
-              veniceAdmin.getHelixVeniceClusterResources(clusterName).getHelixManager(),
-              clusterName,
-              version.kafkaTopicName()));
-    });
-    // The old instance should now be removable because its replica is no longer the current version.
-    Assert.assertTrue(
-        veniceAdmin.isInstanceRemovable(clusterName, NODE_ID, Collections.emptyList(), false).isRemovable());
-  }
-
-  @Test
-  public void testIsInstanceRemovableForRunningPush() throws Exception {
-    stopAllParticipants();
-    startParticipant(true, NODE_ID);
-    // Create another participant so we will get two running instances.
-    String newNodeId = "localhost_9900";
-    startParticipant(true, newNodeId);
-    int partitionCount = 2;
-    int replicas = 2;
-    String storeName = "testIsInstanceRemovableForRunningPush";
-
-    veniceAdmin.createStore(clusterName, storeName, "test", KEY_SCHEMA, VALUE_SCHEMA);
-    Version version = veniceAdmin
-        .incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), partitionCount, replicas);
-    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> {
-      PartitionAssignment partitionAssignment = veniceAdmin.getHelixVeniceClusterResources(clusterName)
-          .getRoutingDataRepository()
-          .getPartitionAssignments(version.kafkaTopicName());
-      if (partitionAssignment.getAssignedNumberOfPartitions() != partitionCount) {
-        return false;
-      }
-      for (int i = 0; i < partitionCount; i++) {
-        if (partitionAssignment.getPartition(i).getWorkingInstances().size() != replicas) {
-          return false;
-        }
-      }
-      return true;
-    });
-
-    // Now we have 2 replicas in bootstrap in each partition.
-    veniceAdmin.isInstanceRemovable(clusterName, NODE_ID, Collections.emptyList(), false);
-    Assert.assertTrue(
-        veniceAdmin.isInstanceRemovable(clusterName, NODE_ID, Collections.emptyList(), false).isRemovable());
-    Assert.assertTrue(
-        veniceAdmin.isInstanceRemovable(clusterName, newNodeId, Collections.emptyList(), false).isRemovable());
-
-    // Shutdown one instance
-    stopParticipant(newNodeId);
-    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> {
-      PartitionAssignment partitionAssignment = veniceAdmin.getHelixVeniceClusterResources(clusterName)
-          .getRoutingDataRepository()
-          .getPartitionAssignments(version.kafkaTopicName());
-      return partitionAssignment.getPartition(0).getWorkingInstances().size() == 1;
-    });
-
-    Assert.assertTrue(
-        veniceAdmin.isInstanceRemovable(clusterName, newNodeId, Collections.emptyList(), false).isRemovable(),
-        "Even there is only one live instance, it could be removed and our push would not failed.");
-    Assert.assertTrue(
-        veniceAdmin.isInstanceRemovable(clusterName, NODE_ID, Collections.emptyList(), false).isRemovable(),
-        "Instance is shutdown.");
-  }
-
   @Test
   public void testGetLeaderController() {
     Assert.assertEquals(
         veniceAdmin.getLeaderController(clusterName).getNodeId(),
         Utils.getHelixNodeIdentifier(controllerConfig.getAdminHostname(), controllerConfig.getAdminPort()));
-    // Create a new controller and test getLeaderController again.
+    // Create a new controller and test getLeaderControllerDetails again.
     int newAdminPort = controllerConfig.getAdminPort() - 10;
     PropertyBuilder builder = new PropertyBuilder().put(controllerProps.toProperties()).put("admin.port", newAdminPort);
     VeniceProperties newControllerProps = builder.build();
@@ -409,6 +232,42 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     } finally {
       // Kill the running thread so remove the deadlock so that the controller can shut down properly for clean up.
       TestUtils.shutdownExecutor(asyncExecutor);
+    }
+  }
+
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
+  public void testAbortMigrationStoreDeletion() {
+    String storeName = Utils.getUniqueString("test_abort_migration_cleanup_store");
+    try {
+      veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+      veniceAdmin.updateStore(
+          clusterName,
+          storeName,
+          new UpdateStoreQueryParams().setStoreMigration(false).setEnableReads(false).setEnableWrites(false));
+
+      PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
+      veniceAdmin.getTopicManager().createTopic(rtTopic, 1, 1, true);
+
+      Assert.assertTrue(veniceAdmin.getTopicManager().containsTopic(rtTopic));
+      boolean abort = true;
+      veniceAdmin.deleteStore(clusterName, storeName, abort, Store.IGNORE_VERSION, false);
+      Assert.assertTrue(veniceAdmin.getTopicManager().containsTopic(rtTopic));
+      Assert.assertNotNull(veniceAdmin.getStore(clusterName, storeName));
+
+      String newStoreName = Utils.getUniqueString("test_cleanup_store");
+      veniceAdmin.createStore(clusterName, newStoreName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+      veniceAdmin.updateStore(
+          clusterName,
+          newStoreName,
+          new UpdateStoreQueryParams().setStoreMigration(false).setEnableReads(false).setEnableWrites(false));
+      PubSubTopic newRtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(newStoreName));
+      veniceAdmin.getTopicManager().createTopic(newRtTopic, 1, 1, true);
+      abort = false;
+      Assert.assertTrue(veniceAdmin.getTopicManager().containsTopic(newRtTopic));
+      veniceAdmin.deleteStore(clusterName, newStoreName, abort, Store.IGNORE_VERSION, false);
+      Assert.assertNull(veniceAdmin.getStore(clusterName, newStoreName));
+    } finally {
+      veniceAdmin.deleteStore(clusterName, storeName, false, Store.IGNORE_VERSION, false);
     }
   }
 

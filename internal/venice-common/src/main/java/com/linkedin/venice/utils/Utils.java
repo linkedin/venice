@@ -13,15 +13,19 @@ import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -37,6 +41,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.DecimalFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -51,6 +57,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.TimeZone;
 import java.util.TreeMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -77,7 +84,7 @@ public class Utils {
   public static final String WILDCARD_MATCH_ANY = "*";
   public static final String NEW_LINE_CHAR = System.lineSeparator();
   public static final AtomicBoolean SUPPRESS_SYSTEM_EXIT = new AtomicBoolean();
-
+  public static final String SEPARATE_TOPIC_SUFFIX = "_sep";
   public static final String FATAL_DATA_VALIDATION_ERROR = "fatal data validation problem";
 
   /**
@@ -297,18 +304,49 @@ public class Utils {
   }
 
   /**
-   * Since {@link Boolean#parseBoolean(String)} does not throw exception and will always return 'false' for
-   * any string that are not equal to 'true', We validate the string by our own.
+   * Parses a boolean from a string, ensuring that only valid boolean values ("true" or "false")
+   * are accepted. Throws an exception if the value is null or invalid.
+   *
+   * @param value the string to parse
+   * @param fieldName the name of the field being validated
+   * @return the parsed boolean value
+   * @throws VeniceHttpException if the value is null or not "true" or "false"
    */
-  public static boolean parseBooleanFromString(String value, String fieldName) {
-    if (value.equalsIgnoreCase("true") || value.equalsIgnoreCase("false")) {
-      return Boolean.parseBoolean(value);
-    } else {
+  public static boolean parseBooleanOrThrow(String value, String fieldName) {
+    if (value == null) {
       throw new VeniceHttpException(
           HttpStatus.SC_BAD_REQUEST,
-          fieldName + " must be a boolean, but value: " + value,
+          fieldName + " must be a boolean, but value is null.",
           ErrorType.BAD_REQUEST);
     }
+    return parseBoolean(value, fieldName);
+  }
+
+  /**
+   * Parses a boolean from a string, ensuring that only null and valid boolean values ("true" or "false")
+   * are accepted. Returns false if the value is null.
+   *
+   * @param value the string to parse
+   * @param fieldName the name of the field being validated
+   * @return the parsed boolean value, or false if the input is null
+   * @throws VeniceHttpException if the value is not "true" or "false"
+   */
+  public static boolean parseBooleanOrFalse(String value, String fieldName) {
+    return value != null && parseBoolean(value, fieldName);
+  }
+
+  /**
+   * Validates the boolean string, allowing only "true" or "false".
+   * Throws an exception if the value is invalid.
+   */
+  private static boolean parseBoolean(String value, String fieldName) {
+    if (!"true".equalsIgnoreCase(value) && !"false".equalsIgnoreCase(value)) {
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          fieldName + " must be a boolean, but value: " + value + " is invalid.",
+          ErrorType.BAD_REQUEST);
+    }
+    return Boolean.parseBoolean(value);
   }
 
   /**
@@ -467,6 +505,13 @@ public class Utils {
     return Utils.setOf(rawString.split(",\\s*"));
   }
 
+  public static List<String> parseCommaSeparatedStringToList(String rawString) {
+    if (StringUtils.isEmpty(rawString)) {
+      return Collections.emptyList();
+    }
+    return Arrays.asList(rawString.split("\\s*,\\s*"));
+  }
+
   /**
    * @param value the double value to be rounded
    * @param precision the number of decimal places by which to round
@@ -520,6 +565,137 @@ public class Utils {
     } catch (IOException e) {
       throw new VeniceException(e);
     }
+  }
+
+  /** This method should only be used for system stores.
+   * For other stores, use {@link Utils#getRealTimeTopicName(Store)}, {@link Utils#getRealTimeTopicName(StoreInfo)} or
+   * {@link Utils#getRealTimeTopicName(Version)}
+   */
+  public static String composeRealTimeTopic(String storeName) {
+    return storeName + Version.REAL_TIME_TOPIC_SUFFIX;
+  }
+
+  public static String getRealTimeTopicNameFromStoreConfig(Store store) {
+    HybridStoreConfig hybridStoreConfig = store.getHybridStoreConfig();
+    String storeName = store.getName();
+
+    if (hybridStoreConfig != null) {
+      String realTimeTopicName = hybridStoreConfig.getRealTimeTopicName();
+      return getRealTimeTopicNameIfEmpty(realTimeTopicName, storeName);
+    } else {
+      return composeRealTimeTopic(storeName);
+    }
+  }
+
+  /**
+   * It follows the following order to search for real time topic name,
+   * i) current store-version config, ii) store config, iii) other store-version configs, iv) default name
+   */
+  public static String getRealTimeTopicName(Store store) {
+    return getRealTimeTopicName(
+        store.getName(),
+        store.getVersions(),
+        store.getCurrentVersion(),
+        store.getHybridStoreConfig());
+  }
+
+  public static String getRealTimeTopicName(StoreInfo storeInfo) {
+    return getRealTimeTopicName(
+        storeInfo.getName(),
+        storeInfo.getVersions(),
+        storeInfo.getCurrentVersion(),
+        storeInfo.getHybridStoreConfig());
+  }
+
+  public static String getRealTimeTopicName(Version version) {
+    HybridStoreConfig hybridStoreConfig = version.getHybridStoreConfig();
+    if (hybridStoreConfig != null) {
+      String realTimeTopicName = version.getHybridStoreConfig().getRealTimeTopicName();
+      return getRealTimeTopicNameIfEmpty(realTimeTopicName, version.getStoreName());
+    } else {
+      // if the version is not hybrid, caller should not ask for the real time topic,
+      // but unfortunately that happens, so instead of throwing exception, we just return a default name.
+      return composeRealTimeTopic(version.getStoreName());
+    }
+  }
+
+  static String getRealTimeTopicName(
+      String storeName,
+      List<Version> versions,
+      int currentVersionNumber,
+      HybridStoreConfig hybridStoreConfig) {
+    if (currentVersionNumber < 1) {
+      return composeRealTimeTopic(storeName);
+    }
+
+    Optional<Version> currentVersion =
+        versions.stream().filter(version -> version.getNumber() == currentVersionNumber).findFirst();
+    if (currentVersion.isPresent() && currentVersion.get().isHybrid()) {
+      String realTimeTopicName = currentVersion.get().getHybridStoreConfig().getRealTimeTopicName();
+      if (StringUtils.isNotBlank(realTimeTopicName)) {
+        return realTimeTopicName;
+      }
+    }
+
+    if (hybridStoreConfig != null) {
+      String realTimeTopicName = hybridStoreConfig.getRealTimeTopicName();
+      return getRealTimeTopicNameIfEmpty(realTimeTopicName, storeName);
+    }
+
+    Set<String> realTimeTopicNames = new HashSet<>();
+
+    for (Version version: versions) {
+      try {
+        if (version.isHybrid()) {
+          String realTimeTopicName = version.getHybridStoreConfig().getRealTimeTopicName();
+          if (StringUtils.isNotBlank(realTimeTopicName)) {
+            realTimeTopicNames.add(realTimeTopicName);
+          }
+        }
+      } catch (VeniceException e) {
+        // just try another version
+      }
+    }
+
+    if (realTimeTopicNames.size() > 1) {
+      LOGGER.warn(
+          "Store " + storeName + " and current version are not hybrid, yet " + realTimeTopicNames.size()
+              + " older versions are using real time topics. Will return one of them.");
+    }
+
+    if (!realTimeTopicNames.isEmpty()) {
+      return realTimeTopicNames.iterator().next();
+    }
+
+    return composeRealTimeTopic(storeName);
+  }
+
+  private static String getRealTimeTopicNameIfEmpty(String realTimeTopicName, String storeName) {
+    return StringUtils.isBlank(realTimeTopicName) ? composeRealTimeTopic(storeName) : realTimeTopicName;
+  }
+
+  public static String createNewRealTimeTopicName(String oldRealTimeTopicName) {
+    if (oldRealTimeTopicName == null || !oldRealTimeTopicName.endsWith(Version.REAL_TIME_TOPIC_SUFFIX)) {
+      throw new IllegalArgumentException("Invalid old name format");
+    }
+
+    // Extract the base name and current version
+    int suffixLength = Version.REAL_TIME_TOPIC_SUFFIX.length();
+    String base = oldRealTimeTopicName.substring(0, oldRealTimeTopicName.length() - suffixLength);
+
+    // Locate the last version separator "_v" in the base
+    int versionSeparatorIndex = base.lastIndexOf("_v");
+    if (versionSeparatorIndex > -1 && versionSeparatorIndex < base.length() - 2) {
+      // Extract and increment the version
+      String versionStr = base.substring(versionSeparatorIndex + 2);
+      int version = Integer.parseInt(versionStr) + 1;
+      base = base.substring(0, versionSeparatorIndex) + "_v" + version;
+    } else {
+      // Start with version 2 if no valid version is present
+      base = base + "_v2";
+    }
+
+    return base + Version.REAL_TIME_TOPIC_SUFFIX;
   }
 
   private static class TimeUnitInfo {
@@ -915,5 +1091,54 @@ public class Utils {
    */
   public static String escapeFilePathComponent(final String component) {
     return component.replaceAll("[^a-zA-Z0-9-_/\\.]", "_");
+  }
+
+  /**
+   * Check whether the given kafka url has "_sep" or not.
+   * If it has, return the kafka url without "_sep". Otherwise, return the original kafka url.
+   * @param kafkaUrl
+   * @return
+   */
+  public static String resolveKafkaUrlForSepTopic(String kafkaUrl) {
+    if (kafkaUrl != null && kafkaUrl.endsWith(SEPARATE_TOPIC_SUFFIX)) {
+      return kafkaUrl.substring(0, kafkaUrl.length() - SEPARATE_TOPIC_SUFFIX.length());
+    }
+    return kafkaUrl;
+  }
+
+  /**
+   * Check whether input region is for separate RT topic.
+   */
+  public static boolean isSeparateTopicRegion(String region) {
+    return region.endsWith(SEPARATE_TOPIC_SUFFIX);
+  }
+
+  /**
+   * Resolve leader topic from input topic.
+   * If input topic is separate RT topic, return the corresponding RT topic.
+   * Otherwise, return the original input topic.
+   */
+  public static PubSubTopic resolveLeaderTopicFromPubSubTopic(
+      PubSubTopicRepository pubSubTopicRepository,
+      PubSubTopic pubSubTopic) {
+    if (pubSubTopic.getPubSubTopicType().equals(PubSubTopicType.REALTIME_TOPIC)
+        && pubSubTopic.getName().endsWith(SEPARATE_TOPIC_SUFFIX)) {
+      return pubSubTopicRepository.getTopic(composeRealTimeTopic(pubSubTopic.getStoreName()));
+    }
+    return pubSubTopic;
+  }
+
+  /**
+   * Parses a date-time string to epoch milliseconds using the default format and time zone.
+   *
+   * @param dateTime the date-time string in the format "yyyy-MM-dd hh:mm:ss"
+   * @return the epoch time in milliseconds
+   * @throws ParseException if the date-time string cannot be parsed
+   */
+  public static long parseDateTimeToEpoch(String dateTime, String dateTimeFormat, String timeZone)
+      throws ParseException {
+    SimpleDateFormat dateFormat = new SimpleDateFormat(dateTimeFormat);
+    dateFormat.setTimeZone(TimeZone.getTimeZone(timeZone));
+    return dateFormat.parse(dateTime).getTime();
   }
 }

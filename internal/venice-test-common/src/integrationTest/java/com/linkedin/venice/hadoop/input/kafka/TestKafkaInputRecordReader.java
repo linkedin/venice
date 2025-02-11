@@ -10,7 +10,9 @@ import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.utils.ByteUtils;
@@ -35,7 +37,7 @@ public class TestKafkaInputRecordReader {
 
   private PubSubBrokerWrapper pubSubBrokerWrapper;
   private TopicManager manager;
-  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeClass
   public void setUp() {
@@ -87,10 +89,11 @@ public class TestKafkaInputRecordReader {
     conf.set(KAFKA_INPUT_BROKER_URL, pubSubBrokerWrapper.getAddress());
     conf.set(KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());
     String topic = getTopic(100, new Pair<>(-1, -1), new Pair<>(-1, -1));
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), 0);
     conf.set(KAFKA_INPUT_TOPIC, topic);
 
-    try (
-        KafkaInputRecordReader reader = new KafkaInputRecordReader(new KafkaInputSplit(topic, 0, 0, 102), conf, null)) {
+    try (KafkaInputRecordReader reader =
+        new KafkaInputRecordReader(new KafkaInputSplit(pubSubTopicRepository, topicPartition, 0, 102), conf, null)) {
       for (int i = 0; i < 100; ++i) {
         KafkaInputMapperKey key = new KafkaInputMapperKey();
         KafkaInputMapperValue value = new KafkaInputMapperValue();
@@ -109,10 +112,11 @@ public class TestKafkaInputRecordReader {
     JobConf conf = new JobConf();
     conf.set(KAFKA_INPUT_BROKER_URL, pubSubBrokerWrapper.getAddress());
     String topic = getTopic(100, new Pair<>(-1, -1), new Pair<>(0, 10));
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), 0);
     conf.set(KAFKA_INPUT_TOPIC, topic);
     conf.set(KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());
-    try (
-        KafkaInputRecordReader reader = new KafkaInputRecordReader(new KafkaInputSplit(topic, 0, 0, 102), conf, null)) {
+    try (KafkaInputRecordReader reader =
+        new KafkaInputRecordReader(new KafkaInputSplit(pubSubTopicRepository, topicPartition, 0, 102), conf, null)) {
       for (int i = 0; i < 100; ++i) {
         KafkaInputMapperKey key = new KafkaInputMapperKey();
         KafkaInputMapperValue value = new KafkaInputMapperValue();
@@ -137,10 +141,11 @@ public class TestKafkaInputRecordReader {
     JobConf conf = new JobConf();
     conf.set(KAFKA_INPUT_BROKER_URL, pubSubBrokerWrapper.getAddress());
     String topic = getTopic(100, new Pair<>(21, 30), new Pair<>(11, 20));
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), 0);
     conf.set(KAFKA_INPUT_TOPIC, topic);
     conf.set(KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());
-    try (
-        KafkaInputRecordReader reader = new KafkaInputRecordReader(new KafkaInputSplit(topic, 0, 0, 102), conf, null)) {
+    try (KafkaInputRecordReader reader =
+        new KafkaInputRecordReader(new KafkaInputSplit(pubSubTopicRepository, topicPartition, 0, 102), conf, null)) {
       for (int i = 0; i < 100; ++i) {
         KafkaInputMapperKey key = new KafkaInputMapperKey();
         KafkaInputMapperValue value = new KafkaInputMapperValue();

@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
@@ -47,14 +48,16 @@ public class TestRebalanceByDefaultStrategy {
 
   @BeforeClass
   public void setUp() {
-    cluster = ServiceFactory.getVeniceCluster(
-        numberOfController,
-        numberOfServer,
-        numberOfRouter,
-        replicationFactor,
-        partitionSize,
-        false,
-        false);
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(numberOfController)
+            .numberOfServers(numberOfServer)
+            .numberOfRouters(numberOfRouter)
+            .replicationFactor(replicationFactor)
+            .partitionSize(partitionSize)
+            .sslToStorageNodes(false)
+            .sslToKafka(false)
+            .build();
+    cluster = ServiceFactory.getVeniceCluster(options);
     String storeName = Utils.getUniqueString("testRollingUpgrade");
     long storageQuota = (long) partitionSize * partitionNumber;
     cluster.getNewStore(storeName);
@@ -94,7 +97,7 @@ public class TestRebalanceByDefaultStrategy {
         try {
           if (cluster.getLeaderVeniceController()
               .getVeniceAdmin()
-              .isInstanceRemovable(clusterName, instanceId, Collections.emptyList(), false)
+              .isInstanceRemovable(clusterName, instanceId, Collections.emptyList())
               .isRemovable()) {
             cluster.stopVeniceServer(port);
             Thread.sleep(UPGRADE_TIME_MS);

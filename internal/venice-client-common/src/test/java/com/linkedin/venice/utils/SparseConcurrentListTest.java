@@ -86,6 +86,10 @@ public class SparseConcurrentListTest {
     assertEquals(scl.values().size(), scl.nonNullSize());
     assertFalse(scl.isEmpty());
 
+    // Compute if absent for an unpopulated index with computed result as `null`.
+    scl.computeIfAbsent(40, k -> null);
+    assertEquals(scl.size(), 8);
+
     // Go back to the initial state...
     scl.clear();
     assertEquals(scl.size(), 0);

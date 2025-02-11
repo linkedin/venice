@@ -58,7 +58,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   private final VeniceServerConfig serverConfig;
   private final ReadQuotaEnforcementHandler quotaEnforcer;
   private final VeniceHttp2PipelineInitializerBuilder http2PipelineInitializerBuilder;
-  private final ServerConnectionStats serverConnectionStats;
+  private final ServerConnectionStatsHandler serverConnectionStatsHandler;
   private AggServerQuotaUsageStats quotaUsageStats;
   List<ServerInterceptor> aclInterceptors;
   private final IdentityParser identityParser;
@@ -83,6 +83,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     boolean isUnregisterMetricForDeletedStoreEnabled = serverConfig.isUnregisterMetricForDeletedStoreEnabled();
 
     this.singleGetStats = new AggServerHttpRequestStats(
+        serverConfig.getClusterName(),
         metricsRepository,
         RequestType.SINGLE_GET,
         isKeyValueProfilingEnabled,
@@ -90,6 +91,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
         isUnregisterMetricForDeletedStoreEnabled,
         isDaVinciClient);
     this.multiGetStats = new AggServerHttpRequestStats(
+        serverConfig.getClusterName(),
         metricsRepository,
         RequestType.MULTI_GET,
         isKeyValueProfilingEnabled,
@@ -97,6 +99,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
         isUnregisterMetricForDeletedStoreEnabled,
         isDaVinciClient);
     this.computeStats = new AggServerHttpRequestStats(
+        serverConfig.getClusterName(),
         metricsRepository,
         RequestType.COMPUTE,
         isKeyValueProfilingEnabled,
@@ -127,7 +130,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
     if (serverConfig.isQuotaEnforcementEnabled()) {
       String nodeId = Utils.getHelixNodeIdentifier(serverConfig.getListenerHostname(), serverConfig.getListenerPort());
-      this.quotaUsageStats = new AggServerQuotaUsageStats(metricsRepository);
+      this.quotaUsageStats = new AggServerQuotaUsageStats(serverConfig.getClusterName(), metricsRepository);
       this.quotaEnforcer = new ReadQuotaEnforcementHandler(
           serverConfig,
           storeMetadataRepository,
@@ -149,7 +152,14 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     }
     this.http2PipelineInitializerBuilder = new VeniceHttp2PipelineInitializerBuilder(serverConfig);
 
-    serverConnectionStats = new ServerConnectionStats(metricsRepository, "server_connection_stats");
+    if (sslFactory.isPresent()) {
+      this.serverConnectionStatsHandler = new ServerConnectionStatsHandler(
+          this.identityParser,
+          new ServerConnectionStats(metricsRepository, "server_connection_stats"),
+          serverConfig.getRouterPrincipalName());
+    } else {
+      this.serverConnectionStatsHandler = null;
+    }
   }
 
   /*
@@ -172,11 +182,10 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       }
       sslInitializer.setIdentityParser(identityParser::parseIdentityFromCert);
       ch.pipeline().addLast(sslInitializer);
+      ch.pipeline().addLast(serverConnectionStatsHandler);
     }
+
     ChannelPipelineConsumer httpPipelineInitializer = (pipeline, whetherNeedServerCodec) -> {
-      ServerConnectionStatsHandler serverConnectionStatsHandler =
-          new ServerConnectionStatsHandler(serverConnectionStats, serverConfig.getRouterPrincipalName());
-      pipeline.addLast(serverConnectionStatsHandler);
       StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats);
       pipeline.addLast(statsHandler);
       if (whetherNeedServerCodec) {

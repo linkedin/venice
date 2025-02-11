@@ -1,5 +1,7 @@
 FROM  mcr.microsoft.com/openjdk/jdk:11-ubuntu
 
+LABEL org.opencontainers.image.description="Venice Router: responsible for routing requests from clients to the appropriate Venice Servers."
+
 ENV VENICE_DIR=/opt/venice
 
 RUN apt-get update

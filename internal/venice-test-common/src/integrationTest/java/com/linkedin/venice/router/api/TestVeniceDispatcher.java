@@ -3,6 +3,7 @@ package com.linkedin.venice.router.api;
 import static com.linkedin.venice.HttpConstants.VENICE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.HttpConstants.VENICE_REQUEST_RCU;
 import static com.linkedin.venice.HttpConstants.VENICE_SUPPORTED_COMPRESSION_STRATEGY;
+import static com.linkedin.venice.utils.TestUtils.getVenicePathParser;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doAnswer;
@@ -26,6 +27,7 @@ import com.linkedin.venice.integration.utils.MockHttpServerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.LiveInstanceMonitor;
+import com.linkedin.venice.meta.NameRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
@@ -37,6 +39,7 @@ import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.TestUtils;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.DefaultHttpHeaders;
@@ -46,7 +49,6 @@ import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
-import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -63,6 +65,8 @@ import org.testng.annotations.Test;
 
 //TODO: refactor Dispatcher to take a HttpClient Factory, so we don't need to spin up an HTTP server for these tests
 public class TestVeniceDispatcher {
+  private final NameRepository nameRepository = new NameRepository();
+
   @Test
   public void testErrorRetry() {
     VeniceDispatcher dispatcher = getMockDispatcher(false, false);
@@ -322,7 +326,7 @@ public class TestVeniceDispatcher {
     doReturn(TimeUnit.MINUTES.toMillis(1)).when(routerConfig).getLeakedFutureCleanupThresholdMs();
     doReturn(24).when(routerConfig).getIoThreadCountInPoolMode();
     ReadOnlyStoreRepository mockStoreRepo = mock(ReadOnlyStoreRepository.class);
-    MetricsRepository mockMetricsRepo = new MetricsRepository();
+    VeniceMetricsRepository mockMetricsRepo = new VeniceMetricsRepository();
     RouterStats mockRouterStats = mock(RouterStats.class);
     RouteHttpRequestStats routeHttpRequestStats = mock(RouteHttpRequestStats.class);
     when(mockRouterStats.getStatsByType(any())).thenReturn(mock(AggRouterHttpRequestStats.class));
@@ -420,9 +424,11 @@ public class TestVeniceDispatcher {
       return modifyingCompressor;
     })).when(compressorFactory).getCompressor(any());
 
-    doReturn(new VeniceResponseDecompressor(true, routerStats, mockRequest, "test_store", 1, compressorFactory))
-        .when(mockPath)
-        .getResponseDecompressor();
+    VenicePathParser pathParser = getVenicePathParser(compressorFactory, true);
+
+    VeniceResponseDecompressor decompressor =
+        pathParser.getDecompressor(this.nameRepository.getStoreVersionName("test_store", 1), mockRequest);
+    doReturn(decompressor).when(mockPath).getResponseDecompressor();
 
     AsyncPromise mockHostSelected = mock(AsyncPromise.class);
     AsyncPromise mockTimeoutFuture = mock(AsyncPromise.class);

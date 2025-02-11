@@ -12,6 +12,7 @@ import static com.linkedin.venice.Arg.BASE_PATH;
 import static com.linkedin.venice.Arg.BATCH_GET_LIMIT;
 import static com.linkedin.venice.Arg.BLOB_TRANSFER_ENABLED;
 import static com.linkedin.venice.Arg.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR;
+import static com.linkedin.venice.Arg.CHECKPOINT_FILE;
 import static com.linkedin.venice.Arg.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.Arg.CHUNKING_ENABLED;
 import static com.linkedin.venice.Arg.CLIENT_DECOMPRESSION_ENABLED;
@@ -21,6 +22,7 @@ import static com.linkedin.venice.Arg.CLUSTER_LIST;
 import static com.linkedin.venice.Arg.CLUSTER_SRC;
 import static com.linkedin.venice.Arg.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.Arg.DATETIME;
+import static com.linkedin.venice.Arg.DAVINCI_HEARTBEAT_REPORTED;
 import static com.linkedin.venice.Arg.DEBUG;
 import static com.linkedin.venice.Arg.DERIVED_SCHEMA;
 import static com.linkedin.venice.Arg.DERIVED_SCHEMA_ID;
@@ -30,6 +32,7 @@ import static com.linkedin.venice.Arg.DEST_ZOOKEEPER_URL;
 import static com.linkedin.venice.Arg.DISABLE_DAVINCI_PUSH_STATUS_STORE;
 import static com.linkedin.venice.Arg.DISABLE_META_STORE;
 import static com.linkedin.venice.Arg.ENABLE_DISABLED_REPLICA;
+import static com.linkedin.venice.Arg.ENABLE_STORE_MIGRATION;
 import static com.linkedin.venice.Arg.END_DATE;
 import static com.linkedin.venice.Arg.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.Arg.EXECUTION;
@@ -51,6 +54,7 @@ import static com.linkedin.venice.Arg.HYBRID_TIME_LAG;
 import static com.linkedin.venice.Arg.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.Arg.INCREMENTAL_PUSH_ENABLED;
 import static com.linkedin.venice.Arg.INFILE;
+import static com.linkedin.venice.Arg.INSTANCES;
 import static com.linkedin.venice.Arg.INTERVAL;
 import static com.linkedin.venice.Arg.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.Arg.KAFKA_CONSUMER_CONFIG_FILE;
@@ -62,6 +66,7 @@ import static com.linkedin.venice.Arg.KAFKA_TOPIC_PARTITION;
 import static com.linkedin.venice.Arg.KAFKA_TOPIC_RETENTION_IN_MS;
 import static com.linkedin.venice.Arg.KEY;
 import static com.linkedin.venice.Arg.KEY_SCHEMA;
+import static com.linkedin.venice.Arg.LAG_FILTER_ENABLED;
 import static com.linkedin.venice.Arg.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.Arg.LATEST_SUPERSET_SCHEMA_ID;
 import static com.linkedin.venice.Arg.MAX_COMPACTION_LAG_SECONDS;
@@ -72,6 +77,8 @@ import static com.linkedin.venice.Arg.MIGRATION_PUSH_STRATEGY;
 import static com.linkedin.venice.Arg.MIN_COMPACTION_LAG_SECONDS;
 import static com.linkedin.venice.Arg.NATIVE_REPLICATION_ENABLED;
 import static com.linkedin.venice.Arg.NATIVE_REPLICATION_SOURCE_FABRIC;
+import static com.linkedin.venice.Arg.NEARLINE_PRODUCER_COMPRESSION_ENABLED;
+import static com.linkedin.venice.Arg.NEARLINE_PRODUCER_COUNT_PER_WRITER;
 import static com.linkedin.venice.Arg.NON_INTERACTIVE;
 import static com.linkedin.venice.Arg.NUM_VERSIONS_TO_PRESERVE;
 import static com.linkedin.venice.Arg.OFFSET;
@@ -119,6 +126,11 @@ import static com.linkedin.venice.Arg.STORE_SIZE;
 import static com.linkedin.venice.Arg.STORE_TYPE;
 import static com.linkedin.venice.Arg.STORE_VIEW_CONFIGS;
 import static com.linkedin.venice.Arg.SYSTEM_STORE_TYPE;
+import static com.linkedin.venice.Arg.TARGET_SWAP_REGION;
+import static com.linkedin.venice.Arg.TARGET_SWAP_REGION_WAIT_TIME;
+import static com.linkedin.venice.Arg.TASK_NAME;
+import static com.linkedin.venice.Arg.THREAD_COUNT;
+import static com.linkedin.venice.Arg.TO_BE_STOPPED_NODES;
 import static com.linkedin.venice.Arg.UNUSED_SCHEMA_DELETION_ENABLED;
 import static com.linkedin.venice.Arg.URL;
 import static com.linkedin.venice.Arg.VALUE_SCHEMA;
@@ -146,6 +158,14 @@ import org.apache.commons.cli.CommandLine;
 
 /**
  * TODO: Merge this with {@link com.linkedin.venice.controllerapi.ControllerRoute}
+ *
+ * COMMAND (
+ *   "long-name",
+ *   "short-name",
+ *   "description",
+ *   "required-args",
+ *   "optional-args"
+ * )
  */
 public enum Command {
   LIST_STORES(
@@ -191,6 +211,10 @@ public enum Command {
   BACKFILL_SYSTEM_STORES(
       "backfill-system-stores", "Create system stores of a given type for user stores in a cluster",
       new Arg[] { URL, CLUSTER, SYSTEM_STORE_TYPE }
+  ),
+  CLUSTER_BATCH_TASK(
+      "cluster-batch-task", "Run specific task against all user stores in a cluster in parallel",
+      new Arg[] { URL, CLUSTER, TASK_NAME, CHECKPOINT_FILE }, new Arg[] { THREAD_COUNT }
   ),
   SET_VERSION(
       "set-version", "Set the version that will be served", new Arg[] { URL, STORE, VERSION }, new Arg[] { CLUSTER }
@@ -268,7 +292,9 @@ public enum Command {
           ACTIVE_ACTIVE_REPLICATION_ENABLED, REGIONS_FILTER, DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE,
           STORAGE_PERSONA, STORE_VIEW_CONFIGS, LATEST_SUPERSET_SCHEMA_ID, MIN_COMPACTION_LAG_SECONDS,
           MAX_COMPACTION_LAG_SECONDS, MAX_RECORD_SIZE_BYTES, MAX_NEARLINE_RECORD_SIZE_BYTES,
-          UNUSED_SCHEMA_DELETION_ENABLED, BLOB_TRANSFER_ENABLED, SEPARATE_REALTIME_TOPIC_ENABLED }
+          UNUSED_SCHEMA_DELETION_ENABLED, BLOB_TRANSFER_ENABLED, SEPARATE_REALTIME_TOPIC_ENABLED,
+          NEARLINE_PRODUCER_COMPRESSION_ENABLED, NEARLINE_PRODUCER_COUNT_PER_WRITER, TARGET_SWAP_REGION,
+          TARGET_SWAP_REGION_WAIT_TIME, DAVINCI_HEARTBEAT_REPORTED, ENABLE_STORE_MIGRATION }
   ),
   UPDATE_CLUSTER_CONFIG(
       "update-cluster-config", "Update live cluster configs", new Arg[] { URL, CLUSTER },
@@ -509,6 +535,11 @@ public enum Command {
       "Get the store's metadata using request based metadata endpoint via a transport client and a server URL",
       new Arg[] { URL, SERVER_URL, STORE }
   ),
+  REQUEST_BASED_STORE_PROPERTIES(
+      "request-based-store-properties",
+      "Get the store's properties using request based store properties endpoint via a transport client and a server URL",
+      new Arg[] { URL, SERVER_URL, STORE }
+  ),
   DUMP_INGESTION_STATE(
       "dump-ingestion-state",
       "Dump the real-time ingestion state for a certain store version in a certain storage node",
@@ -541,6 +572,16 @@ public enum Command {
       "extract-venice-zk-paths",
       "Extract Venice-specific paths from a ZK snapshot input text file to an output text file",
       new Arg[] { INFILE, OUTFILE, CLUSTER_LIST, BASE_PATH }
+  ),
+  AGGREGATED_HEALTH_STATUS(
+      "cluster-health-status",
+      "Returns the set of instances which can be safely remove and instances which cannot be removed.",
+      new Arg[] { URL, CLUSTER, INSTANCES, TO_BE_STOPPED_NODES }
+  ),
+  DUMP_HOST_HEARTBEAT(
+      "dump-host-heartbeat",
+      "Dump all heartbeat belong to a certain storage node. You can use topic/partition to filter specific resource, and you can choose to filter resources that are lagging.",
+      new Arg[] { SERVER_URL, KAFKA_TOPIC_NAME }, new Arg[] { PARTITION, LAG_FILTER_ENABLED }
   );
 
   private final String commandName;
@@ -614,7 +655,7 @@ public enum Command {
       List<String> candidateCommands = Arrays.stream(Command.values())
           .filter(
               command -> Arrays.stream(command.getRequiredArgs()).allMatch(arg -> cmdLine.hasOption(arg.toString())))
-          .map(commmand -> "--" + commmand.toString())
+          .map(command -> "--" + command)
           .collect(Collectors.toList());
       if (!candidateCommands.isEmpty()) {
         throw new VeniceException(

@@ -10,8 +10,9 @@ import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
+import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
-import com.linkedin.davinci.listener.response.TopicPartitionIngestionContextResponse;
+import com.linkedin.davinci.listener.response.StorePropertiesResponse;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.listener.response.AbstractReadResponse;
@@ -52,6 +53,8 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
     int responseRcu = 1;
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
     boolean isStreamingResponse = false;
+
+    FullHttpResponse response = null;
     try {
       if (msg instanceof AbstractReadResponse) {
         AbstractReadResponse obj = (AbstractReadResponse) msg;
@@ -121,6 +124,20 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
           contentType = HttpConstants.TEXT_PLAIN;
           responseStatus = INTERNAL_SERVER_ERROR;
         }
+      } else if (msg instanceof StorePropertiesResponse) {
+        StorePropertiesResponse storePropertiesResponse = (StorePropertiesResponse) msg;
+        if (!storePropertiesResponse.isError()) {
+          body = storePropertiesResponse.getResponseBody();
+          schemaIdHeader = storePropertiesResponse.getResponseSchemaIdHeader();
+        } else {
+          String errorMessage = storePropertiesResponse.getMessage();
+          if (errorMessage == null) {
+            errorMessage = "Unknown error";
+          }
+          body = Unpooled.wrappedBuffer(errorMessage.getBytes(StandardCharsets.UTF_8));
+          contentType = HttpConstants.TEXT_PLAIN;
+          responseStatus = INTERNAL_SERVER_ERROR;
+        }
       } else if (msg instanceof ServerCurrentVersionResponse) {
         ServerCurrentVersionResponse currentVersionResponse = (ServerCurrentVersionResponse) msg;
         if (!currentVersionResponse.isError()) {
@@ -135,15 +152,15 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
           responseStatus = INTERNAL_SERVER_ERROR;
         }
       } else if (msg instanceof DefaultFullHttpResponse) {
-        ctx.writeAndFlush(msg);
-        return;
-      } else if (msg instanceof TopicPartitionIngestionContextResponse) {
-        TopicPartitionIngestionContextResponse topicPartitionIngestionContextResponse =
-            (TopicPartitionIngestionContextResponse) msg;
-        if (!topicPartitionIngestionContextResponse.isError()) {
-          body = Unpooled.wrappedBuffer(OBJECT_MAPPER.writeValueAsBytes(topicPartitionIngestionContextResponse));
+        responseStatus = ((DefaultFullHttpResponse) msg).getStatus();
+        response = (DefaultFullHttpResponse) msg;
+        body = response.content();
+      } else if (msg instanceof ReplicaIngestionResponse) {
+        ReplicaIngestionResponse replicaIngestionResponse = (ReplicaIngestionResponse) msg;
+        if (!replicaIngestionResponse.isError()) {
+          body = Unpooled.wrappedBuffer(OBJECT_MAPPER.writeValueAsBytes(replicaIngestionResponse));
         } else {
-          String errorMessage = topicPartitionIngestionContextResponse.getMessage();
+          String errorMessage = replicaIngestionResponse.getMessage();
           if (errorMessage == null) {
             errorMessage = "Unknown error";
           }
@@ -168,7 +185,12 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
       statsHandler.setResponseStatus(responseStatus);
     }
 
-    FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, responseStatus, body);
+    if (response != null) {
+      ctx.writeAndFlush(response);
+      return;
+    }
+
+    response = new DefaultFullHttpResponse(HTTP_1_1, responseStatus, body);
     response.headers().set(CONTENT_TYPE, contentType);
     response.headers().set(CONTENT_LENGTH, body.readableBytes());
     response.headers().set(HttpConstants.VENICE_COMPRESSION_STRATEGY, compressionStrategy.getValue());

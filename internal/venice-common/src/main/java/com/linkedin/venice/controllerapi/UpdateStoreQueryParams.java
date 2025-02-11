@@ -18,12 +18,14 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_D
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_META_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_STORE_VIEW;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_READS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_OVERHEAD_BYPASS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_DAVINCI_HEARTBEAT_REPORTED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LATEST_SUPERSET_SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_COMPACTION_LAG_SECONDS;
@@ -33,6 +35,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIGRATION
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIN_COMPACTION_LAG_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_SOURCE_FABRIC;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.NEARLINE_PRODUCER_COMPRESSION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.NEARLINE_PRODUCER_COUNT_PER_WRITER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NUM_VERSIONS_TO_PRESERVE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OFFSET_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
@@ -43,6 +47,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_N
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_STREAM_SOURCE_ADDRESS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_COMPUTATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_QUOTA_IN_CU;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.REAL_TIME_TOPIC_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGIONS_FILTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGULAR_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATE_ALL_CONFIGS;
@@ -58,6 +63,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW_CLASS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW_PARAMS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION_WAIT_TIME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UNUSED_SCHEMA_DELETION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPDATED_CONFIGS_LIST;
@@ -138,6 +145,8 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setBlobTransferEnabled(srcStore.isBlobTransferEnabled())
             .setMaxRecordSizeBytes(srcStore.getMaxRecordSizeBytes())
             .setMaxNearlineRecordSizeBytes(srcStore.getMaxNearlineRecordSizeBytes())
+            .setTargetRegionSwap(srcStore.getTargetRegionSwap())
+            .setTargetRegionSwapWaitTime(srcStore.getTargetRegionSwapWaitTime())
             // TODO: This needs probably some refinement, but since we only support one kind of view type today, this is
             // still easy to parse
             .setStoreViews(
@@ -357,6 +366,14 @@ public class UpdateStoreQueryParams extends QueryParams {
     return Optional.ofNullable(params.get(BUFFER_REPLAY_POLICY)).map(BufferReplayPolicy::valueOf);
   }
 
+  public UpdateStoreQueryParams setRealTimeTopicName(String realTimeTopicName) {
+    return putString(REAL_TIME_TOPIC_NAME, realTimeTopicName);
+  }
+
+  public Optional<String> getRealTimeTopicName() {
+    return getString(REAL_TIME_TOPIC_NAME);
+  }
+
   public UpdateStoreQueryParams setAccessControlled(boolean accessControlled) {
     return putBoolean(ACCESS_CONTROLLED, accessControlled);
   }
@@ -432,10 +449,14 @@ public class UpdateStoreQueryParams extends QueryParams {
   }
 
   public UpdateStoreQueryParams setStoreMigration(boolean migrating) {
-    return putBoolean(STORE_MIGRATION, migrating);
+    return putBoolean(STORE_MIGRATION, migrating).putBoolean(ENABLE_STORE_MIGRATION, migrating);
   }
 
   public Optional<Boolean> getStoreMigration() {
+    Optional<Boolean> storeMigration = getBoolean(ENABLE_STORE_MIGRATION);
+    if (storeMigration.isPresent()) {
+      return storeMigration;
+    }
     return getBoolean(STORE_MIGRATION);
   }
 
@@ -709,6 +730,46 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Boolean> getBlobTransferEnabled() {
     return getBoolean(BLOB_TRANSFER_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setNearlineProducerCompressionEnabled(boolean compressionEnabled) {
+    return putBoolean(NEARLINE_PRODUCER_COMPRESSION_ENABLED, compressionEnabled);
+  }
+
+  public Optional<Boolean> getNearlineProducerCompressionEnabled() {
+    return getBoolean(NEARLINE_PRODUCER_COMPRESSION_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setNearlineProducerCountPerWriter(int producerCnt) {
+    return putInteger(NEARLINE_PRODUCER_COUNT_PER_WRITER, producerCnt);
+  }
+
+  public Optional<Integer> getNearlineProducerCountPerWriter() {
+    return getInteger(NEARLINE_PRODUCER_COUNT_PER_WRITER);
+  }
+
+  public UpdateStoreQueryParams setTargetRegionSwap(String targetRegion) {
+    return putString(TARGET_SWAP_REGION, targetRegion);
+  }
+
+  public Optional<String> getTargetSwapRegion() {
+    return getString(TARGET_SWAP_REGION);
+  }
+
+  public UpdateStoreQueryParams setTargetRegionSwapWaitTime(int waitTime) {
+    return putInteger(TARGET_SWAP_REGION_WAIT_TIME, waitTime);
+  }
+
+  public Optional<Integer> getTargetRegionSwapWaitTime() {
+    return getInteger(TARGET_SWAP_REGION_WAIT_TIME);
+  }
+
+  public UpdateStoreQueryParams setIsDavinciHeartbeatReported(boolean isReported) {
+    return putBoolean(IS_DAVINCI_HEARTBEAT_REPORTED, isReported);
+  }
+
+  public Optional<Boolean> getIsDavinciHeartbeatReported() {
+    return getBoolean(IS_DAVINCI_HEARTBEAT_REPORTED);
   }
 
   // ***************** above this line are getters and setters *****************

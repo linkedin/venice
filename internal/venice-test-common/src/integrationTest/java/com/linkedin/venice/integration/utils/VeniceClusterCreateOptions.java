@@ -12,6 +12,7 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_SSL_TO_STORAGE_NODES;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.STANDALONE_REGION_NAME;
 
+import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
 import java.util.Map;
@@ -44,6 +45,7 @@ public class VeniceClusterCreateOptions {
   private final ZkServerWrapper zkServerWrapper;
   private final String veniceZkBasePath;
   private final PubSubBrokerWrapper pubSubBrokerWrapper;
+  private final DynamicAccessController accessController;
 
   private VeniceClusterCreateOptions(Builder builder) {
     this.clusterName = builder.clusterName;
@@ -71,6 +73,7 @@ public class VeniceClusterCreateOptions {
     this.zkServerWrapper = builder.zkServerWrapper;
     this.veniceZkBasePath = builder.veniceZkBasePath;
     this.pubSubBrokerWrapper = builder.pubSubBrokerWrapper;
+    this.accessController = builder.accessController;
   }
 
   public String getClusterName() {
@@ -171,6 +174,10 @@ public class VeniceClusterCreateOptions {
 
   public PubSubBrokerWrapper getKafkaBrokerWrapper() {
     return pubSubBrokerWrapper;
+  }
+
+  public DynamicAccessController getAccessController() {
+    return accessController;
   }
 
   @Override
@@ -279,6 +286,7 @@ public class VeniceClusterCreateOptions {
     private ZkServerWrapper zkServerWrapper;
     private String veniceZkBasePath = "/";
     private PubSubBrokerWrapper pubSubBrokerWrapper;
+    private DynamicAccessController accessController;
 
     public Builder clusterName(String clusterName) {
       this.clusterName = clusterName;
@@ -406,6 +414,11 @@ public class VeniceClusterCreateOptions {
 
     public Builder kafkaBrokerWrapper(PubSubBrokerWrapper pubSubBrokerWrapper) {
       this.pubSubBrokerWrapper = pubSubBrokerWrapper;
+      return this;
+    }
+
+    public Builder accessController(DynamicAccessController accessController) {
+      this.accessController = accessController;
       return this;
     }
 

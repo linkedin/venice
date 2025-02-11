@@ -5,41 +5,58 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOP
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_RETENTION_IN_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
+import static com.linkedin.venice.controllerapi.ControllerRoute.AGGREGATED_HEALTH_STATUS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LEADER_CONTROLLER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_CHILD_CLUSTERS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_LOG_COMPACTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_RETENTION;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.InstanceRemovableStatuses;
+import com.linkedin.venice.controllerapi.AggregatedHealthStatusRequest;
 import com.linkedin.venice.controllerapi.ChildAwareResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.controllerapi.PubSubTopicConfigResponse;
+import com.linkedin.venice.controllerapi.StoppableNodeStatusResponse;
 import com.linkedin.venice.exceptions.ErrorType;
-import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
+import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
+import java.util.List;
 import java.util.Optional;
+import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpStatus;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import spark.Request;
 import spark.Route;
 
 
 public class ControllerRoutes extends AbstractRoute {
+  private static final Logger LOGGER = LogManager.getLogger(ControllerRoutes.class);
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
+
   private final PubSubTopicRepository pubSubTopicRepository;
+  private final VeniceControllerRequestHandler requestHandler;
 
   public ControllerRoutes(
       boolean sslEnabled,
       Optional<DynamicAccessController> accessController,
-      PubSubTopicRepository pubSubTopicRepository) {
+      PubSubTopicRepository pubSubTopicRepository,
+      VeniceControllerRequestHandler requestHandler) {
     super(sslEnabled, accessController);
     this.pubSubTopicRepository = pubSubTopicRepository;
+    this.requestHandler = requestHandler;
   }
 
   /**
@@ -52,12 +69,18 @@ public class ControllerRoutes extends AbstractRoute {
       try {
         AdminSparkServer.validateParams(request, LEADER_CONTROLLER.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
-        responseObject.setCluster(cluster);
-        Instance leaderController = admin.getLeaderController(cluster);
-        responseObject.setUrl(leaderController.getUrl(isSslEnabled()));
-        if (leaderController.getPort() != leaderController.getSslPort()) {
-          // Controller is SSL Enabled
-          responseObject.setSecureUrl(leaderController.getUrl(true));
+        LeaderControllerGrpcResponse inernalResponse = requestHandler
+            .getLeaderControllerDetails(LeaderControllerGrpcRequest.newBuilder().setClusterName(cluster).build());
+        responseObject.setCluster(inernalResponse.getClusterName());
+        responseObject.setUrl(inernalResponse.getHttpUrl());
+        if (StringUtils.isNotBlank(inernalResponse.getHttpsUrl())) {
+          responseObject.setSecureUrl(inernalResponse.getHttpsUrl());
+        }
+        if (StringUtils.isNotBlank(inernalResponse.getGrpcUrl())) {
+          responseObject.setGrpcUrl(inernalResponse.getGrpcUrl());
+        }
+        if (StringUtils.isNotBlank(inernalResponse.getSecureGrpcUrl())) {
+          responseObject.setSecureGrpcUrl(inernalResponse.getSecureGrpcUrl());
         }
       } catch (Throwable e) {
         responseObject.setError(e);
@@ -98,7 +121,7 @@ public class ControllerRoutes extends AbstractRoute {
     return updateKafkaTopicConfig(admin, adminRequest -> {
       AdminSparkServer.validateParams(adminRequest, UPDATE_KAFKA_TOPIC_LOG_COMPACTION.getParams(), admin);
       PubSubTopic topicName = pubSubTopicRepository.getTopic(adminRequest.queryParams(TOPIC));
-      boolean kafkaTopicLogCompactionEnabled = Utils.parseBooleanFromString(
+      boolean kafkaTopicLogCompactionEnabled = Utils.parseBooleanOrThrow(
           adminRequest.queryParams(KAFKA_TOPIC_LOG_COMPACTION_ENABLED),
           KAFKA_TOPIC_LOG_COMPACTION_ENABLED);
 
@@ -176,6 +199,48 @@ public class ControllerRoutes extends AbstractRoute {
       }
       response.type(HttpConstants.JSON);
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+    };
+  }
+
+  public Route getAggregatedHealthStatus(Admin admin) {
+    return (request, response) -> {
+      StoppableNodeStatusResponse responseObject = new StoppableNodeStatusResponse();
+      response.type(HttpConstants.JSON);
+
+      try {
+        LOGGER.info("[AggregatedHealthStatus] Received request: {}", request.body());
+        AggregatedHealthStatusRequest statusRequest =
+            OBJECT_MAPPER.readValue(request.body(), AggregatedHealthStatusRequest.class);
+        String cluster = statusRequest.getClusterId();
+        List<String> instanceList = statusRequest.getInstances();
+        if (instanceList.isEmpty()) {
+          responseObject.setError("Empty instances list");
+          responseObject.setErrorType(ErrorType.BAD_REQUEST);
+          response.status(HttpStatus.SC_BAD_REQUEST);
+          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+        }
+
+        List<String> toBeStoppedInstanceList = statusRequest.getToBeStoppedInstances();
+        responseObject.setCluster(cluster);
+
+        InstanceRemovableStatuses statuses =
+            admin.getAggregatedHealthStatus(cluster, instanceList, toBeStoppedInstanceList, isSslEnabled());
+        String redirectUrl = statuses.getRedirectUrl();
+        if (redirectUrl != null) {
+          LOGGER.info("[AggregatedHealthStatus] Redirecting to: {}", redirectUrl);
+          response.redirect(redirectUrl + AGGREGATED_HEALTH_STATUS.getPath(), HttpStatus.SC_MOVED_TEMPORARILY);
+          return null;
+        } else {
+          responseObject.setNonStoppableInstancesWithReason(statuses.getNonStoppableInstancesWithReasons());
+          responseObject.setStoppableInstances(statuses.getStoppableInstances());
+        }
+      } catch (Throwable e) {
+        responseObject.setError(e);
+        AdminSparkServer.handleError(e, request, response);
+      }
+      String responseContent = AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+      LOGGER.info("[AggregatedHealthStatus] Response: {}", responseContent);
+      return responseContent;
     };
   }
 

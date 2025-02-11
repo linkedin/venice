@@ -1,13 +1,14 @@
 package com.linkedin.venice.meta;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
+import it.unimi.dsi.fastutil.ints.IntSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
@@ -42,19 +43,6 @@ public interface Store {
   long DEFAULT_RT_RETENTION_TIME = TimeUnit.DAYS.toMillis(5);
 
   int DEFAULT_BATCH_GET_LIMIT = 150;
-
-  /**
-   * Store name rules:
-   *  1.  Only letters, numbers, underscore or dash
-   *  2. No double dashes
-   */
-
-  Pattern storeNamePattern = Pattern.compile("^[a-zA-Z0-9_-]+$");
-
-  static boolean isValidStoreName(String name) {
-    Matcher matcher = storeNamePattern.matcher(name);
-    return matcher.matches() && !name.contains("--");
-  }
 
   static boolean isSystemStore(String storeName) {
     return storeName.startsWith(SYSTEM_STORE_NAME_PREFIX);
@@ -258,6 +246,16 @@ public interface Store {
 
   List<Version> getVersions();
 
+  @JsonIgnore
+  default IntSet getVersionNumbers() {
+    List<Version> versions = getVersions();
+    IntSet versionNumbers = new IntOpenHashSet(versions.size());
+    for (Version version: versions) {
+      versionNumbers.add(version.getNumber());
+    }
+    return versionNumbers;
+  }
+
   void setVersions(List<Version> versions);
 
   void addVersion(Version version);
@@ -321,4 +319,26 @@ public interface Store {
   boolean isBlobTransferEnabled();
 
   void setBlobTransferEnabled(boolean blobTransferEnabled);
+
+  boolean isNearlineProducerCompressionEnabled();
+
+  void setNearlineProducerCompressionEnabled(boolean compressionEnabled);
+
+  int getNearlineProducerCountPerWriter();
+
+  void setNearlineProducerCountPerWriter(int producerCnt);
+
+  String getTargetSwapRegion();
+
+  int getTargetSwapRegionWaitTime();
+
+  void setTargetSwapRegion(String targetRegion);
+
+  void setTargetSwapRegionWaitTime(int waitTime);
+
+  void setIsDavinciHeartbeatReported(boolean isReported);
+
+  boolean getIsDavinciHeartbeatReported();
+
+  void updateVersionForDaVinciHeartbeat(int versionNumber, boolean reported);
 }

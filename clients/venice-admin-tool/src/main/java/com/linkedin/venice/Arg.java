@@ -181,6 +181,7 @@ public enum Arg {
   LOG_METADATA("log-metadata", "lm", false, "Log the metadata for each kafka message on console"),
   LOG_DATA_RECORD("log-data-record", "ldr", false, "Log the data record for each kafka message on console"),
   LOG_RMD_RECORD("log-rmd-record", "lrr", false, "Log the RMD record for each kafka message on console"),
+  LOG_TS_RECORD("log-ts-record", "lts", false, "Log the topic switch message on console"),
   NATIVE_REPLICATION_SOURCE_FABRIC(
       "native-replication-source-fabric", "nrsf", true,
       "The source fabric name to be used in native replication. Remote consumption will happen from kafka in this fabric."
@@ -225,7 +226,10 @@ public enum Arg {
   SYSTEM_STORE_TYPE(
       "system-store-type", "sst", true,
       "Type of system store to backfill. Supported types are davinci_push_status_store and meta_store"
-  ), RETRY("retry", "r", false, "Retry this operation"),
+  ), TASK_NAME("task-name", "tn", true, "Name of the task for cluster command. Supported command [PushSystemStore]."),
+  CHECKPOINT_FILE("checkpoint-file", "cf", true, "Checkpoint file path for cluster command."),
+  THREAD_COUNT("thread-count", "tc", true, "Number of threads to execute. 1 if not specified"),
+  RETRY("retry", "r", false, "Retry this operation"),
   DISABLE_LOG("disable-log", "dl", false, "Disable logs from internal classes. Only print command output on console"),
   STORE_VIEW_CONFIGS(
       "storage-view-configs", "svc", true,
@@ -275,7 +279,25 @@ public enum Arg {
   ), RECOVER_CLUSTER("recover-cluster", "rc", true, "Cluster to recover from"),
   BACKUP_FOLDER("backup-folder", "bf", true, "Backup folder path"),
   DEBUG("debug", "d", false, "Print debugging messages for execute-data-recovery"),
-  BLOB_TRANSFER_ENABLED("blob-transfer-enabled", "bt", true, "Flag to indicate if the blob transfer is allowed or not");
+  BLOB_TRANSFER_ENABLED("blob-transfer-enabled", "bt", true, "Flag to indicate if the blob transfer is allowed or not"),
+  NEARLINE_PRODUCER_COMPRESSION_ENABLED(
+      "nearline-producer-compression-enabled", "npce", true,
+      "Flag to control whether KafkaProducer will use compression or not for nearline workload"
+  ),
+  NEARLINE_PRODUCER_COUNT_PER_WRITER(
+      "nearline-producer-count-per-writer", "npcpw", true,
+      "How many producers will be used to write nearline workload in Server"
+  ), INSTANCES("instances", "in", true, "Input list of helix ids of nodes to check if they can removed or not"),
+  TO_BE_STOPPED_NODES("to-be-stopped-nodes", "tbsn", true, "List of helix ids of nodes assumed to be stopped"),
+  LAG_FILTER_ENABLED("lag-filter-enabled", "lfe", true, "Enable heartbeat lag filter for a heartbeat request"),
+  TARGET_SWAP_REGION("target-region-swap", "trs", true, "Region to swap current version during target colo push"),
+  TARGET_SWAP_REGION_WAIT_TIME(
+      "target-region-swap-wait-time", "trswt", true,
+      "How long to wait in minutes before swapping to the new version in a target colo push"
+  ),
+  DAVINCI_HEARTBEAT_REPORTED(
+      "dvc-heartbeat-reported", "dvchb", true, "Flag to indicate whether DVC is bootstrapping and sending heartbeats"
+  ), ENABLE_STORE_MIGRATION("enable-store-migration", "esm", true, "Toggle store migration store config");
 
   private final String argName;
   private final String first;

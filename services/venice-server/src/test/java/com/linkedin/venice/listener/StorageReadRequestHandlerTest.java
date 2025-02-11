@@ -28,7 +28,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
-import com.linkedin.davinci.listener.response.TopicPartitionIngestionContextResponse;
+import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.IngestionMetadataRetriever;
 import com.linkedin.davinci.storage.ReadMetadataRetriever;
@@ -57,6 +57,7 @@ import com.linkedin.venice.listener.request.AdminRequest;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
+import com.linkedin.venice.listener.request.HeartbeatRequest;
 import com.linkedin.venice.listener.request.MetadataFetchRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
@@ -201,7 +202,7 @@ public class StorageReadRequestHandlerTest {
     doReturn(partitionerConfig).when(version).getPartitionerConfig();
 
     doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(any());
-    doReturn(new NoopCompressor()).when(compressorFactory).getCompressor(any(), any());
+    doReturn(new NoopCompressor()).when(compressorFactory).getCompressor(any(), any(), anyInt());
 
     RocksDBServerConfig rocksDBServerConfig = mock(RocksDBServerConfig.class);
     doReturn(rocksDBServerConfig).when(serverConfig).getRocksDBServerConfig();
@@ -577,28 +578,50 @@ public class StorageReadRequestHandlerTest {
         .parseGetHttpRequest(uri, RequestHelper.getRequestParts(URI.create(httpRequest.uri())));
 
     // Mock the TopicPartitionIngestionContextResponse from ingestion task
-    TopicPartitionIngestionContextResponse expectedTopicPartitionIngestionContextResponse =
-        new TopicPartitionIngestionContextResponse();
+    ReplicaIngestionResponse expectedReplicaIngestionResponse = new ReplicaIngestionResponse();
     String jsonStr = "{\n" + "\"kafkaUrl\" : {\n" + "  TP(topic: \"" + topic + "\", partition: " + expectedPartitionId
         + ") : {\n" + "      \"latestOffset\" : 0,\n" + "      \"offsetLag\" : 1,\n" + "      \"msgRate\" : 2.0,\n"
         + "      \"byteRate\" : 4.0,\n" + "      \"consumerIdx\" : 6,\n"
         + "      \"elapsedTimeSinceLastPollInMs\" : 7\n" + "    }\n" + "  }\n" + "}";
     byte[] expectedTopicPartitionContext = jsonStr.getBytes();
-    expectedTopicPartitionIngestionContextResponse.setTopicPartitionIngestionContext(expectedTopicPartitionContext);
-    doReturn(expectedTopicPartitionIngestionContextResponse).when(ingestionMetadataRetriever)
+    expectedReplicaIngestionResponse.setPayload(expectedTopicPartitionContext);
+    doReturn(expectedReplicaIngestionResponse).when(ingestionMetadataRetriever)
         .getTopicPartitionIngestionContext(eq(topic), eq(topic), eq(expectedPartitionId));
 
     StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
     requestHandler.channelRead(context, request);
     verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
-    TopicPartitionIngestionContextResponse topicPartitionIngestionContextResponse =
-        (TopicPartitionIngestionContextResponse) argumentCaptor.getValue();
-    String topicPartitionIngestionContextStr =
-        new String(topicPartitionIngestionContextResponse.getTopicPartitionIngestionContext());
+    ReplicaIngestionResponse replicaIngestionResponse = (ReplicaIngestionResponse) argumentCaptor.getValue();
+    String topicPartitionIngestionContextStr = new String(replicaIngestionResponse.getPayload());
     assertTrue(topicPartitionIngestionContextStr.contains(topic));
-    assertEquals(
-        topicPartitionIngestionContextResponse.getTopicPartitionIngestionContext(),
-        expectedTopicPartitionContext);
+    assertEquals(replicaIngestionResponse.getPayload(), expectedTopicPartitionContext);
+  }
+
+  @Test
+  public void testHeartbeatLagRequestsPassInStorageExecutionHandler() throws Exception {
+    String topic = "test_store_v1";
+    int expectedPartitionId = 12345;
+    boolean filterLag = true;
+    // [0]""/[1]"action"/[2]"optional topic filter"/[3]"optional partition filter"/[4]"optional lag filter"
+    String uri = "/" + QueryAction.HOST_HEARTBEAT_LAG.toString().toLowerCase() + "/" + topic + "/" + expectedPartitionId
+        + "/" + filterLag;
+    HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
+    HeartbeatRequest request =
+        HeartbeatRequest.parseGetHttpRequest(uri, RequestHelper.getRequestParts(URI.create(httpRequest.uri())));
+    System.out.println(request.getTopic() + " " + request.getPartition() + " " + request.isFilterLagReplica());
+    // Mock the TopicPartitionIngestionContextResponse from heartbeat service
+    ReplicaIngestionResponse expectedReplicaIngestionResponse = new ReplicaIngestionResponse();
+    String jsonStr = "{}";
+    byte[] expectedTopicPartitionContext = jsonStr.getBytes();
+    expectedReplicaIngestionResponse.setPayload(expectedTopicPartitionContext);
+    doReturn(expectedReplicaIngestionResponse).when(ingestionMetadataRetriever)
+        .getHeartbeatLag(eq(topic), eq(expectedPartitionId), eq(filterLag));
+
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    requestHandler.channelRead(context, request);
+    verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
+    ReplicaIngestionResponse replicaIngestionResponse = (ReplicaIngestionResponse) argumentCaptor.getValue();
+    assertEquals(replicaIngestionResponse.getPayload(), expectedTopicPartitionContext);
   }
 
   @Test

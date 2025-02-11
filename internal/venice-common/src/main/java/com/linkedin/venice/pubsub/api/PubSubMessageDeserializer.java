@@ -57,7 +57,7 @@ public class PubSubMessageDeserializer {
     KafkaKey key = keySerializer.deserialize(null, keyBytes);
     KafkaMessageEnvelope value = null;
     if (key.isControlMessage()) {
-      for (PubSubMessageHeader header: headers.toList()) {
+      for (PubSubMessageHeader header: headers) {
         // only process VENICE_TRANSPORT_PROTOCOL_HEADER here. Other headers will be stored in
         // ImmutablePubSubMessage and used down the ingestion path later
         if (header.key().equals(VENICE_TRANSPORT_PROTOCOL_HEADER)) {

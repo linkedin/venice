@@ -46,6 +46,8 @@ dependencies {
     exclude group: 'org.mockito', module: 'mockito-all' // this will introduce another different mockito-all version
   }
 
+  implementation libraries.fastUtil
+
   implementation('org.apache.helix:helix-core:1.4.1:jdk8') {
     exclude group: 'org.apache.helix'
   }
@@ -64,6 +66,7 @@ dependencies {
   implementation libraries.httpAsyncClient
   implementation project(':internal:alpini:router:alpini-router-api')
   implementation project(':internal:alpini:router:alpini-router-impl')
+  implementation libraries.opentelemetryApi
 
   testImplementation project(':clients:venice-thin-client')
   testImplementation libraries.kafkaClientsTest // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
@@ -82,4 +85,11 @@ jar {
 
 ext {
   jacocoCoverageThreshold = 0.40
+}
+
+checkerFramework {
+  extraJavacArgs = ['-Xmaxerrs', '256']
+  checkers = ['org.checkerframework.checker.nullness.NullnessChecker']
+  skipCheckerFramework = true
+  excludeTests = true
 }

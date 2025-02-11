@@ -10,6 +10,7 @@ import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WR
 import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V3;
 import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V4;
 import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V5;
+import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
@@ -31,6 +32,7 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -40,9 +42,14 @@ import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -75,7 +82,15 @@ public class VeniceParentHelixAdminTest {
   @BeforeClass
   public void setUp() {
     Utils.thisIsLocalhost();
-    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(1, 1, 1, 1, 1, 1);
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+            .numberOfClusters(1)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(1)
+            .numberOfRouters(1);
+    multiRegionMultiClusterWrapper =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
     clusterName = multiRegionMultiClusterWrapper.getClusterNames()[0];
     venice = multiRegionMultiClusterWrapper.getChildRegions().get(0).getClusters().get(clusterName);
   }
@@ -158,7 +173,7 @@ public class VeniceParentHelixAdminTest {
                 false,
                 Optional.empty(),
                 Optional.empty(),
-                Optional.of("dc-1"),
+                Optional.of("dc-0"),
                 false,
                 -1));
         // Check version-level rewind time config
@@ -232,19 +247,20 @@ public class VeniceParentHelixAdminTest {
     properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(false));
     properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, String.valueOf(false));
 
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+            .numberOfClusters(1)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(1)
+            .numberOfRouters(1)
+            .replicationFactor(1)
+            .forkServer(false)
+            .parentControllerProperties(properties)
+            .childControllerProperties(properties);
     try (
         VeniceTwoLayerMultiRegionMultiClusterWrapper twoLayerMultiRegionMultiClusterWrapper =
-            ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-                1,
-                1,
-                1,
-                1,
-                1,
-                1,
-                1,
-                Optional.of(properties),
-                Optional.of(properties),
-                Optional.empty());
+            ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
         ControllerClient parentControllerClient = new ControllerClient(
             twoLayerMultiRegionMultiClusterWrapper.getClusterNames()[0],
             twoLayerMultiRegionMultiClusterWrapper.getControllerConnectString())) {
@@ -298,7 +314,24 @@ public class VeniceParentHelixAdminTest {
           TimeUnit.SECONDS);
 
       // Delete the store and try re-creation.
-      assertFalse(parentControllerClient.disableAndDeleteStore(storeName).isError(), "Delete store shouldn't fail");
+      TestUtils.assertCommand(parentControllerClient.disableAndDeleteStore(storeName), "Delete store shouldn't fail");
+
+      PubSubBrokerWrapper parentPubSub = twoLayerMultiRegionMultiClusterWrapper.getParentKafkaBrokerWrapper();
+      PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+      // Manually create an RT topic in the parent region to simulate its presence for lingering system store resources.
+      // This is necessary because RT topics are no longer automatically created for regional system stores such as meta
+      // and ps3.
+      try (TopicManagerRepository topicManagerRepo = IntegrationTestPushUtils
+          .getTopicManagerRepo(PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE, 100, 0l, parentPubSub, pubSubTopicRepository);
+          TopicManager topicManager = topicManagerRepo.getLocalTopicManager()) {
+        PubSubTopic metaStoreRT = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(metaSystemStoreName));
+        topicManager.createTopic(metaStoreRT, 1, 1, true);
+        TestUtils.waitForNonDeterministicAssertion(
+            30,
+            TimeUnit.SECONDS,
+            () -> assertTrue(topicManager.containsTopic(metaStoreRT)));
+      }
+
       // Re-create the same store right away will fail because of lingering system store resources
       controllerResponse = parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
       assertTrue(
@@ -409,18 +442,18 @@ public class VeniceParentHelixAdminTest {
     properties
         .put(VeniceControllerWrapper.SUPERSET_SCHEMA_GENERATOR, new SupersetSchemaGeneratorWithCustomProp(CUSTOM_PROP));
 
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+            .numberOfClusters(1)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(0)
+            .numberOfRouters(0)
+            .replicationFactor(1)
+            .forkServer(false)
+            .parentControllerProperties(properties);
     try (VeniceTwoLayerMultiRegionMultiClusterWrapper twoLayerMultiRegionMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-            1,
-            1,
-            1,
-            1,
-            0,
-            0,
-            1,
-            Optional.of(properties),
-            Optional.empty(),
-            Optional.empty())) {
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build())) {
       String parentControllerUrl = twoLayerMultiRegionMultiClusterWrapper.getControllerConnectString();
       try (ControllerClient parentControllerClient =
           new ControllerClient(twoLayerMultiRegionMultiClusterWrapper.getClusterNames()[0], parentControllerUrl)) {
@@ -901,6 +934,8 @@ public class VeniceParentHelixAdminTest {
     testUpdateCompactionLag(parentControllerClient, childControllerClient);
     testUpdateMaxRecordSize(parentControllerClient, childControllerClient);
     testUpdateBlobTransfer(parentControllerClient, childControllerClient);
+    testUpdateNearlineProducerConfig(parentControllerClient, childControllerClient);
+    testUpdateTargetSwapRegion(parentControllerClient, childControllerClient);
   }
 
   /**
@@ -938,6 +973,23 @@ public class VeniceParentHelixAdminTest {
     });
   }
 
+  private void testUpdateTargetSwapRegion(ControllerClient parentClient, ControllerClient childClient) {
+    final String region = "prod";
+    final int waitTime = 100;
+    final boolean isDavinci = false;
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {
+      params.setTargetRegionSwap(region);
+      params.setTargetRegionSwapWaitTime(waitTime);
+      params.setIsDavinciHeartbeatReported(isDavinci);
+    };
+    Consumer<StoreResponse> responseConsumer = response -> {
+      Assert.assertEquals(response.getStore().getTargetRegionSwap(), region);
+      Assert.assertEquals(response.getStore().getTargetRegionSwapWaitTime(), waitTime);
+      Assert.assertEquals(response.getStore().getIsDavinciHeartbeatReported(), isDavinci);
+    };
+    testUpdateConfig(parentClient, childClient, paramsConsumer, responseConsumer);
+  }
+
   private void testUpdateCompactionLag(ControllerClient parentClient, ControllerClient childClient) {
     final long expectedMinCompactionLagSeconds = 100;
     final long expectedMaxCompactionLagSeconds = 200;
@@ -948,6 +1000,21 @@ public class VeniceParentHelixAdminTest {
     Consumer<StoreResponse> responseConsumer = response -> {
       Assert.assertEquals(response.getStore().getMinCompactionLagSeconds(), expectedMinCompactionLagSeconds);
       Assert.assertEquals(response.getStore().getMaxCompactionLagSeconds(), expectedMaxCompactionLagSeconds);
+    };
+    testUpdateConfig(parentClient, childClient, paramsConsumer, responseConsumer);
+  }
+
+  private void testUpdateNearlineProducerConfig(ControllerClient parentClient, ControllerClient childClient) {
+    final boolean nearlineProducerCompressionEnabled = false;
+    final int nearlineProducerCountPerWriter = 10;
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {
+      params.setNearlineProducerCompressionEnabled(nearlineProducerCompressionEnabled);
+      params.setNearlineProducerCountPerWriter(nearlineProducerCountPerWriter);
+    };
+    Consumer<StoreResponse> responseConsumer = response -> {
+      Assert
+          .assertEquals(response.getStore().isNearlineProducerCompressionEnabled(), nearlineProducerCompressionEnabled);
+      Assert.assertEquals(response.getStore().getNearlineProducerCountPerWriter(), nearlineProducerCountPerWriter);
     };
     testUpdateConfig(parentClient, childClient, paramsConsumer, responseConsumer);
   }

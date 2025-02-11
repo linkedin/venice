@@ -24,7 +24,6 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ServerAdminAction;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import io.grpc.Attributes;
@@ -58,12 +57,13 @@ public class ServerStoreAclHandlerTest {
   // Store name can be in a version topic format
   private static final String TEST_STORE_NAME = "testStore_v1";
   private static final String TEST_STORE_VERSION = Version.composeKafkaTopic(TEST_STORE_NAME, 1);
+  private static final int TEST_STORE_PARTITION = 1;
 
   /**
    * Mock access controller to verify basic request parsing and handling for {@link ServerStoreAclHandler}
    */
   private static class MockAccessController implements DynamicAccessController {
-    private QueryAction queryAction;
+    private final QueryAction queryAction;
 
     public MockAccessController(QueryAction queryAction) {
       this.queryAction = queryAction;
@@ -206,9 +206,8 @@ public class ServerStoreAclHandlerTest {
 
   @Test
   public void testAllRequestTypes() throws SSLPeerUnverifiedException, AclException {
-    Store store = mock(Store.class);
     ReadOnlyStoreRepository metadataRepo = mock(ReadOnlyStoreRepository.class);
-    when(metadataRepo.getStore(TEST_STORE_NAME)).thenReturn(store);
+    when(metadataRepo.hasStore(TEST_STORE_NAME)).thenReturn(true);
     ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
     HttpRequest request = mock(HttpRequest.class);
     Channel channel = mock(Channel.class);
@@ -248,7 +247,9 @@ public class ServerStoreAclHandlerTest {
         case CURRENT_VERSION:
         case HEALTH:
         case METADATA:
+        case STORE_PROPERTIES:
         case TOPIC_PARTITION_INGESTION_CONTEXT:
+        case HOST_HEARTBEAT_LAG:
           verify(spyMockAccessController, never()).hasAccess(any(), any(), any());
           break;
         case STORAGE:
@@ -277,11 +278,16 @@ public class ServerStoreAclHandlerTest {
             + ServerAdminAction.DUMP_INGESTION_STATE;
       case METADATA:
         return "/" + QueryAction.METADATA.toString().toLowerCase() + "/" + TEST_STORE_NAME;
+      case STORE_PROPERTIES:
+        return "/" + QueryAction.STORE_PROPERTIES.toString().toLowerCase() + "/" + TEST_STORE_NAME;
       case CURRENT_VERSION:
         return "/" + QueryAction.CURRENT_VERSION.toString().toLowerCase() + "/" + TEST_STORE_NAME;
       case TOPIC_PARTITION_INGESTION_CONTEXT:
         return "/" + QueryAction.TOPIC_PARTITION_INGESTION_CONTEXT.toString().toLowerCase() + "/" + TEST_STORE_VERSION
             + "/" + TEST_STORE_VERSION + "/1";
+      case HOST_HEARTBEAT_LAG:
+        return "/" + QueryAction.HOST_HEARTBEAT_LAG.toString().toLowerCase() + "/" + TEST_STORE_VERSION + "/"
+            + TEST_STORE_PARTITION + "/false";
       default:
         throw new IllegalArgumentException("Invalid query action: " + queryAction);
     }

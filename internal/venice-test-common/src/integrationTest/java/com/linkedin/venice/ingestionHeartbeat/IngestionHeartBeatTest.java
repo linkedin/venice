@@ -31,11 +31,13 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -57,7 +59,6 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -89,18 +90,20 @@ public class IngestionHeartBeatTest {
     Properties serverProperties = new Properties();
     Properties controllerProps = new Properties();
     controllerProps.put(ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
-    this.multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-        NUMBER_OF_CHILD_DATACENTERS,
-        NUMBER_OF_CLUSTERS,
-        1,
-        1,
-        4,
-        1,
-        2,
-        Optional.of(controllerProps),
-        Optional.of(controllerProps),
-        Optional.of(serverProperties),
-        false);
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
+            .numberOfClusters(NUMBER_OF_CLUSTERS)
+            .numberOfParentControllers(1)
+            .numberOfChildControllers(1)
+            .numberOfServers(4)
+            .numberOfRouters(1)
+            .replicationFactor(2)
+            .forkServer(false)
+            .parentControllerProperties(controllerProps)
+            .childControllerProperties(controllerProps)
+            .serverProperties(serverProperties);
+    this.multiRegionMultiClusterWrapper =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
     this.childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     List<VeniceControllerWrapper> parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
     if (parentControllers.size() != 1) {
@@ -147,6 +150,7 @@ public class IngestionHeartBeatTest {
       assertCommand(
           parentControllerClient
               .createNewStore(storeName, "test_owner", keySchemaStr, NAME_RECORD_V1_SCHEMA.toString()));
+      StoreInfo storeInfo = TestUtils.assertCommand(parentControllerClient.getStore(storeName)).getStore();
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setCompressionStrategy(CompressionStrategy.NO_OP)
@@ -162,6 +166,11 @@ public class IngestionHeartBeatTest {
       ControllerResponse updateStoreResponse =
           parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
 
+      // If config combination for incremental push is wrong, update store should fail loudly.
+      if (!isActiveActiveEnabled && isIncrementalPushEnabled) {
+        assertTrue(updateStoreResponse.isError(), "Update store does not error on invalid config combination.");
+        return;
+      }
       assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
 
       VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
@@ -215,7 +224,7 @@ public class IngestionHeartBeatTest {
             // RT: verify HB is received
             verifyHBinKafkaTopic(
                 pubSubConsumer,
-                storeName,
+                storeInfo,
                 partition,
                 isActiveActiveEnabled,
                 isIncrementalPushEnabled,
@@ -226,7 +235,7 @@ public class IngestionHeartBeatTest {
             // header to all VT.
             verifyHBinKafkaTopic(
                 pubSubConsumer,
-                storeName,
+                storeInfo,
                 partition,
                 isActiveActiveEnabled,
                 isIncrementalPushEnabled,
@@ -240,14 +249,14 @@ public class IngestionHeartBeatTest {
 
   private void verifyHBinKafkaTopic(
       PubSubConsumerAdapter pubSubConsumer,
-      String storeName,
+      StoreInfo storeInfo,
       int partition,
       boolean isActiveActiveEnabled,
       boolean isIncrementalPushEnabled,
       DataReplicationPolicy dataReplicationPolicy,
       boolean isRealTime) throws InterruptedException {
     String topicToSubscribeTo = isRealTime
-        ? Version.composeRealTimeTopic(storeName)
+        ? Utils.getRealTimeTopicName(storeInfo)
         : Version.composeKafkaTopic(storeName, isIncrementalPushEnabled ? 1 : 2);
     pubSubConsumer.subscribe(
         new PubSubTopicPartitionImpl(new PubSubTopicRepository().getTopic(topicToSubscribeTo), partition),

@@ -38,6 +38,7 @@ public class OffsetRecord {
   public static final long DEFAULT_OFFSET_LAG = -1;
   public static final String NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY = ""; // A place holder key
   private static final String PARTITION_STATE_STRING = "PartitionState";
+  private static final String NULL_STRING = "null";
   private final PartitionState partitionState;
   private final InternalAvroSpecificSerializer<PartitionState> serializer;
 
@@ -83,6 +84,14 @@ public class OffsetRecord {
 
   public long getLocalVersionTopicOffset() {
     return this.partitionState.offset;
+  }
+
+  public void setPreviousStatusesEntry(String key, String value) {
+    partitionState.getPreviousStatuses().put(key, value);
+  }
+
+  public String getPreviousStatusesEntry(String key) {
+    return partitionState.getPreviousStatuses().getOrDefault(key, NULL_STRING).toString();
   }
 
   public void setCheckpointLocalVersionTopicOffset(long offset) {
@@ -296,6 +305,15 @@ public class OffsetRecord {
     partitionState.pendingReportIncrementalPushVersions = new ArrayList<>(incPushVersionList);
   }
 
+  public Integer getRecordTransformerClassHash() {
+    Integer classHash = partitionState.getRecordTransformerClassHash();
+    return classHash;
+  }
+
+  public void setRecordTransformerClassHash(int classHash) {
+    this.partitionState.setRecordTransformerClassHash(classHash);
+  }
+
   /**
    * It may be useful to cache this mapping. TODO: Explore GC tuning later.
    *
@@ -312,7 +330,8 @@ public class OffsetRecord {
         + getPartitionUpstreamOffsetString() + ", leaderTopic=" + getLeaderTopic() + ", offsetLag=" + getOffsetLag()
         + ", eventTimeEpochMs=" + getMaxMessageTimeInMs() + ", latestProducerProcessingTimeInMs="
         + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived=" + isEndOfPushReceived() + ", databaseInfo="
-        + getDatabaseInfo() + ", realTimeProducerState=" + getRealTimeProducerState() + '}';
+        + getDatabaseInfo() + ", realTimeProducerState=" + getRealTimeProducerState() + ", recordTransformerClassHash="
+        + getRecordTransformerClassHash() + '}';
   }
 
   /**

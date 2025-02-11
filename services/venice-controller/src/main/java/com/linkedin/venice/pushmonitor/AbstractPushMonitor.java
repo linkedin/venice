@@ -28,13 +28,22 @@ import com.linkedin.venice.meta.UncompletedPartition;
 import com.linkedin.venice.meta.UncompletedReplica;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
+import com.linkedin.venice.views.MaterializedView;
+import com.linkedin.venice.views.VeniceView;
+import com.linkedin.venice.views.ViewUtils;
+import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -44,6 +53,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -75,6 +85,7 @@ public abstract class AbstractPushMonitor
   private final StoreCleaner storeCleaner;
   private final AggPushHealthStats aggPushHealthStats;
   private final Map<String, OfflinePushStatus> topicToPushMap = new VeniceConcurrentHashMap<>();
+  private final Map<String, Long> topicToLeaderCompleteTimestampMap = new VeniceConcurrentHashMap<>();
   private RealTimeTopicSwitcher realTimeTopicSwitcher;
   private final ClusterLockManager clusterLockManager;
   private final String aggregateRealTimeSourceKafkaUrl;
@@ -88,6 +99,8 @@ public abstract class AbstractPushMonitor
   private final boolean isOfflinePushMonitorDaVinciPushStatusEnabled;
 
   private final DisabledPartitionStats disabledPartitionStats;
+  private final String regionName;
+  private final VeniceWriterFactory veniceWriterFactory;
 
   public AbstractPushMonitor(
       String clusterName,
@@ -103,7 +116,8 @@ public abstract class AbstractPushMonitor
       HelixAdminClient helixAdminClient,
       VeniceControllerClusterConfig controllerConfig,
       PushStatusStoreReader pushStatusStoreReader,
-      DisabledPartitionStats disabledPartitionStats) {
+      DisabledPartitionStats disabledPartitionStats,
+      VeniceWriterFactory veniceWriterFactory) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
     this.storeCleaner = storeCleaner;
@@ -134,6 +148,8 @@ public abstract class AbstractPushMonitor
         controllerConfig.getDaVinciPushStatusScanMaxOfflineInstanceRatio(),
         controllerConfig.useDaVinciSpecificExecutionStatusForError());
     this.isOfflinePushMonitorDaVinciPushStatusEnabled = controllerConfig.isDaVinciPushStatusEnabled();
+    this.regionName = controllerConfig.getRegionName();
+    this.veniceWriterFactory = veniceWriterFactory;
     pushStatusCollector.start();
   }
 
@@ -149,30 +165,17 @@ public abstract class AbstractPushMonitor
     pushStatusCollector.start();
     try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       LOGGER.info("Load all pushes started for cluster {}'s {}", clusterName, getClass().getSimpleName());
-      // Subscribe to changes first
-      List<OfflinePushStatus> refreshedOfflinePushStatusList = new ArrayList<>();
-      for (OfflinePushStatus offlinePushStatus: offlinePushStatusList) {
-        try {
-          routingDataRepository.subscribeRoutingDataChange(offlinePushStatus.getKafkaTopic(), this);
-
-          /**
-           * Now that we're subscribed, update the view of this data.  We refresh this data after subscribing to be sure
-           * that we're going to get ALL the change events and not lose any in between reading the data and subscribing
-           * to changes in the data.
-           */
-          refreshedOfflinePushStatusList
-              .add(offlinePushAccessor.getOfflinePushStatusAndItsPartitionStatuses(offlinePushStatus.getKafkaTopic()));
-        } catch (Exception e) {
-          LOGGER.error("Could not load offline push for {}", offlinePushStatus.getKafkaTopic(), e);
-        }
-
-      }
-      offlinePushStatusList = refreshedOfflinePushStatusList;
 
       for (OfflinePushStatus offlinePushStatus: offlinePushStatusList) {
         try {
           topicToPushMap.put(offlinePushStatus.getKafkaTopic(), offlinePushStatus);
+          routingDataRepository.subscribeRoutingDataChange(offlinePushStatus.getKafkaTopic(), this);
           getOfflinePushAccessor().subscribePartitionStatusChange(offlinePushStatus, this);
+          /**
+           * This update call is necessary it won't miss updates between initial offline push retrival and update subscription.
+           * This call uses the same store-level lock as partition status update listener callback.
+           */
+          updateOfflinePush(offlinePushStatus.getKafkaTopic());
 
           // Check the status for running pushes. In case controller missed some notification during the failover, we
           // need to update it based on current routing data.
@@ -185,7 +188,7 @@ public abstract class AbstractPushMonitor
               if (statusWithDetails.getStatus().isTerminal()) {
                 handleTerminalOfflinePushUpdate(offlinePushStatus, statusWithDetails);
               } else {
-                checkWhetherToStartBufferReplayForHybrid(offlinePushStatus);
+                checkWhetherToStartEOPProcedures(offlinePushStatus);
               }
             } else {
               // In any case, we found the offline push status is STARTED, but the related version could not be found.
@@ -321,6 +324,21 @@ public abstract class AbstractPushMonitor
     return topicToPushMap.get(topic);
   }
 
+  protected void updateOfflinePush(String topic) {
+    String store = Version.parseStoreFromKafkaTopicName(topic);
+    OfflinePushStatus offlinePushStatus;
+    try (AutoCloseableLock ignored = clusterLockManager.createStoreWriteLock(store)) {
+      offlinePushStatus = getOfflinePushAccessor().getOfflinePushStatusAndItsPartitionStatuses(topic);
+      topicToPushMap.put(topic, offlinePushStatus);
+    }
+    if (offlinePushStatus != null) {
+      LOGGER.info(
+          "Update offline push status from ZK for topic: {}, current status: {}",
+          topic,
+          offlinePushStatus.getCurrentStatus());
+    }
+  }
+
   public ExecutionStatus getPushStatus(String topic) {
     return getPushStatusAndDetails(topic).getStatus();
   }
@@ -375,6 +393,10 @@ public abstract class AbstractPushMonitor
       PushStatusStoreReader pushStatusStoreReader,
       int numberOfPartitions,
       int replicationFactor) {
+    LOGGER.debug(
+        "Querying incremental push status from PS3 for storeVersion: {}, incrementalPushVersion: {}",
+        kafkaTopic,
+        incrementalPushVersion);
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int storeVersion = Version.parseVersionFromVersionTopicName(kafkaTopic);
     Map<Integer, Map<CharSequence, Integer>> pushStatusMap =
@@ -642,6 +664,7 @@ public abstract class AbstractPushMonitor
     String storeName = Version.parseStoreFromKafkaTopicName(offlinePushStatus.getKafkaTopic());
     try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
       topicToPushMap.remove(offlinePushStatus.getKafkaTopic());
+      topicToLeaderCompleteTimestampMap.remove(offlinePushStatus.getKafkaTopic());
       if (deletePushStatus) {
         offlinePushAccessor.deleteOfflinePushStatusAndItsPartitionStatuses(offlinePushStatus.getKafkaTopic());
       }
@@ -788,7 +811,7 @@ public abstract class AbstractPushMonitor
   }
 
   protected void onPartitionStatusChange(OfflinePushStatus offlinePushStatus) {
-    checkWhetherToStartBufferReplayForHybrid(offlinePushStatus);
+    checkWhetherToStartEOPProcedures(offlinePushStatus);
   }
 
   protected DisableReplicaCallback getDisableReplicaCallback(String kafkaTopic) {
@@ -858,7 +881,7 @@ public abstract class AbstractPushMonitor
             handleTerminalOfflinePushUpdate(pushStatus, statusWithDetails);
           } else if (statusWithDetails.getStatus().equals(ExecutionStatus.END_OF_PUSH_RECEIVED)) {
             // For all partitions, at least one replica has received the EOP. Check if it's time to start buffer replay.
-            checkWhetherToStartBufferReplayForHybrid(pushStatus);
+            checkWhetherToStartEOPProcedures(pushStatus);
           }
         }
       } else {
@@ -888,17 +911,94 @@ public abstract class AbstractPushMonitor
       LOGGER.warn("Resource is remaining in the ideal state. Ignore the deletion in the external view.");
       return;
     }
-    OfflinePushStatus pushStatus;
-    pushStatus = getOfflinePush(kafkaTopic);
-    if (pushStatus != null && pushStatus.getCurrentStatus().equals(ExecutionStatus.STARTED)) {
-      String statusDetails = "Helix resource for Topic:" + kafkaTopic + " is deleted, stopping the running push.";
-      LOGGER.info(statusDetails);
-      handleTerminalOfflinePushUpdate(pushStatus, new ExecutionStatusWithDetails(ERROR, statusDetails));
+    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+    try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
+      OfflinePushStatus pushStatus;
+      pushStatus = getOfflinePush(kafkaTopic);
+      if (pushStatus != null && pushStatus.getCurrentStatus().equals(ExecutionStatus.STARTED)) {
+        String statusDetails = "Helix resource for Topic:" + kafkaTopic + " is deleted, stopping the running push.";
+        LOGGER.info(statusDetails);
+        handleTerminalOfflinePushUpdate(pushStatus, new ExecutionStatusWithDetails(ERROR, statusDetails));
+      }
     }
   }
 
-  protected void checkWhetherToStartBufferReplayForHybrid(OfflinePushStatus offlinePushStatus) {
+  protected void checkWhetherToStartEOPProcedures(OfflinePushStatus offlinePushStatus) {
     // As the outer method already locked on this instance, so this method is thread-safe.
+    Store store = getStoreOrThrow(offlinePushStatus);
+
+    Version version = getVersionOrThrow(store, offlinePushStatus.getKafkaTopic());
+    Map<String, ViewConfig> viewConfigMap = version.getViewConfigs();
+    if (!store.isHybrid() && (viewConfigMap == null || viewConfigMap.isEmpty())) {
+      // The only procedures that may start after EOP is received in every partition are:
+      // 1. start buffer replay for hybrid store
+      // 2. send EOP for materialized view (there could be more view procedures in the future)
+      return;
+    }
+    try {
+      boolean isDataRecovery = version.getDataRecoveryVersionConfig() != null;
+      boolean isEOPReceivedInAllPartitions = offlinePushStatus.isEOPReceivedInEveryPartition(isDataRecovery);
+      StringBuilder newStatusDetails = new StringBuilder();
+      // Check whether to start buffer replay
+      if (store.isHybrid()) {
+        if (isEOPReceivedInAllPartitions) {
+          LOGGER.info("{} is ready to start buffer replay.", offlinePushStatus.getKafkaTopic());
+          RealTimeTopicSwitcher realTimeTopicSwitcher = getRealTimeTopicSwitcher();
+          realTimeTopicSwitcher.switchToRealTimeTopic(
+              Utils.getRealTimeTopicName(store),
+              offlinePushStatus.getKafkaTopic(),
+              store,
+              aggregateRealTimeSourceKafkaUrl,
+              activeActiveRealTimeSourceKafkaURLs);
+          newStatusDetails.append("kicked off buffer replay");
+        } else if (!offlinePushStatus.getCurrentStatus().isTerminal()) {
+          LOGGER.info(
+              "{} is not ready to start buffer replay. Current state: {}",
+              offlinePushStatus.getKafkaTopic(),
+              offlinePushStatus.getCurrentStatus().toString());
+        }
+      }
+
+      if (isEOPReceivedInAllPartitions) {
+        // Check whether to send EOP for materialized view topic(s)
+        for (ViewConfig rawView: viewConfigMap.values()) {
+          if (MaterializedView.class.getCanonicalName().equals(rawView.getViewClassName())) {
+            VeniceView veniceView = ViewUtils.getVeniceView(
+                rawView.getViewClassName(),
+                new Properties(),
+                store.getName(),
+                rawView.getViewParameters());
+            MaterializedView materializedView = (MaterializedView) veniceView;
+            for (String materializedViewTopicName: materializedView
+                .getTopicNamesAndConfigsForVersion(version.getNumber())
+                .keySet()) {
+              VeniceWriterOptions.Builder vwOptionsBuilder =
+                  new VeniceWriterOptions.Builder(materializedViewTopicName).setUseKafkaKeySerializer(true)
+                      .setPartitionCount(materializedView.getViewPartitionCount());
+              try (VeniceWriter veniceWriter = veniceWriterFactory.createVeniceWriter(vwOptionsBuilder.build())) {
+                veniceWriter.broadcastEndOfPush(Collections.emptyMap());
+              }
+              if (newStatusDetails.length() > 0) {
+                newStatusDetails.append(", ");
+              }
+              newStatusDetails.append("broadcast EOP to materialized view topic: ").append(materializedViewTopicName);
+            }
+          }
+        }
+        updatePushStatus(
+            offlinePushStatus,
+            ExecutionStatus.END_OF_PUSH_RECEIVED,
+            Optional.of(newStatusDetails.toString()));
+        LOGGER.info("Successfully {} for offlinePushStatus: {}", newStatusDetails.toString(), offlinePushStatus);
+      }
+    } catch (Exception e) {
+      String newStatusDetails = "Failed to start EOP procedures";
+      handleTerminalOfflinePushUpdate(offlinePushStatus, new ExecutionStatusWithDetails(ERROR, newStatusDetails));
+      LOGGER.error("{} for offlinePushStatus: {}", newStatusDetails, offlinePushStatus, e);
+    }
+  }
+
+  private Store getStoreOrThrow(OfflinePushStatus offlinePushStatus) {
     String storeName = Version.parseStoreFromKafkaTopicName(offlinePushStatus.getKafkaTopic());
     Store store = getReadWriteStoreRepository().getStore(storeName);
     if (store == null) {
@@ -913,37 +1013,15 @@ public abstract class AbstractPushMonitor
         LOGGER.info("metadataRepository.refresh() allowed us to retrieve store: '{}'!", storeName);
       }
     }
+    return store;
+  }
 
-    if (store.isHybrid()) {
-      Version version = store.getVersion(Version.parseVersionFromKafkaTopicName(offlinePushStatus.getKafkaTopic()));
-      boolean isDataRecovery = version != null && version.getDataRecoveryVersionConfig() != null;
-      if (offlinePushStatus.isReadyToStartBufferReplay(isDataRecovery)) {
-        LOGGER.info("{} is ready to start buffer replay.", offlinePushStatus.getKafkaTopic());
-        RealTimeTopicSwitcher realTimeTopicSwitcher = getRealTimeTopicSwitcher();
-        try {
-          String newStatusDetails;
-          realTimeTopicSwitcher.switchToRealTimeTopic(
-              Version.composeRealTimeTopic(storeName),
-              offlinePushStatus.getKafkaTopic(),
-              store,
-              aggregateRealTimeSourceKafkaUrl,
-              activeActiveRealTimeSourceKafkaURLs);
-          newStatusDetails = "kicked off buffer replay";
-          updatePushStatus(offlinePushStatus, ExecutionStatus.END_OF_PUSH_RECEIVED, Optional.of(newStatusDetails));
-          LOGGER.info("Successfully {} for offlinePushStatus: {}", newStatusDetails, offlinePushStatus);
-        } catch (Exception e) {
-          // TODO: Figure out a better error handling...
-          String newStatusDetails = "Failed to kick off the buffer replay";
-          handleTerminalOfflinePushUpdate(offlinePushStatus, new ExecutionStatusWithDetails(ERROR, newStatusDetails));
-          LOGGER.error("{} for offlinePushStatus: {}", newStatusDetails, offlinePushStatus, e);
-        }
-      } else if (!offlinePushStatus.getCurrentStatus().isTerminal()) {
-        LOGGER.info(
-            "{} is not ready to start buffer replay. Current state: {}",
-            offlinePushStatus.getKafkaTopic(),
-            offlinePushStatus.getCurrentStatus().toString());
-      }
+  private Version getVersionOrThrow(Store store, String topic) {
+    Version version = store.getVersion(Version.parseVersionFromKafkaTopicName(topic));
+    if (version == null) {
+      throw new IllegalStateException("Could not find Version object for: " + topic);
     }
+    return version;
   }
 
   /**
@@ -1111,15 +1189,41 @@ public abstract class AbstractPushMonitor
                     storeName,
                     versionNumber));
           }
-          if (version.isVersionSwapDeferred()) {
+
+          /**
+           * Switch to the new version if:
+           * 1.deferred version swap is not enabled and it is not a target region push w/ deferred version swap
+           * 2.target region push w/ deferred swap is enabled and the current region matches the target region
+           *
+           * Do not switch to the new version now if:
+           * 1.deferred version swap is enabled (it will be manually swapped at a later date)
+           * 2.target region push is enabled and the current region does NOT match the target region (it will be swapped
+           *  after targetSwapRegionWaitTime passes)
+           */
+          Set<String> targetRegions = RegionUtils.parseRegionsFilterList(version.getTargetSwapRegion());
+          boolean isTargetRegionPushWithDeferredSwap =
+              version.isVersionSwapDeferred() && targetRegions.contains(regionName);
+          boolean isNormalPush = !version.isVersionSwapDeferred();
+          boolean isDeferredSwap = version.isVersionSwapDeferred() && targetRegions.isEmpty();
+          if (isTargetRegionPushWithDeferredSwap || isNormalPush) {
             LOGGER.info(
-                "Version swap is deferred for store {} on version {}. Skipping version swap.",
+                "Swapping to version {} for store {} in region {} during "
+                    + (isNormalPush ? "normal push" : "target region push with deferred version swap"),
+                versionNumber,
                 store.getName(),
-                versionNumber);
-          } else {
+                regionName,
+                isTargetRegionPushWithDeferredSwap,
+                isNormalPush);
             int previousVersion = store.getCurrentVersion();
             store.setCurrentVersion(versionNumber);
             realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
+          } else {
+            LOGGER.info(
+                "Version swap is deferred for store {} on version {} in region {} because "
+                    + (isDeferredSwap ? "deferred version swap is enabled" : "it is not in the target regions"),
+                store.getName(),
+                versionNumber,
+                regionName);
           }
         } else {
           LOGGER.info(

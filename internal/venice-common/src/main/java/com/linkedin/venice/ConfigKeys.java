@@ -97,6 +97,10 @@ public class ConfigKeys {
   public static final String DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_BYTES_PER_SECOND =
       "da.vinci.current.version.bootstrapping.quota.bytes.per.second";
 
+  // On Da Vinci Client, control over automatic partition subscription.
+  public static final String DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY =
+      "da.vinci.subscribe.on.disk.partitions.automatically";
+
   // Unordered throttlers aren't compatible with Shared Kafka Consumer and have no effect when Shared Consumer is used.
   public static final String KAFKA_FETCH_QUOTA_UNORDERED_BYTES_PER_SECOND =
       "kafka.fetch.quota.unordered.bytes.per.second";
@@ -117,6 +121,12 @@ public class ConfigKeys {
    */
   public static final String PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_THREAD_POOL_SIZE =
       "pubsub.topic.manager.metadata.fetcher.thread.pool.size";
+
+  /**
+   * During a state transition, it is unsafe to proceed without waiting for all inflight messages to be processed.
+   * This controls how long to wait for inflight messages after unsubscribing from a topic during a state transition.
+   */
+  public static final String SERVER_MAX_WAIT_AFTER_UNSUBSCRIBE_MS = "server.max.wait.after.unsubscribe.ms";
 
   // Cluster specific configs for controller
   public static final String CONTROLLER_NAME = "controller.name";
@@ -218,6 +228,27 @@ public class ConfigKeys {
   public static final String CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG = "controller.resource.instance.group.tag";
   // What tags to assign to a controller instance
   public static final String CONTROLLER_INSTANCE_TAG_LIST = "controller.instance.tag.list";
+
+  /**
+   * Whether to enable gRPC server in controller or not.
+   */
+  public static final String CONTROLLER_GRPC_SERVER_ENABLED = "controller.grpc.server.enabled";
+
+  /**
+   * A port for the controller to listen on for incoming requests. On this port, the controller will
+   * server non-ssl requests.
+   */
+  public static final String CONTROLLER_ADMIN_GRPC_PORT = "controller.admin.grpc.port";
+  /**
+   * A port for the controller to listen on for incoming requests. On this port, the controller will
+   * only serve ssl requests.
+   */
+  public static final String CONTROLLER_ADMIN_SECURE_GRPC_PORT = "controller.admin.secure.grpc.port";
+
+  /**
+   * Number of threads to use for the gRPC server in controller.
+   */
+  public static final String CONTROLLER_GRPC_SERVER_THREAD_COUNT = "controller.grpc.server.thread.count";
 
   /** List of forbidden admin paths */
   public static final String CONTROLLER_DISABLED_ROUTES = "controller.cluster.disabled.routes";
@@ -381,7 +412,7 @@ public class ConfigKeys {
       "controller.storage.cluster.helix.cloud.enabled";
 
   /**
-   * What cloud environment the controller is in. Maps to {@link org.apache.helix.cloud.constants.CloudProvider} Default is empty string.
+   * What cloud environment the controller is in. Maps to {@link org.apache.helix.cloud.constants.CloudProvider}. Default is empty string.
    */
   public static final String CONTROLLER_HELIX_CLOUD_PROVIDER = "controller.helix.cloud.provider";
 
@@ -396,9 +427,21 @@ public class ConfigKeys {
   public static final String CONTROLLER_HELIX_CLOUD_INFO_SOURCES = "controller.helix.cloud.info.sources";
 
   /**
-   * Name of the function that processes the fetching and parsing of cloud information. Default is empty string.
+   * Package name of the class that processes the fetching and parsing of cloud information. Default is empty string.
+   */
+  public static final String CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_PACKAGE =
+      "controller.helix.cloud.info.processor.package";
+
+  /**
+   * Name of the class that processes the fetching and parsing of cloud information. Default is empty string.
    */
   public static final String CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME = "controller.helix.cloud.info.processor.name";
+
+  /**
+   * Base URL for customized health checks triggered by Helix. Default is empty string.
+   */
+  public static final String CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL =
+      "controller.helix.rest.customized.health.url";
 
   /**
    * Whether to enable graveyard cleanup for batch-only store at cluster level. Default is false.
@@ -502,6 +545,10 @@ public class ConfigKeys {
   public static final String SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS =
       "server.netty.graceful.shutdown.period.seconds";
   public static final String SERVER_NETTY_WORKER_THREADS = "server.netty.worker.threads";
+  /**
+   * Whether to join a Helix cluster in an UNKNOWN state
+   */
+  public static final String SERVER_HELIX_JOIN_AS_UNKNOWN = "server.helix.join.as.unknown";
 
   /**
    * This config key is a misspelling. It is now considered deprecated.
@@ -786,6 +833,14 @@ public class ConfigKeys {
 
   public static final String SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED =
       "server.db.read.only.for.batch.only.store.enabled";
+  public static final String SERVER_RESET_ERROR_REPLICA_ENABLED = "server.reset.error.replica.enabled";
+
+  public static final String SERVER_ADAPTIVE_THROTTLER_ENABLED = "server.adaptive.throttler.enabled";
+  public static final String SERVER_ADAPTIVE_THROTTLER_SIGNAL_IDLE_THRESHOLD =
+      "server.adaptive.throttler.signal.idle.threshold";
+  public static final String SERVER_ADAPTIVE_THROTTLER_SINGLE_GET_LATENCY_THRESHOLD =
+      "server.adaptive.throttler.single.get.latency.threshold";
+
   /**
    * A list of fully-qualified class names of all stats classes that needs to be initialized in isolated ingestion process,
    * separated by comma. This config will help isolated ingestion process to register extra stats needed for monitoring,
@@ -827,6 +882,11 @@ public class ConfigKeys {
 
   public static final String SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED =
       "server.batch.report.end.of.incremental.push.status.enabled";
+
+  /**
+   * This config dictates where the server should write the end of incremental push status.
+   */
+  public static final String SERVER_INCREMENTAL_PUSH_STATUS_WRITE_MODE = "server.incremental.push.status.write.mode";
 
   /**
    * whether to enable checksum verification in the ingestion path from kafka to database persistency. If enabled it will
@@ -1071,11 +1131,6 @@ public class ConfigKeys {
       "router.netty.graceful.shutdown.period.seconds";
 
   public static final String ROUTER_CLIENT_DECOMPRESSION_ENABLED = "router.client.decompression.enabled";
-
-  /**
-   * Whether to enable fast-avro in router;
-   */
-  public static final String ROUTER_COMPUTE_FAST_AVRO_ENABLED = "router.compute.fast.avro.enabled";
 
   /**
    * Socket timeout config for the connection manager from router to server
@@ -1802,6 +1857,17 @@ public class ConfigKeys {
       "davinci.push.status.scan.max.offline.instance.ratio";
   // this is a host-level config to decide whether bootstrap a blob transfer manager for the host
   public static final String BLOB_TRANSFER_MANAGER_ENABLED = "blob.transfer.manager.enabled";
+  // this is a config to decide whether the snapshot is expired and need to be recreated.
+  public static final String BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN =
+      "blob.transfer.snapshot.retention.time.in.min";
+  // this is a config to decide the max allowed concurrent snapshot user
+  public static final String BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER = "blob.transfer.max.concurrent.snapshot.user";
+  // this is a config to decide max file transfer timeout time in minutes
+  public static final String BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN = "blob.transfer.max.timeout.in.min";
+  // this is a config to decide the max allowed offset lag to use kafka, even if the blob transfer is enable.
+  public static final String BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD =
+      "blob.transfer.disabled.offset.lag.threshold";
+
   // Port used by peer-to-peer transfer service. It should be used by both server and client
   public static final String DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT = "davinci.p2p.blob.transfer.server.port";
   // Ideally this config should NOT be used but for testing purpose on a single host, we need to separate the ports.
@@ -2205,8 +2271,12 @@ public class ConfigKeys {
    */
   public static final String SERVER_DEDICATED_CONSUMER_POOL_FOR_AA_WC_LEADER_ENABLED =
       "server.dedicated.consumer.pool.for.aa.wc.leader.enabled";
+
   public static final String SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_AA_WC_LEADER =
       "server.dedicated.consumer.pool.size.for.aa.wc.leader";
+
+  public static final String SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_SEP_RT_LEADER =
+      "server.dedicated.consumer.pool.size.for.sep.rt.leader";
 
   /**
    * Consumer Pool allocation strategy to rely on pool size to prioritize specific traffic. There will be 3 different
@@ -2219,6 +2289,14 @@ public class ConfigKeys {
    */
   public static final String SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_AA_WC_LEADER =
       "server.consumer.pool.size.for.current.version.aa.wc.leader";
+
+  /**
+   * Consumer Pool for separate realtime leader of current version, the traffic we need to isolate due to
+   * it is more costly than normal leader processing and current version should be allocated more resources to prioritize.
+   */
+  public static final String SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_SEPARATE_RT_LEADER =
+      "server.consumer.pool.size.for.current.version.separate.rt.leader";
+
   /**
    * Consumer Pool for active-active or write computer leader of future or backup version, the traffic we need to isolate
    * due to it is still more costly than normal leader processing and it has less priority than current version.
@@ -2319,6 +2397,12 @@ public class ConfigKeys {
    */
   public static final String SERVER_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND =
       "server.aa.wc.leader.quota.records.per.second";
+  /**
+   * Quota for separate realtime topic leader replica as we know separate realtime topic messages are not prioritized
+   * compared to realtime topic messages, so we would like to use the following throttler to limit the resource usage.
+   */
+  public static final String SERVER_SEP_RT_LEADER_QUOTA_RECORDS_PER_SECOND =
+      "server.sep.rt.leader.quota.records.per.second";
 
   /**
    * The following finer quota enforcement will be used when {@literal ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION}
@@ -2326,6 +2410,8 @@ public class ConfigKeys {
    */
   public static final String SERVER_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND =
       "server.current.version.aa.wc.leader.quota.records.per.second";
+  public static final String SERVER_CURRENT_VERSION_SEPARATE_RT_LEADER_QUOTA_RECORDS_PER_SECOND =
+      "server.current.version.separate.rt.leader.quota.records.per.second";
   public static final String SERVER_CURRENT_VERSION_NON_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND =
       "server.current.version.non.aa.wc.leader.quota.records.per.second";
   public static final String SERVER_NON_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND =
@@ -2342,4 +2428,68 @@ public class ConfigKeys {
   public static final String SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_THREAD_POOL_SIZE =
       "server.aa.wc.workload.parallel.processing.thread.pool.size";
   public static final String SERVER_GLOBAL_RT_DIV_ENABLED = "server.global.rt.div.enabled";
+
+  /**
+   * Whether to enable producer throughput optimization for realtime workload or not.
+   * Two strategies:
+   * 1. Disable compression.
+   * 2. Utilizing multiple producers per write.
+   * These two options are controlled via store-level config.
+   */
+  public static final String SERVER_NEARLINE_WORKLOAD_PRODUCER_THROUGHPUT_OPTIMIZATION_ENABLED =
+      "server.nearline.workload.producer.throughput.optimization.enabled";
+  public static final String SERVER_ZSTD_DICT_COMPRESSION_LEVEL = "server.zstd.dict.compression.level";
+
+  public static final String SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP =
+      "server.delete.unassigned.partitions.on.startup";
+  public static final String CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE =
+      "controller.enable.hybrid.store.partition.count.update";
+  public static final String PUSH_JOB_VIEW_CONFIGS = "push.job.view.configs";
+
+  /**
+   * The maximum number of entries (per type) to be cached in the {@link com.linkedin.venice.meta.NameRepository}.
+   *
+   * Default: {@value com.linkedin.venice.meta.NameRepository#DEFAULT_MAXIMUM_ENTRY_COUNT}
+   */
+  public static final String NAME_REPOSITORY_MAX_ENTRY_COUNT = "name.repository.max.entry.count";
+
+  /**
+   * Specifies the value to use for Helix's rebalance preference for evenness when using Waged.
+   * Must be used in conjunction with {@link ConfigKeys#CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT}.
+   * Accepted range: 0 - 1000
+   */
+  public static final String CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS =
+      "controller.helix.rebalance.preference.evenness";
+
+  /**
+   * Specifies the value to use for Helix's rebalance preference for less movement when using Waged.
+   * Must be used in conjunction with {@link ConfigKeys#CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS}.
+   * Accepted range: 0 - 1000
+   */
+  public static final String CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT =
+      "controller.helix.rebalance.preference.less.movement";
+
+  /**
+   * Specifies the value to use for Helix's rebalance preference for force baseline convergence when using Waged.
+   * This shouldn't be enabled, so it doesn't overpower other constraints.
+   * Accepted range: 0 - 1000
+   */
+  public static final String CONTROLLER_HELIX_REBALANCE_PREFERENCE_FORCE_BASELINE_CONVERGE =
+      "controller.helix.rebalance.preference.force.baseline.converge";
+
+  /**
+   * Specifies the capacity a controller instance can handle.
+   * The weight of each Helix resource is determined by {@link ConfigKeys#CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT}.
+   */
+  public static final String CONTROLLER_HELIX_INSTANCE_CAPACITY = "controller.helix.instance.capacity";
+
+  /**
+   * Specifies the weight of each Helix resource.
+   * The maximum weight per instance is determined by {@link ConfigKeys#CONTROLLER_HELIX_INSTANCE_CAPACITY}.
+   */
+  public static final String CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT = "controller.helix.default.instance.capacity";
+
+  public static final String CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS = "controller.deferred.version.swap.sleep.ms";
+  public static final String CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED =
+      "controller.deferred.version.swap.service.enabled";
 }

@@ -108,6 +108,10 @@ public class StoreBackend {
     return stats;
   }
 
+  public ComplementSet<Integer> getSubscription() {
+    return subscription;
+  }
+
   public ReferenceCounted<VersionBackend> getDaVinciCurrentVersion() {
     return daVinciCurrentVersionRef.get();
   }
@@ -128,14 +132,22 @@ public class StoreBackend {
     return subscribe(partitions, Optional.empty());
   }
 
+  private Version getCurrentVersion() {
+    return backend.getVeniceCurrentVersion(storeName);
+  }
+
+  private Version getLatestNonFaultyVersion() {
+    return backend.getVeniceLatestNonFaultyVersion(storeName, faultyVersionSet);
+  }
+
   synchronized CompletableFuture<Void> subscribe(
       ComplementSet<Integer> partitions,
       Optional<Version> bootstrapVersion) {
     if (daVinciCurrentVersion == null) {
       setDaVinciCurrentVersion(new VersionBackend(backend, bootstrapVersion.orElseGet(() -> {
-        Version version = backend.getVeniceCurrentVersion(storeName);
+        Version version = getCurrentVersion();
         if (version == null) {
-          version = backend.getVeniceLatestNonFaultyVersion(storeName, faultyVersionSet);
+          version = getLatestNonFaultyVersion();
         }
         if (version == null) {
           throw new VeniceException("Cannot subscribe to an empty store, storeName=" + storeName);
@@ -218,9 +230,9 @@ public class StoreBackend {
       return;
     }
 
-    Version veniceCurrentVersion = backend.getVeniceCurrentVersion(storeName);
+    Version veniceCurrentVersion = getCurrentVersion();
     // Latest non-faulty store version in Venice store.
-    Version veniceLatestVersion = backend.getVeniceLatestNonFaultyVersion(storeName, faultyVersionSet);
+    Version veniceLatestVersion = getLatestNonFaultyVersion();
     Version targetVersion;
     // Make sure current version in the store config has highest priority.
     if (veniceCurrentVersion != null
@@ -246,7 +258,7 @@ public class StoreBackend {
    * failure.
    */
   synchronized void validateDaVinciAndVeniceCurrentVersion() {
-    Version veniceCurrentVersion = backend.getVeniceCurrentVersion(storeName);
+    Version veniceCurrentVersion = getCurrentVersion();
     if (veniceCurrentVersion != null && daVinciCurrentVersion != null) {
       if (veniceCurrentVersion.getNumber() > daVinciCurrentVersion.getVersion().getNumber()
           && faultyVersionSet.contains(veniceCurrentVersion.getNumber())) {
@@ -294,7 +306,7 @@ public class StoreBackend {
   synchronized void trySwapDaVinciCurrentVersion(Throwable failure) {
     if (daVinciFutureVersion != null) {
       // Fetch current version from store config.
-      Version veniceCurrentVersion = backend.getVeniceCurrentVersion(storeName);
+      Version veniceCurrentVersion = getCurrentVersion();
       if (veniceCurrentVersion == null) {
         LOGGER.warn("Failed to retrieve current version of store: " + storeName);
         return;

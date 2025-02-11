@@ -9,9 +9,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -64,6 +62,7 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.views.ChangeCaptureView;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -182,6 +181,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
             .setLocalD2ZkHosts(TEST_ZOOKEEPER_ADDRESS)
             .setRocksDBBlockCacheSizeInBytes(TEST_ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES)
             .setDatabaseSyncBytesInterval(TEST_DB_SYNC_BYTES_INTERVAL);
+    changelogClientConfig.getInnerClientConfig().setMetricsRepository(new MetricsRepository());
     bootstrappingVeniceChangelogConsumer =
         new InternalLocalBootstrappingVeniceChangelogConsumer<>(changelogClientConfig, pubSubConsumer, null);
 
@@ -232,7 +232,6 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     verify(mockStorageService, times(1)).openStoreForNewPartition(any(), eq(1), any());
     verify(metadataRepository, times(1)).start();
     verify(metadataRepository, times(1)).subscribe(storeName);
-    verify(metadataRepository, times(1)).refresh();
     verify(pubSubConsumer, times(1)).subscribe(topicPartition_0, LOWEST_OFFSET);
     verify(pubSubConsumer, times(1)).subscribe(topicPartition_1, LOWEST_OFFSET);
     verify(pubSubConsumer, times(1)).subscribe(topicPartition_0, 0L);

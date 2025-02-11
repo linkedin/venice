@@ -16,7 +16,8 @@ public class AggPushHealthStats extends AbstractVeniceAggStoreStats<PushHealthSt
         metricsRepository,
         PushHealthStats::new,
         metadataRepository,
-        isUnregisterMetricForDeletedStoreEnabled);
+        isUnregisterMetricForDeletedStoreEnabled,
+        true);
   }
 
   public void recordFailedPush(String storeName, long durationInSec) {

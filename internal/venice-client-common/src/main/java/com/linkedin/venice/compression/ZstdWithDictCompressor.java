@@ -47,12 +47,12 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
   }
 
   @Override
-  public byte[] compress(byte[] data) {
+  protected byte[] compressInternal(byte[] data) {
     return compressor.get().compress(data);
   }
 
   @Override
-  public ByteBuffer compress(ByteBuffer data, int startPositionOfOutput) throws IOException {
+  protected ByteBuffer compressInternal(ByteBuffer data, int startPositionOfOutput) throws IOException {
     long maxDstSize = Zstd.compressBound(data.remaining());
     if (maxDstSize + startPositionOfOutput > Integer.MAX_VALUE) {
       throw new ZstdException(Zstd.errGeneric(), "Max output size is greater than Integer.MAX_VALUE");
@@ -87,7 +87,7 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
   }
 
   @Override
-  public ByteBuffer decompress(ByteBuffer data) throws IOException {
+  protected ByteBuffer decompressInternal(ByteBuffer data) throws IOException {
     if (data.hasRemaining()) {
       if (data.hasArray()) {
         return decompress(data.array(), data.position(), data.remaining());
@@ -107,7 +107,7 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
   }
 
   @Override
-  public ByteBuffer decompress(byte[] data, int offset, int length) throws IOException {
+  protected ByteBuffer decompressInternal(byte[] data, int offset, int length) throws IOException {
     int expectedSize = validateExpectedDecompressedSize(Zstd.decompressedSize(data, offset, length));
     ByteBuffer returnedData = ByteBuffer.allocate(expectedSize);
     int actualSize = decompressor.get()
@@ -124,7 +124,7 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
   }
 
   @Override
-  public ByteBuffer decompressAndPrependSchemaHeader(byte[] data, int offset, int length, int schemaHeader)
+  protected ByteBuffer decompressAndPrependSchemaHeaderInternal(byte[] data, int offset, int length, int schemaHeader)
       throws IOException {
     int expectedDecompressedDataSize = validateExpectedDecompressedSize(Zstd.decompressedSize(data, offset, length));
 
@@ -138,12 +138,12 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
   }
 
   @Override
-  public InputStream decompress(InputStream inputStream) throws IOException {
+  protected InputStream decompressInternal(InputStream inputStream) throws IOException {
     return new ZstdInputStream(inputStream).setDict(this.dictDecompress);
   }
 
   @Override
-  public void close() throws IOException {
+  protected void closeInternal() throws IOException {
     this.compressor.close();
     this.decompressor.close();
     IOUtils.closeQuietly(this.dictCompress);

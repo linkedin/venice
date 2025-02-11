@@ -1,0 +1,1 @@
+{"type":"record","name":"value","namespace":"topLevelRecord","fields":[{"name":"region","type":["string","null"]},{"name":"variety","type":["string","null"]},{"name":"rating","type":["float","null"]},{"name":"notes","type":["string","null"]}]}

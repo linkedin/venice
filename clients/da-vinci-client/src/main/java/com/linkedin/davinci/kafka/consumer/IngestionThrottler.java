@@ -43,13 +43,15 @@ public class IngestionThrottler implements Closeable {
   public IngestionThrottler(
       boolean isDaVinciClient,
       VeniceServerConfig serverConfig,
-      Supplier<Map<String, StoreIngestionTask>> ongoingIngestionTaskMapSupplier) {
+      Supplier<Map<String, StoreIngestionTask>> ongoingIngestionTaskMapSupplier,
+      AdaptiveThrottlerSignalService adaptiveThrottlerSignalService) {
     this(
         isDaVinciClient,
         serverConfig,
         ongoingIngestionTaskMapSupplier,
         CURRENT_VERSION_BOOTSTRAPPING_DEFAULT_CHECK_INTERVAL,
-        CURRENT_VERSION_BOOTSTRAPPING_DEFAULT_CHECK_TIMEUNIT);
+        CURRENT_VERSION_BOOTSTRAPPING_DEFAULT_CHECK_TIMEUNIT,
+        adaptiveThrottlerSignalService);
   }
 
   public IngestionThrottler(
@@ -57,20 +59,48 @@ public class IngestionThrottler implements Closeable {
       VeniceServerConfig serverConfig,
       Supplier<Map<String, StoreIngestionTask>> ongoingIngestionTaskMapSupplier,
       int checkInterval,
-      TimeUnit checkTimeUnit) {
+      TimeUnit checkTimeUnit,
+      AdaptiveThrottlerSignalService adaptiveThrottlerSignalService) {
+    VeniceAdaptiveIngestionThrottler globalRecordAdaptiveIngestionThrottler;
+    EventThrottler globalRecordThrottler;
+    EventThrottler globalBandwidthThrottler;
+    VeniceAdaptiveIngestionThrottler globalBandwidthAdaptiveIngestionThrottler;
 
-    EventThrottler regularRecordThrottler = new EventThrottler(
-        serverConfig.getKafkaFetchQuotaRecordPerSecond(),
-        serverConfig.getKafkaFetchQuotaTimeWindow(),
-        "kafka_consumption_records_count",
-        false,
-        EventThrottler.BLOCK_STRATEGY);
-    EventThrottler regularBandwidthThrottler = new EventThrottler(
-        serverConfig.getKafkaFetchQuotaBytesPerSecond(),
-        serverConfig.getKafkaFetchQuotaTimeWindow(),
-        "kafka_consumption_bandwidth",
-        false,
-        EventThrottler.BLOCK_STRATEGY);
+    if (serverConfig.isAdaptiveThrottlerEnabled()) {
+      globalRecordThrottler = null;
+      globalRecordAdaptiveIngestionThrottler = new VeniceAdaptiveIngestionThrottler(
+          serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
+          serverConfig.getKafkaFetchQuotaRecordPerSecond(),
+          serverConfig.getKafkaFetchQuotaTimeWindow(),
+          "kafka_consumption_records_count");
+      globalRecordAdaptiveIngestionThrottler
+          .registerLimiterSignal(adaptiveThrottlerSignalService::isSingleGetLatencySignalActive);
+      adaptiveThrottlerSignalService.registerThrottler(globalRecordAdaptiveIngestionThrottler);
+      globalBandwidthThrottler = null;
+      globalBandwidthAdaptiveIngestionThrottler = new VeniceAdaptiveIngestionThrottler(
+          serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
+          serverConfig.getKafkaFetchQuotaBytesPerSecond(),
+          serverConfig.getKafkaFetchQuotaTimeWindow(),
+          "kafka_consumption_bandwidth");
+      globalBandwidthAdaptiveIngestionThrottler
+          .registerLimiterSignal(adaptiveThrottlerSignalService::isSingleGetLatencySignalActive);
+      adaptiveThrottlerSignalService.registerThrottler(globalBandwidthAdaptiveIngestionThrottler);
+    } else {
+      globalRecordAdaptiveIngestionThrottler = null;
+      globalRecordThrottler = new EventThrottler(
+          serverConfig.getKafkaFetchQuotaRecordPerSecond(),
+          serverConfig.getKafkaFetchQuotaTimeWindow(),
+          "kafka_consumption_records_count",
+          false,
+          EventThrottler.BLOCK_STRATEGY);
+      globalBandwidthAdaptiveIngestionThrottler = null;
+      globalBandwidthThrottler = new EventThrottler(
+          serverConfig.getKafkaFetchQuotaBytesPerSecond(),
+          serverConfig.getKafkaFetchQuotaTimeWindow(),
+          "kafka_consumption_bandwidth",
+          false,
+          EventThrottler.BLOCK_STRATEGY);
+    }
     this.poolTypeRecordThrottlerMap = new VeniceConcurrentHashMap<>();
     this.poolTypeRecordThrottlerMap.put(
         ConsumerPoolType.AA_WC_LEADER_POOL,
@@ -81,11 +111,27 @@ public class IngestionThrottler implements Closeable {
             false,
             EventThrottler.BLOCK_STRATEGY));
     this.poolTypeRecordThrottlerMap.put(
+        ConsumerPoolType.SEP_RT_LEADER_POOL,
+        new EventThrottler(
+            serverConfig.getSepRTLeaderQuotaRecordsPerSecond(),
+            serverConfig.getKafkaFetchQuotaTimeWindow(),
+            "sep_rt_leader_records_count",
+            false,
+            EventThrottler.BLOCK_STRATEGY));
+    this.poolTypeRecordThrottlerMap.put(
         ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL,
         new EventThrottler(
             serverConfig.getCurrentVersionAAWCLeaderQuotaRecordsPerSecond(),
             serverConfig.getKafkaFetchQuotaTimeWindow(),
             "current_version_aa_wc_leader_records_count",
+            false,
+            EventThrottler.BLOCK_STRATEGY));
+    this.poolTypeRecordThrottlerMap.put(
+        ConsumerPoolType.CURRENT_VERSION_SEP_RT_LEADER_POOL,
+        new EventThrottler(
+            serverConfig.getCurrentVersionSepRTLeaderQuotaRecordsPerSecond(),
+            serverConfig.getKafkaFetchQuotaTimeWindow(),
+            "current_version_sep_rt_leader_records_count",
             false,
             EventThrottler.BLOCK_STRATEGY));
     this.poolTypeRecordThrottlerMap.put(
@@ -149,8 +195,8 @@ public class IngestionThrottler implements Closeable {
           this.isUsingSpeedupThrottler = true;
         } else if (!hasCurrentVersionBootstrapping && isUsingSpeedupThrottler) {
           LOGGER.info("There is no active current version bootstrapping, so switch to regular throttler");
-          this.finalRecordThrottler = regularRecordThrottler;
-          this.finalBandwidthThrottler = regularBandwidthThrottler;
+          this.finalRecordThrottler = globalRecordThrottler;
+          this.finalBandwidthThrottler = globalBandwidthThrottler;
           this.isUsingSpeedupThrottler = false;
         }
 
@@ -162,8 +208,11 @@ public class IngestionThrottler implements Closeable {
       this.eventThrottlerUpdateService = null;
     }
 
-    this.finalRecordThrottler = regularRecordThrottler;
-    this.finalBandwidthThrottler = regularBandwidthThrottler;
+    this.finalRecordThrottler =
+        serverConfig.isAdaptiveThrottlerEnabled() ? globalRecordAdaptiveIngestionThrottler : globalRecordThrottler;
+    this.finalBandwidthThrottler = serverConfig.isAdaptiveThrottlerEnabled()
+        ? globalBandwidthAdaptiveIngestionThrottler
+        : globalBandwidthThrottler;
   }
 
   public void maybeThrottleRecordRate(ConsumerPoolType poolType, int count) {

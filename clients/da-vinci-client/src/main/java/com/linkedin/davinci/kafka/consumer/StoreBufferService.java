@@ -1,22 +1,22 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.venice.memory.ClassSizeEstimator.getClassOverhead;
 import static java.util.Collections.reverseOrder;
 import static java.util.Comparator.comparing;
 import static java.util.stream.Collectors.toList;
 
 import com.linkedin.davinci.stats.StoreBufferServiceStats;
 import com.linkedin.davinci.utils.LockAssistedCompletableFuture;
-import com.linkedin.venice.common.Measurable;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.kafka.protocol.Put;
-import com.linkedin.venice.kafka.protocol.Update;
-import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.memory.ClassSizeEstimator;
+import com.linkedin.venice.memory.Measurable;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.collections.MemoryBoundBlockingQueue;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
@@ -65,11 +65,43 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
   private final boolean isSorted;
 
+  private volatile boolean isStarted = false;
+
   public StoreBufferService(
       int drainerNum,
       long bufferCapacityPerDrainer,
       long bufferNotifyDelta,
       boolean queueLeaderWrites,
+      MetricsRepository metricsRepository,
+      boolean sorted) {
+    this(drainerNum, bufferCapacityPerDrainer, bufferNotifyDelta, queueLeaderWrites, null, metricsRepository, sorted);
+  }
+
+  /**
+   * Package-private constructor for testing
+   */
+  StoreBufferService(
+      int drainerNum,
+      long bufferCapacityPerDrainer,
+      long bufferNotifyDelta,
+      boolean queueLeaderWrites,
+      StoreBufferServiceStats stats) {
+    this(drainerNum, bufferCapacityPerDrainer, bufferNotifyDelta, queueLeaderWrites, stats, null, true);
+  }
+
+  /**
+   * Shared code for the main and test constructors.
+   *
+   * N.B.: Either {@param stats} or {@param metricsRepository} should be null, but not both. If neither are null, then
+   * we default to the main code's expected path, meaning that the metric repo will be used to construct a
+   * {@link StoreBufferServiceStats} instance, and the passed in stats object will be ignored.
+   */
+  private StoreBufferService(
+      int drainerNum,
+      long bufferCapacityPerDrainer,
+      long bufferNotifyDelta,
+      boolean queueLeaderWrites,
+      StoreBufferServiceStats stats,
       MetricsRepository metricsRepository,
       boolean sorted) {
     this.drainerNum = drainerNum;
@@ -80,34 +112,15 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
     this.isSorted = sorted;
     this.leaderRecordHandler = queueLeaderWrites ? this::queueLeaderRecord : StoreBufferService::processRecord;
-    String metricNamePrefix = sorted ? "StoreBufferServiceSorted" : "StoreBufferServiceUnsorted";
-    this.storeBufferServiceStats = new StoreBufferServiceStats(
-        metricsRepository,
-        metricNamePrefix,
-        this::getTotalMemoryUsage,
-        this::getTotalRemainingMemory,
-        this::getMaxMemoryUsagePerDrainer,
-        this::getMinMemoryUsagePerDrainer);
-  }
-
-  /**
-   * Constructor for testing
-   */
-  public StoreBufferService(
-      int drainerNum,
-      long bufferCapacityPerDrainer,
-      long bufferNotifyDelta,
-      boolean queueLeaderWrites,
-      StoreBufferServiceStats stats) {
-    this.drainerNum = drainerNum;
-    this.blockingQueueArr = new ArrayList<>();
-    this.bufferCapacityPerDrainer = bufferCapacityPerDrainer;
-    for (int cur = 0; cur < drainerNum; ++cur) {
-      this.blockingQueueArr.add(new MemoryBoundBlockingQueue<>(bufferCapacityPerDrainer, bufferNotifyDelta));
-    }
-    this.leaderRecordHandler = queueLeaderWrites ? this::queueLeaderRecord : StoreBufferService::processRecord;
-    this.storeBufferServiceStats = stats;
-    this.isSorted = true;
+    this.storeBufferServiceStats = metricsRepository == null
+        ? Objects.requireNonNull(stats)
+        : new StoreBufferServiceStats(
+            Objects.requireNonNull(metricsRepository),
+            sorted ? "StoreBufferServiceSorted" : "StoreBufferServiceUnsorted",
+            this::getTotalMemoryUsage,
+            this::getTotalRemainingMemory,
+            this::getMaxMemoryUsagePerDrainer,
+            this::getMinMemoryUsagePerDrainer);
   }
 
   protected MemoryBoundBlockingQueue<QueueNode> getDrainerForConsumerRecord(
@@ -297,12 +310,14 @@ public class StoreBufferService extends AbstractStoreBufferService {
       drainerList.add(drainer);
     }
     this.executorService.shutdown();
+    isStarted = true;
     return true;
   }
 
   @Override
   public void stopInner() throws Exception {
     // Graceful shutdown
+    isStarted = false;
     drainerList.forEach(drainer -> drainer.stop());
     if (this.executorService != null) {
       this.executorService.shutdownNow();
@@ -332,6 +347,10 @@ public class StoreBufferService extends AbstractStoreBufferService {
   public long getMaxMemoryUsagePerDrainer() {
     long maxUsage = 0;
     boolean slowDrainerExists = false;
+
+    if (!isStarted) {
+      return maxUsage;
+    }
 
     for (MemoryBoundBlockingQueue<QueueNode> queue: blockingQueueArr) {
       maxUsage = Math.max(maxUsage, queue.getMemoryUsage());
@@ -379,11 +398,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
   /**
    * Queue node type in {@link BlockingQueue} of each drainer thread.
    */
-  private static class QueueNode implements Measurable {
-    /**
-     * Considering the overhead of {@link PubSubMessage} and its internal structures.
-     */
-    private static final int QUEUE_NODE_OVERHEAD_IN_BYTE = 256;
+  static class QueueNode implements Measurable {
+    private static final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(QueueNode.class);
     private final PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord;
     private final StoreIngestionTask ingestionTask;
     private final String kafkaUrl;
@@ -448,40 +464,14 @@ public class StoreBufferService extends AbstractStoreBufferService {
       return consumerRecord.hashCode();
     }
 
-    @Override
-    public int getSize() {
-      // For FakePubSubMessage, the key and the value are null, return 0.
-      if (consumerRecord instanceof FakePubSubMessage) {
-        return 0;
-      }
-
-      // N.B.: This is just an estimate. TODO: Consider if it is really useful, and whether to get rid of it.
-      return this.consumerRecord.getKey().getEstimatedObjectSizeOnHeap()
-          + getEstimateOfMessageEnvelopeSizeOnHeap(this.consumerRecord.getValue()) + QUEUE_NODE_OVERHEAD_IN_BYTE;
+    protected int getBaseClassOverhead() {
+      return SHALLOW_CLASS_OVERHEAD;
     }
 
-    private int getEstimateOfMessageEnvelopeSizeOnHeap(KafkaMessageEnvelope messageEnvelope) {
-      int kmeBaseOverhead = 100; // Super rough estimate. TODO: Measure with a more precise library and store statically
-      switch (MessageType.valueOf(messageEnvelope)) {
-        case PUT:
-          Put put = (Put) messageEnvelope.payloadUnion;
-          int size = put.putValue.capacity();
-          if (put.replicationMetadataPayload != null
-              /**
-               * N.B.: When using the {@link org.apache.avro.io.OptimizedBinaryDecoder}, the {@link put.putValue} and the
-               *       {@link put.replicationMetadataPayload} will be backed by the same underlying array. If that is the
-               *       case, then we don't want to account for the capacity twice.
-               */
-              && put.replicationMetadataPayload.array() != put.putValue.array()) {
-            size += put.replicationMetadataPayload.capacity();
-          }
-          return size + kmeBaseOverhead;
-        case UPDATE:
-          Update update = (Update) messageEnvelope.payloadUnion;
-          return update.updateValue.capacity() + kmeBaseOverhead;
-        default:
-          return kmeBaseOverhead;
-      }
+    @Override
+    public int getHeapSize() {
+      /** The other non-primitive fields point to shared instances and are therefore ignored. */
+      return getBaseClassOverhead() + consumerRecord.getHeapSize();
     }
 
     @Override
@@ -491,6 +481,13 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   private static class FollowerQueueNode extends QueueNode {
+    /**
+     * N.B.: We don't want to recurse fully into the {@link CompletableFuture}, but we do want to take into account an
+     * "empty" one.
+     */
+    private static final int PARTIAL_CLASS_OVERHEAD =
+        getClassOverhead(FollowerQueueNode.class) + getClassOverhead(CompletableFuture.class);
+
     private final CompletableFuture<Void> queuedRecordPersistedFuture;
 
     public FollowerQueueNode(
@@ -517,9 +514,16 @@ public class StoreBufferService extends AbstractStoreBufferService {
     public boolean equals(Object o) {
       return super.equals(o);
     }
+
+    @Override
+    protected int getBaseClassOverhead() {
+      return PARTIAL_CLASS_OVERHEAD;
+    }
   }
 
-  private static class LeaderQueueNode extends QueueNode {
+  static class LeaderQueueNode extends QueueNode {
+    private static final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(LeaderQueueNode.class);
+
     private final LeaderProducedRecordContext leaderProducedRecordContext;
 
     public LeaderQueueNode(
@@ -546,9 +550,21 @@ public class StoreBufferService extends AbstractStoreBufferService {
     public boolean equals(Object o) {
       return super.equals(o);
     }
+
+    @Override
+    protected int getBaseClassOverhead() {
+      return SHALLOW_CLASS_OVERHEAD + leaderProducedRecordContext.getHeapSize();
+    }
   }
 
   private static class CommandQueueNode extends QueueNode {
+    /**
+     * N.B.: We don't want to recurse fully into the {@link CompletableFuture}, but we do want to take into account an
+     * "empty" one.
+     */
+    private static final int PARTIAL_CLASS_OVERHEAD =
+        getClassOverhead(CommandQueueNode.class) + getClassOverhead(LockAssistedCompletableFuture.class);
+
     enum CommandType {
       // only supports SYNC_OFFSET command today.
       SYNC_OFFSET
@@ -614,6 +630,10 @@ public class StoreBufferService extends AbstractStoreBufferService {
     @Override
     public boolean equals(Object o) {
       return super.equals(o);
+    }
+
+    protected int getBaseClassOverhead() {
+      return PARTIAL_CLASS_OVERHEAD;
     }
   }
 
@@ -740,6 +760,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   private static class FakePubSubMessage implements PubSubMessage {
+    private static final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(FakePubSubMessage.class);
     private final PubSubTopicPartition topicPartition;
 
     FakePubSubMessage(PubSubTopicPartition topicPartition) {
@@ -779,6 +800,12 @@ public class StoreBufferService extends AbstractStoreBufferService {
     @Override
     public boolean isEndOfBootstrap() {
       return false;
+    }
+
+    @Override
+    public int getHeapSize() {
+      /** We assume that {@link #topicPartition} is a singleton instance, and therefore we're not counting it. */
+      return SHALLOW_CLASS_OVERHEAD;
     }
   }
 }

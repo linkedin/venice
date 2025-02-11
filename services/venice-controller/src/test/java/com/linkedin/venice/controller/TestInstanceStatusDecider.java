@@ -6,7 +6,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
-import com.linkedin.venice.helix.HelixExternalViewRepository;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.ResourceAssignment;
@@ -39,7 +39,7 @@ public class TestInstanceStatusDecider {
   private HelixVeniceClusterResources resources;
   private String clusterName;
   private SafeHelixDataAccessor accessor;
-  private HelixExternalViewRepository routingDataRepository;
+  private HelixCustomizedViewOfflinePushRepository routingDataRepository;
   private HelixReadWriteStoreRepository readWriteStoreRepository;
   private String storeName = "TestInstanceStatusDecider";
   private int version = 1;
@@ -50,7 +50,8 @@ public class TestInstanceStatusDecider {
   public void setUp() {
     clusterName = Utils.getUniqueString("TestInstanceStatusDecider");
     resources = mock(HelixVeniceClusterResources.class);
-    routingDataRepository = mock(HelixExternalViewRepository.class);
+    routingDataRepository = mock(HelixCustomizedViewOfflinePushRepository.class);
+
     readWriteStoreRepository = mock(HelixReadWriteStoreRepository.class);
     mockMonitor = mock(PushMonitorDelegator.class);
 
@@ -59,24 +60,36 @@ public class TestInstanceStatusDecider {
       int partitionId = invocation.getArgument(1);
 
       return partitionAssignment.getPartition(partitionId).getReadyToServeInstances();
-    }).when(mockMonitor).getReadyToServeInstances(any(PartitionAssignment.class), anyInt());
+    }).when(routingDataRepository).getReadyToServeInstances(any(PartitionAssignment.class), anyInt());
 
     SafeHelixManager manager = mock(SafeHelixManager.class);
 
     accessor = mock(SafeHelixDataAccessor.class);
-    doReturn(routingDataRepository).when(resources).getRoutingDataRepository();
+    doReturn(routingDataRepository).when(resources).getCustomizedViewRepository();
     doReturn(readWriteStoreRepository).when(resources).getStoreMetadataRepository();
     doReturn(mockMonitor).when(resources).getPushMonitor();
     doReturn(manager).when(resources).getHelixManager();
     doReturn(accessor).when(manager).getHelixDataAccessor();
-    doReturn(new LiveInstance("test")).when(accessor).getProperty(any(PropertyKey.class));
+    doReturn(new LiveInstance("test_1")).when(accessor).getProperty(any(PropertyKey.class));
   }
 
   @Test
   public void testIsRemovableNonLiveInstance() {
+    String liveInstanceId = "localhost_1";
+    String nonLiveInstanceId = "test_1";
+    List<Instance> instances = new ArrayList<>();
+    instances.add(Instance.fromNodeId(liveInstanceId));
+
+    EnumMap<HelixState, List<Instance>> helixStateToInstancesMap = new EnumMap<>(HelixState.class);
+    helixStateToInstancesMap.put(HelixState.LEADER, instances);
+    EnumMap<ExecutionStatus, List<Instance>> executionStatusToInstancesMap = new EnumMap<>(ExecutionStatus.class);
+    executionStatusToInstancesMap.put(ExecutionStatus.STARTED, instances);
+    PartitionAssignment partitionAssignment = prepareAssignments(resourceName);
+    partitionAssignment.addPartition(new Partition(0, helixStateToInstancesMap, executionStatusToInstancesMap));
+
     doReturn(null).when(accessor).getProperty(any(PropertyKey.class));
     Assert.assertTrue(
-        InstanceStatusDecider.isRemovable(resources, clusterName, "test").isRemovable(),
+        InstanceStatusDecider.isRemovable(resources, clusterName, nonLiveInstanceId).isRemovable(),
         "A non-alive instance should be removable from cluster");
   }
 
@@ -86,45 +99,10 @@ public class TestInstanceStatusDecider {
    */
   @Test
   public void testIsRemovableLossData() {
-    String onlineInstanceId = "localhost_1";
-    String bootstrapInstanceId = "localhost_2";
-    PartitionAssignment partitionAssignment = prepareAssignments(resourceName);
-    List<Instance> onlineInstances = new ArrayList<>();
-    onlineInstances.add(Instance.fromNodeId(onlineInstanceId));
-    List<Instance> bootstrapInstances = new ArrayList<>();
-    bootstrapInstances.add(Instance.fromNodeId(bootstrapInstanceId));
-
-    EnumMap<HelixState, List<Instance>> helixStateToInstancesMap = new EnumMap<>(HelixState.class);
-    helixStateToInstancesMap.put(HelixState.LEADER, onlineInstances);
-    helixStateToInstancesMap.put(HelixState.STANDBY, bootstrapInstances);
-
-    EnumMap<ExecutionStatus, List<Instance>> executionStatusToInstancesMap = new EnumMap<>(ExecutionStatus.class);
-    executionStatusToInstancesMap.put(ExecutionStatus.COMPLETED, onlineInstances);
-    executionStatusToInstancesMap.put(ExecutionStatus.STARTED, bootstrapInstances);
-    partitionAssignment.addPartition(new Partition(0, helixStateToInstancesMap, executionStatusToInstancesMap));
-
-    // Test the completed push.
-    prepareStoreAndVersion(storeName, version, VersionStatus.ONLINE, true, 2);
-    NodeRemovableResult bootstrapInstanceIsRemovable =
-        InstanceStatusDecider.isRemovable(resources, clusterName, bootstrapInstanceId);
-    Assert.assertTrue(
-        bootstrapInstanceIsRemovable.isRemovable(),
-        bootstrapInstanceId + " could be removed because it's not the last online copy: "
-            + bootstrapInstanceIsRemovable.getDetails());
-    NodeRemovableResult onlineInstanceIsRemovable =
-        InstanceStatusDecider.isRemovable(resources, clusterName, onlineInstanceId);
-    Assert.assertFalse(
-        onlineInstanceIsRemovable.isRemovable(),
-        onlineInstanceId + " could NOT be removed because it the last online copy: "
-            + onlineInstanceIsRemovable.getDetails());
-
-  }
-
-  @Test
-  public void testIsRemovableLossDataInstanceView() {
     int partitionCount = 2;
     String instance1Name = "localhost_1";
     String instance2Name = "localhost_2";
+    String instance3Name = "localhost_3";
     Instance instance1 = Instance.fromNodeId(instance1Name);
     Instance instance2 = Instance.fromNodeId(instance2Name);
 
@@ -150,17 +128,31 @@ public class TestInstanceStatusDecider {
     // Test the completed push.
     prepareStoreAndVersion(storeName, version, VersionStatus.ONLINE, true, 2);
     Assert.assertTrue(
-        InstanceStatusDecider.isRemovable(resources, clusterName, instance1Name, Collections.emptyList(), true)
-            .isRemovable(),
-        instance1Name + "could be removed because it's not the last online copy in the instance's point of view.");
+        InstanceStatusDecider.isRemovable(resources, clusterName, instance1Name, Collections.emptyList()).isRemovable(),
+        instance1Name + " could be removed because it's not the last online copy.");
     Assert.assertFalse(
-        InstanceStatusDecider.isRemovable(resources, clusterName, instance2Name, Collections.emptyList(), true)
+        InstanceStatusDecider.isRemovable(resources, clusterName, instance2Name, Collections.emptyList()).isRemovable(),
+        instance2Name + " could NOT be removed because it the last online copy for partition 1.");
+
+    // Locked node check when locked instance doesn't share any replica with the instance being removed
+    Assert.assertTrue(
+        InstanceStatusDecider
+            .isRemovable(resources, clusterName, instance1Name, Collections.singletonList(instance3Name))
             .isRemovable(),
-        instance2Name + "could NOT be removed because it the last online copy in the instance's point of view.");
+        instance1Name + " could be removed because it's not the last online copy.");
     Assert.assertFalse(
-        InstanceStatusDecider.isRemovable(resources, clusterName, instance1Name).isRemovable(),
-        instance1Name
-            + "could NOT be removed because in the cluster's point of view, partition 1 does not have any online replica alive.");
+        InstanceStatusDecider
+            .isRemovable(resources, clusterName, instance2Name, Collections.singletonList(instance3Name))
+            .isRemovable(),
+        instance2Name + " could NOT be removed because it the last online copy for partition 1.");
+
+    // Locked node check when locked instance shares replicas with the instance being removed
+    Assert.assertFalse(
+        InstanceStatusDecider
+            .isRemovable(resources, clusterName, instance1Name, Collections.singletonList(instance2Name))
+            .isRemovable(),
+        instance1Name + " could NOT be removed because it will be the last online copy after " + instance2Name
+            + " is removed.");
   }
 
   /**
@@ -193,83 +185,65 @@ public class TestInstanceStatusDecider {
    */
   @Test
   public void testIsRemovableTriggerRebalance() {
-    int replicationFactor = 3;
-    List<Instance> instances = new ArrayList<>();
-    for (int i = 1; i <= replicationFactor; i++) {
-      instances.add(Instance.fromNodeId("localhost_" + i));
-    }
-
-    PartitionAssignment partitionAssignment = prepareAssignments(resourceName);
-    EnumMap<HelixState, List<Instance>> helixStateToInstancesMapForP0 = new EnumMap<>(HelixState.class);
-    helixStateToInstancesMapForP0.put(HelixState.LEADER, Arrays.asList(instances.get(0)));
-    helixStateToInstancesMapForP0.put(HelixState.STANDBY, Arrays.asList(instances.get(1), instances.get(2)));
-    EnumMap<ExecutionStatus, List<Instance>> executionStatusToInstancesMapForP0 = new EnumMap<>(ExecutionStatus.class);
-    executionStatusToInstancesMapForP0.put(ExecutionStatus.COMPLETED, instances);
-    partitionAssignment
-        .addPartition(new Partition(0, helixStateToInstancesMapForP0, executionStatusToInstancesMapForP0));
-
-    prepareStoreAndVersion(storeName, version, VersionStatus.ONLINE, true, 3);
-    Assert.assertTrue(
-        InstanceStatusDecider.isRemovable(resources, clusterName, "localhost_1").isRemovable(),
-        "Instance should be removable because after removing one instance, there are still 2 active replicas, it will not trigger re-balance.");
-
-    // Remove one instance
-    helixStateToInstancesMapForP0 = new EnumMap<>(HelixState.class);
-    helixStateToInstancesMapForP0.put(HelixState.LEADER, Arrays.asList(instances.get(0)));
-    helixStateToInstancesMapForP0.put(HelixState.STANDBY, Arrays.asList(instances.get(1)));
-    executionStatusToInstancesMapForP0 = new EnumMap<>(ExecutionStatus.class);
-    executionStatusToInstancesMapForP0
-        .put(ExecutionStatus.COMPLETED, Arrays.asList(instances.get(0), instances.get(1)));
-    partitionAssignment
-        .addPartition(new Partition(0, helixStateToInstancesMapForP0, executionStatusToInstancesMapForP0));
-
-    prepareStoreAndVersion(storeName, version, VersionStatus.ONLINE, true, 3);
-    NodeRemovableResult result = InstanceStatusDecider.isRemovable(resources, clusterName, "localhost_1");
-    Assert.assertFalse(
-        result.isRemovable(),
-        "Instance should NOT be removable because after removing one instance, there are only 1 active replica, it will not trigger re-balance.");
-    Assert.assertEquals(
-        result.getBlockingReason(),
-        NodeRemovableResult.BlockingRemoveReason.WILL_TRIGGER_LOAD_REBALANCE.toString(),
-        "Instance should NOT be removable because after removing one instance, there are only 1 active replica, it will not trigger re-balance.");
-
-  }
-
-  @Test
-  public void testIsRemovableTriggerRebalanceInstanceView() {
     int partitionCount = 2;
-    int replicationFactor = 3;
+    String instance1Name = "localhost_1";
+    Instance instance1 = Instance.fromNodeId(instance1Name);
+
+    String instance2Name = "localhost_2";
+    Instance instance2 = Instance.fromNodeId(instance2Name);
+
+    String instance3Name = "localhost_3";
+    Instance instance3 = Instance.fromNodeId(instance3Name);
+
+    String instance4Name = "localhost_4";
+    Instance instance4 = Instance.fromNodeId(instance4Name);
+
+    String instance5Name = "localhost_5";
+
     PartitionAssignment partitionAssignment = prepareMultiPartitionAssignments(resourceName, partitionCount);
 
-    List<Instance> instances = new ArrayList<>();
-    for (int i = 1; i <= replicationFactor; i++) {
-      instances.add(Instance.fromNodeId("localhost_" + i));
-    }
-
     EnumMap<HelixState, List<Instance>> helixStateToInstancesMapForP0 = new EnumMap<>(HelixState.class);
-    helixStateToInstancesMapForP0.put(HelixState.LEADER, Arrays.asList(instances.get(0)));
-    helixStateToInstancesMapForP0.put(HelixState.STANDBY, Arrays.asList(instances.get(1), instances.get(2)));
+    helixStateToInstancesMapForP0.put(HelixState.LEADER, Arrays.asList(instance1));
+    helixStateToInstancesMapForP0.put(HelixState.STANDBY, Arrays.asList(instance2, instance3));
     EnumMap<ExecutionStatus, List<Instance>> executionStatusToInstancesMapForP0 = new EnumMap<>(ExecutionStatus.class);
-    executionStatusToInstancesMapForP0.put(ExecutionStatus.COMPLETED, instances);
+    executionStatusToInstancesMapForP0.put(ExecutionStatus.COMPLETED, Arrays.asList(instance1, instance2, instance3));
     partitionAssignment
         .addPartition(new Partition(0, helixStateToInstancesMapForP0, executionStatusToInstancesMapForP0));
 
     EnumMap<HelixState, List<Instance>> helixStateToInstancesMapForP1 = new EnumMap<>(HelixState.class);
-    helixStateToInstancesMapForP1.put(HelixState.LEADER, Arrays.asList(instances.get(0)));
+    helixStateToInstancesMapForP1.put(HelixState.LEADER, Arrays.asList(instance1, instance4));
     EnumMap<ExecutionStatus, List<Instance>> executionStatusToInstancesMapForP1 = new EnumMap<>(ExecutionStatus.class);
-    executionStatusToInstancesMapForP1.put(ExecutionStatus.COMPLETED, Arrays.asList(instances.get(0)));
+    executionStatusToInstancesMapForP1.put(ExecutionStatus.COMPLETED, Arrays.asList(instance1, instance4));
     partitionAssignment
         .addPartition(new Partition(1, helixStateToInstancesMapForP1, executionStatusToInstancesMapForP1));
 
     prepareStoreAndVersion(storeName, version, VersionStatus.ONLINE, true, 3);
     Assert.assertTrue(
-        InstanceStatusDecider.isRemovable(resources, clusterName, "localhost_3", Collections.emptyList(), true)
-            .isRemovable(),
-        "Instance should be removable because after removing one instance, there are 2 active replicas in partition 0 in instance's point of view, it will not trigger re-balance.");
+        InstanceStatusDecider.isRemovable(resources, clusterName, instance3Name, Collections.emptyList()).isRemovable(),
+        "Instance should be removable because after removing one instance, there are 2 active replicas in partition 0, it will not trigger re-balance.");
     Assert.assertFalse(
-        InstanceStatusDecider.isRemovable(resources, clusterName, "localhost_3").isRemovable(),
-        "Instance should NOT be removable because after removing one instance, there are only 1 active replicas in partition 1 in cluster's point of view, it will trigger re-balance.");
+        InstanceStatusDecider.isRemovable(resources, clusterName, instance1Name, Collections.emptyList()).isRemovable(),
+        "Instance should NOT be removable because after removing one instance, there are 1 active replicas in partition 1, it will trigger re-balance.");
 
+    // Locked node check when locked instance doesn't share any replica with the instance being removed
+    Assert.assertTrue(
+        InstanceStatusDecider
+            .isRemovable(resources, clusterName, instance3Name, Collections.singletonList(instance5Name))
+            .isRemovable(),
+        "Instance should be removable because after removing one instance, there are 2 active replicas in partition 0, it will not trigger re-balance.");
+    Assert.assertFalse(
+        InstanceStatusDecider
+            .isRemovable(resources, clusterName, instance1Name, Collections.singletonList(instance5Name))
+            .isRemovable(),
+        "Instance should NOT be removable because after removing one instance, there are 1 active replicas in partition 1, it will trigger re-balance.");
+
+    // Locked node check when locked instance shares replicas with the instance being removed
+    Assert.assertFalse(
+        InstanceStatusDecider
+            .isRemovable(resources, clusterName, instance2Name, Collections.singletonList(instance3Name))
+            .isRemovable(),
+        instance2Name + " could NOT be removed because it will trigger rebalance after " + instance3Name
+            + " is removed.");
   }
 
   private PartitionAssignment prepareAssignments(String resourceName) {

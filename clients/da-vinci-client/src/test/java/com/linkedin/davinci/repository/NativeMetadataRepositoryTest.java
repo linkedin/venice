@@ -20,25 +20,35 @@ import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.systemstore.schemas.StoreValueSchema;
 import com.linkedin.venice.systemstore.schemas.StoreValueSchemas;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import io.tehuti.Metric;
+import io.tehuti.metrics.MetricsRepository;
+import java.time.Clock;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
-import org.testng.annotations.BeforeClass;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class NativeMetadataRepositoryTest {
   private ClientConfig clientConfig;
   private VeniceProperties backendConfig;
-
+  private MetricsRepository metricsRepository;
+  private Clock clock;
   private static final String STORE_NAME = "hardware_store";
 
-  @BeforeClass
+  @BeforeMethod
   public void setUpMocks() {
     clientConfig = mock(ClientConfig.class);
     backendConfig = mock(VeniceProperties.class);
     doReturn(1L).when(backendConfig).getLong(eq(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS), anyLong());
+    metricsRepository = new MetricsRepository();
+    doReturn(metricsRepository).when(clientConfig).getMetricsRepository();
+    clock = mock(Clock.class);
+    doReturn(0L).when(clock).millis();
   }
 
   @Test
@@ -56,7 +66,7 @@ public class NativeMetadataRepositoryTest {
 
   @Test
   public void testGetSchemaDataFromReadThroughCache() throws InterruptedException {
-    TestNMR nmr = new TestNMR(clientConfig, backendConfig);
+    TestNMR nmr = new TestNMR(clientConfig, backendConfig, clock);
     nmr.start();
     Assert.assertThrows(VeniceNoStoreException.class, () -> nmr.getKeySchema(STORE_NAME));
     nmr.subscribe(STORE_NAME);
@@ -67,7 +77,7 @@ public class NativeMetadataRepositoryTest {
   public void testGetSchemaDataEfficiently() throws InterruptedException {
     doReturn(Long.MAX_VALUE).when(backendConfig)
         .getLong(eq(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS), anyLong());
-    TestNMR nmr = new TestNMR(clientConfig, backendConfig);
+    TestNMR nmr = new TestNMR(clientConfig, backendConfig, clock);
     nmr.start();
     Assert.assertEquals(nmr.keySchemaRequestCount, 0);
     Assert.assertEquals(nmr.valueSchemasRequestCount, 0);
@@ -97,13 +107,55 @@ public class NativeMetadataRepositoryTest {
     Assert.assertNotNull(nmr.getValueSchema(STORE_NAME, 2));
   }
 
+  /**
+   * We are using {@link TestUtils#waitForNonDeterministicAssertion(long, TimeUnit, TestUtils.NonDeterministicAssertion)}
+   * because in some rare cases the underlying async gauge will return stale value
+   */
+  @Test
+  public void testNativeMetadataRepositoryStats() throws InterruptedException {
+    doReturn(Long.MAX_VALUE).when(backendConfig)
+        .getLong(eq(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS), anyLong());
+    TestNMR nmr = new TestNMR(clientConfig, backendConfig, clock);
+    nmr.start();
+    nmr.subscribe(STORE_NAME);
+    doReturn(1000L).when(clock).millis();
+    String stalenessMetricName = ".native_metadata_repository--store_metadata_staleness_high_watermark_ms.Gauge";
+    TestUtils.waitForNonDeterministicAssertion(500, TimeUnit.MILLISECONDS, () -> {
+      Metric staleness = metricsRepository.getMetric(stalenessMetricName);
+      Assert.assertNotNull(staleness);
+      Assert.assertEquals(staleness.value(), 1000d);
+    });
+    String anotherStoreName = STORE_NAME + "V2";
+    nmr.subscribe(anotherStoreName);
+    nmr.refreshOneStore(anotherStoreName);
+    // After one store refresh we should still see staleness increase because it reports the max amongst all stores
+    doReturn(2000L).when(clock).millis();
+    TestUtils.waitForNonDeterministicAssertion(
+        500,
+        TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(metricsRepository.getMetric(stalenessMetricName).value(), 2000d));
+    // Refresh both stores and staleness should decrease
+    nmr.refresh();
+    TestUtils.waitForNonDeterministicAssertion(
+        500,
+        TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(metricsRepository.getMetric(stalenessMetricName).value(), 0d));
+    nmr.unsubscribe(STORE_NAME);
+    nmr.unsubscribe(anotherStoreName);
+    // Unsubscribing stores should remove their corresponding staleness metric
+    TestUtils.waitForNonDeterministicAssertion(
+        500,
+        TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(metricsRepository.getMetric(stalenessMetricName).value(), Double.NaN));
+  }
+
   static class TestNMR extends NativeMetadataRepository {
     int keySchemaRequestCount = 0;
     int valueSchemasRequestCount = 0;
     int specificValueSchemaRequestCount = 0;
 
-    protected TestNMR(ClientConfig clientConfig, VeniceProperties backendConfig) {
-      super(clientConfig, backendConfig);
+    protected TestNMR(ClientConfig clientConfig, VeniceProperties backendConfig, Clock clock) {
+      super(clientConfig, backendConfig, clock);
     }
 
     @Override
@@ -116,7 +168,7 @@ public class NativeMetadataRepositoryTest {
     @Override
     protected Store getStoreFromSystemStore(String storeName, String clusterName) {
       Store store = mock(Store.class);
-      when(store.getName()).thenReturn(STORE_NAME);
+      when(store.getName()).thenReturn(storeName);
       when(store.getReadQuotaInCU()).thenReturn(1L);
       return store;
     }

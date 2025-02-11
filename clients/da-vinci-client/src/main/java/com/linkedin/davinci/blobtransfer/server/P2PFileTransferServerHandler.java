@@ -3,6 +3,7 @@ package com.linkedin.davinci.blobtransfer.server;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_COMPLETED;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_TYPE;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferType;
 import static com.linkedin.venice.utils.NettyUtils.setupResponseAndFlush;
 import static io.netty.handler.codec.http.HttpHeaderValues.APPLICATION_JSON;
@@ -10,14 +11,11 @@ import static io.netty.handler.codec.http.HttpHeaderValues.APPLICATION_OCTET_STR
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.davinci.blobtransfer.BlobSnapshotManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferPartitionMetadata;
 import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
-import com.linkedin.davinci.storage.StorageMetadataService;
-import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
-import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.venice.request.RequestHelper;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFuture;
@@ -44,7 +42,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.net.URI;
-import java.nio.ByteBuffer;
+import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -56,15 +54,20 @@ import org.apache.logging.log4j.Logger;
 @ChannelHandler.Sharable
 public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
   private static final Logger LOGGER = LogManager.getLogger(P2PFileTransferServerHandler.class);
-  private static final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer =
-      AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
+  private static final String TRANSFER_TIMEOUT_ERROR_MSG_FORMAT = "Timeout for transferring blob %s file %s";
   private boolean useZeroCopy = false;
   private final String baseDir;
-  private StorageMetadataService storageMetadataService;
+  // Maximum timeout for blob transfer in minutes per partition
+  private final int blobTransferMaxTimeoutInMin;
+  private BlobSnapshotManager blobSnapshotManager;
 
-  public P2PFileTransferServerHandler(String baseDir, StorageMetadataService storageMetadataService) {
+  public P2PFileTransferServerHandler(
+      String baseDir,
+      int blobTransferMaxTimeoutInMin,
+      BlobSnapshotManager blobSnapshotManager) {
     this.baseDir = baseDir;
-    this.storageMetadataService = storageMetadataService;
+    this.blobTransferMaxTimeoutInMin = blobTransferMaxTimeoutInMin;
+    this.blobSnapshotManager = blobSnapshotManager;
   }
 
   @Override
@@ -99,52 +102,89 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
           ctx);
       return;
     }
-    final BlobTransferPayload blobTransferRequest;
-    final File snapshotDir;
+    BlobTransferPayload blobTransferRequest = null;
     try {
-      blobTransferRequest = parseBlobTransferPayload(URI.create(httpRequest.uri()));
-      snapshotDir = new File(blobTransferRequest.getSnapshotDir());
-      if (!snapshotDir.exists() || !snapshotDir.isDirectory()) {
-        byte[] errBody = ("Snapshot for " + blobTransferRequest.getFullResourceName() + " doesn't exist").getBytes();
-        setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, errBody, false, ctx);
+      final File snapshotDir;
+      BlobTransferPartitionMetadata transferPartitionMetadata;
+
+      try {
+        blobTransferRequest = parseBlobTransferPayload(URI.create(httpRequest.uri()));
+        snapshotDir = new File(blobTransferRequest.getSnapshotDir());
+        try {
+          transferPartitionMetadata = blobSnapshotManager.getTransferMetadata(blobTransferRequest);
+        } catch (Exception e) {
+          setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, e.getMessage().getBytes(), false, ctx);
+          return;
+        }
+
+        if (!snapshotDir.exists() || !snapshotDir.isDirectory()) {
+          byte[] errBody = ("Snapshot for " + blobTransferRequest.getFullResourceName() + " doesn't exist").getBytes();
+          setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, errBody, false, ctx);
+          return;
+        }
+
+        // Check the snapshot table format
+        BlobTransferTableFormat currentSnapshotTableFormat = blobSnapshotManager.getBlobTransferTableFormat();
+        if (blobTransferRequest.getRequestTableFormat() != currentSnapshotTableFormat) {
+          byte[] errBody = ("Table format mismatch for " + blobTransferRequest.getFullResourceName()
+              + ", current snapshot format is " + currentSnapshotTableFormat.name() + ", requested format is "
+              + blobTransferRequest.getRequestTableFormat().name()).getBytes();
+          setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, errBody, false, ctx);
+          return;
+        }
+      } catch (IllegalArgumentException e) {
+        setupResponseAndFlush(HttpResponseStatus.BAD_REQUEST, e.getMessage().getBytes(), false, ctx);
+        return;
+      } catch (SecurityException e) {
+        setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, e.getMessage().getBytes(), false, ctx);
         return;
       }
-    } catch (IllegalArgumentException e) {
-      setupResponseAndFlush(HttpResponseStatus.BAD_REQUEST, e.getMessage().getBytes(), false, ctx);
-      return;
-    } catch (SecurityException e) {
-      setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, e.getMessage().getBytes(), false, ctx);
-      return;
-    }
 
-    File[] files = snapshotDir.listFiles();
-    if (files == null || files.length == 0) {
-      setupResponseAndFlush(
-          HttpResponseStatus.INTERNAL_SERVER_ERROR,
-          ("Failed to access files at " + snapshotDir).getBytes(),
-          false,
-          ctx);
-      return;
-    }
-
-    // transfer files
-    for (File file: files) {
-      sendFile(file, ctx);
-    }
-
-    // transfer metadata
-    sendMetadata(blobTransferRequest, ctx);
-
-    // end of transfer
-    HttpResponse endOfTransfer = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
-    endOfTransfer.headers().set(BLOB_TRANSFER_STATUS, BLOB_TRANSFER_COMPLETED);
-    ctx.writeAndFlush(endOfTransfer).addListener(future -> {
-      if (future.isSuccess()) {
-        LOGGER.debug("All files sent successfully for {}", blobTransferRequest.getFullResourceName());
-      } else {
-        LOGGER.error("Failed to send all files for {}", blobTransferRequest.getFullResourceName(), future.cause());
+      File[] files = snapshotDir.listFiles();
+      if (files == null || files.length == 0) {
+        setupResponseAndFlush(
+            HttpResponseStatus.INTERNAL_SERVER_ERROR,
+            ("Failed to access files at " + snapshotDir).getBytes(),
+            false,
+            ctx);
+        return;
       }
-    });
+
+      // Set up the time limitation for the transfer
+      long startTime = System.currentTimeMillis();
+
+      // transfer files
+      for (File file: files) {
+        // check if the transfer for all files is timed out for this partition
+        if (System.currentTimeMillis() - startTime >= TimeUnit.MINUTES.toMillis(blobTransferMaxTimeoutInMin)) {
+          String errMessage = String
+              .format(TRANSFER_TIMEOUT_ERROR_MSG_FORMAT, blobTransferRequest.getFullResourceName(), file.getName());
+          LOGGER.error(errMessage);
+          setupResponseAndFlush(HttpResponseStatus.REQUEST_TIMEOUT, errMessage.getBytes(), false, ctx);
+          return;
+        }
+        // send file
+        sendFile(file, ctx);
+      }
+
+      sendMetadata(ctx, transferPartitionMetadata);
+
+      // end of transfer
+      HttpResponse endOfTransfer = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+      endOfTransfer.headers().set(BLOB_TRANSFER_STATUS, BLOB_TRANSFER_COMPLETED);
+      String fullResourceName = blobTransferRequest.getFullResourceName();
+      ctx.writeAndFlush(endOfTransfer).addListener(future -> {
+        if (future.isSuccess()) {
+          LOGGER.debug("All files sent successfully for {}", fullResourceName);
+        } else {
+          LOGGER.error("Failed to send all files for {}", fullResourceName, future.cause());
+        }
+      });
+    } finally {
+      if (blobTransferRequest != null) {
+        blobSnapshotManager.decreaseConcurrentUserCount(blobTransferRequest);
+      }
+    }
   }
 
   /**
@@ -177,10 +217,13 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     ChannelFuture sendFileFuture;
     ChannelFuture lastContentFuture;
     long length = raf.length();
+    String fileChecksum = BlobTransferUtils.generateFileChecksum(file.toPath());
+
     HttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     response.headers().set(HttpHeaderNames.CONTENT_LENGTH, length);
     response.headers().set(HttpHeaderNames.CONTENT_TYPE, APPLICATION_OCTET_STREAM);
     response.headers().set(HttpHeaderNames.CONTENT_DISPOSITION, "attachment; filename=\"" + file.getName() + "\"");
+    response.headers().set(HttpHeaderNames.CONTENT_MD5, fileChecksum);
     response.headers().set(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
 
     ctx.write(response);
@@ -210,30 +253,14 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     });
   }
 
-  public void sendMetadata(BlobTransferPayload blobTransferRequest, ChannelHandlerContext ctx)
+  /**
+   * Send metadata for the given blob transfer request
+   * @param ctx the channel context
+   * @param metadata the metadata to be sent
+   * @throws JsonProcessingException
+   */
+  public void sendMetadata(ChannelHandlerContext ctx, BlobTransferPartitionMetadata metadata)
       throws JsonProcessingException {
-    // prepare metadata
-    BlobTransferPartitionMetadata metadata = null;
-    try {
-      StoreVersionState storeVersionState =
-          storageMetadataService.getStoreVersionState(blobTransferRequest.getTopicName());
-      java.nio.ByteBuffer storeVersionStateByte =
-          ByteBuffer.wrap(storeVersionStateSerializer.serialize(blobTransferRequest.getTopicName(), storeVersionState));
-
-      OffsetRecord offsetRecord =
-          storageMetadataService.getLastOffset(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition());
-      java.nio.ByteBuffer offsetRecordByte = ByteBuffer.wrap(offsetRecord.toBytes());
-
-      metadata = new BlobTransferPartitionMetadata(
-          blobTransferRequest.getTopicName(),
-          blobTransferRequest.getPartition(),
-          offsetRecordByte,
-          storeVersionStateByte);
-    } catch (Exception e) {
-      byte[] errBody = ("Failed to get metadata for " + blobTransferRequest.getTopicName()).getBytes();
-      setupResponseAndFlush(HttpResponseStatus.INTERNAL_SERVER_ERROR, errBody, false, ctx);
-    }
-
     ObjectMapper objectMapper = ObjectMapperFactory.getInstance();
     String jsonMetadata = objectMapper.writeValueAsString(metadata);
     byte[] metadataBytes = jsonMetadata.getBytes();
@@ -247,9 +274,9 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
 
     ctx.writeAndFlush(metadataResponse).addListener(future -> {
       if (future.isSuccess()) {
-        LOGGER.debug("Metadata for {} sent successfully", blobTransferRequest.getTopicName());
+        LOGGER.debug("Metadata for {} sent successfully", metadata.getTopicName());
       } else {
-        LOGGER.error("Failed to send metadata for {}", blobTransferRequest.getTopicName());
+        LOGGER.error("Failed to send metadata for {}", metadata.getTopicName());
       }
     });
   }
@@ -262,13 +289,24 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
   private BlobTransferPayload parseBlobTransferPayload(URI uri) throws IllegalArgumentException {
     // Parse the request uri to obtain the storeName and partition
     String[] requestParts = RequestHelper.getRequestParts(uri);
-    if (requestParts.length == 4) {
-      // [0]""/[1]"store"/[2]"version"/[3]"partition"
+
+    // Ensure table format is valid
+    BlobTransferTableFormat requestTableFormat;
+    try {
+      requestTableFormat = BlobTransferTableFormat.valueOf(requestParts[4]);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(
+          "Invalid table format: " + requestParts[4] + " for fetching blob at " + uri.getPath());
+    }
+
+    if (requestParts.length == 5) {
+      // [0]""/[1]"store"/[2]"version"/[3]"partition/[4]"table format"
       return new BlobTransferPayload(
           baseDir,
           requestParts[1],
           Integer.parseInt(requestParts[2]),
-          Integer.parseInt(requestParts[3]));
+          Integer.parseInt(requestParts[3]),
+          requestTableFormat);
     } else {
       throw new IllegalArgumentException("Invalid request for fetching blob at " + uri.getPath());
     }

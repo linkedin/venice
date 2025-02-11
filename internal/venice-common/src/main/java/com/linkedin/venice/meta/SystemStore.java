@@ -680,6 +680,56 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public boolean isNearlineProducerCompressionEnabled() {
+    return zkSharedStore.isNearlineProducerCompressionEnabled();
+  }
+
+  @Override
+  public void setNearlineProducerCompressionEnabled(boolean compressionEnabled) {
+    throwUnsupportedOperationException("setNearlineProducerCompressionEnabled");
+  }
+
+  @Override
+  public int getNearlineProducerCountPerWriter() {
+    return zkSharedStore.getNearlineProducerCountPerWriter();
+  }
+
+  @Override
+  public void setNearlineProducerCountPerWriter(int producerCnt) {
+    throwUnsupportedOperationException("setNearlineProducerCountPerWriter");
+  }
+
+  @Override
+  public int getTargetSwapRegionWaitTime() {
+    return zkSharedStore.getTargetSwapRegionWaitTime();
+  }
+
+  @Override
+  public String getTargetSwapRegion() {
+    return zkSharedStore.getTargetSwapRegion();
+  }
+
+  @Override
+  public void setTargetSwapRegion(String targetRegion) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public void setTargetSwapRegionWaitTime(int waitTime) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public void setIsDavinciHeartbeatReported(boolean isReported) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean getIsDavinciHeartbeatReported() {
+    return zkSharedStore.getIsDavinciHeartbeatReported();
+  }
+
+  @Override
   public Store cloneStore() {
     return new SystemStore(zkSharedStore.cloneStore(), systemStoreType, veniceStore.cloneStore());
   }
