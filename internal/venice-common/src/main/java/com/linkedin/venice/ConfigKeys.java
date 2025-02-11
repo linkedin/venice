@@ -30,6 +30,25 @@ public class ConfigKeys {
   // store specific properties
   public static final String PERSISTENCE_TYPE = "persistence.type";
 
+  /**
+   * Prefix for all Pub/Sub client-specific configurations.
+   *
+   * <p>This prefix ensures that all Pub/Sub-related configurations are passed to the
+   * respective Pub/Sub client adapters. Each adapter will then use its own prefix
+   * to extract and process the relevant properties.</p>
+   *
+   * <p>Configurations should follow this convention:</p>
+   * <pre>{@code
+   * PUBSUB_CLIENT_CONFIG_PREFIX + "PubSubClientSpecificConfigPrefix" + "actual.config.name"
+   * }</pre>
+   *
+   * <p>For example, Kafka configurations would be structured as:</p>
+   * <pre>{@code
+   * "pubsub.kafka.bootstrap.servers"
+   * "pubsub.kafka.linger.ms"
+   * }</pre>
+   *
+   */
   public static final String PUBSUB_CLIENT_CONFIG_PREFIX = PubSubConstants.PUBSUB_CLIENT_CONFIG_PREFIX;
 
   public static final String KAFKA_CONFIG_PREFIX = ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX;

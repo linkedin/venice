@@ -14,7 +14,7 @@ import java.util.List;
  * Constants used by pub-sub components.
  */
 public class PubSubConstants {
-  public static String PUBSUB_CLIENT_CONFIG_PREFIX = "pubsub.";
+  public static final String PUBSUB_CLIENT_CONFIG_PREFIX = "pubsub.";
 
   // If true, the producer will use default configuration values for optimized high throughput
   // producing if they are not explicitly set.
