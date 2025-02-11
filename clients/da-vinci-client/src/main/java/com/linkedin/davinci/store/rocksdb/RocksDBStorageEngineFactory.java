@@ -147,7 +147,8 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
             : 0);
 
     long systemMemorySize = getOSMemorySize();
-    if (systemMemorySize > 0 && (systemMemorySize * 0.8 < cacheBytesNeeded)) {
+    if (systemMemorySize > 0
+        && (systemMemorySize * rocksDBServerConfig.getRocksdbBlockCacheMemoryLimit() < cacheBytesNeeded)) {
       throw new RuntimeException(
           "Cannot setup rocksdb instance with block-cache size "
               + generateHumanReadableByteCountString(cacheBytesNeeded) + ". System memory : "
