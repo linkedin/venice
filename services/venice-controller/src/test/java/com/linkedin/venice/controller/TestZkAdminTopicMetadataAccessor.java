@@ -1,8 +1,11 @@
 package com.linkedin.venice.controller;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import java.util.HashMap;
@@ -43,7 +46,7 @@ public class TestZkAdminTopicMetadataAccessor {
     Map<String, Long> updatedMetadata = AdminTopicMetadataAccessor.generateMetadataMap(100, -1, 1, 18);
 
     String metadataPath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(clusterName);
-    try (MockedStatic<DataTree> dataTreeMockedStatic = Mockito.mockStatic(DataTree.class, RETURNS_SMART_NULLS)) {
+    try (MockedStatic<DataTree> dataTreeMockedStatic = Mockito.mockStatic(DataTree.class)) {
       dataTreeMockedStatic.when(() -> DataTree.copyStat(any(), any())).thenAnswer(invocation -> null);
       Stat readStat = new Stat();
 
