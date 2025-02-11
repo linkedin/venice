@@ -99,6 +99,10 @@ public class RetriableAvroGenericStoreClientTest {
         .allPermutationGenerator(FASTCLIENT_REQUEST_TYPES, DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN);
   }
 
+  protected boolean isRetryBudgetEnabled() {
+    return false;
+  }
+
   @BeforeClass
   public void setUp() {
     timeoutProcessor = new TimeoutProcessor(null, true, 1);
@@ -113,6 +117,7 @@ public class RetriableAvroGenericStoreClientTest {
         .setLongTailRetryThresholdForBatchGetInMicroSeconds(
             (int) TimeUnit.MILLISECONDS.toMicros(LONG_TAIL_RETRY_THRESHOLD_IN_MS))
         .setLongTailRetryEnabledForCompute(true)
+        .setRetryBudgetEnabled(isRetryBudgetEnabled())
         .setLongTailRetryThresholdForComputeInMicroSeconds(
             (int) TimeUnit.MILLISECONDS.toMicros(LONG_TAIL_RETRY_THRESHOLD_IN_MS));
     BATCH_GET_KEYS.add("test_key_1");
@@ -546,8 +551,29 @@ public class RetriableAvroGenericStoreClientTest {
       if (batchGet) {
         assertNotNull(batchGetRequestContext.retryContext.retryRequestContext);
         assertEquals(batchGetRequestContext.retryContext.retryRequestContext.numKeysInRequest, (int) expectedKeyCount);
+
+        // Check retry budget metrics
+        String batchGetRetryBudgetMetricName =
+            "." + RetriableAvroGenericStoreClient.MULTI_KEY_LONG_TAIL_RETRY_STATS_PREFIX + clientConfig.getStoreName()
+                + "--retry_limit_per_seconds.Gauge";
+        if (isRetryBudgetEnabled()) {
+          assertNotNull(metrics.get(batchGetRetryBudgetMetricName), "Retry limit per second metric should not be null");
+        } else {
+          assertNull(metrics.get(batchGetRetryBudgetMetricName), "Retry limit per second metric should be null");
+        }
       } else if (singleGet) {
         assertTrue(getRequestContext.retryContext.longTailRetryRequestTriggered);
+        // Check retry budget metrics
+        String singleGetRetryBudgetMetricName =
+            "." + RetriableAvroGenericStoreClient.SINGLE_KEY_LONG_TAIL_RETRY_STATS_PREFIX + clientConfig.getStoreName()
+                + "--retry_limit_per_seconds.Gauge";
+        if (isRetryBudgetEnabled()) {
+          assertNotNull(
+              metrics.get(singleGetRetryBudgetMetricName),
+              "Retry limit per second metric should not be null");
+        } else {
+          assertNull(metrics.get(singleGetRetryBudgetMetricName), "Retry limit per second metric should be null");
+        }
       }
     } else {
       assertFalse(metrics.get(metricsPrefix + "long_tail_retry_request.OccurrenceRate").value() > 0);

@@ -14,9 +14,11 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.endToEnd.TestStringRecordTransformer;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import io.tehuti.metrics.MetricsRepository;
@@ -46,6 +48,8 @@ public class DaVinciUserApp {
     int blobTransferServerPort = Integer.parseInt(args[6]);
     int blobTransferClientPort = Integer.parseInt(args[7]);
     String storageClass = args[8]; // DISK or MEMORY_BACKED_BY_DISK
+    boolean recordTransformerEnabled = Boolean.parseBoolean(args[9]);
+
     D2Client d2Client = new D2ClientBuilder().setZkHosts(zkHosts)
         .setZkSessionTimeout(3, TimeUnit.SECONDS)
         .setZkStartupTimeout(3, TimeUnit.SECONDS)
@@ -64,6 +68,16 @@ public class DaVinciUserApp {
     // convert the storage class string to enum
     StorageClass storageClassEnum = StorageClass.valueOf(storageClass);
 
+    DaVinciConfig daVinciConfig = new DaVinciConfig();
+    daVinciConfig.setStorageClass(storageClassEnum);
+
+    if (recordTransformerEnabled) {
+      DaVinciRecordTransformerConfig recordTransformerConfig =
+          new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+              .build();
+      daVinciConfig.setRecordTransformerConfig(recordTransformerConfig);
+    }
+
     DaVinciTestContext<Integer, Integer> daVinciTestContext =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
             d2Client,
@@ -71,7 +85,7 @@ public class DaVinciUserApp {
             Optional.empty(),
             zkHosts,
             storeName,
-            new DaVinciConfig().setStorageClass(storageClassEnum),
+            daVinciConfig,
             extraBackendConfig);
     try (CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory();
         DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient()) {

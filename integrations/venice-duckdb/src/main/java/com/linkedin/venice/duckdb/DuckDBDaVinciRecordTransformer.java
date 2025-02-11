@@ -3,6 +3,7 @@ package com.linkedin.venice.duckdb;
 import static com.linkedin.venice.sql.AvroToSQL.UnsupportedTypeHandling.SKIP;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.sql.AvroToSQL;
@@ -44,11 +45,11 @@ public class DuckDBDaVinciRecordTransformer
       Schema keySchema,
       Schema inputValueSchema,
       Schema outputValueSchema,
-      boolean storeRecordsInDaVinci,
+      DaVinciRecordTransformerConfig recordTransformerConfig,
       String baseDir,
       String storeNameWithoutVersionInfo,
       Set<String> columnsToProject) {
-    super(storeVersion, keySchema, inputValueSchema, outputValueSchema, storeRecordsInDaVinci);
+    super(storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
     this.storeNameWithoutVersionInfo = storeNameWithoutVersionInfo;
     this.versionTableName = buildStoreNameWithVersion(storeVersion);
     this.duckDBUrl = "jdbc:duckdb:" + baseDir + "/" + duckDBFilePath;

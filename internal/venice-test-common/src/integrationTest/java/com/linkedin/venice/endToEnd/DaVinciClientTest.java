@@ -70,6 +70,7 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
@@ -131,7 +132,6 @@ import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -153,7 +153,16 @@ public class DaVinciClientTest {
     clusterConfig.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     clusterConfig.put(PUSH_STATUS_STORE_ENABLED, true);
     clusterConfig.put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 3);
-    cluster = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 100, false, false, clusterConfig);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(2)
+        .numberOfRouters(1)
+        .replicationFactor(2)
+        .partitionSize(100)
+        .sslToStorageNodes(false)
+        .sslToKafka(false)
+        .extraProperties(clusterConfig)
+        .build();
+    cluster = ServiceFactory.getVeniceCluster(options);
     d2Client = new D2ClientBuilder().setZkHosts(cluster.getZk().getAddress())
         .setZkSessionTimeout(3, TimeUnit.SECONDS)
         .setZkStartupTimeout(3, TimeUnit.SECONDS)
@@ -169,16 +178,6 @@ public class DaVinciClientTest {
       D2ClientUtils.shutdownClient(d2Client);
     }
     Utils.closeQuietlyWithErrorLogged(cluster);
-  }
-
-  @BeforeMethod
-  @AfterClass
-  public void deleteClassHash() {
-    int storeVersion = 1;
-    File file = new File(String.format("./classHash-%d.txt", storeVersion));
-    if (file.exists()) {
-      assertTrue(file.delete());
-    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -1098,7 +1097,8 @@ public class DaVinciClientTest {
         "true",
         Integer.toString(port1),
         Integer.toString(port2),
-        StorageClass.DISK.toString());
+        StorageClass.DISK.toString(),
+        "false");
     // Sleep long enough so the forked Da Vinci app process can finish ingestion.
     Thread.sleep(60000);
     IsolatedIngestionUtils.executeShellCommand("kill " + forkedDaVinciUserApp.pid());
@@ -1173,7 +1173,8 @@ public class DaVinciClientTest {
         "false",
         Integer.toString(port1),
         Integer.toString(port2),
-        StorageClass.DISK.toString());
+        StorageClass.DISK.toString(),
+        "false");
 
     // Wait for the first DaVinci Client to complete ingestion
     Thread.sleep(60000);
@@ -1208,6 +1209,13 @@ public class DaVinciClientTest {
         String snapshotPath = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
         Assert.assertTrue(Files.exists(Paths.get(snapshotPath)));
       }
+
+      for (int i = 0; i < 3; i++) {
+        String partitionPath2 = RocksDBUtils.composePartitionDbDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertTrue(Files.exists(Paths.get(partitionPath2)));
+        String snapshotPath2 = RocksDBUtils.composeSnapshotDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertFalse(Files.exists(Paths.get(snapshotPath2)));
+      }
     }
   }
 
@@ -1241,7 +1249,8 @@ public class DaVinciClientTest {
         "false",
         Integer.toString(port1),
         Integer.toString(port2),
-        storageClass);
+        storageClass,
+        "false");
 
     // Wait for the first DaVinci Client to complete ingestion
     Thread.sleep(60000);

@@ -12,44 +12,36 @@ cache. Future updates to the data continue to be streamed in and applied to the 
 
 ## Record Transformer
 This feature enables applications to transform records before they're stored in the Da Vinci Client
-or a custom storage of your choice.
+or redirected to a custom storage of your choice.
 It's capable of handling records that are compressed and/or chunked.
 
-### Usage
+### Example Usage
 Steps to use the record transformer:
 1. Implement the 
 [DaVinciRecordTransformer](http://venicedb.org/javadoc/com/linkedin/davinci/client/DaVinciRecordTransformer.html) 
 abstract class.
 2. Create an instance of [DaVinciRecordTransformerConfig](http://venicedb.org/javadoc/com/linkedin/davinci/client/DaVinciRecordTransformerConfig.html).
-3. Pass the instance of the config into [setRecordTransformerConfig()](https://venicedb.org/javadoc/com/linkedin/davinci/client/DaVinciConfig.html#setRecordTransformerConfig(com.linkedin.davinci.client.DaVinciRecordTransformerConfig)). 
-
-When a message is being consumed, the 
-[DaVinciRecordTransformer](http://venicedb.org/javadoc/com/linkedin/davinci/client/DaVinciRecordTransformer.html) will 
-modify the value before it is written to storage.
+3. Pass the instance of the config into [setRecordTransformerConfig()](https://venicedb.org/javadoc/com/linkedin/davinci/client/DaVinciConfig.html#setRecordTransformerConfig(com.linkedin.davinci.client.DaVinciRecordTransformerConfig)).
 
 Here's an example `DaVinciRecordTransformer` implementation:
 ```
-package com.linkedin.davinci.transformer;
-
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
+import java.io.IOException;
 import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 
 
 public class StringRecordTransformer extends DaVinciRecordTransformer<Integer, String, String> {
-  public TestStringRecordTransformer(int storeVersion, boolean storeRecordsInDaVinci) {
-    super(storeVersion, storeRecordsInDaVinci);
-  }
-
-  @Override
-  public Schema getKeySchema() {
-    return Schema.create(Schema.Type.INT);
-  }
-
-  @Override
-  public Schema getOutputValueSchema() {
-    return Schema.create(Schema.Type.STRING);
+  public StringRecordTransformer(
+      int storeVersion,
+      Schema keySchema,
+      Schema inputValueSchema,
+      Schema outputValueSchema,
+      DaVinciRecordTransformerConfig recordTransformerConfig) {
+    super(storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
   }
 
   @Override
@@ -84,8 +76,63 @@ public class StringRecordTransformer extends DaVinciRecordTransformer<Integer, S
 Here's an example `DaVinciRecordTransformerConfig` implementation:
 ```
 DaVinciConfig config = new DaVinciConfig();
-DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig(
-    (storeVersion) -> new StringRecordTransformer(storeVersion, true),
-    String.class, Schema.create(Schema.Type.STRING));
-config.setRecordTransformerFunction((storeVersion) -> new StringRecordTransformer(storeVersion, true));
+DaVinciRecordTransformerConfig recordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder()
+            .setRecordTransformerFunction(StringRecordTransformer::new)
+            .build();
+config.setRecordTransformerConfig(recordTransformerConfig);
+```
+
+### Schema Modification
+If you want to modify the Value Schema of the record, here's an example `DaVinciRecordTransformer` implementation:
+```
+import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
+import com.linkedin.venice.utils.lazy.Lazy;
+import java.io.IOException;
+import org.apache.avro.Schema;
+
+
+/**
+ * Transforms int values to strings
+ */
+public class IntToStringRecordTransformer extends DaVinciRecordTransformer<Integer, Integer, String> {
+  public IntToStringRecordTransformer(
+      int storeVersion,
+      Schema keySchema,
+      Schema inputValueSchema,
+      Schema outputValueSchema,
+      DaVinciRecordTransformerConfig recordTransformerConfig) {
+    super(storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
+  }
+
+  @Override
+  public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<Integer> value) {
+    String valueStr = value.get().toString();
+    String transformedValue = valueStr + "Transformed";
+    return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.TRANSFORMED, transformedValue);
+  }
+
+  @Override
+  public void processPut(Lazy<Integer> key, Lazy<String> value) {
+    return;
+  }
+
+  @Override
+  public void close() throws IOException {
+
+  }
+}
+```
+
+Here's an example `DaVinciRecordTransformerConfig` implementation:
+```
+DaVinciRecordTransformerConfig recordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder()
+            .setRecordTransformerFunction(IntToStringRecordTransformer::new)
+            .setOutputValueClass(String.class)
+            .setOutputValueSchema(Schema.create(Schema.Type.STRING))
+            .build();
+config.setRecordTransformerConfig(recordTransformerConfig);
 ```

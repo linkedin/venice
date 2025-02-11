@@ -5,6 +5,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
@@ -52,7 +53,12 @@ public class ReplicaFailoverTest {
   @BeforeClass
   public void setUp() throws Exception {
     Utils.thisIsLocalhost();
-    cluster = ServiceFactory.getVeniceCluster(1, REPLICATION_FACTOR, 0, REPLICATION_FACTOR);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(REPLICATION_FACTOR)
+        .numberOfRouters(0)
+        .replicationFactor(REPLICATION_FACTOR)
+        .build();
+    cluster = ServiceFactory.getVeniceCluster(options);
     Properties props = new Properties();
     props.setProperty(ConfigKeys.ROUTER_STATEFUL_HEALTHCHECK_ENABLED, "true");
     props.setProperty(ConfigKeys.ROUTER_ASYNC_START_ENABLED, "true");

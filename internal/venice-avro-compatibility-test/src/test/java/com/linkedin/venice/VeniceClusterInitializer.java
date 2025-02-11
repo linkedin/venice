@@ -13,6 +13,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
@@ -80,7 +81,16 @@ public class VeniceClusterInitializer implements Closeable {
     Properties clusterConfig = new Properties();
     clusterConfig.put(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     clusterConfig.put(ConfigKeys.ROUTER_ENABLE_SSL, false);
-    this.veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 0, 2, 100, false, false, clusterConfig);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(1)
+        .numberOfRouters(0)
+        .replicationFactor(2)
+        .partitionSize(100)
+        .sslToStorageNodes(false)
+        .sslToKafka(false)
+        .extraProperties(clusterConfig)
+        .build();
+    this.veniceCluster = ServiceFactory.getVeniceCluster(options);
     Properties serverProperties = new Properties();
     serverProperties.put(ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED, true);
     this.veniceCluster.addVeniceServer(new Properties(), serverProperties);

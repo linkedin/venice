@@ -3,12 +3,14 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.venice.utils.LatencyUtils.getElapsedTimeFromMsToMs;
 
 import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
+import com.linkedin.venice.annotation.UnderDevelopment;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
@@ -129,6 +131,13 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
 
   @Override
   public synchronized void subscribe(PubSubTopicPartition pubSubTopicPartition, long lastReadOffset) {
+    throw new VeniceException(
+        this.getClass().getSimpleName() + " does not support subscribe without specifying a version-topic.");
+  }
+
+  @UnderDevelopment(value = "This API may not be implemented in all PubSubConsumerAdapter implementations.")
+  @Override
+  public synchronized void subscribe(PubSubTopicPartition pubSubTopicPartition, PubSubPosition lastReadPubSubPosition) {
     throw new VeniceException(
         this.getClass().getSimpleName() + " does not support subscribe without specifying a version-topic.");
   }

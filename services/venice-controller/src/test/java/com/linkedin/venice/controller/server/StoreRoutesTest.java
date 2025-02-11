@@ -101,7 +101,6 @@ public class StoreRoutesTest {
     Request request = mock(Request.class);
     doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
     doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.NAME));
-    doReturn("true").when(request).queryParams(eq(ControllerApiConstants.IS_ABORT_MIGRATION_CLEANUP));
 
     Route deleteStoreRoute = new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).deleteStore(mockAdmin);
     TrackableControllerResponse trackableControllerResponse = ObjectMapperFactory.getInstance()
@@ -112,6 +111,7 @@ public class StoreRoutesTest {
     Assert.assertEquals(trackableControllerResponse.getCluster(), TEST_CLUSTER);
     Assert.assertEquals(trackableControllerResponse.getName(), TEST_STORE_NAME);
 
+    doReturn("true").when(request).queryParams(eq(ControllerApiConstants.IS_ABORT_MIGRATION_CLEANUP));
     String errMessage = "Store " + TEST_STORE_NAME + "'s migrating flag is false. Not safe to delete a store "
         + "that is assumed to be migrating without the migrating flag setup as true.";
     doThrow(new VeniceException(errMessage, INVALID_CONFIG)).when(mockAdmin)

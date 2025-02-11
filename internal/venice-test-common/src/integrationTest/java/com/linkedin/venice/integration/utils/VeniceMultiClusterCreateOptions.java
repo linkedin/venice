@@ -10,6 +10,7 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_SSL_TO_STORAGE_NODES;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.STANDALONE_REGION_NAME;
 
+import com.linkedin.venice.acl.DynamicAccessController;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Properties;
@@ -37,6 +38,7 @@ public class VeniceMultiClusterCreateOptions {
   private final PubSubBrokerWrapper pubSubBrokerWrapper;
   private final Properties childControllerProperties;
   private final Properties extraProperties;
+  private final DynamicAccessController accessController;
 
   public String getRegionName() {
     return regionName;
@@ -120,6 +122,10 @@ public class VeniceMultiClusterCreateOptions {
 
   public Properties getExtraProperties() {
     return extraProperties;
+  }
+
+  public DynamicAccessController getAccessController() {
+    return accessController;
   }
 
   @Override
@@ -212,6 +218,7 @@ public class VeniceMultiClusterCreateOptions {
     extraProperties = builder.extraProperties;
     forkServer = builder.forkServer;
     kafkaClusterMap = builder.kafkaClusterMap;
+    accessController = builder.accessController;
   }
 
   public static class Builder {
@@ -236,6 +243,7 @@ public class VeniceMultiClusterCreateOptions {
     private PubSubBrokerWrapper pubSubBrokerWrapper;
     private Properties childControllerProperties;
     private Properties extraProperties;
+    private DynamicAccessController accessController;
 
     public Builder numberOfClusters(int numberOfClusters) {
       this.numberOfClusters = numberOfClusters;
@@ -343,6 +351,11 @@ public class VeniceMultiClusterCreateOptions {
 
     public Builder extraProperties(Properties extraProperties) {
       this.extraProperties = extraProperties;
+      return this;
+    }
+
+    public Builder accessController(DynamicAccessController accessController) {
+      this.accessController = accessController;
       return this;
     }
 

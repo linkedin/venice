@@ -1,6 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
@@ -12,20 +13,22 @@ import org.apache.avro.util.Utf8;
 
 public class TestStringRecordTransformer extends DaVinciRecordTransformer<Integer, String, String> {
   private final Map<Integer, String> inMemoryDB = new HashMap<>();
+  private int transformInvocationCount = 0;
 
   public TestStringRecordTransformer(
       int storeVersion,
       Schema keySchema,
       Schema inputValueSchema,
       Schema outputValueSchema,
-      boolean storeRecordsInDaVinci) {
-    super(storeVersion, keySchema, inputValueSchema, outputValueSchema, storeRecordsInDaVinci);
+      DaVinciRecordTransformerConfig recordTransformerConfig) {
+    super(storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
   }
 
   @Override
   public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<String> value) {
     String valueStr = convertUtf8ToString(value.get());
     String transformedValue = valueStr + "Transformed";
+    transformInvocationCount++;
     return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.TRANSFORMED, transformedValue);
   }
 
@@ -60,6 +63,10 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
 
   public void put(Integer key, String value) {
     inMemoryDB.put(key, value);
+  }
+
+  public int getTransformInvocationCount() {
+    return transformInvocationCount;
   }
 
   @Override

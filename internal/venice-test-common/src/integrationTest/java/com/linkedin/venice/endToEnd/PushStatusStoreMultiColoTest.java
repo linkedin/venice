@@ -25,6 +25,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
@@ -34,7 +35,6 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.List;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.AfterClass;
@@ -76,18 +76,19 @@ public class PushStatusStoreMultiColoTest {
     extraProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(true));
     extraProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, String.valueOf(true));
 
-    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-        NUMBER_OF_CHILD_DATACENTERS,
-        NUMBER_OF_CLUSTERS,
-        NUMBER_OF_PARENT_CONTROLLERS,
-        NUMBER_OF_CHILD_CONTROLLERS,
-        NUMBER_OF_SERVERS,
-        NUMBER_OF_ROUTERS,
-        REPLICATION_FACTOR,
-        Optional.of(extraProperties),
-        Optional.of(extraProperties),
-        Optional.empty(),
-        false);
+    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
+        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
+            .numberOfClusters(NUMBER_OF_CLUSTERS)
+            .numberOfParentControllers(NUMBER_OF_PARENT_CONTROLLERS)
+            .numberOfChildControllers(NUMBER_OF_CHILD_CONTROLLERS)
+            .numberOfServers(NUMBER_OF_SERVERS)
+            .numberOfRouters(NUMBER_OF_ROUTERS)
+            .replicationFactor(REPLICATION_FACTOR)
+            .forkServer(false)
+            .parentControllerProperties(extraProperties)
+            .childControllerProperties(extraProperties);
+    multiRegionMultiClusterWrapper =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
 

@@ -6,6 +6,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
@@ -59,6 +60,11 @@ public class MockInMemoryConsumer implements PubSubConsumerAdapter {
     pausedTopicPartitions.remove(pubSubTopicPartition);
     delegate.subscribe(pubSubTopicPartition, lastReadOffset);
     offsets.put(pubSubTopicPartition, lastReadOffset);
+  }
+
+  @Override
+  public void subscribe(PubSubTopicPartition pubSubTopicPartition, PubSubPosition lastReadPubSubPosition) {
+    throw new UnsupportedOperationException("Not implemented");
   }
 
   @Override
