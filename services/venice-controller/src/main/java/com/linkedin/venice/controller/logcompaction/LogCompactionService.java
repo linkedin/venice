@@ -99,7 +99,7 @@ public class LogCompactionService extends AbstractVeniceService {
                 triggerSource,
                 clusterName,
                 response.getName(),
-                response.getExecUrl());
+                response.getExecutionUrl());
           } catch (Exception e) {
             LOGGER.error(
                 "Error checking if store is ready for log compaction for cluster: {} store: {}",
