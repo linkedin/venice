@@ -1,10 +1,12 @@
 package com.linkedin.venice.listener;
 
+import static com.linkedin.venice.acl.handler.AbstractStoreAclHandler.STORE_ACL_CHECK_RESULT_ATTRIBUTE_KEY;
 import static io.grpc.Status.Code.INVALID_ARGUMENT;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -26,6 +28,9 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ServerAdminAction;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.protocols.VeniceClientRequest;
+import com.linkedin.venice.utils.TestMockTime;
+import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.grpc.Attributes;
 import io.grpc.Grpc;
 import io.grpc.Metadata;
@@ -148,6 +153,9 @@ public class ServerStoreAclHandlerTest {
     Channel channel = mock(Channel.class);
     ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
     doReturn(channel).when(ctx).channel();
+    ChannelPipeline mockPipeline = mock(ChannelPipeline.class);
+    doReturn(mock(SslHandler.class)).when(mockPipeline).get(SslHandler.class);
+    doReturn(mockPipeline).when(ctx).pipeline();
     Attribute<Boolean> accessAttr = mock(Attribute.class);
     doReturn(true).when(accessAttr).get();
     doReturn(accessAttr).when(channel).attr(ServerAclHandler.SERVER_ACL_APPROVED_ATTRIBUTE_KEY);
@@ -155,7 +163,8 @@ public class ServerStoreAclHandlerTest {
     ServerStoreAclHandler handler = new ServerStoreAclHandler(
         mock(IdentityParser.class),
         mock(DynamicAccessController.class),
-        mock(ReadOnlyStoreRepository.class));
+        mock(ReadOnlyStoreRepository.class),
+        1000);
 
     assertTrue(
         handler.isAccessAlreadyApproved(ctx),
@@ -190,7 +199,8 @@ public class ServerStoreAclHandlerTest {
     ServerStoreAclHandler handler = new ServerStoreAclHandler(
         mock(IdentityParser.class),
         mock(DynamicAccessController.class),
-        mock(ReadOnlyStoreRepository.class));
+        mock(ReadOnlyStoreRepository.class),
+        1000);
 
     // next.intercept call should have been invoked
     handler.interceptCall(call, falseHeaders, next);
@@ -205,6 +215,58 @@ public class ServerStoreAclHandlerTest {
   }
 
   @Test
+  public void testAclCache() throws SSLPeerUnverifiedException, AclException, InterruptedException {
+    ReadOnlyStoreRepository metadataRepo = mock(ReadOnlyStoreRepository.class);
+    when(metadataRepo.hasStore(TEST_STORE_NAME)).thenReturn(true);
+    ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+    HttpRequest request = mock(HttpRequest.class);
+    Channel channel = mock(Channel.class);
+    SocketAddress socketAddress = mock(SocketAddress.class);
+    doReturn("testRemoteHost").when(socketAddress).toString();
+    doReturn(socketAddress).when(channel).remoteAddress();
+
+    Attribute<Boolean> accessAttr = mock(Attribute.class);
+    doReturn(false).when(accessAttr).get();
+    doReturn(accessAttr).when(channel).attr(ServerAclHandler.SERVER_ACL_APPROVED_ATTRIBUTE_KEY);
+
+    Attribute<VeniceConcurrentHashMap> aclCacheAttr = mock(Attribute.class);
+    doReturn(new VeniceConcurrentHashMap<>()).when(aclCacheAttr).get();
+    doReturn(aclCacheAttr).when(channel).attr(STORE_ACL_CHECK_RESULT_ATTRIBUTE_KEY);
+
+    doReturn(channel).when(ctx).channel();
+    SslHandler sslHandler = mock(SslHandler.class);
+    ChannelPipeline channelPipeline = mock(ChannelPipeline.class);
+    doReturn(sslHandler).when(channelPipeline).get(SslHandler.class);
+    SSLEngine sslEngine = mock(SSLEngine.class);
+    SSLSession sslSession = mock(SSLSession.class);
+    X509Certificate certificate = mock(X509Certificate.class);
+    Certificate[] certificates = new Certificate[1];
+    certificates[0] = certificate;
+    doReturn(certificates).when(sslSession).getPeerCertificates();
+    doReturn(sslSession).when(sslEngine).getSession();
+    doReturn(sslEngine).when(sslHandler).engine();
+    doReturn(channelPipeline).when(ctx).pipeline();
+    doReturn(HttpMethod.GET).when(request).method();
+    IdentityParser identityParser = mock(IdentityParser.class);
+    doReturn("testPrincipalId").when(identityParser).parseIdentityFromCert(certificate);
+    MockAccessController mockAccessController = new MockAccessController(QueryAction.STORAGE);
+    MockAccessController spyMockAccessController = spy(mockAccessController);
+    doReturn(buildTestURI(QueryAction.STORAGE)).when(request).uri();
+    Time mockTime = new TestMockTime(0);
+    ServerStoreAclHandler storeAclHandler =
+        new ServerStoreAclHandler(identityParser, spyMockAccessController, metadataRepo, 1000, mockTime);
+    storeAclHandler.channelRead0(ctx, request);
+    verify(spyMockAccessController).hasAccess(any(), eq(TEST_STORE_NAME), any());
+    // Verify that acl cache is populated by sending another request
+    storeAclHandler.channelRead0(ctx, request);
+    verify(spyMockAccessController, times(1)).hasAccess(any(), eq(TEST_STORE_NAME), any());
+    // Make sure the cache is expired
+    mockTime.sleep(2000);
+    storeAclHandler.channelRead0(ctx, request);
+    verify(spyMockAccessController, times(2)).hasAccess(any(), eq(TEST_STORE_NAME), any());
+  }
+
+  @Test
   public void testAllRequestTypes() throws SSLPeerUnverifiedException, AclException {
     ReadOnlyStoreRepository metadataRepo = mock(ReadOnlyStoreRepository.class);
     when(metadataRepo.hasStore(TEST_STORE_NAME)).thenReturn(true);
@@ -214,9 +276,15 @@ public class ServerStoreAclHandlerTest {
     SocketAddress socketAddress = mock(SocketAddress.class);
     doReturn("testRemoteHost").when(socketAddress).toString();
     doReturn(socketAddress).when(channel).remoteAddress();
+
     Attribute<Boolean> accessAttr = mock(Attribute.class);
     doReturn(false).when(accessAttr).get();
     doReturn(accessAttr).when(channel).attr(ServerAclHandler.SERVER_ACL_APPROVED_ATTRIBUTE_KEY);
+
+    Attribute<VeniceConcurrentHashMap> aclCacheAttr = mock(Attribute.class);
+    doAnswer((ignored) -> new VeniceConcurrentHashMap<>()).when(aclCacheAttr).get();
+    doReturn(aclCacheAttr).when(channel).attr(STORE_ACL_CHECK_RESULT_ATTRIBUTE_KEY);
+
     doReturn(channel).when(ctx).channel();
     SslHandler sslHandler = mock(SslHandler.class);
     ChannelPipeline channelPipeline = mock(ChannelPipeline.class);
@@ -237,7 +305,7 @@ public class ServerStoreAclHandlerTest {
       MockAccessController mockAccessController = new MockAccessController(queryAction);
       MockAccessController spyMockAccessController = spy(mockAccessController);
       ServerStoreAclHandler storeAclHandler =
-          new ServerStoreAclHandler(identityParser, spyMockAccessController, metadataRepo);
+          new ServerStoreAclHandler(identityParser, spyMockAccessController, metadataRepo, 1000);
       doReturn(buildTestURI(queryAction)).when(request).uri();
       storeAclHandler.channelRead0(ctx, request);
 
@@ -298,7 +366,8 @@ public class ServerStoreAclHandlerTest {
     ServerStoreAclHandler handler = new ServerStoreAclHandler(
         mock(IdentityParser.class),
         mock(DynamicAccessController.class),
-        mock(ReadOnlyStoreRepository.class));
+        mock(ReadOnlyStoreRepository.class),
+        1000);
 
     // Happy path is tested in "testAllRequestTypes". Only test the invalid paths
 
@@ -334,7 +403,8 @@ public class ServerStoreAclHandlerTest {
     doReturn(certificates).when(sslSession).getPeerCertificates();
     doReturn("identity").when(identityParser).parseIdentityFromCert(certificate);
 
-    ServerStoreAclHandler handler = new ServerStoreAclHandler(identityParser, accessController, metadataRepository);
+    ServerStoreAclHandler handler =
+        new ServerStoreAclHandler(identityParser, accessController, metadataRepository, 1000);
 
     // Empty store name
     VeniceClientRequest emptyStoreRequest = VeniceClientRequest.newBuilder().build();

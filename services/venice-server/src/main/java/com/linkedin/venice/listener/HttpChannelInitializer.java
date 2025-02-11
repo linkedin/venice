@@ -118,7 +118,12 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     this.identityParser = ReflectUtils.callConstructor(identityParserClass, new Class[0], new Object[0]);
 
     this.storeAclHandler = storeAccessController.isPresent()
-        ? Optional.of(new ServerStoreAclHandler(identityParser, storeAccessController.get(), storeMetadataRepository))
+        ? Optional.of(
+            new ServerStoreAclHandler(
+                identityParser,
+                storeAccessController.get(),
+                storeMetadataRepository,
+                serverConfig.getAclInMemoryCacheTTLMs()))
         : Optional.empty();
     /**
      * If the store-level access handler is present, we don't want to fail fast if the access gets denied by {@link ServerAclHandler}.

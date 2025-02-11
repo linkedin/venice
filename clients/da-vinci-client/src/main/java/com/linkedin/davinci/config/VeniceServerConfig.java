@@ -3,6 +3,7 @@ package com.linkedin.davinci.config;
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.INGESTION_ISOLATION_CONFIG_PREFIX;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES;
 import static com.linkedin.venice.ConfigConstants.DEFAULT_MAX_RECORD_SIZE_BYTES_BACKFILL;
+import static com.linkedin.venice.ConfigKeys.ACL_IN_MEMORY_CACHE_TTL_MS;
 import static com.linkedin.venice.ConfigKeys.AUTOCREATE_DATA_PATH;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
@@ -584,6 +585,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int zstdDictCompressionLevel;
   private final long maxWaitAfterUnsubscribeMs;
   private final boolean deleteUnassignedPartitionsOnStartup;
+  private final int aclInMemoryCacheTTLMs;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -988,6 +990,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
     deleteUnassignedPartitionsOnStartup =
         serverProperties.getBoolean(SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP, false);
+    aclInMemoryCacheTTLMs = serverProperties.getInt(ACL_IN_MEMORY_CACHE_TTL_MS, 60000); // 1min
   }
 
   long extractIngestionMemoryLimit(
@@ -1800,5 +1803,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isDeleteUnassignedPartitionsOnStartupEnabled() {
     return deleteUnassignedPartitionsOnStartup;
+  }
+
+  public int getAclInMemoryCacheTTLMs() {
+    return aclInMemoryCacheTTLMs;
   }
 }

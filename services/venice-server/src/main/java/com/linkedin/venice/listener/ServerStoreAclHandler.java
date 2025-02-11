@@ -12,13 +12,14 @@ import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.protocols.VeniceClientRequest;
+import com.linkedin.venice.utils.Time;
 import io.grpc.ForwardingServerCallListener;
 import io.grpc.Metadata;
 import io.grpc.ServerCall;
 import io.grpc.ServerCallHandler;
 import io.grpc.ServerInterceptor;
 import io.grpc.Status;
-import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.Channel;
 import io.netty.util.Attribute;
 import java.security.cert.X509Certificate;
 import java.util.EnumSet;
@@ -56,8 +57,18 @@ public class ServerStoreAclHandler extends AbstractStoreAclHandler<QueryAction> 
   public ServerStoreAclHandler(
       IdentityParser identityParser,
       DynamicAccessController accessController,
-      ReadOnlyStoreRepository metadataRepository) {
-    super(identityParser, accessController, metadataRepository);
+      ReadOnlyStoreRepository metadataRepository,
+      int cacheTTLMs) {
+    super(identityParser, accessController, metadataRepository, cacheTTLMs);
+  }
+
+  public ServerStoreAclHandler(
+      IdentityParser identityParser,
+      DynamicAccessController accessController,
+      ReadOnlyStoreRepository metadataRepository,
+      int cacheTTLMs,
+      Time time) {
+    super(identityParser, accessController, metadataRepository, cacheTTLMs, time);
   }
 
   @Override
@@ -179,11 +190,11 @@ public class ServerStoreAclHandler extends AbstractStoreAclHandler<QueryAction> 
   }
 
   @Override
-  protected boolean isAccessAlreadyApproved(ChannelHandlerContext ctx) {
+  protected boolean isAccessAlreadyApproved(Channel originalChannel) {
     /**
      * Access has been approved by {@link ServerAclHandler}.
      */
-    Attribute<Boolean> serverAclApprovedAttr = ctx.channel().attr(ServerAclHandler.SERVER_ACL_APPROVED_ATTRIBUTE_KEY);
+    Attribute<Boolean> serverAclApprovedAttr = originalChannel.attr(ServerAclHandler.SERVER_ACL_APPROVED_ATTRIBUTE_KEY);
     return Boolean.TRUE.equals(serverAclApprovedAttr.get());
   }
 

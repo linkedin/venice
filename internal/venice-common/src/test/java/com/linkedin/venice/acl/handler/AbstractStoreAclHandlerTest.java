@@ -1,7 +1,10 @@
 package com.linkedin.venice.acl.handler;
 
+import static com.linkedin.venice.acl.handler.AbstractStoreAclHandler.STORE_ACL_CHECK_RESULT_ATTRIBUTE_KEY;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.argThat;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -14,6 +17,9 @@ import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.utils.TestMockTime;
+import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPipeline;
@@ -22,6 +28,7 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.ssl.SslHandler;
+import io.netty.util.Attribute;
 import java.net.SocketAddress;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
@@ -33,12 +40,15 @@ import org.testng.annotations.Test;
 
 
 public class AbstractStoreAclHandlerTest {
+  private static int CACHE_TTL_MS = 1000;
   private IdentityParser identityParser;
   private DynamicAccessController accessController;
   private HelixReadOnlyStoreRepository metadataRepo;
   private ChannelHandlerContext ctx;
+  private Channel channel;
   private HttpRequest req;
   private Store store;
+  private Time mockTime;
   private boolean[] needsAcl = { true };
   private boolean[] hasAccess = { false };
   private boolean[] hasAcl = { false };
@@ -83,12 +93,18 @@ public class AbstractStoreAclHandlerTest {
     when(sslSession.getPeerCertificates()).thenReturn(new Certificate[] { cert });
 
     // Host
-    Channel channel = mock(Channel.class);
+    channel = mock(Channel.class);
     when(ctx.channel()).thenReturn(channel);
     SocketAddress address = mock(SocketAddress.class);
     when(channel.remoteAddress()).thenReturn(address);
 
+    Attribute<VeniceConcurrentHashMap> aclCacheAttr = mock(Attribute.class);
+    doAnswer((ignored) -> new VeniceConcurrentHashMap<>()).when(aclCacheAttr).get();
+    doReturn(aclCacheAttr).when(channel).attr(STORE_ACL_CHECK_RESULT_ATTRIBUTE_KEY);
+
     when(req.method()).thenReturn(HttpMethod.GET);
+
+    mockTime = new TestMockTime(0);
   }
 
   @Test
@@ -102,6 +118,26 @@ public class AbstractStoreAclHandlerTest {
 
     // No access control needed. There are 32 possible combinations of the 5 variables
     verify(ctx, times(32)).fireChannelRead(req);
+  }
+
+  @Test
+  public void testAclCache() throws Exception {
+    hasAccess[0] = true;
+    hasStore[0] = true;
+    Attribute<VeniceConcurrentHashMap> aclCacheAttr = mock(Attribute.class);
+    doReturn(new VeniceConcurrentHashMap<>()).when(aclCacheAttr).get();
+    doReturn(aclCacheAttr).when(channel).attr(STORE_ACL_CHECK_RESULT_ATTRIBUTE_KEY);
+    enumerate(hasAcl);
+    hasAccess[0] = true;
+    hasStore[0] = true;
+    enumerate(hasAcl);
+    verify(accessController).hasAccess(any(), any(), any());
+    // Simulate cache expiration
+    mockTime.sleep(CACHE_TTL_MS + 1);
+    hasAccess[0] = true;
+    hasStore[0] = true;
+    enumerate(hasAcl);
+    verify(accessController, times(2)).hasAccess(any(), any(), any());
   }
 
   @Test
@@ -299,7 +335,8 @@ public class AbstractStoreAclHandlerTest {
       }
       // New metadataRepo mock and aclHandler every update since thenThrow cannot be re-mocked.
       metadataRepo = mock(HelixReadOnlyStoreRepository.class);
-      AbstractStoreAclHandler aclHandler = spy(new MockStoreAclHandler(identityParser, accessController, metadataRepo));
+      AbstractStoreAclHandler aclHandler =
+          spy(new MockStoreAclHandler(identityParser, accessController, metadataRepo, mockTime));
       update();
       aclHandler.channelRead0(ctx, req);
     }
@@ -334,8 +371,9 @@ public class AbstractStoreAclHandlerTest {
     public MockStoreAclHandler(
         IdentityParser identityParser,
         DynamicAccessController accessController,
-        HelixReadOnlyStoreRepository metadataRepository) {
-      super(identityParser, accessController, metadataRepository);
+        HelixReadOnlyStoreRepository metadataRepository,
+        Time mockTime) {
+      super(identityParser, accessController, metadataRepository, CACHE_TTL_MS, mockTime);
     }
 
     @Override

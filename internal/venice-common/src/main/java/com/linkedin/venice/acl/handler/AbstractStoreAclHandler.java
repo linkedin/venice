@@ -7,17 +7,24 @@ import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
+import com.linkedin.venice.listener.ServerHandlerUtils;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.NettyUtils;
+import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.util.AttributeKey;
 import io.netty.util.ReferenceCountUtil;
 import java.net.URI;
 import java.security.cert.X509Certificate;
+import java.util.Objects;
 import java.util.stream.Collectors;
 import javax.net.ssl.SSLPeerUnverifiedException;
 import org.apache.logging.log4j.LogManager;
@@ -29,7 +36,51 @@ import org.apache.logging.log4j.Logger;
  */
 @ChannelHandler.Sharable
 public abstract class AbstractStoreAclHandler<REQUEST_TYPE> extends SimpleChannelInboundHandler<HttpRequest> {
+  private static class AclKey {
+    String storeName;
+    String methodName;
+
+    public AclKey(String storeName, String methodName) {
+      this.storeName = storeName;
+      this.methodName = methodName;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) {
+        return true;
+      }
+      if (o == null || getClass() != o.getClass()) {
+        return false;
+      }
+      AclKey aclKey = (AclKey) o;
+      return Objects.equals(storeName, aclKey.storeName) && Objects.equals(methodName, aclKey.methodName);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(storeName, methodName);
+    }
+  }
+
+  private static class CachedAcl {
+    AccessResult accessResult;
+    long timestamp;
+
+    public CachedAcl(AccessResult accessResult, long timestamp) {
+      this.accessResult = accessResult;
+      this.timestamp = timestamp;
+    }
+  }
+
   private static final Logger LOGGER = LogManager.getLogger(AbstractStoreAclHandler.class);
+  public static final String STORE_ACL_CHECK_RESULT = "STORE_ACL_CHECK_RESULT_ATTRIBUTE_KEY";
+  public static final AttributeKey<VeniceConcurrentHashMap<AclKey, CachedAcl>> STORE_ACL_CHECK_RESULT_ATTRIBUTE_KEY =
+      AttributeKey.valueOf(STORE_ACL_CHECK_RESULT);
+  private static final byte[] BAD_REQUEST_RESPONSE = "Unexpected! Original channel should not be null".getBytes();
+
+  private final int cacheTTLMs;
+  private final Time time;
 
   private final IdentityParser identityParser;
   private final ReadOnlyStoreRepository metadataRepository;
@@ -38,12 +89,24 @@ public abstract class AbstractStoreAclHandler<REQUEST_TYPE> extends SimpleChanne
   public AbstractStoreAclHandler(
       IdentityParser identityParser,
       DynamicAccessController accessController,
-      ReadOnlyStoreRepository metadataRepository) {
+      ReadOnlyStoreRepository metadataRepository,
+      int cacheTTLMs) {
+    this(identityParser, accessController, metadataRepository, cacheTTLMs, new SystemTime());
+  }
+
+  public AbstractStoreAclHandler(
+      IdentityParser identityParser,
+      DynamicAccessController accessController,
+      ReadOnlyStoreRepository metadataRepository,
+      int cacheTTLMs,
+      Time time) {
     this.identityParser = identityParser;
     this.metadataRepository = metadataRepository;
     this.accessController = accessController
         .init(metadataRepository.getAllStores().stream().map(Store::getName).collect(Collectors.toList()));
     this.metadataRepository.registerStoreDataChangedListener(new AclCreationDeletionListener(accessController));
+    this.cacheTTLMs = cacheTTLMs;
+    this.time = time;
   }
 
   /**
@@ -55,14 +118,18 @@ public abstract class AbstractStoreAclHandler<REQUEST_TYPE> extends SimpleChanne
    */
   @Override
   public void channelRead0(ChannelHandlerContext ctx, HttpRequest req) throws SSLPeerUnverifiedException {
-    if (isAccessAlreadyApproved(ctx)) {
+    Channel originalChannel = ServerHandlerUtils.getOriginalChannel(ctx);
+    if (originalChannel == null) {
+      NettyUtils.setupResponseAndFlush(HttpResponseStatus.BAD_REQUEST, BAD_REQUEST_RESPONSE, false, ctx);
+      return;
+    }
+    if (isAccessAlreadyApproved(originalChannel)) {
       ReferenceCountUtil.retain(req);
       ctx.fireChannelRead(req);
       return;
     }
 
     String uri = req.uri();
-
     // Parse resource type and store name
     String[] requestParts = URI.create(uri).getPath().split("/");
     REQUEST_TYPE requestType = validateRequest(requestParts);
@@ -89,9 +156,28 @@ public abstract class AbstractStoreAclHandler<REQUEST_TYPE> extends SimpleChanne
       return;
     }
 
-    X509Certificate clientCert = extractClientCert(ctx);
     String method = req.method().name();
-    AccessResult accessResult = checkAccess(uri, clientCert, storeName, method);
+    VeniceConcurrentHashMap<AclKey, CachedAcl> storeAclCache =
+        originalChannel.attr(STORE_ACL_CHECK_RESULT_ATTRIBUTE_KEY).get();
+    if (storeAclCache == null) {
+      originalChannel.attr(STORE_ACL_CHECK_RESULT_ATTRIBUTE_KEY).setIfAbsent(new VeniceConcurrentHashMap<>());
+      storeAclCache = originalChannel.attr(STORE_ACL_CHECK_RESULT_ATTRIBUTE_KEY).get();
+    }
+    AclKey aclKey = new AclKey(storeName, method);
+
+    AccessResult accessResult = storeAclCache.compute(aclKey, (ignored, value) -> {
+      long currentTimestamp = time.getMilliseconds();
+      if (value == null || currentTimestamp - value.timestamp > cacheTTLMs) {
+        try {
+          return new CachedAcl(checkAccess(uri, extractClientCert(ctx), storeName, method), currentTimestamp);
+        } catch (Exception e) {
+          LOGGER.error("Error while checking access", e);
+          return new CachedAcl(AccessResult.ERROR_FORBIDDEN, currentTimestamp);
+        }
+      } else {
+        return value;
+      }
+    }).accessResult;
     switch (accessResult) {
       case GRANTED:
         ReferenceCountUtil.retain(req);
@@ -109,7 +195,7 @@ public abstract class AbstractStoreAclHandler<REQUEST_TYPE> extends SimpleChanne
     }
   }
 
-  protected boolean isAccessAlreadyApproved(ChannelHandlerContext ctx) {
+  protected boolean isAccessAlreadyApproved(Channel originalChannel) {
     return false;
   }
 

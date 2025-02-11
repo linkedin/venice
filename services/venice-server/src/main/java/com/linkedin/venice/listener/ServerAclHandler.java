@@ -16,6 +16,7 @@ import io.grpc.ServerCall;
 import io.grpc.ServerCallHandler;
 import io.grpc.ServerInterceptor;
 import io.grpc.Status;
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -65,11 +66,25 @@ public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> i
    */
   @Override
   public void channelRead0(ChannelHandlerContext ctx, HttpRequest req) throws SSLPeerUnverifiedException {
-    X509Certificate clientCert = extractClientCert(ctx);
-    String method = req.method().name();
 
-    boolean accessApproved = accessController.hasAccess(clientCert, VeniceComponent.SERVER, method);
-    ctx.channel().attr(SERVER_ACL_APPROVED_ATTRIBUTE_KEY).set(accessApproved);
+    Channel originalChannel = ServerHandlerUtils.getOriginalChannel(ctx);
+    if (originalChannel == null) {
+      LOGGER.error("Got a non-ssl request on what should be an ssl only port: {}", req.uri());
+      NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
+      return;
+    }
+    String method = req.method().name();
+    /**
+     * Server ACL check is typically against static ACL, so once the access is confirmed,
+     * we don't need to update it again per connection.
+     */
+    Boolean accessApproved = originalChannel.attr(SERVER_ACL_APPROVED_ATTRIBUTE_KEY).get();
+    if (accessApproved == null) {
+      X509Certificate clientCert = extractClientCert(ctx);
+
+      accessApproved = accessController.hasAccess(clientCert, VeniceComponent.SERVER, method);
+      originalChannel.attr(SERVER_ACL_APPROVED_ATTRIBUTE_KEY).set(accessApproved);
+    }
     if (accessApproved || !failOnAccessRejection) {
       ReferenceCountUtil.retain(req);
       ctx.fireChannelRead(req);
