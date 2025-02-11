@@ -41,7 +41,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   private static final String CONTROLLER_HAAS_ZK_CLIENT_NAME = "controller-zk-client-for-haas-admin";
 
   private final HelixAdmin helixAdmin;
-  ConfigAccessor helixConfigAccessor;
+  private final ConfigAccessor helixConfigAccessor;
   private final VeniceControllerClusterConfig commonConfig;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final String haasSuperClusterName;
