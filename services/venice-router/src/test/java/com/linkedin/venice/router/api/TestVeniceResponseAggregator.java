@@ -41,6 +41,7 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -168,6 +169,11 @@ public class TestVeniceResponseAggregator {
     VenicePath path = getPath(storeName, RequestType.MULTI_GET, mockRouterStat, request, compressorFactory);
     when(path.getChunkedResponse()).thenReturn(null); // non-streaming
     metrics.setPath(path);
+    List<RouterKey> partitionKeys = new ArrayList<>();
+    partitionKeys.add(new RouterKey("key1".getBytes(StandardCharsets.UTF_8)));
+    partitionKeys.add(new RouterKey("key2".getBytes(StandardCharsets.UTF_8)));
+    partitionKeys.add(new RouterKey("key3".getBytes(StandardCharsets.UTF_8)));
+    doReturn(partitionKeys).when(path).getPartitionKeys();
 
     VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(mockRouterStat, Optional.empty());
     FullHttpResponse finalResponse = responseAggregator.buildResponse(request, metrics, gatheredResponses);
@@ -221,7 +227,7 @@ public class TestVeniceResponseAggregator {
     FullHttpResponse response5 = buildFullHttpResponse(TOO_MANY_REQUESTS, new byte[0], headers);
     metrics.setMetric(MetricNames.ROUTER_SERVER_TIME, new TimeValue(1, TimeUnit.MILLISECONDS));
     responseAggregator.buildResponse(request, metrics, Collections.singletonList(response5));
-    verify(mockStatsForMultiGet).recordThrottledRequest(storeName, 1.0, TOO_MANY_REQUESTS);
+    verify(mockStatsForMultiGet).recordThrottledRequest(storeName, 1.0, TOO_MANY_REQUESTS, 3);
   }
 
   @Test

@@ -21,9 +21,6 @@ public enum VeniceMetricsDimensions {
   /** {@link HttpResponseStatusCodeCategory} ie. 1xx, 2xx, etc */
   HTTP_RESPONSE_STATUS_CODE_CATEGORY("http.response.status_code_category"),
 
-  /** {@link RequestValidationOutcome#outcome} */
-  VENICE_REQUEST_VALIDATION_OUTCOME("venice.request.validation_outcome"),
-
   /** {@link VeniceResponseStatusCategory} */
   VENICE_RESPONSE_STATUS_CODE_CATEGORY("venice.response.status_code_category"),
 

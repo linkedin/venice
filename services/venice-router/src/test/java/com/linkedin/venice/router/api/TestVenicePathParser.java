@@ -46,6 +46,7 @@ import io.netty.handler.codec.http.DefaultHttpHeaders;
 import io.netty.handler.codec.http.EmptyHttpHeaders;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -306,7 +307,8 @@ public class TestVenicePathParser {
       fail("A RouterException should be thrown here");
     } catch (RouterException e) {
       // expected and validate bad request metric
-      verify(multiGetStats, times(1)).recordBadRequestKeyCount(storeName, maxKeyCount + 1);
+      verify(multiGetStats, times(1))
+          .recordBadRequestKeyCount(storeName, HttpResponseStatus.REQUEST_ENTITY_TOO_LARGE, maxKeyCount + 1);
     } catch (Throwable t) {
       t.printStackTrace();
       fail("Only RouterException is expected, but got: " + t.getClass());
