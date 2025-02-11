@@ -6,7 +6,6 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_ABORT_REASON;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_VALIDATION_OUTCOME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.Utils.setOf;
@@ -23,19 +22,10 @@ import java.util.Set;
  */
 public enum RouterMetricEntity {
   /**
-   * Count of all incoming requests in the request handling path
-   */
-  INCOMING_CALL_COUNT(
-      MetricType.COUNTER, MetricUnit.NUMBER, "Count of all incoming requests in the request handling path",
-      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
-  ),
-  /**
-   * Count of all requests in the response handling path along with response codes.
-   * This vs {@link #INCOMING_CALL_COUNT} will help to correlate the incoming vs properly handled requests.
+   * Count of all requests during response handling along with response codes
    */
   CALL_COUNT(
-      MetricType.COUNTER, MetricUnit.NUMBER,
-      "Count of all requests in the response handling path along with response codes",
+      MetricType.COUNTER, MetricUnit.NUMBER, "Count of all requests during response handling along with response codes",
       setOf(
           VENICE_STORE_NAME,
           VENICE_CLUSTER_NAME,
@@ -58,18 +48,10 @@ public enum RouterMetricEntity {
           VENICE_RESPONSE_STATUS_CODE_CATEGORY)
   ),
   /**
-   * Count of keys in incoming requests in the request handling path
-   */
-  INCOMING_KEY_COUNT(
-      MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
-      "Count of keys in incoming requests in the request handling path",
-      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_VALIDATION_OUTCOME)
-  ),
-  /**
-   * Count of keys in the response handling path along with response codes.
+   * Count of keys during response handling along with response codes
    */
   KEY_COUNT(
-      MetricType.HISTOGRAM, MetricUnit.NUMBER, "Count of keys in the response handling path along with response codes",
+      MetricType.HISTOGRAM, MetricUnit.NUMBER, "Count of keys during response handling along with response codes",
       setOf(
           VENICE_STORE_NAME,
           VENICE_CLUSTER_NAME,

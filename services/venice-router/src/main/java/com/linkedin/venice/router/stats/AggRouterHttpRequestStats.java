@@ -5,7 +5,6 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.AbstractVeniceAggStoreStats;
-import com.linkedin.venice.stats.dimensions.RequestValidationOutcome;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.metrics.MetricsRepository;
@@ -149,15 +148,10 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
     }
   }
 
-  public void recordBadRequestKeyCount(String storeName, int keyNum) {
-    totalStats
-        .recordIncomingBadRequestKeyCountMetric(keyNum, RequestValidationOutcome.INVALID_KEY_COUNT_LIMIT_EXCEEDED);
+  public void recordBadRequestKeyCount(String storeName, HttpResponseStatus responseStatus, int keyNum) {
+    totalStats.recordIncomingBadRequestKeyCountMetric(responseStatus, keyNum);
     if (storeName != null) {
-      recordStoreStats(
-          storeName,
-          stats -> stats.recordIncomingBadRequestKeyCountMetric(
-              keyNum,
-              RequestValidationOutcome.INVALID_KEY_COUNT_LIMIT_EXCEEDED));
+      recordStoreStats(storeName, stats -> stats.recordIncomingBadRequestKeyCountMetric(responseStatus, keyNum));
     }
   }
 
@@ -271,8 +265,8 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
   }
 
   public void recordKeyNum(String storeName, int keyNum) {
-    totalStats.recordIncomingKeyCountMetric(keyNum, RequestValidationOutcome.VALID);
-    recordStoreStats(storeName, stats -> stats.recordIncomingKeyCountMetric(keyNum, RequestValidationOutcome.VALID));
+    totalStats.recordIncomingKeyCountMetric(keyNum);
+    recordStoreStats(storeName, stats -> stats.recordIncomingKeyCountMetric(keyNum));
   }
 
   public void recordRequestUsage(String storeName, int usage) {

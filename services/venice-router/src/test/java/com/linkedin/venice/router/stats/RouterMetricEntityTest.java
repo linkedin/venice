@@ -21,25 +21,13 @@ public class RouterMetricEntityTest {
   @Test
   public void testRouterMetricEntities() {
     Map<RouterMetricEntity, MetricEntity> expectedMetrics = new HashMap<>();
-
-    expectedMetrics.put(
-        RouterMetricEntity.INCOMING_CALL_COUNT,
-        new MetricEntity(
-            "incoming_call_count",
-            MetricType.COUNTER,
-            MetricUnit.NUMBER,
-            "Count of all incoming requests in the request handling path",
-            Utils.setOf(
-                VeniceMetricsDimensions.VENICE_STORE_NAME,
-                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
-                VeniceMetricsDimensions.VENICE_REQUEST_METHOD)));
     expectedMetrics.put(
         RouterMetricEntity.CALL_COUNT,
         new MetricEntity(
             "call_count",
             MetricType.COUNTER,
             MetricUnit.NUMBER,
-            "Count of all requests in the response handling path along with response codes",
+            "Count of all requests during response handling along with response codes",
             Utils.setOf(
                 VeniceMetricsDimensions.VENICE_STORE_NAME,
                 VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
@@ -62,24 +50,12 @@ public class RouterMetricEntityTest {
                 VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY,
                 VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
     expectedMetrics.put(
-        RouterMetricEntity.INCOMING_KEY_COUNT,
-        new MetricEntity(
-            "incoming_key_count",
-            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
-            MetricUnit.NUMBER,
-            "Count of keys in incoming requests in the request handling path",
-            Utils.setOf(
-                VeniceMetricsDimensions.VENICE_STORE_NAME,
-                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
-                VeniceMetricsDimensions.VENICE_REQUEST_METHOD,
-                VeniceMetricsDimensions.VENICE_REQUEST_VALIDATION_OUTCOME)));
-    expectedMetrics.put(
         RouterMetricEntity.KEY_COUNT,
         new MetricEntity(
             "key_count",
             MetricType.HISTOGRAM,
             MetricUnit.NUMBER,
-            "Count of keys in the response handling path along with response codes",
+            "Count of keys during response handling along with response codes",
             Utils.setOf(
                 VeniceMetricsDimensions.VENICE_STORE_NAME,
                 VeniceMetricsDimensions.VENICE_CLUSTER_NAME,

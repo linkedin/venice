@@ -345,6 +345,7 @@ public class VenicePathParser implements ExtendedResourcePathParser<VenicePath, 
         routerStats.getStatsByType(keyCountLimitException.getRequestType())
             .recordBadRequestKeyCount(
                 keyCountLimitException.getStoreName(),
+                responseStatus,
                 keyCountLimitException.getRequestKeyCount());
       }
       /**
