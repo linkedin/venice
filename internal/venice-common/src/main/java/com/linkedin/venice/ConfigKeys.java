@@ -2403,6 +2403,42 @@ public class ConfigKeys {
    */
   public static final String NAME_REPOSITORY_MAX_ENTRY_COUNT = "name.repository.max.entry.count";
 
+  /**
+   * Specifies the value to use for Helix's rebalance preference for evenness when using Waged.
+   * Must be used in conjunction with {@link ConfigKeys#CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT}.
+   * Accepted range: 0 - 1000
+   */
+  public static final String CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS =
+      "controller.helix.rebalance.preference.evenness";
+
+  /**
+   * Specifies the value to use for Helix's rebalance preference for less movement when using Waged.
+   * Must be used in conjunction with {@link ConfigKeys#CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS}.
+   * Accepted range: 0 - 1000
+   */
+  public static final String CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT =
+      "controller.helix.rebalance.preference.less.movement";
+
+  /**
+   * Specifies the value to use for Helix's rebalance preference for force baseline convergence when using Waged.
+   * This shouldn't be enabled, so it doesn't overpower other constraints.
+   * Accepted range: 0 - 1000
+   */
+  public static final String CONTROLLER_HELIX_REBALANCE_PREFERENCE_FORCE_BASELINE_CONVERGE =
+      "controller.helix.rebalance.preference.force.baseline.converge";
+
+  /**
+   * Specifies the capacity a controller instance can handle.
+   * The weight of each Helix resource is determined by {@link ConfigKeys#CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT}.
+   */
+  public static final String CONTROLLER_HELIX_INSTANCE_CAPACITY = "controller.helix.instance.capacity";
+
+  /**
+   * Specifies the weight of each Helix resource.
+   * The maximum weight per instance is determined by {@link ConfigKeys#CONTROLLER_HELIX_INSTANCE_CAPACITY}.
+   */
+  public static final String CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT = "controller.helix.default.instance.capacity";
+
   public static final String CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS = "controller.deferred.version.swap.sleep.ms";
   public static final String CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED =
       "controller.deferred.version.swap.service.enabled";

@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
+import static com.linkedin.venice.ConfigConstants.CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY;
 import static com.linkedin.venice.ConfigConstants.DEFAULT_MAX_RECORD_SIZE_BYTES_BACKFILL;
 import static com.linkedin.venice.ConfigConstants.DEFAULT_PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST;
@@ -59,6 +60,11 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESS
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_PACKAGE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_SOURCES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_PROVIDER;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_INSTANCE_CAPACITY;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_FORCE_BASELINE_CONVERGE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_INSTANCE_TAG_LIST;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX;
@@ -222,6 +228,7 @@ import java.util.stream.Collectors;
 import org.apache.helix.cloud.constants.CloudProvider;
 import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
 import org.apache.helix.model.CloudConfig;
+import org.apache.helix.model.ClusterConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -548,6 +555,11 @@ public class VeniceControllerClusterConfig {
   private boolean isHybridStorePartitionCountUpdateEnabled;
   private final long deferredVersionSwapSleepMs;
   private final boolean deferredVersionSwapServiceEnabled;
+
+  private final Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> helixGlobalRebalancePreference;
+  private final List<String> helixInstanceCapacityKeys;
+  private final Map<String, Integer> helixDefaultInstanceCapacityMap;
+  private final Map<String, Integer> helixDefaultPartitionWeightMap;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
@@ -1000,6 +1012,57 @@ public class VeniceControllerClusterConfig {
     this.pushJobUserErrorCheckpoints = parsePushJobUserErrorCheckpoints(props);
     this.isHybridStorePartitionCountUpdateEnabled =
         props.getBoolean(ConfigKeys.CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE, false);
+
+    Integer helixRebalancePreferenceEvenness =
+        props.getOptionalInt(CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS).orElse(null);
+    Integer helixRebalancePreferenceLessMovement =
+        props.getOptionalInt(CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT).orElse(null);
+    Integer helixRebalancePreferenceForceBaselineConverge =
+        props.getOptionalInt(CONTROLLER_HELIX_REBALANCE_PREFERENCE_FORCE_BASELINE_CONVERGE).orElse(null);
+    validateHelixRebalancePreferences(
+        helixRebalancePreferenceEvenness,
+        helixRebalancePreferenceLessMovement,
+        helixRebalancePreferenceForceBaselineConverge);
+
+    if ((helixRebalancePreferenceEvenness != null && helixRebalancePreferenceLessMovement != null)
+        || helixRebalancePreferenceForceBaselineConverge != null) {
+      helixGlobalRebalancePreference = new HashMap<>();
+    } else {
+      helixGlobalRebalancePreference = null;
+    }
+
+    if (helixRebalancePreferenceEvenness != null && helixRebalancePreferenceLessMovement != null) {
+      // EVENNESS and LESS_MOVEMENT need to be defined together
+      helixGlobalRebalancePreference
+          .put(ClusterConfig.GlobalRebalancePreferenceKey.EVENNESS, helixRebalancePreferenceEvenness);
+      helixGlobalRebalancePreference
+          .put(ClusterConfig.GlobalRebalancePreferenceKey.LESS_MOVEMENT, helixRebalancePreferenceLessMovement);
+    }
+
+    if (helixRebalancePreferenceForceBaselineConverge != null) {
+      helixGlobalRebalancePreference.put(
+          ClusterConfig.GlobalRebalancePreferenceKey.FORCE_BASELINE_CONVERGE,
+          helixRebalancePreferenceForceBaselineConverge);
+    }
+
+    Integer helixInstanceCapacity = props.getOptionalInt(CONTROLLER_HELIX_INSTANCE_CAPACITY).orElse(null);
+    Integer helixResourceCapacityWeight = props.getOptionalInt(CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT).orElse(null);
+    validateHelixCapacities(helixInstanceCapacity, helixResourceCapacityWeight);
+
+    if (helixInstanceCapacity != null && helixResourceCapacityWeight != null) {
+      helixInstanceCapacityKeys = Collections.singletonList(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY);
+      helixDefaultInstanceCapacityMap = new HashMap<>();
+      helixDefaultPartitionWeightMap = new HashMap<>();
+
+      helixDefaultInstanceCapacityMap.put(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, helixInstanceCapacity);
+      helixDefaultPartitionWeightMap.put(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, helixResourceCapacityWeight);
+
+    } else {
+      helixInstanceCapacityKeys = null;
+      helixDefaultInstanceCapacityMap = null;
+      helixDefaultPartitionWeightMap = null;
+    }
+
     this.deferredVersionSwapSleepMs =
         props.getLong(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, TimeUnit.MINUTES.toMillis(1));
     this.deferredVersionSwapServiceEnabled = props.getBoolean(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, false);
@@ -1847,5 +1910,87 @@ public class VeniceControllerClusterConfig {
 
   public Set<PushJobCheckpoints> getPushJobUserErrorCheckpoints() {
     return pushJobUserErrorCheckpoints;
+  }
+
+  public Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> getHelixGlobalRebalancePreference() {
+    return helixGlobalRebalancePreference;
+  }
+
+  public List<String> getHelixInstanceCapacityKeys() {
+    return helixInstanceCapacityKeys;
+  }
+
+  public Map<String, Integer> getHelixDefaultInstanceCapacityMap() {
+    return helixDefaultInstanceCapacityMap;
+  }
+
+  public Map<String, Integer> getHelixDefaultPartitionWeightMap() {
+    return helixDefaultPartitionWeightMap;
+  }
+
+  private void validateHelixRebalancePreferences(
+      Integer helixRebalancePreferenceEvenness,
+      Integer helixRebalancePreferenceLessMovement,
+      Integer helixRebalancePreferenceForceBaselineConverge) {
+    if (helixRebalancePreferenceEvenness == null && helixRebalancePreferenceLessMovement == null
+        && helixRebalancePreferenceForceBaselineConverge == null) {
+      return;
+    }
+
+    if ((helixRebalancePreferenceEvenness == null && helixRebalancePreferenceLessMovement != null)
+        || (helixRebalancePreferenceEvenness != null && helixRebalancePreferenceLessMovement == null)) {
+      throw new ConfigurationException(
+          CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS + " and " + CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT
+              + " must be defined together.");
+    }
+
+    validateHelixRebalancePreferenceRange(
+        helixRebalancePreferenceEvenness,
+        CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS);
+    validateHelixRebalancePreferenceRange(
+        helixRebalancePreferenceLessMovement,
+        CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT);
+    validateHelixRebalancePreferenceRange(
+        helixRebalancePreferenceForceBaselineConverge,
+        CONTROLLER_HELIX_REBALANCE_PREFERENCE_FORCE_BASELINE_CONVERGE);
+  }
+
+  private void validateHelixRebalancePreferenceRange(Integer value, String rebalancePreferenceName) {
+    if (value == null) {
+      return;
+    }
+
+    int MIN_HELIX_REBALANCE_PREFERENCE = 0;
+    int MAX_HELIX_REBALANCE_PREFERENCE = 1000;
+    if (value < MIN_HELIX_REBALANCE_PREFERENCE || value > MAX_HELIX_REBALANCE_PREFERENCE) {
+      throw new ConfigurationException(
+          rebalancePreferenceName + " must be in the range between " + MIN_HELIX_REBALANCE_PREFERENCE + " and "
+              + MAX_HELIX_REBALANCE_PREFERENCE);
+    }
+  }
+
+  private void validateHelixCapacities(Integer helixInstanceCapacity, Integer helixResourceCapacityWeight) {
+    if ((helixInstanceCapacity != null && helixResourceCapacityWeight == null)
+        || (helixInstanceCapacity == null && helixResourceCapacityWeight != null)) {
+      throw new ConfigurationException(
+          CONTROLLER_HELIX_INSTANCE_CAPACITY + " and " + CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT
+              + " must be defined together");
+    }
+
+    // Both are null, no further validation needed
+    if (helixInstanceCapacity == null) {
+      return;
+    }
+
+    if (helixInstanceCapacity <= 0 || helixResourceCapacityWeight <= 0) {
+      throw new ConfigurationException(
+          CONTROLLER_HELIX_INSTANCE_CAPACITY + " and " + CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT
+              + " must both be greater than 0");
+    }
+
+    if (helixInstanceCapacity < helixResourceCapacityWeight) {
+      throw new ConfigurationException(
+          CONTROLLER_HELIX_INSTANCE_CAPACITY + " cannot be <  " + CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT);
+    }
   }
 }

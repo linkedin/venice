@@ -8,10 +8,10 @@ import com.linkedin.venice.utils.RetryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Duration;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import org.apache.helix.ConfigAccessor;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.constants.InstanceConstants;
 import org.apache.helix.controller.rebalancer.DelayedAutoRebalancer;
@@ -21,12 +21,10 @@ import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZNRecordSerializer;
 import org.apache.helix.model.ClusterConfig;
-import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.model.RESTConfig;
-import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -43,6 +41,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   private static final String CONTROLLER_HAAS_ZK_CLIENT_NAME = "controller-zk-client-for-haas-admin";
 
   private final HelixAdmin helixAdmin;
+  private final ConfigAccessor helixConfigAccessor;
   private final VeniceControllerClusterConfig commonConfig;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final String haasSuperClusterName;
@@ -65,6 +64,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
       throw new VeniceException("Failed to connect to ZK within " + ZkClient.DEFAULT_CONNECTION_TIMEOUT + " ms!");
     }
     helixAdmin = new ZKHelixAdmin(helixAdminZkClient);
+    helixConfigAccessor = new ConfigAccessor(helixAdminZkClient);
   }
 
   /**
@@ -95,9 +95,27 @@ public class ZkHelixAdminClient implements HelixAdminClient {
         }
         ClusterConfig clusterConfig = new ClusterConfig(controllerClusterName);
         clusterConfig.getRecord().setBooleanField(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, true);
-        // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constrains on CRUSH alg to
+        // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constraints on CRUSH alg to
         // choose proper instance to hold the replica.
         clusterConfig.setTopologyAwareEnabled(false);
+        clusterConfig.setPersistBestPossibleAssignment(true);
+
+        if (commonConfig.getHelixGlobalRebalancePreference() != null) {
+          // We want to prioritize evenness over less movement when it comes to resource assignment, because the cost
+          // of rebalancing for the controller is cheap as it is stateless.
+          clusterConfig.setGlobalRebalancePreference(commonConfig.getHelixGlobalRebalancePreference());
+        }
+
+        if (commonConfig.getHelixDefaultInstanceCapacityMap() != null
+            && commonConfig.getHelixDefaultPartitionWeightMap() != null) {
+          clusterConfig.setInstanceCapacityKeys(commonConfig.getHelixInstanceCapacityKeys());
+
+          // This is how much capacity a participant can take. The Helix documentation recommends setting this to a high
+          // value to avoid rebalance failures. The primary goal of setting this is to enable a constraint that takes
+          // the current top-state distribution into account when rebalancing.
+          clusterConfig.setDefaultInstanceCapacityMap(commonConfig.getHelixDefaultInstanceCapacityMap());
+          clusterConfig.setDefaultPartitionWeightMap(commonConfig.getHelixDefaultPartitionWeightMap());
+        }
 
         updateClusterConfigs(controllerClusterName, clusterConfig);
         helixAdmin.addStateModelDef(controllerClusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
@@ -215,10 +233,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
    */
   @Override
   public void updateClusterConfigs(String clusterName, ClusterConfig clusterConfig) {
-    HelixConfigScope configScope =
-        new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).forCluster(clusterName).build();
-    Map<String, String> helixClusterProperties = new HashMap<>(clusterConfig.getRecord().getSimpleFields());
-    helixAdmin.setConfig(configScope, helixClusterProperties);
+    helixConfigAccessor.setClusterConfig(clusterName, clusterConfig);
   }
 
   /**
@@ -226,10 +241,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
    */
   @Override
   public void updateRESTConfigs(String clusterName, RESTConfig restConfig) {
-    HelixConfigScope configScope =
-        new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.REST).forCluster(clusterName).build();
-    Map<String, String> helixRestProperties = new HashMap<>(restConfig.getRecord().getSimpleFields());
-    helixAdmin.setConfig(configScope, helixRestProperties);
+    helixConfigAccessor.setRESTConfig(clusterName, restConfig);
   }
 
   /**

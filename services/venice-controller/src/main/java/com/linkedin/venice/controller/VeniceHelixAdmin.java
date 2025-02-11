@@ -8870,6 +8870,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return pubSubTopicRepository;
   }
 
+  SafeHelixManager getHelixManager() {
+    return helixManager;
+  }
+
   String getPushJobStatusStoreClusterName() {
     return pushJobStatusStoreClusterName;
   }
