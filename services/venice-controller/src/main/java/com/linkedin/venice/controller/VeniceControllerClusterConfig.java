@@ -1964,6 +1964,7 @@ public class VeniceControllerClusterConfig {
 
   public long getTimeSinceLastLogCompactionThresholdMS() {
     return timeSinceLastLogCompactionThresholdMS;
+  }
 
   public Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> getHelixGlobalRebalancePreference() {
     return helixGlobalRebalancePreference;
@@ -2045,6 +2046,6 @@ public class VeniceControllerClusterConfig {
       throw new ConfigurationException(
           CONTROLLER_HELIX_INSTANCE_CAPACITY + " cannot be <  " + CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT);
     }
-    
+
   }
 }

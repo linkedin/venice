@@ -98,7 +98,7 @@ public class CompactionManager {
 
   /**
    * This function triggers a repush job to perform log compaction on the topic of a store.
-   *
+       *
    * - intermediary between {@link com.linkedin.venice.controller.VeniceHelixAdmin#compactStore} and {@link RepushOrchestrator#repush}
    * - a wrapper around repush()
    * - handles repush job status/response
@@ -111,7 +111,7 @@ public class CompactionManager {
       LOGGER.info(
           "Repush job triggered for store: {} | exec id: {} | exec url: {}",
           response.getName(),
-          response.getExecutionRunId(),
+          response.getExecutionId(),
           response.getExecutionUrl());
       return response;
     } catch (Exception e) {
