@@ -34,6 +34,7 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -896,16 +897,19 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       // Skip since there are no new admin messages processed.
       return;
     }
-    Map<String, Long> metadata = remoteConsumptionEnabled
-        ? AdminTopicMetadataAccessor
-            .generateMetadataMap(localOffsetCheckpointAtStartTime, lastOffset, lastDelegatedExecutionId)
-        : AdminTopicMetadataAccessor
-            .generateMetadataMap(lastOffset, upstreamOffsetCheckpointAtStartTime, lastDelegatedExecutionId);
-    adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
-    lastPersistedOffset = lastOffset;
-    lastPersistedExecutionId = lastDelegatedExecutionId;
-    LOGGER.info("Updated lastPersistedOffset to {}", lastPersistedOffset);
-    stats.setAdminConsumptionCheckpointOffset(lastPersistedOffset);
+    try (AutoCloseableLock ignore =
+        admin.getHelixVeniceClusterResources(clusterName).getClusterLockManager().createClusterWriteLock()) {
+      Map<String, Long> metadata = remoteConsumptionEnabled
+          ? AdminTopicMetadataAccessor
+              .generateMetadataMap(localOffsetCheckpointAtStartTime, lastOffset, lastDelegatedExecutionId)
+          : AdminTopicMetadataAccessor
+              .generateMetadataMap(lastOffset, upstreamOffsetCheckpointAtStartTime, lastDelegatedExecutionId);
+      adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
+      lastPersistedOffset = lastOffset;
+      lastPersistedExecutionId = lastDelegatedExecutionId;
+      LOGGER.info("Updated lastPersistedOffset to {}", lastPersistedOffset);
+      stats.setAdminConsumptionCheckpointOffset(lastPersistedOffset);
+    }
   }
 
   void skipMessageWithOffset(long offset) {

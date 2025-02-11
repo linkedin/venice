@@ -19,29 +19,14 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyBoolean;
-import static org.mockito.Mockito.anyDouble;
-import static org.mockito.Mockito.anyInt;
-import static org.mockito.Mockito.anyLong;
-import static org.mockito.Mockito.argThat;
-import static org.mockito.Mockito.atLeastOnce;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.timeout;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 import com.linkedin.venice.admin.InMemoryAdminTopicMetadataAccessor;
 import com.linkedin.venice.admin.InMemoryExecutionIdAccessor;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
+import com.linkedin.venice.controller.HelixVeniceClusterResources;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
@@ -97,6 +82,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.IOException;
@@ -189,6 +175,12 @@ public class AdminConsumptionTaskTest {
     doReturn(new HashSet<>(Arrays.asList(pubSubTopic))).when(topicManager).listTopics();
     doReturn(topicManager).when(admin).getTopicManager();
     doReturn(true).when(topicManager).containsTopicAndAllPartitionsAreOnline(pubSubTopic);
+
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class, RETURNS_DEEP_STUBS);
+    ClusterLockManager lockManager = new ClusterLockManager(clusterName);
+    doReturn(resources).when(admin).getHelixVeniceClusterResources(clusterName);
+    doReturn(lockManager).when(resources).getClusterLockManager();
+    doCallRealMethod().when(resources).getStoreMetadataRepository();
   }
 
   @AfterMethod
