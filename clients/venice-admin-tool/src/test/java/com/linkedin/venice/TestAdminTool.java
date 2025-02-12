@@ -416,7 +416,7 @@ public class TestAdminTool {
   @Test
   public void testUpdateAdminOperationProtocolVersionWithInvalidInput() {
     String[] args = { "--update-admin-operation-protocol-version", "--url", "http://localhost:7036", "--cluster",
-        "test-cluster", "--admin-operation-protocol-version", "many" };
+        "test-cluster", "--admin-operation-protocol-version", "thisShouldBeLongValue" };
     Assert.assertThrows(VeniceException.class, () -> AdminTool.main(args));
   }
 }
