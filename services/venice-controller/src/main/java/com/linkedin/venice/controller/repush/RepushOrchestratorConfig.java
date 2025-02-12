@@ -4,10 +4,10 @@ import com.linkedin.venice.utils.VeniceProperties;
 
 
 public class RepushOrchestratorConfig {
-  public static final String AIRFLOW_URL_CFG_KEY = "airflowUrl";
+  public static final String AIRFLOW_URL_CFG_KEY = "airflow.url";
   public static final String DAG_ID_CFG_KEY = "dagId";
-  public static final String AIRFLOW_USERNAME_CFG_KEY = "airflowUsername";
-  public static final String AIRFLOW_PASSWORD_CFG_KEY = "airflowPassword";
+  public static final String AIRFLOW_USERNAME_CFG_KEY = "airflow.username";
+  public static final String AIRFLOW_PASSWORD_CFG_KEY = "airflow.password";
 
   private final String airflowUrl;
   private final String airflowUsername;
