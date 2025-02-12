@@ -414,14 +414,9 @@ public class TestAdminTool {
   }
 
   @Test
-  public void testUpdateAdminOperationProtocolVersion() throws ParseException, IOException {
+  public void testUpdateAdminOperationProtocolVersionWithInvalidInput() {
     String[] args = { "--update-admin-operation-protocol-version", "--url", "http://localhost:7036", "--cluster",
-        "test-cluster", "--admin-operation-protocol-version", "1" };
-
-    try {
-      AdminTool.main(args);
-    } catch (Exception e) {
-      Assert.fail("AdminTool should allow admin topic metadata to be updated admin operation version", e);
-    }
+        "test-cluster", "--admin-operation-protocol-version", "many" };
+    Assert.assertThrows(VeniceException.class, () -> AdminTool.main(args));
   }
 }
