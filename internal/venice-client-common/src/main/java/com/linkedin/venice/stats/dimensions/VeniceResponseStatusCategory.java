@@ -8,7 +8,7 @@ package com.linkedin.venice.stats.dimensions;
  * to account for all healthy requests. This dimensions makes it easier to make Venice specific aggregations.
  */
 public enum VeniceResponseStatusCategory {
-  HEALTHY, UNHEALTHY, TARDY, THROTTLED, BAD_REQUEST;
+  SUCCESS, FAIL;
 
   private final String category;
 

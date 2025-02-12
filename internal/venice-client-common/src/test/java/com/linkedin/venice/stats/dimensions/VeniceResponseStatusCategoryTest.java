@@ -10,20 +10,11 @@ public class VeniceResponseStatusCategoryTest {
   public void testVeniceResponseStatusCategory() {
     for (VeniceResponseStatusCategory responseStatusCategory: VeniceResponseStatusCategory.values()) {
       switch (responseStatusCategory) {
-        case HEALTHY:
-          assertEquals(responseStatusCategory.getCategory(), "healthy");
+        case SUCCESS:
+          assertEquals(responseStatusCategory.getCategory(), "success");
           break;
-        case UNHEALTHY:
-          assertEquals(responseStatusCategory.getCategory(), "unhealthy");
-          break;
-        case TARDY:
-          assertEquals(responseStatusCategory.getCategory(), "tardy");
-          break;
-        case THROTTLED:
-          assertEquals(responseStatusCategory.getCategory(), "throttled");
-          break;
-        case BAD_REQUEST:
-          assertEquals(responseStatusCategory.getCategory(), "bad_request");
+        case FAIL:
+          assertEquals(responseStatusCategory.getCategory(), "fail");
           break;
         default:
           throw new IllegalArgumentException("Unknown response status category: " + responseStatusCategory);

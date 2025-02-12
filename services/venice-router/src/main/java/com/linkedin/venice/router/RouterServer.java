@@ -681,7 +681,11 @@ public class RouterServer extends AbstractVeniceService {
 
     RouterSslVerificationHandler routerSslVerificationHandler = new RouterSslVerificationHandler(securityStats);
     RouterStoreAclHandler aclHandler = accessController.isPresent()
-        ? new RouterStoreAclHandler(identityParser, accessController.get(), metadataRepository)
+        ? new RouterStoreAclHandler(
+            identityParser,
+            accessController.get(),
+            metadataRepository,
+            config.getAclInMemoryCacheTTLMs())
         : null;
     final SslInitializer sslInitializer;
     if (sslFactory.isPresent()) {

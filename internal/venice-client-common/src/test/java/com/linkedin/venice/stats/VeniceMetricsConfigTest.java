@@ -39,6 +39,7 @@ public class VeniceMetricsConfigTest {
     assertEquals(config.getMetricPrefix(), "service");
     assertFalse(config.emitOtelMetrics());
     assertFalse(config.exportOtelMetricsToEndpoint());
+    assertEquals(config.getExportOtelMetricsIntervalInSeconds(), 60);
     assertEquals(config.getOtelExportProtocol(), OtlpConfigUtil.PROTOCOL_HTTP_PROTOBUF);
     assertEquals(config.getOtelEndpoint(), null);
     assertTrue(config.getOtelHeaders().isEmpty());
@@ -63,6 +64,7 @@ public class VeniceMetricsConfigTest {
         .setMetricPrefix("TestPrefix")
         .setTehutiMetricConfig(metricConfig)
         .extractAndSetOtelConfigs(otelConfigs)
+        .setExportOtelMetricsIntervalInSeconds(10)
         .build();
 
     assertEquals(config.getServiceName(), "TestService");
@@ -70,6 +72,7 @@ public class VeniceMetricsConfigTest {
     assertTrue(config.emitOtelMetrics());
     assertTrue(config.exportOtelMetricsToLog());
     assertEquals(config.getTehutiMetricConfig(), metricConfig);
+    assertEquals(config.getExportOtelMetricsIntervalInSeconds(), 10);
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class)

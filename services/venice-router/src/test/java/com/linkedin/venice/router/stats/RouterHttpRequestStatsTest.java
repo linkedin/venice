@@ -78,7 +78,7 @@ public class RouterHttpRequestStatsTest {
       assertNull(routerHttpRequestStats.getCommonMetricDimensions());
     }
 
-    routerHttpRequestStats.recordHealthyRequest(1.0, HttpResponseStatus.OK);
+    routerHttpRequestStats.recordHealthyRequest(1.0, HttpResponseStatus.OK, 1);
     assertEquals(
         metricsRepository.getMetric("." + storeName + "--" + HEALTHY_REQUEST.getMetricName() + ".Count").value(),
         1.0);

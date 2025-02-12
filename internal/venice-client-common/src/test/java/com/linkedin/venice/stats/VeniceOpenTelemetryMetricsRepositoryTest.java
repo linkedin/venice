@@ -38,6 +38,7 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
     when(mockMetricsConfig.getServiceName()).thenReturn("test_service");
     when(mockMetricsConfig.exportOtelMetricsToEndpoint()).thenReturn(true);
     when(mockMetricsConfig.getOtelEndpoint()).thenReturn("http://localhost:4318");
+    when(mockMetricsConfig.getExportOtelMetricsIntervalInSeconds()).thenReturn(60);
 
     metricsRepository = new VeniceOpenTelemetryMetricsRepository(mockMetricsConfig);
   }

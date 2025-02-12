@@ -55,6 +55,12 @@ public class VeniceMetricsConfig {
   public static final String OTEL_VENICE_METRICS_EXPORT_TO_ENDPOINT = "otel.venice.metrics.export.to.endpoint";
 
   /**
+   * Export interval in seconds for OpenTelemetry metrics
+   */
+  public static final String OTEL_VENICE_METRICS_EXPORT_INTERVAL_IN_SECONDS =
+      "otel.venice.metrics.export.interval.in.seconds";
+
+  /**
    * Config Map to add custom dimensions to the metrics: Can be used for system dimensions
    * amongst other custom dimensions <br>
    * These will be emitted along with all the metrics emitted.
@@ -130,6 +136,7 @@ public class VeniceMetricsConfig {
    * 2. {@link VeniceOpenTelemetryMetricsRepository.LogBasedMetricExporter} for debug purposes
    */
   private final boolean exportOtelMetricsToEndpoint;
+  private final int exportOtelMetricsIntervalInSeconds;
   private final boolean exportOtelMetricsToLog;
 
   /** Custom dimensions */
@@ -165,6 +172,7 @@ public class VeniceMetricsConfig {
     this.metricEntities = builder.metricEntities;
     this.emitOTelMetrics = builder.emitOtelMetrics;
     this.exportOtelMetricsToEndpoint = builder.exportOtelMetricsToEndpoint;
+    this.exportOtelMetricsIntervalInSeconds = builder.exportOtelMetricsIntervalInSeconds;
     this.otelCustomDimensionsMap = builder.otelCustomDimensionsMap;
     this.otelExportProtocol = builder.otelExportProtocol;
     this.otelEndpoint = builder.otelEndpoint;
@@ -184,6 +192,7 @@ public class VeniceMetricsConfig {
     private Collection<MetricEntity> metricEntities = new ArrayList<>();
     private boolean emitOtelMetrics = false;
     private boolean exportOtelMetricsToEndpoint = false;
+    private int exportOtelMetricsIntervalInSeconds = 60;
     private Map<String, String> otelCustomDimensionsMap = new HashMap<>();
     private String otelExportProtocol = OtlpConfigUtil.PROTOCOL_HTTP_PROTOBUF;
     private String otelEndpoint = null;
@@ -219,6 +228,11 @@ public class VeniceMetricsConfig {
 
     public Builder setExportOtelMetricsToEndpoint(boolean exportOtelMetricsToEndpoint) {
       this.exportOtelMetricsToEndpoint = exportOtelMetricsToEndpoint;
+      return this;
+    }
+
+    public Builder setExportOtelMetricsIntervalInSeconds(int exportOtelMetricsIntervalInSeconds) {
+      this.exportOtelMetricsIntervalInSeconds = exportOtelMetricsIntervalInSeconds;
       return this;
     }
 
@@ -287,6 +301,10 @@ public class VeniceMetricsConfig {
 
       if ((configValue = configs.get(OTEL_VENICE_METRICS_EXPORT_TO_ENDPOINT)) != null) {
         setExportOtelMetricsToEndpoint(Boolean.parseBoolean(configValue));
+      }
+
+      if ((configValue = configs.get(OTEL_VENICE_METRICS_EXPORT_INTERVAL_IN_SECONDS)) != null) {
+        setExportOtelMetricsIntervalInSeconds(Integer.parseInt(configValue));
       }
 
       /**
@@ -424,6 +442,10 @@ public class VeniceMetricsConfig {
 
   public boolean exportOtelMetricsToEndpoint() {
     return exportOtelMetricsToEndpoint;
+  }
+
+  public int getExportOtelMetricsIntervalInSeconds() {
+    return exportOtelMetricsIntervalInSeconds;
   }
 
   public Map<String, String> getOtelCustomDimensionsMap() {
