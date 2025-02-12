@@ -39,8 +39,7 @@ public class TestLogCompactionService {
     CountDownLatch latch = new CountDownLatch(expectedCompactStoreInvocationCount);
 
     // Mocks
-    when(multiClusterConfigs.getScheduledLogCompactionIntervalMS())
-        .thenReturn(TimeUnit.SECONDS.toMillis(scheduleInterval));
+    when(multiClusterConfigs.getLogCompactionIntervalMS()).thenReturn(TimeUnit.SECONDS.toMillis(scheduleInterval));
 
     String storeForCompaction = "hello";
     StoreInfo mockStoreInfo = mock(StoreInfo.class);

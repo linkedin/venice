@@ -1,8 +1,8 @@
 package com.linkedin.venice.endToEnd.logcompaction;
 
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.REPUSH_ORCHESTRATOR_CLASS_NAME;
-import static com.linkedin.venice.ConfigKeys.SCHEDULED_LOG_COMPACTION_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.STANDALONE_REGION_NAME;
 
@@ -49,7 +49,7 @@ public class TestLogCompactionService {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(REPUSH_ORCHESTRATOR_CLASS_NAME, TestRepushOrchestratorImpl.class.getName());
     extraProperties.setProperty(LOG_COMPACTION_ENABLED, "true");
-    extraProperties.setProperty(SCHEDULED_LOG_COMPACTION_INTERVAL_MS, String.valueOf(TEST_LOG_COMPACTION_INTERVAL_MS));
+    extraProperties.setProperty(LOG_COMPACTION_INTERVAL_MS, String.valueOf(TEST_LOG_COMPACTION_INTERVAL_MS));
     extraProperties.setProperty(
         TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS,
         String.valueOf(TEST_TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS));

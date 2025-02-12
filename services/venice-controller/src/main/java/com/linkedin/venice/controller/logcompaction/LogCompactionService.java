@@ -43,7 +43,7 @@ public class LogCompactionService extends AbstractVeniceService {
     this.admin = admin;
     this.multiClusterConfigs = multiClusterConfigs;
 
-    executor = Executors.newScheduledThreadPool(multiClusterConfigs.getScheduledLogCompactionThreadCount());
+    executor = Executors.newScheduledThreadPool(multiClusterConfigs.getLogCompactionThreadCount());
   }
 
   @Override
@@ -51,7 +51,7 @@ public class LogCompactionService extends AbstractVeniceService {
     executor.scheduleAtFixedRate(
         new LogCompactionTask(multiClusterConfigs.getClusters(), SCHEDULED_TRIGGER),
         PRE_EXECUTION_DELAY_MS,
-        multiClusterConfigs.getScheduledLogCompactionIntervalMS(),
+        multiClusterConfigs.getLogCompactionIntervalMS(),
         TimeUnit.MILLISECONDS);
     LOGGER.info("log compaction service is started");
     return true;
@@ -106,6 +106,7 @@ public class LogCompactionService extends AbstractVeniceService {
                 clusterName,
                 storeInfo.getName(),
                 e);
+            // TODO LC: add metrics for log compaction failures
           }
         }
       }

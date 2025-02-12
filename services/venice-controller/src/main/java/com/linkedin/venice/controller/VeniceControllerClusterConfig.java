@@ -140,6 +140,8 @@ import static com.linkedin.venice.ConfigKeys.KME_REGISTRATION_FROM_MESSAGE_HEADE
 import static com.linkedin.venice.ConfigKeys.LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.LEAKED_RESOURCE_ALLOWED_LINGER_TIME_MS;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_INTERVAL_MS;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_CONCURRENCY;
 import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_STORE_VERSIONS_TO_PRESERVE;
@@ -169,8 +171,6 @@ import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
 import static com.linkedin.venice.ConfigKeys.REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS;
 import static com.linkedin.venice.ConfigKeys.REPLICATION_METADATA_VERSION;
 import static com.linkedin.venice.ConfigKeys.REPUSH_ORCHESTRATOR_CLASS_NAME;
-import static com.linkedin.venice.ConfigKeys.SCHEDULED_LOG_COMPACTION_INTERVAL_MS;
-import static com.linkedin.venice.ConfigKeys.SCHEDULED_LOG_COMPACTION_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.SERVICE_DISCOVERY_REGISTRATION_RETRY_MS;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
@@ -577,8 +577,8 @@ public class VeniceControllerClusterConfig {
    * Configs for log compaction
    */
   private final boolean isLogCompactionEnabled;
-  private final int scheduledLogCompactionThreadCount;
-  private final long scheduledLogCompactionIntervalMS;
+  private final int logCompactionThreadCount;
+  private final long logCompactionIntervalMS;
   private final long timeSinceLastLogCompactionThresholdMS;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
@@ -1034,9 +1034,8 @@ public class VeniceControllerClusterConfig {
     this.repushOrchestratorClassName = props.getString(REPUSH_ORCHESTRATOR_CLASS_NAME); // TODO LC: default value?
     this.repushOrchestratorConfigs = props.clipAndFilterNamespace(CONTROLLER_REPUSH_PREFIX);
     this.isLogCompactionEnabled = props.getBoolean(LOG_COMPACTION_ENABLED, false);
-    this.scheduledLogCompactionThreadCount = props.getInt(SCHEDULED_LOG_COMPACTION_THREAD_COUNT, 1);
-    this.scheduledLogCompactionIntervalMS =
-        props.getLong(SCHEDULED_LOG_COMPACTION_INTERVAL_MS, TimeUnit.HOURS.toMillis(1));
+    this.logCompactionThreadCount = props.getInt(LOG_COMPACTION_THREAD_COUNT, 1);
+    this.logCompactionIntervalMS = props.getLong(LOG_COMPACTION_INTERVAL_MS, TimeUnit.HOURS.toMillis(1));
     this.timeSinceLastLogCompactionThresholdMS =
         props.getLong(TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS, TimeUnit.HOURS.toMillis(24));
 
@@ -1954,12 +1953,12 @@ public class VeniceControllerClusterConfig {
     return isLogCompactionEnabled;
   }
 
-  public int getScheduledLogCompactionThreadCount() {
-    return scheduledLogCompactionThreadCount;
+  public int getLogCompactionThreadCount() {
+    return logCompactionThreadCount;
   }
 
-  public long getScheduledLogCompactionIntervalMS() {
-    return scheduledLogCompactionIntervalMS;
+  public long getLogCompactionIntervalMS() {
+    return logCompactionIntervalMS;
   }
 
   public long getTimeSinceLastLogCompactionThresholdMS() {

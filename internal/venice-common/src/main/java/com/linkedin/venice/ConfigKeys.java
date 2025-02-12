@@ -301,14 +301,14 @@ public class ConfigKeys {
    */
   public static final String LOG_COMPACTION_ENABLED = "log.compaction.enabled";
   /**
-   * Number of threads to use for scheduled log compaction
+   * Number of threads to use for log compaction
    */
-  public static final String SCHEDULED_LOG_COMPACTION_THREAD_COUNT = "scheduled.log.compaction.thread.count";
+  public static final String LOG_COMPACTION_THREAD_COUNT = "log.compaction.thread.count";
 
   /**
    * Time between each scheduled log compaction
    */
-  public static final String SCHEDULED_LOG_COMPACTION_INTERVAL_MS = "scheduled.log.compaction.interval.ms";
+  public static final String LOG_COMPACTION_INTERVAL_MS = "log.compaction.interval.ms";
 
   /**
    * Time since last log compaction before a store is considered for log compaction

@@ -323,12 +323,12 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().isLogCompactionEnabled();
   }
 
-  public int getScheduledLogCompactionThreadCount() {
-    return getCommonConfig().getScheduledLogCompactionThreadCount();
+  public int getLogCompactionThreadCount() {
+    return getCommonConfig().getLogCompactionThreadCount();
   }
 
-  public long getScheduledLogCompactionIntervalMS() {
-    return getCommonConfig().getScheduledLogCompactionIntervalMS();
+  public long getLogCompactionIntervalMS() {
+    return getCommonConfig().getLogCompactionIntervalMS();
   }
 
   public long getTimeSinceLastLogCompactionThresholdMS() {
