@@ -990,7 +990,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
     deleteUnassignedPartitionsOnStartup =
         serverProperties.getBoolean(SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP, false);
-    aclInMemoryCacheTTLMs = serverProperties.getInt(ACL_IN_MEMORY_CACHE_TTL_MS, 60000); // 1min
+    aclInMemoryCacheTTLMs = serverProperties.getInt(ACL_IN_MEMORY_CACHE_TTL_MS, -1); // acl caching is disabled by
+                                                                                     // default
   }
 
   long extractIngestionMemoryLimit(

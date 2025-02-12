@@ -66,7 +66,6 @@ public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> i
    */
   @Override
   public void channelRead0(ChannelHandlerContext ctx, HttpRequest req) throws SSLPeerUnverifiedException {
-
     Channel originalChannel = ServerHandlerUtils.getOriginalChannel(ctx);
     if (originalChannel == null) {
       LOGGER.error("Got a non-ssl request on what should be an ssl only port: {}", req.uri());

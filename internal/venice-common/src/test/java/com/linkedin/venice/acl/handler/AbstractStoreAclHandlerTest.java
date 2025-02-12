@@ -138,6 +138,18 @@ public class AbstractStoreAclHandlerTest {
     hasStore[0] = true;
     enumerate(hasAcl);
     verify(accessController, times(2)).hasAccess(any(), any(), any());
+
+    // Test cache disabled
+    // New metadataRepo mock and aclHandler every update since thenThrow cannot be re-mocked.
+    hasAccess[0] = true;
+    hasStore[0] = true;
+    metadataRepo = mock(HelixReadOnlyStoreRepository.class);
+    AbstractStoreAclHandler aclHandler =
+        spy(new MockStoreAclHandler(identityParser, accessController, metadataRepo, -1, mockTime));
+    update();
+    aclHandler.channelRead0(ctx, req);
+    aclHandler.channelRead0(ctx, req);
+    verify(accessController, times(4)).hasAccess(any(), any(), any());
   }
 
   @Test
@@ -374,6 +386,15 @@ public class AbstractStoreAclHandlerTest {
         HelixReadOnlyStoreRepository metadataRepository,
         Time mockTime) {
       super(identityParser, accessController, metadataRepository, CACHE_TTL_MS, mockTime);
+    }
+
+    public MockStoreAclHandler(
+        IdentityParser identityParser,
+        DynamicAccessController accessController,
+        HelixReadOnlyStoreRepository metadataRepository,
+        int cacheTTLMs,
+        Time mockTime) {
+      super(identityParser, accessController, metadataRepository, cacheTTLMs, mockTime);
     }
 
     @Override
