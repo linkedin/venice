@@ -97,7 +97,6 @@ public class AdminTopicMetadataRoutes extends AbstractRoute {
             UpdateAdminTopicMetadataGrpcRequest.newBuilder().setMetadata(adminMetadataBuilder).build());
         responseObject.setCluster(internalResponse.getClusterName());
         responseObject.setName(internalResponse.hasStoreName() ? internalResponse.getStoreName() : null);
-        admin.updateAdminTopicMetadata(clusterName, executionId, storeName, offset, upstreamOffset);
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(new VeniceException(e), request, response);
