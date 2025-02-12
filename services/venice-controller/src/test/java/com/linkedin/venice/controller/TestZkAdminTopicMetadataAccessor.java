@@ -10,6 +10,7 @@ import static org.testng.Assert.assertEquals;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.zookeeper.data.Stat;
 import org.apache.zookeeper.server.DataTree;
@@ -36,14 +37,16 @@ public class TestZkAdminTopicMetadataAccessor {
     String clusterName = "test-cluster";
 
     // Original metadata
-    Map<String, Long> currentMetadata = AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1, 18);
+    Map<String, Long> currentMetadata = AdminTopicMetadataAccessor
+        .generateMetadataMap(Optional.of(1L), Optional.of(-1L), Optional.of(1L), Optional.of(18L));
 
     // New metadata
     Map<String, Long> newMetadata = new HashMap<>();
     newMetadata.put("offset", 100L);
 
     // Updated metadata with new metadata
-    Map<String, Long> updatedMetadata = AdminTopicMetadataAccessor.generateMetadataMap(100, -1, 1, 18);
+    Map<String, Long> updatedMetadata = AdminTopicMetadataAccessor
+        .generateMetadataMap(Optional.of(100L), Optional.of(-1L), Optional.of(1L), Optional.of(18L));
 
     String metadataPath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(clusterName);
     try (MockedStatic<DataTree> dataTreeMockedStatic = Mockito.mockStatic(DataTree.class)) {
@@ -69,7 +72,8 @@ public class TestZkAdminTopicMetadataAccessor {
   @Test
   public void testGetMetadata() {
     String clusterName = "test-cluster";
-    Map<String, Long> currentMetadata = AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1, 18);
+    Map<String, Long> currentMetadata = AdminTopicMetadataAccessor
+        .generateMetadataMap(Optional.of(1L), Optional.of(-1L), Optional.of(1L), Optional.of(18L));
     String metadataPath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(clusterName);
 
     when(zkClient.readData(metadataPath, null)).thenReturn(null).thenReturn(currentMetadata);

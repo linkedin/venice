@@ -966,7 +966,8 @@ public class TestVeniceHelixAdmin {
     doCallRealMethod().when(veniceHelixAdmin).getAdminTopicMetadata(clusterName, Optional.empty());
 
     // Case 1: Not store name provided
-    Map<String, Long> remoteMetadata = AdminTopicMetadataAccessor.generateMetadataMap(10, -1, 1, 1);
+    Map<String, Long> remoteMetadata = AdminTopicMetadataAccessor
+        .generateMetadataMap(Optional.of(10L), Optional.of(-1L), Optional.of(1L), Optional.of(1L));
     AdminConsumerService adminConsumerService = mock(AdminConsumerService.class);
     when(veniceHelixAdmin.getAdminConsumerService(clusterName)).thenReturn(adminConsumerService);
     when(adminConsumerService.getAdminTopicMetadata(anyString())).thenReturn(remoteMetadata);
@@ -983,7 +984,8 @@ public class TestVeniceHelixAdmin {
     when(veniceHelixAdmin.getExecutionIdAccessor()).thenReturn(executionIdAccessor);
     when(adminConsumerService.getAdminTopicMetadata(anyString())).thenReturn(remoteMetadata);
 
-    Map<String, Long> expectedMetadata = AdminTopicMetadataAccessor.generateMetadataMap(-1, -1, 10, 1);
+    Map<String, Long> expectedMetadata = AdminTopicMetadataAccessor
+        .generateMetadataMap(Optional.of(-1L), Optional.of(-1L), Optional.of(10L), Optional.of(1L));
     Map<String, Long> metadataForStore = veniceHelixAdmin.getAdminTopicMetadata(clusterName, Optional.of(storeName));
     assertEquals(metadataForStore, expectedMetadata);
   }

@@ -190,8 +190,11 @@ public class AdminConsumerService extends AbstractVeniceService {
     if (clusterName.equals(config.getClusterName())) {
       try (AutoCloseableLock ignore =
           admin.getHelixVeniceClusterResources(clusterName).getClusterLockManager().createClusterWriteLock()) {
-        Map<String, Long> metadata =
-            AdminTopicMetadataAccessor.generateMetadataMap(offset, upstreamOffset, executionId);
+        Map<String, Long> metadata = AdminTopicMetadataAccessor.generateMetadataMap(
+            Optional.of(offset),
+            Optional.of(upstreamOffset),
+            Optional.of(executionId),
+            Optional.empty());
         adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
       }
     } else {

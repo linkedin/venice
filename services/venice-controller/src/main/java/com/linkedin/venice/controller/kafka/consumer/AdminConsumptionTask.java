@@ -900,10 +900,16 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     try (AutoCloseableLock ignore =
         admin.getHelixVeniceClusterResources(clusterName).getClusterLockManager().createClusterWriteLock()) {
       Map<String, Long> metadata = remoteConsumptionEnabled
-          ? AdminTopicMetadataAccessor
-              .generateMetadataMap(localOffsetCheckpointAtStartTime, lastOffset, lastDelegatedExecutionId)
-          : AdminTopicMetadataAccessor
-              .generateMetadataMap(lastOffset, upstreamOffsetCheckpointAtStartTime, lastDelegatedExecutionId);
+          ? AdminTopicMetadataAccessor.generateMetadataMap(
+              Optional.of(localOffsetCheckpointAtStartTime),
+              Optional.of(lastOffset),
+              Optional.of(lastDelegatedExecutionId),
+              Optional.empty())
+          : AdminTopicMetadataAccessor.generateMetadataMap(
+              Optional.of(lastOffset),
+              Optional.of(upstreamOffsetCheckpointAtStartTime),
+              Optional.of(lastDelegatedExecutionId),
+              Optional.empty());
       adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
       lastPersistedOffset = lastOffset;
       lastPersistedExecutionId = lastDelegatedExecutionId;

@@ -36,26 +36,6 @@ public abstract class AdminTopicMetadataAccessor {
     return metadata;
   }
 
-  public static Map<String, Long> generateMetadataMap(long localOffset, long upstreamOffset, long executionId) {
-    return generateMetadataMap(
-        Optional.of(localOffset),
-        Optional.of(upstreamOffset),
-        Optional.of(executionId),
-        Optional.empty());
-  }
-
-  public static Map<String, Long> generateMetadataMap(
-      long localOffset,
-      long upstreamOffset,
-      long executionId,
-      long adminOperationProtocolVersion) {
-    return generateMetadataMap(
-        Optional.of(localOffset),
-        Optional.of(upstreamOffset),
-        Optional.of(executionId),
-        Optional.of(adminOperationProtocolVersion));
-  }
-
   /**
    * @return a pair of values to which the specified keys are mapped to {@linkplain AdminTopicMetadataAccessor#OFFSET_KEY}
    * and {@linkplain AdminTopicMetadataAccessor#UPSTREAM_OFFSET_KEY}.

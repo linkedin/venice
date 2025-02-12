@@ -7509,7 +7509,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Long adminOperationProtocolVersion = AdminTopicMetadataAccessor.getAdminOperationProtocolVersion(metadata);
       return executionId == null
           ? Collections.emptyMap()
-          : AdminTopicMetadataAccessor.generateMetadataMap(-1, -1, executionId, adminOperationProtocolVersion);
+          : AdminTopicMetadataAccessor.generateMetadataMap(
+              Optional.of(-1L),
+              Optional.of(-1L),
+              Optional.of(executionId),
+              Optional.of(adminOperationProtocolVersion));
     }
     return metadata;
   }
