@@ -59,6 +59,10 @@ public abstract class VeniceView {
     return Collections.emptyMap();
   }
 
+  public String composeTopicName(int version) {
+    return Version.composeKafkaTopic(storeName, version);
+  }
+
   /**
    * Implementations should return the fully specified class name for the component VeniceViewWriter
    * implementation.

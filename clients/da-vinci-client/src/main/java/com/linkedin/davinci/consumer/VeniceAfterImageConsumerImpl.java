@@ -2,6 +2,7 @@ package com.linkedin.davinci.consumer;
 
 import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.alpini.base.concurrency.ScheduledExecutorService;
+import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -91,6 +92,11 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
     if (partitions.isEmpty()) {
       return CompletableFuture.completedFuture(null);
+    }
+    try {
+      storeRepository.subscribe(storeName);
+    } catch (InterruptedException e) {
+      throw new VeniceException("Failed to start bootstrapping changelog consumer with error:", e);
     }
     if (!versionSwapThreadScheduled.get()) {
       // schedule the version swap thread and set up the callback listener
@@ -207,5 +213,11 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       // repository change.
       versionSwapListener.handleStoreChanged(null);
     }
+  }
+
+  @Override
+  public void setStoreRepository(NativeMetadataRepositoryViewAdapter repository) {
+    super.setStoreRepository(repository);
+    versionSwapListener.setStoreRepository(repository);
   }
 }
