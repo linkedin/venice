@@ -266,8 +266,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           .put(SERVER_INGESTION_HEARTBEAT_INTERVAL_MS, 5000)
           .put(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS, 5000)
           .put(SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED, true)
-          .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 8 * 1024 * 1024 * 1024L)
-          .put(ROCKSDB_RMD_BLOCK_CACHE_SIZE_IN_BYTES, 1024 * 1024 * 1024L)
+          .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 512 * 1024 * 1024L)
+          .put(ROCKSDB_RMD_BLOCK_CACHE_SIZE_IN_BYTES, 128 * 1024 * 1024L)
           .put(SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP, serverDeleteUnassignedPartitionsOnStartup);
       if (sslToKafka) {
         serverPropsBuilder.put(KAFKA_SECURITY_PROTOCOL, PubSubSecurityProtocol.SSL.name());
