@@ -48,7 +48,6 @@ public class IngestionBatchProcessor {
   private final KeyLevelLocksManager lockManager;
   private final boolean isWriteComputationEnabled;
   private final boolean isActiveActiveReplicationEnabled;
-  private final ProcessingFunction processingFunction;
   private final AggVersionedIngestionStats aggVersionedIngestionStats;
   private final HostLevelIngestionStats hostLevelIngestionStats;
 
@@ -56,7 +55,6 @@ public class IngestionBatchProcessor {
       String storeVersionName,
       ExecutorService batchProcessingThreadPool,
       KeyLevelLocksManager lockManager,
-      ProcessingFunction processingFunction,
       boolean isWriteComputationEnabled,
       boolean isActiveActiveReplicationEnabled,
       AggVersionedIngestionStats aggVersionedIngestionStats,
@@ -64,7 +62,6 @@ public class IngestionBatchProcessor {
     this.storeVersionName = storeVersionName;
     this.batchProcessingThreadPool = batchProcessingThreadPool;
     this.lockManager = lockManager;
-    this.processingFunction = processingFunction;
     this.isWriteComputationEnabled = isWriteComputationEnabled;
     this.isActiveActiveReplicationEnabled = isActiveActiveReplicationEnabled;
     this.aggVersionedIngestionStats = aggVersionedIngestionStats;
@@ -130,7 +127,8 @@ public class IngestionBatchProcessor {
       String kafkaUrl,
       int kafkaClusterId,
       long beforeProcessingRecordTimestampNs,
-      long beforeProcessingBatchRecordsTimestampMs) {
+      long beforeProcessingBatchRecordsTimestampMs,
+      ProcessingFunction processingFunction) {
     long currentTimestampInNs = System.nanoTime();
     if (records.isEmpty()) {
       return Collections.emptyList();

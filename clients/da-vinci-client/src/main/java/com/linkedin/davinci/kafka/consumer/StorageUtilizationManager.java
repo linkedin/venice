@@ -216,8 +216,8 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
   /**
    * Enforce partition level quota for the map.
    * This function could be invoked by multiple threads when shared consumer is being used.
-   * Check {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka} and {@link StoreIngestionTask#checkIngestionProgress}
-   * to find more details.
+   * Check {@link StorePartitionDataReceiver#produceToStoreBufferServiceOrKafka} and
+   * {@link StoreIngestionTask#checkIngestionProgress} to find more details.
    */
   public void checkAllPartitionsQuota() {
     try (AutoCloseableLock ignored = AutoCloseableLock.of(hybridStoreDiskQuotaLock)) {

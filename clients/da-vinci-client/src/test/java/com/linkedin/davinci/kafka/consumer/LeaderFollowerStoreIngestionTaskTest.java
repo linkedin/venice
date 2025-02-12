@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -206,6 +207,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     mockPartitionConsumptionState = mock(PartitionConsumptionState.class);
     mockConsumerAction = mock(ConsumerAction.class);
+    mockTopicPartition = mock(PubSubTopicPartition.class);
 
     mockProperties = new Properties();
     mockBooleanSupplier = mock(BooleanSupplier.class);
@@ -247,7 +249,6 @@ public class LeaderFollowerStoreIngestionTaskTest {
         mock(LeaderFollowerPartitionStateModel.LeaderSessionIdChecker.class);
     when(mockConsumerAction.getLeaderSessionIdChecker()).thenReturn(mockLeaderSessionIdChecker);
     when(mockLeaderSessionIdChecker.isSessionIdValid()).thenReturn(true);
-    mockTopicPartition = mock(PubSubTopicPartition.class);
     OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
     when(mockConsumerAction.getTopicPartition()).thenReturn(mockTopicPartition);
     when(mockPartitionConsumptionState.getOffsetRecord()).thenReturn(mockOffsetRecord);
@@ -289,7 +290,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
     AtomicBoolean writeToVersionTopic = new AtomicBoolean(false);
     when(mockPartitionConsumptionState.getLastVTProduceCallFuture())
         .thenReturn(CompletableFuture.completedFuture(null));
-    leaderFollowerStoreIngestionTask.queueUpVersionTopicWritesWithViewWriters(
+    StorePartitionDataReceiver storePartitionDataReceiver =
+        spy(new StorePartitionDataReceiver(leaderFollowerStoreIngestionTask, mockTopicPartition, "dummyUrl", 0));
+    storePartitionDataReceiver.queueUpVersionTopicWritesWithViewWriters(
         mockPartitionConsumptionState,
         (viewWriter) -> viewWriter.processRecord(mock(ByteBuffer.class), new byte[1], 1, false),
         () -> writeToVersionTopic.set(true));
@@ -332,8 +335,10 @@ public class LeaderFollowerStoreIngestionTaskTest {
         .thenReturn(nextVTWriteFuture);
     VeniceWriter veniceWriter = mock(VeniceWriter.class);
     doReturn(Lazy.of(() -> veniceWriter)).when(mockPartitionConsumptionState).getVeniceWriterLazyRef();
-    leaderFollowerStoreIngestionTask.delegateConsumerRecord(firstCM, 0, "testURL", 0, 0, 0);
-    leaderFollowerStoreIngestionTask.delegateConsumerRecord(secondCM, 0, "testURL", 0, 0, 0);
+    StorePartitionDataReceiver storePartitionDataReceiver =
+        spy(new StorePartitionDataReceiver(leaderFollowerStoreIngestionTask, mockTopicPartition, "testURL", 0));
+    storePartitionDataReceiver.delegateConsumerRecord(firstCM, 0, "testURL", 0, 0, 0);
+    storePartitionDataReceiver.delegateConsumerRecord(secondCM, 0, "testURL", 0, 0, 0);
     // The CM write should be queued but not executed yet since the previous VT write future is still incomplete
     verify(veniceWriter, never()).put(any(), any(), any(), anyInt(), any());
     lastVTWriteFuture.complete(null);
