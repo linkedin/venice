@@ -363,7 +363,6 @@ public class VeniceChangelogConsumerImplTest {
 
     PubSubConsumerAdapter mockPubSubConsumer = mock(PubSubConsumerAdapter.class);
     PubSubTopic oldVersionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1));
-    PubSubTopic oldChangeCaptureTopic = pubSubTopicRepository.getTopic(oldVersionTopic.getName());
 
     prepareVersionTopicRecordsToBePolled(0L, 5L, mockPubSubConsumer, oldVersionTopic, 0, true);
     ChangelogClientConfig changelogClientConfig =
