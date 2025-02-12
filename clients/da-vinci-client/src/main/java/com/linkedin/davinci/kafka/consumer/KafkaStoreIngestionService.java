@@ -197,6 +197,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private Lazy<ZKHelixAdmin> zkHelixAdmin;
 
+  private final ExecutorService aaWCIngestionStorageLookupThreadPool;
+
   public KafkaStoreIngestionService(
       StorageService storageService,
       VeniceConfigLoader veniceConfigLoader,
@@ -456,6 +458,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       this.aaWCWorkLoadProcessingThreadPool = null;
     }
 
+    this.aaWCIngestionStorageLookupThreadPool = Executors.newFixedThreadPool(
+        serverConfig.getAaWCIngestionStorageLookupThreadPoolSize(),
+        new DaemonThreadFactory("AA_WC_INGESTION_STORAGE_LOOKUP"));
+    LOGGER.info(
+        "Enabled a thread pool for AA/WC ingestion lookup with {} threads.",
+        serverConfig.getAaWCIngestionStorageLookupThreadPoolSize());
+
     ingestionTaskFactory = StoreIngestionTaskFactory.builder()
         .setVeniceWriterFactory(veniceWriterFactory)
         .setStorageEngineRepository(storageService.getStorageEngineRepository())
@@ -482,6 +491,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
             serverConfig.getIngestionMemoryLimit() > 0 ? () -> killConsumptionTaskForNonCurrentVersions() : null)
         .setHeartbeatMonitoringService(heartbeatMonitoringService)
         .setAAWCWorkLoadProcessingThreadPool(aaWCWorkLoadProcessingThreadPool)
+        .setAAWCIngestionStorageLookupThreadPool(aaWCIngestionStorageLookupThreadPool)
         .build();
   }
 
@@ -605,6 +615,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     Utils.closeQuietlyWithErrorLogged(metaStoreWriter);
 
     shutdownExecutorService(aaWCWorkLoadProcessingThreadPool, "aaWCWorkLoadProcessingThreadPool", true);
+    shutdownExecutorService(aaWCIngestionStorageLookupThreadPool, "aaWCIngestionStorageLookupThreadPool", true);
 
     kafkaMessageEnvelopeSchemaReader.ifPresent(Utils::closeQuietlyWithErrorLogged);
 

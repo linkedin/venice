@@ -54,6 +54,7 @@ import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DEL
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PRINCIPAL_NAME;
+import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_INGESTION_STORAGE_LOOKUP_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_THREAD_POOL_SIZE;
@@ -587,6 +588,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean deleteUnassignedPartitionsOnStartup;
   private final int aclInMemoryCacheTTLMs;
 
+  private final int aaWCIngestionStorageLookupThreadPoolSize;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
   }
@@ -991,7 +994,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     deleteUnassignedPartitionsOnStartup =
         serverProperties.getBoolean(SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP, false);
     aclInMemoryCacheTTLMs = serverProperties.getInt(ACL_IN_MEMORY_CACHE_TTL_MS, -1); // acl caching is disabled by
-                                                                                     // default
+    aaWCIngestionStorageLookupThreadPoolSize =
+        serverProperties.getInt(SERVER_AA_WC_INGESTION_STORAGE_LOOKUP_THREAD_POOL_SIZE, 4);
   }
 
   long extractIngestionMemoryLimit(
@@ -1808,5 +1812,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getAclInMemoryCacheTTLMs() {
     return aclInMemoryCacheTTLMs;
+  }
+
+  public int getAaWCIngestionStorageLookupThreadPoolSize() {
+    return aaWCIngestionStorageLookupThreadPoolSize;
   }
 }

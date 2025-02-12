@@ -2380,6 +2380,13 @@ public class ConfigKeys {
   public static final String SERVER_GLOBAL_RT_DIV_ENABLED = "server.global.rt.div.enabled";
 
   /**
+   * This config is used to control the RocksDB lookup concurrency when handling AA/WC workload with parallel processing enabled.
+   * Check {@link #SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED} for more details.
+   */
+  public static final String SERVER_AA_WC_INGESTION_STORAGE_LOOKUP_THREAD_POOL_SIZE =
+      "server.aa.wc.ingestion.storage.lookup.thread.pool.size";
+
+  /**
    * Whether to enable producer throughput optimization for realtime workload or not.
    * Two strategies:
    * 1. Disable compression.

@@ -389,8 +389,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       ChunkedValueManifestContainer rmdManifestContainer,
       long currentTimeForMetricsMs) {
     final long lookupStartTimeInNS = System.nanoTime();
-    ValueRecord result = SingleGetChunkingAdapter
-        .getReplicationMetadata(getStorageEngine(), partition, key, isChunked(), rmdManifestContainer);
+    ValueRecord result = databaseLookupWithConcurrencyLimit(
+        () -> getRmdWithValueSchemaByteBufferFromStorageInternal(partition, key, rmdManifestContainer));
     getHostLevelIngestionStats().recordIngestionReplicationMetadataLookUpLatency(
         LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS),
         currentTimeForMetricsMs);
@@ -398,6 +398,15 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       return null;
     }
     return result.serialize();
+  }
+
+  // For testing purpose
+  ValueRecord getRmdWithValueSchemaByteBufferFromStorageInternal(
+      int partition,
+      byte[] key,
+      ChunkedValueManifestContainer rmdManifestContainer) {
+    return SingleGetChunkingAdapter
+        .getReplicationMetadata(getStorageEngine(), partition, key, isChunked(), rmdManifestContainer);
   }
 
   @Override
@@ -755,16 +764,18 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       ReusableObjects reusableObjects = threadLocalReusableObjects.get();
       ByteBuffer reusedRawValue = reusableObjects.reusedByteBuffer;
       BinaryDecoder binaryDecoder = reusableObjects.binaryDecoder;
-      originalValue = RawBytesChunkingAdapter.INSTANCE.getWithSchemaId(
-          storageEngine,
-          topicPartition.getPartitionNumber(),
-          ByteBuffer.wrap(key),
-          isChunked,
-          reusedRawValue,
-          binaryDecoder,
-          RawBytesStoreDeserializerCache.getInstance(),
-          compressor.get(),
-          valueManifestContainer);
+
+      originalValue = databaseLookupWithConcurrencyLimit(
+          () -> RawBytesChunkingAdapter.INSTANCE.getWithSchemaId(
+              storageEngine,
+              topicPartition.getPartitionNumber(),
+              ByteBuffer.wrap(key),
+              isChunked,
+              reusedRawValue,
+              binaryDecoder,
+              RawBytesStoreDeserializerCache.getInstance(),
+              compressor.get(),
+              valueManifestContainer));
       hostLevelIngestionStats.recordIngestionValueBytesLookUpLatency(
           LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS),
           currentTimeForMetricsMs);
