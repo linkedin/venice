@@ -245,12 +245,10 @@ public class StoreBackend {
       return;
     }
 
-    Store store = backend.getStoreRepository().getStoreOrThrow(storeName);
-    Set<String> targetRegions = RegionUtils.parseRegionsFilterList(store.getTargetSwapRegion());
+    Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetVersion.getTargetSwapRegion());
     VeniceServerConfig veniceServerConfig = backend.getConfigLoader().getVeniceServerConfig();
     String currentRegion = veniceServerConfig.getRegionName();
-    boolean isTargetRegionEnabled = !StringUtils.isEmpty(store.getTargetSwapRegion())
-        && veniceServerConfig.isTargetRegionPushWithDelayedIngestionEnabled();
+    boolean isTargetRegionEnabled = !StringUtils.isEmpty(targetVersion.getTargetSwapRegion());
     boolean startIngestionInNonTargetRegion =
         isTargetRegionEnabled && targetVersion.getStatus() == VersionStatus.ONLINE;
 
@@ -269,7 +267,7 @@ public class StoreBackend {
           targetVersion.kafkaTopicName(),
           currentRegion,
           targetVersion.getStatus(),
-          store.getTargetSwapRegion());
+          targetVersion.getTargetSwapRegion());
     }
   }
 

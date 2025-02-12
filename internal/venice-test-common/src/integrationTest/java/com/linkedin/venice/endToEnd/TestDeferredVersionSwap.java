@@ -9,6 +9,7 @@ import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V3_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
@@ -96,7 +97,6 @@ public class TestDeferredVersionSwap {
     String keySchemaStr = "\"string\"";
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setUnusedSchemaDeletionEnabled(true);
     storeParms.setTargetRegionSwapWaitTime(1);
-    storeParms.setTargetRegionSwap(TARGET_REGION);
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
@@ -104,6 +104,7 @@ public class TestDeferredVersionSwap {
 
       // Start push job with target region push enabled
       props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+      props.put(TARGETED_REGION_PUSH_LIST, TARGET_REGION);
       TestWriteUtils.runPushJob("Test push job", props);
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 1),
@@ -152,7 +153,6 @@ public class TestDeferredVersionSwap {
     // Setup job properties
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setUnusedSchemaDeletionEnabled(true);
     storeParms.setTargetRegionSwapWaitTime(1);
-    storeParms.setTargetRegionSwap(TARGET_REGION);
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
     String keySchemaStr = "\"int\"";
     String valueSchemaStr = "\"int\"";
@@ -211,6 +211,7 @@ public class TestDeferredVersionSwap {
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath2, storeName);
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
       props2.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+      props2.put(TARGETED_REGION_PUSH_LIST, TARGET_REGION);
       TestWriteUtils.runPushJob("Test push job", props2);
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 2),
