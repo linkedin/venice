@@ -297,9 +297,6 @@ public class VeniceChangelogConsumerImplTest {
 
     PubSubConsumerAdapter mockPubSubConsumer = mock(PubSubConsumerAdapter.class);
     PubSubTopic oldVersionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1));
-    PubSubTopic oldChangeCaptureTopic =
-        pubSubTopicRepository.getTopic(oldVersionTopic + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
-
     prepareVersionTopicRecordsToBePolled(0L, 5L, mockPubSubConsumer, oldVersionTopic, 0, true);
     ChangelogClientConfig changelogClientConfig = getChangelogClientConfig(d2ControllerClient).setViewName("");
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
@@ -329,16 +326,8 @@ public class VeniceChangelogConsumerImplTest {
       Utf8 messageStr = pubSubMessage.getValue().getCurrentValue();
       Assert.assertEquals(messageStr.toString(), "newValue" + i);
     }
-    prepareChangeCaptureRecordsToBePolled(
-        5L,
-        15L,
-        mockPubSubConsumer,
-        oldChangeCaptureTopic,
-        0,
-        oldVersionTopic,
-        null,
-        false,
-        false);
+
+    prepareVersionTopicRecordsToBePolled(5L, 15L, mockPubSubConsumer, oldVersionTopic, 0, true);
     pubSubMessages =
         (List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>>) veniceChangelogConsumer.poll(100);
     Assert.assertFalse(pubSubMessages.isEmpty());
@@ -350,7 +339,7 @@ public class VeniceChangelogConsumerImplTest {
     }
 
     veniceChangelogConsumer.close();
-    verify(mockPubSubConsumer, times(2)).batchUnsubscribe(any());
+    verify(mockPubSubConsumer, times(3)).batchUnsubscribe(any());
     verify(mockPubSubConsumer).close();
   }
 
@@ -374,8 +363,7 @@ public class VeniceChangelogConsumerImplTest {
 
     PubSubConsumerAdapter mockPubSubConsumer = mock(PubSubConsumerAdapter.class);
     PubSubTopic oldVersionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1));
-    PubSubTopic oldChangeCaptureTopic =
-        pubSubTopicRepository.getTopic(oldVersionTopic + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
+    PubSubTopic oldChangeCaptureTopic = pubSubTopicRepository.getTopic(oldVersionTopic.getName());
 
     prepareVersionTopicRecordsToBePolled(0L, 5L, mockPubSubConsumer, oldVersionTopic, 0, true);
     ChangelogClientConfig changelogClientConfig =
@@ -413,16 +401,8 @@ public class VeniceChangelogConsumerImplTest {
       Utf8 messageStr = pubSubMessage.getValue().getCurrentValue();
       Assert.assertEquals(messageStr.toString(), "newValue" + i);
     }
-    prepareChangeCaptureRecordsToBePolled(
-        5L,
-        15L,
-        mockPubSubConsumer,
-        oldChangeCaptureTopic,
-        0,
-        oldVersionTopic,
-        null,
-        false,
-        true);
+
+    prepareVersionTopicRecordsToBePolled(5L, 15L, mockPubSubConsumer, oldVersionTopic, 0, true);
     pubSubMessages = new ArrayList<>(veniceChangelogConsumer.poll(100));
     Assert.assertFalse(pubSubMessages.isEmpty());
     Assert.assertEquals(pubSubMessages.size(), 10);
@@ -433,7 +413,7 @@ public class VeniceChangelogConsumerImplTest {
     }
 
     veniceChangelogConsumer.close();
-    verify(mockPubSubConsumer, times(2)).batchUnsubscribe(any());
+    verify(mockPubSubConsumer, times(3)).batchUnsubscribe(any());
     verify(mockPubSubConsumer).close();
   }
 
@@ -651,7 +631,7 @@ public class VeniceChangelogConsumerImplTest {
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope(
         MessageType.PUT.getValue(),
         producerMetadata,
-        new Put(ByteBuffer.wrap(recordChangeSerializer.serialize(recordChangeEvent)), 0, 0, ByteBuffer.allocate(0)),
+        new Put(ByteBuffer.wrap(recordChangeSerializer.serialize(recordChangeEvent)), 1, 0, ByteBuffer.allocate(0)),
         null);
     kafkaMessageEnvelope.setProducerMetadata(producerMetadata);
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, keySerializer.serialize(key));

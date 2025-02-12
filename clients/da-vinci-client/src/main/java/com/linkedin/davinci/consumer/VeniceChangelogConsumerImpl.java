@@ -803,20 +803,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         compressor = compressorMap.get(pubSubTopicPartition.getPartitionNumber());
       }
 
-      // if (pubSubTopicPartition.getPubSubTopic().isVersionTopic()) {
-      // deserializerProvider = Lazy.of(() -> storeDeserializerCache.getDeserializer(put.schemaId, put.schemaId));
-      // readerSchemaId = put.schemaId;
-      // } else {
-      // deserializerProvider = Lazy.of(() -> recordChangeDeserializer);
-      // readerSchemaId = this.schemaReader.getLatestValueSchemaId();
-      // }
-      //
-      // if (pubSubTopicPartition.getPubSubTopic().isVersionTopic()) {
-      // compressor = compressorMap.get(pubSubTopicPartition.getPartitionNumber());
-      // } else {
-      // compressor = NO_OP_COMPRESSOR;
-      // }
-
       assembledObject = chunkAssembler.bufferAndAssembleRecord(
           pubSubTopicPartition,
           put.getSchemaId(),
