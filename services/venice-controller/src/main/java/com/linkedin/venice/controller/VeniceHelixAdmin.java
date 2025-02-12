@@ -7502,20 +7502,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    *        If store name is specified, it returns store-level execution id.
    */
   public Map<String, Long> getAdminTopicMetadata(String clusterName, Optional<String> storeName) {
-    Map<String, Long> metadata = getAdminConsumerService(clusterName).getAdminTopicMetadata(clusterName);
-
     if (storeName.isPresent()) {
       Long executionId = getExecutionIdAccessor().getLastSucceededExecutionIdMap(clusterName).get(storeName.get());
-      Long adminOperationProtocolVersion = AdminTopicMetadataAccessor.getAdminOperationProtocolVersion(metadata);
       return executionId == null
           ? Collections.emptyMap()
-          : AdminTopicMetadataAccessor.generateMetadataMap(
-              Optional.of(-1L),
-              Optional.of(-1L),
-              Optional.of(executionId),
-              Optional.of(adminOperationProtocolVersion));
+          : AdminTopicMetadataAccessor
+              .generateMetadataMap(Optional.of(-1L), Optional.of(-1L), Optional.of(executionId), Optional.of(-1L));
     }
-    return metadata;
+    return getAdminConsumerService(clusterName).getAdminTopicMetadata(clusterName);
   }
 
   /**

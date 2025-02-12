@@ -53,10 +53,10 @@ public class AdminTopicMetadataRoutes extends AbstractRoute {
         responseObject.setCluster(clusterName);
         storeName.ifPresent(responseObject::setName);
         responseObject.setExecutionId(adminTopicMetadata.getExecutionId());
-        responseObject.setAdminOperationProtocolVersion(adminTopicMetadata.getAdminOperationProtocolVersion());
         if (!storeName.isPresent()) {
           responseObject.setOffset(adminTopicMetadata.getOffset());
           responseObject.setUpstreamOffset(adminTopicMetadata.getUpstreamOffset());
+          responseObject.setAdminOperationProtocolVersion(adminTopicMetadata.getAdminOperationProtocolVersion());
         }
       } catch (Throwable e) {
         responseObject.setError(e);
