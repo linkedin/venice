@@ -47,6 +47,12 @@ public class DaVinciConfig {
    */
   private int largeBatchRequestSplitThreshold = AvroGenericDaVinciClient.DEFAULT_CHUNK_SPLIT_THRESHOLD;
 
+  /**
+   * Determines whether to enable request-based metadata retrieval directly from the Venice Server.
+   * By default, metadata is retrieved from a system store via a thin client.
+   */
+  private boolean useRequestBasedMetaRepository = false;
+
   public DaVinciConfig() {
   }
 
@@ -145,6 +151,15 @@ public class DaVinciConfig {
       throw new IllegalArgumentException("'largeBatchRequestSplitThreshold' param needs to be at least 1");
     }
     this.largeBatchRequestSplitThreshold = largeBatchRequestSplitThreshold;
+    return this;
+  }
+
+  public boolean isUseRequestBasedMetaRepository() {
+    return useRequestBasedMetaRepository;
+  }
+
+  public DaVinciConfig setUseRequestBasedMetaRepository(boolean useRequestBasedMetaRepository) {
+    this.useRequestBasedMetaRepository = useRequestBasedMetaRepository;
     return this;
   }
 }

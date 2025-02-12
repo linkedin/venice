@@ -117,7 +117,6 @@ public abstract class NativeMetadataRepository
       ClientConfig clientConfig,
       VeniceProperties backendConfig,
       ICProvider icProvider) {
-
     NativeMetadataRepository nativeMetadataRepository;
     if (clientConfig.isUseRequestBasedMetaRepository()) {
       nativeMetadataRepository = new RequestBasedMetaRepository(clientConfig, backendConfig);

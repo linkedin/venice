@@ -130,9 +130,8 @@ public class RequestBasedMetaRepository extends NativeMetadataRepository {
   }
 
   protected void cacheStoreSchema(String storeName, StorePropertiesResponseRecord record) {
-
     if (!storeSchemaMap.containsKey(storeName)) {
-      // New schema data
+      // New store
       Map.Entry<CharSequence, CharSequence> keySchemaEntry =
           record.getStoreMetaValue().getStoreKeySchemas().getKeySchemaMap().entrySet().iterator().next();
       SchemaData schemaData = new SchemaData(
@@ -140,7 +139,6 @@ public class RequestBasedMetaRepository extends NativeMetadataRepository {
           new SchemaEntry(Integer.parseInt(keySchemaEntry.getKey().toString()), keySchemaEntry.getValue().toString()));
       storeSchemaMap.put(storeName, schemaData);
     }
-
     // Store Value Schemas
     for (Map.Entry<CharSequence, CharSequence> entry: record.getStoreMetaValue()
         .getStoreValueSchemas()

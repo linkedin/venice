@@ -19,6 +19,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_TRUST_STORE_PRO
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 
+import com.google.common.base.CaseFormat;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.RandomRecordGenerator;
 import com.linkedin.avroutil1.compatibility.RecordGenerationConfig;
@@ -107,7 +108,6 @@ public class TestWriteUtils {
       AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV5.avsc"));
   public static final Schema NAME_RECORD_V6_SCHEMA =
       AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV6.avsc"));
-
   public static final Schema NAME_RECORD_V7_SCHEMA =
       AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV7.avsc"));
   public static final Schema NAME_RECORD_V8_SCHEMA =
@@ -116,7 +116,6 @@ public class TestWriteUtils {
       AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV9.avsc"));
   public static final Schema NAME_RECORD_V10_SCHEMA =
       AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV10.avsc"));
-
   public static final Schema NAME_RECORD_V11_SCHEMA =
       AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV11.avsc"));
 
@@ -147,13 +146,32 @@ public class TestWriteUtils {
       new PushInputSchemaBuilder().setKeySchema(INT_SCHEMA).setValueSchema(INT_SCHEMA).build();
   public static final Schema STRING_TO_STRING_SCHEMA =
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(STRING_SCHEMA).build();
+
   public static final Schema STRING_TO_NAME_RECORD_V1_SCHEMA =
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(NAME_RECORD_V1_SCHEMA).build();
   public static final Schema STRING_TO_NAME_RECORD_V2_SCHEMA =
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(NAME_RECORD_V2_SCHEMA).build();
-
   public static final Schema STRING_TO_NAME_RECORD_V3_SCHEMA =
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(NAME_RECORD_V3_SCHEMA).build();
+  public static final Schema STRING_TO_NAME_RECORD_V5_SCHEMA =
+      new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(NAME_RECORD_V5_SCHEMA).build();
+  public static final Schema STRING_TO_NAME_RECORD_V6_SCHEMA =
+      new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(NAME_RECORD_V6_SCHEMA).build();
+  public static final Schema STRING_TO_NAME_RECORD_V7_SCHEMA =
+      new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(NAME_RECORD_V7_SCHEMA).build();
+  public static final Schema STRING_TO_NAME_RECORD_V8_SCHEMA =
+      new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(NAME_RECORD_V8_SCHEMA).build();
+  public static final Schema STRING_TO_NAME_RECORD_V9_SCHEMA =
+      new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(NAME_RECORD_V9_SCHEMA).build();
+  public static final Schema STRING_TO_NAME_RECORD_V10_SCHEMA =
+      new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(NAME_RECORD_V10_SCHEMA).build();
+  public static final Schema STRING_TO_NAME_RECORD_V11_SCHEMA =
+      new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(NAME_RECORD_V11_SCHEMA).build();
+  private static final Schema[] STRING_TO_NAME_RECORD_SCHEMAS = new Schema[] { STRING_TO_NAME_RECORD_V1_SCHEMA,
+      STRING_TO_NAME_RECORD_V2_SCHEMA, STRING_TO_NAME_RECORD_V3_SCHEMA, STRING_TO_NAME_RECORD_V5_SCHEMA,
+      STRING_TO_NAME_RECORD_V6_SCHEMA, STRING_TO_NAME_RECORD_V7_SCHEMA, STRING_TO_NAME_RECORD_V8_SCHEMA,
+      STRING_TO_NAME_RECORD_V9_SCHEMA, STRING_TO_NAME_RECORD_V10_SCHEMA, STRING_TO_NAME_RECORD_V11_SCHEMA };
+
   public static final Schema STRING_TO_NAME_RECORD_V1_UPDATE_SCHEMA =
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(NAME_RECORD_V1_UPDATE_SCHEMA).build();
   public static final Schema STRING_TO_STRING_WITH_EXTRA_FIELD_SCHEMA =
@@ -166,6 +184,52 @@ public class TestWriteUtils {
 
   public static File getTempDataDirectory() {
     return Utils.getTempDataDirectory();
+  }
+
+  public static GenericRecord renderNameRecord(Schema schema, int i) {
+
+    // Key
+    GenericRecord keyValueRecord = new GenericData.Record(schema);
+    keyValueRecord.put(DEFAULT_KEY_FIELD_PROP, String.valueOf(i));
+
+    // Value
+    Schema valueSchema = schema.getField(DEFAULT_VALUE_FIELD_PROP).schema();
+    valueSchema.getFields().get(0).name();
+    GenericRecord valueRecord = new GenericData.Record(schema.getField(DEFAULT_VALUE_FIELD_PROP).schema());
+    for (Schema.Field field: valueSchema.getFields()) {
+      Object value = null;
+      switch (field.schema().getType()) {
+        case STRING:
+          // Camel case field name to snake case value
+          value = CaseFormat.UPPER_CAMEL.to(CaseFormat.LOWER_UNDERSCORE, field.name()) + "_" + i;
+          break;
+        case INT:
+        case LONG:
+          value = i;
+          break;
+        case FLOAT:
+        case DOUBLE:
+          value = (double) i;
+          break;
+        case BOOLEAN:
+          value = true;
+          break;
+        default:
+          break;
+      }
+      valueRecord.put(field.name(), value);
+    }
+    keyValueRecord.put(DEFAULT_VALUE_FIELD_PROP, valueRecord);
+
+    return keyValueRecord;
+  }
+
+  public static int countStringToNameRecordSchemas() {
+    return STRING_TO_NAME_RECORD_SCHEMAS.length;
+  }
+
+  public static Schema getStringToNameRecordSchema(int version) {
+    return STRING_TO_NAME_RECORD_SCHEMAS[version];
   }
 
   public static Schema writeSimpleAvroFileWithStringToStringSchema(File parentDir) throws IOException {
@@ -361,17 +425,28 @@ public class TestWriteUtils {
   }
 
   public static Schema writeSimpleAvroFileWithStringToNameRecordV1Schema(File parentDir) throws IOException {
-    String firstName = "first_name_";
-    String lastName = "last_name_";
+    return writeSimpleAvroFileWithStringToNameRecordV1Schema(parentDir, DEFAULT_USER_DATA_RECORD_COUNT);
+  }
 
-    return writeSimpleAvroFile(parentDir, STRING_TO_NAME_RECORD_V1_SCHEMA, i -> {
-      GenericRecord keyValueRecord = new GenericData.Record(STRING_TO_NAME_RECORD_V1_SCHEMA);
-      keyValueRecord.put(DEFAULT_KEY_FIELD_PROP, String.valueOf(i)); // Key
-      GenericRecord valueRecord = new GenericData.Record(NAME_RECORD_V1_SCHEMA);
-      valueRecord.put("firstName", firstName + i);
-      valueRecord.put("lastName", lastName + i);
-      keyValueRecord.put(DEFAULT_VALUE_FIELD_PROP, valueRecord); // Value
-      return keyValueRecord;
+  public static Schema writeSimpleAvroFileWithStringToNameRecordV1Schema(File parentDir, int recordCount)
+      throws IOException {
+    return writeSimpleAvroFileWithStringToNameRecordSchema(parentDir, STRING_TO_NAME_RECORD_V1_SCHEMA, recordCount);
+  }
+
+  public static Schema writeSimpleAvroFileWithStringToNameRecordSchema(File parentDir, Schema schema, int recordCount)
+      throws IOException {
+    return writeSimpleAvroFile(parentDir, schema, i -> renderNameRecord(schema, i), recordCount);
+  }
+
+  public static Schema writeSimpleAvroFile(
+      File parentDir,
+      Schema schema,
+      Function<Integer, GenericRecord> recordProvider,
+      int recordCount) throws IOException {
+    return writeAvroFile(parentDir, "string2record.avro", schema, (recordSchema, writer) -> {
+      for (int i = 1; i <= recordCount; ++i) {
+        writer.append(recordProvider.apply(i));
+      }
     });
   }
 
@@ -379,11 +454,7 @@ public class TestWriteUtils {
       File parentDir,
       Schema schema,
       Function<Integer, GenericRecord> recordProvider) throws IOException {
-    return writeAvroFile(parentDir, "string2record.avro", schema, (recordSchema, writer) -> {
-      for (int i = 1; i <= DEFAULT_USER_DATA_RECORD_COUNT; ++i) {
-        writer.append(recordProvider.apply(i));
-      }
-    });
+    return writeSimpleAvroFile(parentDir, schema, recordProvider, DEFAULT_USER_DATA_RECORD_COUNT);
   }
 
   public static Schema writeSimpleAvroFileWithStringToUserWithStringMapSchema(File parentDir, int itemsPerRecord)

@@ -15,7 +15,6 @@ import static org.testng.Assert.fail;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.repository.NativeMetadataRepository;
-import com.linkedin.davinci.repository.RequestBasedMetaRepository;
 import com.linkedin.davinci.repository.ThinClientMetaStoreBasedRepository;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
@@ -289,50 +288,6 @@ public class MetaSystemStoreTest {
     }
   }
 
-  // TODO PRANAV move this test and use the full DVC
-  // Can we add a new test file where we run a more
-  // comprehensive integration test with a DVC? i.e
-  // push some new versions or make some store config
-  // changes and make sure the DVC pick up those changes.
-  // You can see examples like the recently added
-  // testBatchOnlyMaterializedViewDVCConsumer.
-  // You probably don't need a VeniceTwoLayerMultiRegionMultiClusterWrapper,
-  // a single region will be sufficient.
-  @Test(timeOut = 120 * Time.MS_PER_SECOND)
-  public void testRequestBasedMetaStoreBasedRepository() throws InterruptedException {
-    String regularVeniceStoreName = Utils.getUniqueString("venice_store");
-    createStoreAndMaterializeMetaSystemStore(regularVeniceStoreName);
-    D2Client d2Client = null;
-    NativeMetadataRepository nativeMetadataRepository = null;
-    try {
-      d2Client = D2TestUtils.getAndStartD2Client(veniceLocalCluster.getZk().getAddress());
-      ClientConfig<StoreMetaValue> clientConfig =
-          getClientConfig(regularVeniceStoreName, d2Client).setUseRequestBasedMetaRepository(true);
-      // Not providing a CLIENT_META_SYSTEM_STORE_VERSION_MAP, should use the default value of 1 for system store
-      // current version.
-      VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
-          .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
-          .build();
-      nativeMetadataRepository = NativeMetadataRepository.getInstance(clientConfig, backendConfig);
-      nativeMetadataRepository.start();
-      // RequestBasedMetaRepository implementation should be used since
-      Assert.assertTrue(nativeMetadataRepository instanceof RequestBasedMetaRepository);
-      verifyRepository(nativeMetadataRepository, regularVeniceStoreName);
-    } finally {
-      if (d2Client != null) {
-        D2ClientUtils.shutdownClient(d2Client);
-      }
-      if (nativeMetadataRepository != null) {
-        // Calling clear explicitly here because if the NativeMetadataRepository implementation used happens to
-        // initialize
-        // a new DaVinciBackend then calling clear will trigger the cleanup logic to ensure the DaVinciBackend is not
-        // leaked
-        // into other tests.
-        nativeMetadataRepository.clear();
-      }
-    }
-  }
-
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testThinClientMetaStoreBasedRepositoryWithLargeValueSchemas() throws InterruptedException {
     String regularVeniceStoreName = Utils.getUniqueString("venice_store");
@@ -509,15 +464,8 @@ public class MetaSystemStoreTest {
     if (parentControllerClient.getStore(storeName).getStore() == null) {
       NewStoreResponse resp =
           parentControllerClient.createNewStore(storeName, "test_owner", INT_KEY_SCHEMA, valueSchema);
-      if (resp.isError()) {
-        System.out.println("Create new store failed: " + resp.getError());
-      }
-      assertFalse(resp.isError());
+      assertFalse(resp.isError(), "Create new store failed: " + resp.getError());
       assertFalse(parentControllerClient.emptyPush(storeName, "test-push-job", 100).isError());
-      try {
-        Thread.sleep(10000);
-      } catch (InterruptedException e) {
-      }
     }
     String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
     TestUtils.waitForNonDeterministicPushCompletion(
