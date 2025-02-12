@@ -568,6 +568,7 @@ public class DaVinciClientRecordTransformerTest {
         .put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, port2)
         .put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, port1)
         .put(PUSH_STATUS_STORE_ENABLED, true)
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 1)
         .put(BLOB_TRANSFER_MANAGER_ENABLED, true);
     VeniceProperties backendConfig2 = configBuilder.build();
