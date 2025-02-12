@@ -1,5 +1,6 @@
 package com.linkedin.venice.router;
 
+import static com.linkedin.venice.ConfigKeys.ACL_IN_MEMORY_CACHE_TTL_MS;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
@@ -223,6 +224,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
   private final long longTailRetryBudgetEnforcementWindowInMs;
   private final int retryManagerCorePoolSize;
   private final int nameRepoMaxEntryCount;
+  private final int aclInMemoryCacheTTLMs;
 
   // MUTABLE CONFIGS
 
@@ -410,6 +412,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
       retryManagerCorePoolSize = props.getInt(ROUTER_RETRY_MANAGER_CORE_POOL_SIZE, 5);
       this.nameRepoMaxEntryCount =
           props.getInt(NAME_REPOSITORY_MAX_ENTRY_COUNT, NameRepository.DEFAULT_MAXIMUM_ENTRY_COUNT);
+      aclInMemoryCacheTTLMs = props.getInt(ACL_IN_MEMORY_CACHE_TTL_MS, -1); // acl caching is disabled by default
       LOGGER.info("Loaded configuration");
     } catch (Exception e) {
       String errorMessage = "Can not load properties.";
@@ -881,5 +884,9 @@ public class VeniceRouterConfig implements RouterRetryConfig {
 
   public int getNameRepoMaxEntryCount() {
     return this.nameRepoMaxEntryCount;
+  }
+
+  public int getAclInMemoryCacheTTLMs() {
+    return aclInMemoryCacheTTLMs;
   }
 }
