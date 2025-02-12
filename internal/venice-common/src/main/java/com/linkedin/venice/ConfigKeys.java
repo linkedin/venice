@@ -33,21 +33,26 @@ public class ConfigKeys {
   /**
    * Prefix for all Pub/Sub client-specific configurations.
    *
-   * <p>This prefix ensures that all Pub/Sub-related configurations are passed to the
-   * respective Pub/Sub client adapters. Each adapter will then use its own prefix
-   * to extract and process the relevant properties.</p>
+   * <p>This prefix ensures that all Pub/Sub-related configurations are directed to the
+   * appropriate Pub/Sub client adapters. Each adapter extracts and processes the relevant
+   * properties based on its designated prefix.</p>
    *
-   * <p>Configurations should follow this convention:</p>
+   * <p>Configurations should follow this structure:</p>
    * <pre>{@code
-   * PUBSUB_CLIENT_CONFIG_PREFIX + "PubSubClientSpecificConfigPrefix" + "actual.config.name"
+   * PUBSUB_CLIENT_CONFIG_PREFIX + "<ClientSpecificPrefix>" + "actual.config.name"
    * }</pre>
    *
-   * <p>For example, Kafka configurations would be structured as:</p>
+   * <p>For instance, Kafka configurations would follow this pattern:</p>
    * <pre>{@code
    * "pubsub.kafka.bootstrap.servers"
    * "pubsub.kafka.linger.ms"
    * }</pre>
    *
+   * <p>Similarly, configurations for other Pub/Sub clients include:</p>
+   * <ul>
+   *   <li>Pulsar: {@code "pubsub.pulsar.service.url"}</li>
+   *   <li>WarpStream: {@code "pubsub.warpstream.bucket.url"}</li>
+   * </ul>
    */
   public static final String PUBSUB_CLIENT_CONFIG_PREFIX = PubSubConstants.PUBSUB_CLIENT_CONFIG_PREFIX;
 

@@ -18,6 +18,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 
 public class VeniceProperties implements Serializable {
@@ -80,71 +81,70 @@ public class VeniceProperties implements Serializable {
   }
 
   /**
-   * This method looks for all properties that begins with the given
-   * namespace. Once those properties are identified it removes
-   * the namespace and returns the properties.
+   * Extracts properties that begin with the specified namespace.
+   * <p>
+   * This method identifies all properties that start with the given namespace, removes the namespace
+   * prefix, and returns the filtered properties.
+   * </p>
+   * <p>
+   * This enables support for dynamic configurations (e.g., required by Pub/Sub clients).
+   * All properties following a namespace-based convention can be extracted and used
+   * by various adapters, such as Pub/Sub Producers or Consumers.
+   * </p>
    *
-   * This enables support of dynamic kafka configurations. All Kafka
-   * Properties can follow an convention of namespace and the properties
-   * are extracted and supplied to the Kafka Producer/Consumer.
-   *
-   * @param nameSpace namespace to look for
-   * @return properties matches a namespace, but after removing the namespace.
+   * @param nameSpace The namespace to filter properties by.
+   * @return A {@link VeniceProperties} instance containing properties with the namespace removed.
    */
   public VeniceProperties clipAndFilterNamespace(String nameSpace) {
-    PropertyBuilder builder = new PropertyBuilder();
-    if (!nameSpace.endsWith(".")) {
-      nameSpace = nameSpace + ".";
-    }
-
-    for (Map.Entry<String, String> entry: this.props.entrySet()) {
-      String key = entry.getKey();
-      if (key.startsWith(nameSpace)) {
-        String extractedKey = key.substring(nameSpace.length());
-        builder.put(extractedKey, this.props.get(key));
-      }
-    }
-    return builder.build();
+    return clipAndFilterNamespace(Collections.singleton(nameSpace));
   }
 
   /**
-   * This method looks for all properties that begin with either of the given
-   * namespaces. Once those properties are identified, it removes the matching
-   * namespace and returns the properties.
+   * Extracts properties that begin with any of the specified namespaces.
+   * <p>
+   * This method identifies all properties that start with one of the provided namespaces, removes
+   * the matching namespace prefix, and returns the filtered properties.
+   * </p>
+   * <p>
+   * This supports dynamic configurations for various use cases, including Pub/Sub clients,
+   * messaging systems, and other configurable components. By following a namespace-based convention,
+   * different configurations can be extracted and supplied to respective adapters.
+   * </p>
+   * <p>
+   * Example structure:
+   * </p>
+   * <pre>{@code
+   * "pubsub.kafka.bootstrap.servers"
+   * "pubsub.pulsar.service.url"
+   * "pubsub.warpstream.bucket.url"
+   * }</pre>
+   * <p>
+   * Using this method with namespaces {"pubsub.kafka.", "pubsub.pulsar."} would result in:
+   * </p>
+   * <pre>{@code
+   * "bootstrap.servers"
+   * "service.url"
+   * }</pre>
    *
-   * This enables support for dynamic Kafka configurations. All Kafka
-   * properties can follow a convention of namespace, and the properties
-   * are extracted and supplied to the Kafka Producer/Consumer.
-   *
-   * @param nameSpace1 The first namespace to look for.
-   * @param nameSpace2 The second namespace to look for.
-   * @return Properties that match at least one namespace, with the namespace removed.
+   * @param namespaces A set of namespaces to filter properties by.
+   * @return A {@link VeniceProperties} instance containing properties with the matching namespaces removed.
    */
-  public VeniceProperties clipAndFilterNamespace(String nameSpace1, String nameSpace2) {
+  public VeniceProperties clipAndFilterNamespace(Set<String> namespaces) {
     PropertyBuilder builder = new PropertyBuilder();
 
-    // Ensure both namespaces end with "."
-    if (!nameSpace1.endsWith(".")) {
-      nameSpace1 = nameSpace1 + ".";
-    }
-    if (!nameSpace2.endsWith(".")) {
-      nameSpace2 = nameSpace2 + ".";
-    }
+    // Ensure all namespaces end with "."
+    Set<String> formattedNamespaces =
+        namespaces.stream().map(ns -> ns.endsWith(".") ? ns : ns + ".").collect(Collectors.toSet());
 
     for (Map.Entry<String, String> entry: this.props.entrySet()) {
       String key = entry.getKey();
-      String extractedKey = null;
 
-      // Check if the key matches either namespace
-      if (key.startsWith(nameSpace1)) {
-        extractedKey = key.substring(nameSpace1.length());
-      } else if (key.startsWith(nameSpace2)) {
-        extractedKey = key.substring(nameSpace2.length());
-      }
-
-      // If a match was found, add it to the builder
-      if (extractedKey != null) {
-        builder.put(extractedKey, entry.getValue());
+      for (String namespace: formattedNamespaces) {
+        if (key.startsWith(namespace)) {
+          String extractedKey = key.substring(namespace.length());
+          builder.put(extractedKey, entry.getValue());
+          break; // Avoid unnecessary checks once a match is found
+        }
       }
     }
 
