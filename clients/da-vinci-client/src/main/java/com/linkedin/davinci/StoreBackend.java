@@ -253,8 +253,8 @@ public class StoreBackend {
     VeniceServerConfig veniceServerConfig = backend.getConfigLoader().getVeniceServerConfig();
     String currentRegion = veniceServerConfig.getRegionName();
     boolean isTargetRegionEnabled = !StringUtils.isEmpty(targetVersion.getTargetSwapRegion());
-    boolean startIngestionInNonTargetRegion =
-        isTargetRegionEnabled && targetVersion.getStatus() == VersionStatus.ONLINE;
+    boolean startIngestionInNonTargetRegion = isTargetRegionEnabled && !targetRegions.contains(currentRegion)
+        && targetVersion.getStatus() == VersionStatus.ONLINE;
 
     // Subscribe to the future version if:
     // 1. Target region push with delayed ingestion is not enabled
