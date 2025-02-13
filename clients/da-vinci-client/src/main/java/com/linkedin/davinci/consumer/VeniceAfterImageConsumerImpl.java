@@ -1,7 +1,5 @@
 package com.linkedin.davinci.consumer;
 
-import com.linkedin.alpini.base.concurrency.Executors;
-import com.linkedin.alpini.base.concurrency.ScheduledExecutorService;
 import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -22,7 +20,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 import org.apache.logging.log4j.LogManager;
@@ -31,14 +28,11 @@ import org.apache.logging.log4j.Logger;
 
 public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerImpl<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceAfterImageConsumerImpl.class);
-  // 10 Minute default
-  protected long versionSwapDetectionIntervalTimeInMs;
   // This consumer is used to find EOP messages without impacting consumption by other subscriptions. It's only used
   // in the context of seeking to EOP in the event of the user calling that seek or a version push.
   // TODO: We shouldn't use this in the long run. Once the EOP position is queryable from venice and version
   // swap is produced to VT, then we should remove this as it's no longer needed.
   final private Lazy<VeniceChangelogConsumerImpl<K, V>> internalSeekConsumer;
-  private final ScheduledExecutorService versionSwapExecutorService = Executors.newSingleThreadScheduledExecutor();
   AtomicBoolean versionSwapThreadScheduled = new AtomicBoolean(false);
   private final VersionSwapDataChangeListener<K, V> versionSwapListener;
 
@@ -60,7 +54,6 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       Lazy<VeniceChangelogConsumerImpl<K, V>> seekConsumer) {
     super(changelogClientConfig, consumer);
     internalSeekConsumer = seekConsumer;
-    versionSwapDetectionIntervalTimeInMs = changelogClientConfig.getVersionSwapDetectionIntervalTimeInMs();
     versionSwapListener = new VersionSwapDataChangeListener<K, V>(
         this,
         storeRepository,
@@ -74,8 +67,6 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       return internalPoll(timeoutInMs, "");
     } catch (UnknownTopicOrPartitionException ex) {
       LOGGER.error("Caught unknown Topic exception, will attempt repair and retry: ", ex);
-      storeRepository.refresh();
-      versionSwapListener.handleStoreChanged(null);
       return internalPoll(timeoutInMs, "");
     }
   }
@@ -101,11 +92,6 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     if (!versionSwapThreadScheduled.get()) {
       // schedule the version swap thread and set up the callback listener
       this.storeRepository.registerStoreDataChangedListener(versionSwapListener);
-      versionSwapExecutorService.scheduleAtFixedRate(
-          new VersionSwapDetectionThread(),
-          versionSwapDetectionIntervalTimeInMs,
-          versionSwapDetectionIntervalTimeInMs,
-          TimeUnit.MILLISECONDS);
       versionSwapThreadScheduled.set(true);
     }
     return super.subscribe(partitions);

@@ -9,6 +9,7 @@ import org.apache.avro.specific.SpecificRecord;
 
 
 public class ChangelogClientConfig<T extends SpecificRecord> {
+  private Long metaDataRefreshIntervalInSeconds = 60L;
   private Properties consumerProperties;
   private SchemaReader schemaReader;
   private String viewName;
@@ -166,12 +167,12 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this.bootstrapFileSystemPath;
   }
 
-  public long getVersionSwapDetectionIntervalTimeInMs() {
+  public long getVersionSwapDetectionIntervalTimeInSeconds() {
     return versionSwapDetectionIntervalTimeInMs;
   }
 
-  public ChangelogClientConfig setVersionSwapDetectionIntervalTimeInMs(long intervalTimeInMs) {
-    this.versionSwapDetectionIntervalTimeInMs = intervalTimeInMs;
+  public ChangelogClientConfig setVersionSwapDetectionIntervalTimeInSeconds(long intervalTimeInSeconds) {
+    this.versionSwapDetectionIntervalTimeInMs = intervalTimeInSeconds;
     return this;
   }
 
@@ -216,7 +217,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setD2Client(config.getD2Client())
         .setControllerRequestRetryCount(config.getControllerRequestRetryCount())
         .setBootstrapFileSystemPath(config.getBootstrapFileSystemPath())
-        .setVersionSwapDetectionIntervalTimeInMs(config.getVersionSwapDetectionIntervalTimeInMs())
+        .setVersionSwapDetectionIntervalTimeInSeconds(config.getVersionSwapDetectionIntervalTimeInSeconds())
         .setRocksDBBlockCacheSizeInBytes(config.getRocksDBBlockCacheSizeInBytes())
         .setConsumerName(config.consumerName)
         .setDatabaseSyncBytesInterval(config.getDatabaseSyncBytesInterval())

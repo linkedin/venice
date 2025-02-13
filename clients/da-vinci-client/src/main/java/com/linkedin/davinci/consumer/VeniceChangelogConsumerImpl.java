@@ -1,5 +1,6 @@
 package com.linkedin.davinci.consumer;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_POS;
 
@@ -66,6 +67,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -173,9 +175,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     this.startTimestamp = System.currentTimeMillis();
     LOGGER.info("VeniceChangelogConsumer created at timestamp: {}", startTimestamp);
 
+    Properties properties = new Properties();
+    properties.put(
+        CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS,
+        String.valueOf(changelogClientConfig.getVersionSwapDetectionIntervalTimeInSeconds()));
     ThinClientMetaStoreBasedRepository repository = new ThinClientMetaStoreBasedRepository(
         changelogClientConfig.getInnerClientConfig(),
-        VeniceProperties.empty(),
+        new VeniceProperties(properties),
         null);
     repository.start();
     this.storeRepository = new NativeMetadataRepositoryViewAdapter(repository);
@@ -229,7 +235,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             }
           }
         }
-        storeRepository.refresh();
       } catch (InterruptedException e) {
         throw new RuntimeException(e);
       }
@@ -317,7 +322,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   @Override
   public CompletableFuture<Void> seekToEndOfPush(Set<Integer> partitions) {
     // Get the latest change capture topic
-    storeRepository.refresh();
     Store store = getStore();
     int currentVersion = store.getCurrentVersion();
     PubSubTopic topic = pubSubTopicRepository
@@ -430,10 +434,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   void checkLiveVersion(String topicName) {
-    storeRepository.refresh();
     Store store = storeRepository.getStore(storeName);
     try {
-      store.getVersionOrThrow(Version.parseVersionFromVersionTopicName(topicName));
+      store.getVersionOrThrow(Version.parseVersionFromKafkaTopicName(topicName));
     } catch (StoreVersionNotFoundException ex) {
       throw new VeniceCoordinateOutOfRangeException("Checkpoint is off retention!  Version has been deprecated...", ex);
     }

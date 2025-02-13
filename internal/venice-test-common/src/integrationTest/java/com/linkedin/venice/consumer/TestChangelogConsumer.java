@@ -1,12 +1,7 @@
 package com.linkedin.venice.consumer;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
-import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_LINGER_MS;
-import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED;
-import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
@@ -173,6 +168,102 @@ public class TestChangelogConsumer {
   public void cleanUp() {
     multiRegionMultiClusterWrapper.close();
     TestView.resetCounters();
+  }
+
+  @Test
+  public void testVersionSwapInALoop() throws Exception {
+    // create a active-active enabled store and run batch push job
+    // batch job contains 100 records
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("store");
+    Properties props =
+        TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+    props.put(KAFKA_LINGER_MS, 0);
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+        .setHybridRewindSeconds(500)
+        .setHybridOffsetLagThreshold(8)
+        .setChunkingEnabled(true)
+        .setNativeReplicationEnabled(true)
+        .setPartitionCount(3);
+    MetricsRepository metricsRepository = new MetricsRepository();
+    ControllerClient setupControllerClient =
+        createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
+
+    ControllerClient controllerClient =
+        new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+
+    // Write Records to the store for version v1, the push job will contain 100 records.
+    TestWriteUtils.runPushJob("Run push job", props);
+
+    // Write Records from nearline
+    Map<String, String> samzaConfig = getSamzaProducerConfig(childDatacenters, 0, storeName);
+    VeniceSystemFactory factory = new VeniceSystemFactory();
+    // Use a unique key for DELETE with RMD validation
+    int deleteWithRmdKeyIndex = 1000;
+
+    ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
+    PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getPubSubBrokerWrapper();
+    Properties consumerProperties = new Properties();
+    String localKafkaUrl = localKafka.getAddress();
+    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
+    ChangelogClientConfig globalAfterImageClientConfig =
+        new ChangelogClientConfig().setConsumerProperties(consumerProperties)
+            .setControllerD2ServiceName(D2_SERVICE_NAME)
+            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+            .setLocalD2ZkHosts(localZkServer.getAddress())
+            .setControllerRequestRetryCount(3)
+            .setVersionSwapDetectionIntervalTimeInSeconds(3L)
+            .setIsBeforeImageView(true);
+
+    VeniceChangelogConsumerClientFactory veniceAfterImageConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(globalAfterImageClientConfig, metricsRepository);
+
+    VeniceChangelogConsumer<Utf8, Utf8> versionTopicConsumer =
+        veniceAfterImageConsumerClientFactory.getChangelogConsumer(storeName);
+    Assert.assertTrue(versionTopicConsumer instanceof VeniceAfterImageConsumerImpl);
+    versionTopicConsumer.subscribeAll().get();
+
+    Map<String, Utf8> versionTopicEvents = new HashMap<>();
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
+      Assert.assertEquals(versionTopicEvents.size(), 100);
+    });
+
+    versionTopicEvents.clear();
+
+    // in a loop, write a push job, then write some stream data, then poll data with versionTopicConsumer
+    for (int i = 0; i < 10; i++) {
+      try (VeniceSystemProducer veniceProducer =
+          factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+        veniceProducer.start();
+        // Run Samza job to send PUT and DELETE requests.
+        runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100);
+        // Produce a DELETE record with large timestamp
+        sendStreamingRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex, 1000, true);
+      }
+
+      // run push job
+      TestWriteUtils.runPushJob("Run push job", props);
+
+      // Assert the push has gone through
+      int expectedVersion = i + 2;
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> Assert
+              .assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), expectedVersion));
+
+      // poll data from version topic
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
+        Assert.assertEquals(versionTopicEvents.size(), 21);
+      });
+      versionTopicEvents.clear();
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT, priority = 3)
