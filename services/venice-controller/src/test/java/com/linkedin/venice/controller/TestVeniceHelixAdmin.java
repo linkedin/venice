@@ -985,7 +985,7 @@ public class TestVeniceHelixAdmin {
     when(adminConsumerService.getAdminTopicMetadata(anyString())).thenReturn(remoteMetadata);
 
     Map<String, Long> expectedMetadata = AdminTopicMetadataAccessor
-        .generateMetadataMap(Optional.of(-1L), Optional.of(-1L), Optional.of(10L), Optional.of(1L));
+        .generateMetadataMap(Optional.of(-1L), Optional.of(-1L), Optional.of(10L), Optional.of(-1L));
     Map<String, Long> metadataForStore = veniceHelixAdmin.getAdminTopicMetadata(clusterName, Optional.of(storeName));
     assertEquals(metadataForStore, expectedMetadata);
   }
