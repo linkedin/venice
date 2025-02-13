@@ -24,8 +24,8 @@ import org.apache.logging.log4j.Logger;
  * 3. the actual dimensions cache to hold the {@link Attributes} for every cache key
  *
  * Right now, this class is structured to be instantiated more than once for the same metric repository
- * based on the base dimensions as part of the stats objects created for different request types, to
- * play along with the current design and pre create the base dimensions and its key. Eventually this
+ * based on having the base dimensions as part of the stats objects created for different request types,
+ * to play along with the current design and pre create the base dimensions and its key. Eventually this
  * might come to a point where there are no base dimensions based on the restructure when removing
  * tehuti and this can be made a static class as part of {@link VeniceOpenTelemetryMetricsRepository}
  */
@@ -54,6 +54,8 @@ public class VeniceOpenTelemetryDimensionsCache {
       Map<String, String> customDimensionsMap) {
     this.otelRepository = otelRepository;
     this.baseMetricDimensionsSet = baseMetricDimensionsMap.keySet();
+
+    // craft the base dimensions and its key
     AttributesBuilder attributesBuilder = Attributes.builder();
     StringBuilder baseMetricKeyBuilder = new StringBuilder();
     for (Map.Entry<VeniceMetricsDimensions, String> entry: baseMetricDimensionsMap.entrySet()) {
