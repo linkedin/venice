@@ -2,6 +2,8 @@ package com.linkedin.venice.stats.metrics;
 
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import java.util.Set;
+import java.util.SortedSet;
+import java.util.TreeSet;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import org.apache.commons.lang.Validate;
@@ -15,15 +17,11 @@ public class MetricEntity {
   private final MetricType metricType;
   private final MetricUnit unit;
   private final String description;
-  private final Set<VeniceMetricsDimensions> dimensionsList;
-
-  public MetricEntity(
-      @Nonnull String metricName,
-      @Nonnull MetricType metricType,
-      @Nonnull MetricUnit unit,
-      @Nonnull String description) {
-    this(metricName, metricType, unit, description, null);
-  }
+  /**
+   * {@link SortedSet} is used to preserve an order while crafting the cache key for the metric.
+   * Sorting happens only while initializing this metric for the first time and then remain unmodified.
+   */
+  private final SortedSet<VeniceMetricsDimensions> dimensionsList;
 
   public MetricEntity(
       @Nonnull String metricName,
@@ -36,7 +34,7 @@ public class MetricEntity {
     this.metricType = metricType;
     this.unit = unit;
     this.description = description;
-    this.dimensionsList = dimensionsList;
+    this.dimensionsList = dimensionsList != null ? new TreeSet<>(dimensionsList) : new TreeSet<>();
   }
 
   @Nonnull
@@ -59,8 +57,8 @@ public class MetricEntity {
     return description;
   }
 
-  @Nullable
-  public Set<VeniceMetricsDimensions> getDimensionsList() {
+  @Nonnull
+  public SortedSet<VeniceMetricsDimensions> getDimensionsList() {
     return dimensionsList;
   }
 }

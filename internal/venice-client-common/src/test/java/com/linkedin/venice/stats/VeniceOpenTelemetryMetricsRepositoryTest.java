@@ -65,9 +65,11 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
     assertNull(metricsRepository.getSdkMeterProvider());
     assertNull(metricsRepository.getMeter());
     assertNull(
-        metricsRepository.createInstrument(new MetricEntity("test", MetricType.HISTOGRAM, MetricUnit.NUMBER, "desc")));
+        metricsRepository
+            .createInstrument(new MetricEntity("test", MetricType.HISTOGRAM, MetricUnit.NUMBER, "desc", null)));
     assertNull(
-        metricsRepository.createInstrument(new MetricEntity("test", MetricType.COUNTER, MetricUnit.NUMBER, "desc")));
+        metricsRepository
+            .createInstrument(new MetricEntity("test", MetricType.COUNTER, MetricUnit.NUMBER, "desc", null)));
   }
 
   @Test
@@ -109,9 +111,9 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
   @Test
   public void testCreateTwoHistograms() {
     DoubleHistogram histogram1 = (DoubleHistogram) metricsRepository
-        .createInstrument(new MetricEntity("test_histogram", MetricType.HISTOGRAM, MetricUnit.NUMBER, "desc"));
+        .createInstrument(new MetricEntity("test_histogram", MetricType.HISTOGRAM, MetricUnit.NUMBER, "desc", null));
     DoubleHistogram histogram2 = (DoubleHistogram) metricsRepository
-        .createInstrument(new MetricEntity("test_histogram", MetricType.HISTOGRAM, MetricUnit.NUMBER, "desc"));
+        .createInstrument(new MetricEntity("test_histogram", MetricType.HISTOGRAM, MetricUnit.NUMBER, "desc", null));
 
     assertNotNull(histogram1);
     assertSame(histogram1, histogram2, "Should return the same instance for the same histogram name.");
@@ -120,9 +122,9 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
   @Test
   public void testCreateTwoCounters() {
     LongCounter counter1 = (LongCounter) metricsRepository
-        .createInstrument(new MetricEntity("test_counter", MetricType.COUNTER, MetricUnit.NUMBER, "desc"));
+        .createInstrument(new MetricEntity("test_counter", MetricType.COUNTER, MetricUnit.NUMBER, "desc", null));
     LongCounter counter2 = (LongCounter) metricsRepository
-        .createInstrument(new MetricEntity("test_counter", MetricType.COUNTER, MetricUnit.NUMBER, "desc"));
+        .createInstrument(new MetricEntity("test_counter", MetricType.COUNTER, MetricUnit.NUMBER, "desc", null));
 
     assertNotNull(counter1);
     assertSame(counter1, counter2, "Should return the same instance for the same counter name.");

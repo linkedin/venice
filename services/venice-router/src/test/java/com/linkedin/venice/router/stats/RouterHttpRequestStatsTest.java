@@ -14,7 +14,9 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.alpini.router.monitoring.ScatterGatherStats;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.VeniceOpenTelemetryDimensionsCache;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat;
+import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
@@ -26,6 +28,7 @@ import io.opentelemetry.api.common.Attributes;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Set;
 import org.testng.annotations.Test;
 
 
@@ -38,7 +41,7 @@ public class RouterHttpRequestStatsTest {
     if (useVeniceMetricRepository) {
       Collection<MetricEntity> metricEntities = new ArrayList<>();
       metricEntities
-          .add(new MetricEntity("test_metric", MetricType.HISTOGRAM, MetricUnit.MILLISECOND, "Test description"));
+          .add(new MetricEntity("test_metric", MetricType.HISTOGRAM, MetricUnit.MILLISECOND, "Test description", null));
       metricsRepository = MetricsRepositoryUtils.createSingleThreadedVeniceMetricsRepository(
           isOtelEnabled,
           isOtelEnabled ? PASCAL_CASE : VeniceOpenTelemetryMetricNamingFormat.getDefaultFormat(),
@@ -59,8 +62,8 @@ public class RouterHttpRequestStatsTest {
 
     if (useVeniceMetricRepository && isOtelEnabled) {
       assertTrue(routerHttpRequestStats.emitOpenTelemetryMetrics(), "Otel should be enabled");
-      assertEquals(routerHttpRequestStats.getOpenTelemetryMetricsFormat(), PASCAL_CASE);
-      Attributes attributes = routerHttpRequestStats.getCommonMetricDimensions();
+      VeniceOpenTelemetryDimensionsCache dimensionsCache = routerHttpRequestStats.getOtelDimensionsCache();
+      Attributes attributes = dimensionsCache.getBaseMetricDimensions();
       assertNotNull(attributes);
       attributes.forEach((key, value) -> {
         if (key.getKey().equals(VENICE_STORE_NAME.getDimensionName(PASCAL_CASE))) {
@@ -71,12 +74,20 @@ public class RouterHttpRequestStatsTest {
           assertEquals(value, clusterName);
         }
       });
+      Set<VeniceMetricsDimensions> baseMetricDimensionsSet = dimensionsCache.getBaseMetricDimensionsSet();
+      assertTrue(baseMetricDimensionsSet.contains(VENICE_STORE_NAME));
+      assertTrue(baseMetricDimensionsSet.contains(VENICE_REQUEST_METHOD));
+      assertTrue(baseMetricDimensionsSet.contains(VENICE_CLUSTER_NAME));
+      assertEquals(baseMetricDimensionsSet.size(), 3);
+
+      String baseMetricDimensionsKey = dimensionsCache.getBaseMetricDimensionsKey();
+      // baseMetricDimensionsKey can have the data in any order as input is not sorted
+      assertTrue(baseMetricDimensionsKey.contains(VENICE_STORE_NAME + storeName));
+      assertTrue(baseMetricDimensionsKey.contains(VENICE_REQUEST_METHOD + RequestType.SINGLE_GET.name().toLowerCase()));
+      assertTrue(baseMetricDimensionsKey.contains(VENICE_CLUSTER_NAME + clusterName));
     } else {
       assertFalse(routerHttpRequestStats.emitOpenTelemetryMetrics(), "Otel should not be enabled");
-      assertEquals(
-          routerHttpRequestStats.getOpenTelemetryMetricsFormat(),
-          VeniceOpenTelemetryMetricNamingFormat.getDefaultFormat());
-      assertNull(routerHttpRequestStats.getCommonMetricDimensions());
+      assertNull(routerHttpRequestStats.getOtelDimensionsCache());
     }
 
     routerHttpRequestStats.recordHealthyRequest(1.0, HttpResponseStatus.OK, 1);
