@@ -10,8 +10,10 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.stats.Rate;
 import java.util.HashMap;
@@ -19,6 +21,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.function.IntConsumer;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
@@ -49,6 +53,8 @@ class ConsumptionTask implements Runnable {
       new VeniceConcurrentHashMap<>();
   private final long readCycleDelayMs;
   private final Supplier<Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> pollFunction;
+
+  private final Function<PubSubTopicPartition, Long> offsetLagGetter;
   private final IntConsumer bandwidthThrottler;
   private final IntConsumer recordsThrottler;
   private final AggKafkaConsumerServiceStats aggStats;
@@ -61,6 +67,25 @@ class ConsumptionTask implements Runnable {
    */
   private final Map<PubSubTopicPartition, Rate> messageRatePerTopicPartition = new VeniceConcurrentHashMap<>();
   private final Map<PubSubTopicPartition, Rate> bytesRatePerTopicPartition = new VeniceConcurrentHashMap<>();
+  private final Map<PubSubTopicPartition, Rate> pollRatePerTopicPartition = new VeniceConcurrentHashMap<>();
+  private final Map<PubSubTopicPartition, Long> processingResultTimeMap = new VeniceConcurrentHashMap<>();
+  private final Map<PubSubTopicPartition, Long> processingResultMsgMap = new VeniceConcurrentHashMap<>();
+  private final Map<PubSubTopicPartition, Long> processingResultByteMap = new VeniceConcurrentHashMap<>();
+  private final Map<PubSubTopicPartition, Long> accumulateResultTimeMap = new VeniceConcurrentHashMap<>();
+  private final Map<PubSubTopicPartition, Long> accumulateResultMsgMap = new VeniceConcurrentHashMap<>();
+  private final Map<PubSubTopicPartition, Long> pollWallTimeMap = new VeniceConcurrentHashMap<>();
+  private final Map<PubSubTopicPartition, Long> accumulatePollWallTimeMap = new VeniceConcurrentHashMap<>();
+
+  private long nonEmptyPollCount = 0;
+  private long pollCount = 0;
+  private long accumulatePollTimeNs = 0;
+  private long accumulateNonEmptyPollTime = 0;
+  private long accumulateDelayTime = 0;
+  private long accumulateProcessTime = 0;
+  private long previousReportTime = 0;
+
+  private final Lazy<Rate> overallConsumerPollRate;
+  private final RedundantExceptionFilter redundantExceptionFilter;
   private final Map<PubSubTopicPartition, Long> lastSuccessfulPollTimestampPerTopicPartition =
       new VeniceConcurrentHashMap<>();
 
@@ -87,7 +112,9 @@ class ConsumptionTask implements Runnable {
       final IntConsumer bandwidthThrottler,
       final IntConsumer recordsThrottler,
       final AggKafkaConsumerServiceStats aggStats,
-      final ConsumerSubscriptionCleaner cleaner) {
+      final ConsumerSubscriptionCleaner cleaner,
+      Function<PubSubTopicPartition, Long> offsetLagGetter,
+      RedundantExceptionFilter redundantExceptionFilter) {
     this.readCycleDelayMs = readCycleDelayMs;
     this.pollFunction = pollFunction;
     this.bandwidthThrottler = bandwidthThrottler;
@@ -95,6 +122,9 @@ class ConsumptionTask implements Runnable {
     this.aggStats = aggStats;
     this.cleaner = cleaner;
     this.taskId = taskId;
+    this.offsetLagGetter = offsetLagGetter;
+    this.redundantExceptionFilter = redundantExceptionFilter;
+    this.overallConsumerPollRate = Lazy.of(() -> createRate(System.currentTimeMillis()));
     this.consumptionTaskIdStr = Utils.getSanitizedStringForLogger(consumerNamePrefix) + " - " + taskId;
     this.LOGGER = LogManager.getLogger(getClass().getSimpleName() + "[ " + consumptionTaskIdStr + " ]");
   }
@@ -105,6 +135,7 @@ class ConsumptionTask implements Runnable {
 
     // Pre-allocate some variables to clobber in the loop
     long beforePollingTimeStamp;
+    long beforePollingTimeNs;
     Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> polledPubSubMessages;
     long beforeProducingToWriteBufferTimestamp;
     ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumedDataReceiver;
@@ -115,6 +146,7 @@ class ConsumptionTask implements Runnable {
     try {
       while (running) {
         try {
+          long beforeDelayTimeNs = System.nanoTime();
           if (addSomeDelay) {
             synchronized (this) {
               /**
@@ -125,7 +157,10 @@ class ConsumptionTask implements Runnable {
             }
             addSomeDelay = false;
           }
+
           beforePollingTimeStamp = System.currentTimeMillis();
+          beforePollingTimeNs = System.nanoTime();
+          accumulateDelayTime += beforePollingTimeNs - beforeDelayTimeNs;
           topicPartitionsToUnsub = cleaner.getTopicPartitionsToUnsubscribe(topicPartitionsToUnsub); // N.B. cheap call
           for (PubSubTopicPartition topicPartitionToUnSub: topicPartitionsToUnsub) {
             ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> dataReceiver =
@@ -143,13 +178,21 @@ class ConsumptionTask implements Runnable {
            */
           polledPubSubMessages = pollFunction.get();
           lastSuccessfulPollTimestamp = System.currentTimeMillis();
+          long lastSuccessfulPollNs = System.nanoTime();
+          long pollTimeNs = lastSuccessfulPollNs - beforePollingTimeNs;
+          accumulatePollTimeNs += pollTimeNs;
+          pollCount += 1;
           aggStats.recordTotalPollRequestLatency(lastSuccessfulPollTimestamp - beforePollingTimeStamp);
           if (!polledPubSubMessages.isEmpty()) {
+            nonEmptyPollCount += 1;
+            accumulateNonEmptyPollTime += pollTimeNs;
             payloadBytesConsumedInOnePoll = 0;
             polledPubSubMessagesCount = 0;
             beforeProducingToWriteBufferTimestamp = System.currentTimeMillis();
+
             for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: polledPubSubMessages
                 .entrySet()) {
+              long startTimestamp = System.currentTimeMillis();
               PubSubTopicPartition pubSubTopicPartition = entry.getKey();
               String storeName = Version.parseStoreFromKafkaTopicName(pubSubTopicPartition.getTopicName());
               StorePollCounter counter =
@@ -180,9 +223,41 @@ class ConsumptionTask implements Runnable {
               bytesRatePerTopicPartition
                   .computeIfAbsent(pubSubTopicPartition, tp -> createRate(lastSuccessfulPollTimestamp))
                   .record(payloadSizePerTopicPartition, lastSuccessfulPollTimestamp);
-
+              pollRatePerTopicPartition
+                  .computeIfAbsent(pubSubTopicPartition, tp -> createRate(lastSuccessfulPollTimestamp))
+                  .record(1, lastSuccessfulPollTimestamp);
+              long beforeProcessingNs = System.nanoTime();
               consumedDataReceiver.write(topicPartitionMessages);
+              long messageProcessingTimeNs = System.nanoTime() - beforeProcessingNs;
+              int finalPayloadBytesConsumedInOnePoll = payloadBytesConsumedInOnePoll;
+              processingResultTimeMap.compute(
+                  entry.getKey(),
+                  (k, v) -> (v == null) ? messageProcessingTimeNs : messageProcessingTimeNs + v);
+              processingResultByteMap.compute(
+                  entry.getKey(),
+                  (k, v) -> (v == null) ? finalPayloadBytesConsumedInOnePoll : finalPayloadBytesConsumedInOnePoll + v);
+              processingResultMsgMap.compute(
+                  entry.getKey(),
+                  (k, v) -> (v == null) ? topicPartitionMessages.size() : topicPartitionMessages.size() + v);
+              accumulateResultTimeMap.compute(
+                  entry.getKey(),
+                  (k, v) -> (v == null) ? messageProcessingTimeNs : messageProcessingTimeNs + v);
+              accumulateResultMsgMap.compute(
+                  entry.getKey(),
+                  (k, v) -> (v == null) ? topicPartitionMessages.size() : topicPartitionMessages.size() + v);
+              checkSlowPartitionWithHighLag(pubSubTopicPartition);
+              long wallClockTime = System.currentTimeMillis() - startTimestamp;
+              pollWallTimeMap.compute(entry.getKey(), (k, v) -> (v == null) ? wallClockTime : wallClockTime + v);
+              accumulatePollWallTimeMap
+                  .compute(entry.getKey(), (k, v) -> (v == null) ? wallClockTime : wallClockTime + v);
             }
+            accumulateProcessTime += System.nanoTime() - lastSuccessfulPollNs;
+            maybeLogConsumerPollDebugInfo(System.currentTimeMillis() - beforeProducingToWriteBufferTimestamp);
+            processingResultByteMap.clear();
+            processingResultMsgMap.clear();
+            processingResultTimeMap.clear();
+            pollWallTimeMap.clear();
+            overallConsumerPollRate.get().record(1, lastSuccessfulPollTimestamp);
             aggStats.recordTotalConsumerRecordsProducingToWriterBufferLatency(
                 LatencyUtils.getElapsedTimeFromMsToMs(beforeProducingToWriteBufferTimestamp));
             aggStats.recordTotalNonZeroPollResultNum(polledPubSubMessagesCount);
@@ -197,7 +272,8 @@ class ConsumptionTask implements Runnable {
             storePollCounterMap.clear();
           } else {
             // No result came back, here will add some delay
-            addSomeDelay = true;
+            // SET IT TO FALSE TO NOT SLEEP
+            addSomeDelay = false;
           }
         } catch (Exception e) {
           if (ExceptionUtils.recursiveClassEquals(e, InterruptedException.class)) {
@@ -276,6 +352,85 @@ class ConsumptionTask implements Runnable {
       return bytesRatePerTopicPartition.get(topicPartition).measure(metricConfig, System.currentTimeMillis());
     }
     return 0.0D;
+  }
+
+  Double getPollRate(PubSubTopicPartition topicPartition) {
+    if (pollRatePerTopicPartition.containsKey(topicPartition)) {
+      return pollRatePerTopicPartition.get(topicPartition).measure(metricConfig, System.currentTimeMillis());
+    }
+    return 0.0D;
+  }
+
+  private void maybeLogConsumerPollDebugInfo(long singlePollMs) {
+    long timeSinceLastReport = System.currentTimeMillis() - previousReportTime;
+    if (timeSinceLastReport > TimeUnit.MINUTES.toMillis(1)) {
+      boolean skipLoggingUnrelatedConsumer = true;
+      for (PubSubTopicPartition pubSubTopicPartition: processingResultTimeMap.keySet()) {
+        if (pubSubTopicPartition.getTopicName().startsWith("MultiSurfaceMemberEbr")) {
+          skipLoggingUnrelatedConsumer = false;
+          break;
+        }
+      }
+      if (skipLoggingUnrelatedConsumer) {
+        return;
+      }
+      // LOGGER.warn("Ns4 EBR store consumer: {}. SinglePollMs: {}, TimeMap: {}, WallTimeMap: {}, MsgMap: {}, ByteMap:
+      // {}", consumptionTaskIdStr, singlePollMs, processingResultTimeMap, pollWallTimeMap, processingResultMsgMap,
+      // processingResultByteMap);
+      LOGGER.warn(
+          "Ns5 EBR store consumer: {}. Aggregate time: {}, Poll Count: {}, Non-Empty Poll Count: {}, TimeMap: {}, MsgMap: {}",
+          consumptionTaskIdStr,
+          timeSinceLastReport,
+          pollCount,
+          nonEmptyPollCount,
+          accumulateResultTimeMap,
+          accumulateResultMsgMap);
+      LOGGER.warn(
+          "Ns5 EBR store consumer: {}. Time split. Delay Time: {}, Poll Time: {}, Non-Empty Poll Time: {}, Process Time: {}",
+          consumptionTaskIdStr,
+          accumulateDelayTime,
+          accumulatePollTimeNs,
+          accumulateNonEmptyPollTime,
+          accumulateProcessTime);
+      accumulateProcessTime = 0;
+      accumulateDelayTime = 0;
+      accumulatePollTimeNs = 0;
+      accumulateResultMsgMap.clear();
+      accumulateResultTimeMap.clear();
+      accumulatePollWallTimeMap.clear();
+      nonEmptyPollCount = 0;
+      accumulateNonEmptyPollTime = 0;
+      pollCount = 0;
+      previousReportTime = System.currentTimeMillis();
+    }
+  }
+
+  private void checkSlowPartitionWithHighLag(PubSubTopicPartition pubSubTopicPartition) {
+    Long offsetLag = offsetLagGetter.apply(pubSubTopicPartition);
+    Double messageRate = getMessageRate(pubSubTopicPartition);
+    Double pollRate = getPollRate(pubSubTopicPartition);
+    Double consumerPollRate = overallConsumerPollRate.get().measure(metricConfig, System.currentTimeMillis());
+    String slowTaskWithPartitionStr = consumptionTaskIdStr + " - " + pubSubTopicPartition;
+    if (offsetLag > 200000 && messageRate < 600
+        && !redundantExceptionFilter.isRedundantException(slowTaskWithPartitionStr)) {
+      LOGGER.warn(
+          "Slow partition with high lag detected: {}. Lag: {}, Message Rate: {}, Poll Rate: {}, Consumer Poll Rate: {}",
+          pubSubTopicPartition,
+          offsetLag,
+          messageRate,
+          pollRate,
+          consumerPollRate);
+    }
+    if (pubSubTopicPartition.getTopicName().startsWith("MultiSurfaceMemberEbr")
+        && !redundantExceptionFilter.isRedundantException(slowTaskWithPartitionStr)) {
+      LOGGER.warn(
+          "Future push rate check for MultiSurface store: {}. Lag: {}, Message Rate: {}, Poll Rate: {}, Consumer Poll Rate: {}",
+          pubSubTopicPartition,
+          offsetLag,
+          messageRate,
+          pollRate,
+          consumerPollRate);
+    }
   }
 
   PubSubTopic getDestinationIdentifier(PubSubTopicPartition topicPartition) {
