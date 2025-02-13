@@ -18,6 +18,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.api.PubSubMessageSerializer;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
@@ -49,9 +50,10 @@ import org.testng.annotations.Test;
 
 
 public class ApacheKafkaProducerAdapterTest {
-  private KafkaProducer<KafkaKey, KafkaMessageEnvelope> kafkaProducerMock;
-  private ApacheKafkaProducerConfig producerConfigMock;
   private static final String TOPIC_NAME = "test-topic";
+  private KafkaProducer<byte[], byte[]> kafkaProducerMock;
+  private ApacheKafkaProducerConfig producerConfigMock;
+  private PubSubMessageSerializer pubSubMessageSerializerMock;
   private final KafkaKey testKafkaKey = new KafkaKey(MessageType.DELETE, "key".getBytes());
   private final KafkaMessageEnvelope testKafkaValue = new KafkaMessageEnvelope();
 
@@ -59,6 +61,8 @@ public class ApacheKafkaProducerAdapterTest {
   public void setupMocks() {
     kafkaProducerMock = mock(KafkaProducer.class);
     producerConfigMock = mock(ApacheKafkaProducerConfig.class);
+    pubSubMessageSerializerMock = mock(PubSubMessageSerializer.class);
+    when(producerConfigMock.getPubSubMessageSerializer()).thenReturn(pubSubMessageSerializerMock);
   }
 
   @Test(expectedExceptions = PubSubClientException.class, expectedExceptionsMessageRegExp = "The internal KafkaProducer has been closed")

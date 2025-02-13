@@ -19,6 +19,7 @@ import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
@@ -118,8 +119,12 @@ public class PubSubAdminAdapterTest {
     pubSubConsumerAdapterLazy = Lazy.of(
         () -> pubSubClientsFactory.getConsumerAdapterFactory()
             .create(veniceProperties, false, pubSubMessageDeserializer, clientId));
-    pubSubProducerAdapterLazy =
-        Lazy.of(() -> pubSubClientsFactory.getProducerAdapterFactory().create(veniceProperties, clientId, null));
+    pubSubProducerAdapterLazy = Lazy.of(
+        () -> pubSubClientsFactory.getProducerAdapterFactory()
+            .create(
+                new PubSubProducerAdapterContext.Builder().setVeniceProperties(veniceProperties)
+                    .setProducerName(clientId)
+                    .build()));
   }
 
   @AfterMethod(alwaysRun = true)

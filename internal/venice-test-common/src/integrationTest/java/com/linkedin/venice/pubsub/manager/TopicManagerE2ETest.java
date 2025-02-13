@@ -20,6 +20,7 @@ import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
@@ -91,8 +92,12 @@ public class TopicManagerE2ETest {
     properties.putAll(pubSubBrokerWrapper.getAdditionalConfig());
     properties.putAll(pubSubBrokerWrapper.getMergeableConfigs());
     VeniceProperties veniceProperties = new VeniceProperties(properties);
-    pubSubProducerAdapterLazy =
-        Lazy.of(() -> pubSubClientsFactory.getProducerAdapterFactory().create(veniceProperties, clientId, null));
+    pubSubProducerAdapterLazy = Lazy.of(
+        () -> pubSubClientsFactory.getProducerAdapterFactory()
+            .create(
+                new PubSubProducerAdapterContext.Builder().setVeniceProperties(veniceProperties)
+                    .setProducerName(clientId)
+                    .build()));
     pubSubAdminAdapterLazy =
         Lazy.of(() -> pubSubClientsFactory.getAdminAdapterFactory().create(veniceProperties, pubSubTopicRepository));
     pubSubConsumerAdapterLazy = Lazy.of(

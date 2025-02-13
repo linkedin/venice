@@ -1,7 +1,6 @@
 package com.linkedin.venice.writer;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -16,6 +15,7 @@ import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdap
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterConcurrentDelegator;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterDelegator;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
@@ -28,24 +28,22 @@ public class VeniceWriterFactoryTest {
   public void testVeniceWriterFactory() {
     PubSubProducerAdapterFactory<PubSubProducerAdapter> producerFactoryMock = mock(PubSubProducerAdapterFactory.class);
     PubSubProducerAdapter producerAdapterMock = mock(PubSubProducerAdapter.class);
-    ArgumentCaptor<String> brokerAddrCapture = ArgumentCaptor.forClass(String.class);
-    ArgumentCaptor<VeniceProperties> propertiesCapture = ArgumentCaptor.forClass(VeniceProperties.class);
-    when(producerFactoryMock.create(propertiesCapture.capture(), eq("store_v1"), brokerAddrCapture.capture()))
-        .thenReturn(producerAdapterMock);
+    ArgumentCaptor<PubSubProducerAdapterContext> producerCtxCaptor =
+        ArgumentCaptor.forClass(PubSubProducerAdapterContext.class);
+
+    when(producerFactoryMock.create(producerCtxCaptor.capture())).thenReturn(producerAdapterMock);
 
     VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(new Properties(), producerFactoryMock, null);
     try (VeniceWriter veniceWriter = veniceWriterFactory.createVeniceWriter(
         new VeniceWriterOptions.Builder("store_v1").setBrokerAddress("kafka:9898").setPartitionCount(1).build())) {
-      when(producerAdapterMock.getBrokerAddress()).thenReturn(brokerAddrCapture.getValue());
+      PubSubProducerAdapterContext capturedProducerCtx = producerCtxCaptor.getValue();
+      when(producerAdapterMock.getBrokerAddress()).thenReturn(capturedProducerCtx.getTargetBrokerAddress());
       assertNotNull(veniceWriter);
-
       String capturedBrokerAddr = veniceWriter.getDestination();
       assertNotNull(capturedBrokerAddr);
       assertEquals(capturedBrokerAddr, "store_v1@kafka:9898");
-
       assertEquals(veniceWriter.getMaxRecordSizeBytes(), VeniceWriter.UNLIMITED_MAX_RECORD_SIZE);
-
-      VeniceProperties capturedProperties = propertiesCapture.getValue();
+      VeniceProperties capturedProperties = capturedProducerCtx.getVeniceProperties();
       assertNotNull(capturedProperties);
       assertFalse(capturedProperties.containsKey(ApacheKafkaProducerConfig.KAFKA_COMPRESSION_TYPE));
     }
@@ -55,10 +53,9 @@ public class VeniceWriterFactoryTest {
   public void testVeniceWriterFactoryWithProducerCompressionDisabled() {
     PubSubProducerAdapterFactory<PubSubProducerAdapter> producerFactoryMock = mock(PubSubProducerAdapterFactory.class);
     PubSubProducerAdapter producerAdapterMock = mock(PubSubProducerAdapter.class);
-    ArgumentCaptor<String> brokerAddrCapture = ArgumentCaptor.forClass(String.class);
-    ArgumentCaptor<VeniceProperties> propertiesCapture = ArgumentCaptor.forClass(VeniceProperties.class);
-    when(producerFactoryMock.create(propertiesCapture.capture(), eq("store_v1"), brokerAddrCapture.capture()))
-        .thenReturn(producerAdapterMock);
+    ArgumentCaptor<PubSubProducerAdapterContext> producerCtxCaptor =
+        ArgumentCaptor.forClass(PubSubProducerAdapterContext.class);
+    when(producerFactoryMock.create(producerCtxCaptor.capture())).thenReturn(producerAdapterMock);
 
     VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(new Properties(), producerFactoryMock, null);
     try (VeniceWriter veniceWriter = veniceWriterFactory.createVeniceWriter(
@@ -67,20 +64,20 @@ public class VeniceWriterFactoryTest {
             .setProducerCompressionEnabled(false)
             .setProducerCount(5)
             .build())) {
-      when(producerAdapterMock.getBrokerAddress()).thenReturn(brokerAddrCapture.getValue());
-      assertNotNull(veniceWriter);
 
+      PubSubProducerAdapterContext capturedProducerCtx = producerCtxCaptor.getValue();
+      when(producerAdapterMock.getBrokerAddress()).thenReturn(capturedProducerCtx.getTargetBrokerAddress());
+      assertNotNull(veniceWriter);
       String capturedBrokerAddr = veniceWriter.getDestination();
       assertNotNull(capturedBrokerAddr);
       assertEquals(capturedBrokerAddr, "store_v1@kafka:9898");
 
       assertEquals(veniceWriter.getMaxRecordSizeBytes(), VeniceWriter.UNLIMITED_MAX_RECORD_SIZE);
-
-      VeniceProperties capturedProperties = propertiesCapture.getValue();
+      VeniceProperties capturedProperties = capturedProducerCtx.getVeniceProperties();
       assertNotNull(capturedProperties);
       assertFalse(capturedProperties.getBoolean(ApacheKafkaProducerConfig.KAFKA_COMPRESSION_TYPE));
 
-      verify(producerFactoryMock, times(5)).create(any(), any(), any());
+      verify(producerFactoryMock, times(5)).create(any(PubSubProducerAdapterContext.class));
       assertTrue(veniceWriter.getProducerAdapter() instanceof PubSubProducerAdapterDelegator);
     }
 
@@ -91,7 +88,8 @@ public class VeniceWriterFactoryTest {
             .setProducerCompressionEnabled(false)
             .setProducerThreadCount(3)
             .build())) {
-      when(producerAdapterMock.getBrokerAddress()).thenReturn(brokerAddrCapture.getValue());
+      PubSubProducerAdapterContext capturedProducerCtx = producerCtxCaptor.getValue();
+      when(producerAdapterMock.getBrokerAddress()).thenReturn(capturedProducerCtx.getTargetBrokerAddress());
       assertNotNull(veniceWriter);
 
       String capturedBrokerAddr = veniceWriter.getDestination();
@@ -100,11 +98,11 @@ public class VeniceWriterFactoryTest {
 
       assertEquals(veniceWriter.getMaxRecordSizeBytes(), VeniceWriter.UNLIMITED_MAX_RECORD_SIZE);
 
-      VeniceProperties capturedProperties = propertiesCapture.getValue();
+      VeniceProperties capturedProperties = capturedProducerCtx.getVeniceProperties();
       assertNotNull(capturedProperties);
       assertFalse(capturedProperties.getBoolean(ApacheKafkaProducerConfig.KAFKA_COMPRESSION_TYPE));
 
-      verify(producerFactoryMock, times(8)).create(any(), any(), any());
+      verify(producerFactoryMock, times(8)).create(any(PubSubProducerAdapterContext.class));
       assertTrue(veniceWriter.getProducerAdapter() instanceof PubSubProducerAdapterConcurrentDelegator);
     }
   }

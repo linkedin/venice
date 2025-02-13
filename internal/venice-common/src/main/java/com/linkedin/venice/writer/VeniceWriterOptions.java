@@ -2,6 +2,7 @@ package com.linkedin.venice.writer;
 
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.api.PubSubMessageSerializer;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
@@ -21,6 +22,7 @@ public class VeniceWriterOptions {
   private final VeniceKafkaSerializer keySerializer;
   private final VeniceKafkaSerializer valueSerializer;
   private final VeniceKafkaSerializer writeComputeSerializer;
+  private final PubSubMessageSerializer pubSubMessageSerializer;
   private final VenicePartitioner partitioner;
   private final Time time;
   private final Integer partitionCount;
@@ -94,6 +96,10 @@ public class VeniceWriterOptions {
     return producerQueueSize;
   }
 
+  PubSubMessageSerializer getPubSubMessageSerializer() {
+    return pubSubMessageSerializer;
+  }
+
   private VeniceWriterOptions(Builder builder) {
     topicName = builder.topicName;
     keySerializer = builder.keySerializer;
@@ -110,6 +116,7 @@ public class VeniceWriterOptions {
     producerCount = builder.producerCount;
     producerThreadCount = builder.producerThreadCount;
     producerQueueSize = builder.producerQueueSize;
+    pubSubMessageSerializer = builder.pubSubMessageSerializer;
   }
 
   @Override
@@ -155,6 +162,7 @@ public class VeniceWriterOptions {
     private VeniceKafkaSerializer keySerializer = null;
     private VeniceKafkaSerializer valueSerializer = null;
     private VeniceKafkaSerializer writeComputeSerializer = null;
+    private PubSubMessageSerializer pubSubMessageSerializer = null;
     private VenicePartitioner partitioner = null;
     private Time time = null;
     private Integer partitionCount = null; // default null
@@ -176,6 +184,9 @@ public class VeniceWriterOptions {
       }
       if (writeComputeSerializer == null) {
         writeComputeSerializer = new DefaultSerializer();
+      }
+      if (pubSubMessageSerializer == null) {
+        pubSubMessageSerializer = PubSubMessageSerializer.DEFAULT_PUBSUB_SERIALIZER;
       }
       if (partitioner == null) {
         partitioner = new DefaultVenicePartitioner();
@@ -268,6 +279,11 @@ public class VeniceWriterOptions {
 
     public Builder setProducerQueueSize(int producerQueueSize) {
       this.producerQueueSize = producerQueueSize;
+      return this;
+    }
+
+    public Builder setPubSubMessageSerializer(PubSubMessageSerializer pubSubMessageSerializer) {
+      this.pubSubMessageSerializer = pubSubMessageSerializer;
       return this;
     }
   }
