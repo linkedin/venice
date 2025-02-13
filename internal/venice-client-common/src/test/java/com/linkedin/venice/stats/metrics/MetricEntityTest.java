@@ -6,6 +6,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.TreeSet;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -18,13 +19,13 @@ public class MetricEntityTest {
     MetricUnit unit = MetricUnit.MILLISECOND;
     String description = "Test description";
 
-    MetricEntity metricEntity = new MetricEntity(metricName, metricType, unit, description);
+    MetricEntity metricEntity = new MetricEntity(metricName, metricType, unit, description, null);
 
     Assert.assertEquals(metricEntity.getMetricName(), metricName, "Metric name should match");
     Assert.assertEquals(metricEntity.getMetricType(), metricType, "Metric type should match");
     Assert.assertEquals(metricEntity.getUnit(), unit, "Metric unit should match");
     Assert.assertEquals(metricEntity.getDescription(), description, "Description should match");
-    Assert.assertNull(metricEntity.getDimensionsList(), "Dimensions list should be null");
+    Assert.assertEquals(metricEntity.getDimensionsList(), new TreeSet<>(), "Dimensions list should be empty");
   }
 
   @Test
@@ -50,6 +51,6 @@ public class MetricEntityTest {
 
   @Test(expectedExceptions = IllegalArgumentException.class)
   public void testMetricEntityConstructorWithEmptyName() {
-    new MetricEntity("", MetricType.COUNTER, MetricUnit.MILLISECOND, "Empty name test");
+    new MetricEntity("", MetricType.COUNTER, MetricUnit.MILLISECOND, "Empty name test", null);
   }
 }
