@@ -35,6 +35,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.management.ManagementFactory;
+import java.lang.management.OperatingSystemMXBean;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.file.Files;
@@ -1140,5 +1141,17 @@ public class Utils {
     SimpleDateFormat dateFormat = new SimpleDateFormat(dateTimeFormat);
     dateFormat.setTimeZone(TimeZone.getTimeZone(timeZone));
     return dateFormat.parse(dateTime).getTime();
+  }
+
+  public static long getOSMemorySize() {
+    OperatingSystemMXBean osBean = ManagementFactory.getOperatingSystemMXBean();
+
+    if (osBean instanceof com.sun.management.OperatingSystemMXBean) {
+      com.sun.management.OperatingSystemMXBean extendedOsBean = (com.sun.management.OperatingSystemMXBean) osBean;
+      return extendedOsBean.getTotalPhysicalMemorySize();
+    } else {
+      System.out.println("OS Bean not available.");
+    }
+    return -1;
   }
 }

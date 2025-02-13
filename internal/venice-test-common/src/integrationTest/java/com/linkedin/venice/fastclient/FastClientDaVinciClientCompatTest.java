@@ -1,5 +1,6 @@
 package com.linkedin.venice.fastclient;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
@@ -89,6 +90,7 @@ public class FastClientDaVinciClientCompatTest extends AbstractClientEndToEndSet
         new PropertyBuilder().put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
             .put(PERSISTENCE_TYPE, ROCKS_DB)
             .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+            .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
             .put(DATA_BASE_PATH, dataPath)
             .build();
     daVinciClientFactory = new CachingDaVinciClientFactory(

@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_MEMTABLE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
@@ -143,6 +144,7 @@ public class DaVinciClientMemoryLimitTest {
         .put(D2_ZK_HOSTS_ADDRESS, veniceCluster.getZk().getAddress())
         .put(CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
         .put(ROCKSDB_MEMTABLE_SIZE_IN_BYTES, "2MB")
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 4 * 1024 * 1024L)
         .put(ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES, "10MB")
         .put(INGESTION_MEMORY_LIMIT_STORE_LIST, String.join(",", memoryLimitStores))
         .put(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, useDaVinciSpecificExecutionStatusForError);
