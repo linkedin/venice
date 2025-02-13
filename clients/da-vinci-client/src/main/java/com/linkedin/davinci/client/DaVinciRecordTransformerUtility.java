@@ -86,13 +86,13 @@ public class DaVinciRecordTransformerUtility<K, O> {
     Integer persistedClassHash = offsetRecord.getRecordTransformerClassHash();
 
     if (persistedClassHash != null && persistedClassHash == currentClassHash) {
-      LOGGER.info(
-          "A change in transformer logic has been detected. Persisted class hash = {}. New class hash = {}",
-          persistedClassHash,
-          currentClassHash);
+      LOGGER.info("Transformer logic hasn't changed. Class hash = {}", currentClassHash);
       return false;
     }
-    LOGGER.info("Transformer logic hasn't changed. Class hash = {}", currentClassHash);
+    LOGGER.info(
+        "A change in transformer logic has been detected. Persisted class hash = {}. New class hash = {}",
+        persistedClassHash,
+        currentClassHash);
     return true;
   }
 
