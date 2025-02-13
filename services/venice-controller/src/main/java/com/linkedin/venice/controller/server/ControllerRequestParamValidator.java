@@ -39,7 +39,7 @@ public class ControllerRequestParamValidator {
 
   public static void validateAdminCommandExecutionRequest(String clusterName, long executionId) {
     if (StringUtils.isBlank(clusterName)) {
-      throw new IllegalArgumentException("Cluster name is required for getting admin command execution status");
+      throw new IllegalArgumentException("Cluster name is required for admin command execution");
     }
     if (executionId <= 0) {
       throw new IllegalArgumentException("Admin command execution id with positive value is required");
