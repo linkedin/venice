@@ -14,7 +14,7 @@ service ClusterAdminOpsGrpcService {
   // AdminTopicMetadata
   rpc getAdminTopicMetadata(AdminTopicMetadataGrpcRequest) returns (AdminTopicMetadataGrpcResponse) {}
   rpc updateAdminTopicMetadata(UpdateAdminTopicMetadataGrpcRequest) returns (UpdateAdminTopicMetadataGrpcResponse) {}
-  rpc updateAdminOperationProtocolVersion(UpdateAdminOperationProtocolVersionRequest) returns (AdminTopicMetadataGrpcResponse) {}
+  rpc updateAdminOperationProtocolVersion(UpdateAdminOperationProtocolVersionGrpcRequest) returns (AdminTopicMetadataGrpcResponse) {}
 }
 
 
@@ -58,7 +58,7 @@ message UpdateAdminTopicMetadataGrpcRequest {
   AdminTopicGrpcMetadata metadata = 1;
 }
 
-message UpdateAdminOperationProtocolVersionRequest {
+message UpdateAdminOperationProtocolVersionGrpcRequest {
   string clusterName = 1;
   int64 adminOperationProtocolVersion = 2;
 }
