@@ -669,14 +669,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         ByteBuffer oldValueBB = mergeConflictResultWrapper.getOldValueByteBufferProvider().get();
         int oldValueSchemaId =
             oldValueBB == null ? -1 : mergeConflictResultWrapper.getOldValueProvider().get().writerSchemaId();
-        Lazy<GenericRecord> newValueProvider;
-        if (mergeConflictResult.getNewValueDeserialized().isPresent()) {
-          newValueProvider = Lazy.of(() -> mergeConflictResult.getNewValueDeserialized().get());
-        } else {
-          newValueProvider = getNewValueProvider(
-              mergeConflictResultWrapper.getUpdatedValueBytes(),
-              mergeConflictResult.getValueSchemaId());
-        }
+        Lazy<GenericRecord> newValueProvider = mergeConflictResultWrapper
+            .getNewValueProvider((schemaId) -> storeDeserializerCache.getDeserializer(schemaId, schemaId));
         queueUpVersionTopicWritesWithViewWriters(
             partitionConsumptionState,
             (viewWriter) -> viewWriter.processRecord(

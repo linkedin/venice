@@ -13,7 +13,7 @@ public class MergeConflictResult {
   private static final MergeConflictResult IGNORED_RESULT = new MergeConflictResult();
 
   private ByteBuffer newValue;
-  private Optional<GenericRecord> newValueDeserialized;
+  private Optional<GenericRecord> valueDeserialized;
   private int valueSchemaId;
   private final boolean updateIgnored; // Whether we should skip the incoming message since it could be a stale message.
   private boolean resultReusesInput;
@@ -29,13 +29,13 @@ public class MergeConflictResult {
 
   public MergeConflictResult(
       ByteBuffer newValue,
-      Optional<GenericRecord> newValueDeserialized,
+      Optional<GenericRecord> valueDeserialized,
       int valueSchemaID,
       boolean resultReusesInput,
       GenericRecord rmdRecord) {
     this.updateIgnored = false;
     this.newValue = newValue;
-    this.newValueDeserialized = newValueDeserialized;
+    this.valueDeserialized = valueDeserialized;
     this.valueSchemaId = valueSchemaID;
     this.resultReusesInput = resultReusesInput;
     this.rmdRecord = rmdRecord;
@@ -75,7 +75,7 @@ public class MergeConflictResult {
    * deserialize the value to generate the MCR.
    * @return deserialized new value if possible.
    */
-  public Optional<GenericRecord> getNewValueDeserialized() {
-    return newValueDeserialized;
+  public Optional<GenericRecord> getValueDeserialized() {
+    return valueDeserialized;
   }
 }

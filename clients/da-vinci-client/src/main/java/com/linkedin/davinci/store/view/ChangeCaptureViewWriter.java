@@ -14,7 +14,6 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -60,7 +59,7 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
   }
 
   @Override
-  public CompletableFuture<PubSubProduceResult> processRecord(
+  public CompletableFuture<Void> processRecord(
       ByteBuffer newValue,
       ByteBuffer oldValue,
       byte[] key,
@@ -85,7 +84,7 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
   }
 
   @Override
-  public CompletableFuture<PubSubProduceResult> processRecord(
+  public CompletableFuture<Void> processRecord(
       ByteBuffer newValue,
       byte[] key,
       int newValueSchemaId,

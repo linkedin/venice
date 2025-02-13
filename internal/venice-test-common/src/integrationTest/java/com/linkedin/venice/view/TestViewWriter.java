@@ -9,7 +9,6 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
@@ -33,7 +32,7 @@ public class TestViewWriter extends VeniceViewWriter {
   }
 
   @Override
-  public CompletableFuture<PubSubProduceResult> processRecord(
+  public CompletableFuture<Void> processRecord(
       ByteBuffer newValue,
       ByteBuffer oldValue,
       byte[] key,
@@ -47,7 +46,7 @@ public class TestViewWriter extends VeniceViewWriter {
   }
 
   @Override
-  public CompletableFuture<PubSubProduceResult> processRecord(
+  public CompletableFuture<Void> processRecord(
       ByteBuffer newValue,
       byte[] key,
       int newValueSchemaId,

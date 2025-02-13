@@ -1,13 +1,12 @@
 package com.linkedin.venice.hadoop.task.datawriter;
 
-import com.linkedin.venice.partitioner.VeniceComplexPartitioner;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
+import com.linkedin.venice.writer.ComplexVeniceWriter;
 import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.PutMetadata;
-import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
@@ -16,22 +15,16 @@ import org.apache.avro.generic.GenericRecord;
 
 
 public class ComplexPartitionerWriterAdapter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
-  private final VeniceWriter<K, V, U> internalVeniceWriter;
-  private final VeniceComplexPartitioner complexPartitioner;
-  private final int numPartitions;
+  private final ComplexVeniceWriter<K, V, U> internalVeniceWriter;
   private final Function<V, GenericRecord> deserializer;
 
   public ComplexPartitionerWriterAdapter(
       String topicName,
-      VeniceWriter<K, V, U> veniceWriter,
-      VeniceComplexPartitioner complexPartitioner,
-      int numPartitions,
+      ComplexVeniceWriter<K, V, U> veniceWriter,
       Function<V, GenericRecord> deserializer) {
     super(topicName);
     this.internalVeniceWriter = veniceWriter;
-    this.complexPartitioner = complexPartitioner;
     this.deserializer = deserializer;
-    this.numPartitions = numPartitions;
   }
 
   @Override
@@ -48,6 +41,13 @@ public class ComplexPartitionerWriterAdapter<K, V, U> extends AbstractVeniceWrit
     return put(key, value, valueSchemaId, callback, null);
   }
 
+  /**
+   * The {@link PubSubProduceResult} will always be null and should not be used. This is acceptable because:
+   *   1. {@link ComplexVeniceWriter#complexPut(Object, Object, int, Lazy)} returns a CompletableFuture with Void
+   *   since it could potentially write to multiple partitions resulting in multiple PubSubProduceResult.
+   *   2. Only the PubSubProduceResult of the main writer in {@link com.linkedin.venice.writer.CompositeVeniceWriter} is
+   *   used for reporting purpose in VPJ.
+   */
   @Override
   public CompletableFuture<PubSubProduceResult> put(
       K key,
@@ -55,13 +55,16 @@ public class ComplexPartitionerWriterAdapter<K, V, U> extends AbstractVeniceWrit
       int valueSchemaId,
       PubSubProducerCallback callback,
       PutMetadata putMetadata) {
-    return internalVeniceWriter.writeWithComplexPartitioner(
-        key,
-        value,
-        valueSchemaId,
-        Lazy.of(() -> deserializer.apply(value)),
-        complexPartitioner,
-        numPartitions);
+    CompletableFuture<PubSubProduceResult> wraper = new CompletableFuture<>();
+    internalVeniceWriter.complexPut(key, value, valueSchemaId, Lazy.of(() -> deserializer.apply(value)))
+        .whenCompleteAsync((ignored, writeException) -> {
+          if (writeException == null) {
+            wraper.complete(null);
+          } else {
+            wraper.completeExceptionally(writeException);
+          }
+        });
+    return wraper;
   }
 
   @Override

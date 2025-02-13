@@ -93,7 +93,7 @@ public class StoreWriteComputeProcessor {
    *
    * @return Bytes of partially updated original value.
    */
-  public byte[] applyWriteCompute(
+  public GenericRecord applyWriteCompute(
       GenericRecord currValue,
       int writerValueSchemaId,
       int readerValueSchemaId,
@@ -110,9 +110,10 @@ public class StoreWriteComputeProcessor {
         writeComputeProcessor.updateRecord(readerSchemaContainer.getValueSchema(), currValue, writeComputeRecord);
 
     // If write compute is enabled and the record is deleted, the updatedValue will be null.
-    if (updatedValue == null) {
-      return null;
-    }
+    return updatedValue;
+  }
+
+  public byte[] serializeUpdatedValue(GenericRecord updatedValue, int readerValueSchemaId) {
     return getValueSerializer(readerValueSchemaId).serialize(updatedValue);
   }
 
