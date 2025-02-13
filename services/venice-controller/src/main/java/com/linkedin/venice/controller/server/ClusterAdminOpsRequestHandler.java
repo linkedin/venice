@@ -15,7 +15,6 @@ import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcResponse;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcRequest;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcResponse;
 import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcRequest;
-import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcResponse;
 import com.linkedin.venice.utils.Pair;
 import java.util.Map;
 import java.util.Optional;
@@ -108,11 +107,14 @@ public class ClusterAdminOpsRequestHandler {
     return AdminTopicMetadataGrpcResponse.newBuilder().setMetadata(adminMetadataBuilder.build()).build();
   }
 
-  public UpdateAdminTopicMetadataGrpcResponse updateAdminTopicMetadata(UpdateAdminTopicMetadataGrpcRequest request) {
+  public AdminTopicMetadataGrpcResponse updateAdminTopicMetadata(UpdateAdminTopicMetadataGrpcRequest request) {
     AdminTopicGrpcMetadata metadata = request.getMetadata();
     String clusterName = metadata.getClusterName();
+    ControllerRequestParamValidator.validateAdminTopicMetadataRequest(clusterName);
+    if (!metadata.hasExecutionId()) {
+      throw new VeniceException("Execution id is required to update admin topic metadata");
+    }
     long executionId = metadata.getExecutionId();
-    ControllerRequestParamValidator.validateAdminCommandExecutionRequest(clusterName, executionId);
     String storeName = metadata.hasStoreName() ? metadata.getStoreName() : null;
     Long offset = metadata.hasOffset() ? metadata.getOffset() : null;
     Long upstreamOffset = metadata.hasUpstreamOffset() ? metadata.getUpstreamOffset() : null;
@@ -132,11 +134,19 @@ public class ClusterAdminOpsRequestHandler {
         Optional.ofNullable(storeName),
         Optional.ofNullable(offset),
         Optional.ofNullable(upstreamOffset));
-    UpdateAdminTopicMetadataGrpcResponse.Builder responseBuilder =
-        UpdateAdminTopicMetadataGrpcResponse.newBuilder().setClusterName(clusterName);
-    if (storeName != null) {
-      responseBuilder.setStoreName(storeName);
-    }
+
+    AdminTopicGrpcMetadata.Builder adminTopicGrpcMetadataBuilder =
+        AdminTopicGrpcMetadata.newBuilder().setClusterName(clusterName).setExecutionId(executionId);
+
+    if (storeName != null)
+      adminTopicGrpcMetadataBuilder.setStoreName(storeName);
+    if (offset != null)
+      adminTopicGrpcMetadataBuilder.setOffset(offset);
+    if (upstreamOffset != null)
+      adminTopicGrpcMetadataBuilder.setUpstreamOffset(upstreamOffset);
+
+    AdminTopicMetadataGrpcResponse.Builder responseBuilder =
+        AdminTopicMetadataGrpcResponse.newBuilder().setMetadata(adminTopicGrpcMetadataBuilder.build());
     return responseBuilder.build();
   }
 }

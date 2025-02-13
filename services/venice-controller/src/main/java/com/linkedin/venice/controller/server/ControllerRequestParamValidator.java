@@ -45,4 +45,10 @@ public class ControllerRequestParamValidator {
       throw new IllegalArgumentException("Admin command execution id with positive value is required");
     }
   }
+
+  public static void validateAdminTopicMetadataRequest(String clusterName) {
+    if (StringUtils.isBlank(clusterName)) {
+      throw new IllegalArgumentException("Cluster name is required for getting admin command execution status");
+    }
+  }
 }

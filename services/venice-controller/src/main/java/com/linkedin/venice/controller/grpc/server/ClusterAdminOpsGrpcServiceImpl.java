@@ -16,7 +16,6 @@ import com.linkedin.venice.protocols.controller.ClusterAdminOpsGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcRequest;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcResponse;
 import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcRequest;
-import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcResponse;
 import io.grpc.Context;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -77,7 +76,7 @@ public class ClusterAdminOpsGrpcServiceImpl extends ClusterAdminOpsGrpcServiceIm
   @Override
   public void updateAdminTopicMetadata(
       UpdateAdminTopicMetadataGrpcRequest request,
-      StreamObserver<UpdateAdminTopicMetadataGrpcResponse> responseObserver) {
+      StreamObserver<AdminTopicMetadataGrpcResponse> responseObserver) {
     LOGGER.debug("Received updateAdminTopicMetadata request: {}", request);
     AdminTopicGrpcMetadata metadata = request.getMetadata();
     ControllerGrpcServerUtils.handleRequest(ClusterAdminOpsGrpcServiceGrpc.getUpdateAdminTopicMetadataMethod(), () -> {

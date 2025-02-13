@@ -7,6 +7,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
@@ -25,7 +26,6 @@ import com.linkedin.venice.protocols.controller.ClusterAdminOpsGrpcServiceGrpc.C
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcRequest;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcResponse;
 import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcRequest;
-import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcResponse;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcErrorInfo;
 import io.grpc.ManagedChannel;
 import io.grpc.Server;
@@ -148,18 +148,33 @@ public class ClusterAdminOpsGrpcServiceImplTest {
 
   @Test
   public void testUpdateAdminTopicMetadataSuccess() {
-    UpdateAdminTopicMetadataGrpcResponse response =
-        UpdateAdminTopicMetadataGrpcResponse.newBuilder().setClusterName(TEST_CLUSTER).build();
+    AdminTopicGrpcMetadata.Builder adminTopicGrpcMetadataBuilder = AdminTopicGrpcMetadata.newBuilder()
+        .setClusterName(TEST_CLUSTER)
+        .setExecutionId(EXECUTION_ID)
+        .setOffset(100L)
+        .setUpstreamOffset(-1L);
+    AdminTopicMetadataGrpcResponse response =
+        AdminTopicMetadataGrpcResponse.newBuilder().setMetadata(adminTopicGrpcMetadataBuilder.build()).build();
     doReturn(response).when(requestHandler).updateAdminTopicMetadata(any(UpdateAdminTopicMetadataGrpcRequest.class));
     doReturn(true).when(accessManager).isAllowListUser(anyString(), any());
 
     UpdateAdminTopicMetadataGrpcRequest request = UpdateAdminTopicMetadataGrpcRequest.newBuilder()
-        .setMetadata(AdminTopicGrpcMetadata.newBuilder().setClusterName(TEST_CLUSTER).setExecutionId(EXECUTION_ID))
+        .setMetadata(
+            AdminTopicGrpcMetadata.newBuilder()
+                .setClusterName(TEST_CLUSTER)
+                .setExecutionId(EXECUTION_ID)
+                .setOffset(100L)
+                .setUpstreamOffset(-1L))
         .build();
 
-    UpdateAdminTopicMetadataGrpcResponse actualResponse = blockingStub.updateAdminTopicMetadata(request);
+    AdminTopicMetadataGrpcResponse actualResponse = blockingStub.updateAdminTopicMetadata(request);
     assertNotNull(actualResponse);
-    assertEquals(actualResponse.getClusterName(), TEST_CLUSTER);
+    assertEquals(actualResponse.getMetadata().getClusterName(), TEST_CLUSTER);
+    assertEquals(actualResponse.getMetadata().getExecutionId(), EXECUTION_ID);
+    assertEquals(actualResponse.getMetadata().getOffset(), 100L);
+    assertEquals(actualResponse.getMetadata().getUpstreamOffset(), -1L);
+    // Since store name is not provided in the request, no store name will be returned in the response
+    assertFalse(actualResponse.getMetadata().hasStoreName());
   }
 
   @Test

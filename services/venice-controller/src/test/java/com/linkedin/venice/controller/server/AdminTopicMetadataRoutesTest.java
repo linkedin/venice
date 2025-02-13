@@ -25,7 +25,6 @@ import com.linkedin.venice.protocols.controller.AdminTopicGrpcMetadata;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcResponse;
 import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcRequest;
-import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcResponse;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.security.cert.X509Certificate;
 import java.util.HashMap;
@@ -146,8 +145,12 @@ public class AdminTopicMetadataRoutesTest {
     when(request.queryParams(EXECUTION_ID)).thenReturn(String.valueOf(TEST_EXECUTION_ID));
     when(request.queryParams(STORE_NAME)).thenReturn(TEST_STORE);
 
-    UpdateAdminTopicMetadataGrpcResponse grpcResponse =
-        UpdateAdminTopicMetadataGrpcResponse.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
+    AdminTopicGrpcMetadata.Builder adminTopicGrpcMetadataBuilder = AdminTopicGrpcMetadata.newBuilder()
+        .setClusterName(TEST_CLUSTER)
+        .setStoreName(TEST_STORE)
+        .setExecutionId(TEST_EXECUTION_ID);
+    AdminTopicMetadataGrpcResponse grpcResponse =
+        AdminTopicMetadataGrpcResponse.newBuilder().setMetadata(adminTopicGrpcMetadataBuilder.build()).build();
 
     when(requestHandler.updateAdminTopicMetadata(any(UpdateAdminTopicMetadataGrpcRequest.class)))
         .thenReturn(grpcResponse);
