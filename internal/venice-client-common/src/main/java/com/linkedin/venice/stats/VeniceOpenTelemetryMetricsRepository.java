@@ -49,9 +49,9 @@ public class VeniceOpenTelemetryMetricsRepository {
   private String metricPrefix;
 
   /**
-   * Below Maps are to create only one metric per name and type: Venice code will try to initialize the same metric multiple times as it will get
-   * called from per store path and per request type path. This will ensure that we only have one metric per name and
-   * use dimensions to differentiate between them.
+   * To create only one metric per name and type: Venice code will try to initialize the same metric multiple times as
+   * it will get called from per store path, per request type path, etc. This will ensure that we only have one metric
+   * per name and use dimensions to differentiate between them.
    */
   private final VeniceConcurrentHashMap<String, DoubleHistogram> histogramMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, LongCounter> counterMap = new VeniceConcurrentHashMap<>();
