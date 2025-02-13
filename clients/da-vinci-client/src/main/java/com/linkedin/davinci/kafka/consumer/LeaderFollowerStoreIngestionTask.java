@@ -3196,9 +3196,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
     byte[] keyBytes = kafkaKey.getKey();
     MessageType msgType = MessageType.valueOf(kafkaValue.messageType);
+    Lazy<GenericRecord> valueProvider;
     switch (msgType) {
       case PUT:
         Put put = (Put) kafkaValue.payloadUnion;
+        // Value provider should use un-compressed data.
+        final ByteBuffer rawPutValue = put.putValue;
+        valueProvider =
+            Lazy.of(() -> storeDeserializerCache.getDeserializer(put.schemaId, put.schemaId).deserialize(rawPutValue));
         put.putValue = maybeCompressData(
             consumerRecord.getTopicPartition().getPartitionNumber(),
             put.putValue,
@@ -3221,7 +3226,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               null);
         }
 
-        return new PubSubMessageProcessedResult(new WriteComputeResultWrapper(put, null, false));
+        return new PubSubMessageProcessedResult(new WriteComputeResultWrapper(put, null, false, valueProvider));
 
       case UPDATE:
         /**
@@ -3266,20 +3271,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
         final byte[] updatedValueBytes;
         final ChunkedValueManifest oldValueManifest = valueManifestContainer.getManifest();
-
+        GenericRecord updatedValue;
         try {
           long writeComputeStartTimeInNS = System.nanoTime();
+
           // Leader nodes are the only ones which process UPDATES, so it's valid to always compress and not call
           // 'maybeCompress'.
+          updatedValue = storeWriteComputeHandler.applyWriteCompute(
+              currValue,
+              update.schemaId,
+              readerValueSchemaId,
+              update.updateValue,
+              update.updateSchemaId,
+              readerUpdateProtocolVersion);
           updatedValueBytes = compressor.get()
-              .compress(
-                  storeWriteComputeHandler.applyWriteCompute(
-                      currValue,
-                      update.schemaId,
-                      readerValueSchemaId,
-                      update.updateValue,
-                      update.updateSchemaId,
-                      readerUpdateProtocolVersion));
+              .compress(storeWriteComputeHandler.serializeUpdatedValue(updatedValue, readerValueSchemaId));
           hostLevelIngestionStats
               .recordWriteComputeUpdateLatency(LatencyUtils.getElapsedTimeFromNSToMS(writeComputeStartTimeInNS));
         } catch (Exception e) {
@@ -3316,7 +3322,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           Put updatedPut = new Put();
           updatedPut.putValue = updateValueWithSchemaId;
           updatedPut.schemaId = readerValueSchemaId;
-          return new PubSubMessageProcessedResult(new WriteComputeResultWrapper(updatedPut, oldValueManifest, false));
+          return new PubSubMessageProcessedResult(
+              new WriteComputeResultWrapper(updatedPut, oldValueManifest, false, Lazy.of(() -> updatedValue)));
         }
       case DELETE:
         /**
@@ -3325,7 +3332,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         if (isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived()) {
           partitionConsumptionState.setTransientRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, -1, null);
         }
-        return new PubSubMessageProcessedResult(new WriteComputeResultWrapper(null, null, false));
+        // Best-effort to provide the old value for delete operation in case needed by a ComplexVeniceWriter to generate
+        // deletes for materialized view topic partition(s).
+        Lazy<GenericRecord> oldValueProvider = Lazy.of(() -> {
+          ChunkedValueManifestContainer oldValueManifestContainer = new ChunkedValueManifestContainer();
+          int oldValueReaderSchemaId = schemaRepository.getSupersetSchema(storeName).getId();
+          return readStoredValueRecord(
+              partitionConsumptionState,
+              keyBytes,
+              oldValueReaderSchemaId,
+              consumerRecord.getTopicPartition(),
+              oldValueManifestContainer);
+        });
+        return new PubSubMessageProcessedResult(new WriteComputeResultWrapper(null, null, false, oldValueProvider));
 
       default:
         throw new VeniceMessageException(
@@ -3377,7 +3396,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       Put newPut = writeComputeResultWrapper.getNewPut();
       // keys will be serialized with chunk suffix during pass-through mode in L/F NR if chunking is enabled
       boolean isChunkedKey = isChunked() && !partitionConsumptionState.isEndOfPushReceived();
-      Lazy<GenericRecord> newValueProvider = getNewValueProvider(newPut.putValue, newPut.schemaId);
+      Lazy<GenericRecord> newValueProvider = writeComputeResultWrapper.getValueProvider();
       queueUpVersionTopicWritesWithViewWriters(
           partitionConsumptionState,
           (viewWriter) -> viewWriter
@@ -3971,7 +3990,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected void queueUpVersionTopicWritesWithViewWriters(
       PartitionConsumptionState partitionConsumptionState,
-      Function<VeniceViewWriter, CompletableFuture<PubSubProduceResult>> viewWriterRecordProcessor,
+      Function<VeniceViewWriter, CompletableFuture<Void>> viewWriterRecordProcessor,
       Runnable versionTopicWrite) {
     long preprocessingTime = System.currentTimeMillis();
     CompletableFuture<Void> currentVersionTopicWrite = new CompletableFuture<>();
@@ -4064,11 +4083,5 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     } else {
       return supplier.get();
     }
-  }
-  protected Lazy<GenericRecord> getNewValueProvider(ByteBuffer newValue, int schemaId) {
-    if (newValue == null) {
-      return Lazy.of(() -> null);
-    }
-    return Lazy.of(() -> storeDeserializerCache.getDeserializer(schemaId, schemaId).deserialize(newValue));
   }
 }

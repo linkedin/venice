@@ -9,7 +9,6 @@ import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -68,7 +67,7 @@ public abstract class VeniceViewWriter extends VeniceView {
    * @param replicationMetadataRecord the associated RMD for the incoming record.
    * @param newValueProvider to provide the deserialized new value
    */
-  public abstract CompletableFuture<PubSubProduceResult> processRecord(
+  public abstract CompletableFuture<Void> processRecord(
       ByteBuffer newValue,
       ByteBuffer oldValue,
       byte[] key,
@@ -87,7 +86,7 @@ public abstract class VeniceViewWriter extends VeniceView {
    * @param isChunkedKey is the key already serialized with {@link com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer}
    * @param newValueProvider to provide the deserialized new value
    */
-  public abstract CompletableFuture<PubSubProduceResult> processRecord(
+  public abstract CompletableFuture<Void> processRecord(
       ByteBuffer newValue,
       byte[] key,
       int newValueSchemaId,

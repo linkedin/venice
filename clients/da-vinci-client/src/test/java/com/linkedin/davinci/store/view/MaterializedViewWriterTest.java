@@ -36,7 +36,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
-import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.ComplexVeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
@@ -127,7 +127,7 @@ public class MaterializedViewWriterTest {
     controlMessage.controlMessageType = ControlMessageType.START_OF_SEGMENT.getValue();
     KafkaKey kafkaKey = mock(KafkaKey.class);
     doReturn(KafkaKey.HEART_BEAT.getKey()).when(kafkaKey).getKey();
-    VeniceWriter veniceWriter = mock(VeniceWriter.class);
+    ComplexVeniceWriter veniceWriter = mock(ComplexVeniceWriter.class);
     when(veniceWriter.sendHeartbeat(anyString(), anyInt(), any(), any(), anyBoolean(), any(), anyLong()))
         .thenReturn(CompletableFuture.completedFuture(null));
     doReturn(CompletableFuture.completedFuture(null)).when(veniceWriter)
@@ -154,8 +154,8 @@ public class MaterializedViewWriterTest {
     Map<String, String> viewParamsMap = viewParamsBuilder.build();
     VeniceConfigLoader props = getMockProps();
     MaterializedViewWriter materializedViewWriter = new MaterializedViewWriter(props, version, SCHEMA, viewParamsMap);
-    VeniceWriter veniceWriter = mock(VeniceWriter.class);
-    doReturn(CompletableFuture.completedFuture(null)).when(veniceWriter).put(any(), any(), anyInt());
+    ComplexVeniceWriter veniceWriter = mock(ComplexVeniceWriter.class);
+    doReturn(CompletableFuture.completedFuture(null)).when(veniceWriter).complexPut(any(), any(), anyInt(), any());
     materializedViewWriter.setVeniceWriter(veniceWriter);
     KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
     ByteBuffer dummyValue = mock(ByteBuffer.class);
@@ -170,7 +170,7 @@ public class MaterializedViewWriterTest {
           1,
           true,
           Lazy.of(() -> null));
-      verify(veniceWriter, times(1)).put(eq(key), any(), eq(1));
+      verify(veniceWriter, times(1)).complexPut(eq(key), any(), eq(1), any());
       Mockito.clearInvocations(veniceWriter);
     }
   }

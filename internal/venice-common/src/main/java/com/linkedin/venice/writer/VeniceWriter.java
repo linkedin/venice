@@ -35,7 +35,6 @@ import com.linkedin.venice.kafka.validation.Segment;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.partitioner.VeniceComplexPartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.api.EmptyPubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
@@ -60,7 +59,6 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.VeniceResourceCloseResult;
-import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -69,7 +67,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -81,7 +78,6 @@ import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.lang.Validate;
 import org.apache.logging.log4j.LogManager;
@@ -100,7 +96,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private final ThreadPoolExecutor threadPoolExecutor;
 
   // log4j logger
-  private final Logger logger;
+  protected final Logger logger;
 
   // Config names
   public static final String VENICE_WRITER_CONFIG_PREFIX = "venice.writer.";
@@ -155,7 +151,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   /**
    * The default for {@link #maxRecordSizeBytes} is unlimited / unset (-1) just to be safe. A more specific default value
-   * should be set using {@link com.linkedin.venice.ConfigKeys#CONTROLLER_DEFAULT_MAX_RECORD_SIZE_BYTES} the controller
+   * should be set using {@link com.linkedin.venice.ConfigKeys#DEFAULT_MAX_RECORD_SIZE_BYTES} the controller
    * config on the cluster level.
    */
   public static final int UNLIMITED_MAX_RECORD_SIZE = -1;
@@ -233,14 +229,14 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   // Immutable state
   private final PubSubMessageHeaders protocolSchemaHeaders;
 
-  private final VeniceKafkaSerializer<K> keySerializer;
-  private final VeniceKafkaSerializer<V> valueSerializer;
+  protected final VeniceKafkaSerializer<K> keySerializer;
+  protected final VeniceKafkaSerializer<V> valueSerializer;
   private final VeniceKafkaSerializer<U> writeComputeSerializer;
   private final PubSubProducerAdapter producerAdapter;
   private final GUID producerGUID;
   private final Time time;
-  private final VenicePartitioner partitioner;
-  private final int numberOfPartitions;
+  protected final VenicePartitioner partitioner;
+  protected final int numberOfPartitions;
   private final int closeTimeOutInMs;
   private final CheckSumType checkSumType;
   private final int maxSizeForUserPayloadPerMessageInBytes;
@@ -720,6 +716,44 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       ChunkedValueManifest oldRmdManifest) {
     byte[] serializedKey = keySerializer.serialize(topicName, key);
     int partition = getPartition(serializedKey);
+    return delete(
+        serializedKey,
+        callback,
+        leaderMetadataWrapper,
+        logicalTs,
+        deleteMetadata,
+        oldValueManifest,
+        oldRmdManifest,
+        partition);
+  }
+
+  /**
+   * Execute a "delete" on the key for a predetermined partition.
+   */
+  protected CompletableFuture<PubSubProduceResult> delete(
+      byte[] serializedKey,
+      PubSubProducerCallback callback,
+      int partition) {
+    return delete(
+        serializedKey,
+        callback,
+        DEFAULT_LEADER_METADATA_WRAPPER,
+        APP_DEFAULT_LOGICAL_TS,
+        null,
+        null,
+        null,
+        partition);
+  }
+
+  private CompletableFuture<PubSubProduceResult> delete(
+      byte[] serializedKey,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      long logicalTs,
+      DeleteMetadata deleteMetadata,
+      ChunkedValueManifest oldValueManifest,
+      ChunkedValueManifest oldRmdManifest,
+      int partition) {
 
     isChunkingFlagInvoked = true;
 
@@ -961,11 +995,13 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   /**
-   * Used by view writers to write records with new DIV to a predetermined partition.
+   * Write records with new DIV to a predetermined partition.
    */
-  public CompletableFuture<PubSubProduceResult> put(K key, V value, int valueSchemaId, int partition) {
-    byte[] serializedKey = keySerializer.serialize(topicName, key);
-    byte[] serializedValue = valueSerializer.serialize(topicName, value);
+  protected CompletableFuture<PubSubProduceResult> put(
+      byte[] serializedKey,
+      byte[] serializedValue,
+      int valueSchemaId,
+      int partition) {
     return put(
         serializedKey,
         serializedValue,
@@ -982,7 +1018,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   /**
    * Write a record with new DIV to a predetermined partition.
    */
-  public CompletableFuture<PubSubProduceResult> put(
+  private CompletableFuture<PubSubProduceResult> put(
       byte[] serializedKey,
       byte[] serializedValue,
       int partition,
@@ -1534,7 +1570,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   /**
    * This function implements chunking of a large value into many small values.
    */
-  private CompletableFuture<PubSubProduceResult> putLargeValue(
+  protected CompletableFuture<PubSubProduceResult> putLargeValue(
       byte[] serializedKey,
       byte[] serializedValue,
       int valueSchemaId,
@@ -2202,45 +2238,5 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   public PubSubProducerAdapter getProducerAdapter() {
     return this.producerAdapter;
-  }
-
-  /**
-   * {@link VeniceComplexPartitioner} offers a more sophisticated getPartitionId API. It takes value as a parameter, and
-   * it could return a single, multiple or no partition(s). The delete behavior is also undefined, so we will ignore
-   * deletes via key for now. Proper delete can be performed via re-push or new version push.
-   */
-  public CompletableFuture<PubSubProduceResult> writeWithComplexPartitioner(
-      K key,
-      V value,
-      int valueSchemaId,
-      Lazy<GenericRecord> valueProvider,
-      VeniceComplexPartitioner complexPartitioner,
-      int numPartitions) {
-    CompletableFuture<PubSubProduceResult> finalCompletableFuture = new CompletableFuture<>();
-    if (value == null) {
-      // Ignore null value or delete operations
-      finalCompletableFuture.complete(null);
-    } else {
-      // Write updated/put record to materialized view topic partition(s)
-      Set<Integer> partitions = complexPartitioner.getPartitionId(valueProvider.get(), numPartitions);
-      if (partitions.isEmpty()) {
-        finalCompletableFuture.complete(null);
-      } else {
-        CompletableFuture<PubSubProduceResult>[] viewPartitionFutures = new CompletableFuture[partitions.size()];
-        int index = 0;
-        // TODO avoid re-chunking for different partitions for proper chunking support
-        for (int p: partitions) {
-          viewPartitionFutures[index++] = this.put(key, value, valueSchemaId, p);
-        }
-        CompletableFuture.allOf(viewPartitionFutures).whenCompleteAsync((ignored, writeException) -> {
-          if (writeException == null) {
-            finalCompletableFuture.complete(null);
-          } else {
-            finalCompletableFuture.completeExceptionally(writeException);
-          }
-        });
-      }
-    }
-    return finalCompletableFuture;
   }
 }

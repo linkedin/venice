@@ -48,7 +48,7 @@ import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.view.TestValueBasedPartitioner;
+import com.linkedin.venice.view.TestValueBasedVenicePartitioner;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.writer.update.UpdateBuilder;
@@ -326,7 +326,7 @@ public class TestMaterializedViewEndToEnd {
         IntegrationTestPushUtils.createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms)) {
       MaterializedViewParameters.Builder viewParamBuilder =
           new MaterializedViewParameters.Builder(testViewName).setPartitionCount(2)
-              .setPartitioner(TestValueBasedPartitioner.class.getCanonicalName());
+              .setPartitioner(TestValueBasedVenicePartitioner.class.getCanonicalName());
       UpdateStoreQueryParams updateViewParam = new UpdateStoreQueryParams().setViewName(testViewName)
           .setViewClassName(MaterializedView.class.getCanonicalName())
           .setViewClassParams(viewParamBuilder.build());
@@ -344,7 +344,6 @@ public class TestMaterializedViewEndToEnd {
     String viewTopicName =
         Version.composeKafkaTopic(storeName, 1) + VIEW_NAME_SEPARATOR + testViewName + MATERIALIZED_VIEW_TOPIC_SUFFIX;
     // View topic partitions should be mostly empty based on the TestValueBasedPartitioner logic.
-    // TODO use CC with views for validation once it's ready instead of using offset
     int expectedMaxEndOffset = 6; // This may change when we introduce more CMs e.g. heartbeats
     for (VeniceMultiClusterWrapper veniceClusterWrapper: childDatacenters) {
       VeniceHelixAdmin admin = veniceClusterWrapper.getRandomController().getVeniceHelixAdmin();

@@ -4,8 +4,11 @@ import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.replication.merge.MergeConflictResult;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
+import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
+import java.util.function.Function;
+import org.apache.avro.generic.GenericRecord;
 
 
 /**
@@ -63,5 +66,32 @@ public class MergeConflictResultWrapper {
 
   public ByteBuffer getUpdatedRmdBytes() {
     return updatedRmdBytes;
+  }
+
+  /**
+   * Return a best-effort value provider with the following behaviors:
+   *   1. returns the new value provider for PUT and UPDATE.
+   *   2. returns the old value for DELETE (null for non-existent key).
+   *   3. returns null if the value is not available.
+   */
+  public Lazy<GenericRecord> getNewValueProvider(
+      Function<Integer, RecordDeserializer<GenericRecord>> deserializerProvider) {
+    if (updatedValueBytes == null) {
+      // this is a DELETE
+      ByteBufferValueRecord<ByteBuffer> oldValue = oldValueProvider.get();
+      if (oldValue == null || oldValue.value() == null) {
+        return Lazy.of(() -> null);
+      }
+      return Lazy.of(() -> deserializerProvider.apply(oldValue.writerSchemaId()).deserialize(oldValue.value()));
+    } else {
+      // this is a PUT or UPDATE
+      if (mergeConflictResult.getValueDeserialized().isPresent()) {
+        return Lazy.of(() -> mergeConflictResult.getValueDeserialized().get());
+      }
+      // Use mergeConflictResult.getNewValue() here and not updatedValueBytes for non-compressed value bytes.
+      return Lazy.of(
+          () -> deserializerProvider.apply(mergeConflictResult.getValueSchemaId())
+              .deserialize(mergeConflictResult.getNewValue()));
+    }
   }
 }

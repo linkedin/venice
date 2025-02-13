@@ -40,7 +40,6 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -279,7 +278,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     MaterializedViewWriter materializedViewWriter = mock(MaterializedViewWriter.class);
     viewWriterMap.put("testView", materializedViewWriter);
     when(mockVeniceViewWriterFactory.buildStoreViewWriters(any(), anyInt(), any())).thenReturn(viewWriterMap);
-    CompletableFuture<PubSubProduceResult> viewWriterFuture = new CompletableFuture<>();
+    CompletableFuture<Void> viewWriterFuture = new CompletableFuture<>();
     when(materializedViewWriter.processRecord(any(), any(), anyInt(), anyBoolean(), any()))
         .thenReturn(viewWriterFuture);
     setUp();

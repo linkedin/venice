@@ -26,7 +26,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ViewConfig;
-import com.linkedin.venice.partitioner.VeniceComplexPartitioner;
+import com.linkedin.venice.partitioner.ComplexVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
@@ -412,16 +412,14 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         String viewTopic = view.getTopicNamesAndConfigsForVersion(versionNumber).keySet().stream().findAny().get();
         if (view instanceof MaterializedView) {
           MaterializedView materializedView = (MaterializedView) view;
-          if (materializedView.getViewPartitioner() instanceof VeniceComplexPartitioner) {
+          if (materializedView.getViewPartitioner() instanceof ComplexVenicePartitioner) {
             // We need to build a ComplexPartitionerWriterAdapter to handle writes with complex partitioner.
             Schema valueSchema = new Schema.Parser().parse(props.getString(VALUE_SCHEMA_STRING_PROP));
             RecordDeserializer<GenericRecord> deserializer =
                 FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(valueSchema, valueSchema);
             childWriters[index++] = new ComplexPartitionerWriterAdapter<byte[], byte[], byte[]>(
                 viewTopic,
-                factory.createVeniceWriter(view.getWriterOptionsBuilder(viewTopic, version).build()),
-                (VeniceComplexPartitioner) materializedView.getViewPartitioner(),
-                materializedView.getViewPartitionCount(),
+                factory.createComplexVeniceWriter(view.getWriterOptionsBuilder(viewTopic, version).build()),
                 deserializer::deserialize);
             continue;
           }
