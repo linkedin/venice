@@ -223,8 +223,8 @@ public class ClusterAdminOpsRequestHandlerTest {
     AdminTopicGrpcMetadata metadata = AdminTopicGrpcMetadata.newBuilder().setClusterName(clusterName).build();
     UpdateAdminTopicMetadataGrpcRequest request =
         UpdateAdminTopicMetadataGrpcRequest.newBuilder().setMetadata(metadata).build();
-    Exception exception = expectThrows(VeniceException.class, () -> handler.updateAdminTopicMetadata(request));
-    assertTrue(exception.getMessage().contains("Execution id is required to update admin topic metadata"));
+    Exception exception = expectThrows(IllegalArgumentException.class, () -> handler.updateAdminTopicMetadata(request));
+    assertTrue(exception.getMessage().contains("Admin command execution id with positive value is required"));
 
     // Either offset or upstream offset is provided
     metadata = AdminTopicGrpcMetadata.newBuilder()
