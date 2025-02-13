@@ -111,8 +111,7 @@ public class CompactionManager {
       LOGGER.info(
           "Repush job triggered for store: {} | exec id: {} | exec url: {}",
           response.getName(),
-          response.getExecutionId(),
-          response.getExecutionUrl());
+          response.getExecutionId());
       return response;
     } catch (Exception e) {
       LOGGER.error("Failed to compact store: {}", storeName, e);

@@ -95,11 +95,11 @@ public class LogCompactionService extends AbstractVeniceService {
           try {
             RepushJobResponse response = admin.compactStore(storeInfo.getName());
             LOGGER.info(
-                "{} log compaction triggered for cluster: {} store: {} | execution URL: {}",
+                "{} log compaction triggered for cluster: {} store: {} | execution ID: {}",
                 triggerSource,
                 clusterName,
                 response.getName(),
-                response.getExecutionUrl());
+                response.getExecutionId());
           } catch (Exception e) {
             LOGGER.error(
                 "Error checking if store is ready for log compaction for cluster: {} store: {}",

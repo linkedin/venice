@@ -8,18 +8,12 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
  */
 public class RepushJobResponse extends ControllerResponse {
   private final String executionId;
-  private final String executionUrl;
 
-  public RepushJobResponse(String executionId, String executionUrl) {
+  public RepushJobResponse(String executionId) {
     this.executionId = executionId;
-    this.executionUrl = executionUrl;
   }
 
   public String getExecutionId() {
     return executionId;
-  }
-
-  public String getExecutionUrl() {
-    return executionUrl;
   }
 }
