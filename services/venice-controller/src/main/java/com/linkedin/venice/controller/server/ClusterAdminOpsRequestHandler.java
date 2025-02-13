@@ -110,7 +110,10 @@ public class ClusterAdminOpsRequestHandler {
   public AdminTopicMetadataGrpcResponse updateAdminTopicMetadata(UpdateAdminTopicMetadataGrpcRequest request) {
     AdminTopicGrpcMetadata metadata = request.getMetadata();
     String clusterName = metadata.getClusterName();
-    ControllerRequestParamValidator.validateAdminTopicMetadataRequest(clusterName);
+    if (StringUtils.isBlank(clusterName)) {
+      throw new VeniceException("Cluster name is required to update admin topic metadata");
+    }
+
     if (!metadata.hasExecutionId()) {
       throw new VeniceException("Execution id is required to update admin topic metadata");
     }
