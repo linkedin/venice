@@ -14,6 +14,7 @@ import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcResponse;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcRequest;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcResponse;
+import com.linkedin.venice.protocols.controller.UpdateAdminOperationProtocolVersionGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.utils.Pair;
 import java.util.Map;
@@ -147,5 +148,28 @@ public class ClusterAdminOpsRequestHandler {
     AdminTopicMetadataGrpcResponse.Builder responseBuilder =
         AdminTopicMetadataGrpcResponse.newBuilder().setMetadata(adminTopicGrpcMetadataBuilder.build());
     return responseBuilder.build();
+  }
+
+  public AdminTopicMetadataGrpcResponse updateAdminOperationProtocolVersion(
+      UpdateAdminOperationProtocolVersionGrpcRequest request) {
+    String clusterName = request.getClusterName();
+    if (StringUtils.isBlank(clusterName)) {
+      throw new IllegalArgumentException("Cluster name is required for updating admin operation protocol version");
+    }
+
+    long adminOperationProtocolVersion = request.getAdminOperationProtocolVersion();
+
+    LOGGER.info(
+        "Updating admin operation protocol version for cluster: {} to version: {}",
+        clusterName,
+        adminOperationProtocolVersion);
+
+    // TODO: Call the actual method to update the admin operation protocol version (#1418)
+    // admin.updateAdminOperationProtocolVersion(clusterName, adminOperationProtocolVersion);
+
+    AdminTopicGrpcMetadata.Builder adminMetadataBuilder = AdminTopicGrpcMetadata.newBuilder()
+        .setClusterName(clusterName)
+        .setAdminOperationProtocolVersion(adminOperationProtocolVersion);
+    return AdminTopicMetadataGrpcResponse.newBuilder().setMetadata(adminMetadataBuilder.build()).build();
   }
 }
