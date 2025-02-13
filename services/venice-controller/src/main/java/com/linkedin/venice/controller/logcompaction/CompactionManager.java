@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.logcompaction;
 
+import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -17,7 +18,7 @@ import org.apache.logging.log4j.Logger;
  * This class contains functions used by {@link com.linkedin.venice.controller.VeniceHelixAdmin} to:
  * 1. Get stores ready for compaction based on a set of criteria. These criteria have individual functions if they involve
  * multiple steps.
- * 2. Trigger repush to compact a store with function {@link RepushOrchestrator#repush(String)} & processes the status/response of the repush job.
+ * 2. Trigger repush to compact a store with function {@link RepushOrchestrator#repush(RepushJobRequest)} & processes the status/response of the repush job.
  */
 public class CompactionManager {
   private static final Logger LOGGER = LogManager.getLogger(CompactionManager.class);
@@ -98,23 +99,23 @@ public class CompactionManager {
 
   /**
    * This function triggers a repush job to perform log compaction on the topic of a store.
-       *
-   * - intermediary between {@link com.linkedin.venice.controller.VeniceHelixAdmin#compactStore} and {@link RepushOrchestrator#repush}
-   * - a wrapper around repush()
-   * - handles repush job status/response
+   * <p>
+   * - intermediary between {@link com.linkedin.venice.controller.VeniceHelixAdmin#compactStore} and
+   * {@link RepushOrchestrator#repush} - a wrapper around repush() - handles repush job status/response
    *
-   * @param storeName of the store to be compacted
+   * @param repushJobRequest
    */
-  public RepushJobResponse compactStore(String storeName) throws Exception {
+  public RepushJobResponse compactStore(RepushJobRequest repushJobRequest) throws Exception {
     try {
-      RepushJobResponse response = repushOrchestrator.repush(storeName);
+      RepushJobResponse response = repushOrchestrator.repush(repushJobRequest);
       LOGGER.info(
-          "Repush job triggered for store: {} | exec id: {} | exec url: {}",
+          "Repush job triggered for store: {} | exec id: {} | trigger source: {}",
           response.getName(),
-          response.getExecutionId());
+          response.getExecutionId(),
+          repushJobRequest.getTriggerSource());
       return response;
     } catch (Exception e) {
-      LOGGER.error("Failed to compact store: {}", storeName, e);
+      LOGGER.error("Failed to compact store: {}", repushJobRequest.getStoreName(), e);
       throw e;
     }
   }

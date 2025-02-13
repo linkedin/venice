@@ -16,9 +16,11 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_OPERATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_WRITE_OPERATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGIONS_FILTER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_REGION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STATUS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CONFIG_NAME_FILTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CONFIG_VALUE_FILTER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC_COMPACTION_POLICY;
@@ -63,6 +65,7 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
+import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -976,16 +979,17 @@ public class StoresRoutes extends AbstractRoute {
   }
 
   /**
-   * @see Admin#compactStore(String)
+   * @see Admin#compactStore(RepushJobRequest)
    */
   public Route compactStore(Admin admin) {
     return new VeniceRouteHandler<RepushJobResponse>(RepushJobResponse.class) {
       @Override
       public void internalHandle(Request request, RepushJobResponse veniceResponse) {
         AdminSparkServer.validateParams(request, COMPACT_STORE.getParams(), admin);
-        String storeName = request.queryParams(NAME);
+        String storeName = request.queryParams(STORE_NAME);
+        String sourceRegion = request.queryParamOrDefault(SOURCE_REGION, null);
         try {
-          admin.compactStore(storeName);
+          admin.compactStore(new RepushJobRequest(storeName, sourceRegion, RepushJobRequest.MANUAL_TRIGGER));
 
           veniceResponse.setName(storeName);
         } catch (Exception e) {
@@ -1004,7 +1008,7 @@ public class StoresRoutes extends AbstractRoute {
       public void internalHandle(Request request, VersionResponse veniceResponse) {
         AdminSparkServer.validateParams(request, GET_STORES_IN_CLUSTER.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
-        String storeName = request.queryParams(NAME);
+        String storeName = request.queryParams(STORE_NAME);
         veniceResponse.setVersion(admin.getLargestUsedVersionFromStoreGraveyard(cluster, storeName));
       }
     };

@@ -8,6 +8,7 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceController;
+import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controller.repush.RepushOrchestratorConfig;
@@ -122,9 +123,9 @@ public class TestLogCompactionService {
     }
 
     @Override
-    public RepushJobResponse repush(String storeName) {
+    public RepushJobResponse repush(RepushJobRequest repushJobRequest) {
       latch.countDown();
-      System.out.println("Repush job triggered for store: " + storeName);
+      System.out.println("Repush job triggered for store: " + repushJobRequest.getStoreName());
       return null;
     }
   }

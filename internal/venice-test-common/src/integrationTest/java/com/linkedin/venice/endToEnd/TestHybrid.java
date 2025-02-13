@@ -54,6 +54,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controller.repush.RepushOrchestratorConfig;
@@ -1111,9 +1112,9 @@ public class TestHybrid {
     }
 
     @Override
-    public RepushJobResponse repush(String storeName) {
+    public RepushJobResponse repush(RepushJobRequest repushJobRequest) {
       latch.countDown();
-      LOGGER.info("Repush job triggered for store: " + storeName);
+      LOGGER.info("Repush job triggered for store: " + repushJobRequest.getStoreName());
       return null;
     }
   }

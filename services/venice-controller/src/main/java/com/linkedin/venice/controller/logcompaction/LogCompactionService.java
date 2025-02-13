@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.logcompaction;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
+import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -23,14 +24,12 @@ import org.apache.logging.log4j.Logger;
  * 1. schedules {@link LogCompactionTask} periodically to perform log compaction for all stores in the cluster
  * controlled by the {@link com.linkedin.venice.controller.VeniceController} instance that runs this LogCompactionService instance
  * 2. checks for stores that are ready for log compaction with function {@link VeniceHelixAdmin#getStoresForCompaction(String)}
- * 3. triggers compaction for each store with function {@link VeniceHelixAdmin#compactStore(String)}
+ * 3. triggers compaction for each store with function {@link VeniceHelixAdmin#compactStore(RepushJobRequest)}
  *
  * See {@link CompactionManager} for the logic to determine if a store is ready for compaction
  */
 public class LogCompactionService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(LogCompactionService.class);
-  public static final String SCHEDULED_TRIGGER = "Scheduled";
-  public static final String MANUAL_TRIGGER = "Manual";
 
   private static final int SCHEDULED_EXECUTOR_TIMEOUT_S = 60;
   public static final int PRE_EXECUTION_DELAY_MS = 0;
@@ -49,7 +48,7 @@ public class LogCompactionService extends AbstractVeniceService {
   @Override
   public boolean startInner() throws Exception {
     executor.scheduleAtFixedRate(
-        new LogCompactionTask(multiClusterConfigs.getClusters(), SCHEDULED_TRIGGER),
+        new LogCompactionTask(multiClusterConfigs.getClusters()),
         PRE_EXECUTION_DELAY_MS,
         multiClusterConfigs.getLogCompactionIntervalMS(),
         TimeUnit.MILLISECONDS);
@@ -73,11 +72,9 @@ public class LogCompactionService extends AbstractVeniceService {
 
   private class LogCompactionTask implements Runnable {
     private final Set<String> clusters;
-    private final String triggerSource;
 
-    private LogCompactionTask(Set<String> clusters, String triggerSource) {
+    private LogCompactionTask(Set<String> clusters) {
       this.clusters = clusters;
-      this.triggerSource = triggerSource;
     }
 
     @Override
@@ -93,10 +90,10 @@ public class LogCompactionService extends AbstractVeniceService {
       for (String clusterName: clusters) {
         for (StoreInfo storeInfo: admin.getStoresForCompaction(clusterName)) {
           try {
-            RepushJobResponse response = admin.compactStore(storeInfo.getName());
+            RepushJobResponse response =
+                admin.compactStore(new RepushJobRequest(storeInfo.getName(), RepushJobRequest.SCHEDULED_TRIGGER));
             LOGGER.info(
-                "{} log compaction triggered for cluster: {} store: {} | execution ID: {}",
-                triggerSource,
+                "log compaction triggered for cluster: {} store: {} | execution ID: {}",
                 clusterName,
                 response.getName(),
                 response.getExecutionId());

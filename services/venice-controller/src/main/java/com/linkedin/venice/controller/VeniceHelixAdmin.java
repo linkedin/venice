@@ -61,6 +61,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigReco
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.logcompaction.LogCompactionService;
+import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controller.repush.RepushOrchestratorConfig;
@@ -8039,19 +8040,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   /**
    * triggers repush for storeName for log compaction of store topic
-   *
+   * <p>
    * - intermediary between {@link com.linkedin.venice.controller.logcompaction.LogCompactionService} and
-   * {@link CompactionManager}
-   * - serves as API endpoint to trigger scheduled & adhoc log compaction
-   * @param storeName
-   * @return
+   * {@link CompactionManager} - serves as API endpoint to trigger scheduled & adhoc log compaction
+   *
+   * @param repushJobRequest@return
    */
   @Override
-  public RepushJobResponse compactStore(String storeName) throws Exception {
+  public RepushJobResponse compactStore(RepushJobRequest repushJobRequest) throws Exception {
     try {
-      return compactionManager.compactStore(storeName);
+      return compactionManager.compactStore(repushJobRequest);
     } catch (Exception e) {
-      LOGGER.error("Error while compacting store: {}", storeName, e);
+      LOGGER.error("Error while compacting store: {}", repushJobRequest.getStoreName(), e);
       throw e; // this method is the first common point for scheduled & adhoc log compaction, each has different error
     }
   }

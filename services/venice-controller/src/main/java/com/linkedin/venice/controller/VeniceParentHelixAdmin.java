@@ -142,6 +142,7 @@ import com.linkedin.venice.controller.lingeringjob.DefaultLingeringStoreVersionC
 import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
+import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controller.supersetschema.DefaultSupersetSchemaGenerator;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
@@ -4926,11 +4927,9 @@ public class VeniceParentHelixAdmin implements Admin {
 
   /**
    * see {@link Admin#compactStore}
-   *
-   * @return
    */
   @Override
-  public RepushJobResponse compactStore(String storeName) {
+  public RepushJobResponse compactStore(RepushJobRequest repushJobRequest) {
     throw new UnsupportedOperationException("This function is implemented in VeniceHelixAdmin.");
   }
 

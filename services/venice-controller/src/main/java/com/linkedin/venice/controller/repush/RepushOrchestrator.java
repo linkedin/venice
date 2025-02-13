@@ -15,5 +15,5 @@ public interface RepushOrchestrator {
    */
   void init(RepushOrchestratorConfig config);
 
-  RepushJobResponse repush(String storeName) throws Exception;
+  RepushJobResponse repush(RepushJobRequest repushJobRequest) throws Exception;
 }

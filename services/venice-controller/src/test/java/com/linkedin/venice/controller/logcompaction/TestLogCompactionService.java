@@ -4,6 +4,7 @@ import static org.mockito.Mockito.*;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
+import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.meta.StoreInfo;
 import java.util.Collections;
 import java.util.concurrent.CountDownLatch;
@@ -53,7 +54,7 @@ public class TestLogCompactionService {
     doAnswer(ctx -> {
       latch.countDown();
       return null;
-    }).when(admin).compactStore(anyString());
+    }).when(admin).compactStore(new RepushJobRequest(anyString(), anyString()));
 
     // Testing
     logCompactionService.startInner();
@@ -62,7 +63,8 @@ public class TestLogCompactionService {
     }
     // ensures you have invoked the compact store once
     verify(admin, atLeast(2)).getStoresForCompaction(any());
-    verify(admin, times(expectedCompactStoreInvocationCount)).compactStore(storeForCompaction);
+    verify(admin, times(expectedCompactStoreInvocationCount))
+        .compactStore(new RepushJobRequest(storeForCompaction, RepushJobRequest.SCHEDULED_TRIGGER));
   }
 
   // TODO: test LogCompactionTask::run() focus on edge cases
