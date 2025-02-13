@@ -588,9 +588,9 @@ public abstract class StoreIngestionTaskTest {
 
   private VeniceWriter getVeniceWriter(String topic, PubSubProducerAdapter producerAdapter) {
     VeniceWriterOptions veniceWriterOptions =
-        new VeniceWriterOptions.Builder(topic).setKeySerializer(new DefaultSerializer())
-            .setValueSerializer(new DefaultSerializer())
-            .setWriteComputeSerializer(new DefaultSerializer())
+        new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(new DefaultSerializer())
+            .setValuePayloadSerializer(new DefaultSerializer())
+            .setWriteComputePayloadSerializer(new DefaultSerializer())
             .setPartitioner(getVenicePartitioner())
             .setTime(SystemTime.INSTANCE)
             .build();
@@ -603,9 +603,9 @@ public abstract class StoreIngestionTaskTest {
 
   private VeniceWriter getVeniceWriter(PubSubProducerAdapter producerAdapter) {
     VeniceWriterOptions veniceWriterOptions =
-        new VeniceWriterOptions.Builder(topic).setKeySerializer(new DefaultSerializer())
-            .setValueSerializer(new DefaultSerializer())
-            .setWriteComputeSerializer(new DefaultSerializer())
+        new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(new DefaultSerializer())
+            .setValuePayloadSerializer(new DefaultSerializer())
+            .setWriteComputePayloadSerializer(new DefaultSerializer())
             .setPartitioner(new SimplePartitioner())
             .setTime(SystemTime.INSTANCE)
             .build();

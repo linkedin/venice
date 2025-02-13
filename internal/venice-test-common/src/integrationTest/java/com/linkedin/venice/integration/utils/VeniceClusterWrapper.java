@@ -844,8 +844,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
 
     return factory.createVeniceWriter(
-        new VeniceWriterOptions.Builder(storeVersionName).setKeySerializer(keySerializer)
-            .setValueSerializer(valueSerializer)
+        new VeniceWriterOptions.Builder(storeVersionName).setKeyPayloadSerializer(keySerializer)
+            .setValuePayloadSerializer(valueSerializer)
             .build());
   }
 
@@ -862,8 +862,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
 
     return factory.createVeniceWriter(
-        new VeniceWriterOptions.Builder(storeVersionName).setKeySerializer(keySerializer)
-            .setValueSerializer(valueSerializer)
+        new VeniceWriterOptions.Builder(storeVersionName).setKeyPayloadSerializer(keySerializer)
+            .setValuePayloadSerializer(valueSerializer)
             .build());
   }
 

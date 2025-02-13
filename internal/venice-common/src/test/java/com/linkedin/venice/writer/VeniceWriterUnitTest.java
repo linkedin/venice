@@ -91,13 +91,14 @@ public class VeniceWriterUnitTest {
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
     String testTopic = "test";
-    VeniceWriterOptions veniceWriterOptions = new VeniceWriterOptions.Builder(testTopic).setKeySerializer(serializer)
-        .setValueSerializer(serializer)
-        .setWriteComputeSerializer(serializer)
-        .setPartitioner(new DefaultVenicePartitioner())
-        .setPartitionCount(partitionCount)
-        .setChunkingEnabled(isChunkingEnabled)
-        .build();
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setWriteComputePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setPartitionCount(partitionCount)
+            .setChunkingEnabled(isChunkingEnabled)
+            .build();
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
 
@@ -131,15 +132,16 @@ public class VeniceWriterUnitTest {
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
     String testTopic = "test";
-    VeniceWriterOptions veniceWriterOptions = new VeniceWriterOptions.Builder(testTopic).setKeySerializer(serializer)
-        .setValueSerializer(serializer)
-        .setWriteComputeSerializer(serializer)
-        .setPartitioner(new DefaultVenicePartitioner())
-        .setTime(SystemTime.INSTANCE)
-        .setChunkingEnabled(true)
-        .setRmdChunkingEnabled(true)
-        .setPartitionCount(1)
-        .build();
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setWriteComputePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setTime(SystemTime.INSTANCE)
+            .setChunkingEnabled(true)
+            .setRmdChunkingEnabled(true)
+            .setPartitionCount(1)
+            .build();
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
     byte[] serializedKeyBytes = new byte[] { 0xa, 0xb };
@@ -180,15 +182,16 @@ public class VeniceWriterUnitTest {
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
     String testTopic = "test";
-    VeniceWriterOptions veniceWriterOptions = new VeniceWriterOptions.Builder(testTopic).setKeySerializer(serializer)
-        .setValueSerializer(serializer)
-        .setWriteComputeSerializer(serializer)
-        .setPartitioner(new DefaultVenicePartitioner())
-        .setTime(SystemTime.INSTANCE)
-        .setChunkingEnabled(true)
-        .setRmdChunkingEnabled(true)
-        .setPartitionCount(1)
-        .build();
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setWriteComputePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setTime(SystemTime.INSTANCE)
+            .setChunkingEnabled(true)
+            .setRmdChunkingEnabled(true)
+            .setPartitionCount(1)
+            .build();
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
 
@@ -354,13 +357,14 @@ public class VeniceWriterUnitTest {
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
     String testTopic = "test";
-    VeniceWriterOptions veniceWriterOptions = new VeniceWriterOptions.Builder(testTopic).setKeySerializer(serializer)
-        .setValueSerializer(serializer)
-        .setWriteComputeSerializer(serializer)
-        .setPartitioner(new DefaultVenicePartitioner())
-        .setTime(SystemTime.INSTANCE)
-        .setPartitionCount(1)
-        .build();
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setWriteComputePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setTime(SystemTime.INSTANCE)
+            .setPartitionCount(1)
+            .build();
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(veniceWriterOptions, new VeniceProperties(writerProperties), mockedProducer);
 
@@ -451,13 +455,14 @@ public class VeniceWriterUnitTest {
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
     String testTopic = "test";
-    VeniceWriterOptions veniceWriterOptions = new VeniceWriterOptions.Builder(testTopic).setKeySerializer(serializer)
-        .setValueSerializer(serializer)
-        .setWriteComputeSerializer(serializer)
-        .setPartitioner(new DefaultVenicePartitioner())
-        .setTime(SystemTime.INSTANCE)
-        .setPartitionCount(1)
-        .build();
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setWriteComputePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setTime(SystemTime.INSTANCE)
+            .setPartitionCount(1)
+            .build();
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(veniceWriterOptions, new VeniceProperties(writerProperties), mockedProducer);
     for (int i = 0; i < 1000; i++) {
@@ -491,13 +496,14 @@ public class VeniceWriterUnitTest {
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
     String testTopic = "test_rt";
-    VeniceWriterOptions veniceWriterOptions = new VeniceWriterOptions.Builder(testTopic).setKeySerializer(serializer)
-        .setValueSerializer(serializer)
-        .setWriteComputeSerializer(serializer)
-        .setPartitioner(new DefaultVenicePartitioner())
-        .setTime(SystemTime.INSTANCE)
-        .setPartitionCount(1)
-        .build();
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setWriteComputePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setTime(SystemTime.INSTANCE)
+            .setPartitionCount(1)
+            .build();
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter(veniceWriterOptions, new VeniceProperties(writerProperties), mockedProducer);
     PubSubTopicPartition topicPartition = mock(PubSubTopicPartition.class);
@@ -636,8 +642,8 @@ public class VeniceWriterUnitTest {
     when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
     final VeniceKafkaSerializer<Object> serializer = new VeniceAvroKafkaSerializer(TestWriteUtils.STRING_SCHEMA);
     final VeniceWriterOptions options = new VeniceWriterOptions.Builder("testTopic").setPartitionCount(1)
-        .setKeySerializer(serializer)
-        .setValueSerializer(serializer)
+        .setKeyPayloadSerializer(serializer)
+        .setValuePayloadSerializer(serializer)
         .setChunkingEnabled(isChunkingEnabled)
         .setMaxRecordSizeBytes(maxRecordSizeBytes)
         .build();
@@ -680,8 +686,8 @@ public class VeniceWriterUnitTest {
       when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
       final VeniceKafkaSerializer<Object> serializer = new VeniceAvroKafkaSerializer(TestWriteUtils.STRING_SCHEMA);
       final VeniceWriterOptions options = new VeniceWriterOptions.Builder("testTopic").setPartitionCount(1)
-          .setKeySerializer(serializer)
-          .setValueSerializer(serializer)
+          .setKeyPayloadSerializer(serializer)
+          .setValuePayloadSerializer(serializer)
           .build();
       VeniceProperties props = VeniceProperties.empty();
       final VeniceWriter<Object, Object, Object> writer = new VeniceWriter<>(options, props, mockedProducer);
@@ -697,6 +703,7 @@ public class VeniceWriterUnitTest {
       ArgumentCaptor<KafkaMessageEnvelope> kmeArgumentCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
       verify(mockedProducer, times(invocationCount))
           .sendMessage(any(), any(), keyArgumentCaptor.capture(), kmeArgumentCaptor.capture(), any(), any());
+      assertFalse(keyArgumentCaptor.getAllValues().isEmpty());
       keyArgumentCaptor.getAllValues().forEach(key -> assertTrue(key.isGlobalRtDiv() || key.isControlMessage()));
 
       for (KafkaMessageEnvelope kme: kmeArgumentCaptor.getAllValues()) {

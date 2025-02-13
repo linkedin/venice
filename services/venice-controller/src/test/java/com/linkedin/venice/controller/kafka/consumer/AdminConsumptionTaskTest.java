@@ -211,9 +211,9 @@ public class AdminConsumptionTaskTest {
     Properties props = new Properties();
     props.put(VeniceWriter.CHECK_SUM_TYPE, CheckSumType.NONE.name());
     VeniceWriterOptions veniceWriterOptions =
-        new VeniceWriterOptions.Builder(topicName).setKeySerializer(new DefaultSerializer())
-            .setValueSerializer(new DefaultSerializer())
-            .setWriteComputeSerializer(new DefaultSerializer())
+        new VeniceWriterOptions.Builder(topicName).setKeyPayloadSerializer(new DefaultSerializer())
+            .setValuePayloadSerializer(new DefaultSerializer())
+            .setWriteComputePayloadSerializer(new DefaultSerializer())
             .setPartitioner(new SimplePartitioner())
             .setTime(SystemTime.INSTANCE)
             .build();

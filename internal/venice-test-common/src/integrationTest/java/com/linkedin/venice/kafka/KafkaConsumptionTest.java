@@ -36,6 +36,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -287,9 +288,17 @@ public class KafkaConsumptionTest {
       boolean isDataRecord,
       long producerTimestamp,
       PubSubBrokerWrapper pubSubBrokerWrapper) throws ExecutionException, InterruptedException {
-    PubSubProducerAdapter producerAdapter = pubSubBrokerWrapper.getPubSubClientsFactory()
-        .getProducerAdapterFactory()
-        .create(VeniceProperties.empty(), "test-producer", pubSubBrokerWrapper.getAddress());
+    Map<String, String> brokerDetails =
+        PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper));
+    Properties properties = new Properties();
+    brokerDetails.forEach(properties::setProperty);
+    PubSubProducerAdapterContext producerAdapterContext =
+        new PubSubProducerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(properties))
+            .setBrokerAddress(pubSubBrokerWrapper.getAddress())
+            .setProducerName("test-producer")
+            .build();
+    PubSubProducerAdapter producerAdapter =
+        pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory().create(producerAdapterContext);
 
     final byte[] randomBytes = new byte[] { 0, 1 };
 

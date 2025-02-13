@@ -1,8 +1,7 @@
 package com.linkedin.venice.serialization;
 
+import java.io.Closeable;
 import java.util.Map;
-import org.apache.kafka.common.serialization.Deserializer;
-import org.apache.kafka.common.serialization.Serializer;
 
 
 /**
@@ -10,7 +9,7 @@ import org.apache.kafka.common.serialization.Serializer;
  *
  * @param <T> The type of the object that is mapped by this serializer
  */
-public interface VeniceKafkaSerializer<T> extends Serializer<T>, Deserializer<T> {
+public interface VeniceKafkaSerializer<T> extends Closeable {
   /**
    * Close this serializer.
    * This method has to be idempotent if the serializer is used in KafkaProducer because it might be called
