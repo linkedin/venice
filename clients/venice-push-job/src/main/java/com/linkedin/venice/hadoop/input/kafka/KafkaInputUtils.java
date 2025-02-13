@@ -20,6 +20,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.security.SSLFactory;
@@ -28,7 +29,6 @@ import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
-import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
@@ -55,7 +55,7 @@ public class KafkaInputUtils {
             veniceProperties.clipAndFilterNamespace(KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX)
                 .toProperties());
         // Copy the mandatory ssl configs
-        KafkaSSLUtils.validateAndCopyKafkaSSLConfig(veniceProperties, consumerFactoryProperties);
+        ApacheKafkaUtils.validateAndCopyKafkaSSLConfig(veniceProperties, consumerFactoryProperties);
       } catch (IOException e) {
         throw new VeniceException("Could not get user credential for job:" + config.getJobName(), e);
       }

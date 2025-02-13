@@ -3,7 +3,6 @@ package com.linkedin.venice;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerConfig;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
-import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 
 
 public class ConfigKeys {
@@ -30,6 +29,32 @@ public class ConfigKeys {
 
   // store specific properties
   public static final String PERSISTENCE_TYPE = "persistence.type";
+
+  /**
+   * Prefix for all Pub/Sub client-specific configurations.
+   *
+   * <p>This prefix ensures that all Pub/Sub-related configurations are directed to the
+   * appropriate Pub/Sub client adapters. Each adapter extracts and processes the relevant
+   * properties based on its designated prefix.</p>
+   *
+   * <p>Configurations should follow this structure:</p>
+   * <pre>{@code
+   * PUBSUB_CLIENT_CONFIG_PREFIX + "<ClientSpecificPrefix>" + "actual.config.name"
+   * }</pre>
+   *
+   * <p>For instance, Kafka configurations would follow this pattern:</p>
+   * <pre>{@code
+   * "pubsub.kafka.bootstrap.servers"
+   * "pubsub.kafka.linger.ms"
+   * }</pre>
+   *
+   * <p>Similarly, configurations for other Pub/Sub clients include:</p>
+   * <ul>
+   *   <li>Pulsar: {@code "pubsub.pulsar.service.url"}</li>
+   *   <li>WarpStream: {@code "pubsub.warpstream.bucket.url"}</li>
+   * </ul>
+   */
+  public static final String PUBSUB_CLIENT_CONFIG_PREFIX = PubSubConstants.PUBSUB_CLIENT_CONFIG_PREFIX;
 
   public static final String KAFKA_CONFIG_PREFIX = ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX;
   public static final String KAFKA_BOOTSTRAP_SERVERS = ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS;
@@ -1675,21 +1700,6 @@ public class ConfigKeys {
    * Number of threads that the Router will use to wait for dictionary to download from storage nodes and process it.
    */
   public static final String ROUTER_DICTIONARY_PROCESSING_THREADS = "router.dictionary.processing.threads";
-
-  /**
-   * The class name to use for the {@link PubSubAdminAdapter}.
-   */
-  public static final String KAFKA_ADMIN_CLASS = "kafka.admin.class";
-
-  /**
-   * Fully-qualified class name to use for Kafka write-only admin operations.
-   */
-  public static final String KAFKA_WRITE_ONLY_ADMIN_CLASS = "kafka.write.only.admin.class";
-
-  /**
-   * Fully-qualified class name to use for Kafka read-only admin operations.
-   */
-  public static final String KAFKA_READ_ONLY_ADMIN_CLASS = "kafka.read.only.admin.class";
 
   /**
    * A config that determines whether to use Helix customized view for hybrid store quota

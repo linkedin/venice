@@ -32,10 +32,7 @@ import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT;
 import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT_STORE_LIST;
 import static com.linkedin.venice.ConfigKeys.INGESTION_MLOCK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
-import static com.linkedin.venice.ConfigKeys.KAFKA_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_METRICS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_READ_ONLY_ADMIN_CLASS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_WRITE_ONLY_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KEY_VALUE_PROFILING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY;
@@ -196,7 +193,6 @@ import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
 import com.linkedin.venice.throttle.VeniceRateLimiter;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -435,9 +431,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int computeQueueCapacity;
   private final BlockingQueueType blockingQueueType;
   private final boolean restServiceEpollEnabled;
-  private final String kafkaAdminClass;
-  private final String kafkaWriteOnlyClass;
-  private final String kafkaReadOnlyClass;
   private final long routerConnectionWarmingDelayMs;
   private final boolean helixHybridStoreQuotaEnabled;
   private final long ssdHealthCheckShutdownTimeMs;
@@ -747,9 +740,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     }
 
     restServiceEpollEnabled = serverProperties.getBoolean(SERVER_REST_SERVICE_EPOLL_ENABLED, false);
-    kafkaAdminClass = serverProperties.getString(KAFKA_ADMIN_CLASS, ApacheKafkaAdminAdapter.class.getName());
-    kafkaWriteOnlyClass = serverProperties.getString(KAFKA_WRITE_ONLY_ADMIN_CLASS, kafkaAdminClass);
-    kafkaReadOnlyClass = serverProperties.getString(KAFKA_READ_ONLY_ADMIN_CLASS, kafkaAdminClass);
     // Disable it by default, and when router connection warming is enabled, we need to adjust this config.
     routerConnectionWarmingDelayMs = serverProperties.getLong(SERVER_ROUTER_CONNECTION_WARMING_DELAY_MS, 0);
     String sharedConsumerAssignmentStrategyStr = serverProperties.getString(
@@ -1324,18 +1314,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isRestServiceEpollEnabled() {
     return restServiceEpollEnabled;
-  }
-
-  public String getKafkaAdminClass() {
-    return kafkaAdminClass;
-  }
-
-  public String getKafkaWriteOnlyClass() {
-    return kafkaWriteOnlyClass;
-  }
-
-  public String getKafkaReadOnlyClass() {
-    return kafkaReadOnlyClass;
   }
 
   public long getRouterConnectionWarmingDelayMs() {

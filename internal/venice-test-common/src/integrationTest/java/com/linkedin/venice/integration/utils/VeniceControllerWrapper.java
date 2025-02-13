@@ -31,7 +31,6 @@ import static com.linkedin.venice.ConfigKeys.DEFAULT_REPLICA_FACTOR;
 import static com.linkedin.venice.ConfigKeys.DELAY_TO_REBALANCE_MS;
 import static com.linkedin.venice.ConfigKeys.ENABLE_HYBRID_PUSH_SSL_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.ENABLE_OFFLINE_PUSH_SSL_WHITELIST;
-import static com.linkedin.venice.ConfigKeys.KAFKA_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
@@ -66,7 +65,6 @@ import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.d2.D2Server;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.stats.TehutiUtils;
@@ -211,7 +209,6 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             // To speed up topic cleanup
             .put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, 100)
             .put(TOPIC_CLEANUP_DELAY_FACTOR, 2)
-            .put(KAFKA_ADMIN_CLASS, ApacheKafkaAdminAdapter.class.getName())
             .put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
             // Moving from topic monitor to admin protocol for add version and starting ingestion
             .put(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, true)
