@@ -428,7 +428,7 @@ public class TestActiveActiveReplicationForIncPush {
                 realTimeTopicOffset < TestWriteUtils.DEFAULT_USER_DATA_RECORD_COUNT / 10,
                 "Records # is more than expected: " + realTimeTopicOffset);
           } else {
-            assertEquals(separateTopicOffset, 0, "Records # is not enough: " + separateTopicOffset);
+            Assert.assertTrue(separateTopicOffset > 0, "Records # is not enough: " + separateTopicOffset);
             Assert.assertTrue(
                 realTimeTopicOffset < TestWriteUtils.DEFAULT_USER_DATA_RECORD_COUNT / 10,
                 "Records # is more than expected: " + realTimeTopicOffset);
