@@ -3,7 +3,6 @@ package com.linkedin.venice;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerConfig;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
-import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 
 
 public class ConfigKeys {
@@ -30,6 +29,32 @@ public class ConfigKeys {
 
   // store specific properties
   public static final String PERSISTENCE_TYPE = "persistence.type";
+
+  /**
+   * Prefix for all Pub/Sub client-specific configurations.
+   *
+   * <p>This prefix ensures that all Pub/Sub-related configurations are directed to the
+   * appropriate Pub/Sub client adapters. Each adapter extracts and processes the relevant
+   * properties based on its designated prefix.</p>
+   *
+   * <p>Configurations should follow this structure:</p>
+   * <pre>{@code
+   * PUBSUB_CLIENT_CONFIG_PREFIX + "<ClientSpecificPrefix>" + "actual.config.name"
+   * }</pre>
+   *
+   * <p>For instance, Kafka configurations would follow this pattern:</p>
+   * <pre>{@code
+   * "pubsub.kafka.bootstrap.servers"
+   * "pubsub.kafka.linger.ms"
+   * }</pre>
+   *
+   * <p>Similarly, configurations for other Pub/Sub clients include:</p>
+   * <ul>
+   *   <li>Pulsar: {@code "pubsub.pulsar.service.url"}</li>
+   *   <li>WarpStream: {@code "pubsub.warpstream.bucket.url"}</li>
+   * </ul>
+   */
+  public static final String PUBSUB_CLIENT_CONFIG_PREFIX = PubSubConstants.PUBSUB_CLIENT_CONFIG_PREFIX;
 
   public static final String KAFKA_CONFIG_PREFIX = ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX;
   public static final String KAFKA_BOOTSTRAP_SERVERS = ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS;
@@ -96,6 +121,10 @@ public class ConfigKeys {
    */
   public static final String DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_BYTES_PER_SECOND =
       "da.vinci.current.version.bootstrapping.quota.bytes.per.second";
+
+  // On Da Vinci Client, control over automatic partition subscription.
+  public static final String DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY =
+      "da.vinci.subscribe.on.disk.partitions.automatically";
 
   // Unordered throttlers aren't compatible with Shared Kafka Consumer and have no effect when Shared Consumer is used.
   public static final String KAFKA_FETCH_QUOTA_UNORDERED_BYTES_PER_SECOND =
@@ -1673,21 +1702,6 @@ public class ConfigKeys {
   public static final String ROUTER_DICTIONARY_PROCESSING_THREADS = "router.dictionary.processing.threads";
 
   /**
-   * The class name to use for the {@link PubSubAdminAdapter}.
-   */
-  public static final String KAFKA_ADMIN_CLASS = "kafka.admin.class";
-
-  /**
-   * Fully-qualified class name to use for Kafka write-only admin operations.
-   */
-  public static final String KAFKA_WRITE_ONLY_ADMIN_CLASS = "kafka.write.only.admin.class";
-
-  /**
-   * Fully-qualified class name to use for Kafka read-only admin operations.
-   */
-  public static final String KAFKA_READ_ONLY_ADMIN_CLASS = "kafka.read.only.admin.class";
-
-  /**
    * A config that determines whether to use Helix customized view for hybrid store quota
    */
   public static final String HELIX_HYBRID_STORE_QUOTA_ENABLED = "helix.hybrid.store.quota.enabled";
@@ -2376,6 +2390,13 @@ public class ConfigKeys {
   public static final String SERVER_GLOBAL_RT_DIV_ENABLED = "server.global.rt.div.enabled";
 
   /**
+   * This config is used to control the RocksDB lookup concurrency when handling AA/WC workload with parallel processing enabled.
+   * Check {@link #SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED} for more details.
+   */
+  public static final String SERVER_AA_WC_INGESTION_STORAGE_LOOKUP_THREAD_POOL_SIZE =
+      "server.aa.wc.ingestion.storage.lookup.thread.pool.size";
+
+  /**
    * Whether to enable producer throughput optimization for realtime workload or not.
    * Two strategies:
    * 1. Disable compression.
@@ -2399,7 +2420,49 @@ public class ConfigKeys {
    */
   public static final String NAME_REPOSITORY_MAX_ENTRY_COUNT = "name.repository.max.entry.count";
 
+  /**
+   * Specifies the value to use for Helix's rebalance preference for evenness when using Waged.
+   * Must be used in conjunction with {@link ConfigKeys#CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT}.
+   * Accepted range: 0 - 1000
+   */
+  public static final String CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS =
+      "controller.helix.rebalance.preference.evenness";
+
+  /**
+   * Specifies the value to use for Helix's rebalance preference for less movement when using Waged.
+   * Must be used in conjunction with {@link ConfigKeys#CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS}.
+   * Accepted range: 0 - 1000
+   */
+  public static final String CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT =
+      "controller.helix.rebalance.preference.less.movement";
+
+  /**
+   * Specifies the value to use for Helix's rebalance preference for force baseline convergence when using Waged.
+   * This shouldn't be enabled, so it doesn't overpower other constraints.
+   * Accepted range: 0 - 1000
+   */
+  public static final String CONTROLLER_HELIX_REBALANCE_PREFERENCE_FORCE_BASELINE_CONVERGE =
+      "controller.helix.rebalance.preference.force.baseline.converge";
+
+  /**
+   * Specifies the capacity a controller instance can handle.
+   * The weight of each Helix resource is determined by {@link ConfigKeys#CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT}.
+   */
+  public static final String CONTROLLER_HELIX_INSTANCE_CAPACITY = "controller.helix.instance.capacity";
+
+  /**
+   * Specifies the weight of each Helix resource.
+   * The maximum weight per instance is determined by {@link ConfigKeys#CONTROLLER_HELIX_INSTANCE_CAPACITY}.
+   */
+  public static final String CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT = "controller.helix.default.instance.capacity";
+
   public static final String CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS = "controller.deferred.version.swap.sleep.ms";
   public static final String CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED =
       "controller.deferred.version.swap.service.enabled";
+
+  /*
+   * Both Router and Server will maintain an in-memory cache for connection-level ACLs and the following config
+   * controls the TTL of the cache per entry.
+   */
+  public static final String ACL_IN_MEMORY_CACHE_TTL_MS = "acl.in.memory.cache.ttl.ms";
 }

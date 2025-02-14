@@ -22,8 +22,9 @@ public class RouterStoreAclHandler extends AbstractStoreAclHandler<RouterResourc
   public RouterStoreAclHandler(
       IdentityParser identityParser,
       DynamicAccessController accessController,
-      ReadOnlyStoreRepository metadataRepository) {
-    super(identityParser, accessController, metadataRepository);
+      ReadOnlyStoreRepository metadataRepository,
+      int cacheTTLMs) {
+    super(identityParser, accessController, metadataRepository, cacheTTLMs);
     metadataRepository.registerStoreDataChangedListener(new AclCreationDeletionListener(accessController));
   }
 

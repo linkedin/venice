@@ -10,9 +10,9 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEV
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
+import static com.linkedin.venice.ConfigKeys.DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY;
 import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
-import static com.linkedin.venice.ConfigKeys.KAFKA_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.client.store.ClientFactory.getTransportClient;
@@ -47,7 +47,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.SchemaRepoBackedSchemaReader;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
@@ -706,21 +705,21 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       recordTransformerOutputValueSchema = Objects.toString(recordTransformerConfig.getOutputValueSchema(), "null");
     }
 
-    VeniceProperties config = new PropertyBuilder().put(KAFKA_ADMIN_CLASS, ApacheKafkaAdminAdapter.class.getName())
+    VeniceProperties config = new PropertyBuilder().put(CLUSTER_NAME, clusterName)
         .put(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER, 4) // RocksDB default config
         .put(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER, 20) // RocksDB default config
         .put(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER, 36) // RocksDB default config
         .put(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER_WRITE_ONLY_VERSION, 40)
         .put(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER_WRITE_ONLY_VERSION, 60)
         .put(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION, 80)
-        .put(CLUSTER_NAME, clusterName)
         .put(ZOOKEEPER_ADDRESS, zkAddress)
         .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers)
+        .put(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, true)
         .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, daVinciConfig.getStorageClass() == StorageClass.MEMORY_BACKED_BY_DISK)
         .put(INGESTION_USE_DA_VINCI_CLIENT, true)
         .put(RECORD_TRANSFORMER_VALUE_SCHEMA, recordTransformerOutputValueSchema)
-        .put(INGESTION_ISOLATION_CONFIG_PREFIX + "." + INGESTION_MEMORY_LIMIT, -1) // Explicitly disable memory limiter
-                                                                                   // in Isolated Process
+        // Explicitly disable memory limiter in Isolated Process
+        .put(INGESTION_ISOLATION_CONFIG_PREFIX + "." + INGESTION_MEMORY_LIMIT, -1)
         .put(backendConfig.toProperties())
         .build();
     logger.info("backendConfig=" + config.toString(true));

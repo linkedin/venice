@@ -31,6 +31,7 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -93,7 +94,8 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
     bootstrapStateMap = new VeniceConcurrentHashMap<>();
     syncBytesInterval = changelogClientConfig.getDatabaseSyncBytesInterval();
     metricsRepository = changelogClientConfig.getInnerClientConfig().getMetricsRepository();
-    String localStateTopicNameTemp = changelogClientConfig.getStoreName() + LOCAL_STATE_TOPIC_SUFFIX;
+    String viewNamePath = changelogClientConfig.getViewName() == null ? "" : "-" + changelogClientConfig.getViewName();
+    String localStateTopicNameTemp = changelogClientConfig.getStoreName() + viewNamePath + LOCAL_STATE_TOPIC_SUFFIX;
     String bootstrapFileSystemPath = changelogClientConfig.getBootstrapFileSystemPath();
     if (StringUtils.isNotEmpty(consumerId)) {
       localStateTopicNameTemp += "-" + consumerId;
@@ -183,7 +185,8 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
   protected boolean handleVersionSwapControlMessage(
       ControlMessage controlMessage,
       PubSubTopicPartition pubSubTopicPartition,
-      String topicSuffix) {
+      String topicSuffix,
+      Integer upstreamPartition) {
     ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
     if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
       VersionSwap versionSwap = (VersionSwap) controlMessage.controlMessageUnion;
@@ -506,10 +509,9 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
 
     storageService.start();
     try {
-      storeRepository.start();
       storeRepository.subscribe(storeName);
     } catch (InterruptedException e) {
-      throw new RuntimeException(e);
+      throw new VeniceException("Failed to start bootstrapping changelog consumer with error:", e);
     }
 
     return seekWithBootStrap(partitions);
@@ -518,7 +520,13 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
   @Override
   public CompletableFuture<Void> start() {
     Set<Integer> allPartitions = new HashSet<>();
-    for (int partition = 0; partition < partitionCount; partition++) {
+    try {
+      storeRepository.subscribe(storeName);
+    } catch (InterruptedException e) {
+      throw new VeniceException("Failed to start bootstrapping changelog consumer with error:", e);
+    }
+    Store store = storeRepository.getStore(storeName);
+    for (int partition = 0; partition < store.getVersion(store.getCurrentVersion()).getPartitionCount(); partition++) {
       allPartitions.add(partition);
     }
     return this.start(allPartitions);

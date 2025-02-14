@@ -102,6 +102,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -207,6 +208,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   private final Lazy<IngestionBatchProcessor> ingestionBatchProcessingLazy;
   private final Version version;
+
+  protected final ExecutorService aaWCIngestionStorageLookupThreadPool;
 
   public LeaderFollowerStoreIngestionTask(
       StorageService storageService,
@@ -363,6 +366,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           builder.getVersionedStorageIngestionStats(),
           getHostLevelIngestionStats());
     });
+    this.aaWCIngestionStorageLookupThreadPool = builder.getAaWCIngestionStorageLookupThreadPool();
   }
 
   public static VeniceWriter<byte[], byte[], byte[]> constructVeniceWriter(
@@ -3536,18 +3540,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (transientRecord == null) {
       try {
         long lookupStartTimeInNS = System.nanoTime();
-        currValue = GenericRecordChunkingAdapter.INSTANCE.get(
-            storageEngine,
-            topicPartition.getPartitionNumber(),
-            ByteBuffer.wrap(keyBytes),
-            isChunked,
-            null,
-            null,
-            NoOpReadResponseStats.SINGLETON,
-            readerValueSchemaID,
-            storeDeserializerCache,
-            compressor.get(),
-            manifestContainer);
+        currValue = databaseLookupWithConcurrencyLimit(
+            () -> GenericRecordChunkingAdapter.INSTANCE.get(
+                storageEngine,
+                topicPartition.getPartitionNumber(),
+                ByteBuffer.wrap(keyBytes),
+                isChunked,
+                null,
+                null,
+                NoOpReadResponseStats.SINGLETON,
+                readerValueSchemaID,
+                storeDeserializerCache,
+                compressor.get(),
+                manifestContainer));
         hostLevelIngestionStats
             .recordWriteComputeLookUpLatency(LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS));
       } catch (Exception e) {
@@ -4024,6 +4029,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       partitionConsumptionState.setLastVTProduceCallFuture(propagateSegmentCMWrite);
     } else {
       produceCall.run();
+    }
+  }
+
+  <T> T databaseLookupWithConcurrencyLimit(Supplier<T> supplier) {
+    if (serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
+      try {
+        return aaWCIngestionStorageLookupThreadPool.submit(() -> supplier.get()).get();
+      } catch (InterruptedException | ExecutionException e) {
+        throw new VeniceException(e);
+      }
+    } else {
+      return supplier.get();
     }
   }
 }

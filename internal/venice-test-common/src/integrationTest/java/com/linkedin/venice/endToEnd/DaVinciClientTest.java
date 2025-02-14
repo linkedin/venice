@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
@@ -11,6 +12,7 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PO
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED;
+import static com.linkedin.venice.ConfigKeys.DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY;
 import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
@@ -45,7 +47,9 @@ import static org.testng.Assert.fail;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
+import com.linkedin.davinci.DaVinciBackend;
 import com.linkedin.davinci.DaVinciUserApp;
+import com.linkedin.davinci.StoreBackend;
 import com.linkedin.davinci.client.AvroGenericDaVinciClient;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
@@ -85,6 +89,7 @@ import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
+import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -189,6 +194,7 @@ public class DaVinciClientTest {
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .build();
 
@@ -257,6 +263,7 @@ public class DaVinciClientTest {
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true)
         .put(PUSH_STATUS_STORE_ENABLED, true)
         .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
@@ -377,6 +384,7 @@ public class DaVinciClientTest {
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
         .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(PUSH_STATUS_STORE_ENABLED, true)
         .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
         .build();
@@ -454,6 +462,7 @@ public class DaVinciClientTest {
         // TODO: Looks like cache = null does not work with fast meta store repository refresh interval
         // .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .build();
 
@@ -706,6 +715,7 @@ public class DaVinciClientTest {
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .build();
 
@@ -770,6 +780,7 @@ public class DaVinciClientTest {
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .build();
 
@@ -989,9 +1000,80 @@ public class DaVinciClientTest {
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
+  public void testBootstrapSubscription(DaVinciConfig daVinciConfig) throws Exception {
+    String storeName1 = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
+    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
+    VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
+        .put(DATA_BASE_PATH, baseDataPath)
+        .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true)
+        .put(PUSH_STATUS_STORE_ENABLED, true)
+        .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
+        .put(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, false)
+        .build();
+
+    MetricsRepository metricsRepository = new MetricsRepository();
+
+    // Test multiple clients sharing the same ClientConfig/MetricsRepository & base data path
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+        d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        metricsRepository,
+        backendConfig)) {
+      DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(storeName1, daVinciConfig);
+
+      // Test non-existent key access
+      client1.subscribeAll().get();
+      assertNull(client1.get(KEY_COUNT + 1).get());
+
+      // Test single-get access
+      Map<Integer, Integer> keyValueMap = new HashMap<>();
+      for (int k = 0; k < KEY_COUNT; ++k) {
+        assertEquals(client1.get(k).get(), 1);
+        keyValueMap.put(k, 1);
+      }
+
+      // Test batch-get access
+      assertEquals(client1.batchGet(keyValueMap.keySet()).get(), keyValueMap);
+    }
+
+    // Test managed clients
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+        d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        metricsRepository,
+        backendConfig,
+        Optional.of(Collections.singleton(storeName1)))) {
+
+      DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(storeName1, daVinciConfig);
+
+      Set<Integer> partitions = new HashSet<>();
+
+      for (int i = 0; i < 2; i++) {
+        partitions.add(i);
+      }
+
+      client1.subscribe(partitions);
+      assertEquals(client1.getPartitionCount(), 3);
+
+      DaVinciBackend daVinciBackend = AvroGenericDaVinciClient.getBackend();
+      if (daVinciBackend != null) {
+        StoreBackend storeBackend = daVinciBackend.getStoreOrThrow(storeName1);
+        ComplementSet<Integer> subscription = storeBackend.getSubscription();
+        assertTrue(subscription.contains(0));
+        assertTrue(subscription.contains(1));
+        assertFalse(subscription.contains(2));
+      }
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testPartialSubscription(DaVinciConfig daVinciConfig) throws Exception {
     String storeName = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
-    VeniceProperties backendConfig = new PropertyBuilder().build();
+    VeniceProperties backendConfig =
+        new PropertyBuilder().put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L).build();
 
     Set<Integer> keySet = new HashSet<>();
     for (int i = 0; i < KEY_COUNT; ++i) {
@@ -1114,6 +1196,7 @@ public class DaVinciClientTest {
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(D2_ZK_HOSTS_ADDRESS, zkHosts)
         .build();
 
@@ -1192,6 +1275,7 @@ public class DaVinciClientTest {
         .put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, port2)
         .put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, port1)
         .put(PUSH_STATUS_STORE_ENABLED, true)
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 1)
         .put(BLOB_TRANSFER_MANAGER_ENABLED, true);
     VeniceProperties backendConfig2 = configBuilder.build();

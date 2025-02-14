@@ -154,6 +154,7 @@ import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
@@ -205,7 +206,6 @@ import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.HelixUtils;
-import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -740,7 +740,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     controllerConfig = new VeniceControllerClusterConfig(new VeniceProperties(clonedProperties));
     Properties properties = multiClusterConfigs.getCommonConfig().getProps().getPropertiesCopy();
     ApacheKafkaProducerConfig.copyKafkaSASLProperties(originalPros, properties, false);
-    if (KafkaSSLUtils.isKafkaSSLProtocol(controllerConfig.getKafkaSecurityProtocol())) {
+    if (ApacheKafkaUtils.isKafkaSSLProtocol(controllerConfig.getKafkaSecurityProtocol())) {
       Optional<SSLConfig> sslConfig = controllerConfig.getSslConfig();
       if (!sslConfig.isPresent()) {
         throw new VeniceException("SSLConfig should be present when Kafka SSL is enabled");
@@ -8868,6 +8868,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public PubSubTopicRepository getPubSubTopicRepository() {
     return pubSubTopicRepository;
+  }
+
+  SafeHelixManager getHelixManager() {
+    return helixManager;
   }
 
   String getPushJobStatusStoreClusterName() {

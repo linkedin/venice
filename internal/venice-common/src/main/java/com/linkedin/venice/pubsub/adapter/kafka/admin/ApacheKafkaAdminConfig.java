@@ -4,8 +4,8 @@ import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_ADMIN_GET_TOPIC_
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.pubsub.PubSubConstants;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
-import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
 import java.util.Properties;
@@ -29,7 +29,7 @@ public class ApacheKafkaAdminConfig {
         veniceProperties.clipAndFilterNamespace(ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX).toProperties());
     this.adminProperties.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, brokerAddress);
     // Setup ssl config if needed.
-    this.isSslEnabled = KafkaSSLUtils.validateAndCopyKafkaSSLConfig(veniceProperties, this.adminProperties);
+    this.isSslEnabled = ApacheKafkaUtils.validateAndCopyKafkaSSLConfig(veniceProperties, this.adminProperties);
     this.adminProperties.put(AdminClientConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
     this.topicConfigMaxRetryInMs =
         Duration

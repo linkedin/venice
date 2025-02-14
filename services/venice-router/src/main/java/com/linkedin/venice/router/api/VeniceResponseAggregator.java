@@ -250,20 +250,20 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       // here...
       double latency = LatencyUtils.convertNSToMS(timeValue.getRawValue(TimeUnit.NANOSECONDS));
       stats.recordLatency(storeName, latency);
+      int keyNum = venicePath.getPartitionKeys().size();
       if (HEALTHY_STATUSES.contains(httpResponseStatus)) {
-        routerStats.getStatsByType(RequestType.SINGLE_GET)
-            .recordReadQuotaUsage(storeName, venicePath.getPartitionKeys().size());
+        routerStats.getStatsByType(RequestType.SINGLE_GET).recordReadQuotaUsage(storeName, keyNum);
         if (isFastRequest(latency, requestType)) {
-          stats.recordHealthyRequest(storeName, latency, httpResponseStatus);
+          stats.recordHealthyRequest(storeName, latency, httpResponseStatus, keyNum);
         } else {
-          stats.recordTardyRequest(storeName, latency, httpResponseStatus);
+          stats.recordTardyRequest(storeName, latency, httpResponseStatus, keyNum);
         }
       } else if (httpResponseStatus.equals(TOO_MANY_REQUESTS)) {
         LOGGER.debug("request is rejected by storage node because quota is exceeded");
-        stats.recordThrottledRequest(storeName, latency, httpResponseStatus);
+        stats.recordThrottledRequest(storeName, latency, httpResponseStatus, keyNum);
       } else {
         LOGGER.debug("Unhealthy request detected, latency: {}ms, response status: {}", latency, httpResponseStatus);
-        stats.recordUnhealthyRequest(storeName, latency, httpResponseStatus);
+        stats.recordUnhealthyRequest(storeName, latency, httpResponseStatus, keyNum);
       }
     }
     timeValue = allMetrics.get(ROUTER_RESPONSE_WAIT_TIME);

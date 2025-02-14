@@ -237,6 +237,8 @@ public class RocksDBServerConfig {
       "rocksdb.blob.garbage.collection.force.threshold";
   public static final String ROCKSDB_BLOB_FILE_STARTING_LEVEL = "rocksdb.blob.file.starting.level";
 
+  public static final String ROCKSDB_BLOCK_CACHE_MEMORY_LIMIT = "rocksdb.block.cache.memory.limit";
+
   private final boolean rocksDBUseDirectReads;
 
   private final int rocksDBEnvFlushPoolSize;
@@ -312,6 +314,7 @@ public class RocksDBServerConfig {
   private final double blobGarbageCollectionAgeCutOff;
   private final double blobGarbageCollectionForceThreshold;
   private final int blobFileStartingLevel;
+  private final double rocksdbBlockCacheMemoryLimit;
 
   public RocksDBServerConfig(VeniceProperties props) {
     // Do not use Direct IO for reads by default
@@ -450,6 +453,7 @@ public class RocksDBServerConfig {
     this.blobGarbageCollectionAgeCutOff = props.getDouble(ROCKSDB_BLOB_GARBAGE_COLLECTION_AGE_CUTOFF, 0.25);
     this.blobGarbageCollectionForceThreshold = props.getDouble(ROCKSDB_BLOB_GARBAGE_COLLECTION_FORCE_THRESHOLD, 0.8);
     this.blobFileStartingLevel = props.getInt(ROCKSDB_BLOB_FILE_STARTING_LEVEL, 0);
+    this.rocksdbBlockCacheMemoryLimit = props.getDouble(ROCKSDB_BLOCK_CACHE_MEMORY_LIMIT, 0.8);
   }
 
   public int getLevel0FileNumCompactionTriggerWriteOnlyVersion() {
@@ -685,5 +689,9 @@ public class RocksDBServerConfig {
 
   public int getBlobFileStartingLevel() {
     return blobFileStartingLevel;
+  }
+
+  public double getRocksdbBlockCacheMemoryLimit() {
+    return rocksdbBlockCacheMemoryLimit;
   }
 }

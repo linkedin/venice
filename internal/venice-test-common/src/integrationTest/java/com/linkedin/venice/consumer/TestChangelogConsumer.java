@@ -57,6 +57,7 @@ import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptio
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
@@ -71,6 +72,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.view.TestView;
 import com.linkedin.venice.views.ChangeCaptureView;
+import com.linkedin.venice.views.MaterializedView;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.time.Instant;
@@ -103,7 +105,7 @@ import org.testng.annotations.Test;
 
 
 public class TestChangelogConsumer {
-  private static final int TEST_TIMEOUT = 2 * Time.MS_PER_MINUTE;
+  private static final int TEST_TIMEOUT = 3 * Time.MS_PER_MINUTE;
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, 1).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
 
@@ -226,14 +228,29 @@ public class TestChangelogConsumer {
     setupControllerClient
         .retryableRequest(5, controllerClient1 -> setupControllerClient.updateStore(storeName, storeParams4));
 
+    UpdateStoreQueryParams storeParams5 = new UpdateStoreQueryParams().setViewName("materializedView")
+        .setViewClassName(MaterializedView.class.getCanonicalName())
+        .setViewClassParams(
+            Collections.singletonMap(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name(), "1"));
+    setupControllerClient
+        .retryableRequest(5, controllerClient1 -> setupControllerClient.updateStore(storeName, storeParams5));
+
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       Map<String, ViewConfig> viewConfigMap = setupControllerClient.getStore(storeName).getStore().getViewConfigs();
-      Assert.assertEquals(viewConfigMap.size(), 2);
+      Assert.assertEquals(viewConfigMap.size(), 3);
       Assert.assertEquals(viewConfigMap.get("testView").getViewClassName(), TestView.class.getCanonicalName());
       Assert.assertEquals(
           viewConfigMap.get("changeCaptureView").getViewClassName(),
           ChangeCaptureView.class.getCanonicalName());
       Assert.assertEquals(viewConfigMap.get("changeCaptureView").getViewParameters().size(), 1);
+      Assert.assertEquals(
+          viewConfigMap.get("materializedView").getViewClassName(),
+          MaterializedView.class.getCanonicalName());
+      Assert.assertEquals(
+          viewConfigMap.get("materializedView")
+              .getViewParameters()
+              .get(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name()),
+          "1");
     });
 
     // Write Records to the store for version v1, the push job will contain 100 records.
@@ -255,7 +272,8 @@ public class TestChangelogConsumer {
         .setControllerD2ServiceName(D2_SERVICE_NAME)
         .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
         .setLocalD2ZkHosts(localZkServer.getAddress())
-        .setControllerRequestRetryCount(3);
+        .setControllerRequestRetryCount(3)
+        .setIsBeforeImageView(true);
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
 
@@ -269,10 +287,28 @@ public class TestChangelogConsumer {
     Assert.assertTrue(versionTopicConsumer instanceof VeniceAfterImageConsumerImpl);
     versionTopicConsumer.subscribeAll().get();
 
+    ChangelogClientConfig viewChangeLogClientConfig = new ChangelogClientConfig().setViewName("materializedView")
+        .setConsumerProperties(consumerProperties)
+        .setControllerD2ServiceName(D2_SERVICE_NAME)
+        .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+        .setLocalD2ZkHosts(localZkServer.getAddress())
+        .setControllerRequestRetryCount(3);
+    VeniceChangelogConsumerClientFactory veniceViewChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(viewChangeLogClientConfig, metricsRepository);
+
+    VeniceChangelogConsumer<Utf8, Utf8> viewTopicConsumer =
+        veniceViewChangelogConsumerClientFactory.getChangelogConsumer(storeName);
+    Assert.assertTrue(viewTopicConsumer instanceof VeniceAfterImageConsumerImpl);
+    viewTopicConsumer.subscribeAll().get();
+
     // Let's consume those 100 records off of version 1
     Map<String, Utf8> versionTopicEvents = new HashMap<>();
     pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
     Assert.assertEquals(versionTopicEvents.size(), 100);
+
+    Map<String, Utf8> viewTopicEvents = new HashMap<>();
+    pollAfterImageEventsFromChangeCaptureConsumer(viewTopicEvents, viewTopicConsumer);
+    Assert.assertEquals(viewTopicEvents.size(), 100);
 
     VeniceChangelogConsumer<Utf8, Utf8> veniceChangelogConsumer =
         veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName);
@@ -546,7 +582,7 @@ public class TestChangelogConsumer {
     veniceChangelogConsumer.seekToBeginningOfPush().join();
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-      Assert.assertEquals(polledChangeEvents.size(), 30);
+      Assert.assertEquals(polledChangeEvents.size(), 10);
     });
 
     // Save a checkpoint and clear the map
@@ -572,7 +608,7 @@ public class TestChangelogConsumer {
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       // Repush with TTL will include delete events in the topic
-      Assert.assertEquals(polledChangeEvents.size(), 16);
+      Assert.assertEquals(polledChangeEvents.size(), 5);
     });
     allChangeEvents.putAll(polledChangeEvents);
     polledChangeEvents.clear();
@@ -620,7 +656,7 @@ public class TestChangelogConsumer {
       pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
       // Reconsuming the events from the version topic, which at this point should just contain the same 16
       // events we consumed with the before/after image consumer earlier.
-      Assert.assertEquals(versionTopicEvents.size(), 30);
+      Assert.assertEquals(versionTopicEvents.size(), 10);
     });
 
     // Verify version swap count matches with version count - 1 (since we don't transmit from version 0 to version 1).

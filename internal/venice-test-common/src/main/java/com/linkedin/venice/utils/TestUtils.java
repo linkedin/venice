@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.PARTITIONER_CLASS;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
@@ -875,6 +876,7 @@ public class TestUtils {
   public static Map<String, Object> getIngestionIsolationPropertyMap() {
     Map<String, Object> propertyMap = new HashMap<>();
     propertyMap.put(SERVER_INGESTION_MODE, IngestionMode.ISOLATED);
+    propertyMap.put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 1 * 1024 * 1024 * 1024L);
     propertyMap.put(SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST, "-Xms256M;-Xmx1G");
     return propertyMap;
   }

@@ -56,6 +56,7 @@ import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
@@ -77,7 +78,6 @@ import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DiskUsage;
-import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
@@ -196,6 +196,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private VeniceServerConfig serverConfig;
 
   private Lazy<ZKHelixAdmin> zkHelixAdmin;
+
+  private final ExecutorService aaWCIngestionStorageLookupThreadPool;
 
   public KafkaStoreIngestionService(
       StorageService storageService,
@@ -456,6 +458,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       this.aaWCWorkLoadProcessingThreadPool = null;
     }
 
+    this.aaWCIngestionStorageLookupThreadPool = Executors.newFixedThreadPool(
+        serverConfig.getAaWCIngestionStorageLookupThreadPoolSize(),
+        new DaemonThreadFactory("AA_WC_INGESTION_STORAGE_LOOKUP"));
+    LOGGER.info(
+        "Enabled a thread pool for AA/WC ingestion lookup with {} threads.",
+        serverConfig.getAaWCIngestionStorageLookupThreadPoolSize());
+
     ingestionTaskFactory = StoreIngestionTaskFactory.builder()
         .setVeniceWriterFactory(veniceWriterFactory)
         .setStorageEngineRepository(storageService.getStorageEngineRepository())
@@ -482,6 +491,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
             serverConfig.getIngestionMemoryLimit() > 0 ? () -> killConsumptionTaskForNonCurrentVersions() : null)
         .setHeartbeatMonitoringService(heartbeatMonitoringService)
         .setAAWCWorkLoadProcessingThreadPool(aaWCWorkLoadProcessingThreadPool)
+        .setAAWCIngestionStorageLookupThreadPool(aaWCIngestionStorageLookupThreadPool)
         .build();
   }
 
@@ -605,6 +615,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     Utils.closeQuietlyWithErrorLogged(metaStoreWriter);
 
     shutdownExecutorService(aaWCWorkLoadProcessingThreadPool, "aaWCWorkLoadProcessingThreadPool", true);
+    shutdownExecutorService(aaWCIngestionStorageLookupThreadPool, "aaWCIngestionStorageLookupThreadPool", true);
 
     kafkaMessageEnvelopeSchemaReader.ifPresent(Utils::closeQuietlyWithErrorLogged);
 
@@ -1157,7 +1168,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     }
     properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrls);
     PubSubSecurityProtocol securityProtocol = serverConfig.getKafkaSecurityProtocol(kafkaBootstrapUrls);
-    if (KafkaSSLUtils.isKafkaSSLProtocol(securityProtocol)) {
+    if (ApacheKafkaUtils.isKafkaSSLProtocol(securityProtocol)) {
       Optional<SSLConfig> sslConfig = serverConfig.getSslConfig();
       if (!sslConfig.isPresent()) {
         throw new VeniceException("SSLConfig should be present when Kafka SSL is enabled");

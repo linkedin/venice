@@ -3,6 +3,7 @@ package com.linkedin.davinci.ingestion;
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.INGESTION_ISOLATION_CONFIG_PREFIX;
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.buildAndSaveConfigsForForkedIngestionProcess;
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.executeShellCommand;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
@@ -127,6 +128,7 @@ public class IsolatedIngestionServerTest {
         .put(D2_ZK_HOSTS_ADDRESS, zkServerWrapper.getAddress())
         .put(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 100)
         .put(SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS, 10)
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(INGESTION_ISOLATION_CONFIG_PREFIX + "." + SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 10)
         .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
         .build();

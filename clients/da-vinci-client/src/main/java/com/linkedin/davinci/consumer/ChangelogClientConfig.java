@@ -12,6 +12,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   private Properties consumerProperties;
   private SchemaReader schemaReader;
   private String viewName;
+  private Boolean isBeforeImageView = false;
 
   private String consumerName = "";
 
@@ -219,7 +220,17 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setRocksDBBlockCacheSizeInBytes(config.getRocksDBBlockCacheSizeInBytes())
         .setConsumerName(config.consumerName)
         .setDatabaseSyncBytesInterval(config.getDatabaseSyncBytesInterval())
-        .setShouldCompactMessages(config.shouldCompactMessages());
+        .setShouldCompactMessages(config.shouldCompactMessages())
+        .setIsBeforeImageView(config.isBeforeImageView());
     return newConfig;
+  }
+
+  protected Boolean isBeforeImageView() {
+    return isBeforeImageView;
+  }
+
+  public ChangelogClientConfig setIsBeforeImageView(Boolean beforeImageView) {
+    isBeforeImageView = beforeImageView;
+    return this;
   }
 }

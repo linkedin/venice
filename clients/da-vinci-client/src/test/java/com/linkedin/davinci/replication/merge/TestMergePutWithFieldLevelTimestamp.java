@@ -3,6 +3,7 @@ package com.linkedin.davinci.replication.merge;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
 import static com.linkedin.venice.schema.rmd.RmdUtils.getRmdTimestampType;
+import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
@@ -15,7 +16,9 @@ import com.linkedin.venice.schema.rmd.RmdTimestampType;
 import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -99,6 +102,53 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     Assert.assertEquals(((GenericRecord) timestampObject).get("id"), 11L);
     Assert.assertEquals(((GenericRecord) timestampObject).get("name"), 11L);
     Assert.assertEquals(((GenericRecord) timestampObject).get("age"), 11L);
+  }
+
+  @Test
+  public void testNewPutWithOldSchema() {
+    ReadOnlySchemaRepository schemaRepository = mock(ReadOnlySchemaRepository.class);
+    doReturn(new SchemaEntry(1, nestedRecordSchemaV1)).when(schemaRepository).getValueSchema(storeName, 1);
+    doReturn(new SchemaEntry(2, nestedRecordSchemaV2)).when(schemaRepository).getValueSchema(storeName, 2);
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, schemaRepository);
+
+    MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
+        .createMergeConflictResolver(
+            stringAnnotatedStoreSchemaCache,
+            new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
+            storeName,
+            true,
+            true);
+
+    GenericRecord rmdRecord = createRmdWithValueLevelTimestamp(nestedRecordRmdSchemaV2, 10L);
+    final int oldValueSchemaID = 2;
+
+    GenericRecord newValueRecord = new GenericData.Record(nestedRecordSchemaV1);
+    newValueRecord.put("id", "default_id");
+    Schema arrayItemSchemaInSchemaV1 = nestedRecordSchemaV1.getField("itemList").schema().getElementType();
+    GenericRecord itemRecord = new GenericData.Record(arrayItemSchemaInSchemaV1);
+    itemRecord.put("memberId", 100L);
+    List<GenericRecord> testArray = new ArrayList<>();
+    testArray.add(itemRecord);
+    newValueRecord.put("itemList", testArray);
+    ByteBuffer newValueBytes = ByteBuffer.wrap(getSerializer(nestedRecordSchemaV1).serialize(newValueRecord));
+
+    MergeConflictResult mergeResult = mergeConflictResolver.put(
+        Lazy.of(() -> null),
+        new RmdWithValueSchemaId(oldValueSchemaID, RMD_VERSION_ID, rmdRecord),
+        newValueBytes,
+        11L,
+        1, // Different from the old value schema ID.
+        1L,
+        0,
+        0);
+    Assert.assertFalse(mergeResult.isUpdateIgnored());
+    Object timestampObject = mergeResult.getRmdRecord().get(TIMESTAMP_FIELD_POS);
+    RmdTimestampType rmdTimestampType = getRmdTimestampType(timestampObject);
+    Assert.assertEquals(rmdTimestampType, RmdTimestampType.PER_FIELD_TIMESTAMP);
+    Assert.assertEquals(((GenericRecord) timestampObject).get("id"), 11L);
+    GenericRecord itemListTsObject = (GenericRecord) ((GenericRecord) timestampObject).get("itemList");
+    Assert.assertEquals(itemListTsObject.get(TOP_LEVEL_TS_FIELD_NAME), 11L);
   }
 
   @Test
@@ -250,14 +300,14 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     Assert.assertFalse(result.isUpdateIgnored());
     GenericRecord updatedRmd = result.getRmdRecord();
     GenericRecord updatedPerFieldTimestampRecord = (GenericRecord) updatedRmd.get(TIMESTAMP_FIELD_NAME);
-    Assert.assertEquals(updatedPerFieldTimestampRecord.get("id"), 10L); // Not updated
+    Assert.assertEquals(updatedPerFieldTimestampRecord.get("id"), 15L); // Updated due to schema up-convert
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("name"), 20L); // Not updated
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("weight"), 15L); // Not updated and it is a new field.
 
     ByteBuffer newValueOptional = result.getNewValue();
     Assert.assertNotNull(newValueOptional);
     newValueRecord = getDeserializer(userSchemaV5, userSchemaV5).deserialize(newValueOptional);
-    Assert.assertEquals(newValueRecord.get("id").toString(), "123"); // Not updated
+    Assert.assertEquals(newValueRecord.get("id").toString(), "id"); // Updated to default due to schema up-convert
     Assert.assertEquals(newValueRecord.get("name").toString(), "James"); // Not updated
     Assert.assertEquals(newValueRecord.get("weight").toString(), "250.0"); // Updated and it is a new field.
   }
@@ -358,14 +408,14 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     Assert.assertFalse(result.isUpdateIgnored());
     GenericRecord updatedRmd = result.getRmdRecord();
     GenericRecord updatedPerFieldTimestampRecord = (GenericRecord) updatedRmd.get(TIMESTAMP_FIELD_NAME);
-    Assert.assertEquals(updatedPerFieldTimestampRecord.get("id"), 10L); // Not updated
+    Assert.assertEquals(updatedPerFieldTimestampRecord.get("id"), 25L); // Updated timestamp due to schema up-convert
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("name"), 25L); // Updated
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("weight"), 30L); // Not updated
 
     ByteBuffer newValueOptional = result.getNewValue();
     Assert.assertNotNull(newValueOptional);
     newValueRecord = getDeserializer(userSchemaV5, userSchemaV5).deserialize(newValueOptional);
-    Assert.assertEquals(newValueRecord.get("id").toString(), "123"); // Not updated
+    Assert.assertEquals(newValueRecord.get("id").toString(), "id"); // Updated to default due to schema up-convert
     Assert.assertEquals(newValueRecord.get("name").toString(), "Lebron"); // Updated
     Assert.assertEquals(newValueRecord.get("weight").toString(), "250.1"); // Updated and it is a new field.
   }
