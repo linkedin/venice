@@ -474,8 +474,10 @@ public class VeniceController {
       LOGGER.info("Shutting down gRPC executor");
       grpcExecutor.shutdown();
     }
+    if (multiClusterConfigs.isLogCompactionEnabled()) {
+      Utils.closeQuietlyWithErrorLogged(logCompactionService);
+    }
     Utils.closeQuietlyWithErrorLogged(topicCleanupService);
-    Utils.closeQuietlyWithErrorLogged(logCompactionService);
     Utils.closeQuietlyWithErrorLogged(secureAdminServer);
     Utils.closeQuietlyWithErrorLogged(adminServer);
     Utils.closeQuietlyWithErrorLogged(controllerService);
