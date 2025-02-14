@@ -558,26 +558,6 @@ public class TestChangelogConsumer {
       });
     }
 
-    // // Validate changed events for version 2.
-    // allChangeEvents.putAll(polledChangeEvents);
-    // polledChangeEvents.clear();
-    // // As records keys from VPJ start from 1, real-time produced records' key starts from 0, the message with key as
-    // 0
-    // // is new message.
-    // TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-    // // poll enough to get through the empty push and the topic jump to RT.
-    // pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-    // pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-    // pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-    // String deleteWithRmdKey = Integer.toString(deleteWithRmdKeyIndex);
-    // String persistWithRmdKey = Integer.toString(deleteWithRmdKeyIndex + 1);
-    // Assert.assertNull(polledChangeEvents.get(deleteWithRmdKey));
-    // Assert.assertNotNull(polledChangeEvents.get(persistWithRmdKey));
-    // Assert.assertEquals(
-    // polledChangeEvents.get(persistWithRmdKey).getValue().getCurrentValue().toString(),
-    // "stream_" + persistWithRmdKey);
-    // });
-
     /**
      * Now we have store version v3.
      */
@@ -616,42 +596,6 @@ public class TestChangelogConsumer {
       runSamzaStreamJob(veniceProducer, storeName, mockTime, 10, 10, 20);
     }
 
-    // Validate changed events for version 3.
-
-    // TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-    // pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-    // // Filter previous 21 messages.
-    // Assert.assertEquals(polledChangeEvents.size(), 1);
-    // });
-
-    // Drain the remaining events on version 3 and verify that we got everything. We don't verify the count
-    // because at this stage, the total events which will get polled will be determined by how far back the rewind
-    // managed to get (and test run duration might be variable)
-    // TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-    // pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-    // pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-    // pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-    // for (int i = 20; i < 40; i++) {
-    // String key = Integer.toString(i);
-    // ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key).getValue();
-    // Assert.assertNotNull(changeEvent);
-    // Assert.assertNull(changeEvent.getPreviousValue());
-    // if (i < 30) {
-    // Assert.assertEquals(changeEvent.getCurrentValue().toString(), "stream_" + i);
-    // } else {
-    // Assert.assertNull(changeEvent.getCurrentValue());
-    // }
-    // }
-    // });
-    //
-    // allChangeEvents.putAll(polledChangeEvents);
-    // polledChangeEvents.clear();
-    //
-    // // This should get everything submitted to the CC topic on this version since the timestamp is before anything
-    // got
-    // // transmitted
-    // veniceChangelogConsumer.seekToTimestamp(timestamp);
-
     // test pause and resume
     veniceChangelogConsumer.pause();
     polledChangeEvents.clear();
@@ -661,12 +605,6 @@ public class TestChangelogConsumer {
     });
     veniceChangelogConsumer.resume();
 
-    // This should get everything submitted to the CC topic on this version since the timestamp is before anything got
-    // transmitted
-    // TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-    // pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-    // Assert.assertEquals(polledChangeEvents.size(), 42);
-    // });
     allChangeEvents.putAll(polledChangeEvents);
     polledChangeEvents.clear();
 
