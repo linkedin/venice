@@ -219,7 +219,6 @@ public class VeniceChangelogConsumerImplTest {
         changelogClientConfig,
         mockPubSubConsumer,
         Lazy.of(() -> mockInternalSeekConsumer));
-    veniceChangelogConsumer.versionSwapDetectionIntervalTimeInMs = 1;
     NativeMetadataRepositoryViewAdapter mockRepository = mock(NativeMetadataRepositoryViewAdapter.class);
     Store store = mock(Store.class);
     Version mockVersion = new VersionImpl(storeName, 1, "foo");
