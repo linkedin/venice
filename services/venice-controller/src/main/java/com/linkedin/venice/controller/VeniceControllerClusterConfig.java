@@ -1031,9 +1031,17 @@ public class VeniceControllerClusterConfig {
         props.getLong(SERVICE_DISCOVERY_REGISTRATION_RETRY_MS, 30L * Time.MS_PER_SECOND);
     this.pushJobUserErrorCheckpoints = parsePushJobUserErrorCheckpoints(props);
 
-    this.repushOrchestratorClassName = props.getString(REPUSH_ORCHESTRATOR_CLASS_NAME); // TODO LC: default value?
-    this.repushOrchestratorConfigs = props.clipAndFilterNamespace(CONTROLLER_REPUSH_PREFIX);
     this.isLogCompactionEnabled = props.getBoolean(LOG_COMPACTION_ENABLED, false);
+    if (this.isLogCompactionEnabled) {
+      try {
+        this.repushOrchestratorClassName = props.getString(REPUSH_ORCHESTRATOR_CLASS_NAME);
+      } catch (Exception e) {
+        throw new VeniceException(
+            "Log compaction enabled but missing controller.repush.orchestrator.class.name config value. Unable to set up log compaction service",
+            e);
+      }
+    }
+    this.repushOrchestratorConfigs = props.clipAndFilterNamespace(CONTROLLER_REPUSH_PREFIX);
     this.logCompactionThreadCount = props.getInt(LOG_COMPACTION_THREAD_COUNT, 1);
     this.logCompactionIntervalMS = props.getLong(LOG_COMPACTION_INTERVAL_MS, TimeUnit.HOURS.toMillis(1));
     this.timeSinceLastLogCompactionThresholdMS =
