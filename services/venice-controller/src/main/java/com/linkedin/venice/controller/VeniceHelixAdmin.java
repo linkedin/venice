@@ -64,7 +64,6 @@ import com.linkedin.venice.controller.logcompaction.LogCompactionService;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
-import com.linkedin.venice.controller.repush.RepushOrchestratorConfig;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -618,12 +617,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Class<? extends RepushOrchestrator> repushOrchestratorClass =
           ReflectUtils.loadClass(multiClusterConfigs.getRepushOrchestratorClassName());
       try {
-        RepushOrchestrator repushOrchestrator =
-            ReflectUtils.callConstructor(repushOrchestratorClass, new Class[0], new Object[0]);
-        RepushOrchestratorConfig repushOrchestratorConfig =
-            new RepushOrchestratorConfig(multiClusterConfigs.getRepushOrchestratorConfigs());
-        repushOrchestrator.init(repushOrchestratorConfig);
-
+        RepushOrchestrator repushOrchestrator = ReflectUtils.callConstructor(
+            repushOrchestratorClass,
+            new Class[] { VeniceProperties.class },
+            new Object[] { multiClusterConfigs.getRepushOrchestratorConfigs() });
         compactionManager =
             new CompactionManager(repushOrchestrator, multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS());
       } catch (Exception e) {

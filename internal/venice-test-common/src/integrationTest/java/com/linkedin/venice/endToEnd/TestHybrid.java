@@ -53,7 +53,6 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
-import com.linkedin.venice.controller.repush.RepushOrchestratorConfig;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -1103,8 +1102,7 @@ public class TestHybrid {
   public static class TestRepushOrchestratorImpl implements RepushOrchestrator {
     static CountDownLatch latch = new CountDownLatch(1);
 
-    public void init(RepushOrchestratorConfig config) {
-      // no-op
+    public TestRepushOrchestratorImpl(VeniceProperties props) {
     }
 
     @Override
