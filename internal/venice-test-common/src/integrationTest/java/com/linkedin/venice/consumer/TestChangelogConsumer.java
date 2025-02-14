@@ -191,7 +191,17 @@ public class TestChangelogConsumer {
         .setNativeReplicationEnabled(true)
         .setPartitionCount(3);
     MetricsRepository metricsRepository = new MetricsRepository();
-    ControllerClient controllerClient = createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
+    ControllerClient setupControllerClient =
+        createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
+
+    // This is a dumb check that we're doing just to make static analysis happy
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        () -> Assert.assertEquals(setupControllerClient.getStore(storeName).getStore().getCurrentVersion(), 0));
+
+    ControllerClient controllerClient =
+        new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
 
     // Write Records to the store for version v1, the push job will contain 100 records.
     TestWriteUtils.runPushJob("Run push job", props);

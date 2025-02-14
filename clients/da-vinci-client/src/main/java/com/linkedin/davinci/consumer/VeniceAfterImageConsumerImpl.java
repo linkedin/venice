@@ -192,15 +192,6 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     return super.internalSeek(partitions, targetTopic, seekAction);
   }
 
-  private class VersionSwapDetectionThread implements Runnable {
-    @Override
-    public void run() {
-      // the purpose of this thread is to just keep polling just in case something goes wrong at time of the store
-      // repository change.
-      versionSwapListener.handleStoreChanged(null);
-    }
-  }
-
   @Override
   public void setStoreRepository(NativeMetadataRepositoryViewAdapter repository) {
     super.setStoreRepository(repository);

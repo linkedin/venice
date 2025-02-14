@@ -24,7 +24,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   private int controllerRequestRetryCount;
 
   private String bootstrapFileSystemPath;
-  private long versionSwapDetectionIntervalTimeInMs = 600000L;
+  private long versionSwapDetectionIntervalTimeInSeconds = 60L;
 
   /**
    * This will be used in BootstrappingVeniceChangelogConsumer to determine when to sync updates with the underlying
@@ -167,11 +167,11 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   }
 
   public long getVersionSwapDetectionIntervalTimeInSeconds() {
-    return versionSwapDetectionIntervalTimeInMs;
+    return versionSwapDetectionIntervalTimeInSeconds;
   }
 
   public ChangelogClientConfig setVersionSwapDetectionIntervalTimeInSeconds(long intervalTimeInSeconds) {
-    this.versionSwapDetectionIntervalTimeInMs = intervalTimeInSeconds;
+    this.versionSwapDetectionIntervalTimeInSeconds = intervalTimeInSeconds;
     return this;
   }
 
