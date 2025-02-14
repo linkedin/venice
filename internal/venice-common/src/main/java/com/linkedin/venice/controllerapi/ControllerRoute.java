@@ -2,6 +2,7 @@ package com.linkedin.venice.controllerapi;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACCESS_CONTROLLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACCESS_PERMISSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ADMIN_OPERATION_PROTOCOL_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AMPLIFICATION_FACTOR;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_STRATEGY;
@@ -284,6 +285,10 @@ public enum ControllerRoute {
   UPDATE_ADMIN_TOPIC_METADATA(
       "/update_admin_topic_metadata", HttpMethod.POST, Arrays.asList(CLUSTER, EXECUTION_ID), NAME, OFFSET,
       UPSTREAM_OFFSET
+  ),
+  UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION(
+      "/update_admin_operation_protocol_version", HttpMethod.POST,
+      Arrays.asList(CLUSTER, ADMIN_OPERATION_PROTOCOL_VERSION)
   ), DELETE_KAFKA_TOPIC("/delete_kafka_topic", HttpMethod.POST, Arrays.asList(CLUSTER, TOPIC)),
 
   CREATE_STORAGE_PERSONA(

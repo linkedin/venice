@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.server;
 
 import static com.linkedin.venice.VeniceConstants.CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ADMIN_OPERATION_PROTOCOL_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.EXECUTION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_NAME;
@@ -214,5 +215,73 @@ public class AdminTopicMetadataRoutesTest {
     verify(requestHandler, times(1)).updateAdminTopicMetadata(any(UpdateAdminTopicMetadataGrpcRequest.class));
     assertNotNull(responseObject.getError());
     assertTrue(responseObject.getError().contains("Internal error"));
+  }
+
+  @Test
+  public void testUpdateAdminOperationProtocolVersion() throws Exception {
+    QueryParamsMap paramsMap = mock(QueryParamsMap.class);
+    String adminOperationProtocolVersion = "1";
+    doReturn(new HashMap<>()).when(paramsMap).toMap();
+    doReturn(paramsMap).when(request).queryMap();
+
+    when(request.queryParams(CLUSTER)).thenReturn(TEST_CLUSTER);
+    when(request.queryParams(ADMIN_OPERATION_PROTOCOL_VERSION)).thenReturn(adminOperationProtocolVersion);
+
+    Route route = new AdminTopicMetadataRoutes(false, Optional.empty()).updateAdminOperationProtocolVersion(mockAdmin);
+
+    AdminTopicMetadataResponse responseObject =
+        OBJECT_MAPPER.readValue(route.handle(request, response).toString(), AdminTopicMetadataResponse.class);
+
+    assertEquals(responseObject.getCluster(), TEST_CLUSTER);
+    assertEquals(responseObject.getAdminOperationProtocolVersion(), 1L);
+    assertNull(responseObject.getError());
+  }
+
+  @Test
+  public void testUpdateAdminOperationProtocolVersionHandlesUnauthorizedAccess() throws Exception {
+    DynamicAccessController accessController = mock(DynamicAccessController.class);
+    when(accessController.isAllowlistUsers(any(), any(), any())).thenReturn(false);
+    HttpServletRequest httpServletRequest = mock(HttpServletRequest.class);
+    when(request.raw()).thenReturn(httpServletRequest);
+    X509Certificate certificate = mock(X509Certificate.class);
+    X500Principal principal = new X500Principal("CN=foo");
+    X509Certificate[] certificates = new X509Certificate[] { mock(X509Certificate.class) };
+    when(httpServletRequest.getAttribute(CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME)).thenReturn(certificates);
+    doReturn(principal).when(certificate).getSubjectX500Principal();
+    doReturn(httpServletRequest).when(request).raw();
+
+    QueryParamsMap paramsMap = mock(QueryParamsMap.class);
+    String adminOperationProtocolVersion = "1";
+    doReturn(new HashMap<>()).when(paramsMap).toMap();
+    doReturn(paramsMap).when(request).queryMap();
+
+    when(request.queryParams(CLUSTER)).thenReturn(TEST_CLUSTER);
+    when(request.queryParams(ADMIN_OPERATION_PROTOCOL_VERSION)).thenReturn(adminOperationProtocolVersion);
+
+    Route route = new AdminTopicMetadataRoutes(false, Optional.of(accessController))
+        .updateAdminOperationProtocolVersion(mockAdmin);
+
+    AdminTopicMetadataResponse responseObject =
+        OBJECT_MAPPER.readValue(route.handle(request, response).toString(), AdminTopicMetadataResponse.class);
+
+    assertNotNull(responseObject.getError());
+    assertTrue(responseObject.getError().contains("Only admin users are allowed"));
+  }
+
+  @Test
+  public void testUpdateAdminOperationProtocolVersionHandlesMissingParams() throws Exception {
+    QueryParamsMap paramsMap = mock(QueryParamsMap.class);
+    doReturn(new HashMap<>()).when(paramsMap).toMap();
+    doReturn(paramsMap).when(request).queryMap();
+
+    when(request.queryParams(CLUSTER)).thenReturn(null); // Missing cluster parameter
+
+    Route route = new AdminTopicMetadataRoutes(false, Optional.empty()).updateAdminOperationProtocolVersion(mockAdmin);
+    AdminTopicMetadataResponse responseObject =
+        OBJECT_MAPPER.readValue(route.handle(request, response).toString(), AdminTopicMetadataResponse.class);
+
+    verify(requestHandler, never()).getAdminTopicMetadata(any());
+    assertNotNull(responseObject.getError());
+    assertTrue(responseObject.getError().contains("cluster_name is a required parameter"));
   }
 }

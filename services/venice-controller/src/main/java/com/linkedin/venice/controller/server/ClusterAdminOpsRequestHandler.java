@@ -102,6 +102,8 @@ public class ClusterAdminOpsRequestHandler {
       Pair<Long, Long> offsets = AdminTopicMetadataAccessor.getOffsets(metadata);
       adminMetadataBuilder.setOffset(offsets.getFirst());
       adminMetadataBuilder.setUpstreamOffset(offsets.getSecond());
+      adminMetadataBuilder
+          .setAdminOperationProtocolVersion(AdminTopicMetadataAccessor.getAdminOperationProtocolVersion(metadata));
     } else {
       adminMetadataBuilder.setStoreName(storeName);
     }
