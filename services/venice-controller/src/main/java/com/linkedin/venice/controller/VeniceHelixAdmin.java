@@ -8053,7 +8053,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  // TODO: for testing
+  // for testing
   @Override
   public CompactionManager getCompactionManager() {
     return compactionManager;
