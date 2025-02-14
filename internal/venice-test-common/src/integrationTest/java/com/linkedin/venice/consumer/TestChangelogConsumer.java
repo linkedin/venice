@@ -191,11 +191,7 @@ public class TestChangelogConsumer {
         .setNativeReplicationEnabled(true)
         .setPartitionCount(3);
     MetricsRepository metricsRepository = new MetricsRepository();
-    ControllerClient setupControllerClient =
-        createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
-
-    ControllerClient controllerClient =
-        new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+    ControllerClient controllerClient = createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
 
     // Write Records to the store for version v1, the push job will contain 100 records.
     TestWriteUtils.runPushJob("Run push job", props);

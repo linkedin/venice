@@ -9,7 +9,6 @@ import org.apache.avro.specific.SpecificRecord;
 
 
 public class ChangelogClientConfig<T extends SpecificRecord> {
-  private Long metaDataRefreshIntervalInSeconds = 60L;
   private Properties consumerProperties;
   private SchemaReader schemaReader;
   private String viewName;
