@@ -149,7 +149,7 @@ public class TestHybrid {
 
   // Log compaction test constants
   private static final long TEST_LOG_COMPACTION_INTERVAL_MS = TimeUnit.SECONDS.toMillis(1);
-  private static final long TEST_TIMEOUT = TEST_LOG_COMPACTION_INTERVAL_MS * 5; // ms
+  private static final long TEST_LOG_COMPACTION_TIMEOUT = TEST_LOG_COMPACTION_INTERVAL_MS * 5; // ms
   private static final long TEST_TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS = 0;
 
   /**
@@ -1090,7 +1090,7 @@ public class TestHybrid {
 
     // Wait for the latch to count down
     try {
-      if (TestRepushOrchestratorImpl.latch.await(TEST_TIMEOUT, TimeUnit.MILLISECONDS)) {
+      if (TestRepushOrchestratorImpl.latch.await(TEST_LOG_COMPACTION_TIMEOUT, TimeUnit.MILLISECONDS)) {
         LOGGER.info("Log compaction job triggered");
       }
     } catch (InterruptedException e) {
