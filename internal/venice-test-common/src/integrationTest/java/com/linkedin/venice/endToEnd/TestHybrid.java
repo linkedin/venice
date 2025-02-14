@@ -1082,7 +1082,6 @@ public class TestHybrid {
 
     LOGGER.info("LogCompactionService test store created: {}", storeName);
     Admin admin = sharedVenice.getLeaderVeniceController().getVeniceAdmin();
-    String clusterName = sharedVenice.getClusterName();
 
     StoreInfo compactionReadyStore = sharedVenice.getControllerClient().getStore(storeName).getStore();
     Assert.assertNotNull(compactionReadyStore.getHybridStoreConfig());
