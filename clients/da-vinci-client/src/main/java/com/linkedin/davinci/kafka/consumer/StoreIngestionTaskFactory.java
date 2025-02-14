@@ -7,6 +7,7 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
+import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
@@ -26,6 +27,7 @@ import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
@@ -108,9 +110,11 @@ public class StoreIngestionTaskFactory {
     private StorageEngineRepository storageEngineRepository;
     private StorageMetadataService storageMetadataService;
     private Queue<VeniceNotifier> leaderFollowerNotifiers;
+    private MetricsRepository metricsRepository;
     private ReadOnlySchemaRepository schemaRepo;
     private ReadOnlyStoreRepository metadataRepo;
     private TopicManagerRepository topicManagerRepository;
+    private AggVersionedDaVinciRecordTransformerStats daVinciRecordTransformerStats;
     private AggHostLevelIngestionStats ingestionStats;
     private AggVersionedDIVStats versionedDIVStats;
     private AggVersionedIngestionStats versionedStorageIngestionStats;
@@ -231,6 +235,15 @@ public class StoreIngestionTaskFactory {
 
     public Builder setTopicManagerRepository(TopicManagerRepository topicManagerRepository) {
       return set(() -> this.topicManagerRepository = topicManagerRepository);
+    }
+
+    public AggVersionedDaVinciRecordTransformerStats getDaVinciRecordTransformerStats() {
+      return daVinciRecordTransformerStats;
+    }
+
+    public Builder setDaVinciRecordTransformerStats(
+        AggVersionedDaVinciRecordTransformerStats daVinciRecordTransformerStats) {
+      return set(() -> this.daVinciRecordTransformerStats = daVinciRecordTransformerStats);
     }
 
     public AggHostLevelIngestionStats getIngestionStats() {

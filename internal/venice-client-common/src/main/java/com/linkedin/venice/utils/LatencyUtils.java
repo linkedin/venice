@@ -16,12 +16,28 @@ public class LatencyUtils {
     return ((double) nanoseconds) / Time.NS_PER_MS;
   }
 
+  public static long convertNSToUS(long nanoseconds) {
+    return nanoseconds / Time.NS_PER_US;
+  }
+
   /**
    * @param startTimeInMs input start time should use millisecond unit
    * @return elapsed time in millisecond
    */
   public static long getElapsedTimeFromMsToMs(long startTimeInMs) {
     return System.currentTimeMillis() - startTimeInMs;
+  }
+
+  public static long getCurrentTimeInUs() {
+    return convertNSToUS(System.nanoTime());
+  }
+
+  /**
+   * @param startTimeInUs input start time should use microsecond unit
+   * @return elapsed time in microseconds
+   */
+  public static long getElapsedTimeFromUsToUs(long startTimeInUs) {
+    return getCurrentTimeInUs() - startTimeInUs;
   }
 
   /***

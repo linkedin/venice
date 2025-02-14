@@ -93,6 +93,7 @@ import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
+import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
@@ -365,6 +366,7 @@ public abstract class StoreIngestionTaskTest {
   private HostLevelIngestionStats mockStoreIngestionStats;
   private AggVersionedDIVStats mockVersionedDIVStats;
   private AggVersionedIngestionStats mockVersionedStorageIngestionStats;
+  private AggVersionedDaVinciRecordTransformerStats mockDaVinciRecordTransformerStats;
   private StoreIngestionTask storeIngestionTaskUnderTest;
   private ExecutorService taskPollingService;
   private StoreBufferService storeBufferService;
@@ -562,6 +564,7 @@ public abstract class StoreIngestionTaskTest {
 
     mockVersionedDIVStats = mock(AggVersionedDIVStats.class);
     mockVersionedStorageIngestionStats = mock(AggVersionedIngestionStats.class);
+    mockDaVinciRecordTransformerStats = mock(AggVersionedDaVinciRecordTransformerStats.class);
 
     isCurrentVersion = () -> false;
     hybridStoreConfig = Optional.empty();
@@ -999,7 +1002,6 @@ public abstract class StoreIngestionTaskTest {
       Boolean isLiveConfigEnabled,
       DaVinciRecordTransformerConfig recordTransformerConfig,
       OffsetRecord optionalOffsetRecord) {
-
     if (recordTransformerConfig != null && recordTransformerConfig.getRecordTransformerFunction() != null) {
       doReturn(mockAbstractStorageEngine).when(mockStorageEngineRepository).getLocalStorageEngine(topic);
 
@@ -1118,6 +1120,7 @@ public abstract class StoreIngestionTaskTest {
         .setHostLevelIngestionStats(mockAggStoreIngestionStats)
         .setVersionedDIVStats(mockVersionedDIVStats)
         .setVersionedIngestionStats(mockVersionedStorageIngestionStats)
+        .setDaVinciRecordTransformerStats(mockDaVinciRecordTransformerStats)
         .setStoreBufferService(storeBufferService)
         .setServerConfig(veniceServerConfig)
         .setDiskUsage(diskUsage)
@@ -4873,7 +4876,7 @@ public abstract class StoreIngestionTaskTest {
     runTest(config);
 
     // Transformer error should never be recorded
-    verify(mockVersionedStorageIngestionStats, never())
+    verify(mockDaVinciRecordTransformerStats, never())
         .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
   }
 
@@ -4939,7 +4942,7 @@ public abstract class StoreIngestionTaskTest {
     runTest(config);
 
     // Transformer error should never be recorded
-    verify(mockVersionedStorageIngestionStats, never())
+    verify(mockDaVinciRecordTransformerStats, never())
         .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
   }
 
@@ -4998,7 +5001,7 @@ public abstract class StoreIngestionTaskTest {
         e.printStackTrace();
       }
       // Verify transformer error was recorded
-      verify(mockVersionedStorageIngestionStats, timeout(1000))
+      verify(mockDaVinciRecordTransformerStats, timeout(1000))
           .recordTransformerError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
     }, aaConfig);
 
