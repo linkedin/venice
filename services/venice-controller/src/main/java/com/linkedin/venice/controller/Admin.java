@@ -947,7 +947,7 @@ public interface Admin extends AutoCloseable, Closeable {
    * {@link VeniceHelixAdmin#compactStore}
    *
    * @param repushJobRequest contains params for repush job
-   * @return
+   * @return data model of repush job run info
    */
   RepushJobResponse compactStore(RepushJobRequest repushJobRequest) throws Exception;
 
