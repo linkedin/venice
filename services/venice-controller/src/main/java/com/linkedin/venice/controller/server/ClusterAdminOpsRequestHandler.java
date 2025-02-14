@@ -158,6 +158,10 @@ public class ClusterAdminOpsRequestHandler {
     }
 
     long adminOperationProtocolVersion = request.getAdminOperationProtocolVersion();
+    if (adminOperationProtocolVersion == 0 || adminOperationProtocolVersion < -1) {
+      throw new IllegalArgumentException(
+          "Admin operation protocol version is required and must be -1 or greater than 0");
+    }
 
     LOGGER.info(
         "Updating admin operation protocol version for cluster: {} to version: {}",

@@ -23,6 +23,7 @@ import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcResponse;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcRequest;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcResponse;
+import com.linkedin.venice.protocols.controller.UpdateAdminOperationProtocolVersionGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcRequest;
 import java.util.Collections;
 import java.util.HashMap;
@@ -264,5 +265,49 @@ public class ClusterAdminOpsRequestHandlerTest {
     assertTrue(
         exception.getMessage().contains("Updating offsets is not allowed for store-level admin topic metadata"),
         "Actual message: " + exception.getMessage());
+  }
+
+  @Test
+  public void testUpdateAdminOperationProtocolVersionSuccess() {
+    String clusterName = "test-cluster";
+    long version = 12345L;
+    UpdateAdminOperationProtocolVersionGrpcRequest request = UpdateAdminOperationProtocolVersionGrpcRequest.newBuilder()
+        .setClusterName(clusterName)
+        .setAdminOperationProtocolVersion(version)
+        .build();
+    AdminTopicMetadataGrpcResponse response = handler.updateAdminOperationProtocolVersion(request);
+
+    assertNotNull(response);
+    assertEquals(response.getMetadata().getClusterName(), clusterName);
+    assertEquals(response.getMetadata().getAdminOperationProtocolVersion(), version);
+  }
+
+  @Test
+  public void testUpdateAdminOperationProtocolVersionInvalidInputs() {
+    String clusterName = "test-cluster";
+    long version = 12345L;
+
+    // No cluster name
+    UpdateAdminOperationProtocolVersionGrpcRequest request1 =
+        UpdateAdminOperationProtocolVersionGrpcRequest.newBuilder()
+            .setClusterName("")
+            .setAdminOperationProtocolVersion(version)
+            .build();
+    Exception exception =
+        expectThrows(IllegalArgumentException.class, () -> handler.updateAdminOperationProtocolVersion(request1));
+    assertTrue(
+        exception.getMessage().contains("Cluster name is required for updating admin operation protocol version"));
+
+    // Invalid version
+    UpdateAdminOperationProtocolVersionGrpcRequest request2 =
+        UpdateAdminOperationProtocolVersionGrpcRequest.newBuilder()
+            .setClusterName(clusterName)
+            .setAdminOperationProtocolVersion(0)
+            .build();
+    exception =
+        expectThrows(IllegalArgumentException.class, () -> handler.updateAdminOperationProtocolVersion(request2));
+    assertTrue(
+        exception.getMessage()
+            .contains("Admin operation protocol version is required and must be -1 or greater than 0"));
   }
 }
