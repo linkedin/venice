@@ -3824,19 +3824,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // Not time for another heartbeat yet.
       return null;
     }
-    Set<String> failedPartitions = sendHeartbeatToRealtimeTopic(false);
-    if (isSeparatedRealtimeTopicEnabled()) {
-      failedPartitions.addAll(sendHeartbeatToRealtimeTopic(true));
-    }
-    lastSendIngestionHeartbeatTimestamp.set(currentTimestamp);
-    return failedPartitions;
-  }
 
-  Set<String> sendHeartbeatToRealtimeTopic(boolean isSeparateTopic) {
-    AtomicInteger numHeartBeatSuccess = new AtomicInteger(0);
     List<CompletableFuture<PubSubProduceResult>> heartBeatFutures = new ArrayList<>();
+    List<CompletableFuture<PubSubProduceResult>> heartBeatFuturesForSepRT = new ArrayList<>();
     Set<String> failedPartitions = VeniceConcurrentHashMap.newKeySet();
+    Set<String> failedPartitionsForSepRT = VeniceConcurrentHashMap.newKeySet();
     AtomicReference<CompletionException> completionException = new AtomicReference<>(null);
+    AtomicReference<CompletionException> completionExceptionForSepRT = new AtomicReference<>(null);
     for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
       PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
       if (isLeader(pcs) && leaderTopic != null && leaderTopic.isRealTime()) {
@@ -3847,20 +3841,43 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           continue;
         }
         int partition = pcs.getPartition();
-        CompletableFuture<PubSubProduceResult> heartBeatFuture = sendIngestionHeartbeatToRT(
-            new PubSubTopicPartitionImpl(isSeparateTopic ? separateRealTimeTopic : leaderTopic, partition));
+        CompletableFuture<PubSubProduceResult> heartBeatFuture =
+            sendIngestionHeartbeatToRT(new PubSubTopicPartitionImpl(leaderTopic, partition));
         heartBeatFuture.whenComplete((ignore, throwable) -> {
           if (throwable != null) {
             completionException.set(new CompletionException(throwable));
             failedPartitions.add(String.valueOf(partition));
-          } else {
-            numHeartBeatSuccess.getAndIncrement();
           }
         });
         heartBeatFutures.add(heartBeatFuture);
+        // Also send to separate RT topic if it is enabled for the version.
+        if (isSeparatedRealtimeTopicEnabled()) {
+          CompletableFuture<PubSubProduceResult> heartBeatFutureForSepRT =
+              sendIngestionHeartbeatToRT(new PubSubTopicPartitionImpl(separateRealTimeTopic, partition));
+          heartBeatFutureForSepRT.whenComplete((ignore, throwable) -> {
+            if (throwable != null) {
+              completionExceptionForSepRT.set(new CompletionException(throwable));
+              failedPartitionsForSepRT.add(String.valueOf(partition));
+            }
+          });
+          heartBeatFuturesForSepRT.add(heartBeatFutureForSepRT);
+        }
       }
     }
+    sendHeartbeatProduceLog(heartBeatFutures, failedPartitions, completionException, false);
+    if (isSeparatedRealtimeTopicEnabled()) {
+      sendHeartbeatProduceLog(heartBeatFuturesForSepRT, failedPartitionsForSepRT, completionExceptionForSepRT, true);
+    }
+    lastSendIngestionHeartbeatTimestamp.set(currentTimestamp);
+    failedPartitions.addAll(failedPartitionsForSepRT);
+    return failedPartitions;
+  }
 
+  void sendHeartbeatProduceLog(
+      List<CompletableFuture<PubSubProduceResult>> heartBeatFutures,
+      Set<String> failedPartitions,
+      AtomicReference<CompletionException> completionException,
+      boolean isSeparateTopic) {
     if (!heartBeatFutures.isEmpty()) {
       CompletableFuture.allOf(heartBeatFutures.toArray(new CompletableFuture[0]))
           .whenCompleteAsync((ignore, throwable) -> {
@@ -3870,7 +3887,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                   "Send ingestion heartbeat for %d partitions of topic %s: %d succeeded, %d failed for partitions: %s",
                   heartBeatFutures.size(),
                   isSeparateTopic ? realTimeTopic : separateRealTimeTopic,
-                  numHeartBeatSuccess.get(),
+                  heartBeatFutures.size() - numFailedPartitions,
                   numFailedPartitions,
                   String.join(",", failedPartitions));
               if (!REDUNDANT_LOGGING_FILTER.isRedundantException(logMessage)) {
@@ -3887,7 +3904,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             }
           });
     }
-    return failedPartitions;
   }
 
   /**
