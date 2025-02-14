@@ -25,6 +25,7 @@ import com.linkedin.venice.protocols.controller.ClusterAdminOpsGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.ClusterAdminOpsGrpcServiceGrpc.ClusterAdminOpsGrpcServiceBlockingStub;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcRequest;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcResponse;
+import com.linkedin.venice.protocols.controller.UpdateAdminOperationProtocolVersionGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcErrorInfo;
 import io.grpc.ManagedChannel;
@@ -190,5 +191,26 @@ public class ClusterAdminOpsGrpcServiceImplTest {
     assertTrue(
         errorInfo.getErrorMessage().contains(ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX),
         "Actual error message: " + errorInfo.getErrorMessage());
+  }
+
+  @Test
+  public void testUpdateAdminOperationProtocolVersionSuccess() {
+    AdminTopicGrpcMetadata.Builder adminTopicGrpcMetadataBuilder =
+        AdminTopicGrpcMetadata.newBuilder().setClusterName(TEST_CLUSTER).setAdminOperationProtocolVersion(1L);
+    AdminTopicMetadataGrpcResponse response =
+        AdminTopicMetadataGrpcResponse.newBuilder().setMetadata(adminTopicGrpcMetadataBuilder.build()).build();
+    doReturn(response).when(requestHandler)
+        .updateAdminOperationProtocolVersion(any(UpdateAdminOperationProtocolVersionGrpcRequest.class));
+    doReturn(true).when(accessManager).isAllowListUser(anyString(), any());
+
+    UpdateAdminOperationProtocolVersionGrpcRequest request = UpdateAdminOperationProtocolVersionGrpcRequest.newBuilder()
+        .setClusterName(TEST_CLUSTER)
+        .setAdminOperationProtocolVersion(1L)
+        .build();
+
+    AdminTopicMetadataGrpcResponse actualResponse = blockingStub.updateAdminOperationProtocolVersion(request);
+    assertNotNull(actualResponse);
+    assertEquals(actualResponse.getMetadata().getClusterName(), TEST_CLUSTER);
+    assertEquals(actualResponse.getMetadata().getAdminOperationProtocolVersion(), 1L);
   }
 }
