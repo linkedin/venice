@@ -7,10 +7,6 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
-import static com.linkedin.venice.ConfigKeys.REPUSH_AIRFLOW_PASSWORD;
-import static com.linkedin.venice.ConfigKeys.REPUSH_AIRFLOW_URL;
-import static com.linkedin.venice.ConfigKeys.REPUSH_AIRFLOW_USERNAME;
-import static com.linkedin.venice.ConfigKeys.REPUSH_DAG_ID;
 import static com.linkedin.venice.ConfigKeys.REPUSH_ORCHESTRATOR_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
@@ -1792,10 +1788,6 @@ public class TestHybrid {
 
     // log compaction controller configs
     extraProperties.setProperty(REPUSH_ORCHESTRATOR_CLASS_NAME, TestHybrid.TestRepushOrchestratorImpl.class.getName());
-    extraProperties.setProperty(REPUSH_AIRFLOW_URL, "http://localhost:8080");
-    extraProperties.setProperty(REPUSH_AIRFLOW_USERNAME, "your_username");
-    extraProperties.setProperty(REPUSH_AIRFLOW_PASSWORD, "your_password");
-    extraProperties.setProperty(REPUSH_DAG_ID, "your_dag_id");
     extraProperties.setProperty(LOG_COMPACTION_ENABLED, "true");
     extraProperties.setProperty(LOG_COMPACTION_INTERVAL_MS, String.valueOf(TEST_LOG_COMPACTION_INTERVAL_MS));
     extraProperties.setProperty(

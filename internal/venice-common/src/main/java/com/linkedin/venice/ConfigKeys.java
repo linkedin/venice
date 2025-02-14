@@ -272,26 +272,6 @@ public class ConfigKeys {
   public static final String REPUSH_ORCHESTRATOR_CLASS_NAME = "controller.repush.orchestrator.class.name";
 
   /**
-   * Airflow Url for repush DAG
-   */
-  public static final String REPUSH_AIRFLOW_URL = "controller.repush.airflow.url";
-
-  /**
-   * Username for Airflow client authentication
-   */
-  public static final String REPUSH_AIRFLOW_USERNAME = "controller.repush.airflow.username";
-
-  /**
-   * Password for Airflow client authentication
-   */
-  public static final String REPUSH_AIRFLOW_PASSWORD = "controller.repush.airflow.password";
-
-  /**
-   * DAG ID for the repush DAG
-   */
-  public static final String REPUSH_DAG_ID = "controller.repush.dagId";
-
-  /**
    * Prefix of configs to configure RepushOrchestrator
    */
   public static final String CONTROLLER_REPUSH_PREFIX = "controller.repush.";
