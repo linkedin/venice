@@ -2259,15 +2259,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return;
     }
 
-    // Separate incremental push pubsub entries has the same pubsub url but different cluster id, which creates
-    // confusion for heartbeat tracking. We need to resolve the kafka url to the actual kafka cluster url.
-    String resolvedKafkaUrl = kafkaClusterUrlResolver != null ? kafkaClusterUrlResolver.apply(kafkaUrl) : kafkaUrl;
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
       heartbeatMonitoringService.recordLeaderHeartbeat(
           storeName,
           versionNumber,
           partitionConsumptionState.getPartition(),
-          serverConfig.getKafkaClusterUrlToAliasMap().get(resolvedKafkaUrl),
+          serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
           consumerRecord.getValue().producerMetadata.messageTimestamp,
           partitionConsumptionState.isComplete());
     } else {
@@ -2275,7 +2272,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           storeName,
           versionNumber,
           partitionConsumptionState.getPartition(),
-          serverConfig.getKafkaClusterUrlToAliasMap().get(resolvedKafkaUrl),
+          serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
           consumerRecord.getValue().producerMetadata.messageTimestamp,
           partitionConsumptionState.isComplete());
     }

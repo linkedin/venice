@@ -19,9 +19,11 @@ import static org.testng.Assert.assertNotNull;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.kafka.consumer.ConsumerPoolType;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator;
+import com.linkedin.davinci.kafka.consumer.ReplicaHeartbeatInfo;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.replication.merge.RmdSerDe;
 import com.linkedin.davinci.replication.merge.StringAnnotatedStoreSchemaCache;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
@@ -64,6 +66,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -192,6 +195,7 @@ public class TestSeparateRealtimeTopicIngestion {
       VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
       validateData(storeName, veniceClusterWrapper);
 
+      // Empty push will large rewind time to make sure data is all copied to the new version for verification.
       parentControllerClient.emptyPush(storeName, "test_push_id_v2", 1000);
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 2),
@@ -276,20 +280,22 @@ public class TestSeparateRealtimeTopicIngestion {
             NUMBER_OF_CHILD_DATACENTERS,
             1);
       });
+
+      // Add a new push with minimal rewind time to test that separate RT has heartbeat populated.
       UpdateStoreQueryParams updateStoreParams2 =
-          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-              .setHybridRewindSeconds(1L)
-              .setHybridOffsetLagThreshold(10L);
+          new UpdateStoreQueryParams().setHybridRewindSeconds(1L).setHybridOffsetLagThreshold(10L);
       updateStoreResponse =
           parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams2));
       assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
-
       parentControllerClient.emptyPush(storeName, "test_push_id_v3", 1000);
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 3),
           parentControllerClient,
           30,
           TimeUnit.SECONDS);
+
+      // Make sure separate RT heartbeat is tracked properly.
+      validateSeparateRealtimeTopicHeartbeat(Version.composeKafkaTopic(storeName, 3), 0);
     }
   }
 
@@ -335,6 +341,23 @@ public class TestSeparateRealtimeTopicIngestion {
       rmdSerDe.deserializeValueSchemaIdPrependedRmdBytes(value, rmdWithValueSchemaId);
       rmdDataValidationFlow.accept(rmdWithValueSchemaId);
     }
+  }
+
+  private void validateSeparateRealtimeTopicHeartbeat(String topicName, int partition) {
+    long leaderSepRTTopicCount = 0;
+    for (VeniceServerWrapper serverWrapper: multiRegionMultiClusterWrapper.getChildRegions()
+        .get(0)
+        .getClusters()
+        .get("venice-cluster0")
+        .getVeniceServers()) {
+      HeartbeatMonitoringService heartbeatMonitoringService =
+          serverWrapper.getVeniceServer().getHeartbeatMonitoringService();
+      assertNotNull(heartbeatMonitoringService);
+      Map<String, ReplicaHeartbeatInfo> heartbeatInfoMap =
+          heartbeatMonitoringService.getHeartbeatInfo(topicName, partition, false);
+      leaderSepRTTopicCount += heartbeatInfoMap.keySet().stream().filter(x -> x.endsWith("_sep")).count();
+    }
+    Assert.assertEquals(leaderSepRTTopicCount, NUMBER_OF_CHILD_DATACENTERS);
   }
 
   private byte[] serializeStringKeyToByteArray(String key) {
