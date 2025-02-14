@@ -24,7 +24,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   private int controllerRequestRetryCount;
 
   private String bootstrapFileSystemPath;
-  private long versionSwapDetectionIntervalTimeInMs = 600000L;
+  private long versionSwapDetectionIntervalTimeInSeconds = 60L;
 
   /**
    * This will be used in BootstrappingVeniceChangelogConsumer to determine when to sync updates with the underlying
@@ -166,12 +166,12 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this.bootstrapFileSystemPath;
   }
 
-  public long getVersionSwapDetectionIntervalTimeInMs() {
-    return versionSwapDetectionIntervalTimeInMs;
+  public long getVersionSwapDetectionIntervalTimeInSeconds() {
+    return versionSwapDetectionIntervalTimeInSeconds;
   }
 
-  public ChangelogClientConfig setVersionSwapDetectionIntervalTimeInMs(long intervalTimeInMs) {
-    this.versionSwapDetectionIntervalTimeInMs = intervalTimeInMs;
+  public ChangelogClientConfig setVersionSwapDetectionIntervalTimeInSeconds(long intervalTimeInSeconds) {
+    this.versionSwapDetectionIntervalTimeInSeconds = intervalTimeInSeconds;
     return this;
   }
 
@@ -216,7 +216,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setD2Client(config.getD2Client())
         .setControllerRequestRetryCount(config.getControllerRequestRetryCount())
         .setBootstrapFileSystemPath(config.getBootstrapFileSystemPath())
-        .setVersionSwapDetectionIntervalTimeInMs(config.getVersionSwapDetectionIntervalTimeInMs())
+        .setVersionSwapDetectionIntervalTimeInSeconds(config.getVersionSwapDetectionIntervalTimeInSeconds())
         .setRocksDBBlockCacheSizeInBytes(config.getRocksDBBlockCacheSizeInBytes())
         .setConsumerName(config.consumerName)
         .setDatabaseSyncBytesInterval(config.getDatabaseSyncBytesInterval())
