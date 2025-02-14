@@ -62,7 +62,7 @@ public class LogCompactionService extends AbstractVeniceService {
     try {
       if (!executor.awaitTermination(SCHEDULED_EXECUTOR_TIMEOUT_S, TimeUnit.SECONDS)) {
         executor.shutdownNow();
-        LOGGER.info("log compaction service shut down gracefully");
+        LOGGER.info("log compaction service executor shutdown timed out and is forcefully shutdown");
       }
     } catch (InterruptedException e) {
       executor.shutdownNow();
