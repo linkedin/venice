@@ -273,12 +273,12 @@ public class TestNettyP2PBlobTransferManager {
     });
 
     // Verification:
-    // Verify that even has bad hosts in the list, it still finally uses good host to transfer the file
     Mockito.verify(client, Mockito.times(1))
         .get("localhost", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
-    Mockito.verify(client, Mockito.times(1))
+    // Verify that bad hosts are not called to fetch the file as they are no longer connectable
+    Mockito.verify(client, Mockito.never())
         .get("badhost1", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
-    Mockito.verify(client, Mockito.times(1))
+    Mockito.verify(client, Mockito.never())
         .get("badhost2", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
 
     verifyFileTransferSuccess(expectOffsetRecord);
@@ -425,9 +425,9 @@ public class TestNettyP2PBlobTransferManager {
     Assert.assertTrue(Arrays.equals(Files.readAllBytes(file3), Files.readAllBytes(destFile3)));
 
     // Verify the metadata is retrieved
-    Mockito.verify(storageMetadataService, Mockito.times(1))
+    Mockito.verify(storageMetadataService, Mockito.times(2))
         .getLastOffset(TEST_STORE + "_v" + TEST_VERSION, TEST_PARTITION);
-    Mockito.verify(storageMetadataService, Mockito.times(1)).getStoreVersionState(TEST_STORE + "_v" + TEST_VERSION);
+    Mockito.verify(storageMetadataService, Mockito.times(2)).getStoreVersionState(TEST_STORE + "_v" + TEST_VERSION);
 
     // Verify the record is updated
     Mockito.verify(storageMetadataService, Mockito.times(1))

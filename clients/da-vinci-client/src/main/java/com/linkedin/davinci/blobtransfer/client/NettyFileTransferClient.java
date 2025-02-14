@@ -203,6 +203,7 @@ public class NettyFileTransferClient {
   public void close() {
     workerGroup.shutdownGracefully();
     executorService.shutdown();
+    scheduledExecutorService.shutdown();
     unconnectableHosts.clear();
     connectedHosts.clear();
   }
