@@ -216,34 +216,6 @@ public class ApacheKafkaProducerConfig {
     return validProperties;
   }
 
-  /**
-   * Validate and load Class properties.
-   */
-  private void validateClassProp(
-      Properties properties,
-      boolean strictConfigs,
-      String requiredConfigKey,
-      String requiredConfigValue) {
-    validateOrPopulateProp(properties, strictConfigs, requiredConfigKey, requiredConfigValue);
-    String className = properties.getProperty(requiredConfigKey);
-    if (className == null) {
-      return;
-    }
-    try {
-      /*
-       * The following code is trying to fix ClassNotFoundException while using JDK11.
-       * Instead of letting Kafka lib load the specified class, application will load it on its own.
-       * The difference is that Kafka lib is trying to load the specified class by `Thread.currentThread().getContextClassLoader()`,
-       * which seems to be problematic with JDK11.
-       */
-      properties.put(requiredConfigKey, Class.forName(className));
-    } catch (ClassNotFoundException e) {
-      throw new VeniceException(
-          "Failed to load the specified class: " + className + " for key: " + requiredConfigKey,
-          e);
-    }
-  }
-
   public static void copyKafkaSASLProperties(
       VeniceProperties configuration,
       Properties properties,
