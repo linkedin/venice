@@ -95,10 +95,10 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     }
 
     List<String> discoverPeers = response.getDiscoveryResult();
-    Set<String> uniqueConnectablePeers = getUniqueConnectableHosts(discoverPeers, storeName, version, partition);
+    Set<String> connectablePeers = getConnectableHosts(discoverPeers, storeName, version, partition);
 
     // 2: Process peers sequentially to fetch the blob
-    processPeersSequentially(uniqueConnectablePeers, storeName, version, partition, tableFormat, resultFuture);
+    processPeersSequentially(connectablePeers, storeName, version, partition, tableFormat, resultFuture);
 
     return resultFuture;
   }
@@ -252,18 +252,14 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   }
 
   /**
-   * Get the unique connectable hosts for the given storeName, version, and partition
+   * Get the connectable hosts for the given storeName, version, and partition
    * @param discoverPeers the list of discovered peers
    * @param storeName the name of the store
    * @param version the version of the store
    * @param partition the partition of the store
    * @return the set of unique connectable hosts
    */
-  private Set<String> getUniqueConnectableHosts(
-      List<String> discoverPeers,
-      String storeName,
-      int version,
-      int partition) {
+  private Set<String> getConnectableHosts(List<String> discoverPeers, String storeName, int version, int partition) {
     // Extract unique hosts from the discovered peers
     Set<String> uniquePeers = discoverPeers.stream().map(peer -> peer.split("_")[0]).collect(Collectors.toSet());
 
@@ -278,10 +274,6 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     // Get the connectable hosts for this store, version, and partition
     Set<String> connectablePeers =
         nettyClient.getConnectableHosts((HashSet<String>) uniquePeers, storeName, version, partition);
-
-    // Exclude the current host
-    String currentHost = Utils.getHostName();
-    connectablePeers.remove(currentHost);
 
     LOGGER.info(
         "Total {} unique connectable peers for store {} version {} partition {}, peers are {}",

@@ -37,12 +37,14 @@ import org.apache.logging.log4j.Logger;
 public class NettyFileTransferClient {
   private static final Logger LOGGER = LogManager.getLogger(NettyFileTransferClient.class);
   private static final int MAX_METADATA_CONTENT_LENGTH = 1024 * 1024 * 100;
+  private static final int TIMEOUT_IN_MINUTES = 5;
   EventLoopGroup workerGroup;
   Bootstrap clientBootstrap;
   private final String baseDir;
   private final int serverPort;
   private StorageMetadataService storageMetadataService;
   private final ExecutorService executorService;
+  private final ScheduledExecutorService scheduledExecutorService;
   // A set to contain the connectable and unconnectable hosts for saving effort on reconnection
   private Set<String> unconnectableHosts = VeniceConcurrentHashMap.newKeySet();
   private Set<String> connectedHosts = VeniceConcurrentHashMap.newKeySet();
@@ -66,6 +68,7 @@ public class NettyFileTransferClient {
       }
     });
     this.executorService = Executors.newCachedThreadPool();
+    this.scheduledExecutorService = Executors.newScheduledThreadPool(1);
   }
 
   /**
@@ -113,6 +116,18 @@ public class NettyFileTransferClient {
 
     // Wait for all futures to complete
     CompletableFuture<Void> allConnections = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+
+    scheduledExecutorService.schedule(() -> {
+      if (!allConnections.isDone()) {
+        for (CompletableFuture<String> future: futures) {
+          if (!future.isDone()) {
+            future.complete(null);
+          }
+        }
+        allConnections.complete(null);
+      }
+    }, TIMEOUT_IN_MINUTES, TimeUnit.MINUTES);
+
     allConnections.join();
 
     // Collect only the successfully connected hosts
@@ -137,7 +152,6 @@ public class NettyFileTransferClient {
       int partition,
       BlobTransferTableFormat requestedTableFormat) {
     CompletionStage<InputStream> inputStream = new CompletableFuture<>();
-    ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
     try {
       // Connects to the remote host
       // Must open a new connection for each request (per store per version per partition level),
@@ -177,7 +191,7 @@ public class NettyFileTransferClient {
                       "Request timed out for store " + storeName + " version " + version + " partition " + partition
                           + " table format " + requestedTableFormat + " from host " + host));
         }
-      }, 5, TimeUnit.MINUTES);
+      }, TIMEOUT_IN_MINUTES, TimeUnit.MINUTES);
     } catch (Exception e) {
       if (!inputStream.toCompletableFuture().isCompletedExceptionally()) {
         inputStream.toCompletableFuture().completeExceptionally(e);
