@@ -39,7 +39,6 @@ public class RepushJobRequest {
     return triggerSource;
   }
 
-  // convert data model in AirflowRepushConfig to Map object for Airflow params
   public Map<String, Object> toParams() {
     Map<String, Object> params = new HashMap<>();
     params.put(STORE_NAME, storeName);
