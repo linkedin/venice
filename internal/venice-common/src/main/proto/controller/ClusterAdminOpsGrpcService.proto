@@ -13,7 +13,7 @@ service ClusterAdminOpsGrpcService {
 
   // AdminTopicMetadata
   rpc getAdminTopicMetadata(AdminTopicMetadataGrpcRequest) returns (AdminTopicMetadataGrpcResponse) {}
-  rpc updateAdminTopicMetadata(UpdateAdminTopicMetadataGrpcRequest) returns (UpdateAdminTopicMetadataGrpcResponse) {}
+  rpc updateAdminTopicMetadata(UpdateAdminTopicMetadataGrpcRequest) returns (AdminTopicMetadataGrpcResponse) {}
   rpc updateAdminOperationProtocolVersion(UpdateAdminOperationProtocolVersionGrpcRequest) returns (AdminTopicMetadataGrpcResponse) {}
 }
 
@@ -49,11 +49,6 @@ message AdminTopicMetadataGrpcResponse {
   AdminTopicGrpcMetadata metadata = 1;
 }
 
-message UpdateAdminTopicMetadataGrpcResponse {
-  string clusterName = 1;
-  optional string storeName = 2;
-}
-
 message UpdateAdminTopicMetadataGrpcRequest {
   AdminTopicGrpcMetadata metadata = 1;
 }
@@ -65,7 +60,7 @@ message UpdateAdminOperationProtocolVersionGrpcRequest {
 
 message AdminTopicGrpcMetadata {
   string clusterName = 1;
-  int64 executionId = 2;
+  optional int64 executionId = 2;
   optional string storeName = 3;
   optional int64 offset = 4;
   optional int64 upstreamOffset = 5;

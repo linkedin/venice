@@ -19,6 +19,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
+import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyDouble;
@@ -27,6 +28,7 @@ import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.argThat;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
@@ -42,6 +44,7 @@ import com.linkedin.venice.admin.InMemoryExecutionIdAccessor;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
+import com.linkedin.venice.controller.HelixVeniceClusterResources;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
@@ -97,6 +100,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.IOException;
@@ -189,6 +193,12 @@ public class AdminConsumptionTaskTest {
     doReturn(new HashSet<>(Arrays.asList(pubSubTopic))).when(topicManager).listTopics();
     doReturn(topicManager).when(admin).getTopicManager();
     doReturn(true).when(topicManager).containsTopicAndAllPartitionsAreOnline(pubSubTopic);
+
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class, RETURNS_DEEP_STUBS);
+    ClusterLockManager lockManager = new ClusterLockManager(clusterName);
+    doReturn(resources).when(admin).getHelixVeniceClusterResources(clusterName);
+    doReturn(lockManager).when(resources).getClusterLockManager();
+    doCallRealMethod().when(resources).getStoreMetadataRepository();
   }
 
   @AfterMethod
@@ -734,7 +744,11 @@ public class AdminConsumptionTaskTest {
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     adminTopicMetadataAccessor.updateMetadata(
         clusterName,
-        AdminTopicMetadataAccessor.generateMetadataMap(metadataForStoreName0Future.get().getOffset(), -1, 1));
+        AdminTopicMetadataAccessor.generateMetadataMap(
+            Optional.of(metadataForStoreName0Future.get().getOffset()),
+            Optional.of(-1L),
+            Optional.of(1L),
+            Optional.empty()));
 
     // Write a message with a skipped execution id but a different producer metadata.
     veniceWriter.put(
@@ -820,7 +834,8 @@ public class AdminConsumptionTaskTest {
     // The store doesn't exist
     doReturn(false).when(admin).hasStore(clusterName, storeName1);
     doReturn(false).when(admin).hasStore(clusterName, storeName2);
-    Map<String, Long> newMetadata = AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1);
+    Map<String, Long> newMetadata = AdminTopicMetadataAccessor
+        .generateMetadataMap(Optional.of(1L), Optional.of(-1L), Optional.of(1L), Optional.empty());
     adminTopicMetadataAccessor.updateMetadata(clusterName, newMetadata);
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
@@ -1109,7 +1124,8 @@ public class AdminConsumptionTaskTest {
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 4L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     long offset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).getOffset();
-    Map<String, Long> newMetadata = AdminTopicMetadataAccessor.generateMetadataMap(offset, -1, 4L);
+    Map<String, Long> newMetadata = AdminTopicMetadataAccessor
+        .generateMetadataMap(Optional.of(offset), Optional.of(-1L), Optional.of(4L), Optional.empty());
     adminTopicMetadataAccessor.updateMetadata(clusterName, newMetadata);
     executionIdAccessor.updateLastSucceededExecutionIdMap(clusterName, storeName, 4L);
     // Resubscribe to the admin topic and make sure it can still process new admin messages

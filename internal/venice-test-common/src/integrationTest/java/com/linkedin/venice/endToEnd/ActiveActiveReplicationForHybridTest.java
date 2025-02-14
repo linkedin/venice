@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
@@ -480,8 +481,10 @@ public class ActiveActiveReplicationForHybridTest {
 
       // Verify that DaVinci client can successfully bootstrap all partitions from AA enabled stores
       String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
-      VeniceProperties backendConfig =
-          new PropertyBuilder().put(DATA_BASE_PATH, baseDataPath).put(PERSISTENCE_TYPE, ROCKS_DB).build();
+      VeniceProperties backendConfig = new PropertyBuilder().put(DATA_BASE_PATH, baseDataPath)
+          .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
+          .put(PERSISTENCE_TYPE, ROCKS_DB)
+          .build();
 
       MetricsRepository metricsRepository = new MetricsRepository();
       try (

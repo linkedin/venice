@@ -1,10 +1,12 @@
 package com.linkedin.venice.router.acl;
 
+import static com.linkedin.venice.acl.handler.AbstractStoreAclHandler.STORE_ACL_CHECK_RESULT_ATTRIBUTE_KEY;
 import static com.linkedin.venice.router.api.VenicePathParser.TASK_READ_QUOTA_THROTTLE;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -27,6 +29,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.router.api.RouterResourceType;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPipeline;
@@ -36,6 +39,7 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.ssl.SslHandler;
+import io.netty.util.Attribute;
 import java.net.SocketAddress;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
@@ -99,6 +103,10 @@ public class RouterStoreAclHandlerTest {
     when(ctx.channel()).thenReturn(channel);
     SocketAddress address = mock(SocketAddress.class);
     when(channel.remoteAddress()).thenReturn(address);
+
+    Attribute<VeniceConcurrentHashMap> aclCacheAttr = mock(Attribute.class);
+    doReturn(new VeniceConcurrentHashMap<>()).when(aclCacheAttr).get();
+    doReturn(aclCacheAttr).when(channel).attr(STORE_ACL_CHECK_RESULT_ATTRIBUTE_KEY);
 
     when(req.method()).thenReturn(HttpMethod.GET);
 
@@ -189,7 +197,7 @@ public class RouterStoreAclHandlerTest {
       // New metadataRepo mock and aclHandler every update since thenThrow cannot be re-mocked.
       metadataRepo = mock(HelixReadOnlyStoreRepository.class);
       AbstractStoreAclHandler aclHandler =
-          spy(new RouterStoreAclHandler(identityParser, accessController, metadataRepo));
+          spy(new RouterStoreAclHandler(identityParser, accessController, metadataRepo, 1000));
       update();
       LOGGER.info("hasStore: {}, isBadUri: {}", hasStore[0], isBadUri[0]);
       aclHandler.channelRead0(ctx, req);
@@ -326,12 +334,17 @@ public class RouterStoreAclHandlerTest {
     doReturn(HttpMethod.GET).when(request).method();
     IdentityParser identityParser = mock(IdentityParser.class);
     doReturn("testPrincipalId").when(identityParser).parseIdentityFromCert(certificate);
+
+    Attribute<VeniceConcurrentHashMap> aclCacheAttr = mock(Attribute.class);
+    doAnswer((ignored) -> new VeniceConcurrentHashMap<>()).when(aclCacheAttr).get();
+    doReturn(aclCacheAttr).when(channel).attr(STORE_ACL_CHECK_RESULT_ATTRIBUTE_KEY);
+
     for (RouterResourceType resourceType: RouterResourceType.values()) {
       clearInvocations(ctx);
       MockAccessController mockAccessController = new MockAccessController(resourceType);
       MockAccessController spyMockAccessController = spy(mockAccessController);
       RouterStoreAclHandler storeAclHandler =
-          new RouterStoreAclHandler(identityParser, spyMockAccessController, metadataRepo);
+          new RouterStoreAclHandler(identityParser, spyMockAccessController, metadataRepo, 1000);
       doReturn(buildTestURI(resourceType)).when(request).uri();
       storeAclHandler.channelRead0(ctx, request);
 

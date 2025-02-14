@@ -154,6 +154,7 @@ import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
@@ -205,7 +206,6 @@ import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.HelixUtils;
-import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -740,7 +740,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     controllerConfig = new VeniceControllerClusterConfig(new VeniceProperties(clonedProperties));
     Properties properties = multiClusterConfigs.getCommonConfig().getProps().getPropertiesCopy();
     ApacheKafkaProducerConfig.copyKafkaSASLProperties(originalPros, properties, false);
-    if (KafkaSSLUtils.isKafkaSSLProtocol(controllerConfig.getKafkaSecurityProtocol())) {
+    if (ApacheKafkaUtils.isKafkaSSLProtocol(controllerConfig.getKafkaSecurityProtocol())) {
       Optional<SSLConfig> sslConfig = controllerConfig.getSslConfig();
       if (!sslConfig.isPresent()) {
         throw new VeniceException("SSLConfig should be present when Kafka SSL is enabled");
@@ -7498,16 +7498,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @return cluster-level execution id, offset and upstream offset. If store name is specified, it returns store-level execution id.
+   * @return cluster-level execution id, offset, upstream offset, and admin operation protocol version.
+   *        If store name is specified, it returns store-level execution id.
    */
   public Map<String, Long> getAdminTopicMetadata(String clusterName, Optional<String> storeName) {
     if (storeName.isPresent()) {
-      Long executionId = executionIdAccessor.getLastSucceededExecutionIdMap(clusterName).get(storeName.get());
+      Long executionId = getExecutionIdAccessor().getLastSucceededExecutionIdMap(clusterName).get(storeName.get());
       return executionId == null
           ? Collections.emptyMap()
-          : AdminTopicMetadataAccessor.generateMetadataMap(-1, -1, executionId);
+          : AdminTopicMetadataAccessor
+              .generateMetadataMap(Optional.of(-1L), Optional.of(-1L), Optional.of(executionId), Optional.of(-1L));
     }
-    return adminConsumerServices.get(clusterName).getAdminTopicMetadata(clusterName);
+    return getAdminConsumerService(clusterName).getAdminTopicMetadata(clusterName);
   }
 
   /**
@@ -7521,14 +7523,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Optional<Long> offset,
       Optional<Long> upstreamOffset) {
     if (storeName.isPresent()) {
-      executionIdAccessor.updateLastSucceededExecutionIdMap(clusterName, storeName.get(), executionId);
+      getExecutionIdAccessor().updateLastSucceededExecutionIdMap(clusterName, storeName.get(), executionId);
     } else {
       if (!offset.isPresent() || !upstreamOffset.isPresent()) {
         throw new VeniceException("Offsets must be provided to update cluster-level admin topic metadata");
       }
-      adminConsumerServices.get(clusterName)
+      getAdminConsumerService(clusterName)
           .updateAdminTopicMetadata(clusterName, executionId, offset.get(), upstreamOffset.get());
     }
+  }
+
+  /**
+   * Update the version of admin operation protocol in admin topic metadata
+   */
+  public void updateAdminOperationProtocolVersion(String clusterName, Long adminOperationProtocolVersion) {
+    getAdminConsumerService(clusterName)
+        .updateAdminOperationProtocolVersion(clusterName, adminOperationProtocolVersion);
   }
 
   /**
@@ -7668,6 +7678,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public VeniceProperties getPubSubSSLProperties(String pubSubBrokerAddress) {
     return this.getPubSubSSLPropertiesFromControllerConfig(pubSubBrokerAddress);
+  }
+
+  // public for testing purpose
+  public AdminConsumerService getAdminConsumerService(String clusterName) {
+    return adminConsumerServices.get(clusterName);
   }
 
   private void startMonitorOfflinePush(

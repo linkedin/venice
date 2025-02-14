@@ -24,7 +24,6 @@ import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcResponse;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcRequest;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcResponse;
 import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcRequest;
-import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcResponse;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -198,10 +197,10 @@ public class ClusterAdminOpsRequestHandlerTest {
         .build();
     UpdateAdminTopicMetadataGrpcRequest request =
         UpdateAdminTopicMetadataGrpcRequest.newBuilder().setMetadata(metadata).build();
-    UpdateAdminTopicMetadataGrpcResponse response = handler.updateAdminTopicMetadata(request);
+    AdminTopicMetadataGrpcResponse response = handler.updateAdminTopicMetadata(request);
     assertNotNull(response);
-    assertEquals(response.getClusterName(), clusterName);
-    assertFalse(response.hasStoreName());
+    assertEquals(response.getMetadata().getClusterName(), clusterName);
+    assertFalse(response.getMetadata().hasStoreName());
 
     // Store name is provided
     metadata = AdminTopicGrpcMetadata.newBuilder()
@@ -212,22 +211,30 @@ public class ClusterAdminOpsRequestHandlerTest {
     request = UpdateAdminTopicMetadataGrpcRequest.newBuilder().setMetadata(metadata).build();
     response = handler.updateAdminTopicMetadata(request);
     assertNotNull(response);
-    assertEquals(response.getClusterName(), clusterName);
+    assertEquals(response.getMetadata().getClusterName(), clusterName);
   }
 
   @Test
-  public void testUpdateAdminTopicMetadataInvalidOffsets() {
+  public void testUpdateAdminTopicMetadataInvalidInputs() {
     String clusterName = "test-cluster";
     long executionId = 12345L;
 
-    AdminTopicGrpcMetadata metadata = AdminTopicGrpcMetadata.newBuilder()
+    // No execution id
+    AdminTopicGrpcMetadata metadata = AdminTopicGrpcMetadata.newBuilder().setClusterName(clusterName).build();
+    UpdateAdminTopicMetadataGrpcRequest request =
+        UpdateAdminTopicMetadataGrpcRequest.newBuilder().setMetadata(metadata).build();
+    Exception exception = expectThrows(IllegalArgumentException.class, () -> handler.updateAdminTopicMetadata(request));
+    assertTrue(exception.getMessage().contains("Admin command execution id with positive value is required"));
+
+    // Either offset or upstream offset is provided
+    metadata = AdminTopicGrpcMetadata.newBuilder()
         .setClusterName(clusterName)
         .setExecutionId(executionId)
         .setOffset(123L)
         .build();
-    UpdateAdminTopicMetadataGrpcRequest request =
+    UpdateAdminTopicMetadataGrpcRequest request1 =
         UpdateAdminTopicMetadataGrpcRequest.newBuilder().setMetadata(metadata).build();
-    Exception exception = expectThrows(VeniceException.class, () -> handler.updateAdminTopicMetadata(request));
+    exception = expectThrows(VeniceException.class, () -> handler.updateAdminTopicMetadata(request1));
     assertTrue(
         exception.getMessage().contains("Offsets must be provided to update cluster-level admin topic metadata"),
         "Actual message: " + exception.getMessage());

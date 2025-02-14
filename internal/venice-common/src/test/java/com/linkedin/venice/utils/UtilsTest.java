@@ -56,6 +56,8 @@ public class UtilsTest {
         Utils.getHelixNodeIdentifier(fixedHostname, 1234),
         fixedHostname + "_" + port,
         "Identifier is not the valid format required by Helix.");
+    long memSize = Utils.getOSMemorySize();
+    assertTrue(memSize > 0);
   }
 
   @Test

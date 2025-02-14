@@ -1127,7 +1127,9 @@ public abstract class StoreIngestionTaskTest {
         .setPartitionStateSerializer(partitionStateSerializer)
         .setRunnableForKillIngestionTasksForNonCurrentVersions(runnableForKillNonCurrentVersion)
         .setAAWCWorkLoadProcessingThreadPool(
-            Executors.newFixedThreadPool(2, new DaemonThreadFactory("AA_WC_PARALLEL_PROCESSING")));
+            Executors.newFixedThreadPool(2, new DaemonThreadFactory("AA_WC_PARALLEL_PROCESSING")))
+        .setAAWCIngestionStorageLookupThreadPool(
+            Executors.newFixedThreadPool(1, new DaemonThreadFactory("AA_WC_INGESTION_STORAGE_LOOKUP")));
   }
 
   abstract KafkaConsumerService.ConsumerAssignmentStrategy getConsumerAssignmentStrategy();
@@ -5319,31 +5321,27 @@ public abstract class StoreIngestionTaskTest {
   /**
    * When SIT encounters a corrupted {@link OffsetRecord} in {@link StoreIngestionTask#processCommonConsumerAction} and
    * {@link StorageMetadataService#getLastOffset} throws an exception due to a deserialization error,
-   * {@link StoreIngestionTask#reportError(String, int, Exception)} should be called in order to trigger a Helix
-   * state transition without waiting 24+ hours for the Helix state transition timeout.
+   * {@link StoreIngestionTask#reportError(String, int, Exception)} from
+   * {@link StoreIngestionTask#handleConsumerActionsError(Throwable, ConsumerAction, long)} should be called in
+   * order to trigger a Helix state transition without waiting 24+ hours for the Helix state transition timeout.
    */
   @Test
-  public void testProcessConsumerActionsError() throws Exception {
-    runTest(Collections.singleton(PARTITION_FOO), () -> {
-      storeIngestionTaskUnderTest.close(); // prevent the SIT polling thread run from interfering with the
-                                           // processConsumerActions()
-
+  public void testHandleConsumerActionsError() throws Exception {
+    final int p = 0; // partition number
+    runTest(Collections.singleton(p), () -> {
       // This is an actual exception thrown when deserializing a corrupted OffsetRecord
       String msg = "Received Magic Byte '6' which is not supported by InternalAvroSpecificSerializer. "
           + "The only supported Magic Byte for this implementation is '24'.";
-      when(mockStorageMetadataService.getLastOffset(any(), anyInt())).thenThrow(new VeniceMessageException(msg));
-      // To reach reportError(), bypass the conditional: action.getAttemptsCount() <= MAX_CONSUMER_ACTION_ATTEMPTS
-      for (int i = 0; i < StoreIngestionTask.MAX_CONSUMER_ACTION_ATTEMPTS + 1; i++) {
-        try {
-          storeIngestionTaskUnderTest.processConsumerActions(storeAndVersionConfigsUnderTest.store);
-        } catch (InterruptedException e) {
-          throw new RuntimeException(e);
-        }
-      }
-      ArgumentCaptor<VeniceException> captor = ArgumentCaptor.forClass(VeniceException.class);
-      verify(storeIngestionTaskUnderTest, timeout(TEST_TIMEOUT_MS).atLeast(1))
-          .reportError(anyString(), eq(PARTITION_FOO), captor.capture());
-      assertTrue(captor.getValue().getMessage().endsWith(msg));
+      Throwable e = new VeniceException(msg);
+      CompletableFuture<Void> future = new CompletableFuture<>();// CompletableFuture(null);
+      ConsumerAction action = mock(ConsumerAction.class);
+      when(action.getPartition()).thenReturn(p);
+      when(action.getFuture()).thenReturn(future);
+      when(action.getAttemptsCount()).thenReturn(StoreIngestionTask.MAX_CONSUMER_ACTION_ATTEMPTS + 1);
+      assertFalse(future.isCompletedExceptionally());
+      storeIngestionTaskUnderTest.handleConsumerActionsError(e, action, 0L);
+      verify(storeIngestionTaskUnderTest, times(1)).reportError(anyString(), eq(p), any(VeniceException.class));
+      assertTrue(future.isCompletedExceptionally());
     }, AA_OFF);
   }
 

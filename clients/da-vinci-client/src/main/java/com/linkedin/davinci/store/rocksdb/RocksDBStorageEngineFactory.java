@@ -1,5 +1,7 @@
 package com.linkedin.davinci.store.rocksdb;
 
+import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
+import static com.linkedin.venice.utils.Utils.getOSMemorySize;
 import static org.rocksdb.RateLimiter.DEFAULT_FAIRNESS;
 import static org.rocksdb.RateLimiter.DEFAULT_MODE;
 import static org.rocksdb.RateLimiter.DEFAULT_REFILL_PERIOD_MICROS;
@@ -139,6 +141,19 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     this.env.setBackgroundThreads(rocksDBServerConfig.getRocksDBEnvFlushPoolSize(), Priority.HIGH);
     this.env.setBackgroundThreads(rocksDBServerConfig.getRocksDBEnvCompactionPoolSize(), Priority.LOW);
 
+    long cacheBytesNeeded =
+        rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes() + (rocksDBServerConfig.isUseSeparateRMDCacheEnabled()
+            ? rocksDBServerConfig.getRocksDBRMDBlockCacheSizeInBytes()
+            : 0);
+
+    long systemMemorySize = getOSMemorySize();
+    if (systemMemorySize > 0
+        && (systemMemorySize * rocksDBServerConfig.getRocksdbBlockCacheMemoryLimit() < cacheBytesNeeded)) {
+      throw new RuntimeException(
+          "Cannot setup rocksdb instance with block-cache size "
+              + generateHumanReadableByteCountString(cacheBytesNeeded) + ". System memory : "
+              + generateHumanReadableByteCountString(systemMemorySize));
+    }
     // Shared cache across all the RocksDB databases
     if (RocksDBBlockCacheImplementations.CLOCK.equals(rocksDBServerConfig.getRocksDBBlockCacheImplementation())) {
       if (rocksDBServerConfig.isUseSeparateRMDCacheEnabled()) {

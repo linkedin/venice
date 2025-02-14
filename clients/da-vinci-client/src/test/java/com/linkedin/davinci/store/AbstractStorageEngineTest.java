@@ -1,5 +1,7 @@
 package com.linkedin.davinci.store;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_RMD_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.ADMIN_PORT;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
@@ -38,6 +40,8 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
         .put(ZOOKEEPER_ADDRESS, "localhost:2181")
         .put(PERSISTENCE_TYPE, persistenceType.toString())
         .put(KAFKA_BOOTSTRAP_SERVERS, "127.0.0.1:9092")
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
+        .put(ROCKSDB_RMD_BLOCK_CACHE_SIZE_IN_BYTES, 1 * 1024 * 1024L)
         .put(LISTENER_PORT, 7072)
         .put(ADMIN_PORT, 7073)
         .put(DATA_BASE_PATH, dataDirectory.getAbsolutePath())

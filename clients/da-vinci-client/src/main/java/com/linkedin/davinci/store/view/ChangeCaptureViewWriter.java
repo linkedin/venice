@@ -152,6 +152,11 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
   }
 
   @Override
+  public String composeTopicName(int version) {
+    return internalView.composeTopicName(version);
+  }
+
+  @Override
   public String getWriterClassName() {
     return internalView.getWriterClassName();
   }

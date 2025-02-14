@@ -36,13 +36,25 @@ public class ZkAdminTopicMetadataAccessor extends AdminTopicMetadataAccessor {
   }
 
   /**
+   * Update the upstream metadata map for the given cluster with specific information provided in metadataDelta
+   *
    * @see AdminTopicMetadataAccessor#updateMetadata(String, Map)
    */
   @Override
-  public void updateMetadata(String clusterName, Map<String, Long> metadata) {
+  public void updateMetadata(String clusterName, Map<String, Long> metadataDelta) {
     String path = getAdminTopicMetadataNodePath(clusterName);
-    HelixUtils.update(zkMapAccessor, path, metadata, ZK_UPDATE_RETRY);
-    LOGGER.info("Persisted admin topic metadata map for cluster: {}, map: {}", clusterName, metadata);
+    HelixUtils.compareAndUpdate(zkMapAccessor, path, ZK_UPDATE_RETRY, currentMetadataMap -> {
+      if (currentMetadataMap == null) {
+        currentMetadataMap = new HashMap<>();
+      }
+      LOGGER.info(
+          "Updating AdminTopicMetadata map for cluster: {}. Current metadata: {}. New delta metadata: {}",
+          clusterName,
+          currentMetadataMap,
+          metadataDelta);
+      currentMetadataMap.putAll(metadataDelta);
+      return currentMetadataMap;
+    });
   }
 
   /**

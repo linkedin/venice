@@ -1960,40 +1960,44 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         action.getFuture().completeExceptionally(e);
         throw e;
       } catch (Throwable e) {
-        if (action.getAttemptsCount() <= MAX_CONSUMER_ACTION_ATTEMPTS) {
-          LOGGER.warn("Failed to process consumer action {}, will retry later.", action, e);
+        if (!handleConsumerActionsError(e, action, actionProcessStartTimeInMs)) {
           return;
-        }
-        LOGGER.error(
-            "Failed to execute consumer action {} after {} attempts. Total elapsed time: {}ms",
-            action,
-            action.getAttemptsCount(),
-            LatencyUtils.getElapsedTimeFromMsToMs(actionProcessStartTimeInMs),
-            e);
-        // Mark action as failed since it has exhausted all the retries.
-        action.getFuture().completeExceptionally(e);
-        // After MAX_CONSUMER_ACTION_ATTEMPTS retries we should give up and error the ingestion task.
-        PartitionConsumptionState state = partitionConsumptionStateMap.get(action.getPartition());
-
-        // Remove the action that is failed to execute recently (not necessarily the head of consumerActionsQueue).
-        if (consumerActionsQueue.remove(action)) {
-          partitionToPendingConsumerActionCountMap.get(action.getPartition()).decrementAndGet();
-        }
-        /**
-         * {@link state} can be null if the {@link OffsetRecord} from {@link storageMetadataService} was corrupted in
-         * {@link #processCommonConsumerAction}, so the {@link PartitionConsumptionState} was never created
-         */
-        if (state == null || !state.isCompletionReported()) {
-          reportError(
-              "Error when processing consumer action: " + action,
-              action.getPartition(),
-              new VeniceException(e));
         }
       }
     }
     if (emitMetrics.get()) {
       hostLevelIngestionStats.recordProcessConsumerActionLatency(Duration.between(startTime, Instant.now()).toMillis());
     }
+  }
+
+  boolean handleConsumerActionsError(Throwable e, ConsumerAction action, long actionProcessStartTimeInMs) {
+    if (action.getAttemptsCount() <= MAX_CONSUMER_ACTION_ATTEMPTS) {
+      LOGGER.warn("Failed to process consumer action {}, will retry later.", action, e);
+      return false;
+    }
+    LOGGER.error(
+        "Failed to execute consumer action {} after {} attempts. Total elapsed time: {}ms",
+        action,
+        action.getAttemptsCount(),
+        LatencyUtils.getElapsedTimeFromMsToMs(actionProcessStartTimeInMs),
+        e);
+    // Mark action as failed since it has exhausted all the retries.
+    action.getFuture().completeExceptionally(e);
+    // After MAX_CONSUMER_ACTION_ATTEMPTS retries we should give up and error the ingestion task.
+    PartitionConsumptionState state = partitionConsumptionStateMap.get(action.getPartition());
+
+    // Remove the action that is failed to execute recently (not necessarily the head of consumerActionsQueue).
+    if (consumerActionsQueue.remove(action)) {
+      partitionToPendingConsumerActionCountMap.get(action.getPartition()).decrementAndGet();
+    }
+    /**
+     * {@link state} can be null if the {@link OffsetRecord} from {@link storageMetadataService} was corrupted in
+     * {@link #processCommonConsumerAction}, so the {@link PartitionConsumptionState} was never created
+     */
+    if (state == null || !state.isCompletionReported()) {
+      reportError("Error when processing consumer action: " + action, action.getPartition(), new VeniceException(e));
+    }
+    return true;
   }
 
   /**

@@ -7,10 +7,13 @@ import static org.testng.Assert.assertFalse;
 
 import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.Arg;
+import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -19,7 +22,10 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -27,6 +33,7 @@ import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -185,5 +192,78 @@ public class TestAdminToolEndToEnd {
         { "--node-replicas-readiness", "--url", venice.getLeaderVeniceController().getControllerUrl(), "--cluster",
             clusterName, "--storage-node", Utils.getHelixNodeIdentifier(Utils.getHostName(), server.getPort()) };
     AdminTool.main(nodeReplicasReadinessArgs);
+  }
+
+  @Test(timeOut = 4 * TEST_TIMEOUT)
+  public void testUpdateAdminOperationVersion() throws Exception {
+    Long defaultVersion = -1L;
+    Long newVersion = 80L;
+    String storeName = Utils.getUniqueString("test-store");
+    try (VeniceTwoLayerMultiRegionMultiClusterWrapper venice =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+            new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+                .numberOfClusters(1)
+                .numberOfParentControllers(1)
+                .numberOfChildControllers(1)
+                .numberOfServers(1)
+                .numberOfRouters(1)
+                .replicationFactor(1)
+                .build());) {
+      String clusterName = venice.getClusterNames()[0];
+
+      // Get the parent con†roller
+      VeniceControllerWrapper parentController = venice.getParentControllers().get(0);
+      ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
+
+      // Verify the original metadata - default value
+      AdminTopicMetadataResponse originalMetadata = parentControllerClient.getAdminTopicMetadata(Optional.empty());
+      Assert.assertEquals(originalMetadata.getAdminOperationProtocolVersion(), (long) defaultVersion);
+      Assert.assertEquals(originalMetadata.getExecutionId(), (long) defaultVersion);
+      Assert.assertEquals(originalMetadata.getOffset(), (long) defaultVersion);
+      Assert.assertEquals(originalMetadata.getUpstreamOffset(), (long) defaultVersion);
+
+      // Create store
+      NewStoreResponse newStoreResponse =
+          parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
+      Assert.assertFalse(newStoreResponse.isError());
+      VersionCreationResponse versionCreationResponse =
+          parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-push-1"), 1L);
+      Assert.assertFalse(versionCreationResponse.isError());
+
+      // Update store config
+      ControllerResponse updateStore =
+          parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setBatchGetLimit(100));
+      Assert.assertFalse(updateStore.isError());
+
+      // Check the baseline metadata
+      AdminTopicMetadataResponse metdataAfterStoreCreation =
+          parentControllerClient.getAdminTopicMetadata(Optional.empty());
+      long baselineExecutionId = metdataAfterStoreCreation.getExecutionId();
+      long baselineOffset = metdataAfterStoreCreation.getOffset();
+      long baselineUpstreamOffset = metdataAfterStoreCreation.getUpstreamOffset();
+      long baselineAdminVersion = metdataAfterStoreCreation.getAdminOperationProtocolVersion();
+
+      // Execution id and offset should be positive now since we have created a store and updated the store config
+      Assert.assertEquals(baselineAdminVersion, (long) defaultVersion);
+      Assert.assertTrue(baselineExecutionId > 0);
+      Assert.assertTrue(baselineOffset > 0);
+      Assert.assertEquals(baselineUpstreamOffset, (long) defaultVersion);
+
+      // Update the admin operation version to newVersion - 80
+      String[] updateAdminOperationVersionArgs =
+          { "--update-admin-operation-protocol-version", "--url", parentController.getControllerUrl(), "--cluster",
+              clusterName, "--admin-operation-protocol-version", newVersion.toString() };
+
+      AdminTool.main(updateAdminOperationVersionArgs);
+
+      // Verify the admin operation metadata version is updated and the remaining data is unchanged
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        AdminTopicMetadataResponse updatedMetadata = parentControllerClient.getAdminTopicMetadata(Optional.empty());
+        Assert.assertEquals(updatedMetadata.getAdminOperationProtocolVersion(), (long) newVersion);
+        Assert.assertEquals(updatedMetadata.getExecutionId(), baselineExecutionId);
+        Assert.assertEquals(updatedMetadata.getOffset(), baselineOffset);
+        Assert.assertEquals(updatedMetadata.getUpstreamOffset(), baselineUpstreamOffset);
+      });
+    }
   }
 }

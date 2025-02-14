@@ -95,6 +95,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.STORAGE_ENGINE_O
 import static com.linkedin.venice.controllerapi.ControllerRoute.STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.STORE_MIGRATION_ALLOWED;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_ACL;
+import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_ADMIN_TOPIC_METADATA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_CLUSTER_CONFIG;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_LOG_COMPACTION;
@@ -636,7 +637,11 @@ public class AdminSparkServer extends AbstractVeniceService {
             admin,
             adminTopicMetadataRoutes
                 .updateAdminTopicMetadata(admin, requestHandler.getClusterAdminOpsRequestHandler())));
-
+    httpService.post(
+        UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION.getPath(),
+        new VeniceParentControllerRegionStateHandler(
+            admin,
+            adminTopicMetadataRoutes.updateAdminOperationProtocolVersion(admin)));
     httpService.post(
         DELETE_KAFKA_TOPIC.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.deleteKafkaTopic(admin)));
