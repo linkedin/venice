@@ -33,39 +33,64 @@ public class TestZkAdminTopicMetadataAccessor {
   }
 
   @Test
-  public void testUpdateMetadata() {
+  public void testUpdateMetadataWhenMetadataIsEmpty() {
     String clusterName = "test-cluster";
 
-    // Original metadata
-    Map<String, Long> currentMetadata = AdminTopicMetadataAccessor
-        .generateMetadataMap(Optional.of(1L), Optional.of(-1L), Optional.of(1L), Optional.of(18L));
-
-    // New metadata
-    Map<String, Long> newMetadata = new HashMap<>();
-    newMetadata.put("offset", 100L);
-
-    // Updated metadata with new metadata
-    Map<String, Long> updatedMetadata = AdminTopicMetadataAccessor
-        .generateMetadataMap(Optional.of(100L), Optional.of(-1L), Optional.of(1L), Optional.of(18L));
+    // metadata that we are trying to update
+    Map<String, Long> metadataDelta = new HashMap<>();
+    metadataDelta.put("offset", 100L);
 
     String metadataPath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(clusterName);
     try (MockedStatic<DataTree> dataTreeMockedStatic = Mockito.mockStatic(DataTree.class)) {
       dataTreeMockedStatic.when(() -> DataTree.copyStat(any(), any())).thenAnswer(invocation -> null);
       Stat readStat = new Stat();
 
-      when(zkClient.readData(metadataPath, readStat)).thenReturn(null) // Case 1: when there is no metadata
-          .thenReturn(currentMetadata); // Case 2: the metadata is not null
+      // Mock the metadata on prod - null
+      when(zkClient.readData(metadataPath, readStat)).thenReturn(null);
 
-      // Case 1: when there is no metadata - null
-      zkAdminTopicMetadataAccessor.updateMetadata(clusterName, newMetadata);
-      verify(zkClient, times(1)).writeDataGetStat(metadataPath, newMetadata, 0);
+      // Update the metadata
+      zkAdminTopicMetadataAccessor.updateMetadata(clusterName, metadataDelta);
 
-      // Case 2: the metadata is not null
-      zkAdminTopicMetadataAccessor.updateMetadata(clusterName, newMetadata);
-      verify(zkClient, times(1)).writeDataGetStat(metadataPath, updatedMetadata, 0);
+      // Verify that the metadata path got read 1 time
+      verify(zkClient, times(1)).readData(metadataPath, readStat);
+
+      // Verify that the metadata path got read 1 time with the metadataDelta map
+      // When the metadata is empty, the metadataDelta should be written as is
+      verify(zkClient, times(1)).writeDataGetStat(metadataPath, metadataDelta, 0);
+    }
+  }
+
+  @Test
+  public void testUpdateMetadataWithFullMetadata() {
+    String clusterName = "test-cluster";
+
+    // Original metadata
+    Map<String, Long> currentMetadata = AdminTopicMetadataAccessor
+        .generateMetadataMap(Optional.of(1L), Optional.of(-1L), Optional.of(1L), Optional.of(18L));
+
+    // metadata that we are trying to update
+    Map<String, Long> metadataDelta = new HashMap<>();
+    metadataDelta.put("offset", 100L);
+
+    String metadataPath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(clusterName);
+    try (MockedStatic<DataTree> dataTreeMockedStatic = Mockito.mockStatic(DataTree.class)) {
+      dataTreeMockedStatic.when(() -> DataTree.copyStat(any(), any())).thenAnswer(invocation -> null);
+      Stat readStat = new Stat();
+
+      when(zkClient.readData(metadataPath, readStat)).thenReturn(currentMetadata); // Case 2: the metadata is not null
+
+      // Update the metadata on prod with new offset
+      zkAdminTopicMetadataAccessor.updateMetadata(clusterName, metadataDelta);
+
+      // The updated metadata should be the original metadata with the offset updated
+      Map<String, Long> updatedMetadata = AdminTopicMetadataAccessor
+          .generateMetadataMap(Optional.of(100L), Optional.of(-1L), Optional.of(1L), Optional.of(18L));
 
       // Verify that the metadata path got read 2 times
-      verify(zkClient, times(2)).readData(metadataPath, readStat);
+      verify(zkClient, times(1)).readData(metadataPath, readStat);
+
+      // Verify that the metadata path got written with the correct updated metadata
+      verify(zkClient, times(1)).writeDataGetStat(metadataPath, updatedMetadata, 0);
     }
   }
 
