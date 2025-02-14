@@ -4691,7 +4691,7 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test
-  public void testMaybeSendIngestionHeartbeatWithHBSuccessOrFailure() throws InterruptedException {
+  public void testMaybeSendIngestionHeartbeatWithHBSuccessOrFailure() {
     String storeName = Utils.getUniqueString("store");
     StorageService storageService = mock(StorageService.class);
     Store mockStore = mock(Store.class);
@@ -4712,6 +4712,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
     doReturn(mockVersion).when(mockStore).getVersion(1);
     doReturn(true).when(mockVersion).isActiveActiveReplicationEnabled();
+    doReturn(true).when(mockVersion).isSeparateRealTimeTopicEnabled();
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
     VeniceProperties mockVeniceProperties = mock(VeniceProperties.class);
     doReturn(true).when(mockVeniceProperties).isEmpty();
@@ -4727,9 +4728,13 @@ public abstract class StoreIngestionTaskTest {
     doReturn(offsetRecord).when(pcs1).getOffsetRecord();
     doReturn(LeaderFollowerStateType.LEADER).when(pcs1).getLeaderFollowerState();
     doReturn(1).when(pcs1).getPartition();
+
     PubSubTopic pubsubTopic = mock(PubSubTopic.class);
     doReturn(pubsubTopic).when(offsetRecord).getLeaderTopic(any());
     doReturn(true).when(pubsubTopic).isRealTime();
+
+    PubSubTopic pubsubTopicSepRT = mock(PubSubTopic.class);
+    doReturn(true).when(pubsubTopicSepRT).isRealTime();
 
     VeniceWriter veniceWriter = mock(VeniceWriter.class);
     VeniceWriterFactory veniceWriterFactory = mock(VeniceWriterFactory.class);
@@ -4767,6 +4772,9 @@ public abstract class StoreIngestionTaskTest {
     heartBeatFuture.complete(null);
     PubSubTopicPartition pubSubTopicPartition0 = new PubSubTopicPartitionImpl(pubsubTopic, 0);
     PubSubTopicPartition pubSubTopicPartition1 = new PubSubTopicPartitionImpl(pubsubTopic, 1);
+    PubSubTopic sepRTtopic = pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(storeName));
+    PubSubTopicPartition pubSubTopicPartition0sep = new PubSubTopicPartitionImpl(sepRTtopic, 0);
+    PubSubTopicPartition pubSubTopicPartition1sep = new PubSubTopicPartitionImpl(sepRTtopic, 1);
 
     // all succeeded
     doReturn(heartBeatFuture).when(veniceWriter).sendHeartbeat(any(), any(), any(), anyBoolean(), any(), anyLong());
@@ -4780,6 +4788,24 @@ public abstract class StoreIngestionTaskTest {
     doAnswer(invocation -> {
       throw new Exception("mock exception");
     }).when(veniceWriter).sendHeartbeat(eq(pubSubTopicPartition1), any(), any(), anyBoolean(), any(), anyLong());
+    // wait for SERVER_INGESTION_HEARTBEAT_INTERVAL_MS
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      failedPartitions.set(ingestionTask.maybeSendIngestionHeartbeat());
+      assertNotNull(failedPartitions.get());
+    });
+    // wait for the futures to complete that populates failedPartitions
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      assertEquals(failedPartitions.get().size(), 1);
+      assertFalse(failedPartitions.get().contains("0"));
+      assertTrue(failedPartitions.get().contains("1"));
+    });
+
+    // 1 partition throws exception
+    doReturn(heartBeatFuture).when(veniceWriter)
+        .sendHeartbeat(eq(pubSubTopicPartition0), any(), any(), anyBoolean(), any(), anyLong());
+    doAnswer(invocation -> {
+      throw new Exception("mock exception");
+    }).when(veniceWriter).sendHeartbeat(eq(pubSubTopicPartition1sep), any(), any(), anyBoolean(), any(), anyLong());
     // wait for SERVER_INGESTION_HEARTBEAT_INTERVAL_MS
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       failedPartitions.set(ingestionTask.maybeSendIngestionHeartbeat());

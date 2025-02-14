@@ -3825,12 +3825,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return null;
     }
 
-    List<CompletableFuture<PubSubProduceResult>> heartBeatFutures = new ArrayList<>();
-    List<CompletableFuture<PubSubProduceResult>> heartBeatFuturesForSepRT = new ArrayList<>();
-    Set<String> failedPartitions = VeniceConcurrentHashMap.newKeySet();
-    Set<String> failedPartitionsForSepRT = VeniceConcurrentHashMap.newKeySet();
+    List<CompletableFuture<PubSubProduceResult>> heartBeatFutures =
+        new ArrayList<>(partitionConsumptionStateMap.size());
+    List<CompletableFuture<PubSubProduceResult>> heartBeatFuturesForSepRT =
+        isSeparatedRealtimeTopicEnabled() ? new ArrayList<>() : null;
+    Set<String> failedPartitions = VeniceConcurrentHashMap.newKeySet(partitionConsumptionStateMap.size());
+    Set<String> failedPartitionsForSepRT =
+        isSeparatedRealtimeTopicEnabled() ? VeniceConcurrentHashMap.newKeySet() : null;
     AtomicReference<CompletionException> completionException = new AtomicReference<>(null);
-    AtomicReference<CompletionException> completionExceptionForSepRT = new AtomicReference<>(null);
+    AtomicReference<CompletionException> completionExceptionForSepRT =
+        isSeparatedRealtimeTopicEnabled() ? new AtomicReference<>(null) : null;
     for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
       PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
       if (isLeader(pcs) && leaderTopic != null && leaderTopic.isRealTime()) {
@@ -3867,9 +3871,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     sendHeartbeatProduceLog(heartBeatFutures, failedPartitions, completionException, false);
     if (isSeparatedRealtimeTopicEnabled()) {
       sendHeartbeatProduceLog(heartBeatFuturesForSepRT, failedPartitionsForSepRT, completionExceptionForSepRT, true);
+      failedPartitions.addAll(failedPartitionsForSepRT);
     }
     lastSendIngestionHeartbeatTimestamp.set(currentTimestamp);
-    failedPartitions.addAll(failedPartitionsForSepRT);
     return failedPartitions;
   }
 
