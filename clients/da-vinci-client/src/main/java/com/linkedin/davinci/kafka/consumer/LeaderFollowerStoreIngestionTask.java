@@ -88,6 +88,7 @@ import com.linkedin.venice.writer.VeniceWriterOptions;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -2261,10 +2262,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     // Separate incremental push pubsub entries has the same pubsub url but different cluster id, which creates
     // confusion for heartbeat tracking. We need to resolve the kafka url to the actual kafka cluster url.
     String resolvedKafkaUrl = kafkaClusterUrlResolver != null ? kafkaClusterUrlResolver.apply(kafkaUrl) : kafkaUrl;
-    // This is just sanity check, as there is no leader producing HB to sep topic by design.
-    if (!Objects.equals(resolvedKafkaUrl, kafkaUrl)) {
-      return;
-    }
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
       heartbeatMonitoringService.recordLeaderHeartbeat(
           storeName,
@@ -3830,9 +3827,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // Not time for another heartbeat yet.
       return null;
     }
+    Set<String> failedPartitions = sendHeartbeatToRealtimeTopic(false);
+    if (isSeparatedRealtimeTopicEnabled()) {
+      failedPartitions.addAll(sendHeartbeatToRealtimeTopic(true));
+    }
+    lastSendIngestionHeartbeatTimestamp.set(currentTimestamp);
+    return failedPartitions;
+  }
 
+  Set<String> sendHeartbeatToRealtimeTopic(boolean isSeparateTopic) {
     AtomicInteger numHeartBeatSuccess = new AtomicInteger(0);
-    Map<Integer, CompletableFuture<PubSubProduceResult>> heartBeatFutures = new VeniceConcurrentHashMap<>();
+    List<CompletableFuture<PubSubProduceResult>> heartBeatFutures = new ArrayList<>();
     Set<String> failedPartitions = VeniceConcurrentHashMap.newKeySet();
     AtomicReference<CompletionException> completionException = new AtomicReference<>(null);
     for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
@@ -3845,8 +3850,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           continue;
         }
         int partition = pcs.getPartition();
-        CompletableFuture<PubSubProduceResult> heartBeatFuture =
-            sendIngestionHeartbeatToRT(new PubSubTopicPartitionImpl(leaderTopic, partition));
+        CompletableFuture<PubSubProduceResult> heartBeatFuture = sendIngestionHeartbeatToRT(
+            new PubSubTopicPartitionImpl(isSeparateTopic ? separateRealTimeTopic : leaderTopic, partition));
         heartBeatFuture.whenComplete((ignore, throwable) -> {
           if (throwable != null) {
             completionException.set(new CompletionException(throwable));
@@ -3855,19 +3860,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             numHeartBeatSuccess.getAndIncrement();
           }
         });
-        heartBeatFutures.put(partition, heartBeatFuture);
+        heartBeatFutures.add(heartBeatFuture);
       }
     }
 
     if (!heartBeatFutures.isEmpty()) {
-      CompletableFuture.allOf(heartBeatFutures.values().toArray(new CompletableFuture[0]))
+      CompletableFuture.allOf(heartBeatFutures.toArray(new CompletableFuture[0]))
           .whenCompleteAsync((ignore, throwable) -> {
             if (!failedPartitions.isEmpty()) {
               int numFailedPartitions = failedPartitions.size();
               String logMessage = String.format(
                   "Send ingestion heartbeat for %d partitions of topic %s: %d succeeded, %d failed for partitions: %s",
                   heartBeatFutures.size(),
-                  realTimeTopic,
+                  isSeparateTopic ? realTimeTopic : separateRealTimeTopic,
                   numHeartBeatSuccess.get(),
                   numFailedPartitions,
                   String.join(",", failedPartitions));
@@ -3878,15 +3883,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               String logMessage = String.format(
                   "Send ingestion heartbeat for %d partitions of topic %s: all succeeded",
                   heartBeatFutures.size(),
-                  realTimeTopic);
+                  isSeparateTopic ? realTimeTopic : separateRealTimeTopic);
               if (!REDUNDANT_LOGGING_FILTER.isRedundantException(logMessage)) {
                 LOGGER.debug(logMessage);
               }
             }
           });
     }
-
-    lastSendIngestionHeartbeatTimestamp.set(currentTimestamp);
     return failedPartitions;
   }
 

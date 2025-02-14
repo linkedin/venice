@@ -132,7 +132,7 @@ public class TestSeparateRealtimeTopicIngestion {
 
   @Test(timeOut = TEST_TIMEOUT_MS * 2)
   public void testIncrementalPushPartialUpdate() throws IOException {
-    final String storeName = Utils.getUniqueString("inc_push_update_classic_format");
+    final String storeName = Utils.getUniqueString("sepRT_ingestion");
     String parentControllerUrl = parentController.getControllerUrl();
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema(inputDir);
@@ -276,6 +276,20 @@ public class TestSeparateRealtimeTopicIngestion {
             NUMBER_OF_CHILD_DATACENTERS,
             1);
       });
+      UpdateStoreQueryParams updateStoreParams2 =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setHybridRewindSeconds(1L)
+              .setHybridOffsetLagThreshold(10L);
+      updateStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams2));
+      assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+
+      parentControllerClient.emptyPush(storeName, "test_push_id_v3", 1000);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 3),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
     }
   }
 
