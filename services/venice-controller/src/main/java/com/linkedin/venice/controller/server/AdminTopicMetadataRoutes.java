@@ -21,7 +21,6 @@ import com.linkedin.venice.protocols.controller.AdminTopicGrpcMetadata;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcResponse;
 import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcRequest;
-import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcResponse;
 import java.util.Optional;
 import org.apache.http.HttpStatus;
 import spark.Route;
@@ -93,10 +92,11 @@ public class AdminTopicMetadataRoutes extends AbstractRoute {
         storeName.ifPresent(adminMetadataBuilder::setStoreName);
         offset.ifPresent(adminMetadataBuilder::setOffset);
         upstreamOffset.ifPresent(adminMetadataBuilder::setUpstreamOffset);
-        UpdateAdminTopicMetadataGrpcResponse internalResponse = requestHandler.updateAdminTopicMetadata(
-            UpdateAdminTopicMetadataGrpcRequest.newBuilder().setMetadata(adminMetadataBuilder).build());
-        responseObject.setCluster(internalResponse.getClusterName());
-        responseObject.setName(internalResponse.hasStoreName() ? internalResponse.getStoreName() : null);
+        AdminTopicMetadataGrpcResponse internalResponse = requestHandler.updateAdminTopicMetadata(
+            UpdateAdminTopicMetadataGrpcRequest.newBuilder().setMetadata(adminMetadataBuilder.build()).build());
+        responseObject.setCluster(internalResponse.getMetadata().getClusterName());
+        responseObject.setName(
+            internalResponse.getMetadata().hasStoreName() ? internalResponse.getMetadata().getStoreName() : null);
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(new VeniceException(e), request, response);
