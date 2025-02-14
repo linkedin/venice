@@ -641,7 +641,8 @@ public class AdminSparkServer extends AbstractVeniceService {
         UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION.getPath(),
         new VeniceParentControllerRegionStateHandler(
             admin,
-            adminTopicMetadataRoutes.updateAdminOperationProtocolVersion(admin)));
+            adminTopicMetadataRoutes
+                .updateAdminOperationProtocolVersion(admin, requestHandler.getClusterAdminOpsRequestHandler())));
     httpService.post(
         DELETE_KAFKA_TOPIC.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.deleteKafkaTopic(admin)));
