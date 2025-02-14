@@ -164,8 +164,7 @@ public class ClusterAdminOpsRequestHandler {
         clusterName,
         adminOperationProtocolVersion);
 
-    // TODO: Call the actual method to update the admin operation protocol version (#1418)
-    // admin.updateAdminOperationProtocolVersion(clusterName, adminOperationProtocolVersion);
+    admin.updateAdminOperationProtocolVersion(clusterName, adminOperationProtocolVersion);
 
     AdminTopicGrpcMetadata.Builder adminMetadataBuilder = AdminTopicGrpcMetadata.newBuilder()
         .setClusterName(clusterName)
