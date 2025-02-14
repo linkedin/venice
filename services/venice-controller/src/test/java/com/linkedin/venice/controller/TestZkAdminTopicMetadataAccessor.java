@@ -63,14 +63,16 @@ public class TestZkAdminTopicMetadataAccessor {
   @Test
   public void testUpdateMetadataWithFullMetadata() {
     String clusterName = "test-cluster";
+    Long originalOffset = 1L;
+    Long newOffset = 100L;
 
     // Original metadata
     Map<String, Long> currentMetadata = AdminTopicMetadataAccessor
-        .generateMetadataMap(Optional.of(1L), Optional.of(-1L), Optional.of(1L), Optional.of(18L));
+        .generateMetadataMap(Optional.of(originalOffset), Optional.of(-1L), Optional.of(1L), Optional.of(18L));
 
     // metadata that we are trying to update
     Map<String, Long> metadataDelta = new HashMap<>();
-    metadataDelta.put("offset", 100L);
+    metadataDelta.put("offset", newOffset);
 
     String metadataPath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(clusterName);
     try (MockedStatic<DataTree> dataTreeMockedStatic = Mockito.mockStatic(DataTree.class)) {
@@ -84,9 +86,9 @@ public class TestZkAdminTopicMetadataAccessor {
 
       // The updated metadata should be the original metadata with the offset updated
       Map<String, Long> updatedMetadata = AdminTopicMetadataAccessor
-          .generateMetadataMap(Optional.of(100L), Optional.of(-1L), Optional.of(1L), Optional.of(18L));
+          .generateMetadataMap(Optional.of(newOffset), Optional.of(-1L), Optional.of(1L), Optional.of(18L));
 
-      // Verify that the metadata path got read 2 times
+      // Verify that the metadata path got read 1 times
       verify(zkClient, times(1)).readData(metadataPath, readStat);
 
       // Verify that the metadata path got written with the correct updated metadata
