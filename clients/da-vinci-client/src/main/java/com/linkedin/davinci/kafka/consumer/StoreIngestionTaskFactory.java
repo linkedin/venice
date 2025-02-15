@@ -27,7 +27,6 @@ import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.VeniceWriterFactory;
-import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
@@ -110,7 +109,6 @@ public class StoreIngestionTaskFactory {
     private StorageEngineRepository storageEngineRepository;
     private StorageMetadataService storageMetadataService;
     private Queue<VeniceNotifier> leaderFollowerNotifiers;
-    private MetricsRepository metricsRepository;
     private ReadOnlySchemaRepository schemaRepo;
     private ReadOnlyStoreRepository metadataRepo;
     private TopicManagerRepository topicManagerRepository;
