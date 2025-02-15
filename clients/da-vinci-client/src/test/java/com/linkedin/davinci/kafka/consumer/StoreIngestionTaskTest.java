@@ -4877,7 +4877,7 @@ public abstract class StoreIngestionTaskTest {
 
     // Transformer put error should never be recorded
     verify(mockDaVinciRecordTransformerStats, never())
-        .recordTransformerPutError(eq(storeNameWithoutVersionInfo), anyInt(), anyLong(), anyLong());
+        .recordTransformerPutError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
   }
 
   @Test(dataProvider = "aaConfigProvider")
@@ -4943,7 +4943,7 @@ public abstract class StoreIngestionTaskTest {
 
     // Transformer error should never be recorded
     verify(mockDaVinciRecordTransformerStats, never())
-        .recordTransformerPutError(eq(storeNameWithoutVersionInfo), anyInt(), anyLong(), anyLong());
+        .recordTransformerPutError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
   }
 
   // Test to throw type error when performing record transformation with incompatible types
@@ -5002,7 +5002,7 @@ public abstract class StoreIngestionTaskTest {
       }
       // Verify transformer error was recorded
       verify(mockDaVinciRecordTransformerStats, timeout(1000))
-          .recordTransformerPutError(eq(storeNameWithoutVersionInfo), anyInt(), anyLong(), anyLong());
+          .recordTransformerPutError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
     }, aaConfig);
 
     DaVinciRecordTransformerConfig recordTransformerConfig =
