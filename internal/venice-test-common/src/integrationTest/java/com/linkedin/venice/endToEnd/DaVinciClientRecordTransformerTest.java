@@ -1,10 +1,10 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_DELETE_LATENCY;
-import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_ERROR_COUNT;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_ON_END_VERSION_INGESTION_LATENCY;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_ON_RECOVERY_LATENCY;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_ON_START_VERSION_INGESTION_LATENCY;
+import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_PUT_ERROR_COUNT;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_PUT_LATENCY;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
@@ -180,9 +180,9 @@ public class DaVinciClientRecordTransformerTest {
           recordTransformerMetricPrefix + RECORD_TRANSFORMER_DELETE_LATENCY + recordTransformerMetricPostfix;
       assertEquals(metricsRepository.getMetric(deleteLatency).value(), Double.NaN);
 
-      String transformerErrorCount =
-          recordTransformerMetricPrefix + RECORD_TRANSFORMER_ERROR_COUNT + ".DaVinciRecordTransformerStatsGauge";
-      assertEquals(metricsRepository.getMetric(transformerErrorCount).value(), 0.0);
+      String transformerPutErrorCount =
+          recordTransformerMetricPrefix + RECORD_TRANSFORMER_PUT_ERROR_COUNT + ".DaVinciRecordTransformerStatsGauge";
+      assertEquals(metricsRepository.getMetric(transformerPutErrorCount).value(), 0.0);
     }
   }
 

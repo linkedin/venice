@@ -56,7 +56,7 @@ public class AggVersionedDaVinciRecordTransformerStats
         stat -> stat.recordTransformerOnEndVersionIngestionLatency(value, timestamp));
   }
 
-  public void recordTransformerError(String storeName, int version, double value, long timestamp) {
-    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordTransformerError(value, timestamp));
+  public void recordTransformerPutError(String storeName, int version, double value, long timestamp) {
+    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordTransformerPutError(value, timestamp));
   }
 }

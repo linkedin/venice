@@ -662,7 +662,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       daVinciRecordTransformerStats.recordTransformerOnRecoveryLatency(
           storeName,
           versionNumber,
-          LatencyUtils.getElapsedTimeFromNSToMS(startTime),
+          LatencyUtils.getElapsedTimeFromUsToUs(startTime),
           System.currentTimeMillis());
     }
 
@@ -3804,8 +3804,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           try {
             transformerResult = recordTransformer.transformAndProcessPut(lazyKey, lazyValue);
           } catch (Exception e) {
-            daVinciRecordTransformerStats.recordTransformerError(storeName, versionNumber, 1, currentTimeMs);
-            String errorMessage = "Record transformer experienced an error when transforming value=" + assembledObject;
+            daVinciRecordTransformerStats.recordTransformerPutError(storeName, versionNumber, 1, currentTimeMs);
+            String errorMessage = "Record transformer experienced an error when processing value=" + assembledObject;
 
             throw new VeniceMessageException(errorMessage, e);
           }

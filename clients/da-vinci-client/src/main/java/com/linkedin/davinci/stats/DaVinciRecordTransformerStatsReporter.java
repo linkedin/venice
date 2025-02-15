@@ -1,10 +1,10 @@
 package com.linkedin.davinci.stats;
 
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_DELETE_LATENCY;
-import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_ERROR_COUNT;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_ON_END_VERSION_INGESTION_LATENCY;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_ON_RECOVERY_LATENCY;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_ON_START_VERSION_INGESTION_LATENCY;
+import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_PUT_ERROR_COUNT;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_PUT_LATENCY;
 import static com.linkedin.venice.stats.StatsErrorCode.NULL_INGESTION_STATS;
 
@@ -48,9 +48,9 @@ public class DaVinciRecordTransformerStatsReporter extends AbstractVeniceStatsRe
     registerSensor(
         new DaVinciRecordTransformerStatsReporter.DaVinciRecordTransformerStatsGauge(
             this,
-            () -> getStats().getTransformerErrorCount(),
+            () -> getStats().getTransformerPutErrorCount(),
             0,
-            RECORD_TRANSFORMER_ERROR_COUNT));
+            RECORD_TRANSFORMER_PUT_ERROR_COUNT));
   }
 
   // Assumed time unit is in microseconds (µ)

@@ -17,15 +17,15 @@ public class DaVinciRecordTransformerStats {
       "record_transformer_on_start_version_ingestion_latency";
   public static final String RECORD_TRANSFORMER_ON_END_VERSION_INGESTION_LATENCY =
       "record_transformer_on_end_version_ingestion_latency";
-  public static final String RECORD_TRANSFORMER_ERROR_COUNT = "record_transformer_error_count";
+  public static final String RECORD_TRANSFORMER_PUT_ERROR_COUNT = "record_transformer_put_error_count";
 
   private final WritePathLatencySensor recordTransformerPutLatencySensor;
   private final WritePathLatencySensor recordTransformerDeleteLatencySensor;
   private final WritePathLatencySensor recordTransformerOnRecoveryLatencySensor;
   private final WritePathLatencySensor recordTransformerOnStartVersionIngestionLatencySensor;
   private final WritePathLatencySensor recordTransformerOnEndVersionIngestionLatencySensor;
-  private final Count recordTransformerErrorCount = new Count();
-  private final Sensor recordTransformerErrorSensor;
+  private final Count recordTransformerPutErrorCount = new Count();
+  private final Sensor recordTransformerPutErrorSensor;
 
   public DaVinciRecordTransformerStats() {
     localMetricRepository = new MetricsRepository(METRIC_CONFIG);
@@ -44,8 +44,8 @@ public class DaVinciRecordTransformerStats {
         localMetricRepository,
         METRIC_CONFIG,
         RECORD_TRANSFORMER_ON_END_VERSION_INGESTION_LATENCY);
-    recordTransformerErrorSensor = localMetricRepository.sensor(RECORD_TRANSFORMER_ERROR_COUNT);
-    recordTransformerErrorSensor.add(RECORD_TRANSFORMER_ERROR_COUNT, recordTransformerErrorCount);
+    recordTransformerPutErrorSensor = localMetricRepository.sensor(RECORD_TRANSFORMER_PUT_ERROR_COUNT);
+    recordTransformerPutErrorSensor.add(RECORD_TRANSFORMER_PUT_ERROR_COUNT, recordTransformerPutErrorCount);
   }
 
   public void recordTransformerPutLatency(double value, long currentTimeMs) {
@@ -88,11 +88,11 @@ public class DaVinciRecordTransformerStats {
     return recordTransformerOnEndVersionIngestionLatencySensor;
   }
 
-  public void recordTransformerError(double value, long currentTimeMs) {
-    recordTransformerErrorSensor.record(value, currentTimeMs);
+  public void recordTransformerPutError(double value, long currentTimeMs) {
+    recordTransformerPutErrorSensor.record(value, currentTimeMs);
   }
 
-  public double getTransformerErrorCount() {
-    return recordTransformerErrorCount.measure(METRIC_CONFIG, System.currentTimeMillis());
+  public double getTransformerPutErrorCount() {
+    return recordTransformerPutErrorCount.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 }
