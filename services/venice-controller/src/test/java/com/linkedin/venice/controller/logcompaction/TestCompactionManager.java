@@ -6,6 +6,8 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.StoreInfo;
@@ -13,6 +15,7 @@ import com.linkedin.venice.meta.Version;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -66,14 +69,20 @@ public class TestCompactionManager {
 
     // Call the real method to test
     doCallRealMethod().when(mockManager).filterStoresForCompaction(any());
+    doCallRealMethod().when(mockManager).isCompactionReady(any());
+
+    // Verify stores compaction-ready status
+    Assert.assertTrue(mockManager.isCompactionReady(store1));
+    Assert.assertTrue(mockManager.isCompactionReady(store2));
+    Assert.assertFalse(mockManager.isCompactionReady(store3));
 
     // Test
     List<StoreInfo> compactionReadyStores = mockManager.filterStoresForCompaction(storeInfoList);
 
     // Assert the expected outcome
     assertEquals(compactionReadyStores.size(), 2);
-    assertEquals(compactionReadyStores.contains(store1), true);
-    assertEquals(compactionReadyStores.contains(store2), true);
-    assertEquals(compactionReadyStores.contains(store3), false);
+    assertTrue(compactionReadyStores.contains(store1));
+    assertTrue(compactionReadyStores.contains(store2));
+    assertFalse(compactionReadyStores.contains(store3));
   }
 }

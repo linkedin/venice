@@ -58,6 +58,7 @@ public class CompactionManager {
   List<StoreInfo> filterStoresForCompaction(ArrayList<StoreInfo> storeInfoList) {
     ArrayList<StoreInfo> compactionReadyStores = new ArrayList<>();
     for (StoreInfo storeInfo: storeInfoList) {
+      System.out.println("filterStoresForCompaction");
       if (isCompactionReady(storeInfo)) {
         compactionReadyStores.add(storeInfo);
       }
@@ -68,8 +69,10 @@ public class CompactionManager {
   // This function abstracts the criteria for a store to be ready for compaction
   // TODO make private
   public boolean isCompactionReady(StoreInfo storeInfo) {
+    System.out.println("storeInfo: " + storeInfo.getName());
     boolean isHybridStore = storeInfo.getHybridStoreConfig() != null;
 
+    System.out.println("isHybridStore: " + isHybridStore);
     return isHybridStore && isLastCompactionTimeOlderThanThresholdHours(timeSinceLastLogCompactionThreshold, storeInfo);
   }
 
@@ -90,6 +93,9 @@ public class CompactionManager {
       long millisecondsSinceLastCompaction = currentTime - lastCompactionTime;
       long hoursSinceLastCompaction = TimeUnit.MILLISECONDS.toHours(millisecondsSinceLastCompaction);
 
+      System.out.println(
+          "hoursSinceLastCompaction: " + hoursSinceLastCompaction + " | compactionThresholdHours: "
+              + compactionThresholdHours);
       return hoursSinceLastCompaction >= compactionThresholdHours;
     }).orElseGet(() -> {
       LOGGER.warn("Couldn't find current version: {} from store: {}", currentVersionNumber, storeInfo.getName());
