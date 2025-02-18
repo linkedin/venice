@@ -23,32 +23,33 @@ public class AdminOperationSerializer {
   public static final int LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION =
       AvroProtocolDefinition.ADMIN_OPERATION.getCurrentProtocolVersion();
 
-  private static SpecificDatumWriter<AdminOperation> SPECIFIC_DATUM_WRITER =
-      new SpecificDatumWriter<>(AdminOperation.getClassSchema());
   /** Used to generate decoders. */
   private static final DecoderFactory DECODER_FACTORY = new DecoderFactory();
 
   private static final Map<Integer, Schema> PROTOCOL_MAP = initProtocolMap();
 
-  public byte[] serialize(AdminOperation object) {
+  public byte[] serialize(AdminOperation object, int writerSchemaId) {
     try {
+      writerSchemaId = writerSchemaId > 0 ? writerSchemaId : LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
+      Schema writerSchema = getSchema(writerSchemaId);
+      SpecificDatumWriter<AdminOperation> specificDatumWriter = new SpecificDatumWriter<>(writerSchema);
+
       ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
       Encoder encoder = AvroCompatibilityHelper.newBinaryEncoder(byteArrayOutputStream, true, null);
-      SPECIFIC_DATUM_WRITER.write(object, encoder);
+      specificDatumWriter.write(object, encoder);
       encoder.flush();
 
       return byteArrayOutputStream.toByteArray();
+    } catch (ClassCastException e) {
+      throw new VeniceMessageException("Failed to encode message ClassCastException: " + object.toString(), e);
     } catch (IOException e) {
       throw new VeniceMessageException("Failed to encode message: " + object.toString(), e);
     }
   }
 
   public AdminOperation deserialize(ByteBuffer byteBuffer, int writerSchemaId) {
-    if (!PROTOCOL_MAP.containsKey(writerSchemaId)) {
-      throw new VeniceMessageException("Writer schema: " + writerSchemaId + " doesn't exist");
-    }
-    SpecificDatumReader<AdminOperation> reader =
-        new SpecificDatumReader<>(PROTOCOL_MAP.get(writerSchemaId), AdminOperation.getClassSchema());
+    Schema writerSchema = getSchema(writerSchemaId);
+    SpecificDatumReader<AdminOperation> reader = new SpecificDatumReader<>(writerSchema, writerSchema);
     Decoder decoder = AvroCompatibilityHelper
         .newBinaryDecoder(byteBuffer.array(), byteBuffer.position(), byteBuffer.remaining(), null);
     try {
@@ -68,5 +69,12 @@ public class AdminOperationSerializer {
     } catch (IOException e) {
       throw new VeniceMessageException("Could not initialize " + AdminOperationSerializer.class.getSimpleName(), e);
     }
+  }
+
+  public static Schema getSchema(int schemaId) {
+    if (!PROTOCOL_MAP.containsKey(schemaId)) {
+      throw new VeniceMessageException("Admin operation schema version: " + schemaId + " doesn't exist");
+    }
+    return PROTOCOL_MAP.get(schemaId);
   }
 }

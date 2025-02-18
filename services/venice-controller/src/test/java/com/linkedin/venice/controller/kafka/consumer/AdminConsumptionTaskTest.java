@@ -156,6 +156,7 @@ public class AdminConsumptionTaskTest {
   private static final String owner = "test_owner";
   private static final String keySchema = "\"string\"";
   private static final String valueSchema = "\"string\"";
+  private static final int latestSchemaId = AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
 
   // Objects will be used by each test method
   private PubSubConsumerAdapter mockKafkaConsumer;
@@ -987,7 +988,7 @@ public class AdminConsumptionTaskTest {
     adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
     adminMessage.payloadUnion = setStore;
     adminMessage.executionId = 2;
-    byte[] message = adminOperationSerializer.serialize(adminMessage);
+    byte[] message = adminOperationSerializer.serialize(adminMessage, latestSchemaId);
 
     veniceWriter.put(emptyKeyBytes, message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
@@ -1408,7 +1409,7 @@ public class AdminConsumptionTaskTest {
     adminMessage.operationType = AdminMessageType.DERIVED_SCHEMA_CREATION.getValue();
     adminMessage.payloadUnion = derivedSchemaCreation;
     adminMessage.executionId = 2;
-    byte[] message = adminOperationSerializer.serialize(adminMessage);
+    byte[] message = adminOperationSerializer.serialize(adminMessage, latestSchemaId);
 
     veniceWriter.put(emptyKeyBytes, message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
@@ -1565,7 +1566,7 @@ public class AdminConsumptionTaskTest {
     adminMessage.operationType = AdminMessageType.STORE_CREATION.getValue();
     adminMessage.payloadUnion = storeCreation;
     adminMessage.executionId = executionId;
-    return adminOperationSerializer.serialize(adminMessage);
+    return adminOperationSerializer.serialize(adminMessage, latestSchemaId);
   }
 
   private byte[] getKillOfflinePushJobMessage(String clusterName, String kafkaTopic, long executionId) {
@@ -1576,7 +1577,7 @@ public class AdminConsumptionTaskTest {
     adminMessage.operationType = AdminMessageType.KILL_OFFLINE_PUSH_JOB.getValue();
     adminMessage.payloadUnion = killJob;
     adminMessage.executionId = executionId;
-    return adminOperationSerializer.serialize(adminMessage);
+    return adminOperationSerializer.serialize(adminMessage, latestSchemaId);
   }
 
   private byte[] getAddVersionMessage(
@@ -1623,7 +1624,7 @@ public class AdminConsumptionTaskTest {
     adminMessage.operationType = AdminMessageType.ADD_VERSION.getValue();
     adminMessage.payloadUnion = addVersion;
     adminMessage.executionId = executionId;
-    return adminOperationSerializer.serialize(adminMessage);
+    return adminOperationSerializer.serialize(adminMessage, latestSchemaId);
   }
 
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Admin topic remote consumption is enabled but no config found for the source Kafka bootstrap server url")
