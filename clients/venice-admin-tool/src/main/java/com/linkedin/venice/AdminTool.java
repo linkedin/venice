@@ -869,7 +869,7 @@ public class AdminTool {
     String checkpointFile = getRequiredArgument(cmd, Arg.CHECKPOINT_FILE, Command.CLUSTER_BATCH_TASK);
     int parallelism = Integer.parseInt(getOptionalArgument(cmd, Arg.THREAD_COUNT, "1"));
     String storeFilterFile = getOptionalArgument(cmd, Arg.STORE_FILTER_FILE, "");
-    Set<String> storeList = new HashSet<>();
+    Set<String> interestedStoresSet = new HashSet<>();
     LOGGER.info(
         "[**** Cluster Command Params ****] Cluster: {}, Task: {}, Checkpoint: {}, Parallelism: {}, Store filter: {}",
         clusterName,
@@ -889,7 +889,7 @@ public class AdminTool {
           throw new VeniceException("Invalid store filter file path");
         } else {
           List<String> fileLines = Files.readAllLines(storeFilterFilePath);
-          storeList.addAll(fileLines);
+          interestedStoresSet.addAll(fileLines);
         }
       } catch (IOException e) {
         throw new VeniceException(e);
@@ -908,7 +908,7 @@ public class AdminTool {
       } else {
         // For now the default behavior is to only perform cluster operation on the intersection of the store filter
         // file and stores in the cluster.
-        if (storeList.contains(storeName)) {
+        if (interestedStoresSet.contains(storeName)) {
           progressMap.put(storeName, Boolean.FALSE);
         }
       }
