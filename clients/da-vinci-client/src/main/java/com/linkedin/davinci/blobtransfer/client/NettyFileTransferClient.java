@@ -1,8 +1,10 @@
 package com.linkedin.davinci.blobtransfer.client;
 
+import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.exceptions.VenicePeersConnectionException;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
@@ -26,7 +28,6 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -42,19 +43,27 @@ public class NettyFileTransferClient {
   Bootstrap clientBootstrap;
   private final String baseDir;
   private final int serverPort;
+  private final int peersConnectivityFreshnessInSeconds;
   private StorageMetadataService storageMetadataService;
-  private final ExecutorService executorService;
-  private final ScheduledExecutorService scheduledExecutorService;
-  // A set to contain the connectable and unconnectable hosts for saving effort on reconnection
-  private Set<String> unconnectableHosts = VeniceConcurrentHashMap.newKeySet();
-  private Set<String> connectedHosts = VeniceConcurrentHashMap.newKeySet();
+  private final ExecutorService hostConnectExecutorService;
+  private final ScheduledExecutorService connectTimeoutScheduler;
+
+  // A map to contain the connectable and unconnectable hosts for saving effort on reconnection
+  // format: host -> timestamp of the last connection attempt
+  private VeniceConcurrentHashMap<String, Long> unconnectableHostsToTimestamp = new VeniceConcurrentHashMap<>();
+  private VeniceConcurrentHashMap<String, Long> connectedHostsToTimestamp = new VeniceConcurrentHashMap<>();
 
   // TODO 1: move tunable configs to a config class
   // TODO 2: consider either increasing worker threads or have a dedicated thread pool to handle requests.
-  public NettyFileTransferClient(int serverPort, String baseDir, StorageMetadataService storageMetadataService) {
+  public NettyFileTransferClient(
+      int serverPort,
+      String baseDir,
+      StorageMetadataService storageMetadataService,
+      int peersConnectivityFreshnessInSeconds) {
     this.baseDir = baseDir;
     this.serverPort = serverPort;
     this.storageMetadataService = storageMetadataService;
+    this.peersConnectivityFreshnessInSeconds = peersConnectivityFreshnessInSeconds;
 
     clientBootstrap = new Bootstrap();
     workerGroup = new NioEventLoopGroup();
@@ -67,8 +76,10 @@ public class NettyFileTransferClient {
         ch.pipeline().addLast(new HttpClientCodec());
       }
     });
-    this.executorService = Executors.newCachedThreadPool();
-    this.scheduledExecutorService = Executors.newScheduledThreadPool(1);
+    this.hostConnectExecutorService =
+        Executors.newCachedThreadPool(new DaemonThreadFactory("Venice-BlobTransfer-Host-Connect-Executor-Service"));
+    this.connectTimeoutScheduler = Executors
+        .newSingleThreadScheduledExecutor(new DaemonThreadFactory("Venice-BlobTransfer-Client-Timeout-Checker"));
   }
 
   /**
@@ -86,30 +97,32 @@ public class NettyFileTransferClient {
       int version,
       int partition) {
     List<CompletableFuture<String>> futures = new ArrayList<>();
-    Set<String> connectableHosts = new HashSet<>();
 
-    discoveredHosts.removeAll(unconnectableHosts);
+    purgeStaleConnectivityRecords();
+
+    discoveredHosts.removeAll(unconnectableHostsToTimestamp.keySet());
     for (String host: discoveredHosts) {
       CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
         try {
-          if (connectableHosts.contains(host)) {
-            return host;
+          if (connectedHostsToTimestamp.keySet().contains(host)) {
+            return host; // already verified via previous connection
           }
           // Check if the host is connectable
           Channel channel = connectToHost(host, storeName, version, partition);
           if (channel != null && channel.isActive()) {
-            connectableHosts.add(host);
+            // Mark the host as connected
+            connectedHostsToTimestamp.put(host, System.currentTimeMillis());
             channel.close(); // this is only for checking connectivity no need to open it.
             return host;
           } else {
-            unconnectableHosts.add(host);
+            unconnectableHostsToTimestamp.put(host, System.currentTimeMillis());
             return null;
           }
         } catch (Exception e) {
-          unconnectableHosts.add(host);
+          unconnectableHostsToTimestamp.put(host, System.currentTimeMillis());
           return null;
         }
-      }, executorService);
+      }, hostConnectExecutorService);
 
       futures.add(future);
     }
@@ -117,7 +130,7 @@ public class NettyFileTransferClient {
     // Wait for all futures to complete
     CompletableFuture<Void> allConnections = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
 
-    scheduledExecutorService.schedule(() -> {
+    connectTimeoutScheduler.schedule(() -> {
       if (!allConnections.isDone()) {
         for (CompletableFuture<String> future: futures) {
           if (!future.isDone()) {
@@ -131,18 +144,42 @@ public class NettyFileTransferClient {
     allConnections.join();
 
     // Collect only the successfully connected hosts
+    Set<String> connectableHostsResult = new HashSet<>();
     for (CompletableFuture<String> future: futures) {
       try {
         String host = future.get();
         if (host != null) {
-          connectableHosts.add(host);
+          connectableHostsResult.add(host);
         }
       } catch (Exception e) {
         LOGGER.error("Error getting result from future", e);
       }
     }
 
-    return connectableHosts;
+    return connectableHostsResult;
+  }
+
+  /**
+   * Check the freshness of the connectivity records and purge the stale records
+   */
+  private void purgeStaleConnectivityRecords() {
+    // Purge the unconnectable hosts
+    for (String host: unconnectableHostsToTimestamp.keySet()) {
+      Long lastAttempt = unconnectableHostsToTimestamp.get(host);
+      if (lastAttempt == null || System.currentTimeMillis() - lastAttempt > TimeUnit.SECONDS
+          .toMillis(peersConnectivityFreshnessInSeconds)) {
+        unconnectableHostsToTimestamp.remove(host);
+      }
+    }
+
+    // Purge the connected hosts
+    for (String host: connectedHostsToTimestamp.keySet()) {
+      Long lastConnected = connectedHostsToTimestamp.get(host);
+      if (lastConnected == null || System.currentTimeMillis() - lastConnected > TimeUnit.SECONDS
+          .toMillis(peersConnectivityFreshnessInSeconds)) {
+        connectedHostsToTimestamp.remove(host);
+      }
+    }
   }
 
   public CompletionStage<InputStream> get(
@@ -183,7 +220,7 @@ public class NettyFileTransferClient {
       // Send a GET request
       ch.writeAndFlush(prepareRequest(storeName, version, partition, requestedTableFormat));
       // Set a timeout, otherwise if the host is not responding, the future will never complete
-      scheduledExecutorService.schedule(() -> {
+      connectTimeoutScheduler.schedule(() -> {
         if (!inputStream.toCompletableFuture().isDone()) {
           inputStream.toCompletableFuture()
               .completeExceptionally(
@@ -202,10 +239,10 @@ public class NettyFileTransferClient {
 
   public void close() {
     workerGroup.shutdownGracefully();
-    executorService.shutdown();
-    scheduledExecutorService.shutdown();
-    unconnectableHosts.clear();
-    connectedHosts.clear();
+    hostConnectExecutorService.shutdown();
+    connectTimeoutScheduler.shutdown();
+    unconnectableHostsToTimestamp.clear();
+    connectedHostsToTimestamp.clear();
   }
 
   private FullHttpRequest prepareRequest(

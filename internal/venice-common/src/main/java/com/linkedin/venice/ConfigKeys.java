@@ -1827,6 +1827,10 @@ public class ConfigKeys {
   // this is a config to decide the max allowed offset lag to use kafka, even if the blob transfer is enable.
   public static final String BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD =
       "blob.transfer.disabled.offset.lag.threshold";
+  // This is a freshness in sec to measure the connectivity between the peers,
+  // if the connectivity is not fresh, then retry the connection.
+  public static final String BLOB_TRANSFER_PEERS_CONNECTIVITY_FRESHNESS_IN_SECONDS =
+      "blob.transfer.peers.connectivity.freshness.in.seconds";
 
   // Port used by peer-to-peer transfer service. It should be used by both server and client
   public static final String DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT = "davinci.p2p.blob.transfer.server.port";
