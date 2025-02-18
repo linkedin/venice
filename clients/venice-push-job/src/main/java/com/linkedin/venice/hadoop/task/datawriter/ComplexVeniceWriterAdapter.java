@@ -10,21 +10,31 @@ import com.linkedin.venice.writer.PutMetadata;
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import org.apache.avro.generic.GenericRecord;
 
 
-public class ComplexPartitionerWriterAdapter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
+/**
+ * Adapter class for {@link ComplexVeniceWriter} to support public APIs defined in {@link AbstractVeniceWriter} in the
+ * context of being called in a {@link com.linkedin.venice.writer.CompositeVeniceWriter} from VPJ. This class will
+ * provide capabilities to deserialize the value in order to provide {@link ComplexVeniceWriter} a value provider, and
+ * decompression capabilities in case of a re-push (Kafka input).
+ */
+public class ComplexVeniceWriterAdapter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private final ComplexVeniceWriter<K, V, U> internalVeniceWriter;
-  private final Function<V, GenericRecord> deserializer;
+  private final BiFunction<V, Integer, GenericRecord> deserializeFunction;
+  private final Function<V, V> decompressFunction;
 
-  public ComplexPartitionerWriterAdapter(
+  public ComplexVeniceWriterAdapter(
       String topicName,
       ComplexVeniceWriter<K, V, U> veniceWriter,
-      Function<V, GenericRecord> deserializer) {
+      BiFunction<V, Integer, GenericRecord> deserializeFunction,
+      Function<V, V> decompressFunction) {
     super(topicName);
     this.internalVeniceWriter = veniceWriter;
-    this.deserializer = deserializer;
+    this.deserializeFunction = deserializeFunction;
+    this.decompressFunction = decompressFunction;
   }
 
   @Override
@@ -56,7 +66,9 @@ public class ComplexPartitionerWriterAdapter<K, V, U> extends AbstractVeniceWrit
       PubSubProducerCallback callback,
       PutMetadata putMetadata) {
     CompletableFuture<PubSubProduceResult> wraper = new CompletableFuture<>();
-    internalVeniceWriter.complexPut(key, value, valueSchemaId, Lazy.of(() -> deserializer.apply(value)))
+    Lazy<GenericRecord> valueProvider =
+        Lazy.of(() -> deserializeFunction.apply(decompressFunction.apply(value), valueSchemaId));
+    internalVeniceWriter.complexPut(key, value, valueSchemaId, valueProvider)
         .whenCompleteAsync((ignored, writeException) -> {
           if (writeException == null) {
             wraper.complete(null);
@@ -67,6 +79,10 @@ public class ComplexPartitionerWriterAdapter<K, V, U> extends AbstractVeniceWrit
     return wraper;
   }
 
+  /**
+   * In VPJ, only re-push can trigger this function. During re-push the deletion to view topics are useless and should
+   * be ignored.
+   */
   @Override
   public CompletableFuture<PubSubProduceResult> delete(
       K key,

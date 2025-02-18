@@ -46,7 +46,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.UPDATE_SCHEMA_STRIN
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_ID_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VSON_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_COMPRESSION_LEVEL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_DICTIONARY_CREATION_SUCCESS;
@@ -273,7 +272,6 @@ public class DataWriterMRJob extends DataWriterComputeJob {
       if (pushJobSetting.isAvro) {
         jobConf.set(SCHEMA_STRING_PROP, pushJobSetting.inputDataSchemaString);
         jobConf.set(AvroJob.INPUT_SCHEMA, pushJobSetting.inputDataSchemaString);
-        jobConf.set(VALUE_SCHEMA_STRING_PROP, pushJobSetting.valueSchemaString);
         if (pushJobSetting.generatePartialUpdateRecordFromInput) {
           jobConf.setBoolean(GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT, true);
           jobConf.set(UPDATE_SCHEMA_STRING_PROP, pushJobSetting.valueSchemaString);
@@ -310,6 +308,8 @@ public class DataWriterMRJob extends DataWriterComputeJob {
     }
     if (pushJobSetting.materializedViewConfigFlatMap != null) {
       jobConf.set(PUSH_JOB_VIEW_CONFIGS, pushJobSetting.materializedViewConfigFlatMap);
+      jobConf.set(VALUE_SCHEMA_DIR, pushJobSetting.valueSchemaDir);
+      jobConf.set(RMD_SCHEMA_DIR, pushJobSetting.rmdSchemaDir);
     }
     jobConf.setReduceSpeculativeExecution(vpjProperties.getBoolean(REDUCER_SPECULATIVE_EXECUTION_ENABLE, false));
     int partitionCount = pushJobSetting.partitionCount;

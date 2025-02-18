@@ -727,25 +727,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         partition);
   }
 
-  /**
-   * Execute a "delete" on the key for a predetermined partition.
-   */
   protected CompletableFuture<PubSubProduceResult> delete(
-      byte[] serializedKey,
-      PubSubProducerCallback callback,
-      int partition) {
-    return delete(
-        serializedKey,
-        callback,
-        DEFAULT_LEADER_METADATA_WRAPPER,
-        APP_DEFAULT_LOGICAL_TS,
-        null,
-        null,
-        null,
-        partition);
-  }
-
-  private CompletableFuture<PubSubProduceResult> delete(
       byte[] serializedKey,
       PubSubProducerCallback callback,
       LeaderMetadataWrapper leaderMetadataWrapper,
@@ -995,30 +977,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   /**
-   * Write records with new DIV to a predetermined partition.
-   */
-  protected CompletableFuture<PubSubProduceResult> put(
-      byte[] serializedKey,
-      byte[] serializedValue,
-      int valueSchemaId,
-      int partition) {
-    return put(
-        serializedKey,
-        serializedValue,
-        partition,
-        valueSchemaId,
-        null,
-        DEFAULT_LEADER_METADATA_WRAPPER,
-        APP_DEFAULT_LOGICAL_TS,
-        null,
-        null,
-        null);
-  }
-
-  /**
    * Write a record with new DIV to a predetermined partition.
    */
-  private CompletableFuture<PubSubProduceResult> put(
+  protected CompletableFuture<PubSubProduceResult> put(
       byte[] serializedKey,
       byte[] serializedValue,
       int partition,
@@ -2088,7 +2049,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param key the {@link KafkaKey} for which we want to get the partition.
    * @return the partition number that the provided key belongs to.
    */
-  private int getPartition(byte[] key) {
+  protected int getPartition(byte[] key) {
     return partitioner.getPartitionId(key, numberOfPartitions);
   }
 

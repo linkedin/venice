@@ -1,9 +1,13 @@
-package com.linkedin.venice.writer;
+package com.linkedin.venice.hadoop.task.datawriter;
 
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.writer.AbstractVeniceWriter;
+import com.linkedin.venice.writer.DeleteMetadata;
+import com.linkedin.venice.writer.PutMetadata;
+import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
@@ -76,8 +80,8 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
   }
 
   /**
-   * The main use of the {@link CompositeVeniceWriter} for now is to write batch portion of a store version to VT and
-   * materialized view topic in the NR fabric. Updates should never go through the {@link CompositeVeniceWriter} because
+   * The main use of the {@link com.linkedin.venice.writer.CompositeVeniceWriter} for now is to write batch portion of a store version to VT and
+   * materialized view topic in the NR fabric. Updates should never go through the {@link com.linkedin.venice.writer.CompositeVeniceWriter} because
    * it should be written to RT (hybrid writes or incremental push) and handled by view writers in L/F or A/A SIT.
    */
   @Override

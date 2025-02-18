@@ -71,6 +71,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
+import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
@@ -3202,8 +3203,20 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         Put put = (Put) kafkaValue.payloadUnion;
         // Value provider should use un-compressed data.
         final ByteBuffer rawPutValue = put.putValue;
-        valueProvider =
-            Lazy.of(() -> storeDeserializerCache.getDeserializer(put.schemaId, put.schemaId).deserialize(rawPutValue));
+        final boolean needToDecompress = !partitionConsumptionState.isEndOfPushReceived();
+        valueProvider = Lazy.of(() -> {
+          RecordDeserializer<GenericRecord> recordDeserializer =
+              storeDeserializerCache.getDeserializer(put.schemaId, put.schemaId);
+          if (needToDecompress) {
+            try {
+              return recordDeserializer.deserialize(compressor.get().decompress(rawPutValue));
+            } catch (IOException e) {
+              throw new VeniceException("Unable to provide value due to decompression failure", e);
+            }
+          } else {
+            return recordDeserializer.deserialize(rawPutValue);
+          }
+        });
         put.putValue = maybeCompressData(
             consumerRecord.getTopicPartition().getPartitionNumber(),
             put.putValue,
@@ -3271,21 +3284,20 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
         final byte[] updatedValueBytes;
         final ChunkedValueManifest oldValueManifest = valueManifestContainer.getManifest();
-        GenericRecord updatedValue;
+        WriteComputeResult writeComputeResult;
         try {
           long writeComputeStartTimeInNS = System.nanoTime();
 
           // Leader nodes are the only ones which process UPDATES, so it's valid to always compress and not call
           // 'maybeCompress'.
-          updatedValue = storeWriteComputeHandler.applyWriteCompute(
+          writeComputeResult = storeWriteComputeHandler.applyWriteCompute(
               currValue,
               update.schemaId,
               readerValueSchemaId,
               update.updateValue,
               update.updateSchemaId,
               readerUpdateProtocolVersion);
-          updatedValueBytes = compressor.get()
-              .compress(storeWriteComputeHandler.serializeUpdatedValue(updatedValue, readerValueSchemaId));
+          updatedValueBytes = writeComputeResult.getUpdatedValueBytes();
           hostLevelIngestionStats
               .recordWriteComputeUpdateLatency(LatencyUtils.getElapsedTimeFromNSToMS(writeComputeStartTimeInNS));
         } catch (Exception e) {
@@ -3323,7 +3335,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           updatedPut.putValue = updateValueWithSchemaId;
           updatedPut.schemaId = readerValueSchemaId;
           return new PubSubMessageProcessedResult(
-              new WriteComputeResultWrapper(updatedPut, oldValueManifest, false, Lazy.of(() -> updatedValue)));
+              new WriteComputeResultWrapper(
+                  updatedPut,
+                  oldValueManifest,
+                  false,
+                  Lazy.of(writeComputeResult::getUpdatedValue)));
         }
       case DELETE:
         /**

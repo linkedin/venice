@@ -39,7 +39,7 @@ public class TestViewWriter extends VeniceViewWriter {
       int newValueSchemaId,
       int oldValueSchemaId,
       GenericRecord replicationMetadataRecord,
-      Lazy<GenericRecord> newValueProvider) {
+      Lazy<GenericRecord> valueProvider) {
     internalView.incrementRecordCount(storeName);
     return CompletableFuture.completedFuture(null);
 

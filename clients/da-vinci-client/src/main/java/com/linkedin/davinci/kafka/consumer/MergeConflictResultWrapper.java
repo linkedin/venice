@@ -20,8 +20,16 @@ public class MergeConflictResultWrapper {
   private final Lazy<ByteBuffer> oldValueByteBufferProvider;
   private final RmdWithValueSchemaId oldRmdWithValueSchemaId;
   private final ChunkedValueManifestContainer oldValueManifestContainer;
+
+  // Serialized and potentially compressed updated value bytes
   private final ByteBuffer updatedValueBytes;
   private final ByteBuffer updatedRmdBytes;
+
+  /**
+   * Best-effort deserialized value provider that provides the updated value for PUT/UPDATE and the old value for
+   * DELETE.
+   */
+  private final Lazy<GenericRecord> valueProvider;
 
   public MergeConflictResultWrapper(
       MergeConflictResult mergeConflictResult,
@@ -30,7 +38,8 @@ public class MergeConflictResultWrapper {
       RmdWithValueSchemaId oldRmdWithValueSchemaId,
       ChunkedValueManifestContainer oldValueManifestContainer,
       ByteBuffer updatedValueBytes,
-      ByteBuffer updatedRmdBytes) {
+      ByteBuffer updatedRmdBytes,
+      Function<Integer, RecordDeserializer<GenericRecord>> deserializerProvider) {
     this.mergeConflictResult = mergeConflictResult;
     this.oldValueProvider = oldValueProvider;
     this.oldValueByteBufferProvider = oldValueByteBufferProvider;
@@ -38,6 +47,26 @@ public class MergeConflictResultWrapper {
     this.oldValueManifestContainer = oldValueManifestContainer;
     this.updatedValueBytes = updatedValueBytes;
     this.updatedRmdBytes = updatedRmdBytes;
+    if (updatedValueBytes == null) {
+      // this is a DELETE
+      ByteBufferValueRecord<ByteBuffer> oldValue = oldValueProvider.get();
+      if (oldValue == null || oldValue.value() == null) {
+        this.valueProvider = Lazy.of(() -> null);
+      } else {
+        this.valueProvider =
+            Lazy.of(() -> deserializerProvider.apply(oldValue.writerSchemaId()).deserialize(oldValue.value()));
+      }
+    } else {
+      // this is a PUT or UPDATE
+      if (mergeConflictResult.getDeserializedValue().isPresent()) {
+        this.valueProvider = Lazy.of(() -> mergeConflictResult.getDeserializedValue().get());
+      } else {
+        // Use mergeConflictResult.getNewValue() here since updatedValueBytes could be compressed.
+        this.valueProvider = Lazy.of(
+            () -> deserializerProvider.apply(mergeConflictResult.getValueSchemaId())
+                .deserialize(mergeConflictResult.getNewValue()));
+      }
+    }
   }
 
   public MergeConflictResult getMergeConflictResult() {
@@ -74,24 +103,7 @@ public class MergeConflictResultWrapper {
    *   2. returns the old value for DELETE (null for non-existent key).
    *   3. returns null if the value is not available.
    */
-  public Lazy<GenericRecord> getNewValueProvider(
-      Function<Integer, RecordDeserializer<GenericRecord>> deserializerProvider) {
-    if (updatedValueBytes == null) {
-      // this is a DELETE
-      ByteBufferValueRecord<ByteBuffer> oldValue = oldValueProvider.get();
-      if (oldValue == null || oldValue.value() == null) {
-        return Lazy.of(() -> null);
-      }
-      return Lazy.of(() -> deserializerProvider.apply(oldValue.writerSchemaId()).deserialize(oldValue.value()));
-    } else {
-      // this is a PUT or UPDATE
-      if (mergeConflictResult.getValueDeserialized().isPresent()) {
-        return Lazy.of(() -> mergeConflictResult.getValueDeserialized().get());
-      }
-      // Use mergeConflictResult.getNewValue() here and not updatedValueBytes for non-compressed value bytes.
-      return Lazy.of(
-          () -> deserializerProvider.apply(mergeConflictResult.getValueSchemaId())
-              .deserialize(mergeConflictResult.getNewValue()));
-    }
+  public Lazy<GenericRecord> getNewValueProvider() {
+    return valueProvider;
   }
 }

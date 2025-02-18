@@ -65,8 +65,8 @@ public class MaterializedViewWriter extends VeniceViewWriter {
       int newValueSchemaId,
       int oldValueSchemaId,
       GenericRecord replicationMetadataRecord,
-      Lazy<GenericRecord> newValueProvider) {
-    return processRecord(newValue, key, newValueSchemaId, false, newValueProvider);
+      Lazy<GenericRecord> valueProvider) {
+    return processRecord(newValue, key, newValueSchemaId, false, valueProvider);
   }
 
   /**

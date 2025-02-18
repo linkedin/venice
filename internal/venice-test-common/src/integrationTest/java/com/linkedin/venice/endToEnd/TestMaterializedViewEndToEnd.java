@@ -24,6 +24,7 @@ import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -298,7 +299,8 @@ public class TestMaterializedViewEndToEnd {
 
   /**
    * Verification of the produced records is difficult because we don't really support complex partitioner in the
-   * read path. Once CC with views is supported we should use CC to verify.
+   * read path. Once CC with views is supported we should use CC to verify. Perform re-push to ensure we can deserialize
+   * value properly during re-push.
    */
   @Test(timeOut = TEST_TIMEOUT)
   public void testMaterializedViewWithComplexPartitioner() throws IOException {
@@ -313,6 +315,7 @@ public class TestMaterializedViewEndToEnd {
     // Use an A/A W/C enabled store to verify correct partitioning after partial update is applied.
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(false)
         .setChunkingEnabled(true)
+        .setCompressionStrategy(CompressionStrategy.GZIP)
         .setRmdChunkingEnabled(true)
         .setNativeReplicationEnabled(true)
         .setNativeReplicationSourceFabric(childDatacenters.get(0).getRegionName())
@@ -379,6 +382,12 @@ public class TestMaterializedViewEndToEnd {
         }
       });
     }
+    // A re-push should succeed
+    Properties rePushProps =
+        TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+    rePushProps.setProperty(SOURCE_KAFKA, "true");
+    rePushProps.setProperty(KAFKA_INPUT_BROKER_URL, childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
+    TestWriteUtils.runPushJob("Run push job", rePushProps);
   }
 
   private double getMetric(MetricsRepository metricsRepository, String metricName, String storeName) {
