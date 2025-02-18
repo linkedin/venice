@@ -91,9 +91,9 @@ public class StoreWriteComputeProcessor {
    * @param writerUpdateProtocolVersion Update protocol version used to serialize Update payload bytes.
    * @param readerUpdateProtocolVersion Update protocol version used to deserialize Update payload bytes.
    *
-   * @return Bytes of partially updated original value.
+   * @return {@link WriteComputeResult} of partially updated original value.
    */
-  public GenericRecord applyWriteCompute(
+  public WriteComputeResult applyWriteCompute(
       GenericRecord currValue,
       int writerValueSchemaId,
       int readerValueSchemaId,
@@ -110,11 +110,10 @@ public class StoreWriteComputeProcessor {
         writeComputeProcessor.updateRecord(readerSchemaContainer.getValueSchema(), currValue, writeComputeRecord);
 
     // If write compute is enabled and the record is deleted, the updatedValue will be null.
-    return updatedValue;
-  }
-
-  public byte[] serializeUpdatedValue(GenericRecord updatedValue, int readerValueSchemaId) {
-    return getValueSerializer(readerValueSchemaId).serialize(updatedValue);
+    if (updatedValue == null) {
+      return new WriteComputeResult(null, null);
+    }
+    return new WriteComputeResult(getValueSerializer(readerValueSchemaId).serialize(updatedValue), updatedValue);
   }
 
   private SchemaAndUniqueId getSchemaAndUniqueId(int valueSchemaId, int writeComputeSchemaId) {

@@ -51,7 +51,12 @@ public class ComplexVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
       // Write updated/put record to materialized view topic partition(s)
       if (complexPartitioner == null) {
         // No VeniceComplexPartitioner involved, perform simple put.
-        propagateVeniceWriterFuture(this.put(key, value, valueSchemaId), finalCompletableFuture);
+        byte[] serializedKey = keySerializer.serialize(topicName, key);
+        byte[] serializedValue = valueSerializer.serialize(topicName, value);
+        int partition = getPartition(serializedKey);
+        propagateVeniceWriterFuture(
+            put(serializedKey, serializedValue, valueSchemaId, partition),
+            finalCompletableFuture);
       } else {
         byte[] serializedKey = keySerializer.serialize(topicName, key);
         int[] partitions = complexPartitioner.getPartitionId(serializedKey, valueProvider.get(), numberOfPartitions);
@@ -79,7 +84,9 @@ public class ComplexVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
     CompletableFuture<Void> finalCompletableFuture = new CompletableFuture<>();
     if (complexPartitioner == null) {
       // No VeniceComplexPartitioner involved, perform simple delete.
-      propagateVeniceWriterFuture(this.delete(key, null), finalCompletableFuture);
+      byte[] serializedKey = keySerializer.serialize(topicName, key);
+      int partition = getPartition(serializedKey);
+      propagateVeniceWriterFuture(delete(serializedKey, null, partition), finalCompletableFuture);
     } else {
       GenericRecord value = valueProvider.get();
       if (value == null) {
@@ -124,6 +131,71 @@ public class ComplexVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
       logger.warn("Skipped writing {} large record(s) to topic: {}", skippedLargeRecords.getAndSet(0), topicName);
     }
     return CompletableFuture.completedFuture(null);
+  }
+
+  @Override
+  public CompletableFuture<PubSubProduceResult> put(
+      K key,
+      V value,
+      int valueSchemaId,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      long logicalTs,
+      PutMetadata putMetadata,
+      ChunkedValueManifest oldValueManifest,
+      ChunkedValueManifest oldRmdManifest) {
+    throw new UnsupportedOperationException("ComplexVeniceWriter should use complexPut instead of put");
+  }
+
+  @Override
+  public CompletableFuture<PubSubProduceResult> delete(
+      K key,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      long logicalTs,
+      DeleteMetadata deleteMetadata,
+      ChunkedValueManifest oldValueManifest,
+      ChunkedValueManifest oldRmdManifest) {
+    throw new UnsupportedOperationException("ComplexVeniceWriter should use complexDelete instead of delete");
+  }
+
+  /**
+   * Execute a "delete" on the key for a predetermined partition.
+   */
+  private CompletableFuture<PubSubProduceResult> delete(
+      byte[] serializedKey,
+      PubSubProducerCallback callback,
+      int partition) {
+    return delete(
+        serializedKey,
+        callback,
+        DEFAULT_LEADER_METADATA_WRAPPER,
+        APP_DEFAULT_LOGICAL_TS,
+        null,
+        null,
+        null,
+        partition);
+  }
+
+  /**
+   * Write records with new DIV to a predetermined partition.
+   */
+  private CompletableFuture<PubSubProduceResult> put(
+      byte[] serializedKey,
+      byte[] serializedValue,
+      int valueSchemaId,
+      int partition) {
+    return put(
+        serializedKey,
+        serializedValue,
+        partition,
+        valueSchemaId,
+        null,
+        DEFAULT_LEADER_METADATA_WRAPPER,
+        APP_DEFAULT_LOGICAL_TS,
+        null,
+        null,
+        null);
   }
 
   /**

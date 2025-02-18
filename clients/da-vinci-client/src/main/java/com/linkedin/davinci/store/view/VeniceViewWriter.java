@@ -65,7 +65,8 @@ public abstract class VeniceViewWriter extends VeniceView {
    * @param newValueSchemaId the schemaId of the incoming record
    * @param oldValueSchemaId the schemaId of the old record
    * @param replicationMetadataRecord the associated RMD for the incoming record.
-   * @param newValueProvider to provide the deserialized new value
+   * @param valueProvider to provide the corresponding deserialized newValue for PUT and UPDATE or the old value for the
+   *                      given key for DELETE.
    */
   public abstract CompletableFuture<Void> processRecord(
       ByteBuffer newValue,
@@ -74,7 +75,7 @@ public abstract class VeniceViewWriter extends VeniceView {
       int newValueSchemaId,
       int oldValueSchemaId,
       GenericRecord replicationMetadataRecord,
-      Lazy<GenericRecord> newValueProvider);
+      Lazy<GenericRecord> valueProvider);
 
   /**
    * To be called as a given ingestion task consumes each record. This is called prior to writing to a

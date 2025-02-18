@@ -549,7 +549,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               rmdWithValueSchemaID,
               valueManifestContainer,
               null,
-              null));
+              null,
+              (schemaId) -> storeDeserializerCache.getDeserializer(schemaId, schemaId)));
     } else {
       validatePostOperationResultsAndRecord(mergeConflictResult, offsetSumPreOperation, recordTimestampsPreOperation);
 
@@ -589,7 +590,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               rmdWithValueSchemaID,
               valueManifestContainer,
               updatedValueBytes,
-              updatedRmdBytes));
+              updatedRmdBytes,
+              (schemaId) -> storeDeserializerCache.getDeserializer(schemaId, schemaId)));
     }
   }
 
@@ -669,8 +671,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         ByteBuffer oldValueBB = mergeConflictResultWrapper.getOldValueByteBufferProvider().get();
         int oldValueSchemaId =
             oldValueBB == null ? -1 : mergeConflictResultWrapper.getOldValueProvider().get().writerSchemaId();
-        Lazy<GenericRecord> newValueProvider = mergeConflictResultWrapper
-            .getNewValueProvider((schemaId) -> storeDeserializerCache.getDeserializer(schemaId, schemaId));
+        Lazy<GenericRecord> newValueProvider = mergeConflictResultWrapper.getNewValueProvider();
         queueUpVersionTopicWritesWithViewWriters(
             partitionConsumptionState,
             (viewWriter) -> viewWriter.processRecord(

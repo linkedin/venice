@@ -769,21 +769,6 @@ public class VenicePushJob implements AutoCloseable {
           pushJobSetting.rewindTimeInSecondsOverride = DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
           LOGGER.info("Overriding re-push rewind time in seconds to: {}", pushJobSetting.rewindTimeInSecondsOverride);
         }
-        if (pushJobSetting.repushTTLEnabled) {
-          // Build the full path for HDFSRmdSchemaSource:
-          // RMD schemas: <job_temp_dir>/rmd_schemas
-          // Value schemas: <job_temp_dir>/value_schemas
-          Path rmdSchemaDir = new Path(jobTmpDir, "rmd_schemas");
-          HadoopUtils.createDirectoryWithPermission(rmdSchemaDir, PERMISSION_700);
-          Path valueSchemaDir = new Path(jobTmpDir, "value_schemas");
-          HadoopUtils.createDirectoryWithPermission(valueSchemaDir, PERMISSION_700);
-          try (HDFSSchemaSource schemaSource =
-              new HDFSSchemaSource(valueSchemaDir, rmdSchemaDir, pushJobSetting.storeName)) {
-            schemaSource.saveSchemasOnDisk(controllerClient);
-            pushJobSetting.rmdSchemaDir = schemaSource.getRmdSchemaPath();
-            pushJobSetting.valueSchemaDir = schemaSource.getValueSchemaPath();
-          }
-        }
       }
       // Create new store version, topic and fetch Kafka url from backend
       createNewStoreVersion(
@@ -825,6 +810,9 @@ public class VenicePushJob implements AutoCloseable {
       } else {
         // Populate any view configs to job properties
         configureJobPropertiesWithMaterializedViewConfigs();
+        if (pushJobSetting.repushTTLEnabled || pushJobSetting.materializedViewConfigFlatMap != null) {
+          buildHDFSSchemaDir();
+        }
         if (pushJobSetting.sendControlMessagesDirectly) {
           getVeniceWriter(pushJobSetting).broadcastStartOfPush(
               SORTED,
@@ -927,6 +915,21 @@ public class VenicePushJob implements AutoCloseable {
       if (pushJobSetting.rmdSchemaDir != null) {
         HadoopUtils.cleanUpHDFSPath(pushJobSetting.rmdSchemaDir, true);
       }
+    }
+  }
+
+  private void buildHDFSSchemaDir() throws IOException {
+    // Build the full path for HDFSRmdSchemaSource:
+    // RMD schemas: <job_temp_dir>/rmd_schemas
+    // Value schemas: <job_temp_dir>/value_schemas
+    Path rmdSchemaDir = new Path(jobTmpDir, "rmd_schemas");
+    HadoopUtils.createDirectoryWithPermission(rmdSchemaDir, PERMISSION_700);
+    Path valueSchemaDir = new Path(jobTmpDir, "value_schemas");
+    HadoopUtils.createDirectoryWithPermission(valueSchemaDir, PERMISSION_700);
+    try (HDFSSchemaSource schemaSource = new HDFSSchemaSource(valueSchemaDir, rmdSchemaDir, pushJobSetting.storeName)) {
+      schemaSource.saveSchemasOnDisk(controllerClient);
+      pushJobSetting.rmdSchemaDir = schemaSource.getRmdSchemaPath();
+      pushJobSetting.valueSchemaDir = schemaSource.getValueSchemaPath();
     }
   }
 
