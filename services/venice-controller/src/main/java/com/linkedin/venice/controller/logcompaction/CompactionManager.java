@@ -65,8 +65,13 @@ public class CompactionManager {
     return compactionReadyStores;
   }
 
-  // This function abstracts the criteria for a store to be ready for compaction
-  // TODO make private
+  /**
+   * This function abstracts the criteria for a store to be ready for compaction
+   *
+   * public for testing in {@link com.linkedin.venice.endToEnd.TestHybrid#testHybridStoreLogCompaction}
+   * todo: move TestHybrid::testHybridStoreLogCompaction to TestCompactionManager, then make this class package private
+   */
+  //
   public boolean isCompactionReady(StoreInfo storeInfo) {
     boolean isHybridStore = storeInfo.getHybridStoreConfig() != null;
 
