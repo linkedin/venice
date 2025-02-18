@@ -3279,7 +3279,8 @@ public class AdminTool {
         getRequiredArgument(cmd, Arg.ADMIN_OPERATION_PROTOCOL_VERSION, Command.UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION);
     long protocolVersion =
         Utils.parseLongFromString(protocolVersionInString, Arg.ADMIN_OPERATION_PROTOCOL_VERSION.name());
-    ControllerResponse response = controllerClient.updateAdminOperationProtocolVersion(clusterName, protocolVersion);
+    AdminTopicMetadataResponse response =
+        controllerClient.updateAdminOperationProtocolVersion(clusterName, protocolVersion);
     printObject(response);
   }
 

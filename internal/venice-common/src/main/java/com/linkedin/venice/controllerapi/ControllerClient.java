@@ -1351,7 +1351,7 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.GET_ADMIN_TOPIC_METADATA, params, AdminTopicMetadataResponse.class);
   }
 
-  public ControllerResponse updateAdminTopicMetadata(
+  public AdminTopicMetadataResponse updateAdminTopicMetadata(
       long executionId,
       Optional<String> storeName,
       Optional<Long> offset,
@@ -1360,15 +1360,15 @@ public class ControllerClient implements Closeable {
         .add(NAME, storeName)
         .add(OFFSET, offset)
         .add(UPSTREAM_OFFSET, upstreamOffset);
-    return request(ControllerRoute.UPDATE_ADMIN_TOPIC_METADATA, params, ControllerResponse.class);
+    return request(ControllerRoute.UPDATE_ADMIN_TOPIC_METADATA, params, AdminTopicMetadataResponse.class);
   }
 
-  public ControllerResponse updateAdminOperationProtocolVersion(
+  public AdminTopicMetadataResponse updateAdminOperationProtocolVersion(
       String clusterName,
       Long adminOperationProtocolVersion) {
     QueryParams params =
         newParams().add(CLUSTER, clusterName).add(ADMIN_OPERATION_PROTOCOL_VERSION, adminOperationProtocolVersion);
-    return request(ControllerRoute.UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION, params, ControllerResponse.class);
+    return request(ControllerRoute.UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION, params, AdminTopicMetadataResponse.class);
   }
 
   public ControllerResponse deleteKafkaTopic(String topicName) {

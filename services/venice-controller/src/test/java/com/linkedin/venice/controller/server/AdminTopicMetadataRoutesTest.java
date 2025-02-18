@@ -21,10 +21,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
-import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.protocols.controller.AdminTopicGrpcMetadata;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcResponse;
+import com.linkedin.venice.protocols.controller.UpdateAdminOperationProtocolVersionGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.security.cert.X509Certificate;
@@ -158,8 +158,8 @@ public class AdminTopicMetadataRoutesTest {
 
     Route route =
         new AdminTopicMetadataRoutes(false, Optional.empty()).updateAdminTopicMetadata(mockAdmin, requestHandler);
-    ControllerResponse responseObject =
-        OBJECT_MAPPER.readValue(route.handle(request, response).toString(), ControllerResponse.class);
+    AdminTopicMetadataResponse responseObject =
+        OBJECT_MAPPER.readValue(route.handle(request, response).toString(), AdminTopicMetadataResponse.class);
 
     verify(requestHandler, times(1)).updateAdminTopicMetadata(any(UpdateAdminTopicMetadataGrpcRequest.class));
     assertEquals(responseObject.getCluster(), TEST_CLUSTER);
@@ -189,8 +189,8 @@ public class AdminTopicMetadataRoutesTest {
     when(request.queryParams(STORE_NAME)).thenReturn(TEST_STORE);
     Route route = new AdminTopicMetadataRoutes(false, Optional.of(accessController))
         .updateAdminTopicMetadata(mockAdmin, requestHandler);
-    ControllerResponse responseObject =
-        OBJECT_MAPPER.readValue(route.handle(request, response).toString(), ControllerResponse.class);
+    AdminTopicMetadataResponse responseObject =
+        OBJECT_MAPPER.readValue(route.handle(request, response).toString(), AdminTopicMetadataResponse.class);
 
     verify(requestHandler, never()).updateAdminTopicMetadata(any(UpdateAdminTopicMetadataGrpcRequest.class));
     assertNotNull(responseObject.getError());
@@ -212,8 +212,8 @@ public class AdminTopicMetadataRoutesTest {
 
     Route route =
         new AdminTopicMetadataRoutes(false, Optional.empty()).updateAdminTopicMetadata(mockAdmin, requestHandler);
-    ControllerResponse responseObject =
-        OBJECT_MAPPER.readValue(route.handle(request, response).toString(), ControllerResponse.class);
+    AdminTopicMetadataResponse responseObject =
+        OBJECT_MAPPER.readValue(route.handle(request, response).toString(), AdminTopicMetadataResponse.class);
 
     verify(requestHandler, times(1)).updateAdminTopicMetadata(any(UpdateAdminTopicMetadataGrpcRequest.class));
     assertNotNull(responseObject.getError());
@@ -223,20 +223,33 @@ public class AdminTopicMetadataRoutesTest {
   @Test
   public void testUpdateAdminOperationProtocolVersion() throws Exception {
     QueryParamsMap paramsMap = mock(QueryParamsMap.class);
-    String adminOperationProtocolVersion = "1";
+    long adminOperationProtocolVersion = 1L;
     doReturn(new HashMap<>()).when(paramsMap).toMap();
     doReturn(paramsMap).when(request).queryMap();
 
     when(request.queryParams(CLUSTER)).thenReturn(TEST_CLUSTER);
-    when(request.queryParams(ADMIN_OPERATION_PROTOCOL_VERSION)).thenReturn(adminOperationProtocolVersion);
+    when(request.queryParams(ADMIN_OPERATION_PROTOCOL_VERSION))
+        .thenReturn(String.valueOf(adminOperationProtocolVersion));
 
-    Route route = new AdminTopicMetadataRoutes(false, Optional.empty()).updateAdminOperationProtocolVersion(mockAdmin);
+    AdminTopicGrpcMetadata.Builder adminTopicGrpcMetadataBuilder = AdminTopicGrpcMetadata.newBuilder()
+        .setClusterName(TEST_CLUSTER)
+        .setAdminOperationProtocolVersion(adminOperationProtocolVersion);
+    AdminTopicMetadataGrpcResponse grpcResponse =
+        AdminTopicMetadataGrpcResponse.newBuilder().setMetadata(adminTopicGrpcMetadataBuilder.build()).build();
+
+    when(requestHandler.updateAdminOperationProtocolVersion(any(UpdateAdminOperationProtocolVersionGrpcRequest.class)))
+        .thenReturn(grpcResponse);
+
+    Route route = new AdminTopicMetadataRoutes(false, Optional.empty())
+        .updateAdminOperationProtocolVersion(mockAdmin, requestHandler);
 
     AdminTopicMetadataResponse responseObject =
         OBJECT_MAPPER.readValue(route.handle(request, response).toString(), AdminTopicMetadataResponse.class);
 
+    verify(requestHandler, times(1))
+        .updateAdminOperationProtocolVersion(any(UpdateAdminOperationProtocolVersionGrpcRequest.class));
     assertEquals(responseObject.getCluster(), TEST_CLUSTER);
-    assertEquals(responseObject.getAdminOperationProtocolVersion(), 1L);
+    assertEquals(responseObject.getAdminOperationProtocolVersion(), adminOperationProtocolVersion);
     assertNull(responseObject.getError());
   }
 
@@ -262,11 +275,12 @@ public class AdminTopicMetadataRoutesTest {
     when(request.queryParams(ADMIN_OPERATION_PROTOCOL_VERSION)).thenReturn(adminOperationProtocolVersion);
 
     Route route = new AdminTopicMetadataRoutes(false, Optional.of(accessController))
-        .updateAdminOperationProtocolVersion(mockAdmin);
+        .updateAdminOperationProtocolVersion(mockAdmin, requestHandler);
 
     AdminTopicMetadataResponse responseObject =
         OBJECT_MAPPER.readValue(route.handle(request, response).toString(), AdminTopicMetadataResponse.class);
 
+    verify(requestHandler, never()).updateAdminOperationProtocolVersion(any());
     assertNotNull(responseObject.getError());
     assertTrue(responseObject.getError().contains("Only admin users are allowed"));
   }
@@ -279,11 +293,12 @@ public class AdminTopicMetadataRoutesTest {
 
     when(request.queryParams(CLUSTER)).thenReturn(null); // Missing cluster parameter
 
-    Route route = new AdminTopicMetadataRoutes(false, Optional.empty()).updateAdminOperationProtocolVersion(mockAdmin);
+    Route route = new AdminTopicMetadataRoutes(false, Optional.empty())
+        .updateAdminOperationProtocolVersion(mockAdmin, requestHandler);
     AdminTopicMetadataResponse responseObject =
         OBJECT_MAPPER.readValue(route.handle(request, response).toString(), AdminTopicMetadataResponse.class);
 
-    verify(requestHandler, never()).getAdminTopicMetadata(any());
+    verify(requestHandler, never()).updateAdminOperationProtocolVersion(any());
     assertNotNull(responseObject.getError());
     assertTrue(responseObject.getError().contains("cluster_name is a required parameter"));
   }

@@ -15,6 +15,7 @@ import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcResponse;
 import com.linkedin.venice.protocols.controller.ClusterAdminOpsGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcRequest;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcResponse;
+import com.linkedin.venice.protocols.controller.UpdateAdminOperationProtocolVersionGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcRequest;
 import io.grpc.Context;
 import io.grpc.stub.StreamObserver;
@@ -87,5 +88,18 @@ public class ClusterAdminOpsGrpcServiceImpl extends ClusterAdminOpsGrpcServiceIm
       }
       return requestHandler.updateAdminTopicMetadata(request);
     }, responseObserver, metadata.getClusterName(), metadata.hasStoreName() ? metadata.getStoreName() : null);
+  }
+
+  @Override
+  public void updateAdminOperationProtocolVersion(
+      UpdateAdminOperationProtocolVersionGrpcRequest request,
+      StreamObserver<AdminTopicMetadataGrpcResponse> responseObserver) {
+    LOGGER.debug("Received updateAdminOperationProtocolVersion request: {}", request);
+    ControllerGrpcServerUtils.handleRequest(
+        ClusterAdminOpsGrpcServiceGrpc.getUpdateAdminOperationProtocolVersionMethod(),
+        () -> requestHandler.updateAdminOperationProtocolVersion(request),
+        responseObserver,
+        request.getClusterName(),
+        null);
   }
 }

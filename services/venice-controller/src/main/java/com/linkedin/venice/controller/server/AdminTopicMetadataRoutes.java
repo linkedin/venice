@@ -20,6 +20,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.protocols.controller.AdminTopicGrpcMetadata;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcResponse;
+import com.linkedin.venice.protocols.controller.UpdateAdminOperationProtocolVersionGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcRequest;
 import java.util.Optional;
 import org.apache.http.HttpStatus;
@@ -105,7 +106,7 @@ public class AdminTopicMetadataRoutes extends AbstractRoute {
     };
   }
 
-  public Route updateAdminOperationProtocolVersion(Admin admin) {
+  public Route updateAdminOperationProtocolVersion(Admin admin, ClusterAdminOpsRequestHandler requestHandler) {
     return (request, response) -> {
       AdminTopicMetadataResponse responseObject = new AdminTopicMetadataResponse();
       response.type(HttpConstants.JSON);
@@ -120,11 +121,15 @@ public class AdminTopicMetadataRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         Long adminOperationProtocolVersion = Long.parseLong(request.queryParams(ADMIN_OPERATION_PROTOCOL_VERSION));
+        AdminTopicMetadataGrpcResponse internalResponse = requestHandler.updateAdminOperationProtocolVersion(
+            UpdateAdminOperationProtocolVersionGrpcRequest.newBuilder()
+                .setClusterName(clusterName)
+                .setAdminOperationProtocolVersion(adminOperationProtocolVersion)
+                .build());
 
-        responseObject.setCluster(clusterName);
-        responseObject.setAdminOperationProtocolVersion(adminOperationProtocolVersion);
-
-        admin.updateAdminOperationProtocolVersion(clusterName, adminOperationProtocolVersion);
+        responseObject.setCluster(internalResponse.getMetadata().getClusterName());
+        responseObject
+            .setAdminOperationProtocolVersion(internalResponse.getMetadata().getAdminOperationProtocolVersion());
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(new VeniceException(e), request, response);
