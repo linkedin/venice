@@ -868,15 +868,33 @@ public class AdminTool {
     String task = getRequiredArgument(cmd, Arg.TASK_NAME, Command.CLUSTER_BATCH_TASK);
     String checkpointFile = getRequiredArgument(cmd, Arg.CHECKPOINT_FILE, Command.CLUSTER_BATCH_TASK);
     int parallelism = Integer.parseInt(getOptionalArgument(cmd, Arg.THREAD_COUNT, "1"));
+    String storeFilterFile = getOptionalArgument(cmd, Arg.STORE_FILTER_FILE, "");
+    Set<String> storeList = new HashSet<>();
     LOGGER.info(
-        "[**** Cluster Command Params ****] Cluster: {}, Task: {}, Checkpoint: {}, Parallelism: {}",
+        "[**** Cluster Command Params ****] Cluster: {}, Task: {}, Checkpoint: {}, Parallelism: {}, Store filter: {}",
         clusterName,
         task,
         checkpointFile,
-        parallelism);
+        parallelism,
+        storeFilterFile);
     // Create child data center controller client map.
     ChildAwareResponse childAwareResponse = controllerClient.listChildControllers(clusterName);
     Map<String, ControllerClient> controllerClientMap = getControllerClientMap(clusterName, childAwareResponse);
+
+    // Load store filter file.
+    if (!storeFilterFile.isEmpty()) {
+      try {
+        Path storeFilterFilePath = Paths.get(storeFilterFile);
+        if (!Files.exists(storeFilterFilePath.toAbsolutePath())) {
+          throw new VeniceException("Invalid store filter file path");
+        } else {
+          List<String> fileLines = Files.readAllLines(storeFilterFilePath);
+          storeList.addAll(fileLines);
+        }
+      } catch (IOException e) {
+        throw new VeniceException(e);
+      }
+    }
 
     // Fetch list cluster store list from parent region.
     Map<String, Boolean> progressMap = new VeniceConcurrentHashMap<>();
@@ -885,7 +903,15 @@ public class AdminTool {
       throw new VeniceException("Unable to fetch cluster store list: " + clusterStoreResponse.getError());
     }
     for (String storeName: clusterStoreResponse.getStores()) {
-      progressMap.put(storeName, Boolean.FALSE);
+      if (storeFilterFile.isEmpty()) {
+        progressMap.put(storeName, Boolean.FALSE);
+      } else {
+        // For now the default behavior is to only perform cluster operation on the intersection of the store filter
+        // file and stores in the cluster.
+        if (storeList.contains(storeName)) {
+          progressMap.put(storeName, Boolean.FALSE);
+        }
+      }
     }
 
     // Load progress from checkpoint file. If file does not exist, it will create new one during checkpointing.
@@ -899,6 +925,10 @@ public class AdminTool {
         List<String> fileLines = Files.readAllLines(checkpointFilePath);
         for (String line: fileLines) {
           String storeName = line.split(",")[0];
+          if (!progressMap.containsKey(storeName)) {
+            // The store is either filtered out or does not belong to this cluster.
+            continue;
+          }
           // For now, it is boolean to start with, we can add more states to support retry.
           boolean status = false;
           if (line.split(",").length > 1) {

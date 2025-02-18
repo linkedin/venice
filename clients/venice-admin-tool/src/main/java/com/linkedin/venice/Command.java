@@ -123,6 +123,7 @@ import static com.linkedin.venice.Arg.STORAGE_PERSONA;
 import static com.linkedin.venice.Arg.STORAGE_QUOTA;
 import static com.linkedin.venice.Arg.STORE;
 import static com.linkedin.venice.Arg.STORES;
+import static com.linkedin.venice.Arg.STORE_FILTER_FILE;
 import static com.linkedin.venice.Arg.STORE_SIZE;
 import static com.linkedin.venice.Arg.STORE_TYPE;
 import static com.linkedin.venice.Arg.STORE_VIEW_CONFIGS;
@@ -215,7 +216,7 @@ public enum Command {
   ),
   CLUSTER_BATCH_TASK(
       "cluster-batch-task", "Run specific task against all user stores in a cluster in parallel",
-      new Arg[] { URL, CLUSTER, TASK_NAME, CHECKPOINT_FILE }, new Arg[] { THREAD_COUNT }
+      new Arg[] { URL, CLUSTER, TASK_NAME, CHECKPOINT_FILE }, new Arg[] { THREAD_COUNT, STORE_FILTER_FILE }
   ),
   SET_VERSION(
       "set-version", "Set the version that will be served", new Arg[] { URL, STORE, VERSION }, new Arg[] { CLUSTER }
