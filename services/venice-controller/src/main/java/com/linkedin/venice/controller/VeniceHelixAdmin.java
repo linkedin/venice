@@ -59,6 +59,11 @@ import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
+import com.linkedin.venice.controller.logcompaction.CompactionManager;
+import com.linkedin.venice.controller.logcompaction.LogCompactionService;
+import com.linkedin.venice.controller.repush.RepushJobRequest;
+import com.linkedin.venice.controller.repush.RepushJobResponse;
+import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -210,6 +215,7 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
+import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SslUtils;
@@ -431,6 +437,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private int defaultMaxRecordSizeBytes;
 
   private DataRecoveryManager dataRecoveryManager;
+  private CompactionManager compactionManager;
   private ParticipantStoreClientsManager participantStoreClientsManager;
   protected final PubSubTopicRepository pubSubTopicRepository;
 
@@ -604,6 +611,23 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         pubSubTopicRepository);
     dataRecoveryManager =
         new DataRecoveryManager(this, icProvider, pubSubTopicRepository, participantStoreClientsManager);
+
+    if (multiClusterConfigs.isLogCompactionEnabled()) {
+      // TODO LC: extends interchangeable with implements?
+      Class<? extends RepushOrchestrator> repushOrchestratorClass =
+          ReflectUtils.loadClass(multiClusterConfigs.getRepushOrchestratorClassName());
+      try {
+        RepushOrchestrator repushOrchestrator = ReflectUtils.callConstructor(
+            repushOrchestratorClass,
+            new Class[] { VeniceProperties.class },
+            new Object[] { multiClusterConfigs.getRepushOrchestratorConfigs() });
+        compactionManager =
+            new CompactionManager(repushOrchestrator, multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS());
+      } catch (Exception e) {
+        LOGGER.error("Failed to enable " + LogCompactionService.class.getSimpleName(), e);
+        throw new VeniceException(e);
+      }
+    }
 
     List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
     initRoutines.add(
@@ -8007,6 +8031,47 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public Map<String, StoreDataAudit> getClusterStaleStores(String clusterName) {
     throw new UnsupportedOperationException("This function has not been implemented.");
+  }
+
+  /**
+   * - intermediary between {@link com.linkedin.venice.controller.logcompaction.LogCompactionService} and {@link CompactionManager}
+   * - injects the child controller's {@link ControllerClient} into the function {@link CompactionManager#getStoresForCompaction(String, Map)}
+   * - serves as API endpoint to query stores ready for log compaction
+   * @param clusterName
+   * @return a list of <code>StoreInfo</code> of stores in clusterName that are ready for log compaction.
+   */
+  @Override
+  public List<StoreInfo> getStoresForCompaction(String clusterName) {
+    try {
+      Map<String, ControllerClient> childControllers = getControllerClientMap(clusterName);
+      return compactionManager.getStoresForCompaction(clusterName, childControllers);
+    } catch (Exception e) {
+      throw new VeniceException("Something went wrong trying to fetch stores for compaction.", e);
+    }
+  }
+
+  /**
+   * triggers repush for storeName for log compaction of store topic
+   * <p>
+   * - intermediary between {@link com.linkedin.venice.controller.logcompaction.LogCompactionService} and
+   * {@link CompactionManager} - serves as API endpoint to trigger scheduled & adhoc log compaction
+   *
+   * @param repushJobRequest@return
+   */
+  @Override
+  public RepushJobResponse compactStore(RepushJobRequest repushJobRequest) throws Exception {
+    try {
+      return compactionManager.compactStore(repushJobRequest);
+    } catch (Exception e) {
+      LOGGER.error("Error while compacting store: {}", repushJobRequest.getStoreName(), e);
+      throw e; // this method is the first common point for scheduled & adhoc log compaction, each has different error
+    }
+  }
+
+  // for testing
+  @Override
+  public CompactionManager getCompactionManager() {
+    return compactionManager;
   }
 
   @Override

@@ -268,6 +268,8 @@ public enum ControllerRoute {
       Arrays.asList(CLUSTER, SOURCE_FABRIC, FABRIC, NAME, VERSION), AMPLIFICATION_FACTOR
   ), GET_STALE_STORES_IN_CLUSTER("/get_stale_stores_in_cluster", HttpMethod.GET, Collections.singletonList(CLUSTER)),
   GET_STORES_IN_CLUSTER("/get_stores_in_cluster", HttpMethod.GET, Collections.singletonList(CLUSTER)),
+  GET_STORES_FOR_COMPACTION("/get_stores_for_compaction", HttpMethod.GET, Collections.singletonList(CLUSTER)),
+  COMPACT_STORE("/trigger_repush", HttpMethod.POST, Arrays.asList(NAME)),
   GET_STORE_LARGEST_USED_VERSION("/get_store_largest_used_version", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
   LIST_STORE_PUSH_INFO("/list_store_push_info", HttpMethod.GET, Arrays.asList(CLUSTER, NAME, PARTITION_DETAIL_ENABLED)),
   GET_REGION_PUSH_DETAILS(

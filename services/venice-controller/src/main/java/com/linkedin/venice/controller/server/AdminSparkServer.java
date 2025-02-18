@@ -13,6 +13,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.CHECK_RESOURCE_C
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLEANUP_INSTANCE_CUSTOMIZED_STATES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLUSTER_DISCOVERY;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLUSTER_HEALTH_STORES;
+import static com.linkedin.venice.controllerapi.ControllerRoute.COMPACT_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.COMPARE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.COMPLETE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER;
@@ -52,6 +53,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ROUTERS_CLUS
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STALE_STORES_IN_CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STORAGE_PERSONA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STORAGE_PERSONA_ASSOCIATED_WITH_STORE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STORES_FOR_COMPACTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STORES_IN_CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STORE_LARGEST_USED_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_VALUE_OR_DERIVED_SCHEMA_ID;
@@ -592,6 +594,12 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(
         GET_STORES_IN_CLUSTER.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getStoresInCluster(admin)));
+    httpService.get(
+        GET_STORES_FOR_COMPACTION.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getStoresForCompaction(admin)));
+    httpService.post(
+        COMPACT_STORE.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, storesRoutes.compactStore(admin)));
     httpService.get(
         GET_STORE_LARGEST_USED_VERSION.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getStoreLargestUsedVersion(admin)));

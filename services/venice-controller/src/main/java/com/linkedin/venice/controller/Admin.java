@@ -3,6 +3,9 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
+import com.linkedin.venice.controller.logcompaction.CompactionManager;
+import com.linkedin.venice.controller.repush.RepushJobRequest;
+import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
@@ -931,6 +934,24 @@ public interface Admin extends AutoCloseable, Closeable {
   ArrayList<StoreInfo> getClusterStores(String clusterName);
 
   Map<String, StoreDataAudit> getClusterStaleStores(String clusterName);
+
+  /**
+   * implemented in {@link VeniceHelixAdmin#getStoresForCompaction}
+   * @param clusterName, the name of the cluster to search for stores that are ready for compaction
+   * @return the list of stores ready for compaction
+   */
+  List<StoreInfo> getStoresForCompaction(String clusterName);
+
+  /**
+   * triggers repush for storeName for log compaction of store topic implemented in
+   * {@link VeniceHelixAdmin#compactStore}
+   *
+   * @param repushJobRequest contains params for repush job
+   * @return data model of repush job run info
+   */
+  RepushJobResponse compactStore(RepushJobRequest repushJobRequest) throws Exception;
+
+  public CompactionManager getCompactionManager();
 
   /**
    * @return the largest used version number for the given store from store graveyard.
