@@ -366,18 +366,24 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         () -> transportClient.get(requestPath, RequestHeadersProvider.getThinClientGetHeaderMap()),
         (response, throwable, responseCompleteReporter) -> {
           try {
+            LOGGER.debug("Received response for store {}", getStoreName());
             if (throwable != null) {
+              LOGGER.error("Error response for store {}", getStoreName(), throwable);
               valueFuture.completeExceptionally(throwable);
             } else if (response == null) {
+              LOGGER.debug("null response for store {}", getStoreName());
               // Doesn't exist
               valueFuture.complete(null);
             } else if (!response.isSchemaIdValid()) {
+              LOGGER.error("Invalid schema id for store {}", getStoreName());
               valueFuture.completeExceptionally(
                   new VeniceClientException("No valid schema id received for single-get request!"));
             } else {
+              LOGGER.debug("Valid response for store {}", getStoreName());
               CompressionStrategy compressionStrategy = response.getCompressionStrategy();
               long decompressionStartTime = System.nanoTime();
               ByteBuffer data = decompressRecord(compressionStrategy, ByteBuffer.wrap(response.getBody()));
+              LOGGER.debug("Decompressed response for store {}", getStoreName());
               stats.ifPresent(
                   (clientStats) -> clientStats
                       .recordResponseDecompressionTime(LatencyUtils.getElapsedTimeFromNSToMS(decompressionStartTime)));
@@ -386,6 +392,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
               responseCompleteReporter.report();
             }
           } catch (Exception e) {
+            LOGGER.error("Caught exception while handling response", e);
             // Defensive code
             if (!valueFuture.isDone()) {
               valueFuture.completeExceptionally(e);
@@ -519,6 +526,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       Supplier<CompletableFuture<TransportClientResponse>> requestSubmitter,
       ResponseHandler<R> responseHandler) throws VeniceClientException {
     final long preSubmitTimeInNS = System.nanoTime();
+    LOGGER.debug("Sending request for store {}", getStoreName());
     CompletableFuture<TransportClientResponse> transportFuture = requestSubmitter.get();
 
     BiFunction<TransportClientResponse, Throwable, R> responseHandlerWithStats = (clientResponse, throwable) -> {
