@@ -113,7 +113,7 @@ public class NettyFileTransferClient {
     Iterator<String> discoveredHostsIterator = discoveredHosts.iterator();
     while (discoveredHostsIterator.hasNext()) {
       String host = discoveredHostsIterator.next();
-      if (connectedHostsToTimestamp.contains(host)) {
+      if (connectedHostsToTimestamp.containsKey(host)) {
         connectableHostsResult.add(host);
         discoveredHostsIterator.remove();
       }
