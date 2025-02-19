@@ -137,7 +137,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       /**
        * We need to assign a unique client id across all the storage nodes, otherwise, they will fail into the same throttling bucket.
        */
-      consumerProperties.setProperty(KAFKA_CLIENT_ID_CONFIG, getUniqueClientId(kafkaUrl, i));
+      consumerProperties.setProperty(KAFKA_CLIENT_ID_CONFIG, getUniqueClientId(kafkaUrl, i, poolType));
       SharedKafkaConsumer pubSubConsumer = new SharedKafkaConsumer(
           pubSubConsumerAdapterFactory.create(
               new VeniceProperties(consumerProperties),
@@ -190,8 +190,8 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       PubSubTopicPartition topicPartition) {
   }
 
-  private String getUniqueClientId(String kafkaUrl, int suffix) {
-    return Utils.getHostName() + "_" + kafkaUrl + "_" + suffix;
+  String getUniqueClientId(String kafkaUrl, int suffix, ConsumerPoolType poolType) {
+    return Utils.getHostName() + "_" + kafkaUrl + "_" + suffix + poolType.getStatSuffix();
   }
 
   @Override
