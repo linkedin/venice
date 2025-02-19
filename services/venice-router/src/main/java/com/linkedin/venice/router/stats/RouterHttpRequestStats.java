@@ -9,7 +9,6 @@ import static com.linkedin.venice.router.stats.RouterMetricEntity.KEY_COUNT;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.RETRY_COUNT;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.RETRY_DELAY;
 import static com.linkedin.venice.stats.AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT;
-import static com.linkedin.venice.stats.VeniceOpenTelemetryDimensionsCache.getThreadLocalReusableDimensionsMap;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
 import static com.linkedin.venice.stats.dimensions.RequestRetryAbortReason.DELAY_CONSTRAINT;
 import static com.linkedin.venice.stats.dimensions.RequestRetryAbortReason.MAX_RETRY_ROUTE_LIMIT;
@@ -35,7 +34,7 @@ import com.linkedin.venice.stats.LambdaStat;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
-import com.linkedin.venice.stats.VeniceOpenTelemetryDimensionsCache;
+import com.linkedin.venice.stats.VeniceOpenTelemetryDimensionsProvider;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.RequestRetryAbortReason;
 import com.linkedin.venice.stats.dimensions.RequestRetryType;
@@ -130,8 +129,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final String systemStoreName;
   private final boolean emitOpenTelemetryMetrics;
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
-  private final VeniceOpenTelemetryDimensionsCache otelDimensionsCache;
   private final Sensor totalInFlightRequestSensor;
+  private final VeniceOpenTelemetryDimensionsProvider otelDimensionsProvider;
 
   // QPS metrics
   public RouterHttpRequestStats(
@@ -154,18 +153,18 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         baseDimensionsMap.put(VENICE_STORE_NAME, storeName);
         baseDimensionsMap.put(VENICE_REQUEST_METHOD, requestType.name().toLowerCase());
         baseDimensionsMap.put(VENICE_CLUSTER_NAME, clusterName);
-        otelDimensionsCache = new VeniceOpenTelemetryDimensionsCache(
+        otelDimensionsProvider = new VeniceOpenTelemetryDimensionsProvider(
             otelRepository,
             baseDimensionsMap,
             veniceMetricsConfig.getOtelCustomDimensionsMap());
       } else {
         otelRepository = null;
-        otelDimensionsCache = null;
+        otelDimensionsProvider = null;
       }
     } else {
       otelRepository = null;
       emitOpenTelemetryMetrics = false;
-      otelDimensionsCache = null;
+      otelDimensionsProvider = null;
     }
 
     this.systemStoreName = VeniceSystemStoreUtils.extractSystemStoreType(storeName);
@@ -406,12 +405,11 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     if (!emitOpenTelemetryMetrics) {
       return null;
     }
-    Map<VeniceMetricsDimensions, String> reusableDimensionsMap = getThreadLocalReusableDimensionsMap();
-    reusableDimensionsMap.put(HTTP_RESPONSE_STATUS_CODE, responseStatus.codeAsText().toString());
-    reusableDimensionsMap
-        .put(HTTP_RESPONSE_STATUS_CODE_CATEGORY, getVeniceHttpResponseStatusCodeCategory(responseStatus));
-    reusableDimensionsMap.put(VENICE_RESPONSE_STATUS_CODE_CATEGORY, veniceResponseStatusCategory.getCategory());
-    return otelDimensionsCache.checkCacheAndGetDimensions(metricEntity);
+    Map<VeniceMetricsDimensions, String> inputDimensionsMap = otelDimensionsProvider.getInputDimensionsMap();
+    inputDimensionsMap.put(HTTP_RESPONSE_STATUS_CODE, responseStatus.codeAsText().toString());
+    inputDimensionsMap.put(HTTP_RESPONSE_STATUS_CODE_CATEGORY, getVeniceHttpResponseStatusCodeCategory(responseStatus));
+    inputDimensionsMap.put(VENICE_RESPONSE_STATUS_CODE_CATEGORY, veniceResponseStatusCategory.getCategory());
+    return otelDimensionsProvider.getDimensions(metricEntity, inputDimensionsMap);
   }
 
   public void recordHealthyRequest(Double latency, HttpResponseStatus responseStatus, int keyNum) {
@@ -498,9 +496,9 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   public void recordRetryTriggeredSensorOtel(RequestRetryType retryType) {
     Attributes dimensions = null;
     if (emitOpenTelemetryMetrics) {
-      Map<VeniceMetricsDimensions, String> reusableDimensionsMap = getThreadLocalReusableDimensionsMap();
-      reusableDimensionsMap.put(VENICE_REQUEST_RETRY_TYPE, retryType.getRetryType());
-      dimensions = otelDimensionsCache.checkCacheAndGetDimensions(retryCountMetric.getMetricEntity());
+      Map<VeniceMetricsDimensions, String> inputDimensionsMap = otelDimensionsProvider.getInputDimensionsMap();
+      inputDimensionsMap.put(VENICE_REQUEST_RETRY_TYPE, retryType.getRetryType());
+      dimensions = otelDimensionsProvider.getDimensions(retryCountMetric.getMetricEntity(), inputDimensionsMap);
     }
     retryCountMetric.record(1, dimensions);
   }
@@ -508,9 +506,9 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private Attributes getRetryRequestAbortDimensions(RequestRetryAbortReason abortReason) {
     Attributes dimensions = null;
     if (emitOpenTelemetryMetrics) {
-      Map<VeniceMetricsDimensions, String> reusableDimensionsMap = getThreadLocalReusableDimensionsMap();
-      reusableDimensionsMap.put(VENICE_REQUEST_RETRY_ABORT_REASON, abortReason.getAbortReason());
-      dimensions = otelDimensionsCache.checkCacheAndGetDimensions(ABORTED_RETRY_COUNT.getMetricEntity());
+      Map<VeniceMetricsDimensions, String> inputDimensionsMap = otelDimensionsProvider.getInputDimensionsMap();
+      inputDimensionsMap.put(VENICE_REQUEST_RETRY_ABORT_REASON, abortReason.getAbortReason());
+      dimensions = otelDimensionsProvider.getDimensions(ABORTED_RETRY_COUNT.getMetricEntity(), inputDimensionsMap);
     }
     return dimensions;
   }
@@ -634,7 +632,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   private Attributes getBaseMetricDimensions() {
-    return otelDimensionsCache == null ? null : otelDimensionsCache.getBaseMetricDimensions();
+    return otelDimensionsProvider == null ? null : otelDimensionsProvider.getBaseMetricDimensions();
   }
 
   public void recordAllowedRetryRequest() {
@@ -675,8 +673,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     return this.emitOpenTelemetryMetrics;
   }
 
-  VeniceOpenTelemetryDimensionsCache getOtelDimensionsCache() {
-    return this.otelDimensionsCache;
+  VeniceOpenTelemetryDimensionsProvider getOtelDimensionsProvider() {
+    return this.otelDimensionsProvider;
   }
 
   /**
