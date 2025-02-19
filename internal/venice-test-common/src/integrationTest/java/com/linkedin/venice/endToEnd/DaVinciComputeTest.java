@@ -222,8 +222,8 @@ public class DaVinciComputeTest {
             TestUtils.getIngestionIsolationPropertyMap());
     try (
         VeniceWriter<Object, Object, byte[]> veniceWriter = vwFactory.createVeniceWriter(
-            new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
-                .setValueSerializer(valueSerializer)
+            new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(keySerializer)
+                .setValuePayloadSerializer(valueSerializer)
                 .build());
         CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory();
         DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient()) {
@@ -328,8 +328,8 @@ public class DaVinciComputeTest {
             TestUtils.getIngestionIsolationPropertyMap());
     try (
         VeniceWriter<Object, Object, byte[]> writer = vwFactory.createVeniceWriter(
-            new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
-                .setValueSerializer(valueSerializer)
+            new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(keySerializer)
+                .setValuePayloadSerializer(valueSerializer)
                 .build());
         CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory();
         DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient()) {
@@ -387,8 +387,8 @@ public class DaVinciComputeTest {
 
     try (
         VeniceWriter<Object, Object, byte[]> writerForMissingField = vwFactory.createVeniceWriter(
-            new VeniceWriterOptions.Builder(topicForMissingField).setKeySerializer(keySerializer)
-                .setValueSerializer(valueSerializerMissingField)
+            new VeniceWriterOptions.Builder(topicForMissingField).setKeyPayloadSerializer(keySerializer)
+                .setValuePayloadSerializer(valueSerializerMissingField)
                 .build());
         CachingDaVinciClientFactory factoryForMissingFieldClient = daVinciTestContext2.getDaVinciClientFactory();
         DaVinciClient<Integer, Integer> clientForMissingField = daVinciTestContext2.getDaVinciClient()) {
@@ -464,8 +464,8 @@ public class DaVinciComputeTest {
             TestUtils.getIngestionIsolationPropertyMap());
     try (
         VeniceWriter<Object, Object, byte[]> writer = vwFactory.createVeniceWriter(
-            new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
-                .setValueSerializer(valueSerializer)
+            new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(keySerializer)
+                .setValuePayloadSerializer(valueSerializer)
                 .build());
         CachingDaVinciClientFactory factory = daVinciTestContext.getDaVinciClientFactory();
         DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient()) {
@@ -511,8 +511,8 @@ public class DaVinciComputeTest {
             TestUtils.getIngestionIsolationPropertyMap());
     try (
         VeniceWriter<Object, Object, byte[]> writer2 = vwFactory.createVeniceWriter(
-            new VeniceWriterOptions.Builder(topicForMissingField).setKeySerializer(keySerializer)
-                .setValueSerializer(valueSerializerSwapped)
+            new VeniceWriterOptions.Builder(topicForMissingField).setKeyPayloadSerializer(keySerializer)
+                .setValuePayloadSerializer(valueSerializerSwapped)
                 .build());
         CachingDaVinciClientFactory factory2 = daVinciTestContext2.getDaVinciClientFactory();
         DaVinciClient<Integer, Integer> client2 = daVinciTestContext2.getDaVinciClient()) {
@@ -581,8 +581,8 @@ public class DaVinciComputeTest {
             config,
             TestUtils.getIngestionIsolationPropertyMap());
     try (VeniceWriter<Object, Object, byte[]> writer = vwFactory.createVeniceWriter(
-        new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
-            .setValueSerializer(valueSerializer)
+        new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(keySerializer)
+            .setValuePayloadSerializer(valueSerializer)
             .build());
         DaVinciClient<String, Integer> client = daVinciTestContext.getDaVinciClient()) {
 
@@ -668,8 +668,8 @@ public class DaVinciComputeTest {
 
     try (
         VeniceWriter<GenericRecord, GenericRecord, byte[]> writer = vwFactory.createVeniceWriter(
-            new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
-                .setValueSerializer(valueSerializer)
+            new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(keySerializer)
+                .setValuePayloadSerializer(valueSerializer)
                 .build());
         CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
             d2Client,
@@ -770,8 +770,8 @@ public class DaVinciComputeTest {
 
     try (
         VeniceWriter<GenericRecord, GenericRecord, byte[]> writer = vwFactory.createVeniceWriter(
-            new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
-                .setValueSerializer(valueSerializer)
+            new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(keySerializer)
+                .setValuePayloadSerializer(valueSerializer)
                 .build());
         CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
             d2Client,

@@ -1,10 +1,10 @@
 package com.linkedin.venice.writer;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterConcurrentDelegator;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterContext;
@@ -15,6 +15,7 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
@@ -27,9 +28,9 @@ import org.apache.logging.log4j.Logger;
 public class VeniceWriterFactory {
   private static final Logger LOGGER = LogManager.getLogger(VeniceWriterFactory.class);
   private final Lazy<VeniceProperties> venicePropertiesLazy;
-  private final Lazy<VeniceProperties> venicePropertiesWithCompressionDisabledLazy;
   private final PubSubProducerAdapterFactory producerAdapterFactory;
   private final MetricsRepository metricsRepository;
+  private final String defaultBrokerAddress;
 
   public VeniceWriterFactory(Properties properties) {
     this(properties, PubSubClientsFactory.createProducerFactory(properties), null);
@@ -45,13 +46,6 @@ public class VeniceWriterFactory {
       MetricsRepository metricsRepository) {
     this.metricsRepository = metricsRepository;
     this.venicePropertiesLazy = Lazy.of(() -> new VeniceProperties(properties));
-    this.venicePropertiesWithCompressionDisabledLazy = Lazy.of(() -> {
-      // Make a deep copy and update it
-      Properties propertiesWithCompressionDisabled = new Properties();
-      propertiesWithCompressionDisabled.putAll(properties);
-      propertiesWithCompressionDisabled.put(ApacheKafkaProducerConfig.KAFKA_COMPRESSION_TYPE, "none");
-      return new VeniceProperties(propertiesWithCompressionDisabled);
-    });
     if (metricsRepository != null) {
       new VeniceWriterStats(metricsRepository);
     }
@@ -61,21 +55,26 @@ public class VeniceWriterFactory {
       LOGGER.info("No PubSubProducerAdapterFactory provided. Using ApacheKafkaProducerAdapterFactory as default.");
       producerAdapterFactory = new ApacheKafkaProducerAdapterFactory();
     }
+    defaultBrokerAddress = venicePropertiesLazy.get().getString(ConfigKeys.PUBSUB_BROKER_ADDRESS, "");
     this.producerAdapterFactory = producerAdapterFactory;
   }
 
   public <K, V, U> VeniceWriter<K, V, U> createVeniceWriter(VeniceWriterOptions options) {
-    VeniceProperties props = options.isProducerCompressionEnabled()
-        ? venicePropertiesLazy.get()
-        : venicePropertiesWithCompressionDisabledLazy.get();
+    VeniceProperties props = venicePropertiesLazy.get();
+    String targetBrokerAddress = options.getBrokerAddress() == null ? defaultBrokerAddress : options.getBrokerAddress();
+    Objects.requireNonNull(
+        targetBrokerAddress,
+        "Broker address is required to create a VeniceWriter. Please provide it in the options.");
+    PubSubProducerAdapterContext.Builder producerContext =
+        new PubSubProducerAdapterContext.Builder().setVeniceProperties(props)
+            .setProducerName(options.getTopicName())
+            .setBrokerAddress(options.getBrokerAddress())
+            .setMetricsRepository(metricsRepository)
+            .setPubSubMessageSerializer(options.getPubSubMessageSerializer())
+            .setProducerCompressionEnabled(options.isProducerCompressionEnabled());
 
-    PubSubProducerAdapterContext producerContext = new PubSubProducerAdapterContext.Builder().setVeniceProperties(props)
-        .setProducerName(options.getTopicName())
-        .setTargetBrokerAddress(options.getBrokerAddress())
-        .setMetricsRepository(metricsRepository)
-        .setPubSubMessageSerializer(options.getPubSubMessageSerializer())
-        .build();
-    Supplier<PubSubProducerAdapter> producerAdapterSupplier = () -> producerAdapterFactory.create(producerContext);
+    Supplier<PubSubProducerAdapter> producerAdapterSupplier =
+        () -> producerAdapterFactory.create(producerContext.build());
     int producerThreadCnt = options.getProducerThreadCount();
     if (producerThreadCnt > 1) {
       return new VeniceWriter<>(

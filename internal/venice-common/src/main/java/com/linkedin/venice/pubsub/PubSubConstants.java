@@ -15,6 +15,7 @@ import java.util.List;
  */
 public class PubSubConstants {
   public static final String PUBSUB_CLIENT_CONFIG_PREFIX = "pubsub.";
+  public static final String PUBSUB_BROKER_ADDRESS = PUBSUB_CLIENT_CONFIG_PREFIX + "broker.address";
 
   // If true, the producer will use default configuration values for optimized high throughput
   // producing if they are not explicitly set.

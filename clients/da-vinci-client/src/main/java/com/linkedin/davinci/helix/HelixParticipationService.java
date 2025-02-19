@@ -342,7 +342,7 @@ public class HelixParticipationService extends AbstractVeniceService
     PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
         veniceServerConfig.getPubSubClientsFactory().getProducerAdapterFactory();
     VeniceWriterFactory writerFactory =
-        new VeniceWriterFactory(veniceProperties.toProperties(), pubSubProducerAdapterFactory, null);
+        new VeniceWriterFactory(veniceProperties.toProperties(), pubSubProducerAdapterFactory, metricsRepository);
     SchemaEntry valueSchemaEntry;
     DerivedSchemaEntry updateSchemaEntry;
     try {

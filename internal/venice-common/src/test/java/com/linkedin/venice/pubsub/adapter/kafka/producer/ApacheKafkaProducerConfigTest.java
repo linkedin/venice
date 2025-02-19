@@ -57,7 +57,7 @@ public class ApacheKafkaProducerConfigTest {
     assertFalse(producerConfig.getProducerProperties().containsKey(ProducerConfig.CLIENT_ID_CONFIG));
 
     String overriddenBrokerAddress = "target.broker.com:8181";
-    contextBuilder.setTargetBrokerAddress(overriddenBrokerAddress)
+    contextBuilder.setBrokerAddress(overriddenBrokerAddress)
         .setShouldValidateProducerConfigStrictly(false)
         .setVeniceProperties(new VeniceProperties(props))
         .setProducerName(PRODUCER_NAME);
@@ -144,7 +144,7 @@ public class ApacheKafkaProducerConfigTest {
 
     // should not set batch size and linger ms if high throughput defaults are not enabled
     context = new PubSubProducerAdapterContext.Builder().setVeniceProperties(VeniceProperties.empty())
-        .setTargetBrokerAddress(KAFKA_BROKER_ADDR)
+        .setBrokerAddress(KAFKA_BROKER_ADDR)
         .setShouldValidateProducerConfigStrictly(false)
         .setProducerName(PRODUCER_NAME)
         .build();
@@ -159,7 +159,7 @@ public class ApacheKafkaProducerConfigTest {
     // set
     veniceProperties.put(PubSubConstants.PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS, "true");
     context = new PubSubProducerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(veniceProperties))
-        .setTargetBrokerAddress(KAFKA_BROKER_ADDR)
+        .setBrokerAddress(KAFKA_BROKER_ADDR)
         .setShouldValidateProducerConfigStrictly(false)
         .setProducerName(PRODUCER_NAME)
         .build();
@@ -177,7 +177,7 @@ public class ApacheKafkaProducerConfigTest {
     veniceProperties.put(ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX + ProducerConfig.BATCH_SIZE_CONFIG, "55");
     veniceProperties.put(ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX + ProducerConfig.LINGER_MS_CONFIG, "66");
     context = new PubSubProducerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(veniceProperties))
-        .setTargetBrokerAddress(KAFKA_BROKER_ADDR)
+        .setBrokerAddress(KAFKA_BROKER_ADDR)
         .setShouldValidateProducerConfigStrictly(false)
         .setProducerName(PRODUCER_NAME)
         .build();

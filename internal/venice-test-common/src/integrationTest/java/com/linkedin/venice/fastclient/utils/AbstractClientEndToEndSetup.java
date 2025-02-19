@@ -236,8 +236,8 @@ public abstract class AbstractClientEndToEndSetup {
         pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
     veniceWriter = IntegrationTestPushUtils.getVeniceWriterFactory(pubSubBrokerWrapper, pubSubProducerAdapterFactory)
         .createVeniceWriter(
-            new VeniceWriterOptions.Builder(storeVersionName).setKeySerializer(keySerializer)
-                .setValueSerializer(valueSerializer)
+            new VeniceWriterOptions.Builder(storeVersionName).setKeyPayloadSerializer(keySerializer)
+                .setValuePayloadSerializer(valueSerializer)
                 .build());
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
     veniceWriter.broadcastStartOfPush(new HashMap<>());

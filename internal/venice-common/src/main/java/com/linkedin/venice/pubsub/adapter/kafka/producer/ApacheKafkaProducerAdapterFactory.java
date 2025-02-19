@@ -21,7 +21,7 @@ public class ApacheKafkaProducerAdapterFactory implements PubSubProducerAdapterF
       String brokerAddressToOverride) {
     return create(
         new PubSubProducerAdapterContext.Builder().setVeniceProperties(veniceProperties)
-            .setTargetBrokerAddress(brokerAddressToOverride)
+            .setBrokerAddress(brokerAddressToOverride)
             .setShouldValidateProducerConfigStrictly(true)
             .setProducerName(producerName)
             .build());

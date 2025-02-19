@@ -18,10 +18,9 @@ import java.util.Objects;
  */
 public class VeniceWriterOptions {
   private final String topicName;
-  // TODO: Update to use generic serializers
-  private final VeniceKafkaSerializer keySerializer;
-  private final VeniceKafkaSerializer valueSerializer;
-  private final VeniceKafkaSerializer writeComputeSerializer;
+  private final VeniceKafkaSerializer keyPayloadSerializer;
+  private final VeniceKafkaSerializer valuePayloadSerializer;
+  private final VeniceKafkaSerializer writeComputePayloadSerializer;
   private final PubSubMessageSerializer pubSubMessageSerializer;
   private final VenicePartitioner partitioner;
   private final Time time;
@@ -44,16 +43,16 @@ public class VeniceWriterOptions {
     return topicName;
   }
 
-  public VeniceKafkaSerializer getKeySerializer() {
-    return keySerializer;
+  public VeniceKafkaSerializer getKeyPayloadSerializer() {
+    return keyPayloadSerializer;
   }
 
-  public VeniceKafkaSerializer getValueSerializer() {
-    return valueSerializer;
+  public VeniceKafkaSerializer getValuePayloadSerializer() {
+    return valuePayloadSerializer;
   }
 
-  public VeniceKafkaSerializer getWriteComputeSerializer() {
-    return writeComputeSerializer;
+  public VeniceKafkaSerializer getWriteComputePayloadSerializer() {
+    return writeComputePayloadSerializer;
   }
 
   public VenicePartitioner getPartitioner() {
@@ -102,9 +101,9 @@ public class VeniceWriterOptions {
 
   private VeniceWriterOptions(Builder builder) {
     topicName = builder.topicName;
-    keySerializer = builder.keySerializer;
-    valueSerializer = builder.valueSerializer;
-    writeComputeSerializer = builder.writeComputeSerializer;
+    keyPayloadSerializer = builder.keyPayloadSerializer;
+    valuePayloadSerializer = builder.valuePayloadSerializer;
+    writeComputePayloadSerializer = builder.writeComputePayloadSerializer;
     partitioner = builder.partitioner;
     time = builder.time;
     partitionCount = builder.partitionCount;
@@ -159,9 +158,9 @@ public class VeniceWriterOptions {
 
   public static class Builder {
     private final String topicName;
-    private VeniceKafkaSerializer keySerializer = null;
-    private VeniceKafkaSerializer valueSerializer = null;
-    private VeniceKafkaSerializer writeComputeSerializer = null;
+    private VeniceKafkaSerializer keyPayloadSerializer = null;
+    private VeniceKafkaSerializer valuePayloadSerializer = null;
+    private VeniceKafkaSerializer writeComputePayloadSerializer = null;
     private PubSubMessageSerializer pubSubMessageSerializer = null;
     private VenicePartitioner partitioner = null;
     private Time time = null;
@@ -176,14 +175,14 @@ public class VeniceWriterOptions {
     private int producerQueueSize = 5 * 1024 * 1024; // 5MB by default
 
     private void addDefaults() {
-      if (keySerializer == null) {
-        keySerializer = new DefaultSerializer();
+      if (keyPayloadSerializer == null) {
+        keyPayloadSerializer = new DefaultSerializer();
       }
-      if (valueSerializer == null) {
-        valueSerializer = new DefaultSerializer();
+      if (valuePayloadSerializer == null) {
+        valuePayloadSerializer = new DefaultSerializer();
       }
-      if (writeComputeSerializer == null) {
-        writeComputeSerializer = new DefaultSerializer();
+      if (writeComputePayloadSerializer == null) {
+        writeComputePayloadSerializer = new DefaultSerializer();
       }
       if (pubSubMessageSerializer == null) {
         pubSubMessageSerializer = PubSubMessageSerializer.DEFAULT_PUBSUB_SERIALIZER;
@@ -208,7 +207,7 @@ public class VeniceWriterOptions {
 
     public Builder setUseKafkaKeySerializer(boolean useKafkaKeySerializer) {
       if (useKafkaKeySerializer) {
-        this.keySerializer = new KafkaKeySerializer();
+        this.keyPayloadSerializer = new KafkaKeySerializer();
       }
       return this;
     }
@@ -227,18 +226,18 @@ public class VeniceWriterOptions {
       this.topicName = Objects.requireNonNull(topic, "Topic name cannot be null for VeniceWriterOptions");
     }
 
-    public Builder setKeySerializer(VeniceKafkaSerializer keySerializer) {
-      this.keySerializer = keySerializer;
+    public Builder setKeyPayloadSerializer(VeniceKafkaSerializer keyPayloadSerializer) {
+      this.keyPayloadSerializer = keyPayloadSerializer;
       return this;
     }
 
-    public Builder setValueSerializer(VeniceKafkaSerializer valueSerializer) {
-      this.valueSerializer = valueSerializer;
+    public Builder setValuePayloadSerializer(VeniceKafkaSerializer valuePayloadSerializer) {
+      this.valuePayloadSerializer = valuePayloadSerializer;
       return this;
     }
 
-    public Builder setWriteComputeSerializer(VeniceKafkaSerializer writeComputeSerializer) {
-      this.writeComputeSerializer = writeComputeSerializer;
+    public Builder setWriteComputePayloadSerializer(VeniceKafkaSerializer writeComputePayloadSerializer) {
+      this.writeComputePayloadSerializer = writeComputePayloadSerializer;
       return this;
     }
 

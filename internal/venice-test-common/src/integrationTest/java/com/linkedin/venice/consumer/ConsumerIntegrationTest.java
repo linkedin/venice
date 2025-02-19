@@ -180,19 +180,20 @@ public abstract class ConsumerIntegrationTest {
     Time time = new SystemTime();
     PubSubMessageSerializer pubSubMessageSerializer =
         new PubSubMessageSerializer(new KafkaKeySerializer(), new KafkaValueSerializerWithNewerProtocol());
-    VeniceWriterOptions veniceWriterOptions = new VeniceWriterOptions.Builder(topicName).setKeySerializer(keySerializer)
-        .setBrokerAddress(cluster.getPubSubBrokerWrapper().getAddress())
-        .setValueSerializer(valueSerializer)
-        .setWriteComputeSerializer(new DefaultSerializer())
-        .setPubSubMessageSerializer(pubSubMessageSerializer)
-        .setTime(time)
-        .setPartitioner(partitioner)
-        .build();
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(topicName).setKeyPayloadSerializer(keySerializer)
+            .setBrokerAddress(cluster.getPubSubBrokerWrapper().getAddress())
+            .setValuePayloadSerializer(valueSerializer)
+            .setWriteComputePayloadSerializer(new DefaultSerializer())
+            .setPubSubMessageSerializer(pubSubMessageSerializer)
+            .setTime(time)
+            .setPartitioner(partitioner)
+            .build();
     PubSubProducerAdapterContext context =
         new PubSubProducerAdapterContext.Builder().setShouldValidateProducerConfigStrictly(false)
             .setVeniceProperties(props)
             .setPubSubMessageSerializer(pubSubMessageSerializer)
-            .setTargetBrokerAddress(cluster.getPubSubBrokerWrapper().getAddress())
+            .setBrokerAddress(cluster.getPubSubBrokerWrapper().getAddress())
             .build();
     return new VeniceWriterWithNewerProtocol(
         veniceWriterOptions,

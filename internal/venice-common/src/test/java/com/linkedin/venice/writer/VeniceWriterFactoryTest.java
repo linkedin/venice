@@ -37,7 +37,7 @@ public class VeniceWriterFactoryTest {
     try (VeniceWriter veniceWriter = veniceWriterFactory.createVeniceWriter(
         new VeniceWriterOptions.Builder("store_v1").setBrokerAddress("kafka:9898").setPartitionCount(1).build())) {
       PubSubProducerAdapterContext capturedProducerCtx = producerCtxCaptor.getValue();
-      when(producerAdapterMock.getBrokerAddress()).thenReturn(capturedProducerCtx.getTargetBrokerAddress());
+      when(producerAdapterMock.getBrokerAddress()).thenReturn(capturedProducerCtx.getBrokerAddress());
       assertNotNull(veniceWriter);
       String capturedBrokerAddr = veniceWriter.getDestination();
       assertNotNull(capturedBrokerAddr);
@@ -66,7 +66,7 @@ public class VeniceWriterFactoryTest {
             .build())) {
 
       PubSubProducerAdapterContext capturedProducerCtx = producerCtxCaptor.getValue();
-      when(producerAdapterMock.getBrokerAddress()).thenReturn(capturedProducerCtx.getTargetBrokerAddress());
+      when(producerAdapterMock.getBrokerAddress()).thenReturn(capturedProducerCtx.getBrokerAddress());
       assertNotNull(veniceWriter);
       String capturedBrokerAddr = veniceWriter.getDestination();
       assertNotNull(capturedBrokerAddr);
@@ -89,7 +89,7 @@ public class VeniceWriterFactoryTest {
             .setProducerThreadCount(3)
             .build())) {
       PubSubProducerAdapterContext capturedProducerCtx = producerCtxCaptor.getValue();
-      when(producerAdapterMock.getBrokerAddress()).thenReturn(capturedProducerCtx.getTargetBrokerAddress());
+      when(producerAdapterMock.getBrokerAddress()).thenReturn(capturedProducerCtx.getBrokerAddress());
       assertNotNull(veniceWriter);
 
       String capturedBrokerAddr = veniceWriter.getDestination();
@@ -111,10 +111,6 @@ public class VeniceWriterFactoryTest {
   public void testVeniceWriterFactoryCreatesProducerAdapterFactory() {
     VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(new Properties(), null, null);
     assertNotNull(veniceWriterFactory.getProducerAdapterFactory());
-
-    veniceWriterFactory = new VeniceWriterFactory(new Properties(), null);
-    assertNotNull(veniceWriterFactory.getProducerAdapterFactory());
-    assertEquals(veniceWriterFactory.getProducerAdapterFactory().getClass(), ApacheKafkaProducerAdapterFactory.class);
 
     veniceWriterFactory = new VeniceWriterFactory(new Properties());
     assertNotNull(veniceWriterFactory.getProducerAdapterFactory());

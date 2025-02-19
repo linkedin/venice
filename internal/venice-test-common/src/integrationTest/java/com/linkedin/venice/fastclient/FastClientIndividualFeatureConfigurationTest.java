@@ -313,8 +313,8 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     VeniceWriter<Object, Object, Object> veniceWriter =
         IntegrationTestPushUtils.getVeniceWriterFactory(pubSubBrokerWrapper, pubSubProducerAdapterFactory)
             .createVeniceWriter(
-                new VeniceWriterOptions.Builder(storeVersion).setKeySerializer(keySerializer)
-                    .setValueSerializer(new VeniceAvroKafkaSerializer(VALUE_SCHEMA_V2_STR))
+                new VeniceWriterOptions.Builder(storeVersion).setKeyPayloadSerializer(keySerializer)
+                    .setValuePayloadSerializer(new VeniceAvroKafkaSerializer(VALUE_SCHEMA_V2_STR))
                     .build());
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     for (int i = 0; i < recordCnt; ++i) {

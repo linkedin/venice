@@ -63,7 +63,7 @@ public class ApacheKafkaProducerConfig {
   private final PubSubMessageSerializer pubSubMessageSerializer;
 
   public ApacheKafkaProducerConfig(PubSubProducerAdapterContext context) {
-    String brokerAddressToOverride = context.getTargetBrokerAddress();
+    String brokerAddressToOverride = context.getBrokerAddress();
     String producerName = context.getProducerName();
     VeniceProperties allVeniceProperties = context.getVeniceProperties();
     boolean strictConfigs = context.shouldValidateProducerConfigStrictly();

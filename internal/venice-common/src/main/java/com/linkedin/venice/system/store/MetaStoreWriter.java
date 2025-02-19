@@ -421,13 +421,13 @@ public class MetaStoreWriter implements Closeable {
       }
 
       VeniceWriterOptions options = new VeniceWriterOptions.Builder(rtTopic.getName())
-          .setKeySerializer(
+          .setKeyPayloadSerializer(
               new VeniceAvroKafkaSerializer(
                   AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()))
-          .setValueSerializer(
+          .setValuePayloadSerializer(
               new VeniceAvroKafkaSerializer(
                   AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema()))
-          .setWriteComputeSerializer(new VeniceAvroKafkaSerializer(derivedComputeSchema))
+          .setWriteComputePayloadSerializer(new VeniceAvroKafkaSerializer(derivedComputeSchema))
           .setChunkingEnabled(false)
           .setPartitionCount(1)
           .build();

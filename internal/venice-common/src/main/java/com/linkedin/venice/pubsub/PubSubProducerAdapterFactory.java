@@ -28,7 +28,7 @@ public interface PubSubProducerAdapterFactory<ADAPTER extends PubSubProducerAdap
   ADAPTER create(VeniceProperties veniceProperties, String producerName, String targetBrokerAddress);
 
   default ADAPTER create(PubSubProducerAdapterContext context) {
-    return create(context.getVeniceProperties(), context.getProducerName(), context.getTargetBrokerAddress());
+    return create(context.getVeniceProperties(), context.getProducerName(), context.getBrokerAddress());
   }
 
   String getName();
