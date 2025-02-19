@@ -6360,7 +6360,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         LOGGER.warn(
             "System store: {} pushed failed. Issuing a new empty push to create version: {} ",
             systemStoreName,
-            +versionNumber);
+            versionNumber);
       } else {
         throw new VeniceRetriableException(
             "System store:" + systemStoreName + " push is still ongoing, will check it again. This is not an error.");
