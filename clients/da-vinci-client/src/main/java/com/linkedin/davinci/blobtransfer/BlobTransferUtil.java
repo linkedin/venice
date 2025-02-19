@@ -40,7 +40,8 @@ public class BlobTransferUtil {
       int snapshotRetentionTimeInMin,
       int blobTransferMaxTimeoutInMin,
       AggVersionedBlobTransferStats aggVersionedBlobTransferStats,
-      BlobTransferUtils.BlobTransferTableFormat transferSnapshotTableFormat) {
+      BlobTransferUtils.BlobTransferTableFormat transferSnapshotTableFormat,
+      int peersConnectivityFreshnessInSeconds) {
     try {
       BlobSnapshotManager blobSnapshotManager = new BlobSnapshotManager(
           readOnlyStoreRepository,
@@ -51,7 +52,11 @@ public class BlobTransferUtil {
           transferSnapshotTableFormat);
       BlobTransferManager<Void> manager = new NettyP2PBlobTransferManager(
           new P2PBlobTransferService(p2pTransferServerPort, baseDir, blobTransferMaxTimeoutInMin, blobSnapshotManager),
-          new NettyFileTransferClient(p2pTransferClientPort, baseDir, storageMetadataService),
+          new NettyFileTransferClient(
+              p2pTransferClientPort,
+              baseDir,
+              storageMetadataService,
+              peersConnectivityFreshnessInSeconds),
           new DaVinciBlobFinder(clientConfig),
           baseDir,
           aggVersionedBlobTransferStats);
@@ -84,7 +89,8 @@ public class BlobTransferUtil {
       int snapshotRetentionTimeInMin,
       int blobTransferMaxTimeoutInMin,
       AggVersionedBlobTransferStats aggVersionedBlobTransferStats,
-      BlobTransferUtils.BlobTransferTableFormat transferSnapshotTableFormat) {
+      BlobTransferUtils.BlobTransferTableFormat transferSnapshotTableFormat,
+      int peersConnectivityFreshnessInSeconds) {
     try {
       BlobSnapshotManager blobSnapshotManager = new BlobSnapshotManager(
           readOnlyStoreRepository,
@@ -95,7 +101,11 @@ public class BlobTransferUtil {
           transferSnapshotTableFormat);
       BlobTransferManager<Void> manager = new NettyP2PBlobTransferManager(
           new P2PBlobTransferService(p2pTransferServerPort, baseDir, blobTransferMaxTimeoutInMin, blobSnapshotManager),
-          new NettyFileTransferClient(p2pTransferClientPort, baseDir, storageMetadataService),
+          new NettyFileTransferClient(
+              p2pTransferClientPort,
+              baseDir,
+              storageMetadataService,
+              peersConnectivityFreshnessInSeconds),
           new ServerBlobFinder(customizedViewFuture),
           baseDir,
           aggVersionedBlobTransferStats);

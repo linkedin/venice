@@ -320,7 +320,8 @@ public class DaVinciBackend implements Closeable {
             aggVersionedBlobTransferStats,
             backendConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
                 ? BlobTransferTableFormat.PLAIN_TABLE
-                : BlobTransferTableFormat.BLOCK_BASED_TABLE);
+                : BlobTransferTableFormat.BLOCK_BASED_TABLE,
+            backendConfig.getBlobTransferPeersConnectivityFreshnessInSeconds());
       } else {
         aggVersionedBlobTransferStats = null;
         blobTransferManager = null;
