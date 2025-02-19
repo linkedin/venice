@@ -41,11 +41,11 @@ import org.apache.logging.log4j.Logger;
 
 public class VeniceOpenTelemetryMetricsRepository {
   private static final Logger LOGGER = LogManager.getLogger(VeniceOpenTelemetryMetricsRepository.class);
+  private final VeniceMetricsConfig metricsConfig;
   private SdkMeterProvider sdkMeterProvider = null;
   private final boolean emitOpenTelemetryMetrics;
   private final VeniceOpenTelemetryMetricNamingFormat metricFormat;
   private Meter meter;
-
   private String metricPrefix;
 
   /**
@@ -116,6 +116,7 @@ public class VeniceOpenTelemetryMetricsRepository {
   }
 
   public VeniceOpenTelemetryMetricsRepository(VeniceMetricsConfig metricsConfig) {
+    this.metricsConfig = metricsConfig;
     emitOpenTelemetryMetrics = metricsConfig.emitOtelMetrics();
     metricFormat = metricsConfig.getMetricNamingFormat();
     if (!emitOpenTelemetryMetrics) {
@@ -265,6 +266,10 @@ public class VeniceOpenTelemetryMetricsRepository {
 
   boolean emitOpenTelemetryMetrics() {
     return emitOpenTelemetryMetrics;
+  }
+
+  VeniceMetricsConfig getMetricsConfig() {
+    return metricsConfig;
   }
 
   /** for testing purposes */
