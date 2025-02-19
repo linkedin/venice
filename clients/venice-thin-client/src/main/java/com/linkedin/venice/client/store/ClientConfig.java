@@ -65,6 +65,9 @@ public class ClientConfig<T extends SpecificRecord> {
   // HttpTransport settings
   private int maxConnectionsPerRoute; // only for HTTP1
 
+  // NativeMetadataRepository settings
+  private boolean useRequestBasedMetaRepository = false;
+
   private int maxConnectionsTotal; // only for HTTP1
 
   private boolean httpClient5Http2Enabled;
@@ -102,7 +105,7 @@ public class ClientConfig<T extends SpecificRecord> {
         .setD2ZkTimeout(config.getD2ZkTimeout())
         .setD2Client(config.getD2Client())
         .setD2Routing(config.isD2Routing()) // This should be the last of the D2 configs since it is an inferred config
-                                            // and we want the cloned config to match the source config
+        // and we want the cloned config to match the source config
 
         // Performance-related settings
         .setMetricsRepository(config.getMetricsRepository())
@@ -276,6 +279,15 @@ public class ClientConfig<T extends SpecificRecord> {
 
   public ClientConfig<T> setMaxConnectionsPerRoute(int maxConnectionsPerRoute) {
     this.maxConnectionsPerRoute = maxConnectionsPerRoute;
+    return this;
+  }
+
+  public boolean isUseRequestBasedMetaRepository() {
+    return useRequestBasedMetaRepository;
+  }
+
+  public ClientConfig<T> setUseRequestBasedMetaRepository(boolean useRequestBasedMetaRepository) {
+    this.useRequestBasedMetaRepository = useRequestBasedMetaRepository;
     return this;
   }
 

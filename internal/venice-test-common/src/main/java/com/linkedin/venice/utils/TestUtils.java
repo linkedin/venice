@@ -49,6 +49,7 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ETLStoreConfig;
@@ -515,6 +516,58 @@ public class TestUtils {
         3); // TODO: figure out how to get hold of a sensible RF value here
     // Set the default timestamp to make sure every creation will return the same Store object.
     store.setLatestVersionPromoteToCurrentTimestamp(-1);
+    return store;
+  }
+
+  public static ZKStore populateZKStore(ZKStore store, Random random) {
+    store.setCurrentVersion(random.nextInt());
+    store.setPartitionCount(random.nextInt());
+    store.setLowWatermark(random.nextLong());
+    store.setEnableWrites(false);
+    store.setEnableReads(true);
+    store.setStorageQuotaInByte(random.nextLong());
+    store.setReadQuotaInCU(random.nextLong());
+    store.setHybridStoreConfig(TestUtils.createTestHybridStoreConfig(random));
+    store.setViewConfigs(TestUtils.createTestViewConfigs(random));
+    store.setCompressionStrategy(CompressionStrategy.GZIP);
+    store.setClientDecompressionEnabled(true);
+    store.setChunkingEnabled(true);
+    store.setRmdChunkingEnabled(true);
+    store.setBatchGetLimit(random.nextInt());
+    store.setNumVersionsToPreserve(random.nextInt());
+    store.setIncrementalPushEnabled(true);
+    store.setSeparateRealTimeTopicEnabled(true);
+    store.setMigrating(true);
+    store.setWriteComputationEnabled(true);
+    store.setReadComputationEnabled(true);
+    store.setBootstrapToOnlineTimeoutInHours(random.nextInt());
+    store.setNativeReplicationEnabled(true);
+    store.setPushStreamSourceAddress("push_stream_source");
+    store.setBackupStrategy(BackupStrategy.DELETE_ON_NEW_PUSH_START);
+    store.setSchemaAutoRegisterFromPushJobEnabled(true);
+    store.setLatestSuperSetValueSchemaId(random.nextInt());
+    store.setHybridStoreDiskQuotaEnabled(true);
+    store.setStoreMetaSystemStoreEnabled(true);
+    store.setEtlStoreConfig(TestUtils.createTestETLStoreConfig());
+    store.setPartitionerConfig(TestUtils.createTestPartitionerConfig(random));
+    store.setLatestVersionPromoteToCurrentTimestamp(random.nextLong());
+    store.setBackupVersionRetentionMs(random.nextLong());
+    store.setMigrationDuplicateStore(true);
+    store.setNativeReplicationSourceFabric("native_replication_source_fabric");
+    store.setDaVinciPushStatusStoreEnabled(true);
+    store.setStoreMetadataSystemStoreEnabled(true);
+    store.setActiveActiveReplicationEnabled(true);
+    store.setMinCompactionLagSeconds(random.nextLong());
+    store.setMaxCompactionLagSeconds(random.nextLong());
+    store.setMaxRecordSizeBytes(random.nextInt());
+    store.setMaxNearlineRecordSizeBytes(random.nextInt());
+    store.setUnusedSchemaDeletionEnabled(true);
+    store.setVersions(TestUtils.createTestVersions(store.getName(), random));
+    store.setSystemStores(TestUtils.createTestSystemStores(store.getName(), random));
+    store.setStorageNodeReadQuotaEnabled(true);
+    store.setBlobTransferEnabled(true);
+    store.setNearlineProducerCompressionEnabled(true);
+    store.setNearlineProducerCountPerWriter(random.nextInt());
     return store;
   }
 

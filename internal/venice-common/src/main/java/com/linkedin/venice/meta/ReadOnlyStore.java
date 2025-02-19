@@ -924,7 +924,7 @@ public class ReadOnlyStore implements Store {
     storeProperties.setBootstrapToOnlineTimeoutInHours(getBootstrapToOnlineTimeoutInHours());
     // storeProperties.setLeaderFollowerModelEnabled(isLeaderFollowerModelEnabled());
     storeProperties.setNativeReplicationEnabled(isNativeReplicationEnabled());
-    // storeProperties.setReplicationMetadataVersionID(getReplicationMetadataVersionID());
+    storeProperties.setReplicationMetadataVersionID(getRmdVersion());
     storeProperties.setPushStreamSourceAddress(getPushStreamSourceAddress());
     storeProperties.setBackupStrategy(getBackupStrategy().getValue());
     storeProperties.setSchemaAutoRegisteFromPushJobEnabled(isSchemaAutoRegisterFromPushJobEnabled());

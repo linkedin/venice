@@ -383,7 +383,8 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
     ClientConfig clientConfig = new ClientConfig(internalStoreName).setD2Client(d2Client)
         .setD2ServiceName(clusterDiscoveryD2ServiceName)
         .setMetricsRepository(metricsRepository)
-        .setSpecificValueClass(valueClass);
+        .setSpecificValueClass(valueClass)
+        .setUseRequestBasedMetaRepository(config.isUseRequestBasedMetaRepository());
 
     DaVinciClient client;
     if (config.isIsolated()) {
