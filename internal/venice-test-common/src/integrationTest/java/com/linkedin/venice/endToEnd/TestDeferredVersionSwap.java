@@ -36,9 +36,9 @@ public class TestDeferredVersionSwap {
   private static final int NUMBER_OF_CLUSTERS = 1;
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private static final String TARGET_REGION = "dc-0";
-
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
+  private static final int TEST_TIMEOUT = 120_000;
 
   @BeforeClass
   public void setUp() {
@@ -68,7 +68,7 @@ public class TestDeferredVersionSwap {
     Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testDeferredVersionSwap() throws IOException {
     File inputDir = getTempDataDirectory();
     TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100, 100);
