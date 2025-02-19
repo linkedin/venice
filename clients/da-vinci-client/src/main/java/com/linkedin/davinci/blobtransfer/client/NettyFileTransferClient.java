@@ -23,7 +23,9 @@ import io.netty.handler.timeout.IdleStateHandler;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -38,7 +40,8 @@ import org.apache.logging.log4j.Logger;
 public class NettyFileTransferClient {
   private static final Logger LOGGER = LogManager.getLogger(NettyFileTransferClient.class);
   private static final int MAX_METADATA_CONTENT_LENGTH = 1024 * 1024 * 100;
-  private static final int TIMEOUT_IN_MINUTES = 5;
+  private static final int REQUEST_TIMEOUT_IN_MINUTES = 5;
+  private static final int CONNECTION_TIMEOUT_IN_MINUTES = 1;
   EventLoopGroup workerGroup;
   Bootstrap clientBootstrap;
   private final String baseDir;
@@ -140,7 +143,7 @@ public class NettyFileTransferClient {
         }
         allConnections.complete(null);
       }
-    }, TIMEOUT_IN_MINUTES, TimeUnit.MINUTES);
+    }, CONNECTION_TIMEOUT_IN_MINUTES, TimeUnit.MINUTES);
 
     allConnections.join();
 
@@ -165,12 +168,14 @@ public class NettyFileTransferClient {
    * @param hostsToTimestamp the map of hosts to the timestamp of the last connection attempt
    */
   public void purgeStaleConnectivityRecords(VeniceConcurrentHashMap<String, Long> hostsToTimestamp) {
-    hostsToTimestamp.forEach((host, lastAttempt) -> {
-      if (lastAttempt == null || System.currentTimeMillis() - lastAttempt > TimeUnit.SECONDS
+    Iterator<Map.Entry<String, Long>> iterator = hostsToTimestamp.entrySet().iterator();
+    while (iterator.hasNext()) {
+      Map.Entry<String, Long> entry = iterator.next();
+      if (entry.getValue() == null || System.currentTimeMillis() - entry.getValue() > TimeUnit.SECONDS
           .toMillis(peersConnectivityFreshnessInSeconds)) {
-        hostsToTimestamp.remove(host);
+        iterator.remove();
       }
-    });
+    }
   }
 
   public CompletionStage<InputStream> get(
@@ -219,7 +224,7 @@ public class NettyFileTransferClient {
                       "Request timed out for store " + storeName + " version " + version + " partition " + partition
                           + " table format " + requestedTableFormat + " from host " + host));
         }
-      }, TIMEOUT_IN_MINUTES, TimeUnit.MINUTES);
+      }, REQUEST_TIMEOUT_IN_MINUTES, TimeUnit.MINUTES);
     } catch (Exception e) {
       if (!inputStream.toCompletableFuture().isCompletedExceptionally()) {
         inputStream.toCompletableFuture().completeExceptionally(e);
