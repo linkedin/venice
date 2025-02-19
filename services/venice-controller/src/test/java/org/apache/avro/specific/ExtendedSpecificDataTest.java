@@ -4,8 +4,8 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.generic.GenericRecordBuilder;
 import org.testng.annotations.Test;
 
 
@@ -17,8 +17,10 @@ public class ExtendedSpecificDataTest {
     Schema schema = new Schema.Parser().parse(schemaString);
 
     // Create the record
-    GenericRecord record =
-        new GenericRecordBuilder(schema).set("fieldA", "valueA").set("fieldB", 123).set("fieldC", true).build();
+    GenericRecord record = new GenericData.Record(schema);
+    record.put("fieldA", "valueA");
+    record.put("fieldB", 123);
+    record.put("fieldC", true);
 
     // Create the ExtendedSpecificData object
     ExtendedSpecificData extendedSpecificData = new ExtendedSpecificData();
