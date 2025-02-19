@@ -6357,9 +6357,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             getReplicationFactor(clusterName, systemStoreName));
         int versionNumber = version.getNumber();
         writeEndOfPush(clusterName, systemStoreName, versionNumber, true);
-        throw new VeniceException(
-            "System store: " + systemStoreName + " pushed failed. Issuing a new empty push to create version: "
-                + versionNumber);
+        LOGGER.warn(
+            "System store: {} pushed failed. Issuing a new empty push to create version: {} ",
+            systemStoreName,
+            versionNumber);
       } else {
         throw new VeniceRetriableException(
             "System store:" + systemStoreName + " push is still ongoing, will check it again. This is not an error.");
