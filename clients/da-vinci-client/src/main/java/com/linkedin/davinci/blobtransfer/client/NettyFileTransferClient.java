@@ -131,10 +131,23 @@ public class NettyFileTransferClient {
             channel.close(); // this is only for checking connectivity no need to open it.
             return host;
           } else {
+            LOGGER.warn(
+                "Failed to connect to host: {} for store {} version {} partition {}",
+                host,
+                storeName,
+                version,
+                partition);
             unconnectableHostsToTimestamp.put(host, System.currentTimeMillis());
             return null;
           }
         } catch (Exception e) {
+          LOGGER.warn(
+              "Failed to connect to host: {} for store {} version {} partition {}",
+              host,
+              storeName,
+              version,
+              partition,
+              e);
           unconnectableHostsToTimestamp.put(host, System.currentTimeMillis());
           return null;
         }
