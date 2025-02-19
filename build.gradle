@@ -47,9 +47,9 @@ def kafkaVersion = '2.4.1' // '2.4.1.65'
 def log4j2Version = '2.17.1'
 def pegasusVersion = '29.31.0'
 def protobufVersion = '3.21.7'
-def jacksonVersion = '2.13.4'
+def jacksonVersion = '2.15.0'
 def pulsarGroup = 'org.apache.pulsar'
-def pulsarVersion = '2.10.3'
+def pulsarVersion = '2.10.4'
 def alpnAgentVersion = '2.0.10'
 def hadoopVersion = '2.10.2'
 def apacheSparkVersion = '3.3.3'
@@ -181,6 +181,10 @@ configurations {
 
 dependencies {
   alpnAgent libraries.alpnAgent
+}
+
+subprojects {
+  task allDeps(type: DependencyReportTask) {}
 }
 
 subprojects {
