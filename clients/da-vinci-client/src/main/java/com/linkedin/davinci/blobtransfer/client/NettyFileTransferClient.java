@@ -98,7 +98,8 @@ public class NettyFileTransferClient {
       int partition) {
     List<CompletableFuture<String>> futures = new ArrayList<>();
 
-    purgeStaleConnectivityRecords();
+    purgeStaleConnectivityRecords(unconnectableHostsToTimestamp);
+    purgeStaleConnectivityRecords(connectedHostsToTimestamp);
 
     discoveredHosts.removeAll(unconnectableHostsToTimestamp.keySet());
     for (String host: discoveredHosts) {
@@ -161,25 +162,15 @@ public class NettyFileTransferClient {
 
   /**
    * Check the freshness of the connectivity records and purge the stale records
+   * @param hostsToTimestamp the map of hosts to the timestamp of the last connection attempt
    */
-  private void purgeStaleConnectivityRecords() {
-    // Purge the unconnectable hosts
-    for (String host: unconnectableHostsToTimestamp.keySet()) {
-      Long lastAttempt = unconnectableHostsToTimestamp.get(host);
+  public void purgeStaleConnectivityRecords(VeniceConcurrentHashMap<String, Long> hostsToTimestamp) {
+    hostsToTimestamp.forEach((host, lastAttempt) -> {
       if (lastAttempt == null || System.currentTimeMillis() - lastAttempt > TimeUnit.SECONDS
           .toMillis(peersConnectivityFreshnessInSeconds)) {
-        unconnectableHostsToTimestamp.remove(host);
+        hostsToTimestamp.remove(host);
       }
-    }
-
-    // Purge the connected hosts
-    for (String host: connectedHostsToTimestamp.keySet()) {
-      Long lastConnected = connectedHostsToTimestamp.get(host);
-      if (lastConnected == null || System.currentTimeMillis() - lastConnected > TimeUnit.SECONDS
-          .toMillis(peersConnectivityFreshnessInSeconds)) {
-        connectedHostsToTimestamp.remove(host);
-      }
-    }
+    });
   }
 
   public CompletionStage<InputStream> get(

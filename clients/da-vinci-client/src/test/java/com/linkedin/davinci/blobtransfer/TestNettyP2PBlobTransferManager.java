@@ -24,6 +24,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -280,8 +281,23 @@ public class TestNettyP2PBlobTransferManager {
         .get("badhost1", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
     Mockito.verify(client, Mockito.never())
         .get("badhost2", TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+    Mockito.verify(client, Mockito.times(2)).purgeStaleConnectivityRecords(Mockito.any());
 
     verifyFileTransferSuccess(expectOffsetRecord);
+  }
+
+  /**
+   * The client is initialized with host freshness 30 sec, so when purgeStaleConnectivityRecords is called,
+   * All hosts connectivity records older than 30s should be purged.
+   */
+  @Test
+  public void testPurgeStaleConnectivityRecords() {
+    VeniceConcurrentHashMap<String, Long> connectivityMap = new VeniceConcurrentHashMap<>();
+    connectivityMap.put("oldestHost", System.currentTimeMillis() - TimeUnit.SECONDS.toMillis(120));
+    connectivityMap.put("newestHost", System.currentTimeMillis());
+    client.purgeStaleConnectivityRecords(connectivityMap);
+
+    Assert.assertEquals(connectivityMap.size(), 1);
   }
 
   /**
