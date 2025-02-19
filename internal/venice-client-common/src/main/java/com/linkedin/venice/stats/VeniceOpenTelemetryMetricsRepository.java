@@ -4,6 +4,7 @@ import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.tr
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.validateMetricName;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -40,16 +41,17 @@ import org.apache.logging.log4j.Logger;
 
 public class VeniceOpenTelemetryMetricsRepository {
   private static final Logger LOGGER = LogManager.getLogger(VeniceOpenTelemetryMetricsRepository.class);
+  private final VeniceMetricsConfig metricsConfig;
   private SdkMeterProvider sdkMeterProvider = null;
   private final boolean emitOpenTelemetryMetrics;
   private final VeniceOpenTelemetryMetricNamingFormat metricFormat;
   private Meter meter;
-
   private String metricPrefix;
 
-  /** Below Maps are to create only one metric per name and type: Venice code will try to initialize the same metric multiple times as it will get
-   * called from per store path and per request type path. This will ensure that we only have one metric per name and
-   * use dimensions to differentiate between them.
+  /**
+   * To create only one metric per name and type: Venice code will try to initialize the same metric multiple times as
+   * it will get called from per store path, per request type path, etc. This will ensure that we only have one metric
+   * per name and use dimensions to differentiate between them.
    */
   private final VeniceConcurrentHashMap<String, DoubleHistogram> histogramMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, LongCounter> counterMap = new VeniceConcurrentHashMap<>();
@@ -114,6 +116,7 @@ public class VeniceOpenTelemetryMetricsRepository {
   }
 
   public VeniceOpenTelemetryMetricsRepository(VeniceMetricsConfig metricsConfig) {
+    this.metricsConfig = metricsConfig;
     emitOpenTelemetryMetrics = metricsConfig.emitOtelMetrics();
     metricFormat = metricsConfig.getMetricNamingFormat();
     if (!emitOpenTelemetryMetrics) {
@@ -221,6 +224,10 @@ public class VeniceOpenTelemetryMetricsRepository {
     }
   }
 
+  String getDimensionName(VeniceMetricsDimensions dimension) {
+    return dimension.getDimensionName(metricFormat);
+  }
+
   public void close() {
     if (sdkMeterProvider != null) {
       sdkMeterProvider.shutdown();
@@ -228,7 +235,7 @@ public class VeniceOpenTelemetryMetricsRepository {
     }
   }
 
-  class LogBasedMetricExporter implements MetricExporter {
+  static class LogBasedMetricExporter implements MetricExporter {
     VeniceMetricsConfig metricsConfig;
 
     LogBasedMetricExporter(VeniceMetricsConfig metricsConfig) {
@@ -255,6 +262,14 @@ public class VeniceOpenTelemetryMetricsRepository {
     public CompletableResultCode shutdown() {
       return CompletableResultCode.ofSuccess();
     }
+  }
+
+  boolean emitOpenTelemetryMetrics() {
+    return emitOpenTelemetryMetrics;
+  }
+
+  VeniceMetricsConfig getMetricsConfig() {
+    return metricsConfig;
   }
 
   /** for testing purposes */

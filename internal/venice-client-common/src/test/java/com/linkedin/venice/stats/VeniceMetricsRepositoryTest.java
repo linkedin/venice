@@ -48,7 +48,7 @@ public class VeniceMetricsRepositoryTest {
   public void testConstructorWithMetricConfigAndOtelEnabled() {
     Collection<MetricEntity> metricEntities = new ArrayList<>();
     metricEntities
-        .add(new MetricEntity("test_metric", MetricType.HISTOGRAM, MetricUnit.MILLISECOND, "Test description"));
+        .add(new MetricEntity("test_metric", MetricType.HISTOGRAM, MetricUnit.MILLISECOND, "Test description", null));
     VeniceMetricsConfig metricsConfig =
         new VeniceMetricsConfig.Builder().setEmitOtelMetrics(true).setMetricEntities(metricEntities).build();
     VeniceMetricsRepository repository = new VeniceMetricsRepository(metricsConfig);

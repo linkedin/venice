@@ -112,6 +112,10 @@ public class MetricEntityState {
     recordTehutiMetric(value);
   }
 
+  public MetricEntity getMetricEntity() {
+    return metricEntity;
+  }
+
   /** used only for testing */
   Sensor getTehutiSensor() {
     return tehutiSensor;
