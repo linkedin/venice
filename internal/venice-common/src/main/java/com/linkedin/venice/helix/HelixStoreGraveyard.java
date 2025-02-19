@@ -2,6 +2,7 @@ package com.linkedin.venice.helix;
 
 import static com.linkedin.venice.zk.VeniceZkPaths.STORE_GRAVEYARD;
 
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -53,53 +54,70 @@ public class HelixStoreGraveyard implements StoreGraveyard {
   }
 
   @Override
+  public int getLargestUsedRTVersionNumber(String storeName) {
+    return getLargestUsedVersionNumber(storeName, true);
+  }
+
+  @Override
   public int getLargestUsedVersionNumber(String storeName) {
+    return getLargestUsedVersionNumber(storeName, false);
+  }
+
+  private int getLargestUsedVersionNumber(String storeName, boolean isRTVersion) {
     if (VeniceSystemStoreUtils.isSystemStore(storeName)) {
       VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
       if (systemStoreType != null && systemStoreType.isStoreZkShared()) {
         String userStoreName = systemStoreType.extractRegularStoreName(storeName);
-        return getPerUserStoreSystemStoreLargestUsedVersionNumber(userStoreName, systemStoreType);
+        return getPerUserStoreSystemStoreLargestUsedVersionNumber(userStoreName, systemStoreType, isRTVersion);
       }
     }
 
     List<Store> stores = getStoreFromAllClusters(storeName);
     if (stores.isEmpty()) {
-      // If store does NOT existing in graveyard, it means store has never been deleted, return 0 which is the default
-      // value of largestUsedVersionNumber for a new store.
       return Store.NON_EXISTING_VERSION;
     }
+
     int largestUsedVersionNumber = Store.NON_EXISTING_VERSION;
     for (Store deletedStore: stores) {
-      if (deletedStore.getLargestUsedVersionNumber() > largestUsedVersionNumber) {
-        largestUsedVersionNumber = deletedStore.getLargestUsedVersionNumber();
-      }
+      int versionNumber =
+          isRTVersion ? deletedStore.getLargestUsedRTVersionNumber() : deletedStore.getLargestUsedVersionNumber();
+      largestUsedVersionNumber = Math.max(largestUsedVersionNumber, versionNumber);
     }
     return largestUsedVersionNumber;
   }
 
-  @Override
-  public int getLargestUsedRTVersionNumber(String storeName) {
-    if (VeniceSystemStoreUtils.isSystemStore(storeName)) {
-      VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
-      if (systemStoreType != null && systemStoreType.isStoreZkShared()) {
-        String userStoreName = systemStoreType.extractRegularStoreName(storeName);
-        return getPerUserStoreSystemStoreLargestUsedRTVersionNumber(userStoreName, systemStoreType);
+  @VisibleForTesting
+  int getPerUserStoreSystemStoreLargestUsedVersionNumber(
+      String userStoreName,
+      VeniceSystemStoreType systemStoreType,
+      boolean isRTVersion) {
+    String systemStoreName = systemStoreType.getSystemStoreName(userStoreName);
+    List<Store> deletedStores = getStoreFromAllClusters(userStoreName);
+    if (deletedStores.isEmpty()) {
+      LOGGER.info(
+          "User store: {} does NOT exist in the store graveyard. Hence, no largest used {} version for its system store: {}",
+          userStoreName,
+          isRTVersion ? "RT" : "",
+          systemStoreName);
+      return Store.NON_EXISTING_VERSION;
+    }
+    int largestUsedVersionNumber = Store.NON_EXISTING_VERSION;
+    for (Store deletedStore: deletedStores) {
+      Map<String, SystemStoreAttributes> systemStoreNamesToAttributes = deletedStore.getSystemStores();
+      SystemStoreAttributes systemStoreAttributes = systemStoreNamesToAttributes.get(systemStoreType.getPrefix());
+      if (systemStoreAttributes != null) {
+        largestUsedVersionNumber = Math.max(
+            largestUsedVersionNumber,
+            isRTVersion
+                ? systemStoreAttributes.getLargestUsedRTVersionNumber()
+                : systemStoreAttributes.getLargestUsedVersionNumber());
       }
     }
 
-    List<Store> stores = getStoreFromAllClusters(storeName);
-    if (stores.isEmpty()) {
-      // If store does NOT existing in graveyard, it means store has never been deleted, return 0 which is the default
-      // value of largestUsedRTVersionNumber for a new store.
-      return Store.NON_EXISTING_VERSION;
+    if (largestUsedVersionNumber == Store.NON_EXISTING_VERSION) {
+      LOGGER.info("Can not find largest used {} version number for {}.", isRTVersion ? "RT" : "", systemStoreName);
     }
-    int largestUsedRTVersionNumber = Store.NON_EXISTING_VERSION;
-    for (Store deletedStore: stores) {
-      if (deletedStore.getLargestUsedRTVersionNumber() > largestUsedRTVersionNumber) {
-        largestUsedRTVersionNumber = deletedStore.getLargestUsedRTVersionNumber();
-      }
-    }
-    return largestUsedRTVersionNumber;
+    return largestUsedVersionNumber;
   }
 
   @Override
@@ -110,7 +128,7 @@ public class HelixStoreGraveyard implements StoreGraveyard {
     if (store.isMigrating()) {
       /**
        * Suppose I have two datacenters Parent and Child, each has two clusters C1 and C2
-       * Before migration, I have a store with largest version 3:
+       * Before migration, I have a store with the largest version 3:
        * P: C1:v3*, C2:null
        * C: C1:v3*, C2:null
        *
@@ -204,6 +222,7 @@ public class HelixStoreGraveyard implements StoreGraveyard {
    * @return  Matching store from each venice. Normally contains one element.
    * If the store existed in some other cluster before, there will be more than one element in the return value.
    */
+  @VisibleForTesting
   List<Store> getStoreFromAllClusters(String storeName) {
     List<Store> stores = new ArrayList<>();
     for (String clusterName: clusterNames) {
@@ -213,64 +232,6 @@ public class HelixStoreGraveyard implements StoreGraveyard {
       }
     }
     return stores;
-  }
-
-  private int getPerUserStoreSystemStoreLargestUsedVersionNumber(
-      String userStoreName,
-      VeniceSystemStoreType systemStoreType) {
-    String systemStoreName = systemStoreType.getSystemStoreName(userStoreName);
-    List<Store> deletedStores = getStoreFromAllClusters(userStoreName);
-    if (deletedStores.isEmpty()) {
-      LOGGER.info(
-          "User store: {} does NOT exist in the store graveyard. Hence, no largest used version for its system store: {}",
-          userStoreName,
-          systemStoreName);
-      return Store.NON_EXISTING_VERSION;
-    }
-    int largestUsedVersionNumber = Store.NON_EXISTING_VERSION;
-    for (Store deletedStore: deletedStores) {
-      Map<String, SystemStoreAttributes> systemStoreNamesToAttributes = deletedStore.getSystemStores();
-      SystemStoreAttributes systemStoreAttributes =
-          systemStoreNamesToAttributes.get(VeniceSystemStoreType.getSystemStoreType(systemStoreName).getPrefix());
-      if (systemStoreAttributes != null) {
-        largestUsedVersionNumber =
-            Math.max(largestUsedVersionNumber, systemStoreAttributes.getLargestUsedVersionNumber());
-      }
-    }
-
-    if (largestUsedVersionNumber == Store.NON_EXISTING_VERSION) {
-      LOGGER.info("Can not find largest used version number for {}.", systemStoreName);
-    }
-    return largestUsedVersionNumber;
-  }
-
-  int getPerUserStoreSystemStoreLargestUsedRTVersionNumber(
-      String userStoreName,
-      VeniceSystemStoreType systemStoreType) {
-    String systemStoreName = systemStoreType.getSystemStoreName(userStoreName);
-    List<Store> deletedStores = getStoreFromAllClusters(userStoreName);
-    if (deletedStores.isEmpty()) {
-      LOGGER.info(
-          "User store: {} does NOT exist in the store graveyard. Hence, no largest used RT version for its system store: {}",
-          userStoreName,
-          systemStoreName);
-      return Store.NON_EXISTING_VERSION;
-    }
-    int largestUsedRTVersionNumber = Store.NON_EXISTING_VERSION;
-    for (Store deletedStore: deletedStores) {
-      Map<String, SystemStoreAttributes> systemStoreNamesToAttributes = deletedStore.getSystemStores();
-      SystemStoreAttributes systemStoreAttributes =
-          systemStoreNamesToAttributes.get(VeniceSystemStoreType.getSystemStoreType(systemStoreName).getPrefix());
-      if (systemStoreAttributes != null) {
-        largestUsedRTVersionNumber =
-            Math.max(largestUsedRTVersionNumber, systemStoreAttributes.getLargestUsedRTVersionNumber());
-      }
-    }
-
-    if (largestUsedRTVersionNumber == Store.NON_EXISTING_VERSION) {
-      LOGGER.info("Can not find largest used RT version number for {}.", systemStoreName);
-    }
-    return largestUsedRTVersionNumber;
   }
 
   private String getGeneralStoreGraveyardPath() {

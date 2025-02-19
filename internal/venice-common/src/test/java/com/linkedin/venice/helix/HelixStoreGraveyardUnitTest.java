@@ -79,9 +79,10 @@ public class HelixStoreGraveyardUnitTest {
     String userStoreName = "userStore";
     when(graveyard.getStoreFromAllClusters(userStoreName)).thenReturn(Collections.emptyList());
 
-    int result = graveyard.getPerUserStoreSystemStoreLargestUsedRTVersionNumber(
+    int result = graveyard.getPerUserStoreSystemStoreLargestUsedVersionNumber(
         userStoreName,
-        VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE);
+        VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE,
+        true);
 
     assertEquals(result, Store.NON_EXISTING_VERSION);
   }
@@ -100,9 +101,32 @@ public class HelixStoreGraveyardUnitTest {
     List<Store> deletedStores = Collections.singletonList(deletedStore);
     when(graveyard.getStoreFromAllClusters(userStoreName)).thenReturn(deletedStores);
 
-    int result = graveyard.getPerUserStoreSystemStoreLargestUsedRTVersionNumber(
+    int result = graveyard.getPerUserStoreSystemStoreLargestUsedVersionNumber(
         userStoreName,
-        VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE);
+        VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE,
+        true);
+
+    assertEquals(result, 5);
+  }
+
+  @Test
+  void testStoreWithDVCStoreAttributes() {
+    String userStoreName = "userStore";
+    Store deletedStore = mock(Store.class);
+    SystemStoreAttributes attributes = mock(SystemStoreAttributes.class);
+    when(attributes.getLargestUsedRTVersionNumber()).thenReturn(5);
+
+    Map<String, SystemStoreAttributes> systemStoreNamesToAttributes = new HashMap<>();
+    systemStoreNamesToAttributes.put(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getPrefix(), attributes);
+    when(deletedStore.getSystemStores()).thenReturn(systemStoreNamesToAttributes);
+
+    List<Store> deletedStores = Collections.singletonList(deletedStore);
+    when(graveyard.getStoreFromAllClusters(userStoreName)).thenReturn(deletedStores);
+
+    int result = graveyard.getPerUserStoreSystemStoreLargestUsedVersionNumber(
+        userStoreName,
+        VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE,
+        true);
 
     assertEquals(result, 5);
   }

@@ -274,7 +274,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     this.storeProperties.owner = owner;
   }
 
-  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
+  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to ZooKeeper
   @Override
   public long getCreatedTime() {
     return this.storeProperties.createdTime;
@@ -297,7 +297,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setCurrentVersionWithoutCheck(currentVersion);
   }
 
-  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
+  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to ZooKeeper
   @JsonProperty("currentVersion")
   @Override
   public void setCurrentVersionWithoutCheck(int currentVersion) {
@@ -314,7 +314,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     this.storeProperties.lowWatermark = lowWatermark;
   }
 
-  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
+  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to ZooKeeper
   @Override
   public PersistenceType getPersistenceType() {
     return PersistenceType.getPersistenceTypeFromInt(this.storeProperties.persistenceType);
@@ -325,25 +325,25 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     this.storeProperties.persistenceType = persistenceType.ordinal();
   }
 
-  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
+  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to ZooKeeper
   @Override
   public RoutingStrategy getRoutingStrategy() {
     return RoutingStrategy.getRoutingStrategyFromInt(this.storeProperties.routingStrategy);
   }
 
-  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
+  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to ZooKeeper
   @Override
   public ReadStrategy getReadStrategy() {
     return ReadStrategy.getReadStrategyFromInt(this.storeProperties.readStrategy);
   }
 
-  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
+  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to ZooKeeper
   @Override
   public OfflinePushStrategy getOffLinePushStrategy() {
     return OfflinePushStrategy.getOfflinePushStrategyFromInt(this.storeProperties.offlinePushStrategy);
   }
 
-  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
+  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to ZooKeeper
   @Override
   public void setVersions(List<Version> versions) {
     super.setVersions(versions);
@@ -353,31 +353,31 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     }
   }
 
-  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
+  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to ZooKeeper
   @Override
   public int getLargestUsedVersionNumber() {
     return this.storeProperties.largestUsedVersionNumber;
   }
 
-  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
+  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to ZooKeeper
   @Override
   public void setLargestUsedVersionNumber(int largestUsedVersionNumber) {
     this.storeProperties.largestUsedVersionNumber = largestUsedVersionNumber;
   }
 
-  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
+  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to ZooKeeper
   @Override
   public int getLargestUsedRTVersionNumber() {
     return this.storeProperties.largestUsedRTVersionNumber;
   }
 
-  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
+  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to ZooKeeper
   @Override
   public void setLargestUsedRTVersionNumber(int largestUsedRTVersionNumber) {
     this.storeProperties.largestUsedRTVersionNumber = largestUsedRTVersionNumber;
   }
 
-  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
+  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to ZooKeeper
   @Override
   public long getStorageQuotaInByte() {
     // This is a safeguard in case that some old stores do not have storage quota field
@@ -387,7 +387,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
             : this.storeProperties.storageQuotaInByte;
   }
 
-  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
+  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to ZooKeeper
   @Override
   public void setStorageQuotaInByte(long storageQuotaInByte) {
     this.storeProperties.storageQuotaInByte = storageQuotaInByte;

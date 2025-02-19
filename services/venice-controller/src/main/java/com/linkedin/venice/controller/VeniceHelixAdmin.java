@@ -1021,7 +1021,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         LOGGER.info(
             "Found store: {} in the store graveyard. Will initialize the RT version to {}.",
             storeName,
-            largestUsedStoreVersion);
+            largestUsedRTStoreVersion);
       }
 
       configureNewStore(newStore, config, largestUsedStoreVersion, largestUsedRTStoreVersion);
