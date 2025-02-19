@@ -101,16 +101,28 @@ public class NettyFileTransferClient {
       int partition) {
     List<CompletableFuture<String>> futures = new ArrayList<>();
 
+    // 1. Purge the host connectivity records that are stale
     purgeStaleConnectivityRecords(unconnectableHostsToTimestamp);
     purgeStaleConnectivityRecords(connectedHostsToTimestamp);
 
+    // 2. Remove the hosts that are already marked as unconnectable
     discoveredHosts.removeAll(unconnectableHostsToTimestamp.keySet());
+
+    // 3. Check if the discovered hosts are already connectable
+    Set<String> connectableHostsResult = new HashSet<>();
+    Iterator<String> discoveredHostsIterator = discoveredHosts.iterator();
+    while (discoveredHostsIterator.hasNext()) {
+      String host = discoveredHostsIterator.next();
+      if (connectedHostsToTimestamp.contains(host)) {
+        connectableHostsResult.add(host);
+        discoveredHostsIterator.remove();
+      }
+    }
+
+    // 4. Checking connectivity of remaining host via connectToHost
     for (String host: discoveredHosts) {
       CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
         try {
-          if (connectedHostsToTimestamp.keySet().contains(host)) {
-            return host; // already verified via previous connection
-          }
           // Check if the host is connectable
           Channel channel = connectToHost(host, storeName, version, partition);
           if (channel != null && channel.isActive()) {
@@ -147,8 +159,7 @@ public class NettyFileTransferClient {
 
     allConnections.join();
 
-    // Collect only the successfully connected hosts
-    Set<String> connectableHostsResult = new HashSet<>();
+    // 5. Collect only the successfully connected hosts
     for (CompletableFuture<String> future: futures) {
       try {
         String host = future.get();
