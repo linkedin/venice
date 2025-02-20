@@ -1,6 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
-import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.*;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.Admin;
@@ -13,6 +13,7 @@ import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSe
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -21,6 +22,7 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -195,58 +197,65 @@ public class TestMultiDataCenterAdminOperations {
   @Test
   public void testAdminOperationMessageWithSpecificSchemaId() {
     String storeName = Utils.getUniqueString("test-store");
-    try (VeniceTwoLayerMultiRegionMultiClusterWrapper venice =
-        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
-            new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
-                .numberOfClusters(1)
-                .numberOfParentControllers(1)
-                .numberOfChildControllers(1)
-                .numberOfServers(1)
-                .numberOfRouters(1)
-                .replicationFactor(1)
-                .build());) {
 
-      String clusterName = venice.getClusterNames()[0];
+    String clusterName = CLUSTER_NAMES[0];
 
-      // Get the parent con†roller
-      VeniceControllerWrapper parentController = venice.getParentControllers().get(0);
-      ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
+    // Get the parent con†roller
+    VeniceControllerWrapper parentController = parentControllers.get(0);
+    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
 
-      // Update the admin operation version to new version - 74
-      // VeniceControllerWrapper childControllerClient =
-      // venice.getChildRegions().get(0).getLeaderController(clusterName);
-      AdminConsumerService adminConsumerService = parentController.getAdminConsumerServiceByCluster(clusterName);
-      adminConsumerService.updateAdminOperationProtocolVersion(clusterName, 74);
+    // Update the admin operation version to new version - 74
+    // VeniceControllerWrapper childControllerClient =
+    // venice.getChildRegions().get(0).getLeaderController(clusterName);
+    // AdminConsumerService adminConsumerService = parentController.getAdminConsumerServiceByCluster(clusterName);
+    // adminConsumerService.updateAdminOperationProtocolVersion(clusterName, 74);
 
-      // parentControllerClient.updateAdminOperationProtocolVersion(clusterName, 74L);
+    parentControllerClient.updateAdminOperationProtocolVersion(clusterName, 74L);
 
-      // Create store
-      NewStoreResponse newStoreResponse =
-          parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
-      Assert.assertFalse(newStoreResponse.isError());
+    // Create store
+    NewStoreResponse newStoreResponse =
+        parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
+    Assert.assertFalse(newStoreResponse.isError());
 
-      // Empty push
-      VersionCreationResponse versionCreationResponse =
-          parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-push-1"), 1L);
-      Assert.assertFalse(versionCreationResponse.isError());
-      Assert.assertEquals(versionCreationResponse.getVersion(), 1);
+    // Empty push
+    List<ControllerClient> childControllerClients = new ArrayList<>();
+    ControllerClient dc0Client = ControllerClient.constructClusterControllerClient(
+        clusterName,
+        multiRegionMultiClusterWrapper.getChildRegions().get(0).getControllerConnectString());
+    ControllerClient dc1Client = ControllerClient.constructClusterControllerClient(
+        clusterName,
+        multiRegionMultiClusterWrapper.getChildRegions().get(1).getControllerConnectString());
 
-      // Store update
-      ControllerResponse updateStore =
-          parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setBatchGetLimit(100));
-      Assert.assertFalse(updateStore.isError());
+    childControllerClients.add(dc0Client);
+    childControllerClients.add(dc1Client);
+    emptyPushToStore(parentControllerClient, childControllerClients, storeName, 1);
 
-      // Check the admin operation version
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        Assert.assertEquals(
-            parentControllerClient.getAdminTopicMetadata(Optional.empty()).getAdminOperationProtocolVersion(),
-            74,
-            "Admin operation version should be 74");
-        StoreInfo storeInfo = parentControllerClient.getStore(storeName).getStore();
-        Assert.assertEquals(storeInfo.getCurrentVersion(), 1, "Store version should be 1");
-        Assert.assertEquals(storeInfo.getBatchGetLimit(), 100, "Batch get limit should be 100");
+    TestUtils.waitForNonDeterministicPushCompletion(
+        Version.composeKafkaTopic(storeName, 1),
+        parentControllerClient,
+        30,
+        TimeUnit.SECONDS);
+
+    // Store update
+    ControllerResponse updateStore =
+        parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setBatchGetLimit(100));
+    Assert.assertFalse(updateStore.isError());
+    for (ControllerClient childControllerClient: childControllerClients) {
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+        StoreResponse storeResponse = childControllerClient.getStore(storeName);
+        Assert.assertFalse(storeResponse.isError());
+        StoreInfo storeInfo = storeResponse.getStore();
+        assertEquals(storeInfo.getBatchGetLimit(), 100);
       });
     }
+
+    // Check the admin operation version
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Assert.assertEquals(
+          parentControllerClient.getAdminTopicMetadata(Optional.empty()).getAdminOperationProtocolVersion(),
+          74,
+          "Admin operation version should be 74");
+    });
   }
 
   private byte[] getStoreUpdateMessage(
@@ -271,5 +280,26 @@ public class TestMultiDataCenterAdminOperations {
     adminMessage.executionId = executionId;
     return adminOperationSerializer
         .serialize(adminMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+  }
+
+  private void emptyPushToStore(
+      ControllerClient parentControllerClient,
+      List<ControllerClient> childControllerClients,
+      String storeName,
+      int expectedVersion) {
+    VersionCreationResponse vcr = parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-push"), 1L);
+    Assert.assertFalse(vcr.isError());
+    assertEquals(
+        vcr.getVersion(),
+        expectedVersion,
+        "requesting a topic for a push should provide version number " + expectedVersion);
+    for (ControllerClient childControllerClient: childControllerClients) {
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+        StoreResponse storeResponse = childControllerClient.getStore(storeName);
+        Assert.assertFalse(storeResponse.isError());
+        StoreInfo storeInfo = storeResponse.getStore();
+        assertEquals(storeInfo.getCurrentVersion(), expectedVersion);
+      });
+    }
   }
 }
