@@ -12,12 +12,15 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -27,6 +30,7 @@ import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -186,6 +190,63 @@ public class TestMultiDataCenterAdminOperations {
       }
       return allFailedMessagesSkipped;
     });
+  }
+
+  @Test
+  public void testAdminOperationMessageWithSpecificSchemaId() {
+    String storeName = Utils.getUniqueString("test-store");
+    try (VeniceTwoLayerMultiRegionMultiClusterWrapper venice =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+            new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+                .numberOfClusters(1)
+                .numberOfParentControllers(1)
+                .numberOfChildControllers(1)
+                .numberOfServers(1)
+                .numberOfRouters(1)
+                .replicationFactor(1)
+                .build());) {
+
+      String clusterName = venice.getClusterNames()[0];
+
+      // Get the parent con†roller
+      VeniceControllerWrapper parentController = venice.getParentControllers().get(0);
+      ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
+
+      // Update the admin operation version to new version - 74
+      // VeniceControllerWrapper childControllerClient =
+      // venice.getChildRegions().get(0).getLeaderController(clusterName);
+      AdminConsumerService adminConsumerService = parentController.getAdminConsumerServiceByCluster(clusterName);
+      adminConsumerService.updateAdminOperationProtocolVersion(clusterName, 74);
+
+      // parentControllerClient.updateAdminOperationProtocolVersion(clusterName, 74L);
+
+      // Create store
+      NewStoreResponse newStoreResponse =
+          parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
+      Assert.assertFalse(newStoreResponse.isError());
+
+      // Empty push
+      VersionCreationResponse versionCreationResponse =
+          parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-push-1"), 1L);
+      Assert.assertFalse(versionCreationResponse.isError());
+      Assert.assertEquals(versionCreationResponse.getVersion(), 1);
+
+      // Store update
+      ControllerResponse updateStore =
+          parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setBatchGetLimit(100));
+      Assert.assertFalse(updateStore.isError());
+
+      // Check the admin operation version
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        Assert.assertEquals(
+            parentControllerClient.getAdminTopicMetadata(Optional.empty()).getAdminOperationProtocolVersion(),
+            74,
+            "Admin operation version should be 74");
+        StoreInfo storeInfo = parentControllerClient.getStore(storeName).getStore();
+        Assert.assertEquals(storeInfo.getCurrentVersion(), 1, "Store version should be 1");
+        Assert.assertEquals(storeInfo.getBatchGetLimit(), 100, "Batch get limit should be 100");
+      });
+    }
   }
 
   private byte[] getStoreUpdateMessage(

@@ -5,7 +5,6 @@ import static com.linkedin.venice.ConfigKeys.ADMIN_CONSUMPTION_MAX_WORKER_THREAD
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
-import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
@@ -22,6 +21,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -274,8 +274,9 @@ public class AdminConsumptionTaskIntegrationTest {
   }
 
   @Test(timeOut = 2 * TIMEOUT)
-  public void testParallelAdminExecutionTasksWithSpecificVersion() throws IOException, InterruptedException {
+  public void testAdminConsumptionTaskWithSpecificWriterId() throws IOException {
     int adminConsumptionMaxWorkerPoolSize = 3;
+    // Use a specific version to test the serialization and deserialization of admin operation.
     int writerSchemaId = AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION - 10;
 
     Properties parentControllerProps = new Properties();
@@ -322,18 +323,14 @@ public class AdminConsumptionTaskIntegrationTest {
 
         // Update store
         executionId++;
-        byte[] updateStoreMessage =
-            getStoreUpdateMessage(clusterName, storeName, owner, executionId, adminOperationSerializer, writerSchemaId);
+        byte[] updateStoreMessage = getStoreUpdateMessage(clusterName, storeName, owner, executionId, writerSchemaId);
         writer.put(new byte[0], updateStoreMessage, writerSchemaId);
-
-        // Create a new store version
-        executionId++;
-        byte[] addVersionMessage =
-            getAddVersionMessage(clusterName, storeName, "empty_push", 2, 20, executionId, writerSchemaId);
-        writer.put(new byte[0], addVersionMessage, writerSchemaId);
 
         TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
           Assert.assertFalse(parentControllerClient.getStore(storeName).isError());
+          StoreInfo storeInfo = parentControllerClient.getStore(storeName).getStore();
+          Assert.assertTrue(storeInfo.isEnableStoreWrites());
+          Assert.assertTrue(storeInfo.isEnableStoreReads());
         });
       }
     }
@@ -424,47 +421,20 @@ public class AdminConsumptionTaskIntegrationTest {
       String storeName,
       String owner,
       long executionId,
-      AdminOperationSerializer adminOperationSerializer,
       int writerSchemaId) {
     UpdateStore updateStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
     updateStore.clusterName = clusterName;
     updateStore.storeName = storeName;
     updateStore.owner = owner;
     updateStore.partitionNum = 20;
-    updateStore.currentVersion = 1;
+    updateStore.currentVersion = AdminConsumptionTask.IGNORED_CURRENT_VERSION;
     updateStore.enableReads = true;
     updateStore.enableWrites = true;
     updateStore.replicateAllConfigs = true;
     updateStore.updatedConfigsList = Collections.emptyList();
-    updateStore.incrementalPushEnabled = true;
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
     adminMessage.payloadUnion = updateStore;
-    adminMessage.executionId = executionId;
-    return adminOperationSerializer.serialize(adminMessage, writerSchemaId);
-  }
-
-  private byte[] getAddVersionMessage(
-      String clusterName,
-      String storeName,
-      String pushJobId,
-      int versionNum,
-      int numberOfPartitions,
-      long executionId,
-      int writerSchemaId) {
-    AddVersion addVersion = (AddVersion) AdminMessageType.ADD_VERSION.getNewInstance();
-    addVersion.clusterName = clusterName;
-    addVersion.storeName = storeName;
-    addVersion.pushJobId = pushJobId;
-    addVersion.versionNum = versionNum;
-    addVersion.numberOfPartitions = numberOfPartitions;
-    addVersion.rewindTimeInSecondsOverride = -1;
-    addVersion.timestampMetadataVersionId = 1;
-    addVersion.versionSwapDeferred = false;
-
-    AdminOperation adminMessage = new AdminOperation();
-    adminMessage.operationType = AdminMessageType.ADD_VERSION.getValue();
-    adminMessage.payloadUnion = addVersion;
     adminMessage.executionId = executionId;
     return adminOperationSerializer.serialize(adminMessage, writerSchemaId);
   }

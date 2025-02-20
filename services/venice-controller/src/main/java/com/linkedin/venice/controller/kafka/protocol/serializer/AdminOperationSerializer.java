@@ -14,6 +14,7 @@ import org.apache.avro.Schema;
 import org.apache.avro.io.Decoder;
 import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.io.Encoder;
+import org.apache.avro.specific.ExtendedSpecificData;
 import org.apache.avro.specific.SpecificDatumReader;
 import org.apache.avro.specific.SpecificDatumWriter;
 
@@ -32,7 +33,8 @@ public class AdminOperationSerializer {
     try {
       writerSchemaId = writerSchemaId > 0 ? writerSchemaId : LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
       Schema writerSchema = getSchema(writerSchemaId);
-      SpecificDatumWriter<AdminOperation> specificDatumWriter = new SpecificDatumWriter<>(writerSchema);
+      ExtendedSpecificData specificData = new ExtendedSpecificData();
+      SpecificDatumWriter<AdminOperation> specificDatumWriter = new SpecificDatumWriter<>(writerSchema, specificData);
 
       ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
       Encoder encoder = AvroCompatibilityHelper.newBinaryEncoder(byteArrayOutputStream, true, null);
@@ -49,7 +51,9 @@ public class AdminOperationSerializer {
 
   public AdminOperation deserialize(ByteBuffer byteBuffer, int writerSchemaId) {
     Schema writerSchema = getSchema(writerSchemaId);
-    SpecificDatumReader<AdminOperation> reader = new SpecificDatumReader<>(writerSchema, writerSchema);
+    ExtendedSpecificData specificData = new ExtendedSpecificData();
+    SpecificDatumReader<AdminOperation> reader =
+        new SpecificDatumReader<>(writerSchema, AdminOperation.getClassSchema(), specificData);
     Decoder decoder = AvroCompatibilityHelper
         .newBinaryDecoder(byteBuffer.array(), byteBuffer.position(), byteBuffer.remaining(), null);
     try {
