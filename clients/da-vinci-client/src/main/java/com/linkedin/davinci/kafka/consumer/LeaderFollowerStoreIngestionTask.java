@@ -31,6 +31,7 @@ import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.view.ChangeCaptureViewWriter;
+import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
 import com.linkedin.davinci.validation.PartitionTracker;
@@ -203,6 +204,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected final Map<String, VeniceViewWriter> viewWriters;
   protected final boolean hasChangeCaptureView;
+  protected final boolean hasComplexVenicePartitionerMaterializedView;
 
   protected final AvroStoreDeserializerCache<GenericRecord> storeDeserializerCache;
 
@@ -337,16 +339,22 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               version.getNumber(),
               schemaRepository.getKeySchema(store.getName()).getSchema());
       boolean tmpValueForHasChangeCaptureViewWriter = false;
+      boolean tmpValueForHasComplexVenicePartitioner = false;
       for (Map.Entry<String, VeniceViewWriter> viewWriter: viewWriters.entrySet()) {
         if (viewWriter.getValue() instanceof ChangeCaptureViewWriter) {
           tmpValueForHasChangeCaptureViewWriter = true;
-          break;
+        } else if (viewWriter.getValue() instanceof MaterializedViewWriter) {
+          if (((MaterializedViewWriter) viewWriter.getValue()).isComplexVenicePartitioner()) {
+            tmpValueForHasComplexVenicePartitioner = true;
+          }
         }
       }
       hasChangeCaptureView = tmpValueForHasChangeCaptureViewWriter;
+      hasComplexVenicePartitionerMaterializedView = tmpValueForHasComplexVenicePartitioner;
     } else {
       viewWriters = Collections.emptyMap();
       hasChangeCaptureView = false;
+      hasComplexVenicePartitionerMaterializedView = false;
     }
     this.storeDeserializerCache = new AvroStoreDeserializerCache(
         builder.getSchemaRepo(),
@@ -3297,7 +3305,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               update.updateValue,
               update.updateSchemaId,
               readerUpdateProtocolVersion);
-          updatedValueBytes = writeComputeResult.getUpdatedValueBytes();
+          updatedValueBytes = compressor.get().compress(writeComputeResult.getUpdatedValueBytes());
           hostLevelIngestionStats
               .recordWriteComputeUpdateLatency(LatencyUtils.getElapsedTimeFromNSToMS(writeComputeStartTimeInNS));
         } catch (Exception e) {
@@ -3342,24 +3350,29 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                   Lazy.of(writeComputeResult::getUpdatedValue)));
         }
       case DELETE:
+        Lazy<GenericRecord> oldValueProvider;
+        if (hasComplexVenicePartitionerMaterializedView) {
+          // Best-effort to provide the old value for delete operation in case needed by a ComplexVeniceWriter to
+          // generate deletes for materialized view topic partition(s). We need to do a non-lazy lookup before, so we
+          // have a chance of getting the old value before the transient record cache is updated to null as part of
+          // processing the DELETE.
+          int oldValueReaderSchemaId = schemaRepository.getSupersetSchema(storeName).getId();
+          GenericRecord oldValue = readStoredValueRecord(
+              partitionConsumptionState,
+              keyBytes,
+              oldValueReaderSchemaId,
+              consumerRecord.getTopicPartition(),
+              new ChunkedValueManifestContainer());
+          oldValueProvider = Lazy.of(() -> oldValue);
+        } else {
+          oldValueProvider = Lazy.of(() -> null);
+        }
         /**
          * For WC enabled stores update the transient record map with the latest {key,null} for similar reason as mentioned in PUT above.
          */
         if (isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived()) {
           partitionConsumptionState.setTransientRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, -1, null);
         }
-        // Best-effort to provide the old value for delete operation in case needed by a ComplexVeniceWriter to generate
-        // deletes for materialized view topic partition(s).
-        Lazy<GenericRecord> oldValueProvider = Lazy.of(() -> {
-          ChunkedValueManifestContainer oldValueManifestContainer = new ChunkedValueManifestContainer();
-          int oldValueReaderSchemaId = schemaRepository.getSupersetSchema(storeName).getId();
-          return readStoredValueRecord(
-              partitionConsumptionState,
-              keyBytes,
-              oldValueReaderSchemaId,
-              consumerRecord.getTopicPartition(),
-              oldValueManifestContainer);
-        });
         return new PubSubMessageProcessedResult(new WriteComputeResultWrapper(null, null, false, oldValueProvider));
 
       default:

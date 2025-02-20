@@ -103,7 +103,7 @@ public class MergeConflictResultWrapper {
    *   2. returns the old value for DELETE (null for non-existent key).
    *   3. returns null if the value is not available.
    */
-  public Lazy<GenericRecord> getNewValueProvider() {
+  public Lazy<GenericRecord> getValueProvider() {
     return valueProvider;
   }
 }

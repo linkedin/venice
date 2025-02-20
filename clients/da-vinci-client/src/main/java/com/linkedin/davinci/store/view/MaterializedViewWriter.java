@@ -6,6 +6,7 @@ import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.partitioner.ComplexVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.utils.ByteUtils;
@@ -115,5 +116,9 @@ public class MaterializedViewWriter extends VeniceViewWriter {
   // Package private for testing
   VeniceWriterOptions buildWriterOptions() {
     return setProducerOptimizations(internalView.getWriterOptionsBuilder(materializedViewTopicName, version)).build();
+  }
+
+  public boolean isComplexVenicePartitioner() {
+    return internalView.getViewPartitioner() instanceof ComplexVenicePartitioner;
   }
 }

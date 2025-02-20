@@ -1,5 +1,6 @@
 package com.linkedin.venice.writer;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.partitioner.ComplexVenicePartitioner;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
@@ -9,6 +10,7 @@ import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import org.apache.avro.generic.GenericRecord;
@@ -46,7 +48,7 @@ public class ComplexVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
     CompletableFuture<Void> finalCompletableFuture = new CompletableFuture<>();
     if (value == null) {
       // Ignore null value
-      finalCompletableFuture.complete(null);
+      throw new VeniceException("Put value should not be null");
     } else {
       // Write updated/put record to materialized view topic partition(s)
       if (complexPartitioner == null) {
@@ -157,6 +159,17 @@ public class ComplexVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
       ChunkedValueManifest oldValueManifest,
       ChunkedValueManifest oldRmdManifest) {
     throw new UnsupportedOperationException("ComplexVeniceWriter should use complexDelete instead of delete");
+  }
+
+  @Override
+  public Future<PubSubProduceResult> update(
+      K key,
+      U update,
+      int valueSchemaId,
+      int derivedSchemaId,
+      PubSubProducerCallback callback,
+      long logicalTs) {
+    throw new UnsupportedOperationException("ComplexVeniceWriter does not support update");
   }
 
   /**
