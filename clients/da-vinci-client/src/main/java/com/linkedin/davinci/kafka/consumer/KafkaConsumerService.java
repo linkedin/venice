@@ -37,6 +37,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Function;
 import java.util.function.IntConsumer;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
@@ -90,7 +91,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   private static final int SHUTDOWN_TIMEOUT_IN_SECOND = 1;
   // 4MB bitset size, 2 bitmaps for active and old bitset
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
-      new RedundantExceptionFilter(8 * 1024 * 1024 * 4, TimeUnit.MINUTES.toMillis(10));
+      new RedundantExceptionFilter(8 * 1024 * 1024 * 4, TimeUnit.MINUTES.toMillis(1));
 
   /**
    * @param statsOverride injection of stats, for test purposes
@@ -167,6 +168,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
           pubSubConsumer::batchUnsubscribe,
           time);
 
+      Function<PubSubTopicPartition, Long> offsetLagGetter = pubSubConsumer::getOffsetLag;
       ConsumptionTask consumptionTask = new ConsumptionTask(
           consumerNamePrefix,
           i,
@@ -175,7 +177,9 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
           bandwidthThrottlerFunction,
           recordsThrottlerFunction,
           this.aggStats,
-          cleaner);
+          cleaner,
+          offsetLagGetter,
+          REDUNDANT_LOGGING_FILTER);
       consumerToConsumptionTask.putByIndex(pubSubConsumer, consumptionTask, i);
       consumerToLocks.put(pubSubConsumer, new ReentrantLock());
     }
@@ -560,6 +564,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         long latestOffset = consumer.getLatestOffset(topicPartition);
         double msgRate = consumptionTask.getMessageRate(topicPartition);
         double byteRate = consumptionTask.getByteRate(topicPartition);
+        double pollRate = consumptionTask.getPollRate(topicPartition);
         long lastSuccessfulPollTimestamp = consumptionTask.getLastSuccessfulPollTimestamp(topicPartition);
         long elapsedTimeSinceLastPollInMs = ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP;
         if (lastSuccessfulPollTimestamp != ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP) {
@@ -573,6 +578,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
             offsetLag,
             msgRate,
             byteRate,
+            pollRate,
             consumerIdStr,
             elapsedTimeSinceLastPollInMs,
             destinationVersionTopicName);
