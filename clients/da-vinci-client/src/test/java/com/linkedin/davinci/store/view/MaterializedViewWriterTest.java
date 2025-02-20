@@ -18,6 +18,7 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
+import com.linkedin.davinci.utils.UnitTestComplexPartitioner;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
@@ -173,6 +174,31 @@ public class MaterializedViewWriterTest {
       verify(veniceWriter, times(1)).complexPut(eq(key), any(), eq(1), any());
       Mockito.clearInvocations(veniceWriter);
     }
+  }
+
+  @Test
+  public void testIsComplexVenicePartitioner() {
+    String storeName = "testStore";
+    String viewName = "simplePartitionerView";
+    Version version = mock(Version.class);
+    doReturn(true).when(version).isChunkingEnabled();
+    doReturn(true).when(version).isRmdChunkingEnabled();
+    getMockStore(storeName, 1, version);
+    MaterializedViewParameters.Builder viewParamsBuilder = new MaterializedViewParameters.Builder(viewName);
+    viewParamsBuilder.setPartitionCount(6);
+    viewParamsBuilder.setPartitioner(DefaultVenicePartitioner.class.getCanonicalName());
+    VeniceConfigLoader props = getMockProps();
+    MaterializedViewWriter materializedViewWriter =
+        new MaterializedViewWriter(props, version, SCHEMA, viewParamsBuilder.build());
+    Assert.assertFalse(materializedViewWriter.isComplexVenicePartitioner());
+    String complexViewName = "complexPartitionerView";
+    MaterializedViewParameters.Builder complexViewParamsBuilder =
+        new MaterializedViewParameters.Builder(complexViewName);
+    complexViewParamsBuilder.setPartitionCount(6);
+    complexViewParamsBuilder.setPartitioner(UnitTestComplexPartitioner.class.getCanonicalName());
+    MaterializedViewWriter complexMaterializedViewWriter =
+        new MaterializedViewWriter(props, version, SCHEMA, complexViewParamsBuilder.build());
+    Assert.assertTrue(complexMaterializedViewWriter.isComplexVenicePartitioner());
   }
 
   private VeniceConfigLoader getMockProps() {
