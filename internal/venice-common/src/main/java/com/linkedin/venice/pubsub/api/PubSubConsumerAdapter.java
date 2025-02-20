@@ -204,6 +204,11 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    */
   Long beginningOffset(PubSubTopicPartition pubSubTopicPartition, Duration timeout);
 
+  @UnderDevelopment("This method is under development and may be subject to change.")
+  default PubSubPosition beginningPosition(PubSubTopicPartition pubSubTopicPartition, Duration timeout) {
+    throw new UnsupportedOperationException("beginningPosition is not supported");
+  }
+
   /**
    * Retrieves the end offsets for a collection of PubSub topic-partitions. The end offset represents
    * the highest offset available in each specified partition, i.e., offset of the last message + 1.
@@ -218,6 +223,13 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    */
   Map<PubSubTopicPartition, Long> endOffsets(Collection<PubSubTopicPartition> partitions, Duration timeout);
 
+  @UnderDevelopment
+  default Map<PubSubTopicPartition, PubSubPosition> endPositions(
+      Collection<PubSubTopicPartition> partitions,
+      Duration timeout) {
+    throw new UnsupportedOperationException("endPositions is not supported");
+  }
+
   /**
    * Retrieves the end offset for the specified PubSub topic-partition. The end offset represents
    * the highest offset available in each specified partition, i.e., offset of the last message + 1.
@@ -229,6 +241,11 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * @throws PubSubClientException If there is an error while attempting to fetch the end offset.
    */
   Long endOffset(PubSubTopicPartition pubSubTopicPartition);
+
+  @UnderDevelopment
+  default PubSubPosition endPosition(PubSubTopicPartition pubSubTopicPartition) {
+    throw new UnsupportedOperationException("endPosition is not supported");
+  }
 
   /**
    * Retrieves the list of partitions associated with a given Pub-Sub topic.
