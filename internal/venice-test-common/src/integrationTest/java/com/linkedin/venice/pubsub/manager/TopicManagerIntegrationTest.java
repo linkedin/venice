@@ -8,6 +8,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -44,7 +45,11 @@ public class TopicManagerIntegrationTest extends TopicManagerTest {
   protected PubSubProducerAdapter createPubSubProducerAdapter() {
     return pubSubBrokerWrapper.getPubSubClientsFactory()
         .getProducerAdapterFactory()
-        .create(VeniceProperties.empty(), "topicManagerTestProducer", pubSubBrokerWrapper.getAddress());
+        .create(
+            new PubSubProducerAdapterContext.Builder().setVeniceProperties(VeniceProperties.empty())
+                .setProducerName("topicManagerTestProducer")
+                .setBrokerAddress(pubSubBrokerWrapper.getAddress())
+                .build());
   }
 
   @Test

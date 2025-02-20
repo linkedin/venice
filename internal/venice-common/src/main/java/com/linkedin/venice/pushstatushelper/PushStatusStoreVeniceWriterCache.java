@@ -37,11 +37,11 @@ public class PushStatusStoreVeniceWriterCache implements AutoCloseable {
     return veniceWriters.computeIfAbsent(storeName, s -> {
       String rtTopic = Utils.composeRealTimeTopic(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName));
       VeniceWriterOptions options = new VeniceWriterOptions.Builder(rtTopic)
-          .setKeySerializer(
+          .setKeyPayloadSerializer(
               new VeniceAvroKafkaSerializer(
                   AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()))
-          .setValueSerializer(new VeniceAvroKafkaSerializer(valueSchema))
-          .setWriteComputeSerializer(new VeniceAvroKafkaSerializer(updateSchema))
+          .setValuePayloadSerializer(new VeniceAvroKafkaSerializer(valueSchema))
+          .setWriteComputePayloadSerializer(new VeniceAvroKafkaSerializer(updateSchema))
           .setChunkingEnabled(false)
           .setPartitionCount(1)
           .build();

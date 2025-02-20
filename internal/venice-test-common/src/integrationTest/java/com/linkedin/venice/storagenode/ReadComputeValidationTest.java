@@ -159,8 +159,8 @@ public class ReadComputeValidationTest {
         .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory);
     try (
         VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory.createVeniceWriter(
-            new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
-                .setValueSerializer(new DefaultSerializer())
+            new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(keySerializer)
+                .setValuePayloadSerializer(new DefaultSerializer())
                 .setChunkingEnabled(valueLargerThan1MB)
                 .build());
         AvroGenericStoreClient<Integer, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(
@@ -195,8 +195,8 @@ public class ReadComputeValidationTest {
       final int pushVersion2 = newVersion2.getVersion();
       String topic2 = newVersion2.getKafkaTopic();
       VeniceWriter<Object, byte[], byte[]> veniceWriter2 = vwFactory.createVeniceWriter(
-          new VeniceWriterOptions.Builder(topic2).setKeySerializer(keySerializer)
-              .setValueSerializer(new DefaultSerializer())
+          new VeniceWriterOptions.Builder(topic2).setKeyPayloadSerializer(keySerializer)
+              .setValuePayloadSerializer(new DefaultSerializer())
               .setChunkingEnabled(valueLargerThan1MB)
               .build());
       pushSyntheticDataToStore(
@@ -247,7 +247,7 @@ public class ReadComputeValidationTest {
         .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory);
     try (
         VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory
-            .createVeniceWriter(new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer).build());
+            .createVeniceWriter(new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(keySerializer).build());
         AvroGenericStoreClient<Integer, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddr).setUseFastAvro(fastAvro))) {
 
@@ -279,8 +279,8 @@ public class ReadComputeValidationTest {
       VersionCreationResponse newVersion2 = veniceCluster.getNewVersion(storeName);
       final int pushVersion2 = newVersion2.getVersion();
       String topic2 = newVersion2.getKafkaTopic();
-      VeniceWriter<Object, byte[], byte[]> veniceWriter2 =
-          vwFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topic2).setKeySerializer(keySerializer).build());
+      VeniceWriter<Object, byte[], byte[]> veniceWriter2 = vwFactory
+          .createVeniceWriter(new VeniceWriterOptions.Builder(topic2).setKeyPayloadSerializer(keySerializer).build());
       pushSyntheticDataToStore(
           topic2,
           100,
@@ -362,7 +362,7 @@ public class ReadComputeValidationTest {
         .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory);
     try (
         VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory
-            .createVeniceWriter(new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer).build());
+            .createVeniceWriter(new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(keySerializer).build());
         AvroGenericStoreClient<Integer, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddr).setUseFastAvro(false))) {
 

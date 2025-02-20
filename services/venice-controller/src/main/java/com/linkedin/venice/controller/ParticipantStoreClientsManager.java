@@ -85,8 +85,9 @@ public class ParticipantStoreClientsManager implements Closeable {
       }
       return veniceWriterFactory.createVeniceWriter(
           new VeniceWriterOptions.Builder(topic.getName())
-              .setKeySerializer(new VeniceAvroKafkaSerializer(ParticipantMessageKey.getClassSchema().toString()))
-              .setValueSerializer(new VeniceAvroKafkaSerializer(ParticipantMessageValue.getClassSchema().toString()))
+              .setKeyPayloadSerializer(new VeniceAvroKafkaSerializer(ParticipantMessageKey.getClassSchema().toString()))
+              .setValuePayloadSerializer(
+                  new VeniceAvroKafkaSerializer(ParticipantMessageValue.getClassSchema().toString()))
               .build());
     });
   }

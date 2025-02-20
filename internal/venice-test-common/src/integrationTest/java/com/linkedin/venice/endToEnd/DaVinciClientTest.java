@@ -536,8 +536,8 @@ public class DaVinciClientTest {
             extraBackendConfigMap);
 
     try (VeniceWriter<Object, Object, byte[]> writer = vwFactory.createVeniceWriter(
-        new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
-            .setValueSerializer(valueSerializer)
+        new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(keySerializer)
+            .setValuePayloadSerializer(valueSerializer)
             .build());
         CachingDaVinciClientFactory factory = daVinciTestContext.getDaVinciClientFactory()) {
       int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
@@ -882,8 +882,8 @@ public class DaVinciClientTest {
       int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
 
       try (VeniceWriter<Object, Object, byte[]> batchProducer = vwFactory.createVeniceWriter(
-          new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
-              .setValueSerializer(valueSerializer)
+          new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(keySerializer)
+              .setValuePayloadSerializer(valueSerializer)
               .build())) {
         batchProducer.broadcastStartOfPush(Collections.emptyMap());
         int keyCntForSecondVersion = 100;
@@ -962,8 +962,8 @@ public class DaVinciClientTest {
     int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
 
     try (VeniceWriter<Object, Object, byte[]> batchProducer = vwFactory.createVeniceWriter(
-        new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
-            .setValueSerializer(valueSerializer)
+        new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(keySerializer)
+            .setValuePayloadSerializer(valueSerializer)
             .build())) {
       batchProducer.broadcastStartOfPush(Collections.emptyMap());
       Future[] writerFutures = new Future[KEY_COUNT];
@@ -1431,8 +1431,8 @@ public class DaVinciClientTest {
     int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
 
     try (VeniceWriter<Object, Object, byte[]> batchProducer = vwFactory.createVeniceWriter(
-        new VeniceWriterOptions.Builder(realTimeTopicName).setKeySerializer(keySerializer)
-            .setValueSerializer(valueSerializer)
+        new VeniceWriterOptions.Builder(realTimeTopicName).setKeyPayloadSerializer(keySerializer)
+            .setValuePayloadSerializer(valueSerializer)
             .build())) {
       batchProducer.broadcastStartOfIncrementalPush(incrementalPushVersion, new HashMap<>());
 

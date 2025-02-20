@@ -186,8 +186,8 @@ public class StorageNodeComputeTest {
     VeniceWriterFactory vwFactory = IntegrationTestPushUtils
         .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory);
     try (VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory.createVeniceWriter(
-        new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
-            .setValueSerializer(new DefaultSerializer())
+        new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(keySerializer)
+            .setValuePayloadSerializer(new DefaultSerializer())
             .setChunkingEnabled(valueLargerThan1MB.config)
             .build())) {
       pushSyntheticDataForCompute(
@@ -299,7 +299,8 @@ public class StorageNodeComputeTest {
         VeniceWriter<Object, byte[], byte[]> veniceWriter = IntegrationTestPushUtils
             .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory)
             .createVeniceWriter(
-                new VeniceWriterOptions.Builder(newVersion.getKafkaTopic()).setKeySerializer(keySerializer).build());
+                new VeniceWriterOptions.Builder(newVersion.getKafkaTopic()).setKeyPayloadSerializer(keySerializer)
+                    .build());
         AvroGenericStoreClient<String, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddr))) {
 

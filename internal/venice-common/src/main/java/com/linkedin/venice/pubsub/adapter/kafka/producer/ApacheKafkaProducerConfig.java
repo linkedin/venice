@@ -1,16 +1,18 @@
 package com.linkedin.venice.pubsub.adapter.kafka.producer;
 
+import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CLIENT_CONFIG_PREFIX;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
-import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import com.linkedin.venice.pubsub.api.PubSubMessageSerializer;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterContext;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Properties;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -28,17 +30,14 @@ public class ApacheKafkaProducerConfig {
    * Legacy Kafka configs are using only kafka prefix. But now we are using pubsub.kafka prefix for all Kafka configs.
    */
   public static final String KAFKA_CONFIG_PREFIX = "kafka.";
-  public static final String PUBSUB_KAFKA_CLIENT_CONFIG_PREFIX = "pubsub." + KAFKA_CONFIG_PREFIX;
+  public static final String PUBSUB_KAFKA_CLIENT_CONFIG_PREFIX = PUBSUB_CLIENT_CONFIG_PREFIX + KAFKA_CONFIG_PREFIX;
 
   public static final String KAFKA_BOOTSTRAP_SERVERS = KAFKA_CONFIG_PREFIX + ProducerConfig.BOOTSTRAP_SERVERS_CONFIG;
   public static final String KAFKA_PRODUCER_RETRIES_CONFIG = KAFKA_CONFIG_PREFIX + ProducerConfig.RETRIES_CONFIG;
   public static final String KAFKA_LINGER_MS = KAFKA_CONFIG_PREFIX + ProducerConfig.LINGER_MS_CONFIG;
   public static final String KAFKA_BUFFER_MEMORY = KAFKA_CONFIG_PREFIX + ProducerConfig.BUFFER_MEMORY_CONFIG;
   public static final String KAFKA_CLIENT_ID = KAFKA_CONFIG_PREFIX + ProducerConfig.CLIENT_ID_CONFIG;
-  public static final String KAFKA_KEY_SERIALIZER = KAFKA_CONFIG_PREFIX + ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG;
   public static final String KAFKA_COMPRESSION_TYPE = KAFKA_CONFIG_PREFIX + ProducerConfig.COMPRESSION_TYPE_CONFIG;
-  public static final String KAFKA_VALUE_SERIALIZER =
-      KAFKA_CONFIG_PREFIX + ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG;
   public static final String KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS =
       KAFKA_CONFIG_PREFIX + ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG;
   public static final String KAFKA_PRODUCER_REQUEST_TIMEOUT_MS =
@@ -61,16 +60,14 @@ public class ApacheKafkaProducerConfig {
   public static final String DEFAULT_KAFKA_LINGER_MS = "1000";
 
   private final Properties producerProperties;
+  private final PubSubMessageSerializer pubSubMessageSerializer;
 
-  public ApacheKafkaProducerConfig(Properties allVeniceProperties) {
-    this(new VeniceProperties(allVeniceProperties), null, null, true);
-  }
-
-  public ApacheKafkaProducerConfig(
-      VeniceProperties allVeniceProperties,
-      String brokerAddressToOverride,
-      String producerName,
-      boolean strictConfigs) {
+  public ApacheKafkaProducerConfig(PubSubProducerAdapterContext context) {
+    String brokerAddressToOverride = context.getBrokerAddress();
+    String producerName = context.getProducerName();
+    VeniceProperties allVeniceProperties = context.getVeniceProperties();
+    boolean strictConfigs = context.shouldValidateProducerConfigStrictly();
+    this.pubSubMessageSerializer = context.getPubSubMessageSerializer();
     String brokerAddress =
         brokerAddressToOverride != null ? brokerAddressToOverride : getPubsubBrokerAddress(allVeniceProperties);
     this.producerProperties = getValidProducerProperties(
@@ -94,6 +91,11 @@ public class ApacheKafkaProducerConfig {
     } else {
       LOGGER.info("Will initialize a non-SSL Kafka producer");
     }
+
+    // Please do not remove the following configs unless you know what you are doing.
+
+    producerProperties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getName());
+    producerProperties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getName());
   }
 
   /**
@@ -134,17 +136,6 @@ public class ApacheKafkaProducerConfig {
   }
 
   private void validateAndUpdateProperties(Properties kafkaProducerProperties, boolean strictConfigs) {
-    validateClassProp(
-        kafkaProducerProperties,
-        strictConfigs,
-        ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG,
-        KafkaKeySerializer.class.getName());
-    validateClassProp(
-        kafkaProducerProperties,
-        strictConfigs,
-        ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,
-        KafkaValueSerializer.class.getName());
-
     // This is to guarantee ordering, even in the face of failures.
     validateOrPopulateProp(
         kafkaProducerProperties,
@@ -225,34 +216,6 @@ public class ApacheKafkaProducerConfig {
     return validProperties;
   }
 
-  /**
-   * Validate and load Class properties.
-   */
-  private void validateClassProp(
-      Properties properties,
-      boolean strictConfigs,
-      String requiredConfigKey,
-      String requiredConfigValue) {
-    validateOrPopulateProp(properties, strictConfigs, requiredConfigKey, requiredConfigValue);
-    String className = properties.getProperty(requiredConfigKey);
-    if (className == null) {
-      return;
-    }
-    try {
-      /*
-       * The following code is trying to fix ClassNotFoundException while using JDK11.
-       * Instead of letting Kafka lib load the specified class, application will load it on its own.
-       * The difference is that Kafka lib is trying to load the specified class by `Thread.currentThread().getContextClassLoader()`,
-       * which seems to be problematic with JDK11.
-       */
-      properties.put(requiredConfigKey, Class.forName(className));
-    } catch (ClassNotFoundException e) {
-      throw new VeniceException(
-          "Failed to load the specified class: " + className + " for key: " + requiredConfigKey,
-          e);
-    }
-  }
-
   public static void copyKafkaSASLProperties(
       VeniceProperties configuration,
       Properties properties,
@@ -287,5 +250,9 @@ public class ApacheKafkaProducerConfig {
         properties.put("kafka.security.protocol", securityProtocol);
       }
     }
+  }
+
+  public PubSubMessageSerializer getPubSubMessageSerializer() {
+    return pubSubMessageSerializer;
   }
 }

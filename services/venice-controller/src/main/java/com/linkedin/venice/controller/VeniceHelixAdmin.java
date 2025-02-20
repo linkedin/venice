@@ -1409,8 +1409,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           value.getSchema().toString());
       return getVeniceWriterFactory().createVeniceWriter(
           new VeniceWriterOptions.Builder(pushJobDetailsRTTopic.getName())
-              .setKeySerializer(new VeniceAvroKafkaSerializer(key.getSchema().toString()))
-              .setValueSerializer(new VeniceAvroKafkaSerializer(value.getSchema().toString()))
+              .setKeyPayloadSerializer(new VeniceAvroKafkaSerializer(key.getSchema().toString()))
+              .setValuePayloadSerializer(new VeniceAvroKafkaSerializer(value.getSchema().toString()))
               .build());
     });
 
