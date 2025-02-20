@@ -12,6 +12,7 @@ import com.linkedin.venice.ingestion.protocol.LoadedStoreUserPartitionMapping;
 import com.linkedin.venice.ingestion.protocol.ProcessShutdownCommand;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
@@ -180,7 +181,12 @@ public enum AvroProtocolDefinition {
    * Value schema for change capture event.
    * TODO: Figure out a way to pull in protocol from different view class.
    */
-  RECORD_CHANGE_EVENT(1, RecordChangeEvent.class);
+  RECORD_CHANGE_EVENT(1, RecordChangeEvent.class),
+
+  /**
+   * Global Realtime Topic Data Integrity Validator is the RT DIV snapshot propagated from the leader to followers.
+   */
+  GLOBAL_RT_DIV_STATE(1, GlobalRtDivState.class);
 
   private static final Set<Byte> magicByteSet = validateMagicBytes();
 
