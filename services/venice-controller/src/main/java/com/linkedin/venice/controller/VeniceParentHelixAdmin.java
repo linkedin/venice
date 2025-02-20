@@ -4337,6 +4337,14 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
+   * @see Admin#discoverActiveParentControllerRegion()
+   */
+  @Override
+  public String discoverActiveParentControllerRegion() {
+    return getVeniceHelixAdmin().discoverActiveParentControllerRegion();
+  }
+
+  /**
    * @see Admin#discoverCluster(String)
    */
   @Override
