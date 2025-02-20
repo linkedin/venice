@@ -97,4 +97,57 @@ public class WriterSpecificDataTest {
     assertTrue((boolean) deserializedRecord.get("fieldC"));
     assertFalse(deserializedRecord.hasField("fieldD"));
   }
+
+  @Test
+  public void testSerializationTwoLayers() throws IOException {
+    String schemaString =
+        "{\"type\":\"record\",\"name\":\"TestRecord\",\"fields\":[{\"name\":\"fieldA\",\"type\":\"string\"},{\"name\":\"fieldB\",\"type\":\"int\"},{\"name\":\"fieldC\",\"type\":\"boolean\"}]}";
+    Schema oldSchema = new Schema.Parser().parse(schemaString);
+
+    // New Schema with fieldD in the middle
+    String readerSchemaString =
+        "{\"type\":\"record\",\"name\":\"TestRecord\",\"fields\":[{\"name\":\"fieldA\",\"type\":\"string\"},{\"name\":\"fieldD\",\"type\":\"boolean\"},{\"name\":\"fieldB\",\"type\":\"int\"},{\"name\":\"fieldC\",\"type\":\"boolean\"}]}";
+    Schema newSchema = new Schema.Parser().parse(readerSchemaString);
+
+    // Create the record from new schema
+    GenericRecord record = new GenericData.Record(newSchema);
+    record.put("fieldA", "valueA");
+    record.put("fieldD", false);
+    record.put("fieldB", 123);
+    record.put("fieldC", true);
+
+    // Serialize the record with new schema
+    SpecificDatumWriter<GenericRecord> writer = new SpecificDatumWriter<>(newSchema, new WriterSpecificData());
+    byte[] serializedRecord = serialize(record, writer);
+
+    // Deserialize the record with old schema
+    SpecificDatumReader<GenericRecord> reader = new SpecificDatumReader<>(newSchema, oldSchema);
+    GenericRecord deserializedRecord = deserialize(serializedRecord, reader);
+
+    // Serialize the record with old schema
+    writer = new SpecificDatumWriter<>(oldSchema, new WriterSpecificData());
+    serializedRecord = serialize(deserializedRecord, writer);
+
+    // Deserialize the record with old schema
+    reader = new SpecificDatumReader<>(oldSchema, oldSchema);
+    deserializedRecord = deserialize(serializedRecord, reader);
+    assertEquals(deserializedRecord.get("fieldA").toString(), "valueA");
+    assertEquals((int) deserializedRecord.get("fieldB"), 123);
+    assertTrue((boolean) deserializedRecord.get("fieldC"));
+    assertFalse(deserializedRecord.hasField("fieldD"));
+  }
+
+  private byte[] serialize(GenericRecord record, SpecificDatumWriter writer) throws IOException {
+    ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+    Encoder encoder = AvroCompatibilityHelper.newBinaryEncoder(byteArrayOutputStream, true, null);
+    writer.write(record, encoder);
+    encoder.flush();
+    return byteArrayOutputStream.toByteArray();
+  }
+
+  private GenericRecord deserialize(byte[] serializedRecord, SpecificDatumReader reader) throws IOException {
+    InputStream in = new ByteArrayInputStream(serializedRecord);
+    BinaryDecoder decoder = AvroCompatibilityHelper.newBinaryDecoder(in, true, null);
+    return (GenericRecord) reader.read(null, decoder);
+  }
 }
