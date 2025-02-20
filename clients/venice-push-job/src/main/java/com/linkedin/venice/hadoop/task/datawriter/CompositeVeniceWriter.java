@@ -1,12 +1,13 @@
-package com.linkedin.venice.writer;
-
-import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
-import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
+package com.linkedin.venice.hadoop.task.datawriter;
 
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.writer.AbstractVeniceWriter;
+import com.linkedin.venice.writer.DeleteMetadata;
+import com.linkedin.venice.writer.PutMetadata;
+import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
@@ -23,13 +24,13 @@ import java.util.function.BiFunction;
 @NotThreadsafe
 public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private final VeniceWriter<K, V, U> mainWriter;
-  private final VeniceWriter<K, V, U>[] childWriters;
+  private final AbstractVeniceWriter<K, V, U>[] childWriters;
   private final PubSubProducerCallback childCallback;
 
   public CompositeVeniceWriter(
       String topicName,
       VeniceWriter<K, V, U> mainWriter,
-      VeniceWriter<K, V, U>[] childWriters,
+      AbstractVeniceWriter<K, V, U>[] childWriters,
       PubSubProducerCallback childCallback) {
     super(topicName);
     this.mainWriter = mainWriter;
@@ -55,21 +56,14 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
   }
 
   @Override
-  public Future<PubSubProduceResult> put(
+  public CompletableFuture<PubSubProduceResult> put(
       K key,
       V value,
       int valueSchemaId,
       PubSubProducerCallback callback,
       PutMetadata putMetadata) {
     return compositeOperation(
-        (writer, writeCallback) -> writer.put(
-            key,
-            value,
-            valueSchemaId,
-            writeCallback,
-            DEFAULT_LEADER_METADATA_WRAPPER,
-            APP_DEFAULT_LOGICAL_TS,
-            putMetadata),
+        (writer, writeCallback) -> writer.put(key, value, valueSchemaId, writeCallback, putMetadata),
         childCallback,
         callback);
   }
@@ -86,8 +80,8 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
   }
 
   /**
-   * The main use of the {@link CompositeVeniceWriter} for now is to write batch portion of a store version to VT and
-   * materialized view topic in the NR fabric. Updates should never go through the {@link CompositeVeniceWriter} because
+   * The main use of the {@link com.linkedin.venice.writer.CompositeVeniceWriter} for now is to write batch portion of a store version to VT and
+   * materialized view topic in the NR fabric. Updates should never go through the {@link com.linkedin.venice.writer.CompositeVeniceWriter} because
    * it should be written to RT (hybrid writes or incremental push) and handled by view writers in L/F or A/A SIT.
    */
   @Override
@@ -97,12 +91,12 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
       int valueSchemaId,
       int derivedSchemaId,
       PubSubProducerCallback callback) {
-    throw new UnsupportedOperationException(this.getClass().getSimpleName() + "does not support update function");
+    throw new UnsupportedOperationException(this.getClass().getSimpleName() + " does not support update function");
   }
 
   @Override
   public void flush() {
-    for (VeniceWriter writer: childWriters) {
+    for (AbstractVeniceWriter writer: childWriters) {
       writer.flush();
     }
     mainWriter.flush();
@@ -119,14 +113,14 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
    * completes the mainWriterOp.
    */
   private CompletableFuture<PubSubProduceResult> compositeOperation(
-      BiFunction<VeniceWriter<K, V, U>, PubSubProducerCallback, CompletableFuture<PubSubProduceResult>> writerOperation,
+      BiFunction<AbstractVeniceWriter<K, V, U>, PubSubProducerCallback, CompletableFuture<PubSubProduceResult>> writerOperation,
       PubSubProducerCallback childWriterCallback,
       PubSubProducerCallback mainWriterCallback) {
     CompletableFuture<PubSubProduceResult> finalFuture = new CompletableFuture<>();
     CompletableFuture<PubSubProduceResult>[] writeFutures = new CompletableFuture[childWriters.length + 1];
     int index = 0;
     writeFutures[index++] = writerOperation.apply(mainWriter, mainWriterCallback);
-    for (VeniceWriter<K, V, U> writer: childWriters) {
+    for (AbstractVeniceWriter<K, V, U> writer: childWriters) {
       writeFutures[index++] = writerOperation.apply(writer, childWriterCallback);
     }
     CompletableFuture.allOf(writeFutures).whenCompleteAsync((ignored, writeException) -> {

@@ -44,6 +44,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_TRUST_STORE_PRO
 import static com.linkedin.venice.vpj.VenicePushJobConstants.STORAGE_QUOTA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_COMPRESSION_LEVEL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_DICTIONARY_CREATION_REQUIRED;
@@ -129,6 +130,8 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     sparkSession.conf().getAll().foreach(entry -> jobProps.setProperty(entry._1, entry._2));
     if (pushJobSetting.materializedViewConfigFlatMap != null) {
       jobProps.put(PUSH_JOB_VIEW_CONFIGS, pushJobSetting.materializedViewConfigFlatMap);
+      jobProps.put(VALUE_SCHEMA_DIR, pushJobSetting.valueSchemaDir);
+      jobProps.put(RMD_SCHEMA_DIR, pushJobSetting.rmdSchemaDir);
     }
     JavaSparkContext sparkContext = JavaSparkContext.fromSparkContext(sparkSession.sparkContext());
     Broadcast<Properties> broadcastProperties = sparkContext.broadcast(jobProps);

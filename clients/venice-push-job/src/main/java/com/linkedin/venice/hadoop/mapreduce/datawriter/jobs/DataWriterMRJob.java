@@ -308,6 +308,8 @@ public class DataWriterMRJob extends DataWriterComputeJob {
     }
     if (pushJobSetting.materializedViewConfigFlatMap != null) {
       jobConf.set(PUSH_JOB_VIEW_CONFIGS, pushJobSetting.materializedViewConfigFlatMap);
+      jobConf.set(VALUE_SCHEMA_DIR, pushJobSetting.valueSchemaDir);
+      jobConf.set(RMD_SCHEMA_DIR, pushJobSetting.rmdSchemaDir);
     }
     jobConf.setReduceSpeculativeExecution(vpjProperties.getBoolean(REDUCER_SPECULATIVE_EXECUTION_ENABLE, false));
     int partitionCount = pushJobSetting.partitionCount;

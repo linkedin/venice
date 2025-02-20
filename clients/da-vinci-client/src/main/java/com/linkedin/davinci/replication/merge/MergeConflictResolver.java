@@ -32,6 +32,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -276,7 +277,12 @@ public class MergeConflictResolver {
     final ByteBuffer updatedValueBytes = updatedValueAndRmd.getValue() == null
         ? null
         : serializeMergedValueRecord(oldValueSchemaID, updatedValueAndRmd.getValue());
-    return new MergeConflictResult(updatedValueBytes, oldValueSchemaID, false, updatedValueAndRmd.getRmd());
+    return new MergeConflictResult(
+        updatedValueBytes,
+        Optional.of(updatedValueAndRmd.getValue()),
+        oldValueSchemaID,
+        false,
+        updatedValueAndRmd.getRmd());
   }
 
   private MergeConflictResult mergePutWithValueLevelTimestamp(

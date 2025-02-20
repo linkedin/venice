@@ -4,42 +4,58 @@ import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_LEAST_SIGNIFICANT_BIT
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_VIEW_CONFIGS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_IS_DUPLICATED_KEY_ALLOWED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DERIVED_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.STORAGE_QUOTA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_ID_PROP;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.annotation.NotThreadsafe;
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.RecordTooLargeException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceResourceAccessException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.hadoop.InputStorageQuotaTracker;
 import com.linkedin.venice.hadoop.engine.EngineTaskConfigProvider;
+import com.linkedin.venice.hadoop.input.kafka.KafkaInputUtils;
+import com.linkedin.venice.hadoop.schema.HDFSSchemaSource;
 import com.linkedin.venice.hadoop.task.TaskTracker;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ViewConfig;
+import com.linkedin.venice.partitioner.ComplexVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.serialization.DefaultSerializer;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
-import com.linkedin.venice.writer.CompositeVeniceWriter;
 import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -57,6 +73,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -146,7 +164,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   private Lazy<VeniceWriterFactory> veniceWriterFactory;
   private AbstractVeniceWriter<byte[], byte[], byte[]> veniceWriter = null;
   private VeniceWriter<byte[], byte[], byte[]> mainWriter = null;
-  private VeniceWriter[] childWriters = null;
+  private AbstractVeniceWriter[] childWriters = null;
   private int valueSchemaId = -1;
   private int derivedValueSchemaId = -1;
   private boolean enableWriteCompute = false;
@@ -179,6 +197,11 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   private boolean hasDuplicateKeyWithDistinctValue = false;
   private boolean hasRecordTooLargeFailure = false;
   private boolean isDuplicateKeyAllowed = DEFAULT_IS_DUPLICATED_KEY_ALLOWED;
+  private HDFSSchemaSource schemaSource;
+  private Map<Integer, Schema> valueSchemaMap;
+  private Map<Integer, RecordDeserializer<GenericRecord>> valueDeserializerCache;
+  private final Lazy<CompressorFactory> compressorFactory = Lazy.of(CompressorFactory::new);
+  private VeniceCompressor compressor;
 
   /**
    * Compute engines will kill a task if it's inactive for a configured time. This time might be is too short for the
@@ -390,7 +413,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       boolean rmdChunkingEnabled) {
     try {
       Map<String, ViewConfig> viewConfigMap = ViewUtils.parseViewConfigMapString(flatViewConfigMapString);
-      childWriters = new VeniceWriter[viewConfigMap.size()];
+      childWriters = new AbstractVeniceWriter[viewConfigMap.size()];
       String storeName = Version.parseStoreFromKafkaTopicName(topicName);
       int versionNumber = Version.parseVersionFromKafkaTopicName(topicName);
       // TODO using a dummy Version to get venice writer options could be error prone. Alternatively we could change
@@ -403,6 +426,31 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         VeniceView view = ViewUtils
             .getVeniceView(viewConfig.getViewClassName(), new Properties(), storeName, viewConfig.getViewParameters());
         String viewTopic = view.getTopicNamesAndConfigsForVersion(versionNumber).keySet().stream().findAny().get();
+        if (view instanceof MaterializedView) {
+          MaterializedView materializedView = (MaterializedView) view;
+          if (materializedView.getViewPartitioner() instanceof ComplexVenicePartitioner) {
+            // We need to build a ComplexPartitionerWriterAdapter to handle writes with complex partitioner.
+            initializeSchemaSourceAndDeserCache();
+            compressor = getCompressor();
+            childWriters[index++] = new ComplexVeniceWriterAdapter<byte[], byte[], byte[]>(
+                viewTopic,
+                factory.createComplexVeniceWriter(view.getWriterOptionsBuilder(viewTopic, version).build()),
+                (valueBytes, valueSchemaId) -> valueDeserializerCache
+                    .computeIfAbsent(valueSchemaId, this::getValueDeserializer)
+                    .deserialize(valueBytes),
+                (valueBytes) -> {
+                  if (compressor == null) {
+                    return valueBytes;
+                  }
+                  try {
+                    return ByteUtils.extractByteArray(compressor.decompress(valueBytes, 0, valueBytes.length));
+                  } catch (IOException e) {
+                    throw new VeniceException("Unable to decompress value bytes", e);
+                  }
+                });
+            continue;
+          }
+        }
         childWriters[index++] = factory.createVeniceWriter(view.getWriterOptionsBuilder(viewTopic, version).build());
       }
       return new CompositeVeniceWriter<byte[], byte[], byte[]>(
@@ -415,6 +463,39 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       LOGGER.error(errorMessage, e);
       throw new VeniceException(errorMessage);
     }
+  }
+
+  private VeniceCompressor getCompressor() {
+    if (props.containsKey(KAFKA_INPUT_TOPIC)) {
+      // Configure compressor using kafka input configs
+      String sourceVersion = props.getString(KAFKA_INPUT_TOPIC);
+      String kafkaInputBrokerUrl = props.getString(KAFKA_INPUT_BROKER_URL);
+      CompressionStrategy strategy =
+          CompressionStrategy.valueOf(props.getString(KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY));
+      return KafkaInputUtils
+          .getCompressor(compressorFactory.get(), strategy, kafkaInputBrokerUrl, sourceVersion, props);
+    } else {
+      CompressionStrategy strategy = CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY));
+      if (strategy == CompressionStrategy.ZSTD_WITH_DICT) {
+        String topicName = props.getString(TOPIC_PROP);
+        ByteBuffer dict = DictionaryUtils.readDictionaryFromKafka(topicName, props);
+        return compressorFactory.get()
+            .createVersionSpecificCompressorIfNotExist(strategy, topicName, ByteUtils.extractByteArray(dict));
+      } else {
+        return compressorFactory.get().getCompressor(strategy);
+      }
+    }
+  }
+
+  private void initializeSchemaSourceAndDeserCache() throws IOException {
+    schemaSource = new HDFSSchemaSource(props.getString(VALUE_SCHEMA_DIR), props.getString(RMD_SCHEMA_DIR));
+    valueSchemaMap = schemaSource.fetchValueSchemas();
+    valueDeserializerCache = new VeniceConcurrentHashMap<>();
+  }
+
+  private RecordDeserializer<GenericRecord> getValueDeserializer(int valueSchemaId) {
+    Schema schema = valueSchemaMap.get(valueSchemaId);
+    return FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(schema, schema);
   }
 
   private void telemetry() {
@@ -468,7 +549,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         }
         if (veniceWriter instanceof CompositeVeniceWriter) {
           if (childWriters != null) {
-            for (VeniceWriter childWriter: childWriters) {
+            for (AbstractVeniceWriter childWriter: childWriters) {
               childWriter.close(shouldEndAllSegments);
             }
           }
@@ -483,6 +564,12 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       if (messageSent != messageCompleted.get()) {
         throw new VeniceException(
             "Message sent: " + messageSent + " doesn't match message completed: " + messageCompleted.get());
+      }
+      if (schemaSource != null) {
+        schemaSource.close();
+      }
+      if (compressorFactory.isPresent()) {
+        compressorFactory.get().close();
       }
     } finally {
       Utils.closeQuietlyWithErrorLogged(duplicateKeyPrinter);
