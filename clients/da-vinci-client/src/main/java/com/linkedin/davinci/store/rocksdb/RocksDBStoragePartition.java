@@ -1,6 +1,7 @@
 package com.linkedin.davinci.store.rocksdb;
 
 import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITION_ID;
+import static com.linkedin.davinci.store.rocksdb.RocksDBSstFileWriter.REPLICATION_METADATA_COLUMN_FAMILY_INDEX;
 
 import com.linkedin.davinci.blobtransfer.BlobSnapshotManager;
 import com.linkedin.davinci.callback.BytesStreamingCallback;
@@ -924,10 +925,22 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   public long getRocksDBStatValue(String statName) {
+    return getRocksDBStatValue(statName, 0);
+  }
+
+  public long getRocksDBCFStatValue(String statName) {
+    return getRocksDBStatValue(statName, REPLICATION_METADATA_COLUMN_FAMILY_INDEX);
+  }
+
+  private long getRocksDBStatValue(String statName, int cfIndex) {
     readCloseRWLock.readLock().lock();
     try {
       makeSureRocksDBIsStillOpen();
-      return rocksDB.getLongProperty(statName);
+      if (cfIndex == REPLICATION_METADATA_COLUMN_FAMILY_INDEX) {
+        return rocksDB.getLongProperty(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), statName);
+      } else {
+        return rocksDB.getLongProperty(statName);
+      }
     } catch (RocksDBException e) {
       throw new VeniceException(
           "Failed to get property value from RocksDB: " + replicaId + " for property: " + statName,
