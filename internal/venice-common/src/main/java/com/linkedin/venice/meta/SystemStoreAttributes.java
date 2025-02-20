@@ -11,6 +11,10 @@ public interface SystemStoreAttributes extends DataModelBackedStructure<SystemSt
 
   void setLargestUsedVersionNumber(int largestUsedVersionNumber);
 
+  int getLargestUsedRTVersionNumber();
+
+  void setLargestUsedRTVersionNumber(int largestUsedRTVersionNumber);
+
   int getCurrentVersion();
 
   void setCurrentVersion(int currentVersion);

@@ -80,6 +80,10 @@ public interface Store {
 
   void setLargestUsedVersionNumber(int largestUsedVersionNumber);
 
+  int getLargestUsedRTVersionNumber();
+
+  void setLargestUsedRTVersionNumber(int largestUsedRTVersionNumber);
+
   long getStorageQuotaInByte();
 
   void setStorageQuotaInByte(long storageQuotaInByte);

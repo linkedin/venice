@@ -6,6 +6,7 @@ import static com.linkedin.venice.ConfigKeys.DEFAULT_NUMBER_OF_PARTITION_FOR_HYB
 import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -207,6 +208,66 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
         // verify rt topic is created with the updated partition count = 2
         Assert.assertEquals(topicManagers.get(idx).getPartitionCount(newRtPubSubTopic), 2);
       });
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testLargestUsedRTVersionNumber() {
+    String storeName = Utils.getUniqueString("TestLargestUsedRTVersionNumber");
+    String clusterName = CLUSTER_NAMES[0];
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+
+    ControllerClient parentControllerClient =
+        ControllerClient.constructClusterControllerClient(clusterName, parentControllerURLs);
+    ControllerClient[] childControllerClients = new ControllerClient[childDatacenters.size()];
+    for (int i = 0; i < childDatacenters.size(); i++) {
+      childControllerClients[i] =
+          new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString());
+    }
+
+    NewStoreResponse newStoreResponse =
+        parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
+    Assert.assertFalse(
+        newStoreResponse.isError(),
+        "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+
+    UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams();
+    updateStoreParams.setEnableReads(false).setEnableWrites(false);
+
+    TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
+
+    ControllerResponse deleteStoreResponse =
+        childControllerClients[0].retryableRequest(5, c -> c.deleteStore(storeName));
+    Assert.assertFalse(
+        deleteStoreResponse.isError(),
+        "The DeleteStoreResponse returned an error: " + deleteStoreResponse.getError());
+
+    newStoreResponse =
+        childControllerClients[0].retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
+    Assert.assertFalse(
+        newStoreResponse.isError(),
+        "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+
+    String newRealTimeTopicName = "NewRealTimeTopicName" + Version.REAL_TIME_TOPIC_SUFFIX;
+    updateStoreParams = new UpdateStoreQueryParams();
+    updateStoreParams.setIncrementalPushEnabled(true)
+        .setBackupStrategy(BackupStrategy.KEEP_MIN_VERSIONS)
+        .setNumVersionsToPreserve(2)
+        .setHybridRewindSeconds(1000)
+        .setActiveActiveReplicationEnabled(true)
+        .setRealTimeTopicName(newRealTimeTopicName)
+        .setEnableWrites(true)
+        .setEnableReads(true)
+        .setHybridOffsetLagThreshold(1000);
+    TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
+
+    // create new version by doing an empty push
+    parentControllerClient
+        .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
+
+    for (ControllerClient controllerClient: childControllerClients) {
+      Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 1);
+      Assert.assertEquals(controllerClient.getStore(storeName).getStore().getLargestUsedRTVersionNumber(), 0);
     }
   }
 }

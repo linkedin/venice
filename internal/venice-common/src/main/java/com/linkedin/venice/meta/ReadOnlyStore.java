@@ -716,6 +716,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public int getLargestUsedRTVersionNumber() {
+      return this.delegate.getLargestUsedRTVersionNumber();
+    }
+
+    @Override
+    public void setLargestUsedRTVersionNumber(int largestUsedRTVersionNumber) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public int getCurrentVersion() {
       return this.delegate.getCurrentVersion();
     }
@@ -852,6 +862,16 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setLargestUsedVersionNumber(int largestUsedVersionNumber) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public int getLargestUsedRTVersionNumber() {
+    return this.delegate.getLargestUsedRTVersionNumber();
+  }
+
+  @Override
+  public void setLargestUsedRTVersionNumber(int largestUsedRTVersionNumber) {
     throw new UnsupportedOperationException();
   }
 

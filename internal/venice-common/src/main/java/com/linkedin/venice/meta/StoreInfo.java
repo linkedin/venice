@@ -44,6 +44,7 @@ public class StoreInfo {
     storeInfo.setHybridStoreDiskQuotaEnabled(store.isHybridStoreDiskQuotaEnabled());
     storeInfo.setIncrementalPushEnabled(store.isIncrementalPushEnabled());
     storeInfo.setLargestUsedVersionNumber(store.getLargestUsedVersionNumber());
+    storeInfo.setLargestUsedRTVersionNumber(store.getLargestUsedRTVersionNumber());
     storeInfo.setLatestSuperSetValueSchemaId(store.getLatestSuperSetValueSchemaId());
     storeInfo.setLowWatermark(store.getLowWatermark());
     storeInfo.setMigrating(store.isMigrating());
@@ -184,6 +185,11 @@ public class StoreInfo {
    * version number will not trigger new OfflinePushJobs.
    */
   private int largestUsedVersionNumber;
+
+  /**
+   * Largest used version number of the RT topic.
+   */
+  private int largestUsedRTVersionNumber;
 
   /**
    * a flag to see if the store supports incremental push or not
@@ -548,6 +554,14 @@ public class StoreInfo {
 
   public void setLargestUsedVersionNumber(int largestUsedVersionNumber) {
     this.largestUsedVersionNumber = largestUsedVersionNumber;
+  }
+
+  public int getLargestUsedRTVersionNumber() {
+    return largestUsedRTVersionNumber;
+  }
+
+  public void setLargestUsedRTVersionNumber(int largestUsedRTVersionNumber) {
+    this.largestUsedRTVersionNumber = largestUsedRTVersionNumber;
   }
 
   public boolean isIncrementalPushEnabled() {
