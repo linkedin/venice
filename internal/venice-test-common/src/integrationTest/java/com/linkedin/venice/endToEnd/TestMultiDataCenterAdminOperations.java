@@ -204,12 +204,18 @@ public class TestMultiDataCenterAdminOperations {
     VeniceControllerWrapper parentController = parentControllers.get(0);
     ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
 
-    // Update the admin operation version to new version - 74
-    // VeniceControllerWrapper childControllerClient =
-    // venice.getChildRegions().get(0).getLeaderController(clusterName);
-    // AdminConsumerService adminConsumerService = parentController.getAdminConsumerServiceByCluster(clusterName);
-    // adminConsumerService.updateAdminOperationProtocolVersion(clusterName, 74);
+    // Get the child controller
+    List<ControllerClient> childControllerClients = new ArrayList<>();
+    ControllerClient dc0Client = ControllerClient.constructClusterControllerClient(
+        clusterName,
+        multiRegionMultiClusterWrapper.getChildRegions().get(0).getControllerConnectString());
+    ControllerClient dc1Client = ControllerClient.constructClusterControllerClient(
+        clusterName,
+        multiRegionMultiClusterWrapper.getChildRegions().get(1).getControllerConnectString());
+    childControllerClients.add(dc0Client);
+    childControllerClients.add(dc1Client);
 
+    // Update the admin operation version to new version - 74
     parentControllerClient.updateAdminOperationProtocolVersion(clusterName, 74L);
 
     // Create store
@@ -218,16 +224,6 @@ public class TestMultiDataCenterAdminOperations {
     Assert.assertFalse(newStoreResponse.isError());
 
     // Empty push
-    List<ControllerClient> childControllerClients = new ArrayList<>();
-    ControllerClient dc0Client = ControllerClient.constructClusterControllerClient(
-        clusterName,
-        multiRegionMultiClusterWrapper.getChildRegions().get(0).getControllerConnectString());
-    ControllerClient dc1Client = ControllerClient.constructClusterControllerClient(
-        clusterName,
-        multiRegionMultiClusterWrapper.getChildRegions().get(1).getControllerConnectString());
-
-    childControllerClients.add(dc0Client);
-    childControllerClients.add(dc1Client);
     emptyPushToStore(parentControllerClient, childControllerClients, storeName, 1);
 
     TestUtils.waitForNonDeterministicPushCompletion(
