@@ -513,6 +513,12 @@ public class ApacheKafkaConsumerAdapterTest {
     assertNotNull(position);
     assertTrue(position instanceof ApacheKafkaOffsetPosition);
     assertEquals(((ApacheKafkaOffsetPosition) position).getOffset(), 0L);
+
+    // Case 2: return empty response
+    doReturn(Collections.emptyMap()).when(internalKafkaConsumer)
+        .beginningOffsets(Collections.singleton(topicPartition), Duration.ofMillis(500));
+    position = kafkaConsumerAdapter.beginningPosition(pubSubTopicPartition, Duration.ofMillis(500));
+    assertEquals(position, PubSubPosition.EARLIEST);
   }
 
   @Test
@@ -563,5 +569,11 @@ public class ApacheKafkaConsumerAdapterTest {
     assertNotNull(position);
     assertTrue(position instanceof ApacheKafkaOffsetPosition);
     assertEquals(((ApacheKafkaOffsetPosition) position).getOffset(), expectedOffset);
+
+    // Case 2: return empty response
+    doReturn(Collections.emptyMap()).when(internalKafkaConsumer)
+        .endOffsets(eq(Collections.singleton(topicPartition)), any(Duration.class));
+    position = kafkaConsumerAdapter.endPosition(pubSubTopicPartition);
+    assertEquals(position, PubSubPosition.LATEST);
   }
 }

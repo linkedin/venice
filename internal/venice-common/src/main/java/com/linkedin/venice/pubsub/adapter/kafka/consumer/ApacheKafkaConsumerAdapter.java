@@ -495,7 +495,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   @Override
   public PubSubPosition beginningPosition(PubSubTopicPartition pubSubTopicPartition, Duration timeout) {
     Long beginningOffset = beginningOffset(pubSubTopicPartition, timeout);
-    return beginningOffset != null ? new ApacheKafkaOffsetPosition(beginningOffset) : PubSubPosition.LATEST;
+    return beginningOffset != null ? new ApacheKafkaOffsetPosition(beginningOffset) : PubSubPosition.EARLIEST;
   }
 
   @Override
