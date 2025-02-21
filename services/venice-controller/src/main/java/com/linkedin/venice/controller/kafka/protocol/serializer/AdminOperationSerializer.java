@@ -13,12 +13,14 @@ import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericDatumReader;
+import org.apache.avro.generic.GenericDatumWriter;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.Decoder;
 import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.io.Encoder;
 import org.apache.avro.specific.SpecificDatumReader;
-import org.apache.avro.specific.SpecificDatumWriter;
 
 
 public class AdminOperationSerializer {
@@ -26,36 +28,44 @@ public class AdminOperationSerializer {
   public static final int LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION =
       AvroProtocolDefinition.ADMIN_OPERATION.getCurrentProtocolVersion();
 
-  private static SpecificDatumWriter<AdminOperation> SPECIFIC_DATUM_WRITER =
-      new SpecificDatumWriter<>(AdminOperation.getClassSchema());
+  public static Schema LATEST_SCHEMA = AdminOperation.getClassSchema();
 
   /** Used to generate decoders. */
   private static final DecoderFactory DECODER_FACTORY = new DecoderFactory();
 
   private static final Map<Integer, Schema> PROTOCOL_MAP = initProtocolMap();
 
+  /**
+   * Serialize AdminOperation object to bytes.
+   * If writerSchemaId == LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION, we return the bytes[] with the first round of serialization.
+   * Else, we will serialize the object to the writer schema (lower version).
+   * To achieve that, we first serialize the object to the GenericRecord
+   * with the latest schema, then deserialize it to the GenericRecord with the writer schema, and finally serialize it to bytes.
+   * The reason for this chunky process is that we need to ensure that the object is serialized to the lower schema version.
+   * Inside the normal serialization process, the latest schema version and lower schema version may have fields order differently
+   * and/or adding new fields in the middle of the schema instead of appending to the end of the schema, which causing the
+   * serialization process to fail (ClassCastException).
+   */
   public byte[] serialize(AdminOperation object, int writerSchemaId) {
-    if (writerSchemaId == -1 || writerSchemaId == LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION) {
-      return serialize(object, SPECIFIC_DATUM_WRITER);
-    } else {
-      // Serialize the object to the latest schema
-      byte[] serializedBytes = serialize(object, SPECIFIC_DATUM_WRITER);
+    byte[] serializedBytes = serialize(object, LATEST_SCHEMA);
 
-      // Deserialize the object from the latest schema with the writer schema
-      SpecificDatumReader<AdminOperation> specificDatumReader =
-          new SpecificDatumReader<>(AdminOperation.getClassSchema(), getSchema(writerSchemaId));
-      AdminOperation recordWithLowerSchema = deserialize(serializedBytes, specificDatumReader);
-
-      // Serialize the object to the writer schema
-      SpecificDatumWriter<AdminOperation> specificDatumWriter = new SpecificDatumWriter<>(getSchema(writerSchemaId));
-      return serialize(recordWithLowerSchema, specificDatumWriter);
+    // If writerSchema is the latest schema, we can return the serialized bytes directly.
+    if (writerSchemaId == LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION) {
+      return serializedBytes;
     }
+
+    // Get the writer schema.
+    Schema writerSchema = getSchema(writerSchemaId);
+
+    // If writerSchema is not the latest schema, we need to deserialize the serialized bytes to GenericRecord with
+    // the writer schema, then serialize it to bytes with the writer schema.
+    GenericRecord genericRecord = deserialize(serializedBytes, LATEST_SCHEMA, writerSchema);
+    return serialize(genericRecord, writerSchema);
   }
 
   public AdminOperation deserialize(ByteBuffer byteBuffer, int writerSchemaId) {
     Schema writerSchema = getSchema(writerSchemaId);
-    SpecificDatumReader<AdminOperation> reader =
-        new SpecificDatumReader<>(writerSchema, AdminOperation.getClassSchema());
+    SpecificDatumReader<AdminOperation> reader = new SpecificDatumReader<>(writerSchema, LATEST_SCHEMA);
     Decoder decoder = AvroCompatibilityHelper
         .newBinaryDecoder(byteBuffer.array(), byteBuffer.position(), byteBuffer.remaining(), null);
     try {
@@ -84,25 +94,33 @@ public class AdminOperationSerializer {
     return PROTOCOL_MAP.get(schemaId);
   }
 
-  private byte[] serialize(AdminOperation object, SpecificDatumWriter<AdminOperation> specificDatumWriter) {
+  /**
+   * Serialize the object by writer schema
+   */
+  private <T> byte[] serialize(T object, Schema writerSchema) {
     try {
+      GenericDatumWriter<T> datumWriter = new GenericDatumWriter<>(writerSchema);
       ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
       Encoder encoder = AvroCompatibilityHelper.newBinaryEncoder(byteArrayOutputStream, true, null);
-      specificDatumWriter.write(object, encoder);
+      datumWriter.write(object, encoder);
       encoder.flush();
       return byteArrayOutputStream.toByteArray();
     } catch (IOException e) {
-      throw new VeniceMessageException("Could not serialize AdminOperation object", e);
+      throw new VeniceMessageException("Could not serialize object", e);
     }
   }
 
-  private AdminOperation deserialize(byte[] serializedRecord, SpecificDatumReader<AdminOperation> specificDatumReader) {
+  /**
+   * Deserialize the object from the writer schema to the reader schema, returning a GenericRecord.
+   */
+  private GenericRecord deserialize(byte[] serializedRecord, Schema writerSchema, Schema readerSchema) {
     try {
+      GenericDatumReader<GenericRecord> datumReader = new GenericDatumReader<>(writerSchema, readerSchema);
       InputStream in = new ByteArrayInputStream(serializedRecord);
       BinaryDecoder decoder = AvroCompatibilityHelper.newBinaryDecoder(in, true, null);
-      return specificDatumReader.read(null, decoder);
+      return datumReader.read(null, decoder);
     } catch (IOException e) {
-      throw new VeniceMessageException("Could not deserialize bytes back into AdminOperation object", e);
+      throw new VeniceMessageException("Could not deserialize bytes back into GenericRecord object", e);
     }
   }
 }
