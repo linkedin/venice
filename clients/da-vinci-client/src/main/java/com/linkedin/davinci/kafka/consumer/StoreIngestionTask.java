@@ -508,7 +508,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       // onStartVersionIngestion called here instead of run() because this needs to finish running
       // before bootstrapping starts
-      long startTime = LatencyUtils.getCurrentTimeInUs();
+      long startTime = System.nanoTime();
       recordTransformer.onStartVersionIngestion(isCurrentVersion.getAsBoolean());
       daVinciRecordTransformerStats.recordTransformerOnStartVersionIngestionLatency(
           storeName,
@@ -3763,7 +3763,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         int putSchemaId = put.getSchemaId() > 0 ? put.getSchemaId() : 1;
 
         if (recordTransformer != null) {
-          long recordTransformerStartTime = LatencyUtils.getCurrentTimeInUs();
+          long recordTransformerStartTime = System.nanoTime();
           ByteBuffer valueBytes = put.getPutValue();
           ByteBuffer assembledObject = chunkAssembler.bufferAndAssembleRecord(
               consumerRecord.getTopicPartition(),
@@ -3867,7 +3867,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (recordTransformer != null) {
           Lazy<Object> lazyKey = Lazy.of(() -> this.recordTransformerKeyDeserializer.deserialize(keyBytes));
 
-          long startTime = LatencyUtils.getCurrentTimeInUs();
+          long startTime = System.nanoTime();
           try {
             recordTransformer.processDelete(lazyKey);
           } catch (Exception e) {
@@ -4160,7 +4160,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // resources before exiting.
 
     if (recordTransformer != null) {
-      long startTime = LatencyUtils.getCurrentTimeInUs();
+      long startTime = System.nanoTime();
       Store store = storeRepository.getStoreOrThrow(storeName);
       recordTransformer.onEndVersionIngestion(store.getCurrentVersion());
       daVinciRecordTransformerStats.recordTransformerOnEndVersionIngestionLatency(

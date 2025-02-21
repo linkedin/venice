@@ -28,16 +28,12 @@ public class LatencyUtils {
     return System.currentTimeMillis() - startTimeInMs;
   }
 
-  public static long getCurrentTimeInUs() {
-    return convertNSToUS(System.nanoTime());
-  }
-
   /**
-   * @param startTimeInUs input start time should use nanosecond unit
+   * @param startTimeInNs input start time should use nanosecond unit
    * @return elapsed time in microseconds
    */
-  public static long getElapsedTimeFromNSToUs(long startTimeInUs) {
-    return convertNSToUS(System.nanoTime() - startTimeInUs);
+  public static long getElapsedTimeFromNSToUs(long startTimeInNs) {
+    return convertNSToUS(System.nanoTime() - startTimeInNs);
   }
 
   /***
