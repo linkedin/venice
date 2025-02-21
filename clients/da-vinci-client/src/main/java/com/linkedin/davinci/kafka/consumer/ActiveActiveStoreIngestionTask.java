@@ -455,7 +455,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             consumerRecord.getTopicPartition(),
             valueManifestContainer,
             beforeProcessingBatchRecordsTimestampMs));
-    if (hasChangeCaptureView) {
+    if (hasChangeCaptureView || (hasComplexVenicePartitionerMaterializedView && msgType == MessageType.DELETE)) {
       /**
        * Since this function will update the transient cache before writing the view, and if there is
        * a change capture view writer, we need to lookup first, otherwise the transient cache will be populated
