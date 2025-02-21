@@ -18,6 +18,11 @@ public class AdminTopicMetadataResponse extends ControllerResponse {
    */
   private long upstreamOffset = -1;
 
+  /**
+   * The current admin operation protocol version, which is cluster-level and be SOT for serialize/deserialize admin operation message
+   */
+  private long adminOperationProtocolVersion = -1;
+
   public long getExecutionId() {
     return executionId;
   }
@@ -40,5 +45,13 @@ public class AdminTopicMetadataResponse extends ControllerResponse {
 
   public void setUpstreamOffset(long upstreamOffset) {
     this.upstreamOffset = upstreamOffset;
+  }
+
+  public void setAdminOperationProtocolVersion(long adminOperationProtocolVersion) {
+    this.adminOperationProtocolVersion = adminOperationProtocolVersion;
+  }
+
+  public long getAdminOperationProtocolVersion() {
+    return adminOperationProtocolVersion;
   }
 }

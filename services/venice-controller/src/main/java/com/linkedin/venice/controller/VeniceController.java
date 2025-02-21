@@ -15,6 +15,7 @@ import com.linkedin.venice.controller.grpc.server.interceptor.ControllerGrpcSslS
 import com.linkedin.venice.controller.grpc.server.interceptor.ParentControllerRegionValidationInterceptor;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
+import com.linkedin.venice.controller.logcompaction.LogCompactionService;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.server.VeniceControllerGrpcServiceImpl;
 import com.linkedin.venice.controller.server.VeniceControllerRequestHandler;
@@ -64,6 +65,7 @@ public class VeniceController {
   private final VeniceControllerService controllerService;
   private final AdminSparkServer adminServer;
   private final AdminSparkServer secureAdminServer;
+  private LogCompactionService logCompactionService;
   private VeniceGrpcServer adminGrpcServer;
   private VeniceGrpcServer adminSecureGrpcServer;
   private final TopicCleanupService topicCleanupService;
@@ -221,6 +223,11 @@ public class VeniceController {
 
   private TopicCleanupService createTopicCleanupService() {
     Admin admin = controllerService.getVeniceHelixAdmin();
+    if (multiClusterConfigs.isLogCompactionEnabled()) {
+      logCompactionService = new LogCompactionService(admin, multiClusterConfigs);
+      LOGGER.info(LogCompactionService.class.getSimpleName() + " is initialised");
+    }
+
     if (multiClusterConfigs.isParent()) {
       return new TopicCleanupServiceForParentController(
           admin,
@@ -381,6 +388,10 @@ public class VeniceController {
     if (sslEnabled) {
       secureAdminServer.start();
     }
+    if (multiClusterConfigs.isLogCompactionEnabled()) {
+      logCompactionService.start();
+    }
+
     topicCleanupService.start();
     storeBackupVersionCleanupService.ifPresent(AbstractVeniceService::start);
     storeGraveyardCleanupService.ifPresent(AbstractVeniceService::start);
@@ -462,6 +473,9 @@ public class VeniceController {
     if (grpcExecutor != null) {
       LOGGER.info("Shutting down gRPC executor");
       grpcExecutor.shutdown();
+    }
+    if (multiClusterConfigs.isLogCompactionEnabled()) {
+      Utils.closeQuietlyWithErrorLogged(logCompactionService);
     }
     Utils.closeQuietlyWithErrorLogged(topicCleanupService);
     Utils.closeQuietlyWithErrorLogged(secureAdminServer);

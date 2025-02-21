@@ -493,6 +493,12 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   @Override
+  public PubSubPosition beginningPosition(PubSubTopicPartition pubSubTopicPartition, Duration timeout) {
+    Long beginningOffset = beginningOffset(pubSubTopicPartition, timeout);
+    return beginningOffset != null ? new ApacheKafkaOffsetPosition(beginningOffset) : PubSubPosition.EARLIEST;
+  }
+
+  @Override
   public Map<PubSubTopicPartition, Long> endOffsets(Collection<PubSubTopicPartition> partitions, Duration timeout) {
     Map<TopicPartition, PubSubTopicPartition> pubSubTopicPartitionMapping = new HashMap<>(partitions.size());
     for (PubSubTopicPartition pubSubTopicPartition: partitions) {
@@ -518,6 +524,20 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   @Override
+  public Map<PubSubTopicPartition, PubSubPosition> endPositions(
+      Collection<PubSubTopicPartition> partitions,
+      Duration timeout) {
+    Map<PubSubTopicPartition, Long> endOffsets = endOffsets(partitions, timeout);
+    Map<PubSubTopicPartition, PubSubPosition> pubSubTopicPartitionOffsetMap = new HashMap<>(endOffsets.size());
+    for (Map.Entry<PubSubTopicPartition, Long> entry: endOffsets.entrySet()) {
+      PubSubPosition endPosition =
+          entry.getValue() != null ? new ApacheKafkaOffsetPosition(entry.getValue()) : PubSubPosition.LATEST;
+      pubSubTopicPartitionOffsetMap.put(entry.getKey(), endPosition);
+    }
+    return pubSubTopicPartitionOffsetMap;
+  }
+
+  @Override
   public Long endOffset(PubSubTopicPartition pubSubTopicPartition) {
     try {
       TopicPartition topicPartition = new TopicPartition(
@@ -535,6 +555,12 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     } catch (Exception e) {
       throw new PubSubClientException("Failed to fetch end offset for " + pubSubTopicPartition, e);
     }
+  }
+
+  @Override
+  public PubSubPosition endPosition(PubSubTopicPartition pubSubTopicPartition) {
+    Long endOffset = endOffset(pubSubTopicPartition);
+    return endOffset != null ? new ApacheKafkaOffsetPosition(endOffset) : PubSubPosition.LATEST;
   }
 
   /**

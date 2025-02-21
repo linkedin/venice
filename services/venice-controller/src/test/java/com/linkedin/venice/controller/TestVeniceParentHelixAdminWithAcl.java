@@ -126,7 +126,9 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
         .put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
-        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
+        .thenReturn(
+            AdminTopicMetadataAccessor
+                .generateMetadataMap(Optional.of(1L), Optional.of(-1L), Optional.of(1L), Optional.empty()));
     initializeParentAdmin(Optional.of(authorizerService));
     parentAdmin.initStorageCluster(clusterName);
     parentAdmin.deleteStore(clusterName, storeName, false, 0, true);
@@ -175,7 +177,9 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
         .checkPreConditionForAclOp(clusterName, storeName);
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(new OffsetRecord(partitionStateSerializer))
-        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
+        .thenReturn(
+            AdminTopicMetadataAccessor
+                .generateMetadataMap(Optional.of(1L), Optional.of(-1L), Optional.of(1L), Optional.empty()));
     initializeParentAdmin(Optional.of(authorizerService));
     Assert.assertThrows(
         VeniceNoStoreException.class,
@@ -193,7 +197,9 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
         .checkPreConditionForAclOp(clusterName, storeName);
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(new OffsetRecord(partitionStateSerializer))
-        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
+        .thenReturn(
+            AdminTopicMetadataAccessor
+                .generateMetadataMap(Optional.of(1L), Optional.of(-1L), Optional.of(1L), Optional.empty()));
     initializeParentAdmin(Optional.of(authorizerService));
     Assert.assertThrows(VeniceNoStoreException.class, () -> parentAdmin.getAclForStore(clusterName, storeName));
   }
@@ -208,7 +214,9 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
         .checkPreConditionForAclOp(clusterName, storeName);
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(new OffsetRecord(partitionStateSerializer))
-        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
+        .thenReturn(
+            AdminTopicMetadataAccessor
+                .generateMetadataMap(Optional.of(1L), Optional.of(-1L), Optional.of(1L), Optional.empty()));
     initializeParentAdmin(Optional.of(authorizerService));
     Assert.assertThrows(VeniceNoStoreException.class, () -> parentAdmin.deleteAclForStore(clusterName, storeName));
     Assert.assertEquals(0, authorizerService.clearAclCounter);

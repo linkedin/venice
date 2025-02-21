@@ -1,6 +1,7 @@
 package com.linkedin.venice.controllerapi;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACCESS_PERMISSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ADMIN_OPERATION_PROTOCOL_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AMPLIFICATION_FACTOR;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_JOB_HEARTBEAT_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
@@ -1185,6 +1186,30 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.GET_STORES_IN_CLUSTER, params, MultiStoreInfoResponse.class);
   }
 
+  /**
+   * This method gets a list of store names that are ready for compaction.
+   * @param clusterName, the name of the cluster to query for compaction eligible stores
+   * @return The list of store names that are ready for compaction.
+   */
+  public MultiStoreInfoResponse getStoresForCompaction(String clusterName) {
+    QueryParams params = new QueryParams().add(CLUSTER, clusterName);
+    return request(ControllerRoute.GET_STORES_FOR_COMPACTION, params, MultiStoreInfoResponse.class);
+  }
+
+  /**
+   * This method triggers an adhoc repush for storeName
+   * @param storeName
+   * @return //TODO LC:
+   */
+  public ControllerResponse triggerRepush(String storeName, byte[] repushJobDetails) {
+    QueryParams params = newParams().add(NAME, storeName);
+    // TODO repush: Use byte[] to pass parameters instead of QueryParams as it is a post method. see
+    // (https://github.com/linkedin/venice/pull/1282#discussion_r1871510627)
+    // TODO repush: add params from admin tool for repush: e.g. version, fabric etc.
+    // TODO repush: add admin.repush()
+    return request(ControllerRoute.COMPACT_STORE, params, ControllerResponse.class, repushJobDetails);
+  }
+
   public VersionResponse getStoreLargestUsedVersion(String clusterName, String storeName) {
     QueryParams params = newParams().add(CLUSTER, clusterName).add(NAME, storeName);
     return request(ControllerRoute.GET_STORE_LARGEST_USED_VERSION, params, VersionResponse.class);
@@ -1350,7 +1375,7 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.GET_ADMIN_TOPIC_METADATA, params, AdminTopicMetadataResponse.class);
   }
 
-  public ControllerResponse updateAdminTopicMetadata(
+  public AdminTopicMetadataResponse updateAdminTopicMetadata(
       long executionId,
       Optional<String> storeName,
       Optional<Long> offset,
@@ -1359,7 +1384,15 @@ public class ControllerClient implements Closeable {
         .add(NAME, storeName)
         .add(OFFSET, offset)
         .add(UPSTREAM_OFFSET, upstreamOffset);
-    return request(ControllerRoute.UPDATE_ADMIN_TOPIC_METADATA, params, ControllerResponse.class);
+    return request(ControllerRoute.UPDATE_ADMIN_TOPIC_METADATA, params, AdminTopicMetadataResponse.class);
+  }
+
+  public AdminTopicMetadataResponse updateAdminOperationProtocolVersion(
+      String clusterName,
+      Long adminOperationProtocolVersion) {
+    QueryParams params =
+        newParams().add(CLUSTER, clusterName).add(ADMIN_OPERATION_PROTOCOL_VERSION, adminOperationProtocolVersion);
+    return request(ControllerRoute.UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION, params, AdminTopicMetadataResponse.class);
   }
 
   public ControllerResponse deleteKafkaTopic(String topicName) {

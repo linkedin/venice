@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.utils.Pair;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 
 public abstract class AdminTopicMetadataAccessor {
@@ -14,17 +15,24 @@ public abstract class AdminTopicMetadataAccessor {
    */
   private static final String UPSTREAM_OFFSET_KEY = "upstreamOffset";
   private static final String EXECUTION_ID_KEY = "executionId";
+  private static final String ADMIN_OPERATION_PROTOCOL_VERSION_KEY = "adminOperationProtocolVersion";
   private static final long UNDEFINED_VALUE = -1;
 
   /**
    * @return a map with {@linkplain AdminTopicMetadataAccessor#OFFSET_KEY}, {@linkplain AdminTopicMetadataAccessor#UPSTREAM_OFFSET_KEY},
-   *         {@linkplain AdminTopicMetadataAccessor#EXECUTION_ID_KEY} specified to input values.
+   *         {@linkplain AdminTopicMetadataAccessor#EXECUTION_ID_KEY}, {@linkplain AdminTopicMetadataAccessor#ADMIN_OPERATION_PROTOCOL_VERSION_KEY}
+   *         specified to input values.
    */
-  public static Map<String, Long> generateMetadataMap(long localOffset, long upstreamOffset, long executionId) {
+  public static Map<String, Long> generateMetadataMap(
+      Optional<Long> localOffset,
+      Optional<Long> upstreamOffset,
+      Optional<Long> executionId,
+      Optional<Long> adminOperationProtocolVersion) {
     Map<String, Long> metadata = new HashMap<>();
-    metadata.put(OFFSET_KEY, localOffset);
-    metadata.put(UPSTREAM_OFFSET_KEY, upstreamOffset);
-    metadata.put(EXECUTION_ID_KEY, executionId);
+    localOffset.ifPresent(offset -> metadata.put(OFFSET_KEY, offset));
+    upstreamOffset.ifPresent(offset -> metadata.put(UPSTREAM_OFFSET_KEY, offset));
+    executionId.ifPresent(id -> metadata.put(EXECUTION_ID_KEY, id));
+    adminOperationProtocolVersion.ifPresent(version -> metadata.put(ADMIN_OPERATION_PROTOCOL_VERSION_KEY, version));
     return metadata;
   }
 
@@ -46,7 +54,14 @@ public abstract class AdminTopicMetadataAccessor {
   }
 
   /**
-   * Update all relevant metadata for a given cluster in a single transaction.
+   * @return the value to which the specified key is mapped to {@linkplain AdminTopicMetadataAccessor#ADMIN_OPERATION_PROTOCOL_VERSION_KEY}.
+   */
+  public static long getAdminOperationProtocolVersion(Map<String, Long> metadata) {
+    return metadata.getOrDefault(ADMIN_OPERATION_PROTOCOL_VERSION_KEY, UNDEFINED_VALUE);
+  }
+
+  /**
+   * Update specific metadata for a given cluster in a single transaction with information provided in metadata.
    * @param clusterName of the cluster at interest.
    * @param metadata map containing relevant information.
    */

@@ -207,6 +207,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final String kafkaVersionTopic;
   protected final PubSubTopic versionTopic;
   protected final PubSubTopic realTimeTopic;
+  protected final PubSubTopic separateRealTimeTopic;
   protected final String storeName;
   private final boolean isUserSystemStore;
   protected final int versionNumber;
@@ -291,8 +292,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private boolean purgeTransientRecordBuffer = true;
 
   protected final boolean isWriteComputationEnabled;
-
-  protected final boolean isSeparatedRealtimeTopicEnabled;
 
   /**
    * Freeze ingestion if ready to serve or local data exists
@@ -397,6 +396,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.storeName = versionTopic.getStoreName();
     this.isUserSystemStore = VeniceSystemStoreUtils.isUserSystemStore(storeName);
     this.realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(version));
+    this.separateRealTimeTopic = version.isSeparateRealTimeTopicEnabled()
+        ? pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(storeName))
+        : null;
     this.versionNumber = Version.parseVersionFromKafkaTopicName(kafkaVersionTopic);
     this.consumerActionsQueue = new PriorityBlockingQueue<>(CONSUMER_ACTION_QUEUE_INIT_CAPACITY);
     this.partitionToPendingConsumerActionCountMap = new VeniceConcurrentHashMap<>();
@@ -449,8 +451,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.errorPartitionId = errorPartitionId;
 
     this.isWriteComputationEnabled = store.isWriteComputationEnabled();
-
-    this.isSeparatedRealtimeTopicEnabled = version.isSeparateRealTimeTopicEnabled();
 
     this.partitionStateSerializer = builder.getPartitionStateSerializer();
 
@@ -538,7 +538,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         Collections.unmodifiableMap(partitionConsumptionStateMap),
         serverConfig.isHybridQuotaEnabled(),
         serverConfig.isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled(),
-        isSeparatedRealtimeTopicEnabled,
+        version.isSeparateRealTimeTopicEnabled(),
         ingestionNotificationDispatcher,
         this::pauseConsumption,
         this::resumeConsumption);
@@ -4658,7 +4658,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public boolean isSeparatedRealtimeTopicEnabled() {
-    return isSeparatedRealtimeTopicEnabled;
+    return separateRealTimeTopic != null;
   }
 
   /**

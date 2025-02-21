@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClientImpl;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
@@ -66,6 +67,16 @@ public class DaVinciBlobFinder implements BlobFinder {
     CompletableFuture<BlobPeersDiscoveryResponse> futureResponse = CompletableFuture.supplyAsync(() -> {
       try {
         byte[] responseBody = (byte[]) storeClient.getRaw(uri).get(3, TimeUnit.SECONDS);
+        if (responseBody == null) {
+          return handleError(
+              ERROR_DISCOVERY_MESSAGE,
+              storeName,
+              version,
+              partition,
+              new VenicePeersNotFoundException(
+                  "The response body is null for store: " + storeName + ", version: " + version + ", partition: "
+                      + partition));
+        }
         ObjectMapper mapper = ObjectMapperFactory.getInstance();
         return mapper.readValue(responseBody, BlobPeersDiscoveryResponse.class);
       } catch (Exception e) {

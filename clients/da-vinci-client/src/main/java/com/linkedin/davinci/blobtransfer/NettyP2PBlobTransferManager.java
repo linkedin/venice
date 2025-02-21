@@ -17,9 +17,12 @@ import com.linkedin.venice.utils.Utils;
 import java.io.InputStream;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -92,11 +95,10 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     }
 
     List<String> discoverPeers = response.getDiscoveryResult();
-    LOGGER
-        .info("Discovered peers {} for store {} version {} partition {}", discoverPeers, storeName, version, partition);
+    Set<String> connectablePeers = getConnectableHosts(discoverPeers, storeName, version, partition);
 
     // 2: Process peers sequentially to fetch the blob
-    processPeersSequentially(discoverPeers, storeName, version, partition, tableFormat, resultFuture);
+    processPeersSequentially(connectablePeers, storeName, version, partition, tableFormat, resultFuture);
 
     return resultFuture;
   }
@@ -121,7 +123,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
    *  - Success case:
    *  1. If the blob is successfully fetched from a peer, an InputStream of the blob is returned.
    *
-   * @param peers the list of peers to process
+   * @param uniqueConnectablePeers the set of peers to process
    * @param storeName the name of the store
    * @param version the version of the store
    * @param partition the partition of the store
@@ -129,7 +131,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
    * @param resultFuture the future to complete with the InputStream of the blob
    */
   private void processPeersSequentially(
-      List<String> peers,
+      Set<String> uniqueConnectablePeers,
       String storeName,
       int version,
       int partition,
@@ -142,11 +144,9 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     CompletableFuture<Void> chainOfPeersFuture = CompletableFuture.completedFuture(null);
 
     // Iterate through each peer and chain the futures
-    for (int currentPeerIndex = 0; currentPeerIndex < peers.size(); currentPeerIndex++) {
-      final int peerIndex = currentPeerIndex;
+    for (String chosenHost: uniqueConnectablePeers) {
       // Chain the next operation to the previous future
       chainOfPeersFuture = chainOfPeersFuture.thenCompose(v -> {
-        String chosenHost = peers.get(peerIndex).split("_")[0];
 
         if (resultFuture.isDone()) {
           // If the result future is already completed, skip the current peer
@@ -154,7 +154,13 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
         }
 
         // Attempt to fetch the blob from the current peer asynchronously
-        LOGGER.info("Attempting to connect to host: {}", chosenHost);
+        LOGGER.info(
+            "Attempting to connect to host: {} for store {} version {} partition {} table format {}",
+            chosenHost,
+            storeName,
+            version,
+            partition,
+            tableFormat);
 
         return nettyClient.get(chosenHost, storeName, version, partition, tableFormat)
             .toCompletableFuture()
@@ -243,5 +249,39 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
           partition,
           e);
     }
+  }
+
+  /**
+   * Get the connectable hosts for the given storeName, version, and partition
+   * @param discoverPeers the list of discovered peers
+   * @param storeName the name of the store
+   * @param version the version of the store
+   * @param partition the partition of the store
+   * @return the set of unique connectable hosts
+   */
+  private Set<String> getConnectableHosts(List<String> discoverPeers, String storeName, int version, int partition) {
+    // Extract unique hosts from the discovered peers
+    Set<String> uniquePeers = discoverPeers.stream().map(peer -> peer.split("_")[0]).collect(Collectors.toSet());
+
+    LOGGER.info(
+        "Discovered {} unique peers store {} version {} partition {}, peers are {}",
+        uniquePeers.size(),
+        storeName,
+        version,
+        partition,
+        uniquePeers);
+
+    // Get the connectable hosts for this store, version, and partition
+    Set<String> connectablePeers =
+        nettyClient.getConnectableHosts((HashSet<String>) uniquePeers, storeName, version, partition);
+
+    LOGGER.info(
+        "Total {} unique connectable peers for store {} version {} partition {}, peers are {}",
+        connectablePeers.size(),
+        storeName,
+        version,
+        partition,
+        connectablePeers);
+    return connectablePeers;
   }
 }

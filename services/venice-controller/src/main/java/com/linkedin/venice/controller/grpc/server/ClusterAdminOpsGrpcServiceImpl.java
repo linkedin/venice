@@ -15,8 +15,8 @@ import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcResponse;
 import com.linkedin.venice.protocols.controller.ClusterAdminOpsGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcRequest;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcResponse;
+import com.linkedin.venice.protocols.controller.UpdateAdminOperationProtocolVersionGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcRequest;
-import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcResponse;
 import io.grpc.Context;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -77,7 +77,7 @@ public class ClusterAdminOpsGrpcServiceImpl extends ClusterAdminOpsGrpcServiceIm
   @Override
   public void updateAdminTopicMetadata(
       UpdateAdminTopicMetadataGrpcRequest request,
-      StreamObserver<UpdateAdminTopicMetadataGrpcResponse> responseObserver) {
+      StreamObserver<AdminTopicMetadataGrpcResponse> responseObserver) {
     LOGGER.debug("Received updateAdminTopicMetadata request: {}", request);
     AdminTopicGrpcMetadata metadata = request.getMetadata();
     ControllerGrpcServerUtils.handleRequest(ClusterAdminOpsGrpcServiceGrpc.getUpdateAdminTopicMetadataMethod(), () -> {
@@ -88,5 +88,18 @@ public class ClusterAdminOpsGrpcServiceImpl extends ClusterAdminOpsGrpcServiceIm
       }
       return requestHandler.updateAdminTopicMetadata(request);
     }, responseObserver, metadata.getClusterName(), metadata.hasStoreName() ? metadata.getStoreName() : null);
+  }
+
+  @Override
+  public void updateAdminOperationProtocolVersion(
+      UpdateAdminOperationProtocolVersionGrpcRequest request,
+      StreamObserver<AdminTopicMetadataGrpcResponse> responseObserver) {
+    LOGGER.debug("Received updateAdminOperationProtocolVersion request: {}", request);
+    ControllerGrpcServerUtils.handleRequest(
+        ClusterAdminOpsGrpcServiceGrpc.getUpdateAdminOperationProtocolVersionMethod(),
+        () -> requestHandler.updateAdminOperationProtocolVersion(request),
+        responseObserver,
+        request.getClusterName(),
+        null);
   }
 }

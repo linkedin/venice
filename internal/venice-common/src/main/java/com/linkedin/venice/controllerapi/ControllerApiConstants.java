@@ -71,6 +71,7 @@ public class ControllerApiConstants {
   public static final String BATCH_GET_ROUTER_CACHE_ENABLED = "batch_get_router_cache_enabled";
   public static final String BATCH_GET_LIMIT = "batch_get_limit";
   public static final String LARGEST_USED_VERSION_NUMBER = "largest_used_version_number";
+  public static final String LARGEST_USED_RT_VERSION_NUMBER = "largest_used_rt_version_number";
   public static final String NUM_VERSIONS_TO_PRESERVE = "num_versions_to_preserve";
   public static final String DISABLE_META_STORE = "disable_meta_store";
   public static final String DISABLE_DAVINCI_PUSH_STATUS_STORE = "disable_davinci_push_status_store";
@@ -225,6 +226,7 @@ public class ControllerApiConstants {
   public static final String KAFKA_TOPIC_RETENTION_IN_MS = "kafka.topic.retention.in.ms";
   public static final String KAFKA_TOPIC_MIN_IN_SYNC_REPLICA = "kafka.topic.min.in.sync.replica";
   public static final String UPSTREAM_OFFSET = "upstream_offset";
+  public static final String ADMIN_OPERATION_PROTOCOL_VERSION = "admin_operation_protocol_version";
 
   public static final String PERSONA_NAME = "persona_name";
   public static final String PERSONA_OWNERS = "persona_owners";
@@ -260,4 +262,9 @@ public class ControllerApiConstants {
   public static final String TARGET_SWAP_REGION = "target_swap_region";
   public static final String TARGET_SWAP_REGION_WAIT_TIME = "target_swap_region_wait_time";
   public static final String IS_DAVINCI_HEARTBEAT_REPORTED = "is_davinci_heartbeat_reported";
+
+  /**
+   * Params for repush job
+   */
+  public static final String SOURCE_REGION = "source_region";
 }

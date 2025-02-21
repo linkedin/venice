@@ -292,6 +292,36 @@ public class ConfigKeys {
       "fatal.data.validation.failure.topic.retention.ms";
 
   /**
+   * Class name of the implementation of interface {@link com.linkedin.venice.controller.repush.RepushOrchestrator} in {@link com.linkedin.venice.controller.logcompaction.CompactionManager}
+   */
+  public static final String REPUSH_ORCHESTRATOR_CLASS_NAME = "controller.repush.orchestrator.class.name";
+
+  /**
+   * Prefix of configs to configure RepushOrchestrator
+   */
+  public static final String CONTROLLER_REPUSH_PREFIX = "controller.repush.";
+
+  /**
+   * Whether log compaction is enabled for stores in this Venice controller
+   */
+  public static final String LOG_COMPACTION_ENABLED = "log.compaction.enabled";
+  /**
+   * Number of threads to use for log compaction
+   */
+  public static final String LOG_COMPACTION_THREAD_COUNT = "log.compaction.thread.count";
+
+  /**
+   * Time between each scheduled log compaction
+   */
+  public static final String LOG_COMPACTION_INTERVAL_MS = "log.compaction.interval.ms";
+
+  /**
+   * Time since last log compaction before a store is considered for log compaction
+   */
+  public static final String TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS =
+      "log.compaction.time.since.last.compaction.threshold.ms";
+
+  /**
    * This config is to indicate the max retention policy we have setup for deprecated jobs currently and in the past.
    * And this is used to decide whether the topic is deprecated or not during topic cleanup.
    *
@@ -1827,6 +1857,10 @@ public class ConfigKeys {
   // this is a config to decide the max allowed offset lag to use kafka, even if the blob transfer is enable.
   public static final String BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD =
       "blob.transfer.disabled.offset.lag.threshold";
+  // This is a freshness in sec to measure the connectivity between the peers,
+  // if the connectivity is not fresh, then retry the connection.
+  public static final String BLOB_TRANSFER_PEERS_CONNECTIVITY_FRESHNESS_IN_SECONDS =
+      "blob.transfer.peers.connectivity.freshness.in.seconds";
 
   // Port used by peer-to-peer transfer service. It should be used by both server and client
   public static final String DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT = "davinci.p2p.blob.transfer.server.port";

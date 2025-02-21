@@ -491,7 +491,8 @@ public class VeniceServer {
           aggVersionedBlobTransferStats,
           serverConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
               ? BlobTransferTableFormat.PLAIN_TABLE
-              : BlobTransferTableFormat.BLOCK_BASED_TABLE);
+              : BlobTransferTableFormat.BLOCK_BASED_TABLE,
+          serverConfig.getBlobTransferPeersConnectivityFreshnessInSeconds());
     } else {
       aggVersionedBlobTransferStats = null;
       blobTransferManager = null;
