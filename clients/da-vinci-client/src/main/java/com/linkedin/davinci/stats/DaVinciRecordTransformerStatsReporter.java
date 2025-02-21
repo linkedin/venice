@@ -51,13 +51,13 @@ public class DaVinciRecordTransformerStatsReporter extends AbstractVeniceStatsRe
     registerSensor(
         new DaVinciRecordTransformerStatsReporter.DaVinciRecordTransformerStatsGauge(
             this,
-            () -> getStats().getTransformerPutErrorCount(),
+            () -> getStats().getRecordTransformerPutErrorCount(),
             0,
             RECORD_TRANSFORMER_PUT_ERROR_COUNT));
     registerSensor(
         new DaVinciRecordTransformerStatsReporter.DaVinciRecordTransformerStatsGauge(
             this,
-            () -> getStats().getTransformerDeleteErrorCount(),
+            () -> getStats().getRecordTransformerDeleteErrorCount(),
             0,
             RECORD_TRANSFORMER_DELETE_ERROR_COUNT));
   }

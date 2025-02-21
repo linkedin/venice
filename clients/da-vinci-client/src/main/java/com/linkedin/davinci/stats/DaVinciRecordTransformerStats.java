@@ -97,7 +97,7 @@ public class DaVinciRecordTransformerStats {
     recordTransformerPutErrorSensor.record(value, currentTimeMs);
   }
 
-  public double getTransformerPutErrorCount() {
+  public double getRecordTransformerPutErrorCount() {
     return recordTransformerPutErrorCount.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 
@@ -105,7 +105,7 @@ public class DaVinciRecordTransformerStats {
     recordTransformerDeleteErrorSensor.record(value, currentTimeMs);
   }
 
-  public double getTransformerDeleteErrorCount() {
+  public double getRecordTransformerDeleteErrorCount() {
     return recordTransformerDeleteErrorCount.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 }

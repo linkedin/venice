@@ -61,7 +61,7 @@ public class DaVinciRecordTransformerStatsTest {
     DaVinciRecordTransformerStats stats = new DaVinciRecordTransformerStats();
     stats.recordTransformerPutError(1, timestamp);
     stats.recordTransformerPutError(1, timestamp);
-    Assert.assertEquals(stats.getTransformerPutErrorCount(), 2.0);
+    Assert.assertEquals(stats.getRecordTransformerPutErrorCount(), 2.0);
   }
 
   @Test
@@ -69,7 +69,7 @@ public class DaVinciRecordTransformerStatsTest {
     DaVinciRecordTransformerStats stats = new DaVinciRecordTransformerStats();
     stats.recordTransformerDeleteError(1, timestamp);
     stats.recordTransformerDeleteError(1, timestamp);
-    Assert.assertEquals(stats.getTransformerDeleteErrorCount(), 2.0);
+    Assert.assertEquals(stats.getRecordTransformerDeleteErrorCount(), 2.0);
   }
 
   @Test
