@@ -761,7 +761,7 @@ public class PartitionConsumptionState {
   }
 
   public long getLatestProcessedUpstreamRTOffset(String kafkaUrl) {
-    long latestProcessedUpstreamRTOffset = latestProcessedUpstreamRTOffsetMap.getOrDefault(kafkaUrl, -1L);
+    long latestProcessedUpstreamRTOffset = getLatestProcessedUpstreamRTOffsetMap().getOrDefault(kafkaUrl, -1L);
     if (latestProcessedUpstreamRTOffset < 0) {
       /**
        * When processing {@link TopicSwitch} control message, only the checkpoint upstream offset maps in {@link OffsetRecord}
@@ -793,7 +793,7 @@ public class PartitionConsumptionState {
    *    on whether the remote consumption flag is on.
    */
   public long getLeaderOffset(String kafkaURL, PubSubTopicRepository pubSubTopicRepository) {
-    PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
+    PubSubTopic leaderTopic = getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
     if (leaderTopic != null && !leaderTopic.isVersionTopic()) {
       return getLatestProcessedUpstreamRTOffset(kafkaURL);
     } else {

@@ -5580,6 +5580,57 @@ public abstract class StoreIngestionTaskTest {
     }, AA_OFF);
   }
 
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testResubscribeAsLeader(boolean aaEnabled) throws InterruptedException {
+    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask).resubscribeAsLeader(any());
+    PubSubTopicRepository topicRepository = new PubSubTopicRepository();
+    when(ingestionTask.getPubSubTopicRepository()).thenReturn(topicRepository);
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    PubSubTopic pubSubTopic = topicRepository.getTopic("test_rt");
+    when(offsetRecord.getLeaderTopic(any())).thenReturn(pubSubTopic);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.getOffsetRecord()).thenReturn(offsetRecord);
+    when(pcs.getReplicaId()).thenReturn("test_v1-1");
+    when(pcs.getPartition()).thenReturn(1);
+    when(ingestionTask.isActiveActiveReplicationEnabled()).thenReturn(aaEnabled);
+    Set<String> upstreamUrlSet = new HashSet<>();
+    upstreamUrlSet.add("dc-1");
+    if (aaEnabled) {
+      upstreamUrlSet.add("dc-2");
+      upstreamUrlSet.add("dc-3");
+    }
+    Map<String, Long> upstreamOffsetMap = new HashMap<>();
+    if (aaEnabled) {
+      upstreamOffsetMap.put("dc-1", 100L);
+      upstreamOffsetMap.put("dc-2", 20L);
+      upstreamOffsetMap.put("dc-3", 3L);
+    } else {
+      upstreamOffsetMap.put(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, 1000L);
+    }
+    when(ingestionTask.getConsumptionSourceKafkaAddress(pcs)).thenReturn(upstreamUrlSet);
+    when(pcs.getLatestProcessedUpstreamRTOffsetMap()).thenReturn(upstreamOffsetMap);
+    doCallRealMethod().when(pcs).getLatestProcessedUpstreamRTOffset(anyString());
+    doCallRealMethod().when(pcs).getLeaderOffset(anyString(), any());
+    ingestionTask.resubscribeAsLeader(pcs);
+
+    ArgumentCaptor<String> urlCaptor = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<Long> offsetCaptor = ArgumentCaptor.forClass(Long.class);
+    verify(ingestionTask, times(aaEnabled ? 3 : 1))
+        .consumerSubscribe(any(), any(), offsetCaptor.capture(), urlCaptor.capture());
+    List<String> urls = urlCaptor.getAllValues();
+    List<Long> offsets = offsetCaptor.getAllValues();
+    if (aaEnabled) {
+      Assert.assertEquals(urls.size(), 3);
+      Assert.assertEquals(offsets.size(), 3);
+      Assert.assertEquals(offsets.get(0) + offsets.get(1) + offsets.get(2), 123L);
+    } else {
+      Assert.assertEquals(urls.size(), 1);
+      Assert.assertEquals(offsets.size(), 1);
+      Assert.assertEquals(offsets.get(0).longValue(), 1000L);
+    }
+  }
+
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(
       Consumer<VeniceStoreVersionConfig> storeVersionConfigOverride) {
     // mock the store config

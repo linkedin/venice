@@ -958,6 +958,87 @@ public class PartialUpdateTest {
     MetricsUtils.validateMetricRange(assembledRmdSizes, 290000, 740000);
   }
 
+  @Test(timeOut = TEST_TIMEOUT_MS * 3)
+  public void testNonAARewind() throws Exception {
+    final String storeName = Utils.getUniqueString("test");
+    String parentControllerUrl = parentController.getControllerUrl();
+    String keySchemaStr = "{\"type\" : \"string\"}";
+    Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      assertCommand(
+          parentControllerClient.createNewStore(storeName, "test_owner", keySchemaStr, valueSchema.toString()));
+      UpdateStoreQueryParams updateStoreParams =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setChunkingEnabled(true)
+              .setPartitionCount(1)
+              .setHybridRewindSeconds(100000L)
+              .setHybridOffsetLagThreshold(2L);
+      ControllerResponse updateStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
+      assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+
+      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
+      assertEquals(response.getVersion(), 1);
+      assertFalse(response.isError(), "Empty push to parent colo should succeed");
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 1),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+    }
+
+    VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+    SystemProducer veniceProducer = getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM);
+
+    String key = "key";
+    String primitiveFieldName = "name";
+    String listFieldName = "floatArray";
+    String mapFieldName = "stringMap";
+
+    int totalUpdateCount = 1000;
+    try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+      for (int i = 0; i < totalUpdateCount; i++) {
+        GenericRecord value = new GenericData.Record(valueSchema);
+        value.put(primitiveFieldName, "London");
+        value.put(listFieldName, new ArrayList<>());
+        value.put(mapFieldName, new HashMap<>());
+        sendStreamingRecord(veniceProducer, storeName, key + i, value);
+      }
+      // Verify the value record has been partially updated.
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS * 2, TimeUnit.MILLISECONDS, true, true, () -> {
+        try {
+          for (int i = 0; i < totalUpdateCount; i++) {
+            GenericRecord valueRecord = readValue(storeReader, key + i);
+            boolean nullRecord = (valueRecord == null);
+            assertFalse(nullRecord);
+            assertEquals(valueRecord.get(primitiveFieldName).toString(), "London");
+          }
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+
+    } finally {
+      veniceProducer.stop();
+    }
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id_v2", 1000);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 2),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+    }
+
+    String baseMetricName = "." + storeName + "_current--duplicate_msg.DIVStatsGauge";
+    double totalCountMetric = MetricsUtils.getSum(baseMetricName, veniceCluster.getVeniceServers());
+    baseMetricName = storeName + "_future--duplicate_msg.DIVStatsGauge";
+    totalCountMetric += MetricsUtils.getSum(baseMetricName, veniceCluster.getVeniceServers());
+    Assert.assertEquals(totalCountMetric, 0.0d);
+  }
+
   @Test(timeOut = TEST_TIMEOUT_MS, dataProvider = "Compression-Strategies", dataProviderClass = DataProviderUtils.class)
   public void testRepushWithTTLWithActiveActivePartialUpdateStore(CompressionStrategy compressionStrategy) {
     final String storeName = Utils.getUniqueString("ttlRepushAAWC");

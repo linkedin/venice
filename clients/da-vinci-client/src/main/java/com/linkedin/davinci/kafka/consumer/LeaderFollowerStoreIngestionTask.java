@@ -3947,7 +3947,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected void resubscribeAsLeader(PartitionConsumptionState partitionConsumptionState) throws InterruptedException {
     OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
-    PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
+    PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(getPubSubTopicRepository());
     int partition = partitionConsumptionState.getPartition();
     unsubscribeFromTopic(leaderTopic, partitionConsumptionState);
     waitForAllMessageToBeProcessedFromTopicPartition(
@@ -3958,7 +3958,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         partitionConsumptionState.getReplicaId());
     Set<String> leaderSourceKafkaURLs = getConsumptionSourceKafkaAddress(partitionConsumptionState);
     for (String leaderSourceKafkaURL: leaderSourceKafkaURLs) {
-      long leaderStartOffset = partitionConsumptionState.getLeaderOffset(leaderSourceKafkaURL, pubSubTopicRepository);
+      String upstreamOffsetKey = isActiveActiveReplicationEnabled()
+          ? leaderSourceKafkaURL
+          : OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY;
+      long leaderStartOffset = partitionConsumptionState.getLeaderOffset(upstreamOffsetKey, getPubSubTopicRepository());
       consumerSubscribe(leaderTopic, partitionConsumptionState, leaderStartOffset, leaderSourceKafkaURL);
       LOGGER.info(
           "Leader replica: {} resubscribe to offset: {}",
