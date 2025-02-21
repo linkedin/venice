@@ -209,10 +209,8 @@ public class AdminConsumerService extends AbstractVeniceService {
    */
   public void updateAdminOperationProtocolVersion(String clusterName, long adminOperationProtocolVersion) {
     if (clusterName.equals(config.getClusterName())) {
-      // Add logger
       try (AutoCloseableLock ignore =
           admin.getHelixVeniceClusterResources(clusterName).getClusterLockManager().createClusterWriteLock()) {
-        // todo: logger after acquired lock
         Map<String, Long> metadata = AdminTopicMetadataAccessor.generateMetadataMap(
             Optional.empty(),
             Optional.empty(),
