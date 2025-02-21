@@ -192,7 +192,6 @@ public class VeniceControllerStateModel extends StateModel {
         realTimeTopicSwitcher,
         accessController,
         helixAdminClient);
-    LOGGER.info("{} initialized cluster resources", clusterName);
     clusterResources.refresh();
     clusterResources.startErrorPartitionResetTask();
     clusterResources.startLeakedPushStatusCleanUpService();
