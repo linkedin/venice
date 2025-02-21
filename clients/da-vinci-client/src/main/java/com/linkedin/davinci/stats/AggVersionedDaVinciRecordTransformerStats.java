@@ -59,4 +59,8 @@ public class AggVersionedDaVinciRecordTransformerStats
   public void recordTransformerPutError(String storeName, int version, double value, long timestamp) {
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordTransformerPutError(value, timestamp));
   }
+
+  public void recordTransformerDeleteError(String storeName, int version, double value, long timestamp) {
+    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordTransformerDeleteError(value, timestamp));
+  }
 }

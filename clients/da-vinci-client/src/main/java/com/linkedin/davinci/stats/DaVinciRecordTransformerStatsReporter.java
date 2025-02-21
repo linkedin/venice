@@ -1,5 +1,6 @@
 package com.linkedin.davinci.stats;
 
+import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_DELETE_ERROR_COUNT;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_DELETE_LATENCY;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_ON_END_VERSION_INGESTION_LATENCY;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_ON_RECOVERY_LATENCY;
@@ -29,6 +30,7 @@ public class DaVinciRecordTransformerStatsReporter extends AbstractVeniceStatsRe
 
   @Override
   protected void registerStats() {
+    // Latency sensors
     registerLatencySensor(
         RECORD_TRANSFORMER_PUT_LATENCY,
         DaVinciRecordTransformerStats::getRecordTransformerPutLatencySensor);
@@ -45,12 +47,19 @@ public class DaVinciRecordTransformerStatsReporter extends AbstractVeniceStatsRe
         RECORD_TRANSFORMER_ON_END_VERSION_INGESTION_LATENCY,
         DaVinciRecordTransformerStats::getRecordTransformerOnEndVersionIngestionLatencySensor);
 
+    // Count sensors
     registerSensor(
         new DaVinciRecordTransformerStatsReporter.DaVinciRecordTransformerStatsGauge(
             this,
             () -> getStats().getTransformerPutErrorCount(),
             0,
             RECORD_TRANSFORMER_PUT_ERROR_COUNT));
+    registerSensor(
+        new DaVinciRecordTransformerStatsReporter.DaVinciRecordTransformerStatsGauge(
+            this,
+            () -> getStats().getTransformerDeleteErrorCount(),
+            0,
+            RECORD_TRANSFORMER_DELETE_ERROR_COUNT));
   }
 
   // Assumed time unit is in microseconds (µ)

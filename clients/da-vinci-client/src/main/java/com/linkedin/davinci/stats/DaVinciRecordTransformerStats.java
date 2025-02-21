@@ -18,6 +18,7 @@ public class DaVinciRecordTransformerStats {
   public static final String RECORD_TRANSFORMER_ON_END_VERSION_INGESTION_LATENCY =
       "record_transformer_on_end_version_ingestion_latency";
   public static final String RECORD_TRANSFORMER_PUT_ERROR_COUNT = "record_transformer_put_error_count";
+  public static final String RECORD_TRANSFORMER_DELETE_ERROR_COUNT = "record_transformer_delete_error_count";
 
   private final WritePathLatencySensor recordTransformerPutLatencySensor;
   private final WritePathLatencySensor recordTransformerDeleteLatencySensor;
@@ -26,6 +27,8 @@ public class DaVinciRecordTransformerStats {
   private final WritePathLatencySensor recordTransformerOnEndVersionIngestionLatencySensor;
   private final Count recordTransformerPutErrorCount = new Count();
   private final Sensor recordTransformerPutErrorSensor;
+  private final Count recordTransformerDeleteErrorCount = new Count();
+  private final Sensor recordTransformerDeleteErrorSensor;
 
   public DaVinciRecordTransformerStats() {
     localMetricRepository = new MetricsRepository(METRIC_CONFIG);
@@ -46,6 +49,8 @@ public class DaVinciRecordTransformerStats {
         RECORD_TRANSFORMER_ON_END_VERSION_INGESTION_LATENCY);
     recordTransformerPutErrorSensor = localMetricRepository.sensor(RECORD_TRANSFORMER_PUT_ERROR_COUNT);
     recordTransformerPutErrorSensor.add(RECORD_TRANSFORMER_PUT_ERROR_COUNT, recordTransformerPutErrorCount);
+    recordTransformerDeleteErrorSensor = localMetricRepository.sensor(RECORD_TRANSFORMER_DELETE_ERROR_COUNT);
+    recordTransformerDeleteErrorSensor.add(RECORD_TRANSFORMER_DELETE_ERROR_COUNT, recordTransformerDeleteErrorCount);
   }
 
   public void recordTransformerPutLatency(double value, long currentTimeMs) {
@@ -94,5 +99,13 @@ public class DaVinciRecordTransformerStats {
 
   public double getTransformerPutErrorCount() {
     return recordTransformerPutErrorCount.measure(METRIC_CONFIG, System.currentTimeMillis());
+  }
+
+  public void recordTransformerDeleteError(double value, long currentTimeMs) {
+    recordTransformerDeleteErrorSensor.record(value, currentTimeMs);
+  }
+
+  public double getTransformerDeleteErrorCount() {
+    return recordTransformerDeleteErrorCount.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 }

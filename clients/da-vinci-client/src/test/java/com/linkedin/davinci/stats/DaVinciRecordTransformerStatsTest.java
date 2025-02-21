@@ -1,5 +1,6 @@
 package com.linkedin.davinci.stats;
 
+import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_DELETE_ERROR_COUNT;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_DELETE_LATENCY;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_ON_END_VERSION_INGESTION_LATENCY;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_ON_RECOVERY_LATENCY;
@@ -64,6 +65,14 @@ public class DaVinciRecordTransformerStatsTest {
   }
 
   @Test
+  public void testRecordTransformerDeleteErrorCount() {
+    DaVinciRecordTransformerStats stats = new DaVinciRecordTransformerStats();
+    stats.recordTransformerDeleteError(1, timestamp);
+    stats.recordTransformerDeleteError(1, timestamp);
+    Assert.assertEquals(stats.getTransformerDeleteErrorCount(), 2.0);
+  }
+
+  @Test
   public void testDaVinciRecordTransformerStatsReporterCanReportForGauge() {
     MetricsRepository metricsRepository = new MetricsRepository();
     MockTehutiReporter reporter = new MockTehutiReporter();
@@ -119,10 +128,18 @@ public class DaVinciRecordTransformerStatsTest {
         recordTransformerMetricPrefix + RECORD_TRANSFORMER_PUT_ERROR_COUNT + recordTransformerMetricPostfix;
     assertEquals(reporter.query(transformerPutErrorCount).value(), nullStat);
 
+    String transformerDeleteErrorCount =
+        recordTransformerMetricPrefix + RECORD_TRANSFORMER_DELETE_ERROR_COUNT + recordTransformerMetricPostfix;
+    assertEquals(reporter.query(transformerDeleteErrorCount).value(), nullStat);
+
     DaVinciRecordTransformerStats stats = new DaVinciRecordTransformerStats();
+
     stats.recordTransformerPutError(1, timestamp);
     recordTransformerStatsReporter.setStats(stats);
-
     assertEquals(reporter.query(transformerPutErrorCount).value(), 1.0);
+
+    stats.recordTransformerDeleteError(1, timestamp);
+    recordTransformerStatsReporter.setStats(stats);
+    assertEquals(reporter.query(transformerDeleteErrorCount).value(), 1.0);
   }
 }

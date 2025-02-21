@@ -33,11 +33,11 @@ public class LatencyUtils {
   }
 
   /**
-   * @param startTimeInUs input start time should use microsecond unit
+   * @param startTimeInUs input start time should use nanosecond unit
    * @return elapsed time in microseconds
    */
-  public static long getElapsedTimeFromUsToUs(long startTimeInUs) {
-    return getCurrentTimeInUs() - startTimeInUs;
+  public static long getElapsedTimeFromNSToUs(long startTimeInUs) {
+    return convertNSToUS(System.nanoTime() - startTimeInUs);
   }
 
   /***

@@ -270,13 +270,6 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
               () -> getStats().getBatchProcessingRequestLatencySensor().getMax(),
               0,
               BATCH_PROCESSING_REQUEST_LATENCY + "_max"));
-
-      registerSensor(
-          new IngestionStatsGauge(
-              this,
-              () -> getStats().getInternalPreprocessingLatencyMax(),
-              0,
-              INTERNAL_PREPROCESSING_LATENCY + "_max"));
     }
   }
 

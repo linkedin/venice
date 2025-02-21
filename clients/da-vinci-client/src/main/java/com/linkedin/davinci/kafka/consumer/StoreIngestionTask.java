@@ -513,7 +513,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       daVinciRecordTransformerStats.recordTransformerOnStartVersionIngestionLatency(
           storeName,
           versionNumber,
-          LatencyUtils.getElapsedTimeFromUsToUs(startTime),
+          LatencyUtils.getElapsedTimeFromNSToUs(startTime),
           System.currentTimeMillis());
     } else {
       this.recordTransformerKeyDeserializer = null;
@@ -662,7 +662,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       daVinciRecordTransformerStats.recordTransformerOnRecoveryLatency(
           storeName,
           versionNumber,
-          LatencyUtils.getElapsedTimeFromUsToUs(startTime),
+          LatencyUtils.getElapsedTimeFromNSToUs(startTime),
           System.currentTimeMillis());
     }
 
@@ -3805,7 +3805,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             transformerResult = recordTransformer.transformAndProcessPut(lazyKey, lazyValue);
           } catch (Exception e) {
             daVinciRecordTransformerStats.recordTransformerPutError(storeName, versionNumber, 1, currentTimeMs);
-            String errorMessage = "Record transformer experienced an error when processing value=" + assembledObject;
+            String errorMessage =
+                "DaVinciRecordTransformer experienced an error when processing value: " + assembledObject;
 
             throw new VeniceMessageException(errorMessage, e);
           }
@@ -3830,7 +3831,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           daVinciRecordTransformerStats.recordTransformerPutLatency(
               storeName,
               versionNumber,
-              LatencyUtils.getElapsedTimeFromUsToUs(recordTransformerStartTime),
+              LatencyUtils.getElapsedTimeFromNSToUs(recordTransformerStartTime),
               currentTimeMs);
           writeToStorageEngine(producedPartition, keyBytes, put);
         } else {
@@ -3867,11 +3868,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           Lazy<Object> lazyKey = Lazy.of(() -> this.recordTransformerKeyDeserializer.deserialize(keyBytes));
 
           long startTime = LatencyUtils.getCurrentTimeInUs();
-          recordTransformer.processDelete(lazyKey);
+          try {
+            recordTransformer.processDelete(lazyKey);
+          } catch (Exception e) {
+            daVinciRecordTransformerStats.recordTransformerDeleteError(storeName, versionNumber, 1, currentTimeMs);
+            String errorMessage = "DaVinciRecordTransformer experienced an error when deleting key: " + lazyKey.get();
+
+            throw new VeniceMessageException(errorMessage, e);
+          }
           daVinciRecordTransformerStats.recordTransformerDeleteLatency(
               storeName,
               versionNumber,
-              LatencyUtils.getElapsedTimeFromUsToUs(startTime),
+              LatencyUtils.getElapsedTimeFromNSToUs(startTime),
               System.currentTimeMillis());
 
           // This is called here after processDelete because if the user stores their data somewhere other than
@@ -4158,7 +4166,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       daVinciRecordTransformerStats.recordTransformerOnEndVersionIngestionLatency(
           storeName,
           versionNumber,
-          LatencyUtils.getElapsedTimeFromUsToUs(startTime),
+          LatencyUtils.getElapsedTimeFromNSToUs(startTime),
           System.currentTimeMillis());
       Utils.closeQuietlyWithErrorLogged(this.recordTransformer);
     }

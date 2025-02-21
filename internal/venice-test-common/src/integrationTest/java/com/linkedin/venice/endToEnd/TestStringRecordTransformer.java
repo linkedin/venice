@@ -38,6 +38,11 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
     put(key.get(), valueStr);
   }
 
+  @Override
+  public void processDelete(Lazy<Integer> key) {
+    delete(key.get());
+  };
+
   public String convertUtf8ToString(Object valueObj) {
     String valueStr;
     if (valueObj instanceof Utf8) {
@@ -61,8 +66,15 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
     return inMemoryDB.get(key);
   }
 
-  public void put(Integer key, String value) {
+  private void put(Integer key, String value) {
     inMemoryDB.put(key, value);
+  }
+
+  private void delete(Integer key) {
+    if (!inMemoryDB.containsKey(key)) {
+      throw new IllegalArgumentException("Key not found: " + key);
+    }
+    inMemoryDB.remove(key);
   }
 
   public int getTransformInvocationCount() {

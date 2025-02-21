@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_DELETE_ERROR_COUNT;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_DELETE_LATENCY;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_ON_END_VERSION_INGESTION_LATENCY;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_ON_RECOVERY_LATENCY;
@@ -26,6 +27,7 @@ import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.DEFAULT_USER_DATA_RECORD_COUNT;
+import static com.linkedin.venice.utils.TestWriteUtils.SINGLE_FIELD_RECORD_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithIntToIntSchema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema;
@@ -43,6 +45,7 @@ import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -50,6 +53,8 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
+import com.linkedin.venice.producer.online.OnlineProducerFactory;
+import com.linkedin.venice.producer.online.OnlineVeniceProducer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -66,6 +71,8 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
@@ -115,7 +122,6 @@ public class DaVinciClientRecordTransformerTest {
   @Test(timeOut = TEST_TIMEOUT)
   public void testRecordTransformer() throws Exception {
     DaVinciConfig clientConfig = new DaVinciConfig();
-    clientConfig.setReadMetricsEnabled(true);
 
     String storeName = Utils.getUniqueString("test-store");
     boolean pushStatusStoreEnabled = false;
@@ -153,36 +159,60 @@ public class DaVinciClientRecordTransformerTest {
         String expectedValue = "a" + k + "Transformed";
         assertEquals(valueObj.toString(), expectedValue);
       }
-      clientWithRecordTransformer.unsubscribeAll();
 
-      // Validate metrics
-      String recordTransformerMetricPrefix = "." + storeName + "_total--";
-      String recordTransformerMetricPostfix = "_avg_µs.DaVinciRecordTransformerStatsGauge";
+      try (OnlineVeniceProducer producer = OnlineProducerFactory.createProducer(
+          ClientConfig.defaultGenericClientConfig(storeName)
+              .setD2Client(d2Client)
+              .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME),
+          VeniceProperties.empty(),
+          null)) {
+        producer.asyncDelete(1).get();
 
-      String startLatency = recordTransformerMetricPrefix + RECORD_TRANSFORMER_ON_START_VERSION_INGESTION_LATENCY
-          + recordTransformerMetricPostfix;
-      assertTrue(metricsRepository.getMetric(startLatency).value() > 0);
+        // Validate metrics
+        String recordTransformerMetricPrefix = "." + storeName + "_total--";
+        String recordTransformerMetricPostfix = "_avg_µs.DaVinciRecordTransformerStatsGauge";
 
-      String endLatency = recordTransformerMetricPrefix + RECORD_TRANSFORMER_ON_END_VERSION_INGESTION_LATENCY
-          + recordTransformerMetricPostfix;
-      assertTrue(metricsRepository.getMetric(endLatency).value() > 0);
+        String deleteLatency =
+            recordTransformerMetricPrefix + RECORD_TRANSFORMER_DELETE_LATENCY + recordTransformerMetricPostfix;
+        TestUtils.waitForNonDeterministicAssertion(
+            10,
+            TimeUnit.SECONDS,
+            true,
+            () -> assertTrue(metricsRepository.getMetric(deleteLatency).value() > 0));
 
-      String onRecoveryLatency =
-          recordTransformerMetricPrefix + RECORD_TRANSFORMER_ON_RECOVERY_LATENCY + recordTransformerMetricPostfix;
-      assertTrue(metricsRepository.getMetric(onRecoveryLatency).value() > 0);
+        // Exception should be thrown in the DVRT implementation when key doesn't exist
+        // to test RECORD_TRANSFORMER_DELETE_ERROR_COUNT
+        producer.asyncDelete(1).get();
+        String transformerDeleteErrorCount = recordTransformerMetricPrefix + RECORD_TRANSFORMER_DELETE_ERROR_COUNT
+            + ".DaVinciRecordTransformerStatsGauge";
+        TestUtils.waitForNonDeterministicAssertion(
+            10,
+            TimeUnit.SECONDS,
+            true,
+            () -> assertTrue(metricsRepository.getMetric(transformerDeleteErrorCount).value() == 1.0));
 
-      String putLatency =
-          recordTransformerMetricPrefix + RECORD_TRANSFORMER_PUT_LATENCY + recordTransformerMetricPostfix;
-      assertTrue(metricsRepository.getMetric(putLatency).value() > 0);
+        clientWithRecordTransformer.unsubscribeAll();
 
-      // No delete should have been processed, so no metric should have been recorded
-      String deleteLatency =
-          recordTransformerMetricPrefix + RECORD_TRANSFORMER_DELETE_LATENCY + recordTransformerMetricPostfix;
-      assertEquals(metricsRepository.getMetric(deleteLatency).value(), Double.NaN);
+        String startLatency = recordTransformerMetricPrefix + RECORD_TRANSFORMER_ON_START_VERSION_INGESTION_LATENCY
+            + recordTransformerMetricPostfix;
+        assertTrue(metricsRepository.getMetric(startLatency).value() > 0);
 
-      String transformerPutErrorCount =
-          recordTransformerMetricPrefix + RECORD_TRANSFORMER_PUT_ERROR_COUNT + ".DaVinciRecordTransformerStatsGauge";
-      assertEquals(metricsRepository.getMetric(transformerPutErrorCount).value(), 0.0);
+        String endLatency = recordTransformerMetricPrefix + RECORD_TRANSFORMER_ON_END_VERSION_INGESTION_LATENCY
+            + recordTransformerMetricPostfix;
+        assertTrue(metricsRepository.getMetric(endLatency).value() > 0);
+
+        String onRecoveryLatency =
+            recordTransformerMetricPrefix + RECORD_TRANSFORMER_ON_RECOVERY_LATENCY + recordTransformerMetricPostfix;
+        assertTrue(metricsRepository.getMetric(onRecoveryLatency).value() > 0);
+
+        String putLatency =
+            recordTransformerMetricPrefix + RECORD_TRANSFORMER_PUT_LATENCY + recordTransformerMetricPostfix;
+        assertTrue(metricsRepository.getMetric(putLatency).value() > 0);
+
+        String transformerPutErrorCount =
+            recordTransformerMetricPrefix + RECORD_TRANSFORMER_PUT_ERROR_COUNT + ".DaVinciRecordTransformerStatsGauge";
+        assertEquals(metricsRepository.getMetric(transformerPutErrorCount).value(), 0.0);
+      }
     }
   }
 
@@ -736,7 +766,10 @@ public class DaVinciClientRecordTransformerTest {
     final int numPartitions = 3;
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPartitionCount(numPartitions)
         .setChunkingEnabled(chunkingEnabled)
-        .setCompressionStrategy(compressionStrategy);
+        .setCompressionStrategy(compressionStrategy)
+        .setHybridOffsetLagThreshold(10)
+        .setHybridRewindSeconds(1);
+    ;
 
     paramsConsumer.accept(params);
 
@@ -784,6 +817,12 @@ public class DaVinciClientRecordTransformerTest {
         writeAvroFileRunnable,
         valueSchema,
         inputDir);
+  }
+
+  private GenericRecord getKey(Integer i) {
+    GenericRecord key = new GenericData.Record(SINGLE_FIELD_RECORD_SCHEMA);
+    key.put("key", i.toString());
+    return key;
   }
 
   private static void runVPJ(Properties vpjProperties, int expectedVersionNumber, VeniceClusterWrapper cluster) {

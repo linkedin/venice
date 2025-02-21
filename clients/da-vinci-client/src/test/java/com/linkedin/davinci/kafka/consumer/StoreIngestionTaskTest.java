@@ -4900,9 +4900,29 @@ public abstract class StoreIngestionTaskTest {
 
     runTest(config);
 
-    // Transformer put error should never be recorded
+    // Metrics that should have been recorded
+    verify(mockDaVinciRecordTransformerStats, atLeastOnce())
+        .recordTransformerOnRecoveryLatency(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
+    verify(mockDaVinciRecordTransformerStats, atLeastOnce()).recordTransformerOnStartVersionIngestionLatency(
+        eq(storeNameWithoutVersionInfo),
+        anyInt(),
+        anyDouble(),
+        anyLong());
+    verify(mockDaVinciRecordTransformerStats, atLeastOnce()).recordTransformerOnEndVersionIngestionLatency(
+        eq(storeNameWithoutVersionInfo),
+        anyInt(),
+        anyDouble(),
+        anyLong());
+    verify(mockDaVinciRecordTransformerStats, atLeastOnce())
+        .recordTransformerPutLatency(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
+
+    // Metrics that shouldn't have been recorded
     verify(mockDaVinciRecordTransformerStats, never())
         .recordTransformerPutError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
+    verify(mockDaVinciRecordTransformerStats, never())
+        .recordTransformerDeleteError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
+    verify(mockDaVinciRecordTransformerStats, never())
+        .recordTransformerDeleteLatency(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
   }
 
   @Test(dataProvider = "aaConfigProvider")
@@ -4966,9 +4986,11 @@ public abstract class StoreIngestionTaskTest {
 
     runTest(config);
 
-    // Transformer error should never be recorded
+    // Transformer put and delete error should never be recorded
     verify(mockDaVinciRecordTransformerStats, never())
         .recordTransformerPutError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
+    verify(mockDaVinciRecordTransformerStats, never())
+        .recordTransformerDeleteError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
   }
 
   // Test to throw type error when performing record transformation with incompatible types
@@ -5025,7 +5047,7 @@ public abstract class StoreIngestionTaskTest {
       } catch (Exception e) {
         e.printStackTrace();
       }
-      // Verify transformer error was recorded
+      // Verify transformer put error was recorded
       verify(mockDaVinciRecordTransformerStats, timeout(1000))
           .recordTransformerPutError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
     }, aaConfig);
