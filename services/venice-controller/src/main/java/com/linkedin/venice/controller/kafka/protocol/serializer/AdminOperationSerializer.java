@@ -28,7 +28,7 @@ public class AdminOperationSerializer {
   public static final int LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION =
       AvroProtocolDefinition.ADMIN_OPERATION.getCurrentProtocolVersion();
 
-  public static Schema LATEST_SCHEMA = AdminOperation.getClassSchema();
+  public static final Schema LATEST_SCHEMA = AdminOperation.getClassSchema();
 
   /** Used to generate decoders. */
   private static final DecoderFactory DECODER_FACTORY = new DecoderFactory();
