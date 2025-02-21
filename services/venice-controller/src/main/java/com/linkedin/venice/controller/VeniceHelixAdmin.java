@@ -1034,7 +1034,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             storeName,
             largestUsedStoreVersion);
       }
-      configureNewStore(newStore, config, largestUsedStoreVersion);
+
+      int largestUsedRTStoreVersion = storeGraveyard.getLargestUsedRTVersionNumber(storeName);
+      if (largestUsedRTStoreVersion == Store.NON_EXISTING_VERSION) {
+        LOGGER.info(
+            "Store: {} does NOT exist in the store graveyard. Will initialize the RT version to {}.",
+            storeName,
+            Store.NON_EXISTING_VERSION);
+      } else {
+        LOGGER.info(
+            "Found store: {} in the store graveyard. Will initialize the RT version to {}.",
+            storeName,
+            largestUsedRTStoreVersion);
+      }
+
+      configureNewStore(newStore, config, largestUsedStoreVersion, largestUsedRTStoreVersion);
 
       storeRepo.addStore(newStore);
       // Create global config for that store.
@@ -1056,7 +1070,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  private void configureNewStore(Store newStore, VeniceControllerClusterConfig config, int largestUsedVersionNumber) {
+  private void configureNewStore(
+      Store newStore,
+      VeniceControllerClusterConfig config,
+      int largestUsedVersionNumber,
+      int largestUsedRTVersionNumber) {
     newStore.setNativeReplicationEnabled(config.isMultiRegion());
 
     /**
@@ -1068,6 +1086,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       newStore.setNativeReplicationSourceFabric(config.getNativeReplicationSourceFabricAsDefaultForBatchOnly());
     }
     newStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
+    newStore.setLargestUsedRTVersionNumber(largestUsedRTVersionNumber);
   }
 
   /**
