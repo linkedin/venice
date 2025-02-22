@@ -37,14 +37,28 @@ public class AdminOperationSerializer {
 
   /**
    * Serialize AdminOperation object to bytes.
-   * If writerSchemaId == LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION, we return the bytes[] with the first round of serialization.
-   * Else, we will serialize the object to the writer schema (lower version).
-   * To achieve that, we first serialize the object to the GenericRecord
-   * with the latest schema, then deserialize it to the GenericRecord with the writer schema, and finally serialize it to bytes.
-   * The reason for this chunky process is that we need to ensure that the object is serialized to the lower schema version.
-   * Inside the normal serialization process, the latest schema version and lower schema version may have fields order differently
-   * and/or adding new fields in the middle of the schema instead of appending to the end of the schema, which causing the
-   * serialization process to fail (ClassCastException).
+   *
+   * <p>
+   * If writerSchemaId equals LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION, return the bytes[] from the first serialization.
+   * Otherwise, serialize the object to the writer schema (lower version).
+   * </p>
+   *
+   * <p>
+   * This involves:
+   * <ol>
+   *   <li>Serializing the object to a GenericRecord with the latest schema.</li>
+   *   <li>Deserializing it to a GenericRecord with the writer schema.</li>
+   *   <li>Serializing it to bytes.</li>
+   * </ol>
+   * </p>
+   * <p>
+   * This process ensures the object is serialized to the lower schema version.
+   * The normal serialization process may fail (ClassCastException) due to:
+   * <ul>
+   *   <li>Differences in field types</li>
+   *   <li>New fields added in the middle of the schema instead of at the end</li>
+   * </ul>
+   * </p>
    */
   public byte[] serialize(AdminOperation object, int writerSchemaId) {
     byte[] serializedBytes = serialize(object, LATEST_SCHEMA);

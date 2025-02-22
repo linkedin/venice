@@ -57,7 +57,6 @@ public class AdminConsumptionTaskIntegrationTest {
   private static final String owner = "test_owner";
   private static final String keySchema = "\"string\"";
   private static final String valueSchema = "\"string\"";
-  private static final int defaultAdminOperationVersion = AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
 
   /**
    * This test is flaky on slower hardware, with a short timeout ):
@@ -99,7 +98,7 @@ public class AdminConsumptionTaskIntegrationTest {
             "invalid_key_schema",
             valueSchema,
             1,
-            defaultAdminOperationVersion);
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
         long badOffset = writer.put(new byte[0], message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
             .get()
             .getOffset();
@@ -111,7 +110,7 @@ public class AdminConsumptionTaskIntegrationTest {
             keySchema,
             valueSchema,
             2,
-            defaultAdminOperationVersion);
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
         writer.put(new byte[0], goodMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
         Thread.sleep(5000); // Non-deterministic, but whatever. This should never fail.
@@ -170,7 +169,7 @@ public class AdminConsumptionTaskIntegrationTest {
             keySchema,
             valueSchema,
             executionId,
-            defaultAdminOperationVersion);
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
         writer.put(new byte[0], goodMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
         TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
@@ -209,7 +208,7 @@ public class AdminConsumptionTaskIntegrationTest {
             keySchema,
             valueSchema,
             executionId,
-            defaultAdminOperationVersion);
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
         writer.put(new byte[0], otherStoreMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
         TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
@@ -298,6 +297,7 @@ public class AdminConsumptionTaskIntegrationTest {
         ControllerClient parentControllerClient = new ControllerClient(
             venice.getClusterNames()[0],
             venice.getParentControllers().get(0).getControllerUrl())) {
+      // Setup
       String clusterName = venice.getClusterNames()[0];
       Admin admin = venice.getParentControllers().get(0).getVeniceAdmin();
       PubSubTopicRepository pubSubTopicRepository = admin.getPubSubTopicRepository();
@@ -306,6 +306,7 @@ public class AdminConsumptionTaskIntegrationTest {
       topicManager.createTopic(adminTopic, 1, 1, true);
       String storeName = "test-store";
       PubSubBrokerWrapper pubSubBrokerWrapper = venice.getParentKafkaBrokerWrapper();
+
       try (
           PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
               pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
@@ -313,6 +314,8 @@ public class AdminConsumptionTaskIntegrationTest {
               IntegrationTestPushUtils.getVeniceWriterFactory(pubSubBrokerWrapper, pubSubProducerAdapterFactory)
                   .createVeniceWriter(new VeniceWriterOptions.Builder(adminTopic.getName()).build())) {
         int executionId = 1;
+
+        // Create store
         byte[] storeCreationMessage =
             getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, executionId, writerSchemaId);
         writer.put(new byte[0], storeCreationMessage, writerSchemaId);
@@ -364,7 +367,8 @@ public class AdminConsumptionTaskIntegrationTest {
     adminMessage.operationType = AdminMessageType.DISABLE_STORE_READ.getValue();
     adminMessage.payloadUnion = disableStoreRead;
     adminMessage.executionId = executionId;
-    return adminOperationSerializer.serialize(adminMessage, defaultAdminOperationVersion);
+    return adminOperationSerializer
+        .serialize(adminMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
   }
 
   private byte[] getDisableWrite(String clusterName, String storeName, long executionId) {
@@ -375,7 +379,8 @@ public class AdminConsumptionTaskIntegrationTest {
     adminMessage.operationType = AdminMessageType.DISABLE_STORE_WRITE.getValue();
     adminMessage.payloadUnion = pauseStore;
     adminMessage.executionId = executionId;
-    return adminOperationSerializer.serialize(adminMessage, defaultAdminOperationVersion);
+    return adminOperationSerializer
+        .serialize(adminMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
   }
 
   private byte[] getStoreCreationMessage(
@@ -413,7 +418,8 @@ public class AdminConsumptionTaskIntegrationTest {
     adminMessage.operationType = AdminMessageType.DELETE_STORE.getValue();
     adminMessage.payloadUnion = deleteStore;
     adminMessage.executionId = executionId;
-    return adminOperationSerializer.serialize(adminMessage, defaultAdminOperationVersion);
+    return adminOperationSerializer
+        .serialize(adminMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
   }
 
   private byte[] getStoreUpdateMessage(
