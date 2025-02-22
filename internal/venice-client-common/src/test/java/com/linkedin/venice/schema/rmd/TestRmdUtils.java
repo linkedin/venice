@@ -78,8 +78,11 @@ public class TestRmdUtils {
 
     Assert.assertFalse(RmdUtils.hasOffsetAdvanced(list1, list2));
     Assert.assertFalse(RmdUtils.hasOffsetAdvanced(list1, Collections.emptyList()));
+    Assert.assertTrue(RmdUtils.hasOffsetAdvanced(list1, list3));
+    Assert.assertFalse(RmdUtils.hasOffsetAdvanced(list3, list1));
     Assert.assertTrue(RmdUtils.hasOffsetAdvanced(list2, list1));
     Assert.assertTrue(RmdUtils.hasOffsetAdvanced(Collections.emptyList(), list2));
+    Assert.assertTrue(RmdUtils.hasOffsetAdvanced(Collections.emptyList(), Collections.emptyList()));
 
     List<Long> mergedList = RmdUtils.mergeOffsetVectors(list2, list1);
     Assert.assertEquals(mergedList.get(0), list2.get(0));

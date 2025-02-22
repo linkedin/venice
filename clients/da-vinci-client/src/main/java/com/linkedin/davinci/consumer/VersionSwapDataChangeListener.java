@@ -5,6 +5,7 @@ import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.views.VeniceView;
 import java.util.HashSet;
@@ -19,6 +20,7 @@ class VersionSwapDataChangeListener<K, V> implements StoreDataChangedListener {
   private NativeMetadataRepositoryViewAdapter storeRepository;
   private final String storeName;
   private final String consumerName;
+  protected final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   VersionSwapDataChangeListener(
       VeniceAfterImageConsumerImpl<K, V> consumer,
@@ -42,7 +44,7 @@ class VersionSwapDataChangeListener<K, V> implements StoreDataChangedListener {
       Set<Integer> partitions = new HashSet<>();
       try {
         // Check the current version of the server
-        int currentVersion = this.storeRepository.getStore(this.storeName).getCurrentVersion();
+        int currentVersion = store.getCurrentVersion();
 
         // Check the current ingested version
         Set<PubSubTopicPartition> subscriptions = this.consumer.getTopicAssignment();
@@ -69,7 +71,11 @@ class VersionSwapDataChangeListener<K, V> implements StoreDataChangedListener {
 
         LOGGER.info(
             "New Version detected!  Seeking consumer to version: " + currentVersion + " in consumer: " + consumerName);
-        this.consumer.seekToEndOfPush(partitions).get();
+        this.consumer
+            .internalSeekToEndOfPush(
+                partitions,
+                pubSubTopicRepository.getTopic(store.getVersion(currentVersion).kafkaTopicName()))
+            .get();
       } catch (Exception e) {
         LOGGER.error(
             "Seek to End of Push Failed for store: " + this.storeName + " partitions: " + partitions + " on consumer: "

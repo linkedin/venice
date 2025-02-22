@@ -398,7 +398,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     });
   }
 
-  private PubSubTopic getCurrentServingVersionTopic() {
+  protected PubSubTopic getCurrentServingVersionTopic() {
     Store store = storeRepository.getStore(storeName);
     int currentVersion = store.getCurrentVersion();
     if (changelogClientConfig.getViewName() == null || changelogClientConfig.getViewName().isEmpty()) {
@@ -1141,10 +1141,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
       Iterator<Map.Entry<Integer, Long>> heartbeatIterator = currentVersionLastHeartbeat.entrySet().iterator();
       while (heartbeatIterator.hasNext()) {
-        changeCaptureStats.recordLag(System.currentTimeMillis() - heartbeatIterator.next().getValue());
+        Long lag = System.currentTimeMillis() - heartbeatIterator.next().getValue();
+        changeCaptureStats.recordLag(lag);
       }
-
-      currentVersionLastHeartbeat.forEachValue(1, changeCaptureStats::recordLag);
 
       int maxVersion = -1;
       int minVersion = Integer.MAX_VALUE;

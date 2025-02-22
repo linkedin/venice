@@ -105,8 +105,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     return internalSeekToTail(partitions, "");
   }
 
-  @Override
-  public CompletableFuture<Void> seekToEndOfPush(Set<Integer> partitions) {
+  protected CompletableFuture<Void> internalSeekToEndOfPush(Set<Integer> partitions, PubSubTopic targetTopic) {
     if (partitions.isEmpty()) {
       return CompletableFuture.completedFuture(null);
     }
@@ -118,7 +117,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
           // we'd like to do is instead add the offset of the EOP message in the VT, and then just seek to that offset.
           // We'll do that in a future patch.
           internalSeekConsumer.get().unsubscribeAll();
-          internalSeekConsumer.get().subscribe(partitions).get();
+          internalSeekConsumer.get().internalSubscribe(partitions, targetTopic).get();
 
           // We need to get the internal consumer as we have to intercept the control messages that we would normally
           // filter out from the user
@@ -134,9 +133,18 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
           }
 
           // poll until we get EOP for all partitions
+          LOGGER.info("Polling for EOP messages for partitions: " + partitions.toString());
           synchronized (consumerAdapter) {
+            LOGGER.info("GOT LOCK");
+            int counter = 0;
             while (true) {
+              counter++;
+              if (counter > 500) {
+                LOGGER.info("This is taking a while.....");
+              }
+              LOGGER.info("POLLING " + consumerAdapter.getAssignment().toString());
               polledResults = consumerAdapter.poll(5000L);
+              LOGGER.info("POLLED");
               // Loop through all polled messages
               for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: polledResults
                   .entrySet()) {
@@ -147,6 +155,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
                     ControlMessage controlMessage = (ControlMessage) message.getValue().getPayloadUnion();
                     ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
                     if (controlMessageType.equals(ControlMessageType.END_OF_PUSH)) {
+                      LOGGER.info("Found EOP message for partition: " + pubSubTopicPartition.getPartitionNumber());
                       // note down the partition and offset and mark that we've got the thing
                       endOfPushConsumedPerPartitionMap.put(pubSubTopicPartition.getPartitionNumber(), true);
                       VeniceChangeCoordinate coordinate = new VeniceChangeCoordinate(
@@ -164,12 +173,15 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
                 }
               }
               if (endOfPushConsumedPerPartitionMap.values().stream().allMatch(e -> e)) {
+                LOGGER.info("Found EOP messages for all partitions: " + partitions.toString());
                 // We polled all EOP messages, stop polling!
                 break;
               }
             }
           }
+          LOGGER.info("Seeking to EOP for partitions: " + partitions.toString());
           this.seekToCheckpoint(checkpoints).get();
+          LOGGER.info("Seeked to EOP for partitions: " + partitions.toString());
         } catch (InterruptedException | ExecutionException | VeniceCoordinateOutOfRangeException e) {
           throw new VeniceException(
               "Seek to End of Push Failed for store: " + storeName + " partitions: " + partitions.toString(),
@@ -178,6 +190,14 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       }
       return null;
     });
+  }
+
+  @Override
+  public CompletableFuture<Void> seekToEndOfPush(Set<Integer> partitions) {
+    if (partitions.isEmpty()) {
+      return CompletableFuture.completedFuture(null);
+    }
+    return internalSeekToEndOfPush(partitions, getCurrentServingVersionTopic());
   }
 
   public boolean subscribed() {
