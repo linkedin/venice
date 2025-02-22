@@ -5585,8 +5585,10 @@ public abstract class StoreIngestionTaskTest {
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testResubscribeAsLeader(boolean aaEnabled) throws InterruptedException {
-    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    LeaderFollowerStoreIngestionTask ingestionTask =
+        aaEnabled ? mock(ActiveActiveStoreIngestionTask.class) : mock(LeaderFollowerStoreIngestionTask.class);
     doCallRealMethod().when(ingestionTask).resubscribeAsLeader(any());
+    doCallRealMethod().when(ingestionTask).prepareOffsetCheckpointAndStartConsumptionAsLeader(any(), any());
     PubSubTopicRepository topicRepository = new PubSubTopicRepository();
     when(ingestionTask.getPubSubTopicRepository()).thenReturn(topicRepository);
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
