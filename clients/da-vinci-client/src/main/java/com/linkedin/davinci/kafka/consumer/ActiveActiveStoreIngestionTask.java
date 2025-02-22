@@ -1046,7 +1046,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           .info("{} enabled remote consumption from topic {} partition {}", ingestionTaskName, leaderTopic, partition);
     }
     partitionConsumptionState.setLeaderFollowerState(LEADER);
-    prepareLeaderOffsetCheckpointAndStartConsumptionAsLeader(leaderTopic, partitionConsumptionState, false);
+    prepareOffsetCheckpointAndStartConsumptionAsLeader(leaderTopic, partitionConsumptionState);
   }
 
   /**
@@ -1110,7 +1110,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     // Update leader topic.
     partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
     // Calculate leader offset and start consumption
-    prepareLeaderOffsetCheckpointAndStartConsumptionAsLeader(newSourceTopic, partitionConsumptionState, true);
+    prepareOffsetCheckpointAndStartConsumptionAsLeader(newSourceTopic, partitionConsumptionState);
   }
 
   /**
@@ -1504,33 +1504,20 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         beforeProcessingRecordTimestampNs);
   }
 
-  /**
-   * This method does a few things for leader topic-partition subscription:
-   * (1) Calculate Kafka URL to leader subscribe offset map.
-   * (2) Subscribe to all the Kafka upstream.
-   * (3) Potentially sync offset to PartitionConsumptionState map if needed.
-   */
-  void prepareLeaderOffsetCheckpointAndStartConsumptionAsLeader(
+  @Override
+  void prepareOffsetCheckpointAndStartConsumptionAsLeader(
       PubSubTopic leaderTopic,
-      PartitionConsumptionState partitionConsumptionState,
-      boolean calculateUpstreamOffsetFromTopicSwitch) {
+      PartitionConsumptionState partitionConsumptionState) {
     Set<String> leaderSourceKafkaURLs = getConsumptionSourceKafkaAddress(partitionConsumptionState);
     Map<String, Long> leaderOffsetByKafkaURL = new HashMap<>(leaderSourceKafkaURLs.size());
     List<CharSequence> unreachableBrokerList = new ArrayList<>();
-    // TODO: Potentially this logic can be merged into below branch.
-    if (calculateUpstreamOffsetFromTopicSwitch) {
+    // Read previously checkpointed offset and maybe fallback to TopicSwitch if any of upstream offset is missing.
+    for (String kafkaURL: leaderSourceKafkaURLs) {
+      leaderOffsetByKafkaURL.put(kafkaURL, partitionConsumptionState.getLeaderOffset(kafkaURL, pubSubTopicRepository));
+    }
+    if (leaderTopic.isRealTime() && leaderOffsetByKafkaURL.containsValue(OffsetRecord.LOWEST_OFFSET)) {
       leaderOffsetByKafkaURL =
           calculateLeaderUpstreamOffsetWithTopicSwitch(partitionConsumptionState, leaderTopic, unreachableBrokerList);
-    } else {
-      // Read previously checkpointed offset and maybe fallback to TopicSwitch if any of upstream offset is missing.
-      for (String kafkaURL: leaderSourceKafkaURLs) {
-        leaderOffsetByKafkaURL
-            .put(kafkaURL, partitionConsumptionState.getLeaderOffset(kafkaURL, pubSubTopicRepository));
-      }
-      if (leaderTopic.isRealTime() && leaderOffsetByKafkaURL.containsValue(OffsetRecord.LOWEST_OFFSET)) {
-        leaderOffsetByKafkaURL =
-            calculateLeaderUpstreamOffsetWithTopicSwitch(partitionConsumptionState, leaderTopic, unreachableBrokerList);
-      }
     }
 
     if (!unreachableBrokerList.isEmpty()) {
@@ -1547,7 +1534,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     LOGGER.info(
         "{}, as a leader, started consuming from topic {} partition {} with offset by Kafka URL mapping {}",
-        ingestionTaskName,
+        partitionConsumptionState.getReplicaId(),
         leaderTopic,
         partitionConsumptionState.getPartition(),
         leaderOffsetByKafkaURL);

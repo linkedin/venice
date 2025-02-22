@@ -3892,7 +3892,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(1000L).when(mockPcs).getLeaderOffset(anyString(), any());
     doReturn(mockOffsetRecord).when(mockPcs).getOffsetRecord();
     // Test whether consumedUpstreamRTOffsetMap is updated when leader subscribes to RT after state transition
-    ingestionTask.startConsumingAsLeaderInTransitionFromStandby(mockPcs);
+    ingestionTask.startConsumingAsLeader(mockPcs);
     verify(mockPcs, times(1)).updateLeaderConsumedUpstreamRTOffset(
         eq(aaConfig == AA_ON ? "localhost" : OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY),
         eq(1000L));
