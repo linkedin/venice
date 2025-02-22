@@ -501,7 +501,7 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
       }
 
       @Override
-      public Future<PubSubProduceResult> put(
+      public CompletableFuture<PubSubProduceResult> put(
           Object key,
           Object value,
           int valueSchemaId,
@@ -564,7 +564,7 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
   public void testClosingReducerWithWriterException() throws IOException {
     AbstractVeniceWriter exceptionWriter = new AbstractVeniceWriter(TOPIC_NAME) {
       @Override
-      public Future<PubSubProduceResult> put(
+      public CompletableFuture<PubSubProduceResult> put(
           Object key,
           Object value,
           int valueSchemaId,

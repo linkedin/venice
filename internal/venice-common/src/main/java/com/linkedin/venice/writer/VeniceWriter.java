@@ -96,7 +96,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private final ThreadPoolExecutor threadPoolExecutor;
 
   // log4j logger
-  private final Logger logger;
+  protected final Logger logger;
 
   // Config names
   public static final String VENICE_WRITER_CONFIG_PREFIX = "venice.writer.";
@@ -151,7 +151,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   /**
    * The default for {@link #maxRecordSizeBytes} is unlimited / unset (-1) just to be safe. A more specific default value
-   * should be set using {@link com.linkedin.venice.ConfigKeys#CONTROLLER_DEFAULT_MAX_RECORD_SIZE_BYTES} the controller
+   * should be set using {@link com.linkedin.venice.ConfigKeys#DEFAULT_MAX_RECORD_SIZE_BYTES} the controller
    * config on the cluster level.
    */
   public static final int UNLIMITED_MAX_RECORD_SIZE = -1;
@@ -229,14 +229,14 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   // Immutable state
   private final PubSubMessageHeaders protocolSchemaHeaders;
 
-  private final VeniceKafkaSerializer<K> keySerializer;
-  private final VeniceKafkaSerializer<V> valueSerializer;
+  protected final VeniceKafkaSerializer<K> keySerializer;
+  protected final VeniceKafkaSerializer<V> valueSerializer;
   private final VeniceKafkaSerializer<U> writeComputeSerializer;
   private final PubSubProducerAdapter producerAdapter;
   private final GUID producerGUID;
   private final Time time;
-  private final VenicePartitioner partitioner;
-  private final int numberOfPartitions;
+  protected final VenicePartitioner partitioner;
+  protected final int numberOfPartitions;
   private final int closeTimeOutInMs;
   private final CheckSumType checkSumType;
   private final int maxSizeForUserPayloadPerMessageInBytes;
@@ -716,6 +716,26 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       ChunkedValueManifest oldRmdManifest) {
     byte[] serializedKey = keySerializer.serialize(topicName, key);
     int partition = getPartition(serializedKey);
+    return delete(
+        serializedKey,
+        callback,
+        leaderMetadataWrapper,
+        logicalTs,
+        deleteMetadata,
+        oldValueManifest,
+        oldRmdManifest,
+        partition);
+  }
+
+  protected CompletableFuture<PubSubProduceResult> delete(
+      byte[] serializedKey,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      long logicalTs,
+      DeleteMetadata deleteMetadata,
+      ChunkedValueManifest oldValueManifest,
+      ChunkedValueManifest oldRmdManifest,
+      int partition) {
 
     isChunkingFlagInvoked = true;
 
@@ -795,7 +815,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   @Override
-  public Future<PubSubProduceResult> put(
+  public CompletableFuture<PubSubProduceResult> put(
       K key,
       V value,
       int valueSchemaId,
@@ -914,6 +934,62 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     byte[] serializedKey = keySerializer.serialize(topicName, key);
     byte[] serializedValue = valueSerializer.serialize(topicName, value);
     int partition = getPartition(serializedKey);
+    return put(
+        serializedKey,
+        serializedValue,
+        partition,
+        valueSchemaId,
+        callback,
+        leaderMetadataWrapper,
+        logicalTs,
+        putMetadata,
+        oldValueManifest,
+        oldRmdManifest);
+  }
+
+  /**
+   * Write a message with the kafka message envelope (KME) passed in. This allows users re-using existing KME to
+   * speed up the performance. If this is called, VeniceWriter will also reuse the existing DIV data (producer
+   * metadata). It's the "pass-through" mode.
+   *
+   * TODO: move pass-through supports into a server-specific extension of VeniceWriter
+   */
+  @Deprecated
+  public Future<PubSubProduceResult> put(
+      KafkaKey kafkaKey,
+      KafkaMessageEnvelope kafkaMessageEnvelope,
+      PubSubProducerCallback callback,
+      int upstreamPartition,
+      LeaderMetadataWrapper leaderMetadataWrapper) {
+    // Self-adjust the chunking setting in pass-through mode
+    verifyChunkingSetting(kafkaMessageEnvelope);
+
+    byte[] serializedKey = kafkaKey.getKey();
+
+    KafkaMessageEnvelopeProvider kafkaMessageEnvelopeProvider =
+        getKafkaMessageEnvelopeProvider(kafkaMessageEnvelope, leaderMetadataWrapper);
+
+    if (callback instanceof ChunkAwareCallback) {
+      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null, null, null, null, null);
+    }
+
+    return sendMessage(producerMetadata -> kafkaKey, kafkaMessageEnvelopeProvider, upstreamPartition, callback, false);
+  }
+
+  /**
+   * Write a record with new DIV to a predetermined partition.
+   */
+  protected CompletableFuture<PubSubProduceResult> put(
+      byte[] serializedKey,
+      byte[] serializedValue,
+      int partition,
+      int valueSchemaId,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      long logicalTs,
+      PutMetadata putMetadata,
+      ChunkedValueManifest oldValueManifest,
+      ChunkedValueManifest oldRmdManifest) {
     int replicationMetadataPayloadSize = putMetadata == null ? 0 : putMetadata.getSerializedSize();
     isChunkingFlagInvoked = true;
 
@@ -986,35 +1062,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     deleteDeprecatedChunksFromManifest(oldRmdManifest, partition, chunkCallback, leaderMetadataWrapper, deleteMetadata);
 
     return produceResultFuture;
-  }
-
-  /**
-   * Write a message with the kafka message envelope (KME) passed in. This allows users re-using existing KME to
-   * speed up the performance. If this is called, VeniceWriter will also reuse the existing DIV data (producer
-   * metadata). It's the "pass-through" mode.
-   *
-   * TODO: move pass-through supports into a server-specific extension of VeniceWriter
-   */
-  @Deprecated
-  public Future<PubSubProduceResult> put(
-      KafkaKey kafkaKey,
-      KafkaMessageEnvelope kafkaMessageEnvelope,
-      PubSubProducerCallback callback,
-      int upstreamPartition,
-      LeaderMetadataWrapper leaderMetadataWrapper) {
-    // Self-adjust the chunking setting in pass-through mode
-    verifyChunkingSetting(kafkaMessageEnvelope);
-
-    byte[] serializedKey = kafkaKey.getKey();
-
-    KafkaMessageEnvelopeProvider kafkaMessageEnvelopeProvider =
-        getKafkaMessageEnvelopeProvider(kafkaMessageEnvelope, leaderMetadataWrapper);
-
-    if (callback instanceof ChunkAwareCallback) {
-      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null, null, null, null, null);
-    }
-
-    return sendMessage(producerMetadata -> kafkaKey, kafkaMessageEnvelopeProvider, upstreamPartition, callback, false);
   }
 
   private KafkaMessageEnvelopeProvider getKafkaMessageEnvelopeProvider(
@@ -1484,7 +1531,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   /**
    * This function implements chunking of a large value into many small values.
    */
-  private CompletableFuture<PubSubProduceResult> putLargeValue(
+  protected CompletableFuture<PubSubProduceResult> putLargeValue(
       byte[] serializedKey,
       byte[] serializedValue,
       int valueSchemaId,
@@ -2002,7 +2049,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param key the {@link KafkaKey} for which we want to get the partition.
    * @return the partition number that the provided key belongs to.
    */
-  private int getPartition(byte[] key) {
+  protected int getPartition(byte[] key) {
     return partitioner.getPartitionId(key, numberOfPartitions);
   }
 

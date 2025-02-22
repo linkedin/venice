@@ -24,11 +24,13 @@ import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
@@ -39,6 +41,7 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
@@ -46,8 +49,11 @@ import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.view.TestValueBasedVenicePartitioner;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
+import com.linkedin.venice.writer.update.UpdateBuilder;
+import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2LongMap;
@@ -61,6 +67,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
+import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -248,12 +255,15 @@ public class TestMaterializedViewEndToEnd {
       Properties newPushProps =
           TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), newPushInputDirPath, storeName);
       TestWriteUtils.runPushJob("Run another push job", newPushProps);
-      Assert.assertEquals(
-          getMetric(
-              dvcMetricsRepo,
-              "current_version_number.Gauge",
-              VeniceView.getViewStoreName(storeName, testViewName)),
-          (double) 2);
+      TestUtils.waitForNonDeterministicAssertion(
+          10,
+          TimeUnit.SECONDS,
+          () -> Assert.assertEquals(
+              getMetric(
+                  dvcMetricsRepo,
+                  "current_version_number.Gauge",
+                  VeniceView.getViewStoreName(storeName, testViewName)),
+              (double) 2));
       // The materialized view DVC client should be able to read all the keys from the new push
       for (int i = 1; i <= 200; i++) {
         Assert.assertEquals(viewClient.get(Integer.toString(i)).get().toString(), DEFAULT_USER_DATA_VALUE_PREFIX + i);
@@ -285,6 +295,99 @@ public class TestMaterializedViewEndToEnd {
     } finally {
       D2ClientUtils.shutdownClient(daVinciD2SourceFabric);
     }
+  }
+
+  /**
+   * Verification of the produced records is difficult because we don't really support complex partitioner in the
+   * read path. Once CC with views is supported we should use CC to verify. Perform re-push to ensure we can deserialize
+   * value properly during re-push.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testMaterializedViewWithComplexPartitioner() throws IOException {
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV2Schema(inputDir);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("complexPartitionStore");
+    Properties props =
+        TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+    // Use an A/A W/C enabled store to verify correct partitioning after partial update is applied.
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(false)
+        .setChunkingEnabled(true)
+        .setCompressionStrategy(CompressionStrategy.GZIP)
+        .setRmdChunkingEnabled(true)
+        .setNativeReplicationEnabled(true)
+        .setNativeReplicationSourceFabric(childDatacenters.get(0).getRegionName())
+        .setPartitionCount(3)
+        .setActiveActiveReplicationEnabled(true)
+        .setWriteComputationEnabled(true)
+        .setHybridRewindSeconds(10L)
+        .setHybridOffsetLagThreshold(2L);
+    String testViewName = "complexPartitionerView";
+    try (ControllerClient controllerClient =
+        IntegrationTestPushUtils.createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms)) {
+      MaterializedViewParameters.Builder viewParamBuilder =
+          new MaterializedViewParameters.Builder(testViewName).setPartitionCount(2)
+              .setPartitioner(TestValueBasedVenicePartitioner.class.getCanonicalName());
+      UpdateStoreQueryParams updateViewParam = new UpdateStoreQueryParams().setViewName(testViewName)
+          .setViewClassName(MaterializedView.class.getCanonicalName())
+          .setViewClassParams(viewParamBuilder.build());
+      controllerClient
+          .retryableRequest(5, controllerClient1 -> controllerClient.updateStore(storeName, updateViewParam));
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
+        Map<String, ViewConfig> viewConfigMap = controllerClient.getStore(storeName).getStore().getViewConfigs();
+        Assert.assertEquals(viewConfigMap.size(), 1);
+        Assert.assertEquals(
+            viewConfigMap.get(testViewName).getViewClassName(),
+            MaterializedView.class.getCanonicalName());
+      });
+    }
+    TestWriteUtils.runPushJob("Run push job", props);
+    String viewTopicName =
+        Version.composeKafkaTopic(storeName, 1) + VIEW_NAME_SEPARATOR + testViewName + MATERIALIZED_VIEW_TOPIC_SUFFIX;
+    // View topic partitions should be mostly empty based on the TestValueBasedPartitioner logic.
+    int expectedMaxEndOffset = 6; // This may change when we introduce more CMs e.g. heartbeats
+    for (VeniceMultiClusterWrapper veniceClusterWrapper: childDatacenters) {
+      VeniceHelixAdmin admin = veniceClusterWrapper.getRandomController().getVeniceHelixAdmin();
+      PubSubTopic viewPubSubTopic = admin.getPubSubTopicRepository().getTopic(viewTopicName);
+      Int2LongMap viewTopicOffsetMap = admin.getTopicManager().getTopicLatestOffsets(viewPubSubTopic);
+      for (long endOffset: viewTopicOffsetMap.values()) {
+        Assert.assertTrue(endOffset <= expectedMaxEndOffset);
+      }
+    }
+    // Perform some partial updates in the non-NR source fabric
+    VeniceClusterWrapper veniceCluster = childDatacenters.get(1).getClusters().get(clusterName);
+    SystemProducer producer =
+        IntegrationTestPushUtils.getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM);
+    Schema partialUpdateSchema = WriteComputeSchemaConverter.getInstance()
+        .convertFromValueRecordSchema(recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema());
+    long newTimestamp = 100000L;
+    for (int i = 1; i < 20; i++) {
+      String key = Integer.toString(i);
+      UpdateBuilder updateBuilder = new UpdateBuilderImpl(partialUpdateSchema);
+      updateBuilder.setNewFieldValue("age", i);
+      IntegrationTestPushUtils.sendStreamingRecord(producer, storeName, key, updateBuilder.build(), newTimestamp);
+    }
+    // age 1-9 will be written to all partitions so +9 in p0 and p1
+    // age 10-19 will be written to % numPartitions which will alternate so +5 in p0 and p1
+    int newMinEndOffset = expectedMaxEndOffset + 9 + 5;
+    for (VeniceMultiClusterWrapper veniceClusterWrapper: childDatacenters) {
+      VeniceHelixAdmin admin = veniceClusterWrapper.getRandomController().getVeniceHelixAdmin();
+      PubSubTopic viewPubSubTopic = admin.getPubSubTopicRepository().getTopic(viewTopicName);
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        Int2LongMap viewTopicOffsetMap = admin.getTopicManager().getTopicLatestOffsets(viewPubSubTopic);
+        for (long endOffset: viewTopicOffsetMap.values()) {
+          Assert.assertTrue(endOffset >= newMinEndOffset);
+        }
+      });
+    }
+    // A re-push should succeed
+    Properties rePushProps =
+        TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+    rePushProps.setProperty(SOURCE_KAFKA, "true");
+    rePushProps.setProperty(KAFKA_INPUT_BROKER_URL, childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
+    TestWriteUtils.runPushJob("Run push job", rePushProps);
   }
 
   private double getMetric(MetricsRepository metricsRepository, String metricName, String storeName) {

@@ -61,35 +61,47 @@ public class VeniceWriterFactory {
   }
 
   public <K, V, U> VeniceWriter<K, V, U> createVeniceWriter(VeniceWriterOptions options) {
-    VeniceProperties props = options.isProducerCompressionEnabled()
-        ? venicePropertiesLazy.get()
-        : venicePropertiesWithCompressionDisabledLazy.get();
-
+    VeniceProperties props = getVeniceProperties(options);
     Supplier<PubSubProducerAdapter> producerAdapterSupplier =
         () -> producerAdapterFactory.create(props, options.getTopicName(), options.getBrokerAddress());
+    PubSubProducerAdapter producerAdapter = buildPubSubProducerAdapter(options, producerAdapterSupplier);
+    return new VeniceWriter<>(options, props, producerAdapter);
+  }
 
+  public <K, V, U> ComplexVeniceWriter<K, V, U> createComplexVeniceWriter(VeniceWriterOptions options) {
+    VeniceProperties props = getVeniceProperties(options);
+    Supplier<PubSubProducerAdapter> producerAdapterSupplier =
+        () -> producerAdapterFactory.create(props, options.getTopicName(), options.getBrokerAddress());
+    PubSubProducerAdapter producerAdapter = buildPubSubProducerAdapter(options, producerAdapterSupplier);
+    return new ComplexVeniceWriter<>(options, props, producerAdapter);
+  }
+
+  private VeniceProperties getVeniceProperties(VeniceWriterOptions options) {
+    return options.isProducerCompressionEnabled()
+        ? venicePropertiesLazy.get()
+        : venicePropertiesWithCompressionDisabledLazy.get();
+  }
+
+  private PubSubProducerAdapter buildPubSubProducerAdapter(
+      VeniceWriterOptions options,
+      Supplier<PubSubProducerAdapter> producerAdapterSupplier) {
     int producerThreadCnt = options.getProducerThreadCount();
     if (producerThreadCnt > 1) {
-      return new VeniceWriter<>(
-          options,
-          props,
-          new PubSubProducerAdapterConcurrentDelegator(
-              options.getTopicName(),
-              producerThreadCnt,
-              options.getProducerQueueSize(),
-              producerAdapterSupplier));
+      return new PubSubProducerAdapterConcurrentDelegator(
+          options.getTopicName(),
+          producerThreadCnt,
+          options.getProducerQueueSize(),
+          producerAdapterSupplier);
     }
-
     int producerCnt = options.getProducerCount();
     if (producerCnt > 1) {
       List<PubSubProducerAdapter> producers = new ArrayList<>(producerCnt);
       for (int i = 0; i < producerCnt; ++i) {
         producers.add(producerAdapterSupplier.get());
       }
-      return new VeniceWriter<>(options, props, new PubSubProducerAdapterDelegator(producers));
+      return new PubSubProducerAdapterDelegator(producers);
     }
-
-    return new VeniceWriter<>(options, props, producerAdapterSupplier.get());
+    return producerAdapterSupplier.get();
   }
 
   // visible for testing

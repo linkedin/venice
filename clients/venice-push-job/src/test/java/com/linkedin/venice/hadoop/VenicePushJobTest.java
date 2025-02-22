@@ -61,6 +61,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -993,6 +994,13 @@ public class VenicePushJobTest {
       storeInfo.setVersions(Collections.singletonList(version));
     }, true);
     doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), eq(null));
+    MultiSchemaResponse valueSchemaResponse = getMultiSchemaResponse();
+    MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[1];
+    schemas[0] = getBasicSchema();
+    valueSchemaResponse.setSchemas(schemas);
+    doReturn(valueSchemaResponse).when(client).getAllValueSchema(TEST_STORE);
+    doReturn(getMultiSchemaResponse()).when(client).getAllReplicationMetadataSchemas(TEST_STORE);
+    doReturn(getKeySchemaResponse()).when(client).getKeySchema(TEST_STORE);
     try (final VenicePushJob vpj = getSpyVenicePushJob(properties, client)) {
       skipVPJValidation(vpj);
       vpj.run();
@@ -1005,6 +1013,32 @@ public class VenicePushJobTest {
       Assert.assertTrue(viewConfigMap.containsKey("testView"));
       Assert.assertEquals(viewConfigMap.get("testView").getViewClassName(), MaterializedView.class.getCanonicalName());
     }
+  }
+
+  private SchemaResponse getKeySchemaResponse() {
+    SchemaResponse response = new SchemaResponse();
+    response.setId(1);
+    response.setCluster(TEST_CLUSTER);
+    response.setName(TEST_STORE);
+    response.setSchemaStr(KEY_SCHEMA_STR);
+    return response;
+  }
+
+  private MultiSchemaResponse.Schema getBasicSchema() {
+    MultiSchemaResponse.Schema schema = new MultiSchemaResponse.Schema();
+    schema.setSchemaStr(VALUE_SCHEMA_STR);
+    schema.setId(1);
+    schema.setRmdValueSchemaId(1);
+    return schema;
+  }
+
+  private MultiSchemaResponse getMultiSchemaResponse() {
+    MultiSchemaResponse multiSchemaResponse = new MultiSchemaResponse();
+    multiSchemaResponse.setCluster(TEST_CLUSTER);
+    multiSchemaResponse.setName(TEST_STORE);
+    multiSchemaResponse.setSuperSetSchemaId(1);
+    multiSchemaResponse.setSchemas(new MultiSchemaResponse.Schema[0]);
+    return multiSchemaResponse;
   }
 
   private JobStatusQueryResponse mockJobStatusQuery() {

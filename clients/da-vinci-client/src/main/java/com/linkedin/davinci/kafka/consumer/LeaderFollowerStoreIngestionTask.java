@@ -31,6 +31,7 @@ import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.view.ChangeCaptureViewWriter;
+import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
 import com.linkedin.davinci.validation.PartitionTracker;
@@ -71,6 +72,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
+import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
@@ -202,8 +204,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected final Map<String, VeniceViewWriter> viewWriters;
   protected final boolean hasChangeCaptureView;
+  protected final boolean hasComplexVenicePartitionerMaterializedView;
 
-  protected final AvroStoreDeserializerCache storeDeserializerCache;
+  protected final AvroStoreDeserializerCache<GenericRecord> storeDeserializerCache;
 
   private final AtomicLong lastSendIngestionHeartbeatTimestamp = new AtomicLong(0);
 
@@ -336,16 +339,22 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               version.getNumber(),
               schemaRepository.getKeySchema(store.getName()).getSchema());
       boolean tmpValueForHasChangeCaptureViewWriter = false;
+      boolean tmpValueForHasComplexVenicePartitioner = false;
       for (Map.Entry<String, VeniceViewWriter> viewWriter: viewWriters.entrySet()) {
         if (viewWriter.getValue() instanceof ChangeCaptureViewWriter) {
           tmpValueForHasChangeCaptureViewWriter = true;
-          break;
+        } else if (viewWriter.getValue() instanceof MaterializedViewWriter) {
+          if (((MaterializedViewWriter) viewWriter.getValue()).isComplexVenicePartitioner()) {
+            tmpValueForHasComplexVenicePartitioner = true;
+          }
         }
       }
       hasChangeCaptureView = tmpValueForHasChangeCaptureViewWriter;
+      hasComplexVenicePartitionerMaterializedView = tmpValueForHasComplexVenicePartitioner;
     } else {
       viewWriters = Collections.emptyMap();
       hasChangeCaptureView = false;
+      hasComplexVenicePartitionerMaterializedView = false;
     }
     this.storeDeserializerCache = new AvroStoreDeserializerCache(
         builder.getSchemaRepo(),
@@ -3196,9 +3205,26 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
     byte[] keyBytes = kafkaKey.getKey();
     MessageType msgType = MessageType.valueOf(kafkaValue.messageType);
+    Lazy<GenericRecord> valueProvider;
     switch (msgType) {
       case PUT:
         Put put = (Put) kafkaValue.payloadUnion;
+        // Value provider should use un-compressed data.
+        final ByteBuffer rawPutValue = put.putValue;
+        final boolean needToDecompress = !partitionConsumptionState.isEndOfPushReceived();
+        valueProvider = Lazy.of(() -> {
+          RecordDeserializer<GenericRecord> recordDeserializer =
+              storeDeserializerCache.getDeserializer(put.schemaId, put.schemaId);
+          if (needToDecompress) {
+            try {
+              return recordDeserializer.deserialize(compressor.get().decompress(rawPutValue));
+            } catch (IOException e) {
+              throw new VeniceException("Unable to provide value due to decompression failure", e);
+            }
+          } else {
+            return recordDeserializer.deserialize(rawPutValue);
+          }
+        });
         put.putValue = maybeCompressData(
             consumerRecord.getTopicPartition().getPartitionNumber(),
             put.putValue,
@@ -3221,7 +3247,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               null);
         }
 
-        return new PubSubMessageProcessedResult(new WriteComputeResultWrapper(put, null, false));
+        return new PubSubMessageProcessedResult(new WriteComputeResultWrapper(put, null, false, valueProvider));
 
       case UPDATE:
         /**
@@ -3266,20 +3292,20 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
         final byte[] updatedValueBytes;
         final ChunkedValueManifest oldValueManifest = valueManifestContainer.getManifest();
-
+        WriteComputeResult writeComputeResult;
         try {
           long writeComputeStartTimeInNS = System.nanoTime();
+
           // Leader nodes are the only ones which process UPDATES, so it's valid to always compress and not call
           // 'maybeCompress'.
-          updatedValueBytes = compressor.get()
-              .compress(
-                  storeWriteComputeHandler.applyWriteCompute(
-                      currValue,
-                      update.schemaId,
-                      readerValueSchemaId,
-                      update.updateValue,
-                      update.updateSchemaId,
-                      readerUpdateProtocolVersion));
+          writeComputeResult = storeWriteComputeHandler.applyWriteCompute(
+              currValue,
+              update.schemaId,
+              readerValueSchemaId,
+              update.updateValue,
+              update.updateSchemaId,
+              readerUpdateProtocolVersion);
+          updatedValueBytes = compressor.get().compress(writeComputeResult.getUpdatedValueBytes());
           hostLevelIngestionStats
               .recordWriteComputeUpdateLatency(LatencyUtils.getElapsedTimeFromNSToMS(writeComputeStartTimeInNS));
         } catch (Exception e) {
@@ -3316,16 +3342,38 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           Put updatedPut = new Put();
           updatedPut.putValue = updateValueWithSchemaId;
           updatedPut.schemaId = readerValueSchemaId;
-          return new PubSubMessageProcessedResult(new WriteComputeResultWrapper(updatedPut, oldValueManifest, false));
+          return new PubSubMessageProcessedResult(
+              new WriteComputeResultWrapper(
+                  updatedPut,
+                  oldValueManifest,
+                  false,
+                  Lazy.of(writeComputeResult::getUpdatedValue)));
         }
       case DELETE:
+        Lazy<GenericRecord> oldValueProvider;
+        if (hasComplexVenicePartitionerMaterializedView) {
+          // Best-effort to provide the old value for delete operation in case needed by a ComplexVeniceWriter to
+          // generate deletes for materialized view topic partition(s). We need to do a non-lazy lookup before, so we
+          // have a chance of getting the old value before the transient record cache is updated to null as part of
+          // processing the DELETE.
+          int oldValueReaderSchemaId = schemaRepository.getSupersetSchema(storeName).getId();
+          GenericRecord oldValue = readStoredValueRecord(
+              partitionConsumptionState,
+              keyBytes,
+              oldValueReaderSchemaId,
+              consumerRecord.getTopicPartition(),
+              new ChunkedValueManifestContainer());
+          oldValueProvider = Lazy.of(() -> oldValue);
+        } else {
+          oldValueProvider = Lazy.of(() -> null);
+        }
         /**
          * For WC enabled stores update the transient record map with the latest {key,null} for similar reason as mentioned in PUT above.
          */
         if (isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived()) {
           partitionConsumptionState.setTransientRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, -1, null);
         }
-        return new PubSubMessageProcessedResult(new WriteComputeResultWrapper(null, null, false));
+        return new PubSubMessageProcessedResult(new WriteComputeResultWrapper(null, null, false, oldValueProvider));
 
       default:
         throw new VeniceMessageException(
@@ -3377,9 +3425,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       Put newPut = writeComputeResultWrapper.getNewPut();
       // keys will be serialized with chunk suffix during pass-through mode in L/F NR if chunking is enabled
       boolean isChunkedKey = isChunked() && !partitionConsumptionState.isEndOfPushReceived();
+      Lazy<GenericRecord> newValueProvider = writeComputeResultWrapper.getValueProvider();
       queueUpVersionTopicWritesWithViewWriters(
           partitionConsumptionState,
-          (viewWriter) -> viewWriter.processRecord(newPut.putValue, keyBytes, newPut.schemaId, isChunkedKey),
+          (viewWriter) -> viewWriter
+              .processRecord(newPut.putValue, keyBytes, newPut.schemaId, isChunkedKey, newValueProvider),
           produceToVersionTopic);
     } else {
       produceToVersionTopic.run();
@@ -3969,7 +4019,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected void queueUpVersionTopicWritesWithViewWriters(
       PartitionConsumptionState partitionConsumptionState,
-      Function<VeniceViewWriter, CompletableFuture<PubSubProduceResult>> viewWriterRecordProcessor,
+      Function<VeniceViewWriter, CompletableFuture<Void>> viewWriterRecordProcessor,
       Runnable versionTopicWrite) {
     long preprocessingTime = System.currentTimeMillis();
     CompletableFuture<Void> currentVersionTopicWrite = new CompletableFuture<>();

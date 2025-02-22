@@ -455,7 +455,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             consumerRecord.getTopicPartition(),
             valueManifestContainer,
             beforeProcessingBatchRecordsTimestampMs));
-    if (hasChangeCaptureView) {
+    if (hasChangeCaptureView || (hasComplexVenicePartitionerMaterializedView && msgType == MessageType.DELETE)) {
       /**
        * Since this function will update the transient cache before writing the view, and if there is
        * a change capture view writer, we need to lookup first, otherwise the transient cache will be populated
@@ -549,7 +549,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               rmdWithValueSchemaID,
               valueManifestContainer,
               null,
-              null));
+              null,
+              (schemaId) -> storeDeserializerCache.getDeserializer(schemaId, schemaId)));
     } else {
       validatePostOperationResultsAndRecord(mergeConflictResult, offsetSumPreOperation, recordTimestampsPreOperation);
 
@@ -589,7 +590,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               rmdWithValueSchemaID,
               valueManifestContainer,
               updatedValueBytes,
-              updatedRmdBytes));
+              updatedRmdBytes,
+              (schemaId) -> storeDeserializerCache.getDeserializer(schemaId, schemaId)));
     }
   }
 
@@ -669,6 +671,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         ByteBuffer oldValueBB = mergeConflictResultWrapper.getOldValueByteBufferProvider().get();
         int oldValueSchemaId =
             oldValueBB == null ? -1 : mergeConflictResultWrapper.getOldValueProvider().get().writerSchemaId();
+        Lazy<GenericRecord> valueProvider = mergeConflictResultWrapper.getValueProvider();
         queueUpVersionTopicWritesWithViewWriters(
             partitionConsumptionState,
             (viewWriter) -> viewWriter.processRecord(
@@ -677,7 +680,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                 keyBytes,
                 mergeConflictResult.getValueSchemaId(),
                 oldValueSchemaId,
-                mergeConflictResult.getRmdRecord()),
+                mergeConflictResult.getRmdRecord(),
+                valueProvider),
             produceToVersionTopic);
       } else {
         // This function may modify the original record in KME and it is unsafe to use the payload from KME directly
