@@ -129,7 +129,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       Optional.of(1L),
       Optional.of(-1L),
       Optional.of(1L),
-      Optional.of((long) AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION - 1));
+      Optional.of((long) AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
 
   @BeforeMethod
   public void setupTestCase() {
