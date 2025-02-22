@@ -3904,6 +3904,7 @@ public abstract class StoreIngestionTaskTest {
       doReturn(topicSwitchWrapper).when(mock).getTopicSwitch();
       OffsetRecord mockOR = mock(OffsetRecord.class);
       doReturn(rtTopic).when(mockOR).getLeaderTopic(any());
+      doReturn(1000L).when(mock).getLeaderOffset(anyString(), any());
       System.out.println(mockOR.getLeaderTopic(null));
       doReturn(1000L).when(mockOR).getUpstreamOffset(anyString());
       if (aaConfig == AA_ON) {
@@ -3926,6 +3927,8 @@ public abstract class StoreIngestionTaskTest {
     // Test alternative branch of the code
     Supplier<PartitionConsumptionState> mockPcsSupplier2 = () -> {
       PartitionConsumptionState mock = mockPcsSupplier.get();
+      doReturn(-1L).when(mock).getLeaderOffset(anyString(), any());
+
       if (aaConfig == AA_ON) {
         doReturn(-1L).when(mock).getLatestProcessedUpstreamRTOffsetWithNoDefault(anyString());
       } else {
