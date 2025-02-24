@@ -167,10 +167,11 @@ public class DaVinciClientRecordTransformerTest {
 
         // Validate metrics
         String recordTransformerMetricPrefix = "." + storeName + "_total--";
-        String recordTransformerMetricPostfix = "_avg_µs.DaVinciRecordTransformerStatsGauge";
+        String recordTransformerUsMetricPostfix = "_avg_µs.DaVinciRecordTransformerStatsGauge";
+        String recordTransformerMsMetricPostfix = "_avg_ms.DaVinciRecordTransformerStatsGauge";
 
         String deleteLatency =
-            recordTransformerMetricPrefix + RECORD_TRANSFORMER_DELETE_LATENCY + recordTransformerMetricPostfix;
+            recordTransformerMetricPrefix + RECORD_TRANSFORMER_DELETE_LATENCY + recordTransformerUsMetricPostfix;
         TestUtils.waitForNonDeterministicAssertion(
             10,
             TimeUnit.SECONDS,
@@ -191,19 +192,19 @@ public class DaVinciClientRecordTransformerTest {
         clientWithRecordTransformer.unsubscribeAll();
 
         String startLatency = recordTransformerMetricPrefix + RECORD_TRANSFORMER_ON_START_VERSION_INGESTION_LATENCY
-            + recordTransformerMetricPostfix;
+            + recordTransformerMsMetricPostfix;
         assertTrue(metricsRepository.getMetric(startLatency).value() > 0);
 
         String endLatency = recordTransformerMetricPrefix + RECORD_TRANSFORMER_ON_END_VERSION_INGESTION_LATENCY
-            + recordTransformerMetricPostfix;
+            + recordTransformerMsMetricPostfix;
         assertTrue(metricsRepository.getMetric(endLatency).value() > 0);
 
         String onRecoveryLatency =
-            recordTransformerMetricPrefix + RECORD_TRANSFORMER_ON_RECOVERY_LATENCY + recordTransformerMetricPostfix;
+            recordTransformerMetricPrefix + RECORD_TRANSFORMER_ON_RECOVERY_LATENCY + recordTransformerMsMetricPostfix;
         assertTrue(metricsRepository.getMetric(onRecoveryLatency).value() > 0);
 
         String putLatency =
-            recordTransformerMetricPrefix + RECORD_TRANSFORMER_PUT_LATENCY + recordTransformerMetricPostfix;
+            recordTransformerMetricPrefix + RECORD_TRANSFORMER_PUT_LATENCY + recordTransformerUsMetricPostfix;
         assertTrue(metricsRepository.getMetric(putLatency).value() > 0);
 
         String transformerPutErrorCount =

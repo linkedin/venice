@@ -79,29 +79,31 @@ public class DaVinciRecordTransformerStatsTest {
     metricsRepository.addReporter(reporter);
     String storeName = Utils.getUniqueString("store");
     String recordTransformerMetricPrefix = "." + storeName + "--";
-    String recordTransformerMetricPostfix = "_avg_µs.DaVinciRecordTransformerStatsGauge";
+    String recordTransformerUsMetricPostfix = "_avg_µs.DaVinciRecordTransformerStatsGauge";
+    String recordTransformerMsMetricPostfix = "_avg_ms.DaVinciRecordTransformerStatsGauge";
 
     DaVinciRecordTransformerStatsReporter recordTransformerStatsReporter =
         new DaVinciRecordTransformerStatsReporter(metricsRepository, storeName, null);
     double nullStat = NULL_INGESTION_STATS.code;
 
     String startLatency = recordTransformerMetricPrefix + RECORD_TRANSFORMER_ON_START_VERSION_INGESTION_LATENCY
-        + recordTransformerMetricPostfix;
+        + recordTransformerMsMetricPostfix;
     assertEquals(reporter.query(startLatency).value(), nullStat);
 
     String endLatency = recordTransformerMetricPrefix + RECORD_TRANSFORMER_ON_END_VERSION_INGESTION_LATENCY
-        + recordTransformerMetricPostfix;
+        + recordTransformerMsMetricPostfix;
     assertEquals(reporter.query(endLatency).value(), nullStat);
 
     String onRecoveryLatency =
-        recordTransformerMetricPrefix + RECORD_TRANSFORMER_ON_RECOVERY_LATENCY + recordTransformerMetricPostfix;
+        recordTransformerMetricPrefix + RECORD_TRANSFORMER_ON_RECOVERY_LATENCY + recordTransformerMsMetricPostfix;
     assertEquals(reporter.query(onRecoveryLatency).value(), nullStat);
 
-    String putLatency = recordTransformerMetricPrefix + RECORD_TRANSFORMER_PUT_LATENCY + recordTransformerMetricPostfix;
+    String putLatency =
+        recordTransformerMetricPrefix + RECORD_TRANSFORMER_PUT_LATENCY + recordTransformerUsMetricPostfix;
     assertEquals(reporter.query(putLatency).value(), nullStat);
 
     String deleteLatency =
-        recordTransformerMetricPrefix + RECORD_TRANSFORMER_DELETE_LATENCY + recordTransformerMetricPostfix;
+        recordTransformerMetricPrefix + RECORD_TRANSFORMER_DELETE_LATENCY + recordTransformerUsMetricPostfix;
     assertEquals(reporter.query(deleteLatency).value(), nullStat);
 
     DaVinciRecordTransformerStats stats = new DaVinciRecordTransformerStats();

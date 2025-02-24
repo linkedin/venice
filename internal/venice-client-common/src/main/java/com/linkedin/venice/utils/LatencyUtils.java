@@ -32,7 +32,7 @@ public class LatencyUtils {
    * @param startTimeInNs input start time should use nanosecond unit
    * @return elapsed time in microseconds
    */
-  public static long getElapsedTimeFromNSToUs(long startTimeInNs) {
+  public static long getElapsedTimeFromNsToUs(long startTimeInNs) {
     return convertNSToUS(System.nanoTime() - startTimeInNs);
   }
 

@@ -33,19 +33,24 @@ public class DaVinciRecordTransformerStatsReporter extends AbstractVeniceStatsRe
     // Latency sensors
     registerLatencySensor(
         RECORD_TRANSFORMER_PUT_LATENCY,
-        DaVinciRecordTransformerStats::getRecordTransformerPutLatencySensor);
+        DaVinciRecordTransformerStats::getRecordTransformerPutLatencySensor,
+        "µs");
     registerLatencySensor(
         RECORD_TRANSFORMER_DELETE_LATENCY,
-        DaVinciRecordTransformerStats::getRecordTransformerDeleteLatencySensor);
+        DaVinciRecordTransformerStats::getRecordTransformerDeleteLatencySensor,
+        "µs");
     registerLatencySensor(
         RECORD_TRANSFORMER_ON_RECOVERY_LATENCY,
-        DaVinciRecordTransformerStats::getRecordTransformerOnRecoveryLatencySensor);
+        DaVinciRecordTransformerStats::getRecordTransformerOnRecoveryLatencySensor,
+        "ms");
     registerLatencySensor(
         RECORD_TRANSFORMER_ON_START_VERSION_INGESTION_LATENCY,
-        DaVinciRecordTransformerStats::getRecordTransformerOnStartVersionIngestionLatencySensor);
+        DaVinciRecordTransformerStats::getRecordTransformerOnStartVersionIngestionLatencySensor,
+        "ms");
     registerLatencySensor(
         RECORD_TRANSFORMER_ON_END_VERSION_INGESTION_LATENCY,
-        DaVinciRecordTransformerStats::getRecordTransformerOnEndVersionIngestionLatencySensor);
+        DaVinciRecordTransformerStats::getRecordTransformerOnEndVersionIngestionLatencySensor,
+        "ms");
 
     // Count sensors
     registerSensor(
@@ -62,20 +67,20 @@ public class DaVinciRecordTransformerStatsReporter extends AbstractVeniceStatsRe
             RECORD_TRANSFORMER_DELETE_ERROR_COUNT));
   }
 
-  // Assumed time unit is in microseconds (µ)
   protected void registerLatencySensor(
       String sensorBaseName,
-      Function<DaVinciRecordTransformerStats, WritePathLatencySensor> sensorFunction) {
+      Function<DaVinciRecordTransformerStats, WritePathLatencySensor> sensorFunction,
+      String unit) {
     registerSensor(
         new DaVinciRecordTransformerStatsReporter.DaVinciRecordTransformerStatsGauge(
             this,
             () -> sensorFunction.apply(getStats()).getAvg(),
-            sensorBaseName + "_avg_µs"));
+            sensorBaseName + "_avg_" + unit));
     registerSensor(
         new DaVinciRecordTransformerStatsReporter.DaVinciRecordTransformerStatsGauge(
             this,
             () -> sensorFunction.apply(getStats()).getMax(),
-            sensorBaseName + "_max_µs"));
+            sensorBaseName + "_max_" + unit));
   }
 
   protected static class DaVinciRecordTransformerStatsGauge extends AsyncGauge {
