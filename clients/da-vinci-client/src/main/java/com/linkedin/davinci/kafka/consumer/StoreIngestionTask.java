@@ -3620,7 +3620,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * This method unsubscribes topic-partition from the input.
    * If it is real-time topic and separate RT topic is enabled, it will also unsubscribe from separate real-time topic.
    */
-  public void unsubscribeFromTopic(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
+  protected void unsubscribeFromTopic(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
     consumerUnSubscribeForStateTransition(topic, partitionConsumptionState);
     if (isSeparatedRealtimeTopicEnabled() && topic.isRealTime()) {
       PubSubTopic separateRealTimeTopic =

@@ -665,8 +665,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              * results from drainer service to the DIV check validator that will be used in leader consumption thread
              */
             restoreProducerStatesForLeaderConsumption(partition);
+            startConsumingAsLeader(partitionConsumptionState);
 
-            startConsumingAsLeaderInTransitionFromStandby(partitionConsumptionState);
             /**
              * May adjust the underlying storage partition to optimize the ingestion performance.
              * Only adjust the underlying storage partition after batch portion as the compaction
@@ -877,14 +877,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return localVTOff + 1 >= localVTEndOffset;
   }
 
-  protected void startConsumingAsLeaderInTransitionFromStandby(PartitionConsumptionState partitionConsumptionState) {
-    if (partitionConsumptionState.getLeaderFollowerState() != IN_TRANSITION_FROM_STANDBY_TO_LEADER) {
-      throw new VeniceException(
-          String.format("Expect state %s but got %s", IN_TRANSITION_FROM_STANDBY_TO_LEADER, partitionConsumptionState));
-    }
-    startConsumingAsLeader(partitionConsumptionState);
-  }
-
   protected Map<String, Long> calculateLeaderUpstreamOffsetWithTopicSwitch(
       PartitionConsumptionState partitionConsumptionState,
       PubSubTopic newSourceTopic,
@@ -956,49 +948,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
     }
 
-    Set<String> leaderSourceKafkaURLs = getConsumptionSourceKafkaAddress(partitionConsumptionState);
-    if (leaderSourceKafkaURLs.size() != 1) {
-      throw new VeniceException("In L/F mode, expect only one leader source Kafka URL. Got: " + leaderSourceKafkaURLs);
-    }
-
-    partitionConsumptionState.setLeaderFollowerState(LEADER);
     if (isDataRecovery && partitionConsumptionState.isBatchOnly() && partitionConsumptionState.consumeRemotely()) {
       // Batch-only store data recovery might consume from a previous version in remote colo.
       String dataRecoveryVersionTopic = Version.composeKafkaTopic(storeName, dataRecoverySourceVersionNumber);
       offsetRecord.setLeaderTopic(pubSubTopicRepository.getTopic(dataRecoveryVersionTopic));
     }
+    partitionConsumptionState.setLeaderFollowerState(LEADER);
     final PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
-    final PubSubTopicPartition leaderTopicPartition = partitionConsumptionState.getSourceTopicPartition(leaderTopic);
-    long leaderStartOffset = partitionConsumptionState
-        .getLeaderOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, pubSubTopicRepository);
-    String leaderSourceKafkaURL = leaderSourceKafkaURLs.iterator().next();
-    if (leaderStartOffset < 0 && leaderTopic.isRealTime()) {
-      leaderStartOffset =
-          calculateLeaderUpstreamOffsetWithTopicSwitch(partitionConsumptionState, leaderTopic, Collections.emptyList())
-              .getOrDefault(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, OffsetRecord.LOWEST_OFFSET);
-    }
-
-    // subscribe to the new upstream
-    LOGGER.info(
-        "Replica: {} has been promoted to the leader role for the partition. It will start consuming from: {} at offset: {} with the source Kafka URL: {}. Remote consumption flag: {}",
-        partitionConsumptionState.getReplicaId(),
-        leaderTopicPartition,
-        leaderStartOffset,
-        leaderSourceKafkaURL,
-        partitionConsumptionState.consumeRemotely());
-
-    consumerSubscribe(leaderTopic, partitionConsumptionState, leaderStartOffset, leaderSourceKafkaURL);
-
-    syncConsumedUpstreamRTOffsetMapIfNeeded(
-        partitionConsumptionState,
-        Collections.singletonMap(leaderSourceKafkaURL, leaderStartOffset));
-
-    LOGGER.info(
-        "The leader replica: {} started consuming from: {} at offset: {} url: {}",
-        partitionConsumptionState.getReplicaId(),
-        leaderTopicPartition,
-        leaderStartOffset,
-        leaderSourceKafkaURL);
+    prepareOffsetCheckpointAndStartConsumptionAsLeader(leaderTopic, partitionConsumptionState);
   }
 
   private boolean switchAwayFromStreamReprocessingTopic(PubSubTopic currentLeaderTopic, PubSubTopic topicSwitchTopic) {
@@ -1025,22 +982,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     final PubSubTopicPartition newSourceTopicPartition =
         partitionConsumptionState.getSourceTopicPartition(newSourceTopic);
 
-    // Only use the latestProcessedUpstreamRTOffset if we are switching to the new topic from a VT topic or if we are
-    // switching to the same RT topic. The upstreamStartOffset won't be correct if we are already consuming from a RT
-    // topic. e.g. If we are already consuming from RT and would like to switch to some arbitrary topic.
-    boolean switchingToSameTopic = currentLeaderTopic.getName().equals(newSourceTopic.getName());
-    long upstreamStartOffset = switchingToSameTopic || currentLeaderTopic.isVersionTopic()
-        ? partitionConsumptionState
-            .getLatestProcessedUpstreamRTOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY)
-        : OffsetRecord.LOWEST_OFFSET;
-    if (upstreamStartOffset < 0 && newSourceTopic.isRealTime()) {
-      upstreamStartOffset = calculateLeaderUpstreamOffsetWithTopicSwitch(
-          partitionConsumptionState,
-          newSourceTopic,
-          Collections.emptyList())
-              .getOrDefault(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, OffsetRecord.LOWEST_OFFSET);
-    }
-
     // unsubscribe the old source and subscribe to the new source
     unsubscribeFromTopic(currentLeaderTopic, partitionConsumptionState);
     waitForLastLeaderPersistFuture(
@@ -1060,29 +1001,48 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           partitionConsumptionState.getReplicaId());
     }
     partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
+
+    prepareOffsetCheckpointAndStartConsumptionAsLeader(newSourceTopic, partitionConsumptionState);
+
+    // In case new topic is empty and leader can never become online
+    // TODO: Remove this once after AGG store migration.
+    maybeApplyReadyToServeCheck(partitionConsumptionState);
+  }
+
+  /**
+   * This method does a few things for leader topic-partition subscription:
+   * (1) Calculate Kafka URL to leader subscribe offset map.
+   * (2) Subscribe to all the Kafka upstream.
+   * (3) Potentially sync offset to PartitionConsumptionState map if needed.
+   */
+  void prepareOffsetCheckpointAndStartConsumptionAsLeader(
+      PubSubTopic leaderTopic,
+      PartitionConsumptionState partitionConsumptionState) {
+    Set<String> leaderSourceKafkaURLs = getConsumptionSourceKafkaAddress(partitionConsumptionState);
+    if (leaderSourceKafkaURLs.size() != 1) {
+      throw new VeniceException("In L/F mode, expect only one leader source Kafka URL. Got: " + leaderSourceKafkaURLs);
+    }
+    long upstreamStartOffset = partitionConsumptionState
+        .getLeaderOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, pubSubTopicRepository);
+    String leaderSourceKafkaURL = leaderSourceKafkaURLs.iterator().next();
+    if (upstreamStartOffset < 0 && leaderTopic.isRealTime()) {
+      upstreamStartOffset =
+          calculateLeaderUpstreamOffsetWithTopicSwitch(partitionConsumptionState, leaderTopic, Collections.emptyList())
+              .getOrDefault(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, OffsetRecord.LOWEST_OFFSET);
+    }
     partitionConsumptionState.getOffsetRecord()
         .setLeaderUpstreamOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, upstreamStartOffset);
 
-    Set<String> sourceKafkaURLs = getConsumptionSourceKafkaAddress(partitionConsumptionState);
-    if (sourceKafkaURLs.size() != 1) {
-      throw new VeniceException("In L/F mode, expect only one leader source Kafka URL. Got: " + sourceKafkaURLs);
-    }
-    String sourceKafkaURL = sourceKafkaURLs.iterator().next();
-    consumerSubscribe(newSourceTopic, partitionConsumptionState, upstreamStartOffset, sourceKafkaURL);
-
+    consumerSubscribe(leaderTopic, partitionConsumptionState, upstreamStartOffset, leaderSourceKafkaURL);
     syncConsumedUpstreamRTOffsetMapIfNeeded(
         partitionConsumptionState,
-        Collections.singletonMap(sourceKafkaURL, upstreamStartOffset));
-
+        Collections.singletonMap(leaderSourceKafkaURL, upstreamStartOffset));
     LOGGER.info(
-        "Leader replica: {} successfully switched feed topic from: {} to: {} offset: {}",
+        "{}, as a leader, started consuming from topic: {}, partition: {} with offset: {}",
         partitionConsumptionState.getReplicaId(),
-        currentLeaderTopic,
-        newSourceTopic,
+        leaderTopic,
+        partitionConsumptionState.getPartition(),
         upstreamStartOffset);
-
-    // In case new topic is empty and leader can never become online
-    maybeApplyReadyToServeCheck(partitionConsumptionState);
   }
 
   protected void syncConsumedUpstreamRTOffsetMapIfNeeded(
@@ -3997,7 +3957,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected void resubscribeAsLeader(PartitionConsumptionState partitionConsumptionState) throws InterruptedException {
     OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
-    PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
+    PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(getPubSubTopicRepository());
     int partition = partitionConsumptionState.getPartition();
     unsubscribeFromTopic(leaderTopic, partitionConsumptionState);
     waitForAllMessageToBeProcessedFromTopicPartition(
@@ -4006,15 +3966,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     LOGGER.info(
         "Leader replica: {} unsubscribe finished for future resubscribe.",
         partitionConsumptionState.getReplicaId());
-    Set<String> leaderSourceKafkaURLs = getConsumptionSourceKafkaAddress(partitionConsumptionState);
-    for (String leaderSourceKafkaURL: leaderSourceKafkaURLs) {
-      long leaderStartOffset = partitionConsumptionState.getLeaderOffset(leaderSourceKafkaURL, pubSubTopicRepository);
-      consumerSubscribe(leaderTopic, partitionConsumptionState, leaderStartOffset, leaderSourceKafkaURL);
-      LOGGER.info(
-          "Leader replica: {} resubscribe to offset: {}",
-          partitionConsumptionState.getReplicaId(),
-          leaderStartOffset);
-    }
+    prepareOffsetCheckpointAndStartConsumptionAsLeader(leaderTopic, partitionConsumptionState);
   }
 
   protected void queueUpVersionTopicWritesWithViewWriters(
