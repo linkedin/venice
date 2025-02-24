@@ -16,6 +16,7 @@ import org.apache.logging.log4j.Logger;
 
 class VersionSwapDataChangeListener<K, V> implements StoreDataChangedListener {
   private static final Logger LOGGER = LogManager.getLogger(VersionSwapDataChangeListener.class);
+  private static final int MAX_RETRIES = 3;
   private final VeniceAfterImageConsumerImpl<K, V> consumer;
   private NativeMetadataRepositoryViewAdapter storeRepository;
   private final String storeName;
@@ -36,51 +37,64 @@ class VersionSwapDataChangeListener<K, V> implements StoreDataChangedListener {
   @Override
   public void handleStoreChanged(Store store) {
     synchronized (this) {
-      // store may be null as this is called by other repair tasks
-      if (!consumer.subscribed()) {
-        // skip this for now as the consumer hasn't even been set up yet
-        return;
-      }
-      Set<Integer> partitions = new HashSet<>();
-      try {
-        // Check the current version of the server
-        int currentVersion = store.getCurrentVersion();
-
-        // Check the current ingested version
-        Set<PubSubTopicPartition> subscriptions = this.consumer.getTopicAssignment();
-        if (subscriptions.isEmpty()) {
+      for (int i = 0; i <= MAX_RETRIES; i++) {
+        // store may be null as this is called by other repair tasks
+        if (!consumer.subscribed()) {
+          // skip this for now as the consumer hasn't even been set up yet
           return;
         }
+        Set<Integer> partitions = new HashSet<>();
+        try {
+          // Check the current version of the server, we use the store repo so that for retries tripped because
+          // of a deleted version topic, we'll always get the latest version on subsequent retries
+          Store currentStore = storeRepository.getStore(storeName);
+          int currentVersion = currentStore.getCurrentVersion();
 
-        // for all partition subscriptions that are not subscribed to the current version, resubscribe them
-        for (PubSubTopicPartition topicPartition: subscriptions) {
-          int version;
-          if (topicPartition.getPubSubTopic().isViewTopic()) {
-            version = VeniceView.parseVersionFromViewTopic(topicPartition.getPubSubTopic().getName());
-          } else {
-            version = Version.parseVersionFromVersionTopicName(topicPartition.getPubSubTopic().getName());
+          // Check the current ingested version
+          Set<PubSubTopicPartition> subscriptions = this.consumer.getTopicAssignment();
+          if (subscriptions.isEmpty()) {
+            return;
           }
-          if (version != currentVersion) {
-            partitions.add(topicPartition.getPartitionNumber());
-          }
-        }
 
-        if (partitions.isEmpty()) {
+          // for all partition subscriptions that are not subscribed to the current version, resubscribe them
+          for (PubSubTopicPartition topicPartition: subscriptions) {
+            int version;
+            if (topicPartition.getPubSubTopic().isViewTopic()) {
+              version = VeniceView.parseVersionFromViewTopic(topicPartition.getPubSubTopic().getName());
+            } else {
+              version = Version.parseVersionFromVersionTopicName(topicPartition.getPubSubTopic().getName());
+            }
+            if (version != currentVersion) {
+              partitions.add(topicPartition.getPartitionNumber());
+            }
+          }
+
+          if (partitions.isEmpty()) {
+            return;
+          }
+
+          LOGGER.info(
+              "New Version detected!  Seeking consumer to version: " + currentVersion + " in consumer: "
+                  + consumerName);
+          this.consumer
+              .internalSeekToEndOfPush(
+                  partitions,
+                  pubSubTopicRepository.getTopic(currentStore.getVersion(currentVersion).kafkaTopicName()))
+              .get();
+          LOGGER.info("Seeked consumer to version: " + currentVersion + " in consumer: " + consumerName);
           return;
+        } catch (Exception e) {
+          LOGGER.error(
+              "Seek to End of Push Failed for store: " + this.storeName + " partitions: " + partitions
+                  + " on consumer: " + consumerName + "will retry...",
+              e);
+          if (i == MAX_RETRIES) {
+            LOGGER.error(
+                "Max retries reached for seeking to end of push for store: " + this.storeName + " partitions: "
+                    + partitions + " on consumer: " + consumerName);
+            return;
+          }
         }
-
-        LOGGER.info(
-            "New Version detected!  Seeking consumer to version: " + currentVersion + " in consumer: " + consumerName);
-        this.consumer
-            .internalSeekToEndOfPush(
-                partitions,
-                pubSubTopicRepository.getTopic(store.getVersion(currentVersion).kafkaTopicName()))
-            .get();
-      } catch (Exception e) {
-        LOGGER.error(
-            "Seek to End of Push Failed for store: " + this.storeName + " partitions: " + partitions + " on consumer: "
-                + consumerName + "will retry...",
-            e);
       }
     }
   }

@@ -139,12 +139,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
             int counter = 0;
             while (true) {
               counter++;
-              if (counter > 500) {
-                LOGGER.info("This is taking a while.....");
-              }
-              LOGGER.info("POLLING " + consumerAdapter.getAssignment().toString());
               polledResults = consumerAdapter.poll(5000L);
-              LOGGER.info("POLLED");
               // Loop through all polled messages
               for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: polledResults
                   .entrySet()) {
