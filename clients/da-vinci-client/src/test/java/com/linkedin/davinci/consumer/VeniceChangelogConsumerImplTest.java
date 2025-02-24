@@ -427,7 +427,8 @@ public class VeniceChangelogConsumerImplTest {
     Set<PubSubTopicPartition> topicPartitionSet = new HashSet<>();
     topicPartitionSet.add(topicPartition);
     Mockito.when(mockConsumer.getTopicAssignment()).thenReturn(topicPartitionSet);
-    Mockito.when(mockConsumer.seekToEndOfPush(Mockito.anySet())).thenReturn(CompletableFuture.completedFuture(null));
+    Mockito.when(mockConsumer.internalSeekToEndOfPush(Mockito.anySet(), Mockito.any()))
+        .thenReturn(CompletableFuture.completedFuture(null));
 
     String storeName = "Leppalúði_store";
 
