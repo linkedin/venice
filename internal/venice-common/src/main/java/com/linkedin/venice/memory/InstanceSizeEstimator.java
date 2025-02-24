@@ -159,7 +159,7 @@ public class InstanceSizeEstimator {
     int size = KME_PARTIAL_CLASS_OVERHEAD;
     switch (MessageType.valueOf(kme)) {
       case PUT:
-      case GLOBAL_RT_DIV:
+      case GLOBAL_RT_DIV: // GLOBAL_RT_DIV is the same as PUT, but contains a DIV object rather than user data
         size += getSize((Put) kme.payloadUnion);
         break;
       case DELETE:

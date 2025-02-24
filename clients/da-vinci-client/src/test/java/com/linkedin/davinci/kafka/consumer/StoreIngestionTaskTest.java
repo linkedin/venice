@@ -106,7 +106,6 @@ import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.davinci.transformer.TestStringRecordTransformer;
-import com.linkedin.davinci.utils.ChunkAssembler;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -367,7 +366,6 @@ public abstract class StoreIngestionTaskTest {
   private AggVersionedDIVStats mockVersionedDIVStats;
   private AggVersionedIngestionStats mockVersionedStorageIngestionStats;
   private StoreIngestionTask storeIngestionTaskUnderTest;
-  private ChunkAssembler divChunkAssembler;
   private ExecutorService taskPollingService;
   private StoreBufferService storeBufferService;
   private AggKafkaConsumerService aggKafkaConsumerService;
@@ -553,7 +551,6 @@ public abstract class StoreIngestionTaskTest {
     mockRemoteKafkaConsumer = mock(PubSubConsumerAdapter.class);
     kafkaUrlToRecordsThrottler = new HashMap<>();
     kafkaClusterBasedRecordThrottler = new KafkaClusterBasedRecordThrottler(kafkaUrlToRecordsThrottler);
-    divChunkAssembler = mock(ChunkAssembler.class);
 
     mockTopicManager = mock(TopicManager.class);
     mockTopicManagerRepository = mock(TopicManagerRepository.class);

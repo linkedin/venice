@@ -6,7 +6,7 @@
   "fields": [
     {
       "name": "srcUrl",
-      "doc": "Upstream Kafka bootstrap server url.",
+      "doc": "Upstream broker bootstrap server url.",
       "type": [
         "null",
         "string"
