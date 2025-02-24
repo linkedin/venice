@@ -115,6 +115,17 @@ public class VeniceMetricsConfig {
   public static final String OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_BUCKETS =
       "otel.exporter.otlp.metrics.default.histogram.aggregation.max.buckets";
 
+  /**
+   * Cache the dimensions to avoid churning same dimension objects every time a metric is emitted
+   */
+  public static final String OTEL_VENICE_CACHE_DIMENSIONS = "otel.venice.cache.dimensions";
+
+  /**
+   * Reuse some temporary objects instead of creating it for every otel record call.
+   * This might help in reducing GC.
+   */
+  public static final String OTEL_VENICE_REUSE_TEMPORARY_OBJECTS = "otel.venice.reuse.temporary.objects";
+
   private final String serviceName;
   private final String metricPrefix;
   /**
@@ -166,6 +177,17 @@ public class VeniceMetricsConfig {
   private final int otelExponentialHistogramMaxScale;
   private final int otelExponentialHistogramMaxBuckets;
 
+  /**
+   * Cache the dimensions to avoid churning same dimension objects every time a metric is emitted
+   */
+  private final boolean useDimensionsCache;
+
+  /**
+   * Reuse some temporary objects instead of creating it for every otel record call.
+   * This might help in reducing GC.
+   */
+  private final boolean reuseTemporaryObjects;
+
   private VeniceMetricsConfig(Builder builder) {
     this.serviceName = builder.serviceName;
     this.metricPrefix = builder.metricPrefix;
@@ -183,6 +205,8 @@ public class VeniceMetricsConfig {
     this.useOtelExponentialHistogram = builder.useOtelExponentialHistogram;
     this.otelExponentialHistogramMaxScale = builder.otelExponentialHistogramMaxScale;
     this.otelExponentialHistogramMaxBuckets = builder.otelExponentialHistogramMaxBuckets;
+    this.useDimensionsCache = builder.useDimensionsCache;
+    this.reuseTemporaryObjects = builder.reuseTemporaryObjects;
     this.tehutiMetricConfig = builder.tehutiMetricConfig;
   }
 
@@ -204,6 +228,8 @@ public class VeniceMetricsConfig {
     private boolean useOtelExponentialHistogram = true;
     private int otelExponentialHistogramMaxScale = 3;
     private int otelExponentialHistogramMaxBuckets = 250;
+    private boolean useDimensionsCache = false;
+    private boolean reuseTemporaryObjects = false;
     private MetricConfig tehutiMetricConfig = null;
 
     public Builder setServiceName(String serviceName) {
@@ -307,6 +333,14 @@ public class VeniceMetricsConfig {
         setExportOtelMetricsIntervalInSeconds(Integer.parseInt(configValue));
       }
 
+      if ((configValue = configs.get(OTEL_VENICE_CACHE_DIMENSIONS)) != null) {
+        setUseDimensionsCache(Boolean.parseBoolean(configValue));
+      }
+
+      if ((configValue = configs.get(OTEL_VENICE_REUSE_TEMPORARY_OBJECTS)) != null) {
+        setReuseTemporaryObjects(Boolean.parseBoolean(configValue));
+      }
+
       /**
        * custom dimensions are passed as key=value pairs separated by '=' <br>
        * Multiple dimensions are separated by ','
@@ -384,6 +418,16 @@ public class VeniceMetricsConfig {
       // todo: add more configs
       // "otel.exporter.otlp.metrics.compression"
       // "otel.exporter.otlp.metrics.timeout"
+      return this;
+    }
+
+    public Builder setUseDimensionsCache(boolean useDimensionsCache) {
+      this.useDimensionsCache = useDimensionsCache;
+      return this;
+    }
+
+    public Builder setReuseTemporaryObjects(boolean reuseTemporaryObjects) {
+      this.reuseTemporaryObjects = reuseTemporaryObjects;
       return this;
     }
 
@@ -486,6 +530,14 @@ public class VeniceMetricsConfig {
 
   public int getOtelExponentialHistogramMaxBuckets() {
     return otelExponentialHistogramMaxBuckets;
+  }
+
+  boolean useDimensionsCache() {
+    return useDimensionsCache;
+  }
+
+  boolean reuseTemporaryObjects() {
+    return reuseTemporaryObjects;
   }
 
   public MetricConfig getTehutiMetricConfig() {
