@@ -1029,7 +1029,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         partitionConsumptionState,
         Collections.singletonMap(leaderSourceKafkaURL, upstreamStartOffset));
     LOGGER.info(
-        "{}, as a leader, started consuming from topic {} partition {} with offset by Kafka URL {}",
+        "{}, as a leader, started consuming from topic: {}, partition: {} with offset: {}",
         partitionConsumptionState.getReplicaId(),
         leaderTopic,
         partitionConsumptionState.getPartition(),
