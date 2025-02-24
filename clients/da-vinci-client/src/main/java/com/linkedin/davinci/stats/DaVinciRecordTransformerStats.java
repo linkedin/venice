@@ -20,92 +20,91 @@ public class DaVinciRecordTransformerStats {
   public static final String RECORD_TRANSFORMER_PUT_ERROR_COUNT = "record_transformer_put_error_count";
   public static final String RECORD_TRANSFORMER_DELETE_ERROR_COUNT = "record_transformer_delete_error_count";
 
-  private final WritePathLatencySensor recordTransformerPutLatencySensor;
-  private final WritePathLatencySensor recordTransformerDeleteLatencySensor;
-  private final WritePathLatencySensor recordTransformerOnRecoveryLatencySensor;
-  private final WritePathLatencySensor recordTransformerOnStartVersionIngestionLatencySensor;
-  private final WritePathLatencySensor recordTransformerOnEndVersionIngestionLatencySensor;
-  private final Count recordTransformerPutErrorCount = new Count();
-  private final Sensor recordTransformerPutErrorSensor;
-  private final Count recordTransformerDeleteErrorCount = new Count();
-  private final Sensor recordTransformerDeleteErrorSensor;
+  private final WritePathLatencySensor putLatencySensor;
+  private final WritePathLatencySensor deleteLatencySensor;
+  private final WritePathLatencySensor onRecoveryLatencySensor;
+  private final WritePathLatencySensor onStartVersionIngestionLatencySensor;
+  private final WritePathLatencySensor onEndVersionIngestionLatencySensor;
+  private final Count putErrorCount = new Count();
+  private final Sensor putErrorSensor;
+  private final Count deleteErrorCount = new Count();
+  private final Sensor deleteErrorSensor;
 
   public DaVinciRecordTransformerStats() {
     localMetricRepository = new MetricsRepository(METRIC_CONFIG);
 
-    recordTransformerPutLatencySensor =
-        new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, RECORD_TRANSFORMER_PUT_LATENCY);
-    recordTransformerDeleteLatencySensor =
+    putLatencySensor = new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, RECORD_TRANSFORMER_PUT_LATENCY);
+    deleteLatencySensor =
         new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, RECORD_TRANSFORMER_DELETE_LATENCY);
-    recordTransformerOnRecoveryLatencySensor =
+    onRecoveryLatencySensor =
         new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, RECORD_TRANSFORMER_ON_RECOVERY_LATENCY);
-    recordTransformerOnStartVersionIngestionLatencySensor = new WritePathLatencySensor(
+    onStartVersionIngestionLatencySensor = new WritePathLatencySensor(
         localMetricRepository,
         METRIC_CONFIG,
         RECORD_TRANSFORMER_ON_START_VERSION_INGESTION_LATENCY);
-    recordTransformerOnEndVersionIngestionLatencySensor = new WritePathLatencySensor(
+    onEndVersionIngestionLatencySensor = new WritePathLatencySensor(
         localMetricRepository,
         METRIC_CONFIG,
         RECORD_TRANSFORMER_ON_END_VERSION_INGESTION_LATENCY);
-    recordTransformerPutErrorSensor = localMetricRepository.sensor(RECORD_TRANSFORMER_PUT_ERROR_COUNT);
-    recordTransformerPutErrorSensor.add(RECORD_TRANSFORMER_PUT_ERROR_COUNT, recordTransformerPutErrorCount);
-    recordTransformerDeleteErrorSensor = localMetricRepository.sensor(RECORD_TRANSFORMER_DELETE_ERROR_COUNT);
-    recordTransformerDeleteErrorSensor.add(RECORD_TRANSFORMER_DELETE_ERROR_COUNT, recordTransformerDeleteErrorCount);
+    putErrorSensor = localMetricRepository.sensor(RECORD_TRANSFORMER_PUT_ERROR_COUNT);
+    putErrorSensor.add(RECORD_TRANSFORMER_PUT_ERROR_COUNT, putErrorCount);
+    deleteErrorSensor = localMetricRepository.sensor(RECORD_TRANSFORMER_DELETE_ERROR_COUNT);
+    deleteErrorSensor.add(RECORD_TRANSFORMER_DELETE_ERROR_COUNT, deleteErrorCount);
   }
 
-  public void recordTransformerPutLatency(double value, long currentTimeMs) {
-    recordTransformerPutLatencySensor.record(value, currentTimeMs);
+  public void recordPutLatency(double latencyMs, long currentTimeMs) {
+    putLatencySensor.record(latencyMs, currentTimeMs);
   }
 
-  public WritePathLatencySensor getRecordTransformerPutLatencySensor() {
-    return recordTransformerPutLatencySensor;
+  public WritePathLatencySensor getPutLatencySensor() {
+    return putLatencySensor;
   }
 
-  public void recordTransformerDeleteLatency(double value, long currentTimeMs) {
-    recordTransformerDeleteLatencySensor.record(value, currentTimeMs);
+  public void recordDeleteLatency(double latencyMs, long currentTimeMs) {
+    deleteLatencySensor.record(latencyMs, currentTimeMs);
   }
 
-  public WritePathLatencySensor getRecordTransformerDeleteLatencySensor() {
-    return recordTransformerDeleteLatencySensor;
+  public WritePathLatencySensor getDeleteLatencySensor() {
+    return deleteLatencySensor;
   }
 
-  public void recordTransformerOnRecoveryLatency(double value, long currentTimeMs) {
-    recordTransformerOnRecoveryLatencySensor.record(value, currentTimeMs);
+  public void recordOnRecoveryLatency(double latencyMs, long currentTimeMs) {
+    onRecoveryLatencySensor.record(latencyMs, currentTimeMs);
   }
 
-  public WritePathLatencySensor getRecordTransformerOnRecoveryLatencySensor() {
-    return recordTransformerOnRecoveryLatencySensor;
+  public WritePathLatencySensor getOnRecoveryLatencySensor() {
+    return onRecoveryLatencySensor;
   }
 
-  public void recordTransformerOnStartVersionIngestionLatency(double value, long currentTimeMs) {
-    recordTransformerOnStartVersionIngestionLatencySensor.record(value, currentTimeMs);
+  public void recordOnStartVersionIngestionLatency(double latencyMs, long currentTimeMs) {
+    onStartVersionIngestionLatencySensor.record(latencyMs, currentTimeMs);
   }
 
-  public WritePathLatencySensor getRecordTransformerOnStartVersionIngestionLatencySensor() {
-    return recordTransformerOnStartVersionIngestionLatencySensor;
+  public WritePathLatencySensor getOnStartVersionIngestionLatencySensor() {
+    return onStartVersionIngestionLatencySensor;
   }
 
-  public void recordTransformerOnEndVersionIngestionLatency(double value, long currentTimeMs) {
-    recordTransformerOnEndVersionIngestionLatencySensor.record(value, currentTimeMs);
+  public void recordOnEndVersionIngestionLatency(double latencyMs, long currentTimeMs) {
+    onEndVersionIngestionLatencySensor.record(latencyMs, currentTimeMs);
   }
 
-  public WritePathLatencySensor getRecordTransformerOnEndVersionIngestionLatencySensor() {
-    return recordTransformerOnEndVersionIngestionLatencySensor;
+  public WritePathLatencySensor getOnEndVersionIngestionLatencySensor() {
+    return onEndVersionIngestionLatencySensor;
   }
 
-  public void recordTransformerPutError(double value, long currentTimeMs) {
-    recordTransformerPutErrorSensor.record(value, currentTimeMs);
+  public void recordPutError(long currentTimeMs) {
+    putErrorSensor.record(1, currentTimeMs);
   }
 
-  public double getRecordTransformerPutErrorCount() {
-    return recordTransformerPutErrorCount.measure(METRIC_CONFIG, System.currentTimeMillis());
+  public double getPutErrorCount() {
+    return putErrorCount.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 
-  public void recordTransformerDeleteError(double value, long currentTimeMs) {
-    recordTransformerDeleteErrorSensor.record(value, currentTimeMs);
+  public void recordDeleteError(long currentTimeMs) {
+    deleteErrorSensor.record(1, currentTimeMs);
   }
 
-  public double getRecordTransformerDeleteErrorCount() {
-    return recordTransformerDeleteErrorCount.measure(METRIC_CONFIG, System.currentTimeMillis());
+  public double getDeleteErrorCount() {
+    return deleteErrorCount.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 }

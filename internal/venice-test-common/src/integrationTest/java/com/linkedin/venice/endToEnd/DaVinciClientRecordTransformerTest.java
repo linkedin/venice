@@ -166,12 +166,11 @@ public class DaVinciClientRecordTransformerTest {
         producer.asyncDelete(1).get();
 
         // Validate metrics
-        String recordTransformerMetricPrefix = "." + storeName + "_total--";
-        String recordTransformerUsMetricPostfix = "_avg_µs.DaVinciRecordTransformerStatsGauge";
-        String recordTransformerMsMetricPostfix = "_avg_ms.DaVinciRecordTransformerStatsGauge";
+        String metricPrefix = "." + storeName + "_total--";
+        String metricPostfix = "_avg_ms.DaVinciRecordTransformerStatsGauge";
 
-        String deleteLatency =
-            recordTransformerMetricPrefix + RECORD_TRANSFORMER_DELETE_LATENCY + recordTransformerUsMetricPostfix;
+        String deleteLatency = metricPrefix + RECORD_TRANSFORMER_DELETE_LATENCY + metricPostfix;
+
         TestUtils.waitForNonDeterministicAssertion(
             10,
             TimeUnit.SECONDS,
@@ -181,35 +180,31 @@ public class DaVinciClientRecordTransformerTest {
         // Exception should be thrown in the DVRT implementation when key doesn't exist
         // to test RECORD_TRANSFORMER_DELETE_ERROR_COUNT
         producer.asyncDelete(1).get();
-        String transformerDeleteErrorCount = recordTransformerMetricPrefix + RECORD_TRANSFORMER_DELETE_ERROR_COUNT
-            + ".DaVinciRecordTransformerStatsGauge";
+        String deleteErrorCount =
+            metricPrefix + RECORD_TRANSFORMER_DELETE_ERROR_COUNT + ".DaVinciRecordTransformerStatsGauge";
         TestUtils.waitForNonDeterministicAssertion(
             10,
             TimeUnit.SECONDS,
             true,
-            () -> assertTrue(metricsRepository.getMetric(transformerDeleteErrorCount).value() == 1.0));
+            () -> assertTrue(metricsRepository.getMetric(deleteErrorCount).value() == 1.0));
 
         clientWithRecordTransformer.unsubscribeAll();
 
-        String startLatency = recordTransformerMetricPrefix + RECORD_TRANSFORMER_ON_START_VERSION_INGESTION_LATENCY
-            + recordTransformerMsMetricPostfix;
+        String startLatency = metricPrefix + RECORD_TRANSFORMER_ON_START_VERSION_INGESTION_LATENCY + metricPostfix;
         assertTrue(metricsRepository.getMetric(startLatency).value() > 0);
 
-        String endLatency = recordTransformerMetricPrefix + RECORD_TRANSFORMER_ON_END_VERSION_INGESTION_LATENCY
-            + recordTransformerMsMetricPostfix;
+        String endLatency = metricPrefix + RECORD_TRANSFORMER_ON_END_VERSION_INGESTION_LATENCY + metricPostfix;
         assertTrue(metricsRepository.getMetric(endLatency).value() > 0);
 
-        String onRecoveryLatency =
-            recordTransformerMetricPrefix + RECORD_TRANSFORMER_ON_RECOVERY_LATENCY + recordTransformerMsMetricPostfix;
+        String onRecoveryLatency = metricPrefix + RECORD_TRANSFORMER_ON_RECOVERY_LATENCY + metricPostfix;
         assertTrue(metricsRepository.getMetric(onRecoveryLatency).value() > 0);
 
-        String putLatency =
-            recordTransformerMetricPrefix + RECORD_TRANSFORMER_PUT_LATENCY + recordTransformerUsMetricPostfix;
+        String putLatency = metricPrefix + RECORD_TRANSFORMER_PUT_LATENCY + metricPostfix;
         assertTrue(metricsRepository.getMetric(putLatency).value() > 0);
 
-        String transformerPutErrorCount =
-            recordTransformerMetricPrefix + RECORD_TRANSFORMER_PUT_ERROR_COUNT + ".DaVinciRecordTransformerStatsGauge";
-        assertEquals(metricsRepository.getMetric(transformerPutErrorCount).value(), 0.0);
+        String putErrorCount =
+            metricPrefix + RECORD_TRANSFORMER_PUT_ERROR_COUNT + ".DaVinciRecordTransformerStatsGauge";
+        assertEquals(metricsRepository.getMetric(putErrorCount).value(), 0.0);
       }
     }
   }

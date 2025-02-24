@@ -22,45 +22,34 @@ public class AggVersionedDaVinciRecordTransformerStats
         serverConfig.isUnregisterMetricForDeletedStoreEnabled());
   }
 
-  public void recordTransformerPutLatency(String storeName, int version, double value, long timestamp) {
-    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordTransformerPutLatency(value, timestamp));
+  public void recordPutLatency(String storeName, int version, double value, long timestamp) {
+    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordPutLatency(value, timestamp));
   }
 
-  public void recordTransformerDeleteLatency(String storeName, int version, double value, long timestamp) {
-    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordTransformerDeleteLatency(value, timestamp));
+  public void recordDeleteLatency(String storeName, int version, double value, long timestamp) {
+    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordDeleteLatency(value, timestamp));
   }
 
-  public void recordTransformerOnRecoveryLatency(String storeName, int version, double value, long timestamp) {
-    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordTransformerOnRecoveryLatency(value, timestamp));
+  public void recordOnRecoveryLatency(String storeName, int version, double value, long timestamp) {
+    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordOnRecoveryLatency(value, timestamp));
   }
 
-  public void recordTransformerOnStartVersionIngestionLatency(
-      String storeName,
-      int version,
-      double value,
-      long timestamp) {
+  public void recordOnStartVersionIngestionLatency(String storeName, int version, double value, long timestamp) {
     recordVersionedAndTotalStat(
         storeName,
         version,
-        stat -> stat.recordTransformerOnStartVersionIngestionLatency(value, timestamp));
+        stat -> stat.recordOnStartVersionIngestionLatency(value, timestamp));
   }
 
-  public void recordTransformerOnEndVersionIngestionLatency(
-      String storeName,
-      int version,
-      double value,
-      long timestamp) {
-    recordVersionedAndTotalStat(
-        storeName,
-        version,
-        stat -> stat.recordTransformerOnEndVersionIngestionLatency(value, timestamp));
+  public void recordOnEndVersionIngestionLatency(String storeName, int version, double value, long timestamp) {
+    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordOnEndVersionIngestionLatency(value, timestamp));
   }
 
-  public void recordTransformerPutError(String storeName, int version, double value, long timestamp) {
-    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordTransformerPutError(value, timestamp));
+  public void recordPutError(String storeName, int version, long timestamp) {
+    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordPutError(timestamp));
   }
 
-  public void recordTransformerDeleteError(String storeName, int version, double value, long timestamp) {
-    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordTransformerDeleteError(value, timestamp));
+  public void recordDeleteError(String storeName, int version, long timestamp) {
+    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordDeleteError(timestamp));
   }
 }

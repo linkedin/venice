@@ -4902,27 +4902,21 @@ public abstract class StoreIngestionTaskTest {
 
     // Metrics that should have been recorded
     verify(mockDaVinciRecordTransformerStats, atLeastOnce())
-        .recordTransformerOnRecoveryLatency(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
-    verify(mockDaVinciRecordTransformerStats, atLeastOnce()).recordTransformerOnStartVersionIngestionLatency(
-        eq(storeNameWithoutVersionInfo),
-        anyInt(),
-        anyDouble(),
-        anyLong());
-    verify(mockDaVinciRecordTransformerStats, atLeastOnce()).recordTransformerOnEndVersionIngestionLatency(
-        eq(storeNameWithoutVersionInfo),
-        anyInt(),
-        anyDouble(),
-        anyLong());
+        .recordOnRecoveryLatency(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
     verify(mockDaVinciRecordTransformerStats, atLeastOnce())
-        .recordTransformerPutLatency(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
+        .recordOnStartVersionIngestionLatency(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
+    verify(mockDaVinciRecordTransformerStats, atLeastOnce())
+        .recordOnEndVersionIngestionLatency(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
+    verify(mockDaVinciRecordTransformerStats, atLeastOnce())
+        .recordPutLatency(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
 
     // Metrics that shouldn't have been recorded
     verify(mockDaVinciRecordTransformerStats, never())
-        .recordTransformerPutError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
+        .recordPutError(eq(storeNameWithoutVersionInfo), anyInt(), anyLong());
     verify(mockDaVinciRecordTransformerStats, never())
-        .recordTransformerDeleteError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
+        .recordDeleteError(eq(storeNameWithoutVersionInfo), anyInt(), anyLong());
     verify(mockDaVinciRecordTransformerStats, never())
-        .recordTransformerDeleteLatency(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
+        .recordDeleteLatency(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
   }
 
   @Test(dataProvider = "aaConfigProvider")
@@ -4988,9 +4982,9 @@ public abstract class StoreIngestionTaskTest {
 
     // Transformer put and delete error should never be recorded
     verify(mockDaVinciRecordTransformerStats, never())
-        .recordTransformerPutError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
+        .recordPutError(eq(storeNameWithoutVersionInfo), anyInt(), anyLong());
     verify(mockDaVinciRecordTransformerStats, never())
-        .recordTransformerDeleteError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
+        .recordDeleteError(eq(storeNameWithoutVersionInfo), anyInt(), anyLong());
   }
 
   // Test to throw type error when performing record transformation with incompatible types
@@ -5049,7 +5043,7 @@ public abstract class StoreIngestionTaskTest {
       }
       // Verify transformer put error was recorded
       verify(mockDaVinciRecordTransformerStats, timeout(1000))
-          .recordTransformerPutError(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
+          .recordPutError(eq(storeNameWithoutVersionInfo), anyInt(), anyLong());
     }, aaConfig);
 
     DaVinciRecordTransformerConfig recordTransformerConfig =

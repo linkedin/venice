@@ -22,54 +22,54 @@ public class DaVinciRecordTransformerStatsTest {
   final long timestamp = System.currentTimeMillis();
 
   @Test
-  public void testRecordTransformerPutLatency() {
+  public void testPutLatency() {
     DaVinciRecordTransformerStats stats = new DaVinciRecordTransformerStats();
-    stats.recordTransformerPutLatency(latency, timestamp);
-    Assert.assertEquals(stats.getRecordTransformerPutLatencySensor().getAvg(), latency);
+    stats.recordPutLatency(latency, timestamp);
+    Assert.assertEquals(stats.getPutLatencySensor().getAvg(), latency);
   }
 
   @Test
-  public void testRecordTransformerDeleteLatency() {
+  public void testDeleteLatency() {
     DaVinciRecordTransformerStats stats = new DaVinciRecordTransformerStats();
-    stats.recordTransformerDeleteLatency(latency, timestamp);
-    Assert.assertEquals(stats.getRecordTransformerDeleteLatencySensor().getAvg(), latency);
+    stats.recordDeleteLatency(latency, timestamp);
+    Assert.assertEquals(stats.getDeleteLatencySensor().getAvg(), latency);
   }
 
   @Test
-  public void testRecordTransformerOnRecoveryLatency() {
+  public void testOnRecoveryLatency() {
     DaVinciRecordTransformerStats stats = new DaVinciRecordTransformerStats();
-    stats.recordTransformerOnRecoveryLatency(latency, timestamp);
-    Assert.assertEquals(stats.getRecordTransformerOnRecoveryLatencySensor().getAvg(), latency);
+    stats.recordOnRecoveryLatency(latency, timestamp);
+    Assert.assertEquals(stats.getOnRecoveryLatencySensor().getAvg(), latency);
   }
 
   @Test
-  public void testRecordTransformerOnStartVersionIngestionLatency() {
+  public void testOnStartVersionIngestionLatency() {
     DaVinciRecordTransformerStats stats = new DaVinciRecordTransformerStats();
-    stats.recordTransformerOnStartVersionIngestionLatency(latency, timestamp);
-    Assert.assertEquals(stats.getRecordTransformerOnStartVersionIngestionLatencySensor().getAvg(), latency);
+    stats.recordOnStartVersionIngestionLatency(latency, timestamp);
+    Assert.assertEquals(stats.getOnStartVersionIngestionLatencySensor().getAvg(), latency);
   }
 
   @Test
-  public void testRecordTransformerOnEndVersionIngestionLatency() {
+  public void testOnEndVersionIngestionLatency() {
     DaVinciRecordTransformerStats stats = new DaVinciRecordTransformerStats();
-    stats.recordTransformerOnEndVersionIngestionLatency(latency, timestamp);
-    Assert.assertEquals(stats.getRecordTransformerOnEndVersionIngestionLatencySensor().getAvg(), latency);
+    stats.recordOnEndVersionIngestionLatency(latency, timestamp);
+    Assert.assertEquals(stats.getOnEndVersionIngestionLatencySensor().getAvg(), latency);
   }
 
   @Test
-  public void testRecordTransformerPutErrorCount() {
+  public void testPutErrorCount() {
     DaVinciRecordTransformerStats stats = new DaVinciRecordTransformerStats();
-    stats.recordTransformerPutError(1, timestamp);
-    stats.recordTransformerPutError(1, timestamp);
-    Assert.assertEquals(stats.getRecordTransformerPutErrorCount(), 2.0);
+    stats.recordPutError(timestamp);
+    stats.recordPutError(timestamp);
+    Assert.assertEquals(stats.getPutErrorCount(), 2.0);
   }
 
   @Test
-  public void testRecordTransformerDeleteErrorCount() {
+  public void testDeleteErrorCount() {
     DaVinciRecordTransformerStats stats = new DaVinciRecordTransformerStats();
-    stats.recordTransformerDeleteError(1, timestamp);
-    stats.recordTransformerDeleteError(1, timestamp);
-    Assert.assertEquals(stats.getRecordTransformerDeleteErrorCount(), 2.0);
+    stats.recordDeleteError(timestamp);
+    stats.recordDeleteError(timestamp);
+    Assert.assertEquals(stats.getDeleteErrorCount(), 2.0);
   }
 
   @Test
@@ -78,36 +78,30 @@ public class DaVinciRecordTransformerStatsTest {
     MockTehutiReporter reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
     String storeName = Utils.getUniqueString("store");
-    String recordTransformerMetricPrefix = "." + storeName + "--";
-    String recordTransformerUsMetricPostfix = "_avg_µs.DaVinciRecordTransformerStatsGauge";
-    String recordTransformerMsMetricPostfix = "_avg_ms.DaVinciRecordTransformerStatsGauge";
+    String metricPrefix = "." + storeName + "--";
+    String metricPostfix = "_avg_ms.DaVinciRecordTransformerStatsGauge";
 
     DaVinciRecordTransformerStatsReporter recordTransformerStatsReporter =
         new DaVinciRecordTransformerStatsReporter(metricsRepository, storeName, null);
     double nullStat = NULL_INGESTION_STATS.code;
 
-    String startLatency = recordTransformerMetricPrefix + RECORD_TRANSFORMER_ON_START_VERSION_INGESTION_LATENCY
-        + recordTransformerMsMetricPostfix;
+    String startLatency = metricPrefix + RECORD_TRANSFORMER_ON_START_VERSION_INGESTION_LATENCY + metricPostfix;
     assertEquals(reporter.query(startLatency).value(), nullStat);
 
-    String endLatency = recordTransformerMetricPrefix + RECORD_TRANSFORMER_ON_END_VERSION_INGESTION_LATENCY
-        + recordTransformerMsMetricPostfix;
+    String endLatency = metricPrefix + RECORD_TRANSFORMER_ON_END_VERSION_INGESTION_LATENCY + metricPostfix;
     assertEquals(reporter.query(endLatency).value(), nullStat);
 
-    String onRecoveryLatency =
-        recordTransformerMetricPrefix + RECORD_TRANSFORMER_ON_RECOVERY_LATENCY + recordTransformerMsMetricPostfix;
+    String onRecoveryLatency = metricPrefix + RECORD_TRANSFORMER_ON_RECOVERY_LATENCY + metricPostfix;
     assertEquals(reporter.query(onRecoveryLatency).value(), nullStat);
 
-    String putLatency =
-        recordTransformerMetricPrefix + RECORD_TRANSFORMER_PUT_LATENCY + recordTransformerUsMetricPostfix;
+    String putLatency = metricPrefix + RECORD_TRANSFORMER_PUT_LATENCY + metricPostfix;
     assertEquals(reporter.query(putLatency).value(), nullStat);
 
-    String deleteLatency =
-        recordTransformerMetricPrefix + RECORD_TRANSFORMER_DELETE_LATENCY + recordTransformerUsMetricPostfix;
+    String deleteLatency = metricPrefix + RECORD_TRANSFORMER_DELETE_LATENCY + metricPostfix;
     assertEquals(reporter.query(deleteLatency).value(), nullStat);
 
     DaVinciRecordTransformerStats stats = new DaVinciRecordTransformerStats();
-    stats.recordTransformerPutLatency(latency, timestamp);
+    stats.recordPutLatency(latency, timestamp);
     recordTransformerStatsReporter.setStats(stats);
 
     assertEquals(reporter.query(putLatency).value(), latency);
@@ -119,29 +113,27 @@ public class DaVinciRecordTransformerStatsTest {
     MockTehutiReporter reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
     String storeName = Utils.getUniqueString("store");
-    String recordTransformerMetricPrefix = "." + storeName + "--";
-    String recordTransformerMetricPostfix = ".DaVinciRecordTransformerStatsGauge";
+    String metricPrefix = "." + storeName + "--";
+    String metricPostfix = ".DaVinciRecordTransformerStatsGauge";
 
     DaVinciRecordTransformerStatsReporter recordTransformerStatsReporter =
         new DaVinciRecordTransformerStatsReporter(metricsRepository, storeName, null);
     double nullStat = 0;
 
-    String transformerPutErrorCount =
-        recordTransformerMetricPrefix + RECORD_TRANSFORMER_PUT_ERROR_COUNT + recordTransformerMetricPostfix;
-    assertEquals(reporter.query(transformerPutErrorCount).value(), nullStat);
+    String putErrorCount = metricPrefix + RECORD_TRANSFORMER_PUT_ERROR_COUNT + metricPostfix;
+    assertEquals(reporter.query(putErrorCount).value(), nullStat);
 
-    String transformerDeleteErrorCount =
-        recordTransformerMetricPrefix + RECORD_TRANSFORMER_DELETE_ERROR_COUNT + recordTransformerMetricPostfix;
-    assertEquals(reporter.query(transformerDeleteErrorCount).value(), nullStat);
+    String deleteErrorCount = metricPrefix + RECORD_TRANSFORMER_DELETE_ERROR_COUNT + metricPostfix;
+    assertEquals(reporter.query(deleteErrorCount).value(), nullStat);
 
     DaVinciRecordTransformerStats stats = new DaVinciRecordTransformerStats();
 
-    stats.recordTransformerPutError(1, timestamp);
+    stats.recordPutError(timestamp);
     recordTransformerStatsReporter.setStats(stats);
-    assertEquals(reporter.query(transformerPutErrorCount).value(), 1.0);
+    assertEquals(reporter.query(putErrorCount).value(), 1.0);
 
-    stats.recordTransformerDeleteError(1, timestamp);
+    stats.recordDeleteError(timestamp);
     recordTransformerStatsReporter.setStats(stats);
-    assertEquals(reporter.query(transformerDeleteErrorCount).value(), 1.0);
+    assertEquals(reporter.query(deleteErrorCount).value(), 1.0);
   }
 }

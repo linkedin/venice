@@ -338,10 +338,10 @@ public class DaVinciClientTest {
       client2.unsubscribeAll();
 
       // DVRT metrics shouldn't be registered if DVRT isn't enabled
-      String recordTransformerMetricPrefix = "." + storeName1 + "_total--";
-      String recordTransformerMetricPostfix = "_avg_ms.DaVinciRecordTransformerStatsGauge";
-      String startLatency = recordTransformerMetricPrefix + RECORD_TRANSFORMER_ON_START_VERSION_INGESTION_LATENCY
-          + recordTransformerMetricPostfix;
+      String startLatency = String.format(
+          ".%s_total--%s_avg_ms.DaVinciRecordTransformerStatsGauge",
+          storeName1,
+          RECORD_TRANSFORMER_ON_START_VERSION_INGESTION_LATENCY);
       assertNull(metricsRepository.getMetric(startLatency));
     }
 

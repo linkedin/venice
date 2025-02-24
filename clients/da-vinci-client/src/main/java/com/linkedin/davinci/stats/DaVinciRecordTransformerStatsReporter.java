@@ -31,56 +31,46 @@ public class DaVinciRecordTransformerStatsReporter extends AbstractVeniceStatsRe
   @Override
   protected void registerStats() {
     // Latency sensors
-    registerLatencySensor(
-        RECORD_TRANSFORMER_PUT_LATENCY,
-        DaVinciRecordTransformerStats::getRecordTransformerPutLatencySensor,
-        "µs");
-    registerLatencySensor(
-        RECORD_TRANSFORMER_DELETE_LATENCY,
-        DaVinciRecordTransformerStats::getRecordTransformerDeleteLatencySensor,
-        "µs");
+    registerLatencySensor(RECORD_TRANSFORMER_PUT_LATENCY, DaVinciRecordTransformerStats::getPutLatencySensor);
+    registerLatencySensor(RECORD_TRANSFORMER_DELETE_LATENCY, DaVinciRecordTransformerStats::getDeleteLatencySensor);
     registerLatencySensor(
         RECORD_TRANSFORMER_ON_RECOVERY_LATENCY,
-        DaVinciRecordTransformerStats::getRecordTransformerOnRecoveryLatencySensor,
-        "ms");
+        DaVinciRecordTransformerStats::getOnRecoveryLatencySensor);
     registerLatencySensor(
         RECORD_TRANSFORMER_ON_START_VERSION_INGESTION_LATENCY,
-        DaVinciRecordTransformerStats::getRecordTransformerOnStartVersionIngestionLatencySensor,
-        "ms");
+        DaVinciRecordTransformerStats::getOnStartVersionIngestionLatencySensor);
     registerLatencySensor(
         RECORD_TRANSFORMER_ON_END_VERSION_INGESTION_LATENCY,
-        DaVinciRecordTransformerStats::getRecordTransformerOnEndVersionIngestionLatencySensor,
-        "ms");
+        DaVinciRecordTransformerStats::getOnEndVersionIngestionLatencySensor);
 
     // Count sensors
     registerSensor(
         new DaVinciRecordTransformerStatsReporter.DaVinciRecordTransformerStatsGauge(
             this,
-            () -> getStats().getRecordTransformerPutErrorCount(),
+            () -> getStats().getPutErrorCount(),
             0,
             RECORD_TRANSFORMER_PUT_ERROR_COUNT));
     registerSensor(
         new DaVinciRecordTransformerStatsReporter.DaVinciRecordTransformerStatsGauge(
             this,
-            () -> getStats().getRecordTransformerDeleteErrorCount(),
+            () -> getStats().getDeleteErrorCount(),
             0,
             RECORD_TRANSFORMER_DELETE_ERROR_COUNT));
   }
 
   protected void registerLatencySensor(
       String sensorBaseName,
-      Function<DaVinciRecordTransformerStats, WritePathLatencySensor> sensorFunction,
-      String unit) {
+      Function<DaVinciRecordTransformerStats, WritePathLatencySensor> sensorFunction) {
     registerSensor(
         new DaVinciRecordTransformerStatsReporter.DaVinciRecordTransformerStatsGauge(
             this,
             () -> sensorFunction.apply(getStats()).getAvg(),
-            sensorBaseName + "_avg_" + unit));
+            sensorBaseName + "_avg_ms"));
     registerSensor(
         new DaVinciRecordTransformerStatsReporter.DaVinciRecordTransformerStatsGauge(
             this,
             () -> sensorFunction.apply(getStats()).getMax(),
-            sensorBaseName + "_max_" + unit));
+            sensorBaseName + "_max_ms"));
   }
 
   protected static class DaVinciRecordTransformerStatsGauge extends AsyncGauge {

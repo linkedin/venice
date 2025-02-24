@@ -43,24 +43,6 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
     delete(key.get());
   };
 
-  @Override
-  public void onStartVersionIngestion(boolean isCurrentVersion) {
-    sleep();
-  }
-
-  @Override
-  public void onEndVersionIngestion(int currentVersion) {
-    sleep();
-  }
-
-  private void sleep() {
-    try {
-      Thread.sleep(1);
-    } catch (InterruptedException e) {
-      e.printStackTrace();
-    }
-  }
-
   private String convertUtf8ToString(Object valueObj) {
     String valueStr;
     if (valueObj instanceof Utf8) {
