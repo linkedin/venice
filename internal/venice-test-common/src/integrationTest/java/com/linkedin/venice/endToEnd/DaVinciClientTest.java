@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_ON_START_VERSION_INGESTION_LATENCY;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
@@ -335,6 +336,13 @@ public class DaVinciClientTest {
       // });
       // }
       client2.unsubscribeAll();
+
+      // DVRT metrics shouldn't be registered if DVRT isn't enabled
+      String startLatency = String.format(
+          ".%s_total--%s_avg_ms.DaVinciRecordTransformerStatsGauge",
+          storeName1,
+          RECORD_TRANSFORMER_ON_START_VERSION_INGESTION_LATENCY);
+      assertNull(metricsRepository.getMetric(startLatency));
     }
 
     // Test bootstrap-time junk removal

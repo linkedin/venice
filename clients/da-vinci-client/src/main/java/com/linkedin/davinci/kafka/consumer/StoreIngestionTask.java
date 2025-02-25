@@ -33,6 +33,7 @@ import com.linkedin.davinci.ingestion.LagType;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
+import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
@@ -252,6 +253,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final HostLevelIngestionStats hostLevelIngestionStats;
   protected final AggVersionedDIVStats versionedDIVStats;
   protected final AggVersionedIngestionStats versionedIngestionStats;
+  protected AggVersionedDaVinciRecordTransformerStats daVinciRecordTransformerStats;
   protected final BooleanSupplier isCurrentVersion;
   protected final Optional<HybridStoreConfig> hybridStoreConfig;
   protected final Consumer<DataValidationException> divErrorMetricCallback;
@@ -504,21 +506,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           recordTransformerConfig);
       this.recordTransformerDeserializersByPutSchemaId = new SparseConcurrentList<>();
 
-      versionedIngestionStats.registerTransformerLatencySensor(storeName, versionNumber);
-      versionedIngestionStats.registerTransformerLifecycleStartLatency(storeName, versionNumber);
-      versionedIngestionStats.registerTransformerLifecycleEndLatency(storeName, versionNumber);
-      versionedIngestionStats.registerTransformerErrorSensor(storeName, versionNumber);
+      daVinciRecordTransformerStats = builder.getDaVinciRecordTransformerStats();
 
       // onStartVersionIngestion called here instead of run() because this needs to finish running
       // before bootstrapping starts
-      long startTime = System.currentTimeMillis();
+      long startTime = System.nanoTime();
       recordTransformer.onStartVersionIngestion(isCurrentVersion.getAsBoolean());
-      long endTime = System.currentTimeMillis();
-      versionedIngestionStats.recordTransformerLifecycleStartLatency(
+      daVinciRecordTransformerStats.recordOnStartVersionIngestionLatency(
           storeName,
           versionNumber,
-          LatencyUtils.getElapsedTimeFromMsToMs(startTime),
-          endTime);
+          LatencyUtils.getElapsedTimeFromNSToMS(startTime),
+          System.currentTimeMillis());
     } else {
       this.recordTransformerKeyDeserializer = null;
       this.recordTransformerInputValueSchema = null;
@@ -661,7 +659,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     int partitionNumber = topicPartition.getPartitionNumber();
 
     if (recordTransformer != null) {
+      long startTime = System.nanoTime();
       recordTransformer.internalOnRecovery(storageEngine, partitionNumber, partitionStateSerializer, compressor);
+      daVinciRecordTransformerStats.recordOnRecoveryLatency(
+          storeName,
+          versionNumber,
+          LatencyUtils.getElapsedTimeFromNSToMS(startTime),
+          System.currentTimeMillis());
     }
 
     partitionToPendingConsumerActionCountMap.computeIfAbsent(partitionNumber, x -> new AtomicInteger(0))
@@ -3767,7 +3771,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         int putSchemaId = put.getSchemaId() > 0 ? put.getSchemaId() : 1;
 
         if (recordTransformer != null) {
-          long recordTransformerStartTime = System.currentTimeMillis();
+          long recordTransformerStartTime = System.nanoTime();
           ByteBuffer valueBytes = put.getPutValue();
           ByteBuffer assembledObject = chunkAssembler.bufferAndAssembleRecord(
               consumerRecord.getTopicPartition(),
@@ -3808,8 +3812,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           try {
             transformerResult = recordTransformer.transformAndProcessPut(lazyKey, lazyValue);
           } catch (Exception e) {
-            versionedIngestionStats.recordTransformerError(storeName, versionNumber, 1, currentTimeMs);
-            String errorMessage = "Record transformer experienced an error when transforming value=" + assembledObject;
+            daVinciRecordTransformerStats.recordPutError(storeName, versionNumber, currentTimeMs);
+            String errorMessage =
+                "DaVinciRecordTransformer experienced an error when processing value: " + assembledObject;
 
             throw new VeniceMessageException(errorMessage, e);
           }
@@ -3831,10 +3836,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           }
 
           put.putValue = transformedBytes;
-          versionedIngestionStats.recordTransformerLatency(
+          daVinciRecordTransformerStats.recordPutLatency(
               storeName,
               versionNumber,
-              LatencyUtils.getElapsedTimeFromMsToMs(recordTransformerStartTime),
+              LatencyUtils.getElapsedTimeFromNSToMS(recordTransformerStartTime),
               currentTimeMs);
           writeToStorageEngine(producedPartition, keyBytes, put);
         } else {
@@ -3869,7 +3874,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         if (recordTransformer != null) {
           Lazy<Object> lazyKey = Lazy.of(() -> this.recordTransformerKeyDeserializer.deserialize(keyBytes));
-          recordTransformer.processDelete(lazyKey);
+
+          long startTime = System.nanoTime();
+          try {
+            recordTransformer.processDelete(lazyKey);
+          } catch (Exception e) {
+            daVinciRecordTransformerStats.recordDeleteError(storeName, versionNumber, currentTimeMs);
+            String errorMessage = "DaVinciRecordTransformer experienced an error when deleting key: " + lazyKey.get();
+
+            throw new VeniceMessageException(errorMessage, e);
+          }
+          daVinciRecordTransformerStats.recordDeleteLatency(
+              storeName,
+              versionNumber,
+              LatencyUtils.getElapsedTimeFromNSToMS(startTime),
+              System.currentTimeMillis());
 
           // This is called here after processDelete because if the user stores their data somewhere other than
           // Da Vinci, this function needs to execute to allow them to delete the data from the appropriate store
@@ -4149,15 +4168,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // resources before exiting.
 
     if (recordTransformer != null) {
-      long startTime = System.currentTimeMillis();
+      long startTime = System.nanoTime();
       Store store = storeRepository.getStoreOrThrow(storeName);
       recordTransformer.onEndVersionIngestion(store.getCurrentVersion());
-      long endTime = System.currentTimeMillis();
-      versionedIngestionStats.recordTransformerLifecycleEndLatency(
+      daVinciRecordTransformerStats.recordOnEndVersionIngestionLatency(
           storeName,
           versionNumber,
-          LatencyUtils.getElapsedTimeFromMsToMs(startTime),
-          endTime);
+          LatencyUtils.getElapsedTimeFromNSToMS(startTime),
+          System.currentTimeMillis());
       Utils.closeQuietlyWithErrorLogged(this.recordTransformer);
     }
   }

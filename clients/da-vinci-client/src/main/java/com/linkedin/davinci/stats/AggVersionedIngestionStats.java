@@ -214,50 +214,8 @@ public class AggVersionedIngestionStats
         stat -> stat.recordNearlineLocalBrokerToReadyToServeLatency(value, timestamp));
   }
 
-  public void recordTransformerLatency(String storeName, int version, double value, long timestamp) {
-    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordTransformerLatency(value, timestamp));
-  }
-
-  public void recordTransformerLifecycleStartLatency(String storeName, int version, double value, long timestamp) {
-    recordVersionedAndTotalStat(
-        storeName,
-        version,
-        stat -> stat.recordTransformerLifecycleStartLatency(value, timestamp));
-  }
-
-  public void recordTransformerLifecycleEndLatency(String storeName, int version, double value, long timestamp) {
-    recordVersionedAndTotalStat(
-        storeName,
-        version,
-        stat -> stat.recordTransformerLifecycleEndLatency(value, timestamp));
-  }
-
-  public void recordTransformerError(String storeName, int version, double value, long timestamp) {
-    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordTransformerError(value, timestamp));
-  }
-
   public void recordMaxIdleTime(String storeName, int version, long idleTimeMs) {
     getStats(storeName, version).recordIdleTime(idleTimeMs);
-  }
-
-  public void registerTransformerLatencySensor(String storeName, int version) {
-    getStats(storeName, version).registerTransformerLatencySensor();
-    getTotalStats(storeName).registerTransformerLatencySensor();
-  }
-
-  public void registerTransformerLifecycleStartLatency(String storeName, int version) {
-    getStats(storeName, version).registerTransformerLifecycleStartLatencySensor();
-    getTotalStats(storeName).registerTransformerLifecycleStartLatencySensor();
-  }
-
-  public void registerTransformerLifecycleEndLatency(String storeName, int version) {
-    getStats(storeName, version).registerTransformerLifecycleEndLatencySensor();
-    getTotalStats(storeName).registerTransformerLifecycleEndLatencySensor();
-  }
-
-  public void registerTransformerErrorSensor(String storeName, int version) {
-    getStats(storeName, version).registerTransformerErrorSensor();
-    getTotalStats(storeName).registerTransformerErrorSensor();
   }
 
   public void recordBatchProcessingRequest(String storeName, int version, int size, long timestamp) {
