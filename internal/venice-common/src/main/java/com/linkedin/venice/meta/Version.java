@@ -8,6 +8,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.views.VeniceView;
 import java.time.Duration;
 import java.util.HashMap;
@@ -363,11 +364,16 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
     return kafkaTopic.substring(0, kafkaTopic.lastIndexOf(STREAM_REPROCESSING_TOPIC_SUFFIX));
   }
 
+  // arjun fix this
   static String parseStoreFromRealTimeTopic(String kafkaTopic) {
     if (!isRealTimeTopic(kafkaTopic)) {
       throw new VeniceException("Kafka topic: " + kafkaTopic + " is not a real-time topic");
     }
-    if (kafkaTopic.endsWith(REAL_TIME_TOPIC_SUFFIX)) {
+    int lastIndexOfVersionSeparator = kafkaTopic.lastIndexOf(VERSION_SEPARATOR);
+    // we only care about the prefix, so providing topic in place of store should work
+    if (Utils.isFollowingRTVersioning(kafkaTopic) && lastIndexOfVersionSeparator != -1) {
+      return kafkaTopic.substring(0, lastIndexOfVersionSeparator);
+    } else if (kafkaTopic.endsWith(REAL_TIME_TOPIC_SUFFIX)) {
       return kafkaTopic.substring(0, kafkaTopic.length() - REAL_TIME_TOPIC_SUFFIX.length());
     }
     return kafkaTopic.substring(0, kafkaTopic.length() - SEPARATE_REAL_TIME_TOPIC_SUFFIX.length());

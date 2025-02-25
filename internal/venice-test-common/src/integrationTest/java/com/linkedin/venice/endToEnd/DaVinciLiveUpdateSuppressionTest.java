@@ -156,6 +156,10 @@ public class DaVinciLiveUpdateSuppressionTest {
             new DaVinciConfig(),
             extraBackendConfigMap);
 
+    cluster.useControllerClient(client -> {
+      storeInfo.set(client.getStore(storeName).getStore());
+    });
+
     try (CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory();
         DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient();
         VeniceWriter<Object, Object, byte[]> realTimeProducer = vwFactory.createVeniceWriter(

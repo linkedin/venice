@@ -209,6 +209,8 @@ public class IngestionHeartBeatTest {
         });
       }
 
+      storeInfo = TestUtils.assertCommand(parentControllerClient.getStore(storeName)).getStore();
+
       // create consumer to consume from RT/VT to verify HB and Leader completed header
       for (int dc = 0; dc < NUMBER_OF_CHILD_DATACENTERS; dc++) {
         PubSubBrokerWrapper pubSubBrokerWrapper =

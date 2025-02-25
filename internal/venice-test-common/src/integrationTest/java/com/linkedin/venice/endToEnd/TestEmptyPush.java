@@ -136,8 +136,9 @@ public class TestEmptyPush {
       assertNotNull(
           dictForVersion1,
           "Dict shouldn't be null for the empty push to a hybrid store without any records in RT");
-      PubSubTopic storeRealTimeTopic =
-          venice.getPubSubTopicRepository().getTopic(Utils.getRealTimeTopicName(storeInfo));
+
+      String realTimeTopic = Utils.getRealTimeTopicName(controllerClient.getStore(storeName).getStore());
+      PubSubTopic storeRealTimeTopic = venice.getPubSubTopicRepository().getTopic(realTimeTopic);
       assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(storeRealTimeTopic));
       // One time refresh of router metadata.
       venice.refreshAllRouterMetaData();

@@ -57,12 +57,12 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.samza.config.MapConfig;
-import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -150,7 +150,7 @@ public class TestActiveActiveReplicationForIncPush {
    * 1. Create a store with 1 partition.
    * 2. Perform a batch push, resulting in a batch version with 1 partition.
    * 3. Update the store to have 3 partitions and convert it into a hybrid store.
-   * 4. Start real-time writes using push type {@link com.linkedin.venice.meta.Version.PushType#STREAM}.
+   * 4. Start real-time writes using push type {@link Version.PushType#STREAM}.
    * 5. Perform a full push, which creates a hybrid version with 3 partitions. This push results in an error
    *    because, after the topic switch to real-time consumers, partitions 1 and 2 of the real-time topic cannot
    *    be found, as it has only 1 partition (partition: 0).
@@ -171,6 +171,8 @@ public class TestActiveActiveReplicationForIncPush {
     File inputDirBatch = getTempDataDirectory();
     String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
     String inputDirPathBatch = "file:" + inputDirBatch.getAbsolutePath();
+    AtomicReference<Optional<Version>> version = new AtomicReference<>();
+
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
       String storeName = Utils.getUniqueString("store");
       Properties propsBatch =
@@ -180,10 +182,10 @@ public class TestActiveActiveReplicationForIncPush {
       String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
       String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
 
-      TestUtils.assertCommand(parentControllerClient.createNewStore(storeName, "owner", keySchemaStr, valueSchemaStr));
+      assertCommand(parentControllerClient.createNewStore(storeName, "owner", keySchemaStr, valueSchemaStr));
       UpdateStoreQueryParams updateStoreParams1 =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA).setPartitionCount(1);
-      TestUtils.assertCommand(parentControllerClient.updateStore(storeName, updateStoreParams1));
+      assertCommand(parentControllerClient.updateStore(storeName, updateStoreParams1));
 
       // Run a batch push first to create a batch version with 1 partition
       try (VenicePushJob job = new VenicePushJob("Test push job batch with NR + A/A all fabrics", propsBatch)) {
@@ -191,16 +193,16 @@ public class TestActiveActiveReplicationForIncPush {
       }
 
       // wait until version is created and verify the partition count
-      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+      waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
         StoreResponse storeResponse = assertCommand(parentControllerClient.getStore(storeName));
         StoreInfo storeInfo = storeResponse.getStore();
         assertNotNull(storeInfo, "Store info is null.");
         assertNull(storeInfo.getHybridStoreConfig(), "Hybrid store config is not null.");
         assertNotNull(storeInfo.getVersion(1), "Version 1 is not present.");
-        Optional<Version> version = storeInfo.getVersion(1);
-        assertTrue(version.isPresent(), "Version 1 is not present.");
-        assertNull(version.get().getHybridStoreConfig(), "Version level hybrid store config is not null.");
-        assertEquals(version.get().getPartitionCount(), 1, "Partition count is not 1.");
+        version.set(storeInfo.getVersion(1));
+        assertTrue(version.get().isPresent(), "Version 1 is not present.");
+        assertNull(version.get().get().getHybridStoreConfig(), "Version level hybrid store config is not null.");
+        assertEquals(version.get().get().getPartitionCount(), 1, "Partition count is not 1.");
       });
 
       // Update the store to have 3 partitions and convert it into a hybrid store
@@ -209,19 +211,19 @@ public class TestActiveActiveReplicationForIncPush {
               .setPartitionCount(3)
               .setHybridOffsetLagThreshold(TEST_TIMEOUT / 2)
               .setHybridRewindSeconds(2L);
-      TestUtils.assertCommand(parentControllerClient.updateStore(storeName, updateStoreParams));
+      assertCommand(parentControllerClient.updateStore(storeName, updateStoreParams));
 
-      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+      waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
         StoreResponse storeResponse = assertCommand(parentControllerClient.getStore(storeName));
         StoreInfo storeInfo = storeResponse.getStore();
         assertNotNull(storeInfo, "Store info is null.");
         assertNotNull(storeInfo.getHybridStoreConfig(), "Hybrid store config is null.");
         // verify that there is just one version and it is batch version
         assertEquals(storeInfo.getVersions().size(), 1, "Version count is not 1.");
-        Optional<Version> version = storeInfo.getVersion(1);
-        assertTrue(version.isPresent(), "Version 1 is not present.");
-        assertNull(version.get().getHybridStoreConfig(), "Version level hybrid store config is not null.");
-        assertEquals(version.get().getPartitionCount(), 1, "Partition count is not 1.");
+        version.set(storeInfo.getVersion(1));
+        assertTrue(version.get().isPresent(), "Version 1 is not present.");
+        assertNull(version.get().get().getHybridStoreConfig(), "Version level hybrid store config is not null.");
+        assertEquals(version.get().get().getPartitionCount(), 1, "Partition count is not 1.");
       });
 
       // Push job step was disabled to reproduce the issue
@@ -231,16 +233,16 @@ public class TestActiveActiveReplicationForIncPush {
       }
 
       // wait until hybrid version is created and verify the partition count
-      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+      waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
         StoreResponse storeResponse = assertCommand(parentControllerClient.getStore(storeName));
         StoreInfo storeInfo = storeResponse.getStore();
         assertNotNull(storeInfo, "Store info is null.");
         assertNotNull(storeInfo.getHybridStoreConfig(), "Hybrid store config is null.");
         assertNotNull(storeInfo.getVersion(2), "Version 2 is not present.");
-        Optional<Version> version = storeInfo.getVersion(2);
-        assertTrue(version.isPresent(), "Version 2 is not present.");
-        assertNotNull(version.get().getHybridStoreConfig(), "Version level hybrid store config is null.");
-        assertEquals(version.get().getPartitionCount(), 3, "Partition count is not 3.");
+        version.set(storeInfo.getVersion(2));
+        assertTrue(version.get().isPresent(), "Version 2 is not present.");
+        assertNotNull(version.get().get().getHybridStoreConfig(), "Version level hybrid store config is null.");
+        assertEquals(version.get().get().getPartitionCount(), 3, "Partition count is not 3.");
       });
 
       VeniceSystemFactory factory = new VeniceSystemFactory();
@@ -250,11 +252,11 @@ public class TestActiveActiveReplicationForIncPush {
 
       PubSubTopicRepository pubSubTopicRepository =
           childDatacenters.get(1).getClusters().get(clusterName).getPubSubTopicRepository();
-      PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
+      PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(version.get().get()));
 
       // wait for 120 secs and check producer getTopicName
-      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
-        Assert.assertEquals(veniceProducer.getTopicName(), realTimeTopic.getName());
+      waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+        assertEquals(veniceProducer.getTopicName(), realTimeTopic.getName());
       });
 
       try (TopicManager topicManager =
@@ -317,9 +319,9 @@ public class TestActiveActiveReplicationForIncPush {
       propsInc2.put(SOURCE_GRID_FABRIC, dcNames[1]);
       TestWriteUtils.writeSimpleAvroFileWithString2StringSchema3(inputDirInc2);
 
-      TestUtils.assertCommand(parentControllerClient.createNewStore(storeName, "owner", keySchemaStr, valueSchemaStr));
+      assertCommand(parentControllerClient.createNewStore(storeName, "owner", keySchemaStr, valueSchemaStr));
 
-      StoreInfo storeInfo = TestUtils.assertCommand(parentControllerClient.getStore(storeName)).getStore();
+      assertCommand(parentControllerClient.getStore(storeName));
 
       verifyHybridAndIncPushConfig(
           storeName,
@@ -339,7 +341,7 @@ public class TestActiveActiveReplicationForIncPush {
               .setNativeReplicationSourceFabric("dc-2")
               .setSeparateRealTimeTopicEnabled(isSeparateRealTimeTopicEnabled);
 
-      TestUtils.assertCommand(parentControllerClient.updateStore(storeName, updateStoreParams));
+      assertCommand(parentControllerClient.updateStore(storeName, updateStoreParams));
 
       // Print all the kafka cluster URLs
       LOGGER.info("KafkaURL {}:{}", dcNames[0], childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
@@ -369,8 +371,10 @@ public class TestActiveActiveReplicationForIncPush {
       // Run a batch push first
       try (VenicePushJob job = new VenicePushJob("Test push job batch with NR + A/A all fabrics", propsBatch)) {
         job.run();
-        Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
+        assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
       }
+
+      StoreInfo storeInfo = parentControllerClient.getStore(storeName).getStore();
       if (isSeparateRealTimeTopicEnabled) {
         verifyForSeparateIncrementalPushTopic(storeName, propsInc1, 2, storeInfo);
       } else {
@@ -409,8 +413,8 @@ public class TestActiveActiveReplicationForIncPush {
       // TODO: Once server part separate topic ingestion logic is ready, we should avoid runAsync here and add extra
       // check
       CompletableFuture.runAsync(job::run);
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-        Assert.assertEquals(
+      waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+        assertEquals(
             job.getKafkaUrl(),
             childDatacenters.get(dcIndexForSourceRegion).getKafkaBrokerWrapper().getAddress());
         for (int dcIndex = 0; dcIndex < childDatacenters.size(); dcIndex++) {
@@ -421,15 +425,15 @@ public class TestActiveActiveReplicationForIncPush {
           // count.
           // DC 2 separeate real-time topic should get enough data.
           if (dcIndex == dcIndexForSourceRegion) {
-            Assert.assertTrue(
+            assertTrue(
                 separateTopicOffset > TestWriteUtils.DEFAULT_USER_DATA_RECORD_COUNT,
                 "Records # is not enough: " + separateTopicOffset);
-            Assert.assertTrue(
+            assertTrue(
                 realTimeTopicOffset < TestWriteUtils.DEFAULT_USER_DATA_RECORD_COUNT / 10,
                 "Records # is more than expected: " + realTimeTopicOffset);
           } else {
-            Assert.assertTrue(separateTopicOffset > 0, "Records # is not enough: " + separateTopicOffset);
-            Assert.assertTrue(
+            assertTrue(separateTopicOffset > 0, "Records # is not enough: " + separateTopicOffset);
+            assertTrue(
                 realTimeTopicOffset < TestWriteUtils.DEFAULT_USER_DATA_RECORD_COUNT / 10,
                 "Records # is more than expected: " + realTimeTopicOffset);
           }
@@ -444,7 +448,7 @@ public class TestActiveActiveReplicationForIncPush {
     // Run inc push with source fabric preference taking effect.
     try (VenicePushJob job = new VenicePushJob("Test push job incremental with NR + A/A from dc-2", propsInc1)) {
       job.run();
-      Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
+      assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
     }
 
     // Verify
@@ -453,14 +457,14 @@ public class TestActiveActiveReplicationForIncPush {
       // Verify the current version should be 1.
       Version version =
           childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(1);
-      Assert.assertNotNull(version, "Version 1 is not present for DC: " + dcNames[i]);
+      assertNotNull(version, "Version 1 is not present for DC: " + dcNames[i]);
     }
     NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 150, 2);
 
     // Run another inc push with a different source fabric preference taking effect.
     try (VenicePushJob job = new VenicePushJob("Test push job incremental with NR + A/A from dc-1", propsInc2)) {
       job.run();
-      Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
+      assertEquals(job.getKafkaUrl(), childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
     }
     NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 200, 3);
   }

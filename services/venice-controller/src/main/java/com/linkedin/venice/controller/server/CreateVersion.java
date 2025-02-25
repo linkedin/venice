@@ -258,7 +258,7 @@ public class CreateVersion extends AbstractRoute {
         responseTopic = Utils.getRealTimeTopicName(version);
       }
     } else if (pushType == PushType.STREAM) {
-      responseTopic = Version.composeRealTimeTopic(storeName);
+      responseTopic = Utils.getRealTimeTopicName(version);
     } else if (pushType == PushType.STREAM_REPROCESSING) {
       responseTopic = Version.composeStreamReprocessingTopic(storeName, version.getNumber());
     } else {
@@ -378,7 +378,7 @@ public class CreateVersion extends AbstractRoute {
     }
     response.setPartitions(referenceHybridVersion.getPartitionCount());
     response.setCompressionStrategy(CompressionStrategy.NO_OP);
-    response.setKafkaTopic(Version.composeRealTimeTopic(store.getName()));
+    response.setKafkaTopic(Utils.getRealTimeTopicName(store));
   }
 
   /**

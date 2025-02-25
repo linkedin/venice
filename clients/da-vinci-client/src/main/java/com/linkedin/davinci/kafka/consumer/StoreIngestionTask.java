@@ -393,7 +393,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.versionTopic = pubSubTopicRepository.getTopic(kafkaVersionTopic);
     this.storeName = versionTopic.getStoreName();
     this.isUserSystemStore = VeniceSystemStoreUtils.isUserSystemStore(storeName);
-    this.realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(version));
+    // using store instead of version is safer, because the current version may be non-hybrid
+    this.realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
     this.separateRealTimeTopic = version.isSeparateRealTimeTopicEnabled()
         ? pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(storeName))
         : null;

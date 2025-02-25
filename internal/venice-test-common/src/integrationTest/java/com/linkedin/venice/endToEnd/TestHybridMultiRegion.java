@@ -109,8 +109,6 @@ public class TestHybridMultiRegion {
 
       // Create store at parent, make it a hybrid store
       controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString());
-      StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
-      String realTimeTopicName = Utils.getRealTimeTopicName(storeInfo);
       controllerClient.updateStore(
           storeName,
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
@@ -142,6 +140,9 @@ public class TestHybridMultiRegion {
         Assert.assertFalse(jobStatus.isError(), "Error in getting JobStatusResponse: " + jobStatus.getError());
         assertEquals(jobStatus.getStatus(), "COMPLETED");
       });
+
+      StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
+      String realTimeTopicName = Utils.getRealTimeTopicName(storeInfo);
 
       // And real-time topic should exist now.
       assertTrue(
