@@ -91,6 +91,8 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
@@ -101,6 +103,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.ByteUtils;
@@ -2409,9 +2412,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           Duration.ofMillis(10),
           Duration.ofMillis(500),
           Duration.ofSeconds(5),
-          Collections.singletonList(VeniceException.class));
+          Arrays.asList(PubSubTopicDoesNotExistException.class, PubSubOpTimeoutException.class, VeniceException.class));
+    } catch (PubSubTopicDoesNotExistException | PubSubOpTimeoutException e) {
+      LOGGER.error("Failed to get end offset for topic-partition: {} even after 10 retries", topicPartition, e);
+      return StatsErrorCode.LAG_MEASUREMENT_FAILURE.code;
     } catch (Exception e) {
-      LOGGER.error("Could not find latest offset for {} even after 5 retries", pubSubTopic.getName());
+      LOGGER.error("Could not find latest offset for {} even after 10 retries", pubSubTopic.getName());
       return -1;
     }
   }
