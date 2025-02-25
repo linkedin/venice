@@ -182,7 +182,7 @@ public class PushStatusCollector {
         // Mark that there is a dvc heartbeat reported for this version
         int versionNum = Version.parseVersionFromVersionTopicName(pushStatus.topicName);
         Version version = store.getVersion(versionNum);
-        if (!version.getIsDavinciHeartbeatReported()) {
+        if (version != null && !version.getIsDavinciHeartbeatReported()) {
           store.updateVersionForDaVinciHeartbeat(versionNum, true);
           store.setIsDavinciHeartbeatReported(true);
           storeRepository.updateStore(store);
