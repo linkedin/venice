@@ -2095,6 +2095,16 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
+   * Unsupported operation in the parent controller.
+   */
+  @Override
+  public void setStoreLargestUsedRTVersion(String clusterName, String storeName, int versionNumber) {
+    throw new VeniceUnsupportedOperationException(
+        "setStoreLargestUsedRTVersion",
+        "This is only supported in the Child Controller.");
+  }
+
+  /**
    * Update the owner of a specified store by sending {@link AdminMessageType#SET_STORE_OWNER SET_STORE_OWNER} admin message
    * to the admin topic.
    */
