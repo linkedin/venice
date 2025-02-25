@@ -855,7 +855,7 @@ public class RouterServer extends AbstractVeniceService {
     // Graceful shutdown: Wait till all the requests are drained
     try {
       RetryUtils.executeWithMaxAttempt(() -> {
-        if (RouterHttpRequestStats.hasInFlightRequests()) {
+        if (hasInFlightRequest()) {
           throw new VeniceException("There are still in-flight requests in router");
         }
       },
@@ -925,6 +925,10 @@ public class RouterServer extends AbstractVeniceService {
 
   public ReadOnlySchemaRepository getSchemaRepository() {
     return schemaRepository;
+  }
+
+  public boolean hasInFlightRequest() {
+    return RouterHttpRequestStats.hasInFlightRequests();
   }
 
   private void handleExceptionInStartServices(VeniceException e, boolean async) throws VeniceException {
