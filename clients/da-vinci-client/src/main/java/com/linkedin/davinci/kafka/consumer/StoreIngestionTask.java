@@ -2413,12 +2413,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           Duration.ofMillis(500),
           Duration.ofSeconds(5),
           Arrays.asList(PubSubTopicDoesNotExistException.class, PubSubOpTimeoutException.class, VeniceException.class));
-    } catch (PubSubTopicDoesNotExistException | PubSubOpTimeoutException e) {
+    } catch (Exception e) {
       LOGGER.error("Failed to get end offset for topic-partition: {} even after 10 retries", topicPartition, e);
       return StatsErrorCode.LAG_MEASUREMENT_FAILURE.code;
-    } catch (Exception e) {
-      LOGGER.error("Could not find latest offset for {} even after 10 retries", pubSubTopic.getName());
-      return -1;
     }
   }
 
