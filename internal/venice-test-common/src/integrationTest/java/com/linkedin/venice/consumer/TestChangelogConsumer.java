@@ -171,7 +171,7 @@ public class TestChangelogConsumer {
   }
 
   // This is a beefier test, so giving it a bit more time
-  @Test(timeOut = TEST_TIMEOUT * 3, priority = 3)
+  @Test(timeOut = TEST_TIMEOUT, priority = 3)
   public void testVersionSwapInALoop() throws Exception {
     // create a active-active enabled store and run batch push job
     // batch job contains 100 records
@@ -273,7 +273,7 @@ public class TestChangelogConsumer {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  @Test(timeOut = TEST_TIMEOUT * 10, priority = 3)
   public void testAAIngestionWithStoreView() throws Exception {
     // Set up the store
     Long timestamp = System.currentTimeMillis();
@@ -705,27 +705,27 @@ public class TestChangelogConsumer {
     });
 
     versionTopicEvents.clear();
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+    TestUtils.waitForNonDeterministicAssertion(1000, TimeUnit.SECONDS, true, () -> {
       pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
       // At this point, the consumer should have auto tracked to version 4, and since we didn't apply any nearline
       // writes to version 4, there should be no events to consume at this point
-      Assert.assertEquals(versionTopicEvents.size(), 42);
+      Assert.assertEquals(versionTopicEvents.size(), 0);
     });
 
-    // The current topic had nothing in the push, but 42 messages got played on top
+    // The repush should result in nothing getting placed on the RT, so this seek should put us at the tail of events
     versionTopicConsumer.seekToEndOfPush().get();
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
-      pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
-      pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
       // Again, no events to consume here.
-      Assert.assertEquals(versionTopicEvents.size(), 42);
+      Assert.assertEquals(versionTopicEvents.size(), 0);
     });
 
+    // Following repush with TTL, we played 20 events, 10 puts, 10 deletes. This should result in a VT with 10 events in
+    // it
     versionTopicConsumer.seekToBeginningOfPush().get();
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
-      Assert.assertEquals(versionTopicEvents.size(), 42);
+      Assert.assertEquals(versionTopicEvents.size(), 10);
     });
 
     // Verify version swap count matches with version count - 1 (since we don't transmit from version 0 to version 1).

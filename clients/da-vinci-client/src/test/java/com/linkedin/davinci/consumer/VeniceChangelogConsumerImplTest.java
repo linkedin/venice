@@ -203,7 +203,8 @@ public class VeniceChangelogConsumerImplTest {
     ChangelogClientConfig changelogClientConfig = getChangelogClientConfig(d2ControllerClient).setViewName("");
 
     VeniceChangelogConsumerImpl mockInternalSeekConsumer = Mockito.mock(VeniceChangelogConsumerImpl.class);
-    Mockito.when(mockInternalSeekConsumer.subscribe(any())).thenReturn(CompletableFuture.completedFuture(null));
+    Mockito.when(mockInternalSeekConsumer.internalSubscribe(any(), any()))
+        .thenReturn(CompletableFuture.completedFuture(null));
     Mockito.when(mockInternalSeekConsumer.getPubSubConsumer()).thenReturn(mockPubSubConsumer);
     prepareChangeCaptureRecordsToBePolled(
         0L,
@@ -244,7 +245,7 @@ public class VeniceChangelogConsumerImplTest {
 
     veniceChangelogConsumer.seekToEndOfPush(partitionSet).get();
 
-    Mockito.verify(mockInternalSeekConsumer).subscribe(partitionSet);
+    Mockito.verify(mockInternalSeekConsumer).internalSubscribe(partitionSet, oldVersionTopic);
     Mockito.verify(mockInternalSeekConsumer).unsubscribe(partitionSet);
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(oldVersionTopic, 0);
     Mockito.verify(mockPubSubConsumer).subscribe(pubSubTopicPartition, 10);
@@ -426,19 +427,25 @@ public class VeniceChangelogConsumerImplTest {
     Set<PubSubTopicPartition> topicPartitionSet = new HashSet<>();
     topicPartitionSet.add(topicPartition);
     Mockito.when(mockConsumer.getTopicAssignment()).thenReturn(topicPartitionSet);
-    Mockito.when(mockConsumer.seekToEndOfPush(Mockito.anySet())).thenReturn(CompletableFuture.completedFuture(null));
+    Mockito.when(mockConsumer.internalSeekToEndOfPush(Mockito.anySet(), Mockito.any()))
+        .thenReturn(CompletableFuture.completedFuture(null));
 
     String storeName = "Leppalúði_store";
 
     NativeMetadataRepositoryViewAdapter mockRepository = Mockito.mock(NativeMetadataRepositoryViewAdapter.class);
+
+    Version mockVersion = Mockito.mock(Version.class);
+    Mockito.when(mockVersion.kafkaTopicName()).thenReturn(storeName + "_v5");
+
     Store mockStore = Mockito.mock(Store.class);
     Mockito.when(mockStore.getCurrentVersion()).thenReturn(5);
     Mockito.when(mockRepository.getStore(storeName)).thenReturn(mockStore);
+    Mockito.when(mockStore.getVersion(5)).thenReturn(mockVersion);
 
     VersionSwapDataChangeListener changeListener =
         new VersionSwapDataChangeListener(mockConsumer, mockRepository, storeName, "");
-    changeListener.handleStoreChanged(null);
-    Mockito.verify(mockConsumer).seekToEndOfPush(Mockito.anySet());
+    changeListener.handleStoreChanged(mockStore);
+    Mockito.verify(mockConsumer).internalSeekToEndOfPush(Mockito.anySet(), Mockito.any());
 
   }
 

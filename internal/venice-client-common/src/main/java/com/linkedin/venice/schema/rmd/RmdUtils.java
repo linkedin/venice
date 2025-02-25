@@ -97,6 +97,8 @@ public class RmdUtils {
       }
       if (advancedOffset.get(i) < baseOffset.get(i)) {
         return false;
+      } else if (advancedOffset.get(i) > baseOffset.get(i)) {
+        return true;
       }
     }
     return true;
