@@ -145,8 +145,7 @@ public class RealTimeTopicSwitcher {
      */
     createRealTimeTopicIfNeeded(store, version, srcTopicName, hybridStoreConfig.get());
     if (version != null && version.isSeparateRealTimeTopicEnabled()) {
-      PubSubTopic separateRealTimeTopic =
-          pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(store.getName()));
+      PubSubTopic separateRealTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
       createRealTimeTopicIfNeeded(store, version, separateRealTimeTopic, hybridStoreConfig.get());
     }
   }
