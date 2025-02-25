@@ -1493,7 +1493,7 @@ public class DaVinciClientTest {
   }
 
   private void runIncrementalPush(String storeName, String incrementalPushVersion, int keyCount) throws Exception {
-    String realTimeTopicName = Version.composeRealTimeTopic(storeName);
+    String realTimeTopicName = storeName + "_v1" + Version.REAL_TIME_TOPIC_SUFFIX;
     VeniceWriterFactory vwFactory =
         IntegrationTestPushUtils.getVeniceWriterFactory(cluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory);
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);

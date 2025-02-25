@@ -576,8 +576,8 @@ public class TestVeniceHelixAdmin {
     doReturn(storeName).when(store).getName();
     doReturn(storeName).when(referenceHybridVersion).getStoreName();
     doReturn(partitionCount).when(referenceHybridVersion).getPartitionCount();
-    PubSubTopic separateRtTopic = topicRepository.getTopic(Version.composeSeparateRealTimeTopic(storeName));
     PubSubTopic rtTopic = topicRepository.getTopic(Utils.getRealTimeTopicName(referenceHybridVersion));
+    PubSubTopic separateRtTopic = topicRepository.getTopic(Utils.getSeparateRealTimeTopicName(rtTopic.getName()));
 
     VeniceHelixAdmin veniceHelixAdmin0 = mock(VeniceHelixAdmin.class);
     doReturn(topicRepository).when(veniceHelixAdmin0).getPubSubTopicRepository();
