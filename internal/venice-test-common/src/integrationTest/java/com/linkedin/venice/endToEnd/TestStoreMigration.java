@@ -15,6 +15,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -208,6 +209,9 @@ public class TestStoreMigration {
 
     StoreInfo storeInfo = new ControllerClient(destClusterName, parentControllerUrl).getStore(storeName).getStore();
     Assert.assertEquals(storeInfo.getLargestUsedRTVersionNumber(), 2);
+    Assert.assertEquals(
+        storeInfo.getHybridStoreConfig().getRealTimeTopicName(),
+        storeName + "_v1" + Version.REAL_TIME_TOPIC_SUFFIX);
 
     // Test abort migration on parent controller
     try (ControllerClient srcParentControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
@@ -535,6 +539,7 @@ public class TestStoreMigration {
             .setHybridOffsetLagThreshold(2L)
             .setHybridStoreDiskQuotaEnabled(true)
             .setLargestUsedRTVersionNumber(2)
+            .setRealTimeTopicName(props.getProperty(VENICE_STORE_NAME_PROP) + "_v1" + Version.REAL_TIME_TOPIC_SUFFIX)
             .setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT)
             .setStorageNodeReadQuotaEnabled(true); // enable this for using fast client
     IntegrationTestPushUtils.createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreQueryParams)

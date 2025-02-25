@@ -145,8 +145,7 @@ public class RealTimeTopicSwitcher {
      */
     createRealTimeTopicIfNeeded(store, version, srcTopicName, hybridStoreConfig.get());
     if (version != null && version.isSeparateRealTimeTopicEnabled()) {
-      PubSubTopic separateRealTimeTopic =
-          pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(store.getName()));
+      PubSubTopic separateRealTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
       createRealTimeTopicIfNeeded(store, version, separateRealTimeTopic, hybridStoreConfig.get());
     }
   }
@@ -232,7 +231,7 @@ public class RealTimeTopicSwitcher {
     // if a previous version didn't have an RT, then there will be no
     // version consuming the topic switch message. We'll transmit the version switch
     // message so long as there exists some RT
-    if (!topicManager.containsTopic(pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(store.getName())))) {
+    if (!topicManager.containsTopic(pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(nextStoreVersion)))) {
       // NoOp
       return;
     }
