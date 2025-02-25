@@ -74,6 +74,7 @@ public class AdminOperationSerializerTest {
       byte[] serializedBytes = adminOperationSerializer.serialize(adminMessage, 74);
 
       // Deserialize the serialized bytes back into an AdminOperation object
+      // TODO: test that all the new fields only have default values, after the final deserialization.
       AdminOperation deserializedOperation = adminOperationSerializer.deserialize(ByteBuffer.wrap(serializedBytes), 74);
       UpdateStore deserializedOperationPayloadUnion = (UpdateStore) deserializedOperation.getPayloadUnion();
       assertEquals(deserializedOperationPayloadUnion.clusterName.toString(), "clusterName");
