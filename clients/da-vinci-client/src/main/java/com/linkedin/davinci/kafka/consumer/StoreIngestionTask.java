@@ -185,6 +185,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private static final int MAX_KILL_CHECKING_ATTEMPTS = 10;
   private static final int CHUNK_MANIFEST_SCHEMA_ID =
       AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+  private static final int GLOBAL_RT_DIV_STATE_SCHEMA_ID =
+      AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
 
   protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
@@ -2472,6 +2474,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return false;
     }
 
+    // Just a sanity check for something that shouldn't ever happen. Skip it and log a warning.
+    if (record.getKey().isGlobalRtDiv() && record.getTopic().isRealTime()) {
+      LOGGER.warn("Skipping Global RT DIV message from realtime topic partition: {}", record.getTopicPartition());
+      return false;
+    }
+
     if (partitionConsumptionState.isEndOfPushReceived() && partitionConsumptionState.isBatchOnly()) {
       KafkaKey key = record.getKey();
       KafkaMessageEnvelope value = record.getValue();
@@ -3928,7 +3936,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private void waitReadyToProcessRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record)
       throws InterruptedException {
     KafkaMessageEnvelope kafkaValue = record.getValue();
-    if (record.getKey().isControlMessage() || kafkaValue == null) {
+    if (record.getKey().isControlMessage() || record.getKey().isGlobalRtDiv() || kafkaValue == null) {
       return;
     }
 
