@@ -119,13 +119,14 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
             List<Store> stores = veniceParentHelixAdmin.getAllStores(cluster);
             for (Store store: stores) {
-              if (StringUtils.isEmpty(store.getTargetSwapRegion())) {
-                continue;
-              }
-
               int targetVersionNum = store.getLargestUsedVersionNumber();
               Version targetVersion = store.getVersion(targetVersionNum);
               if (targetVersion == null) {
+                continue;
+              }
+
+              String targetRegionsString = targetVersion.getTargetSwapRegion();
+              if (StringUtils.isEmpty(targetRegionsString)) {
                 continue;
               }
 
@@ -139,7 +140,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               // proceeding further
               String storeName = store.getName();
               String kafkaTopicName = Version.composeKafkaTopic(storeName, targetVersionNum);
-              Set<String> targetRegions = RegionUtils.parseRegionsFilterList(store.getTargetSwapRegion());
+              Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetRegionsString);
               Map<String, Long> storePushCompletionTimes = storePushCompletionTimeCache.getIfPresent(kafkaTopicName);
               if (storePushCompletionTimes != null) {
                 if (!didWaitTimeElapseInTargetRegions(
@@ -159,32 +160,34 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                   veniceParentHelixAdmin.getCurrentVersionsForMultiColos(cluster, storeName);
               Set<String> remainingRegions = getRegionsForVersionSwap(coloToVersions, targetRegions);
 
-              StoreResponse targetRegionStoreResponse =
-                  getStoreForRegion(cluster, getTargetRegion(targetRegions), storeName);
-              if (targetRegionStoreResponse.isError()) {
-                LOGGER.warn("Got error when fetching targetRegionStore: {}", targetRegionStoreResponse.getError());
-                continue;
-              }
-
-              StoreInfo targetRegionStore = targetRegionStoreResponse.getStore();
-              Optional<Version> version = targetRegionStore.getVersion(targetVersionNum);
-              if (!version.isPresent()) {
-                LOGGER.warn(
-                    "Unable to find version {} for store: {} in regions: {}",
-                    targetVersionNum,
-                    storeName,
-                    store.getTargetSwapRegion());
-                continue;
-              }
-
               // Do not perform version swap for davinci stores
               // TODO remove this check once DVC delayed ingestion is completed
-              if (version.get().getIsDavinciHeartbeatReported()) {
-                LOGGER.info(
-                    "Skipping version swap for store: {} on version: {} as it is davinci",
-                    storeName,
-                    targetVersionNum);
-                continue;
+              if (veniceControllerMultiClusterConfig.isDeferredVersionSwapServiceWithDvcHeartbeatEnabled()) {
+                StoreResponse targetRegionStoreResponse =
+                    getStoreForRegion(cluster, getTargetRegion(targetRegions), storeName);
+                if (targetRegionStoreResponse.isError()) {
+                  LOGGER.warn("Got error when fetching targetRegionStore: {}", targetRegionStoreResponse.getError());
+                  continue;
+                }
+
+                StoreInfo targetRegionStore = targetRegionStoreResponse.getStore();
+                Optional<Version> version = targetRegionStore.getVersion(targetVersionNum);
+                if (!version.isPresent()) {
+                  LOGGER.warn(
+                      "Unable to find version {} for store: {} in regions: {}",
+                      targetVersionNum,
+                      storeName,
+                      targetRegionsString);
+                  continue;
+                }
+
+                if (version.get().getIsDavinciHeartbeatReported()) {
+                  LOGGER.info(
+                      "Skipping version swap for store: {} on version: {} as it is davinci",
+                      storeName,
+                      targetVersionNum);
+                  continue;
+                }
               }
 
               // Check that push is completed in target regions
@@ -280,7 +283,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
               // TODO add call for postStoreVersionSwap() once it is implemented
 
-              String regionsToRollForward = String.join(",\\s*", nonTargetRegionsCompleted);
+              String regionsToRollForward = RegionUtils.composeRegionList(nonTargetRegionsCompleted);
               LOGGER.info("Issuing roll forward message for store: {} in regions: {}", storeName, regionsToRollForward);
               veniceParentHelixAdmin.rollForwardToFutureVersion(cluster, storeName, regionsToRollForward);
 

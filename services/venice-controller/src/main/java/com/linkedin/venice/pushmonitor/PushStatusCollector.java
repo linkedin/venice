@@ -153,6 +153,8 @@ public class PushStatusCollector {
         continue;
       }
       ExecutionStatusWithDetails daVinciStatus = pushStatus.getDaVinciStatus();
+      String storeName = Version.parseStoreFromKafkaTopicName(pushStatus.topicName);
+      Store store = storeRepository.getStore(storeName);
       if (daVinciStatus.isNoDaVinciStatusReport()) {
         LOGGER.info("Received empty DaVinci status report for topic: {}", pushStatus.topicName);
         // poll DaVinci status more
@@ -167,19 +169,24 @@ public class PushStatusCollector {
           pushStatus.setDaVinciStatus(daVinciStatus);
         } else {
           topicToNoDaVinciStatusRetryCountMap.remove(pushStatus.topicName);
+
+          // Update dvc heartbeat to false if there is no dvc status
+          if (store.getIsDavinciHeartbeatReported()) {
+            store.setIsDavinciHeartbeatReported(false);
+            storeRepository.updateStore(store);
+          }
         }
       } else {
         topicToNoDaVinciStatusRetryCountMap.remove(pushStatus.topicName);
-      }
 
-      // If there is some status for a davinci push, mark that there is a dvc heartbeat reported for the latest version
-      String storeName = Version.parseStoreFromKafkaTopicName(pushStatus.topicName);
-      Store store = storeRepository.getStore(storeName);
-      if (!store.getIsDavinciHeartbeatReported() && daVinciStatus.getStatus() != ExecutionStatus.NOT_CREATED) {
+        // Mark that there is a dvc heartbeat reported for this version
         int versionNum = Version.parseVersionFromVersionTopicName(pushStatus.topicName);
-        store.updateVersionForDaVinciHeartbeat(versionNum, true);
-        store.setIsDavinciHeartbeatReported(true);
-        storeRepository.updateStore(store);
+        Version version = store.getVersion(versionNum);
+        if (!version.getIsDavinciHeartbeatReported()) {
+          store.updateVersionForDaVinciHeartbeat(versionNum, true);
+          store.setIsDavinciHeartbeatReported(true);
+          storeRepository.updateStore(store);
+        }
       }
 
       LOGGER.info(

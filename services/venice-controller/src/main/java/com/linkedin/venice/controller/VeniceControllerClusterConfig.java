@@ -105,6 +105,7 @@ import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_READ_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_REPLICA_FACTOR;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_ROUTING_STRATEGY;
+import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_SERVICE_WITH_DVC_CHECK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DELAY_TO_REBALANCE_MS;
 import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_MAX_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_RETENTION_MS;
@@ -555,6 +556,7 @@ public class VeniceControllerClusterConfig {
   private boolean isHybridStorePartitionCountUpdateEnabled;
   private final long deferredVersionSwapSleepMs;
   private final boolean deferredVersionSwapServiceEnabled;
+  private final boolean deferredVersionSwapServiceWithDvcHeartbeatEnabled;
 
   private final Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> helixGlobalRebalancePreference;
   private final List<String> helixInstanceCapacityKeys;
@@ -1066,6 +1068,8 @@ public class VeniceControllerClusterConfig {
     this.deferredVersionSwapSleepMs =
         props.getLong(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, TimeUnit.MINUTES.toMillis(1));
     this.deferredVersionSwapServiceEnabled = props.getBoolean(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, false);
+    this.deferredVersionSwapServiceWithDvcHeartbeatEnabled =
+        props.getBoolean(DEFERRED_VERSION_SWAP_SERVICE_WITH_DVC_CHECK_ENABLED, true);
   }
 
   public VeniceProperties getProps() {
@@ -1582,6 +1586,10 @@ public class VeniceControllerClusterConfig {
 
   public boolean isDeferredVersionSwapServiceEnabled() {
     return deferredVersionSwapServiceEnabled;
+  }
+
+  public boolean isDeferredVersionSwapServiceWithDvcHeartbeatEnabled() {
+    return deferredVersionSwapServiceWithDvcHeartbeatEnabled;
   }
 
   public long getTerminalStateTopicCheckerDelayMs() {

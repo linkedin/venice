@@ -1348,29 +1348,60 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testIsDavinciHeartbeatReported() throws Exception {
-    String storeName = Utils.getUniqueString("testIsDavinviHeartbeatReported");
-    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setTargetRegionSwap("test");
-    setUpStore(storeName, paramsConsumer, properties -> {}, true);
+    // Setup store and create version 1
+    String storeName = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
+    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
+    VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
+        .put(DATA_BASE_PATH, baseDataPath)
+        .put(PUSH_STATUS_STORE_ENABLED, true)
+        .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
+        .build();
 
-    try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
-      client.subscribeAll().get();
+    // Create dvc client and subscribe
+    DaVinciClient<Object, Object> client =
+        ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, new DaVinciConfig(), backendConfig);
+    client.subscribeAll().get();
+    for (int k = 0; k < KEY_COUNT; ++k) {
+      assertEquals(client.get(k).get(), 1);
     }
 
-    File inputDirectory = getTempDataDirectory();
-    String inputDirectoryPath = "file://" + inputDirectory.getAbsolutePath();
-    try {
-      writeSimpleAvroFileWithIntToStringSchema(inputDirectory);
-    } catch (IOException e) {
-      throw new RuntimeException(e);
+    // Check that dvc heartbeat is false as there was no dvc client during version 1's creation
+    try (ControllerClient controllerClient = cluster.getControllerClient()) {
+      StoreInfo store = controllerClient.getStore(storeName).getStore();
+      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MILLISECONDS, () -> {
+        Assert.assertFalse(store.getIsDavinciHeartbeatReported());
+        Assert.assertFalse(store.getVersion(1).get().getIsDavinciHeartbeatReported());
+      });
     }
-    Properties vpjProperties = defaultVPJProps(cluster, inputDirectoryPath, storeName);
-    runVPJ(vpjProperties, 2, cluster);
 
+    // Create version 2
+    Integer versionTwo = cluster.createVersion(storeName, KEY_COUNT);
+    TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      for (int k = 0; k < KEY_COUNT; ++k) {
+        assertEquals(client.get(k).get(), versionTwo);
+      }
+    });
+
+    // Check that dvc heartbeat is true as there is a dvc client subscribed during version 2's creation
     try (ControllerClient controllerClient = cluster.getControllerClient()) {
       StoreInfo store = controllerClient.getStore(storeName).getStore();
       TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MILLISECONDS, () -> {
         Assert.assertTrue(store.getIsDavinciHeartbeatReported());
-        Assert.assertTrue(store.getVersion(2).get().getIsDavinciHeartbeatReported());
+        Assert.assertTrue(store.getVersion(versionTwo).get().getIsDavinciHeartbeatReported());
+      });
+    }
+
+    // Close the dvc client
+    client.close();
+
+    // Create version 3 and check that dvc heartbeat is false as the dvc client was closed
+    Integer versionThree = cluster.createVersion(storeName, KEY_COUNT);
+    try (ControllerClient controllerClient = cluster.getControllerClient()) {
+      StoreInfo store = controllerClient.getStore(storeName).getStore();
+      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MILLISECONDS, () -> {
+        Assert.assertFalse(store.getIsDavinciHeartbeatReported());
+        Assert.assertFalse(store.getVersion(versionThree).get().getIsDavinciHeartbeatReported());
       });
     }
   }

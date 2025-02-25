@@ -50,6 +50,7 @@ public class TestDeferredVersionSwapService {
     doReturn(clusters).when(veniceControllerMultiClusterConfig).getClusters();
     doReturn(10L).when(veniceControllerMultiClusterConfig).getDeferredVersionSwapSleepMs();
     doReturn(true).when(veniceControllerMultiClusterConfig).isDeferredVersionSwapServiceEnabled();
+    doReturn(true).when(veniceControllerMultiClusterConfig).isDeferredVersionSwapServiceWithDvcHeartbeatEnabled();
   }
 
   private Store mockStore(
@@ -69,6 +70,8 @@ public class TestDeferredVersionSwapService {
       doReturn(n).when(v).getNumber();
       doReturn(s).when(v).getStatus();
       doReturn(v).when(store).getVersion(n);
+      doReturn(targetRegions).when(v).getTargetSwapRegion();
+      doReturn(waitTime).when(v).getTargetSwapRegionWaitTime();
       versionList.add(v);
     });
     doReturn(versionList).when(store).getVersions();
