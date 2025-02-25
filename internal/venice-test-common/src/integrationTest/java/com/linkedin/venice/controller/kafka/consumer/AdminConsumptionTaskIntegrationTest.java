@@ -11,6 +11,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
+import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
@@ -20,6 +21,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -32,6 +34,7 @@ import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.IOException;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -88,12 +91,26 @@ public class AdminConsumptionTaskIntegrationTest {
           VeniceWriter<byte[], byte[], byte[]> writer =
               IntegrationTestPushUtils.getVeniceWriterFactory(pubSubBrokerWrapper, pubSubProducerAdapterFactory)
                   .createVeniceWriter(new VeniceWriterOptions.Builder(adminTopic.getName()).build())) {
-        byte[] message = getStoreCreationMessage(clusterName, storeName, owner, "invalid_key_schema", valueSchema, 1);
+        byte[] message = getStoreCreationMessage(
+            clusterName,
+            storeName,
+            owner,
+            "invalid_key_schema",
+            valueSchema,
+            1,
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
         long badOffset = writer.put(new byte[0], message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
             .get()
             .getOffset();
 
-        byte[] goodMessage = getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 2);
+        byte[] goodMessage = getStoreCreationMessage(
+            clusterName,
+            storeName,
+            owner,
+            keySchema,
+            valueSchema,
+            2,
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
         writer.put(new byte[0], goodMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
         Thread.sleep(5000); // Non-deterministic, but whatever. This should never fail.
@@ -145,8 +162,14 @@ public class AdminConsumptionTaskIntegrationTest {
               IntegrationTestPushUtils.getVeniceWriterFactory(pubSubBrokerWrapper, pubSubProducerAdapterFactory)
                   .createVeniceWriter(new VeniceWriterOptions.Builder(adminTopic.getName()).build())) {
         int executionId = 1;
-        byte[] goodMessage =
-            getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, executionId);
+        byte[] goodMessage = getStoreCreationMessage(
+            clusterName,
+            storeName,
+            owner,
+            keySchema,
+            valueSchema,
+            executionId,
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
         writer.put(new byte[0], goodMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
         TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
@@ -178,8 +201,14 @@ public class AdminConsumptionTaskIntegrationTest {
         // Create a new store to see if it is blocked by previous messages.
         String otherStoreName = "other-test-store";
         executionId++;
-        byte[] otherStoreMessage =
-            getStoreCreationMessage(clusterName, otherStoreName, owner, keySchema, valueSchema, executionId);
+        byte[] otherStoreMessage = getStoreCreationMessage(
+            clusterName,
+            otherStoreName,
+            owner,
+            keySchema,
+            valueSchema,
+            executionId,
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
         writer.put(new byte[0], otherStoreMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
         TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
@@ -243,6 +272,73 @@ public class AdminConsumptionTaskIntegrationTest {
     }
   }
 
+  @Test(timeOut = 2 * TIMEOUT)
+  public void testAdminConsumptionTaskWithSpecificWriterId() throws IOException {
+    int adminConsumptionMaxWorkerPoolSize = 3;
+    // Use a specific version to test the serialization and deserialization of admin operation.
+    int writerSchemaId = AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION - 10;
+
+    Properties parentControllerProps = new Properties();
+    parentControllerProps.put(ADMIN_CONSUMPTION_MAX_WORKER_THREAD_POOL_SIZE, adminConsumptionMaxWorkerPoolSize);
+    parentControllerProps.put(ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS, 3000);
+
+    try (
+        VeniceTwoLayerMultiRegionMultiClusterWrapper venice =
+            ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+                new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
+                    .numberOfClusters(1)
+                    .numberOfParentControllers(1)
+                    .numberOfChildControllers(1)
+                    .numberOfServers(1)
+                    .numberOfRouters(1)
+                    .replicationFactor(1)
+                    .parentControllerProperties(parentControllerProps)
+                    .build());
+        ControllerClient parentControllerClient = new ControllerClient(
+            venice.getClusterNames()[0],
+            venice.getParentControllers().get(0).getControllerUrl())) {
+      // Setup
+      String clusterName = venice.getClusterNames()[0];
+      Admin admin = venice.getParentControllers().get(0).getVeniceAdmin();
+      PubSubTopicRepository pubSubTopicRepository = admin.getPubSubTopicRepository();
+      TopicManager topicManager = admin.getTopicManager();
+      PubSubTopic adminTopic = pubSubTopicRepository.getTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName));
+      topicManager.createTopic(adminTopic, 1, 1, true);
+      String storeName = "test-store";
+      PubSubBrokerWrapper pubSubBrokerWrapper = venice.getParentKafkaBrokerWrapper();
+
+      try (
+          PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+              pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
+          VeniceWriter<byte[], byte[], byte[]> writer =
+              IntegrationTestPushUtils.getVeniceWriterFactory(pubSubBrokerWrapper, pubSubProducerAdapterFactory)
+                  .createVeniceWriter(new VeniceWriterOptions.Builder(adminTopic.getName()).build())) {
+        int executionId = 1;
+
+        // Create store
+        byte[] storeCreationMessage =
+            getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, executionId, writerSchemaId);
+        writer.put(new byte[0], storeCreationMessage, writerSchemaId);
+
+        TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+          Assert.assertFalse(parentControllerClient.getStore(storeName).isError());
+        });
+
+        // Update store
+        executionId++;
+        byte[] updateStoreMessage = getStoreUpdateMessage(clusterName, storeName, owner, executionId, writerSchemaId);
+        writer.put(new byte[0], updateStoreMessage, writerSchemaId);
+
+        TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+          Assert.assertFalse(parentControllerClient.getStore(storeName).isError());
+          StoreInfo storeInfo = parentControllerClient.getStore(storeName).getStore();
+          Assert.assertTrue(storeInfo.isEnableStoreWrites());
+          Assert.assertTrue(storeInfo.isEnableStoreReads());
+        });
+      }
+    }
+  }
+
   private Runnable getRunnable(
       VeniceTwoLayerMultiRegionMultiClusterWrapper venice,
       String storeName,
@@ -271,7 +367,8 @@ public class AdminConsumptionTaskIntegrationTest {
     adminMessage.operationType = AdminMessageType.DISABLE_STORE_READ.getValue();
     adminMessage.payloadUnion = disableStoreRead;
     adminMessage.executionId = executionId;
-    return adminOperationSerializer.serialize(adminMessage);
+    return adminOperationSerializer
+        .serialize(adminMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
   }
 
   private byte[] getDisableWrite(String clusterName, String storeName, long executionId) {
@@ -282,7 +379,8 @@ public class AdminConsumptionTaskIntegrationTest {
     adminMessage.operationType = AdminMessageType.DISABLE_STORE_WRITE.getValue();
     adminMessage.payloadUnion = pauseStore;
     adminMessage.executionId = executionId;
-    return adminOperationSerializer.serialize(adminMessage);
+    return adminOperationSerializer
+        .serialize(adminMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
   }
 
   private byte[] getStoreCreationMessage(
@@ -291,7 +389,8 @@ public class AdminConsumptionTaskIntegrationTest {
       String owner,
       String keySchema,
       String valueSchema,
-      long executionId) {
+      long executionId,
+      int writerSchemaId) {
     StoreCreation storeCreation = (StoreCreation) AdminMessageType.STORE_CREATION.getNewInstance();
     storeCreation.clusterName = clusterName;
     storeCreation.storeName = storeName;
@@ -306,7 +405,7 @@ public class AdminConsumptionTaskIntegrationTest {
     adminMessage.operationType = AdminMessageType.STORE_CREATION.getValue();
     adminMessage.payloadUnion = storeCreation;
     adminMessage.executionId = executionId;
-    return adminOperationSerializer.serialize(adminMessage);
+    return adminOperationSerializer.serialize(adminMessage, writerSchemaId);
   }
 
   private byte[] getStoreDeletionMessage(String clusterName, String storeName, long executionId) {
@@ -319,6 +418,30 @@ public class AdminConsumptionTaskIntegrationTest {
     adminMessage.operationType = AdminMessageType.DELETE_STORE.getValue();
     adminMessage.payloadUnion = deleteStore;
     adminMessage.executionId = executionId;
-    return adminOperationSerializer.serialize(adminMessage);
+    return adminOperationSerializer
+        .serialize(adminMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+  }
+
+  private byte[] getStoreUpdateMessage(
+      String clusterName,
+      String storeName,
+      String owner,
+      long executionId,
+      int writerSchemaId) {
+    UpdateStore updateStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
+    updateStore.clusterName = clusterName;
+    updateStore.storeName = storeName;
+    updateStore.owner = owner;
+    updateStore.partitionNum = 20;
+    updateStore.currentVersion = AdminConsumptionTask.IGNORED_CURRENT_VERSION;
+    updateStore.enableReads = true;
+    updateStore.enableWrites = true;
+    updateStore.replicateAllConfigs = true;
+    updateStore.updatedConfigsList = Collections.emptyList();
+    AdminOperation adminMessage = new AdminOperation();
+    adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
+    adminMessage.payloadUnion = updateStore;
+    adminMessage.executionId = executionId;
+    return adminOperationSerializer.serialize(adminMessage, writerSchemaId);
   }
 }
