@@ -99,7 +99,6 @@ public class TestAdminToolConsumption {
       adminMessage.operationType = AdminMessageType.STORE_CREATION.getValue();
       adminMessage.payloadUnion = storeCreation;
       adminMessage.executionId = 1;
-      deserializer.serialize(adminMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
       byte[] putValueBytes =
           deserializer.serialize(adminMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
       put.putValue = ByteBuffer.wrap(putValueBytes);
