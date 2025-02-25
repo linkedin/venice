@@ -516,6 +516,7 @@ public abstract class StoreIngestionTaskTest {
 
     mockStorageEngineRepository = mock(StorageEngineRepository.class);
     storeInfo = mock(StoreInfo.class, RETURNS_DEEP_STUBS);
+    when(storeInfo.getName()).thenReturn(storeNameWithoutVersionInfo);
     when(storeInfo.getHybridStoreConfig().getRealTimeTopicName())
         .thenReturn(Utils.composeRealTimeTopic(storeNameWithoutVersionInfo));
 
@@ -3837,6 +3838,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(versionTopic).when(mockVeniceStoreVersionConfig).getStoreVersionName();
 
     Version mockVersion = mock(Version.class);
+    doReturn(storeName).when(mockVersion).getStoreName();
     doReturn(1).when(mockVersion).getPartitionCount();
     doReturn(VersionStatus.STARTED).when(mockVersion).getStatus();
 
@@ -3975,6 +3977,7 @@ public abstract class StoreIngestionTaskTest {
 
     Version version = mock(Version.class);
     doReturn(1).when(version).getPartitionCount();
+    doReturn("store").when(version).getStoreName();
     doReturn(null).when(version).getPartitionerConfig();
     doReturn(VersionStatus.ONLINE).when(version).getStatus();
     doReturn(true).when(version).isNativeReplicationEnabled();
@@ -4601,6 +4604,7 @@ public abstract class StoreIngestionTaskTest {
   public void testBatchOnlyStoreDataRecovery() {
     Version version = mock(Version.class);
     doReturn(1).when(version).getPartitionCount();
+    doReturn("store").when(version).getStoreName();
     doReturn(VersionStatus.STARTED).when(version).getStatus();
     doReturn(true).when(version).isNativeReplicationEnabled();
     DataRecoveryVersionConfig dataRecoveryVersionConfig = new DataRecoveryVersionConfigImpl("dc-0", false, 1);
@@ -4692,6 +4696,7 @@ public abstract class StoreIngestionTaskTest {
     VeniceStoreVersionConfig mockVeniceStoreVersionConfig = mock(VeniceStoreVersionConfig.class);
     doReturn(versionTopic).when(mockVeniceStoreVersionConfig).getStoreVersionName();
     Version mockVersion = mock(Version.class);
+    doReturn(storeName).when(mockVersion).getStoreName();
     doReturn(1).when(mockVersion).getPartitionCount();
     doReturn(VersionStatus.STARTED).when(mockVersion).getStatus();
     doReturn(true).when(mockVersion).isUseVersionLevelHybridConfig();
@@ -4784,6 +4789,7 @@ public abstract class StoreIngestionTaskTest {
     VeniceStoreVersionConfig mockVeniceStoreVersionConfig = mock(VeniceStoreVersionConfig.class);
     doReturn(versionTopic).when(mockVeniceStoreVersionConfig).getStoreVersionName();
     Version mockVersion = mock(Version.class);
+    doReturn(storeName).when(mockVersion).getStoreName();
     doReturn(2).when(mockVersion).getPartitionCount();
     doReturn(VersionStatus.STARTED).when(mockVersion).getStatus();
     doReturn(true).when(mockVersion).isUseVersionLevelHybridConfig();
@@ -5602,7 +5608,8 @@ public abstract class StoreIngestionTaskTest {
     String store = "test_store";
     String kafkaUrl = "localhost:1234";
     PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(store));
-    PubSubTopic separateRealTimeTopic = pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(store));
+    PubSubTopic separateRealTimeTopic =
+        pubSubTopicRepository.getTopic(Utils.getSeparateRealTimeTopicName(realTimeTopic.getName()));
     PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(store, 1));
     Assert.assertEquals(
         storeIngestionTask.resolveTopicPartitionWithKafkaURL(realTimeTopic, pcs, kafkaUrl).getPubSubTopic(),
@@ -5626,7 +5633,8 @@ public abstract class StoreIngestionTaskTest {
     String store = "test_store";
     String kafkaUrl = "localhost:1234";
     PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(store));
-    PubSubTopic separateRealTimeTopic = pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(store));
+    PubSubTopic separateRealTimeTopic =
+        pubSubTopicRepository.getTopic(Utils.getSeparateRealTimeTopicName(realTimeTopic.getName()));
     PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(store, 1));
 
     doReturn(true).when(storeIngestionTask).isSeparatedRealtimeTopicEnabled();
@@ -5670,6 +5678,7 @@ public abstract class StoreIngestionTaskTest {
 
     Version version = mock(Version.class);
     doReturn(1).when(version).getPartitionCount();
+    doReturn("store").when(version).getStoreName();
     doReturn(VersionStatus.STARTED).when(version).getStatus();
     doReturn(true).when(version).isNativeReplicationEnabled();
     DataRecoveryVersionConfig dataRecoveryVersionConfig = new DataRecoveryVersionConfigImpl("dc-0", false, 1);
