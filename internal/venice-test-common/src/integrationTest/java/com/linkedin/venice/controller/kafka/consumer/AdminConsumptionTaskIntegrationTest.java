@@ -247,37 +247,39 @@ public class AdminConsumptionTaskIntegrationTest {
   }
 
   @Test(timeOut = 2 * TIMEOUT)
-  public void testAdminConsumptionTaskWithSpecificWriterId() throws IOException {
-    // Use a specific version to test the serialization and deserialization of admin operation.
-    int writerSchemaId = AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION - 10;
+  public void testAdminConsumptionTaskWithSpecificWriterId() {
+    for (int i = 1; i <= 5; i++) {
+      // Use a specific version to test the serialization and deserialization of admin operation.
+      int writerSchemaId = AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION - i;
+      String storeName = Utils.getUniqueString("test-store");
 
-    String storeName = Utils.getUniqueString("test-store");
+      // Create store
+      byte[] storeCreationMessage = getStoreCreationMessage(
+          clusterName,
+          storeName,
+          owner,
+          keySchema,
+          valueSchema,
+          nextExecutionId(),
+          writerSchemaId);
+      writer.put(new byte[0], storeCreationMessage, writerSchemaId);
 
-    // Create store
-    byte[] storeCreationMessage = getStoreCreationMessage(
-        clusterName,
-        storeName,
-        owner,
-        keySchema,
-        valueSchema,
-        nextExecutionId(),
-        writerSchemaId);
-    writer.put(new byte[0], storeCreationMessage, writerSchemaId);
+      TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        Assert.assertFalse(parentControllerClient.getStore(storeName).isError());
+      });
 
-    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertFalse(parentControllerClient.getStore(storeName).isError());
-    });
+      // Update store
+      byte[] updateStoreMessage =
+          getStoreUpdateMessage(clusterName, storeName, owner, nextExecutionId(), writerSchemaId);
+      writer.put(new byte[0], updateStoreMessage, writerSchemaId);
 
-    // Update store
-    byte[] updateStoreMessage = getStoreUpdateMessage(clusterName, storeName, owner, nextExecutionId(), writerSchemaId);
-    writer.put(new byte[0], updateStoreMessage, writerSchemaId);
-
-    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertFalse(parentControllerClient.getStore(storeName).isError());
-      StoreInfo storeInfo = parentControllerClient.getStore(storeName).getStore();
-      Assert.assertTrue(storeInfo.isEnableStoreWrites());
-      Assert.assertTrue(storeInfo.isEnableStoreReads());
-    });
+      TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        Assert.assertFalse(parentControllerClient.getStore(storeName).isError());
+        StoreInfo storeInfo = parentControllerClient.getStore(storeName).getStore();
+        Assert.assertTrue(storeInfo.isEnableStoreWrites());
+        Assert.assertTrue(storeInfo.isEnableStoreReads());
+      });
+    }
   }
 
   private Runnable getRunnable(
