@@ -21,9 +21,13 @@ import org.apache.avro.io.Decoder;
 import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.io.Encoder;
 import org.apache.avro.specific.SpecificDatumReader;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class AdminOperationSerializer {
+  private static final Logger LOGGER = LogManager.getLogger(AdminOperationSerializer.class);
+
   // Latest schema id, and it needs to be updated whenever we add a new version
   public static final int LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION =
       AvroProtocolDefinition.ADMIN_OPERATION.getCurrentProtocolVersion();
@@ -36,10 +40,12 @@ public class AdminOperationSerializer {
   private static final Map<Integer, Schema> PROTOCOL_MAP = initProtocolMap();
 
   /**
-   * Serialize AdminOperation object to bytes.
+   * Serialize AdminOperation object to bytes[] with the writer schema
+   * @param object AdminOperation object
+   * @param targetSchemaId writer schema id that we will refer to for serialization and deserialization
    *
    * <p>
-   * If writerSchemaId equals LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION, return the bytes[] from the first serialization.
+   * If targetSchemaId equals LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION, return the bytes[] from the first serialization.
    * Otherwise, serialize the object to the writer schema (lower version).
    * </p>
    *
@@ -60,21 +66,21 @@ public class AdminOperationSerializer {
    * </ul>
    * </p>
    */
-  public byte[] serialize(AdminOperation object, int writerSchemaId) {
-    byte[] serializedBytes = serialize(object, LATEST_SCHEMA);
+  public byte[] serialize(AdminOperation object, int targetSchemaId) {
+    byte[] serializedBytes = serialize(object, LATEST_SCHEMA, LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
     // If writerSchema is the latest schema, we can return the serialized bytes directly.
-    if (writerSchemaId == LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION) {
+    if (targetSchemaId == LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION) {
       return serializedBytes;
     }
 
     // Get the writer schema.
-    Schema writerSchema = getSchema(writerSchemaId);
+    Schema targetSchema = getSchema(targetSchemaId);
 
-    // If writerSchema is not the latest schema, we need to deserialize the serialized bytes to GenericRecord with
+    // If writer schema is not the latest schema, we need to deserialize the serialized bytes to GenericRecord with
     // the writer schema, then serialize it to bytes with the writer schema.
-    GenericRecord genericRecord = deserialize(serializedBytes, LATEST_SCHEMA, writerSchema);
-    return serialize(genericRecord, writerSchema);
+    GenericRecord genericRecord = deserialize(serializedBytes, targetSchema, targetSchemaId);
+    return serialize(genericRecord, targetSchema, targetSchemaId);
   }
 
   public AdminOperation deserialize(ByteBuffer byteBuffer, int writerSchemaId) {
@@ -85,7 +91,9 @@ public class AdminOperationSerializer {
     try {
       return reader.read(null, decoder);
     } catch (IOException e) {
-      throw new VeniceMessageException("Could not deserialize bytes back into AdminOperation object", e);
+      throw new VeniceMessageException(
+          "Could not deserialize bytes back into AdminOperation object with schema id: " + writerSchemaId,
+          e);
     }
   }
 
@@ -111,7 +119,7 @@ public class AdminOperationSerializer {
   /**
    * Serialize the object by writer schema
    */
-  private <T> byte[] serialize(T object, Schema writerSchema) {
+  private <T> byte[] serialize(T object, Schema writerSchema, int writerSchemaId) {
     try {
       GenericDatumWriter<T> datumWriter = new GenericDatumWriter<>(writerSchema);
       ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
@@ -120,21 +128,26 @@ public class AdminOperationSerializer {
       encoder.flush();
       return byteArrayOutputStream.toByteArray();
     } catch (IOException e) {
-      throw new VeniceMessageException("Could not serialize object", e);
+      throw new VeniceMessageException(
+          "Could not serialize object: " + object.getClass().getTypeName() + " with writer schema id: "
+              + writerSchemaId,
+          e);
     }
   }
 
   /**
    * Deserialize the object from the writer schema to the reader schema, returning a GenericRecord.
    */
-  private GenericRecord deserialize(byte[] serializedRecord, Schema writerSchema, Schema readerSchema) {
+  private GenericRecord deserialize(byte[] serializedRecord, Schema readerSchema, int readerSchemaId) {
     try {
-      GenericDatumReader<GenericRecord> datumReader = new GenericDatumReader<>(writerSchema, readerSchema);
+      GenericDatumReader<GenericRecord> datumReader = new GenericDatumReader<>(LATEST_SCHEMA, readerSchema);
       InputStream in = new ByteArrayInputStream(serializedRecord);
       BinaryDecoder decoder = AvroCompatibilityHelper.newBinaryDecoder(in, true, null);
       return datumReader.read(null, decoder);
     } catch (IOException e) {
-      throw new VeniceMessageException("Could not deserialize bytes back into GenericRecord object", e);
+      throw new VeniceMessageException(
+          "Could not deserialize bytes back into GenericRecord object with reader version: " + readerSchemaId,
+          e);
     }
   }
 }
