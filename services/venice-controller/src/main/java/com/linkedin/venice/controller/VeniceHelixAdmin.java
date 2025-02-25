@@ -15,6 +15,7 @@ import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
 import static com.linkedin.venice.meta.Version.PushType;
+import static com.linkedin.venice.meta.Version.REAL_TIME_TOPIC_SUFFIX;
 import static com.linkedin.venice.meta.VersionStatus.ERROR;
 import static com.linkedin.venice.meta.VersionStatus.KILLED;
 import static com.linkedin.venice.meta.VersionStatus.NOT_CREATED;
@@ -2062,6 +2063,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private void checkStoreNameConflict(String storeName, boolean allowSystemStore) {
+    if (storeName.endsWith(REAL_TIME_TOPIC_SUFFIX)) {
+      throw new VeniceException(
+          "Store name: " + storeName + " ends with a keyword - `" + REAL_TIME_TOPIC_SUFFIX + "`"
+              + " reserved for internal usage, please change it.");
+    }
+
     if (storeName.equals(AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT)) {
       throw new VeniceException("Store name: " + storeName + " clashes with the internal usage, please change it");
     }
