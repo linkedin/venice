@@ -131,7 +131,7 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = 5 * TEST_TIMEOUT)
   public void testHybridStoreRepartitioning() {
     String storeName = Utils.getUniqueString("TestHybridStoreRepartitioning");
     String clusterName = CLUSTER_NAMES[0];
@@ -150,6 +150,11 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
         newStoreResponse.isError(),
         "The NewStoreResponse returned an error: " + newStoreResponse.getError());
 
+    for (ControllerClient controllerClient: childControllerClients) {
+      StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
+      Assert.assertEquals(storeInfo.getLargestUsedRTVersionNumber(), 1);
+    }
+
     UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams();
     updateStoreParams.setIncrementalPushEnabled(true)
         .setBackupStrategy(BackupStrategy.KEEP_MIN_VERSIONS)
@@ -159,12 +164,24 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
         .setHybridOffsetLagThreshold(1000);
     TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
 
+    for (int i = 0; i < childControllerClients.length; i++) {
+      final int index = i;
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        StoreInfo storeInfo = childControllerClients[index].getStore(storeName).getStore();
+        Assert.assertEquals(storeInfo.getLargestUsedRTVersionNumber(), 1);
+      });
+    }
+
     // create new version by doing an empty push
     parentControllerClient
         .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
 
     for (ControllerClient controllerClient: childControllerClients) {
-      Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 1);
+      StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
+      Assert.assertEquals(
+          storeInfo.getHybridStoreConfig().getRealTimeTopicName(),
+          storeName + "_v1" + Version.REAL_TIME_TOPIC_SUFFIX);
+      Assert.assertEquals(storeInfo.getCurrentVersion(), 1);
     }
 
     TestWriteUtils.updateStore(storeName, parentControllerClient, new UpdateStoreQueryParams().setPartitionCount(2));
@@ -174,10 +191,12 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         StoreInfo storeInfo = childControllerClients[index].getStore(storeName).getStore();
         String realTimeTopicNameInVersion = Utils.getRealTimeTopicName(storeInfo.getVersions().get(0));
-        PubSubTopic realTimePubSubTopic = pubSubTopicRepository.getTopic(realTimeTopicNameInVersion);
+        Assert.assertEquals(realTimeTopicNameInVersion, storeName + "_v1" + Version.REAL_TIME_TOPIC_SUFFIX);
 
+        PubSubTopic realTimePubSubTopic = pubSubTopicRepository.getTopic(realTimeTopicNameInVersion);
         // verify rt topic is created with the default partition count = 3
         Assert.assertEquals(topicManagers.get(index).getPartitionCount(realTimePubSubTopic), 3);
+        Assert.assertEquals(storeInfo.getLargestUsedRTVersionNumber(), 2);
       });
     }
 
@@ -195,79 +214,68 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
         StoreInfo storeInfo = childControllerClients[idx].getStore(storeName).getStore();
         String realTimeTopicNameInBackupVersion = Utils.getRealTimeTopicName(storeInfo.getVersions().get(0));
         String realTimeTopicNameInCurrentVersion = Utils.getRealTimeTopicName(storeInfo.getVersions().get(1));
-        String expectedRealTimeTopicNameInStoreConfig =
-            Utils.createNewRealTimeTopicName(realTimeTopicNameInBackupVersion);
-        String actualRealTimeTopicNameInStoreConfig = storeInfo.getHybridStoreConfig().getRealTimeTopicName();
-        PubSubTopic newRtPubSubTopic = pubSubTopicRepository.getTopic(realTimeTopicNameInCurrentVersion);
+        String expectedRealTimeTopicNameInBackVersion = storeName + "_v1" + Version.REAL_TIME_TOPIC_SUFFIX;
+        // because we updated partition count, rt version should increase to v2
+        String expectedRealTimeTopicName = storeName + "_v2" + Version.REAL_TIME_TOPIC_SUFFIX;
 
         // verify rt topic name
-        Assert.assertNotEquals(realTimeTopicNameInBackupVersion, realTimeTopicNameInCurrentVersion);
-        Assert.assertEquals(realTimeTopicNameInCurrentVersion, actualRealTimeTopicNameInStoreConfig);
-        Assert.assertEquals(actualRealTimeTopicNameInStoreConfig, expectedRealTimeTopicNameInStoreConfig);
+        Assert.assertEquals(realTimeTopicNameInBackupVersion, expectedRealTimeTopicNameInBackVersion);
+        Assert.assertEquals(realTimeTopicNameInCurrentVersion, expectedRealTimeTopicName);
 
+        PubSubTopic newRtPubSubTopic = pubSubTopicRepository.getTopic(realTimeTopicNameInCurrentVersion);
         // verify rt topic is created with the updated partition count = 2
         Assert.assertEquals(topicManagers.get(idx).getPartitionCount(newRtPubSubTopic), 2);
+
+        // we updated partition count and create a new VT version, so largestUsedRTVersion should have increased
+        Assert.assertEquals(storeInfo.getLargestUsedRTVersionNumber(), 2);
       });
     }
-  }
 
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testLargestUsedRTVersionNumber() {
-    String storeName = Utils.getUniqueString("TestLargestUsedRTVersionNumber");
-    String clusterName = CLUSTER_NAMES[0];
-    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+    // create another version by doing an empty push
+    parentControllerClient
+        .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
 
-    ControllerClient parentControllerClient =
-        ControllerClient.constructClusterControllerClient(clusterName, parentControllerURLs);
-    ControllerClient[] childControllerClients = new ControllerClient[childDatacenters.size()];
-    for (int i = 0; i < childDatacenters.size(); i++) {
-      childControllerClients[i] =
-          new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString());
+    for (ControllerClient controllerClient: childControllerClients) {
+      Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 3);
     }
 
-    NewStoreResponse newStoreResponse =
-        parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
-    Assert.assertFalse(
-        newStoreResponse.isError(),
-        "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+    for (ControllerClient controllerClient: childControllerClients) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
+        String realTimeTopicNameInBackupVersion = Utils.getRealTimeTopicName(storeInfo.getVersions().get(1));
+        String realTimeTopicNameInCurrentVersion = Utils.getRealTimeTopicName(storeInfo.getVersions().get(2));
+        // rt version should not change because there is no more partition count update
+        String expectedRealTimeTopicName = storeName + "_v2" + Version.REAL_TIME_TOPIC_SUFFIX;
 
-    UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams();
+        // verify rt topic name
+        Assert.assertEquals(realTimeTopicNameInBackupVersion, expectedRealTimeTopicName);
+        Assert.assertEquals(realTimeTopicNameInCurrentVersion, expectedRealTimeTopicName);
+
+        Assert.assertEquals(storeInfo.getLargestUsedRTVersionNumber(), 2);
+      });
+    }
+
+    // now delete and recreate the store with the same name
+
+    updateStoreParams = new UpdateStoreQueryParams();
     updateStoreParams.setEnableReads(false).setEnableWrites(false);
 
     TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
 
-    ControllerResponse deleteStoreResponse =
-        childControllerClients[0].retryableRequest(5, c -> c.deleteStore(storeName));
+    ControllerResponse deleteStoreResponse = parentControllerClient.retryableRequest(5, c -> c.deleteStore(storeName));
     Assert.assertFalse(
         deleteStoreResponse.isError(),
         "The DeleteStoreResponse returned an error: " + deleteStoreResponse.getError());
 
     newStoreResponse =
-        childControllerClients[0].retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
+        parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
     Assert.assertFalse(
         newStoreResponse.isError(),
         "The NewStoreResponse returned an error: " + newStoreResponse.getError());
 
-    String newRealTimeTopicName = "NewRealTimeTopicName" + Version.REAL_TIME_TOPIC_SUFFIX;
-    updateStoreParams = new UpdateStoreQueryParams();
-    updateStoreParams.setIncrementalPushEnabled(true)
-        .setBackupStrategy(BackupStrategy.KEEP_MIN_VERSIONS)
-        .setNumVersionsToPreserve(2)
-        .setHybridRewindSeconds(1000)
-        .setActiveActiveReplicationEnabled(true)
-        .setRealTimeTopicName(newRealTimeTopicName)
-        .setEnableWrites(true)
-        .setEnableReads(true)
-        .setHybridOffsetLagThreshold(1000);
-    TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
-
-    // create new version by doing an empty push
-    parentControllerClient
-        .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
-
     for (ControllerClient controllerClient: childControllerClients) {
-      Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 1);
-      Assert.assertEquals(controllerClient.getStore(storeName).getStore().getLargestUsedRTVersionNumber(), 0);
+      StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
+      Assert.assertEquals(storeInfo.getLargestUsedRTVersionNumber(), 2);
     }
   }
 }

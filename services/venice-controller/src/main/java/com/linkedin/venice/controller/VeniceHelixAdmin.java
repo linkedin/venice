@@ -10,7 +10,6 @@ import static com.linkedin.venice.controller.UserSystemStoreLifeCycleHelper.AUTO
 import static com.linkedin.venice.exceptions.VeniceNoStoreException.DOES_NOT_EXISTS;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
-import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.meta.Version.PushType;
@@ -1086,7 +1085,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       newStore.setNativeReplicationSourceFabric(config.getNativeReplicationSourceFabricAsDefaultForBatchOnly());
     }
     newStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
-    newStore.setLargestUsedRTVersionNumber(largestUsedRTVersionNumber);
+    newStore.setLargestUsedRTVersionNumber(largestUsedRTVersionNumber + 1);
   }
 
   /**
@@ -4645,6 +4644,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
+   * Update the largest used RT version number of a specified store.
+   */
+  @Override
+  public void setStoreLargestUsedRTVersion(String clusterName, String storeName, int versionNumber) {
+    storeMetadataUpdate(clusterName, storeName, store -> {
+      store.setLargestUsedRTVersionNumber(versionNumber);
+      return store;
+    });
+  }
+
+  /**
    * Update the owner of a specified store.
    */
   @Override
@@ -4732,17 +4742,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private void generateAndUpdateRealTimeTopicName(Store store) {
-    // get oldRealTimeTopicName from the store config because that will be more (or equally) recent than any version
-    // config
-    String oldRealTimeTopicName = Utils.getRealTimeTopicNameFromStoreConfig(store);
-    String newRealTimeTopicName = Utils.createNewRealTimeTopicName(oldRealTimeTopicName);
-    PubSubTopic newRealTimeTopic = getPubSubTopicRepository().getTopic(newRealTimeTopicName);
-
-    if (getTopicManager().containsTopic(newRealTimeTopic)) {
-      throw new VeniceException("Topic " + newRealTimeTopic + " should not exist.");
-    }
+    String newRealTimeTopicName =
+        store.getName() + "_v" + (store.getLargestUsedRTVersionNumber() + 1) + Version.REAL_TIME_TOPIC_SUFFIX;
 
     store.getHybridStoreConfig().setRealTimeTopicName(newRealTimeTopicName);
+    store.setLargestUsedRTVersionNumber(store.getLargestUsedRTVersionNumber() + 1);
+    LOGGER.info("updated largestUsedRTVersionNumber to " + store.getLargestUsedRTVersionNumber());
   }
 
   void setStorePartitionerConfig(String clusterName, String storeName, PartitionerConfig partitionerConfig) {
@@ -5278,6 +5283,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           hybridBufferReplayPolicy,
           realTimeTopicName);
       newHybridStoreConfig = Optional.ofNullable(hybridConfig);
+      // if (!originalStore.isHybrid() && hybridConfig != null) {
+      // moving from non-hybrid to hybrid store
+      // increase rt version number because if it is a recreation of the store, the previously existed store
+      // may have a rt topic that is still not cleaned up. we will increase largestUsedRTVersion so the new rt topic
+      // will have a different name
+      // int nextRTVersion = originalStore.getLargestUsedRTVersionNumber() + 1;
+      // LOGGER.info(
+      // "Increasing largestUsedRTVersion to " + nextRTVersion + " for store-" + storeName + " cluster-"
+      // + clusterName);
+      // setStoreLargestUsedRTVersion(clusterName, storeName, nextRTVersion);
+      // }
     } else {
       newHybridStoreConfig = Optional.empty();
     }
@@ -5717,6 +5733,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             oldStore.getName() + " was not a hybrid store.  In order to make it a hybrid store both "
                 + " rewind time in seconds and offset or time lag threshold must be specified");
       }
+
+      String newRealTimeTopicName =
+          oldStore.getName() + "_v" + oldStore.getLargestUsedRTVersionNumber() + Version.REAL_TIME_TOPIC_SUFFIX;
+
       mergedHybridStoreConfig = new HybridStoreConfigImpl(
           hybridRewindSeconds.get(),
           // If not specified, offset/time lag threshold will be -1 and will not be used to determine whether
@@ -5725,7 +5745,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           hybridTimeLagThreshold.orElse(DEFAULT_HYBRID_TIME_LAG_THRESHOLD),
           hybridDataReplicationPolicy.orElse(DataReplicationPolicy.NON_AGGREGATE),
           bufferReplayPolicy.orElse(BufferReplayPolicy.REWIND_FROM_EOP),
-          realTimeTopicName.orElse(DEFAULT_REAL_TIME_TOPIC_NAME));
+          realTimeTopicName.orElse(newRealTimeTopicName));
     }
     if (mergedHybridStoreConfig.getRewindTimeInSeconds() > 0
         && mergedHybridStoreConfig.getOffsetLagThresholdToGoOnline() < 0
