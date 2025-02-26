@@ -65,7 +65,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 
 public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
-  private static final MetricConfig METRIC_CONFIG = new MetricConfig().timeWindow(10, TimeUnit.SECONDS);
+  private static final MetricConfig METRIC_CONFIG = new MetricConfig().timeWindow(5, TimeUnit.SECONDS);
   private static final String TOTAL_INFLIGHT_REQUEST_COUNT = "total_inflight_request_count";
   private static final VeniceMetricsRepository localMetricRepo = new VeniceMetricsRepository(
       new VeniceMetricsConfig.Builder().setServiceName(ROUTER_SERVICE_NAME)
@@ -75,7 +75,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   private final static Sensor totalInflightRequestSensor = localMetricRepo.sensor("total_inflight_request");
   static {
-    totalInflightRequestSensor.add(TOTAL_INFLIGHT_REQUEST_COUNT, new Gauge());
+    totalInflightRequestSensor.add(TOTAL_INFLIGHT_REQUEST_COUNT, new Rate());
   }
 
   /** metrics to track incoming requests */
@@ -622,7 +622,6 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
      * there is no need to record into the sensor again. We just want to maintain the bookkeeping.
      */
     currentInFlightRequest.decrementAndGet();
-    totalInflightRequestSensor.record(-1);
   }
 
   public void recordAllowedRetryRequest() {
