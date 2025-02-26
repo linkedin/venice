@@ -8,6 +8,7 @@ import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterHttpRequestStats;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import org.testng.Assert;
@@ -53,5 +54,7 @@ public class RouteHttpRequestStatsTest {
     Assert.assertEquals(stats.getPendingRequestCount("my_host2"), 0);
     routerHttpRequestStats.recordIncomingRequest();
     Assert.assertTrue(RouterHttpRequestStats.hasInFlightRequests());
+    Utils.sleep(10000);
+    Assert.assertFalse(RouterHttpRequestStats.hasInFlightRequests());
   }
 }
