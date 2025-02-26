@@ -231,8 +231,8 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().isDeferredVersionSwapServiceEnabled();
   }
 
-  public boolean isDeferredVersionSwapServiceWithDvcHeartbeatEnabled() {
-    return getCommonConfig().isDeferredVersionSwapServiceWithDvcHeartbeatEnabled();
+  public boolean isSkipDeferredVersionSwapForDVCEnabled() {
+    return getCommonConfig().isSkipDeferredVersionSwapForDVCEnabled();
   }
 
   public boolean isControllerEnforceSSLOnly() {

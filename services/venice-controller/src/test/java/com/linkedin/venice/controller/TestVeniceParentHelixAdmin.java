@@ -3051,7 +3051,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             "",
             -1);
     doReturn("region1").when(config).getRegionName();
-    doReturn(true).when(config).isDeferredVersionSwapServiceWithDvcHeartbeatEnabled();
+    doReturn(true).when(config).isSkipDeferredVersionSwapForDVCEnabled();
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
         spy(new PartialMockVeniceParentHelixAdmin(internalAdmin, config))) {
       VeniceWriter veniceWriter = mock(VeniceWriter.class);

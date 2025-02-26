@@ -2470,10 +2470,9 @@ public class ConfigKeys {
   /**
    * Enables / disables allowing dvc clients to perform a target region push with deferred swap. When enabled, dvc clients
    * will be skipped and target regions will not be set and the deferred version swap service will skip checking stores with
-   * isDavinciHeartbeatReported set to true. Default value is enabled
+   * isDavinciHeartbeatReported set to true. This is a temporary config until delayed ingestion for dvc is complete. Default value is enabled
    */
-  public static final String DEFERRED_VERSION_SWAP_SERVICE_WITH_DVC_CHECK_ENABLED =
-      "deferred.version.swap.service.with.dvc.check.enabled";
+  public static final String SKIP_DEFERRED_VERSION_SWAP_FOR_DVC_ENABLED = "skip.deferred.version.swap.for.dvc.enabled";
 
   /*
    * Both Router and Server will maintain an in-memory cache for connection-level ACLs and the following config

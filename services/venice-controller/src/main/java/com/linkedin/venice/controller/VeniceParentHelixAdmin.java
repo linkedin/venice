@@ -1485,7 +1485,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Version> currentVersionInChild = childStore.getVersion(childStore.getCurrentVersion());
       if (currentVersionInChild.isPresent()) {
         boolean skipTargetRegionPushForDavinci = currentVersionInChild.get().getIsDavinciHeartbeatReported()
-            && multiClusterConfigs.isDeferredVersionSwapServiceWithDvcHeartbeatEnabled();
+            && multiClusterConfigs.isSkipDeferredVersionSwapForDVCEnabled();
         if (skipTargetRegionPushForDavinci) {
           targetedRegions = "";
           versionSwapDeferred = false;
