@@ -63,7 +63,7 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
     );
     applyAllOperationsOnValue(
         allCollectionOps,
-        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, Collections.emptyMap()));
+        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, null));
   }
 
   @Test
@@ -135,7 +135,7 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
         new DeleteMapOperation(12L, COLO_ID_2, MAP_FIELD_NAME));
     applyAllOperationsOnValue(
         allCollectionOps,
-        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, Collections.emptyMap()));
+        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, null));
   }
 
   @Test
@@ -179,7 +179,7 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
         new PutMapOperation(10L, COLO_ID_2, map1, MAP_FIELD_NAME));
     applyAllOperationsOnValue(
         allCollectionOps,
-        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, Collections.emptyMap()));
+        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, null));
   }
 
   @Test
@@ -860,10 +860,9 @@ public class MapCollectionMergeTest extends SortBasedCollectionFieldOperationHan
      *    All entries are deleted.
      */
     List<CollectionOperation> allCollectionOps = getCollectionOpsForTestCase22();
-    Map<String, Object> expectedMapResult = Collections.emptyMap();
     applyAllOperationsOnValue(
         allCollectionOps,
-        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, expectedMapResult));
+        ExpectedCollectionResults.createExpectedMapResult(MAP_FIELD_NAME, null));
   }
 
   private List<CollectionOperation> getCollectionOpsForTestCase22() {
