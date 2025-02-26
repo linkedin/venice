@@ -857,7 +857,7 @@ public class RouterServer extends AbstractVeniceService {
     try {
       RetryUtils.executeWithMaxAttempt(() -> {
         if (hasInFlightRequest()) {
-          throw new VeniceException("There are still in-flight requests in router");
+          throw new VeniceException("There are still in-flight requests in router :" + getInFlightRequestCount());
         }
       }, 30, Duration.ofSeconds(1), Collections.singletonList(VeniceException.class));
     } catch (VeniceException e) {
@@ -928,6 +928,10 @@ public class RouterServer extends AbstractVeniceService {
 
   public boolean hasInFlightRequest() {
     return RouterHttpRequestStats.hasInFlightRequests();
+  }
+
+  public long getInFlightRequestCount() {
+    return RouterHttpRequestStats.getInFlightRequestCount();
   }
 
   private void handleExceptionInStartServices(VeniceException e, boolean async) throws VeniceException {
