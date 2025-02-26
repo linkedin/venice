@@ -81,7 +81,11 @@ public class VeniceChangelogConsumerClientFactory {
       String viewNameOverride) {
     String adjustedConsumerId;
     if (!StringUtils.isEmpty(viewNameOverride)) {
-      adjustedConsumerId = consumerId + "-" + viewNameOverride;
+      if (StringUtils.isEmpty(consumerId)) {
+        adjustedConsumerId = viewNameOverride;
+      } else {
+        adjustedConsumerId = consumerId + "-" + viewNameOverride;
+      }
     } else {
       adjustedConsumerId = consumerId;
     }
