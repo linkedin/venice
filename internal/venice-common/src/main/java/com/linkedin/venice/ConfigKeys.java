@@ -2456,10 +2456,22 @@ public class ConfigKeys {
    */
   public static final String CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT = "controller.helix.default.instance.capacity";
 
+  /**
+   * Specifies how frequently the deferred version swap service runs. Default value is 1 minute
+   */
   public static final String CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS = "controller.deferred.version.swap.sleep.ms";
+
+  /**
+   * Enables / disables the deferred version swap service. Default value is disabled
+   */
   public static final String CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED =
       "controller.deferred.version.swap.service.enabled";
 
+  /**
+   * Enables / disables allowing dvc clients to perform a target region push with deferred swap. When enabled, dvc clients
+   * will be skipped and target regions will not be set and the deferred version swap service will skip checking stores with
+   * isDavinciHeartbeatReported set to true. Default value is enabled
+   */
   public static final String DEFERRED_VERSION_SWAP_SERVICE_WITH_DVC_CHECK_ENABLED =
       "deferred.version.swap.service.with.dvc.check.enabled";
 
