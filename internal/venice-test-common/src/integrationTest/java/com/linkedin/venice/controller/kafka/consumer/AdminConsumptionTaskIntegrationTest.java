@@ -42,8 +42,6 @@ import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -55,7 +53,6 @@ import org.testng.annotations.Test;
  */
 @Test(priority = -5)
 public class AdminConsumptionTaskIntegrationTest {
-  private static final Logger LOGGER = LogManager.getLogger(AdminConsumptionTaskIntegrationTest.class);
   private static final int TIMEOUT = 1 * Time.MS_PER_MINUTE;
 
   private final AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
@@ -115,7 +112,7 @@ public class AdminConsumptionTaskIntegrationTest {
   /**
    * This test is flaky on slower hardware, with a short timeout ):
    */
-  @Test(timeOut = 4 * TIMEOUT)
+  @Test(timeOut = TIMEOUT)
   public void testSkipMessageEndToEnd() throws ExecutionException, InterruptedException, IOException {
     String storeName = Utils.getUniqueString("test-store");
 

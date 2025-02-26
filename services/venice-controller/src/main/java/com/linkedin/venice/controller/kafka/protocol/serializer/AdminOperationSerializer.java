@@ -21,18 +21,14 @@ import org.apache.avro.io.Decoder;
 import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.io.Encoder;
 import org.apache.avro.specific.SpecificDatumReader;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 
 public class AdminOperationSerializer {
-  private static final Logger LOGGER = LogManager.getLogger(AdminOperationSerializer.class);
-
   // Latest schema id, and it needs to be updated whenever we add a new version
   public static final int LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION =
       AvroProtocolDefinition.ADMIN_OPERATION.getCurrentProtocolVersion();
 
-  public static final Schema LATEST_SCHEMA = AdminOperation.getClassSchema();
+  private static final Schema LATEST_SCHEMA = AdminOperation.getClassSchema();
 
   /** Used to generate decoders. */
   private static final DecoderFactory DECODER_FACTORY = new DecoderFactory();
