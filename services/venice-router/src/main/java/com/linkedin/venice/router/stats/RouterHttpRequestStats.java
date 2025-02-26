@@ -74,7 +74,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   private final static Sensor totalInflightRequestSensor = localMetricRepo.sensor("total_inflight_request");
   static {
-    totalInflightRequestSensor.add("total_inflight_request_count", new Total());
+    totalInflightRequestSensor.add("total_inflight_request_count", new Gauge());
   }
 
   /** metrics to track incoming requests */
