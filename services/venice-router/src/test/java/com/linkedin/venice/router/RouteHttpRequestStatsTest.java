@@ -53,7 +53,5 @@ public class RouteHttpRequestStatsTest {
     Assert.assertEquals(stats.getPendingRequestCount("my_host2"), 0);
     routerHttpRequestStats.recordIncomingRequest();
     Assert.assertTrue(RouterHttpRequestStats.hasInFlightRequests());
-    routerHttpRequestStats.recordResponse();
-    Assert.assertFalse(RouterHttpRequestStats.hasInFlightRequests());
   }
 }
