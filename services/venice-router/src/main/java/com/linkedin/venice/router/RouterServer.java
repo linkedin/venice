@@ -852,10 +852,11 @@ public class RouterServer extends AbstractVeniceService {
      * correctly.
      */
 
+    LOGGER.info("Waiting to make sure all in-flight requests are drained");
     // Graceful shutdown: Wait till all the requests are drained
     try {
       RetryUtils.executeWithMaxAttempt(() -> {
-        if (RouterHttpRequestStats.hasInFlightRequests()) {
+        if (hasInFlightRequest()) {
           throw new VeniceException("There are still in-flight requests in router");
         }
       },
@@ -866,6 +867,7 @@ public class RouterServer extends AbstractVeniceService {
       LOGGER.error(
           "There are still in-flight request during router shutdown, still continuing shutdown, it might cause unhealthy request in client");
     }
+    LOGGER.info("Drained all in-flight requests, starting to shutdown the router.");
     storageNodeClient.close();
     workerEventLoopGroup.shutdownGracefully();
     serverEventLoopGroup.shutdownGracefully();
@@ -925,6 +927,10 @@ public class RouterServer extends AbstractVeniceService {
 
   public ReadOnlySchemaRepository getSchemaRepository() {
     return schemaRepository;
+  }
+
+  public boolean hasInFlightRequest() {
+    return RouterHttpRequestStats.hasInFlightRequests();
   }
 
   private void handleExceptionInStartServices(VeniceException e, boolean async) throws VeniceException {

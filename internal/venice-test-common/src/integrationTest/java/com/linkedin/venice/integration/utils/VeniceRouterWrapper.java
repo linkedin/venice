@@ -70,7 +70,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
   private static final String ROUTER_SERVICE_METRIC_PREFIX = "router";
   private final VeniceProperties properties;
   private final String zkAddress;
-  private RouterServer service;
+  private RouterServer routerServer;
   private final String d2ClusterName;
   private final String clusterDiscoveryD2ClusterName;
   private final String regionName;
@@ -81,13 +81,13 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
       String regionName,
       String serviceName,
       File dataDirectory,
-      RouterServer service,
+      RouterServer routerServer,
       VeniceProperties properties,
       String zkAddress,
       String d2ClusterName,
       String clusterDiscoveryD2ClusterName) {
     super(serviceName, dataDirectory);
-    this.service = service;
+    this.routerServer = routerServer;
     this.properties = properties;
     this.zkAddress = zkAddress;
     this.d2ClusterName = d2ClusterName;
@@ -224,22 +224,22 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
   }
 
   public String getD2ServiceNameForCluster(String clusterName) {
-    return service.getConfig().getClusterToD2Map().get(clusterName);
+    return routerServer.getConfig().getClusterToD2Map().get(clusterName);
   }
 
   @Override
   protected void internalStart() throws Exception {
-    service.start();
+    routerServer.start();
     TestUtils.waitForNonDeterministicCompletion(
         IntegrationTestUtils.MAX_ASYNC_START_WAIT_TIME_MS,
         TimeUnit.MILLISECONDS,
-        () -> service.isRunning());
+        () -> routerServer.isRunning());
     LOGGER.info("Started VeniceRouterWrapper: {}", this);
   }
 
   @Override
   protected void internalStop() throws Exception {
-    service.stop();
+    routerServer.stop();
   }
 
   @Override
@@ -251,7 +251,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
 
     d2Servers.addAll(D2TestUtils.getD2Servers(zkAddress, clusterDiscoveryD2ClusterName, httpURI, httpsURI));
 
-    service = new RouterServer(
+    routerServer = new RouterServer(
         properties,
         d2Servers,
         Optional.empty(),
@@ -272,28 +272,32 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
   }
 
   public HelixBaseRoutingRepository getRoutingDataRepository() {
-    return service.getRoutingDataRepository();
+    return routerServer.getRoutingDataRepository();
   }
 
   public ReadOnlyStoreRepository getMetaDataRepository() {
-    return service.getMetadataRepository();
+    return routerServer.getMetadataRepository();
   }
 
   public ReadOnlySchemaRepository getSchemaRepository() {
-    return service.getSchemaRepository();
+    return routerServer.getSchemaRepository();
   }
 
   public ZkRoutersClusterManager getRoutersClusterManager() {
-    return service.getRoutersClusterManager();
+    return routerServer.getRoutersClusterManager();
   }
 
   @Override
   public MetricsRepository getMetricsRepository() {
-    return service.getMetricsRepository();
+    return routerServer.getMetricsRepository();
+  }
+
+  public RouterServer getRouter() {
+    return routerServer;
   }
 
   public void refresh() {
-    service.refresh();
+    routerServer.refresh();
   }
 
   @Override
