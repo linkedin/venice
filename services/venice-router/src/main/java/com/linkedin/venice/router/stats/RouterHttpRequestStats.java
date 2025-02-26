@@ -66,6 +66,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private static final MetricConfig METRIC_CONFIG = new MetricConfig().timeWindow(10, TimeUnit.SECONDS);
+  private static final String TOTAL_INFLIGHT_REQUEST_COUNT = "total_inflight_request_count";
   private static final VeniceMetricsRepository localMetricRepo = new VeniceMetricsRepository(
       new VeniceMetricsConfig.Builder().setServiceName(ROUTER_SERVICE_NAME)
           .setMetricPrefix(ROUTER_SERVICE_METRIC_PREFIX)
@@ -74,7 +75,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   private final static Sensor totalInflightRequestSensor = localMetricRepo.sensor("total_inflight_request");
   static {
-    totalInflightRequestSensor.add("total_inflight_request_count", new Gauge());
+    totalInflightRequestSensor.add(TOTAL_INFLIGHT_REQUEST_COUNT, new Gauge());
   }
 
   /** metrics to track incoming requests */
@@ -658,9 +659,9 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   static public boolean hasInFlightRequests() {
-    Metric metric = localMetricRepo.getMetric("total_inflight_request_count");
+    Metric metric = localMetricRepo.getMetric(TOTAL_INFLIGHT_REQUEST_COUNT);
     // max return -infinity when there are no samples. validate only against finite value
-    return Double.isFinite(metric.value()) ? metric.value() > 0.0 : false;
+    return Double.isFinite(metric.value()) && metric.value() > 0.0;
   }
 
   /** used only for testing */
