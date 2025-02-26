@@ -72,7 +72,6 @@ import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.HealthCheckStats;
 import com.linkedin.venice.router.stats.LongTailRetryStatsProvider;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
-import com.linkedin.venice.router.stats.RouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterMetricEntity;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.stats.RouterThrottleStats;
@@ -111,6 +110,7 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.util.concurrent.DefaultThreadFactory;
+import io.tehuti.Metric;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -952,7 +952,9 @@ public class RouterServer extends AbstractVeniceService {
   }
 
   public double getInFlightRequestRate() {
-    return RouterHttpRequestStats.getInFlightRequestRate();
+    Metric metric = localMetricRepo.getMetric(TOTAL_INFLIGHT_REQUEST_COUNT);
+    // max return -infinity when there are no samples. validate only against finite value
+    return Double.isFinite(metric.value()) ? metric.value() : 0.0;
   }
 
   private void handleExceptionInStartServices(VeniceException e, boolean async) throws VeniceException {

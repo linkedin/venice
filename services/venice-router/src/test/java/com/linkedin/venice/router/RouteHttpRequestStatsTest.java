@@ -15,6 +15,7 @@ import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
+import io.tehuti.Metric;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -30,13 +31,15 @@ public class RouteHttpRequestStatsTest {
   private RouteHttpRequestStats stats;
   private RouterHttpRequestStats routerHttpRequestStats;
 
+  private VeniceMetricsRepository localMetricRepo;
+
   @BeforeSuite
   public void setUp() {
     MetricsRepository metrics = MetricsRepositoryUtils.createSingleThreadedVeniceMetricsRepository();
     reporter = new MockTehutiReporter();
     metrics.addReporter(reporter);
     MetricConfig metricConfig = new MetricConfig().timeWindow(1, TimeUnit.SECONDS);
-    VeniceMetricsRepository localMetricRepo = new VeniceMetricsRepository(
+    localMetricRepo = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setServiceName(ROUTER_SERVICE_NAME)
             .setMetricPrefix(ROUTER_SERVICE_METRIC_PREFIX)
             .setTehutiMetricConfig(metricConfig)
@@ -51,8 +54,7 @@ public class RouteHttpRequestStatsTest {
         RequestType.SINGLE_GET,
         mock(ScatterGatherStats.class),
         false,
-        totalInflightRequestSensor,
-        localMetricRepo);
+        totalInflightRequestSensor);
   }
 
   @Test
@@ -75,10 +77,16 @@ public class RouteHttpRequestStatsTest {
   @Test
   public void routerInFlightMetricTest() {
     routerHttpRequestStats.recordIncomingRequest();
-    Assert.assertTrue(RouterHttpRequestStats.getInFlightRequestRate() > 0.0);
+    Assert.assertTrue(getInFlightRequestRate() > 0.0);
     // After waiting for metric time window, it wil be reset back to 0
     waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
-      Assert.assertEquals(RouterHttpRequestStats.getInFlightRequestRate(), 0.0);
+      Assert.assertEquals(getInFlightRequestRate(), 0.0);
     });
+  }
+
+  public double getInFlightRequestRate() {
+    Metric metric = localMetricRepo.getMetric(TOTAL_INFLIGHT_REQUEST_COUNT);
+    // max return -infinity when there are no samples. validate only against finite value
+    return Double.isFinite(metric.value()) ? metric.value() : 0.0;
   }
 }

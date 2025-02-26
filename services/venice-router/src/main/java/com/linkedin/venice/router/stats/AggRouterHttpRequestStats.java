@@ -68,8 +68,7 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
           requestType,
           stats,
           isKeyValueProfilingEnabled,
-          totalInFlightRequestSensor,
-          inflightMetricRepo);
+          totalInFlightRequestSensor);
     });
   }
 

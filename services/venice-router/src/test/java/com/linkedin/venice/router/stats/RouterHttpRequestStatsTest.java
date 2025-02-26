@@ -55,7 +55,6 @@ public class RouterHttpRequestStatsTest {
         RequestType.SINGLE_GET,
         mock(ScatterGatherStats.class),
         false,
-        null,
         null);
 
     if (useVeniceMetricRepository && isOtelEnabled) {

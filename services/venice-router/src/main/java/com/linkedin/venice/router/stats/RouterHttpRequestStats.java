@@ -1,6 +1,5 @@
 package com.linkedin.venice.router.stats;
 
-import static com.linkedin.venice.router.RouterServer.TOTAL_INFLIGHT_REQUEST_COUNT;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.ABORTED_RETRY_COUNT;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.ALLOWED_RETRY_COUNT;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.CALL_COUNT;
@@ -46,7 +45,6 @@ import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
-import io.tehuti.Metric;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -142,8 +140,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
       RequestType requestType,
       ScatterGatherStats scatterGatherStats,
       boolean isKeyValueProfilingEnabled,
-      Sensor totalInFlightRequestSensor,
-      VeniceMetricsRepository inflightMetricRepo) {
+      Sensor totalInFlightRequestSensor) {
     super(metricsRepository, storeName, requestType);
     VeniceOpenTelemetryMetricsRepository otelRepository = null;
     if (metricsRepository instanceof VeniceMetricsRepository) {
@@ -391,7 +388,6 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
     metaStoreShadowReadSensor = registerSensor("meta_store_shadow_read", new OccurrenceRate());
     this.totalInFlightRequestSensor = totalInFlightRequestSensor;
-    this.inflightMetricRepo = inflightMetricRepo;
   }
 
   private String getDimensionName(VeniceMetricsDimensions dimension) {
@@ -647,12 +643,6 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
    */
   private Sensor registerSensorFinal(String sensorName, MeasurableStat... stats) {
     return this.registerSensor(sensorName, stats);
-  }
-
-  static public double getInFlightRequestRate() {
-    Metric metric = inflightMetricRepo.getMetric(TOTAL_INFLIGHT_REQUEST_COUNT);
-    // max return -infinity when there are no samples. validate only against finite value
-    return Double.isFinite(metric.value()) ? metric.value() : 0.0;
   }
 
   /** used only for testing */
