@@ -60,7 +60,6 @@ public class VeniceServerConfigTest {
   }
 
   @Test
-
   public void testConfig() {
     Properties props = populatedBasicProperties();
 

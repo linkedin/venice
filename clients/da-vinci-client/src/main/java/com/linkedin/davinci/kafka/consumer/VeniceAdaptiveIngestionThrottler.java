@@ -29,7 +29,7 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
     this.signalIdleThreshold = signalIdleThreshold;
     DecimalFormat decimalFormat = new DecimalFormat("0.0");
     throttlerNum = factors.size();
-    for (int i = 0; i < factors.size(); i++) {
+    for (int i = 0; i < throttlerNum; i++) {
       Double factor = factors.get(i);
       if (factor == 1.0D) {
         currentThrottlerIndex = i;
