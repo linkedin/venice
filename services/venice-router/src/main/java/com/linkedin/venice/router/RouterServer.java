@@ -859,10 +859,7 @@ public class RouterServer extends AbstractVeniceService {
         if (hasInFlightRequest()) {
           throw new VeniceException("There are still in-flight requests in router");
         }
-      },
-          10,
-          Duration.ofSeconds(config.getRouterNettyGracefulShutdownPeriodSeconds()),
-          Collections.singletonList(VeniceException.class));
+      }, 30, Duration.ofSeconds(1), Collections.singletonList(VeniceException.class));
     } catch (VeniceException e) {
       LOGGER.error(
           "There are still in-flight request during router shutdown, still continuing shutdown, it might cause unhealthy request in client");
