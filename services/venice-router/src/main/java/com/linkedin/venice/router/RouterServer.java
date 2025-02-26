@@ -856,8 +856,9 @@ public class RouterServer extends AbstractVeniceService {
     // Graceful shutdown: Wait till all the requests are drained
     try {
       RetryUtils.executeWithMaxAttempt(() -> {
-        if (hasInFlightRequest()) {
-          throw new VeniceException("There are still in-flight requests in router :" + getInFlightRequestCount());
+        double inFlightRequestRate = getInFlightRequestRate();
+        if (inFlightRequestRate > 0.0) {
+          throw new VeniceException("There are still in-flight requests in router :" + inFlightRequestRate);
         }
       }, 30, Duration.ofSeconds(1), Collections.singletonList(VeniceException.class));
     } catch (VeniceException e) {
@@ -926,12 +927,8 @@ public class RouterServer extends AbstractVeniceService {
     return schemaRepository;
   }
 
-  public boolean hasInFlightRequest() {
-    return RouterHttpRequestStats.hasInFlightRequests();
-  }
-
-  public long getInFlightRequestCount() {
-    return RouterHttpRequestStats.getInFlightRequestCount();
+  public double getInFlightRequestRate() {
+    return RouterHttpRequestStats.getInFlightRequestRate();
   }
 
   private void handleExceptionInStartServices(VeniceException e, boolean async) throws VeniceException {

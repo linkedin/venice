@@ -57,9 +57,9 @@ public class RouteHttpRequestStatsTest {
   @Test
   public void routerInFlightMetricTest() {
     routerHttpRequestStats.recordIncomingRequest();
-    Assert.assertTrue(RouterHttpRequestStats.hasInFlightRequests());
+    Assert.assertTrue(RouterHttpRequestStats.getInFlightRequestRate() > 0.0);
     // After waiting for metric time window, it wil be reset back to 0
     Utils.sleep(10000);
-    Assert.assertFalse(RouterHttpRequestStats.hasInFlightRequests());
+    Assert.assertEquals(RouterHttpRequestStats.getInFlightRequestRate(), 0.0);
   }
 }

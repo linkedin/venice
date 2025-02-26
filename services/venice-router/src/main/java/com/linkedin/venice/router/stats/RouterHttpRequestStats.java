@@ -657,16 +657,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     return this.registerSensor(sensorName, stats);
   }
 
-  static public boolean hasInFlightRequests() {
+  static public double getInFlightRequestRate() {
     Metric metric = localMetricRepo.getMetric(TOTAL_INFLIGHT_REQUEST_COUNT);
     // max return -infinity when there are no samples. validate only against finite value
-    return Double.isFinite(metric.value()) && metric.value() > 0.0;
-  }
-
-  static public long getInFlightRequestCount() {
-    Metric metric = localMetricRepo.getMetric(TOTAL_INFLIGHT_REQUEST_COUNT);
-    // max return -infinity when there are no samples. validate only against finite value
-    return Double.isFinite(metric.value()) ? (long) metric.value() : 0;
+    return Double.isFinite(metric.value()) ? metric.value() : 0.0;
   }
 
   /** used only for testing */

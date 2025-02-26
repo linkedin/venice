@@ -555,7 +555,7 @@ public abstract class TestRead {
           queriesSent++;
           storeClient.batchGet(keySet).get();
           for (VeniceRouterWrapper routerWrapper: veniceCluster.getVeniceRouters()) {
-            Assert.assertTrue(routerWrapper.getRouter().hasInFlightRequest());
+            Assert.assertTrue(routerWrapper.getRouter().getInFlightRequestRate() > 0.0);
           }
         } catch (ExecutionException e) {
           Throwable cause = e.getCause();
@@ -600,7 +600,7 @@ public abstract class TestRead {
         routerWrapper.getRouter().stop();
       }
       for (VeniceRouterWrapper routerWrapper: veniceCluster.getVeniceRouters()) {
-        Assert.assertFalse(routerWrapper.getRouter().hasInFlightRequest());
+        Assert.assertEquals(routerWrapper.getRouter().getInFlightRequestRate(), 0.0);
       }
       /** TODO Re-enable this assertion once we stop throwing batch get quota exceptions from {@link com.linkedin.venice.router.api.VeniceDelegateMode} */
       // Assert.assertTrue(throttledRequestLatencyForBatchGetAfterQueries > 0.0, "There should be batch get throttled
