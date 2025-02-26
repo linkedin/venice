@@ -41,6 +41,8 @@ import org.testng.annotations.Test;
 public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentHelixAdmin {
   private static final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
       AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+  private static final long LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION =
+      AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
 
   MockVeniceAuthorizer authorizerService;
 
@@ -75,16 +77,12 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
       expectedAB.addAceEntry(wace);
     }
 
-    when(zkClient.readData(zkMetadataNodePath, null))
-        .thenReturn(
-            AdminTopicMetadataAccessor
-                .generateMetadataMap(Optional.of(1L), Optional.of(-1L), Optional.of(1L), Optional.empty()))
-        .thenReturn(
-            AdminTopicMetadataAccessor.generateMetadataMap(
-                Optional.of(1L),
-                Optional.of(-1L),
-                Optional.of(1L),
-                Optional.of((long) AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)));
+    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(
+        AdminTopicMetadataAccessor.generateMetadataMap(
+            Optional.of(1L),
+            Optional.of(-1L),
+            Optional.of(1L),
+            Optional.of(LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)));
 
     doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
         .when(veniceWriter)
@@ -146,7 +144,7 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
                 Optional.of(1L),
                 Optional.of(-1L),
                 Optional.of(1L),
-                Optional.of((long) AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)));
+                Optional.of(LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)));
     initializeParentAdmin(Optional.of(authorizerService));
     parentAdmin.initStorageCluster(clusterName);
     parentAdmin.deleteStore(clusterName, storeName, false, 0, true);
@@ -196,8 +194,11 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(new OffsetRecord(partitionStateSerializer))
         .thenReturn(
-            AdminTopicMetadataAccessor
-                .generateMetadataMap(Optional.of(1L), Optional.of(-1L), Optional.of(1L), Optional.empty()));
+            AdminTopicMetadataAccessor.generateMetadataMap(
+                Optional.of(1L),
+                Optional.of(-1L),
+                Optional.of(1L),
+                Optional.of(LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)));
     initializeParentAdmin(Optional.of(authorizerService));
     Assert.assertThrows(
         VeniceNoStoreException.class,
@@ -216,8 +217,11 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(new OffsetRecord(partitionStateSerializer))
         .thenReturn(
-            AdminTopicMetadataAccessor
-                .generateMetadataMap(Optional.of(1L), Optional.of(-1L), Optional.of(1L), Optional.empty()));
+            AdminTopicMetadataAccessor.generateMetadataMap(
+                Optional.of(1L),
+                Optional.of(-1L),
+                Optional.of(1L),
+                Optional.of(LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)));
     initializeParentAdmin(Optional.of(authorizerService));
     Assert.assertThrows(VeniceNoStoreException.class, () -> parentAdmin.getAclForStore(clusterName, storeName));
   }
@@ -233,8 +237,11 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(new OffsetRecord(partitionStateSerializer))
         .thenReturn(
-            AdminTopicMetadataAccessor
-                .generateMetadataMap(Optional.of(1L), Optional.of(-1L), Optional.of(1L), Optional.empty()));
+            AdminTopicMetadataAccessor.generateMetadataMap(
+                Optional.of(1L),
+                Optional.of(-1L),
+                Optional.of(1L),
+                Optional.of(LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)));
     initializeParentAdmin(Optional.of(authorizerService));
     Assert.assertThrows(VeniceNoStoreException.class, () -> parentAdmin.deleteAclForStore(clusterName, storeName));
     Assert.assertEquals(0, authorizerService.clearAclCounter);
