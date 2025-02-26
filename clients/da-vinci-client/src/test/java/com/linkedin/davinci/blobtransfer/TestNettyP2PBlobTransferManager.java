@@ -83,9 +83,14 @@ public class TestNettyP2PBlobTransferManager {
     blobSnapshotManager =
         Mockito.spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
 
-    server =
-        new P2PBlobTransferService(port, tmpSnapshotDir.toString(), blobTransferMaxTimeoutInMin, blobSnapshotManager);
-    client = Mockito.spy(new NettyFileTransferClient(port, tmpPartitionDir.toString(), storageMetadataService, 30));
+    server = new P2PBlobTransferService(
+        port,
+        tmpSnapshotDir.toString(),
+        blobTransferMaxTimeoutInMin,
+        blobSnapshotManager,
+        2000000);
+    client =
+        Mockito.spy(new NettyFileTransferClient(port, tmpPartitionDir.toString(), storageMetadataService, 30, 2000000));
     finder = mock(BlobFinder.class);
 
     manager = new NettyP2PBlobTransferManager(server, client, finder, tmpPartitionDir.toString(), blobTransferStats);

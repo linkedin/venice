@@ -22,6 +22,7 @@ public class BlobTransferUtil {
    * Get a P2P blob transfer manager for DaVinci Client and start it.
    * @param p2pTransferServerPort, the port used by the P2P transfer server
    * @param p2pTransferClientPort, the port used by the P2P transfer client
+   *                               the p2pTransferServerPort and p2pTransferClientPort should be same.
    * @param baseDir, the base directory of the underlying storage
    * @param clientConfig, the client config to start up a transport client
    * @param storageMetadataService, the storage metadata service
@@ -41,7 +42,9 @@ public class BlobTransferUtil {
       int blobTransferMaxTimeoutInMin,
       AggVersionedBlobTransferStats aggVersionedBlobTransferStats,
       BlobTransferUtils.BlobTransferTableFormat transferSnapshotTableFormat,
-      int peersConnectivityFreshnessInSeconds) {
+      int peersConnectivityFreshnessInSeconds,
+      long blobTransferClientReadLimitBytesPerSec,
+      long blobTransferServiceWriteLimitBytesPerSec) {
     try {
       BlobSnapshotManager blobSnapshotManager = new BlobSnapshotManager(
           readOnlyStoreRepository,
@@ -51,12 +54,18 @@ public class BlobTransferUtil {
           snapshotRetentionTimeInMin,
           transferSnapshotTableFormat);
       BlobTransferManager<Void> manager = new NettyP2PBlobTransferManager(
-          new P2PBlobTransferService(p2pTransferServerPort, baseDir, blobTransferMaxTimeoutInMin, blobSnapshotManager),
+          new P2PBlobTransferService(
+              p2pTransferServerPort,
+              baseDir,
+              blobTransferMaxTimeoutInMin,
+              blobSnapshotManager,
+              blobTransferServiceWriteLimitBytesPerSec),
           new NettyFileTransferClient(
               p2pTransferClientPort,
               baseDir,
               storageMetadataService,
-              peersConnectivityFreshnessInSeconds),
+              peersConnectivityFreshnessInSeconds,
+              blobTransferClientReadLimitBytesPerSec),
           new DaVinciBlobFinder(clientConfig),
           baseDir,
           aggVersionedBlobTransferStats);
@@ -73,6 +82,7 @@ public class BlobTransferUtil {
    * Get a P2P blob transfer manager for Server and start it.
    * @param p2pTransferServerPort the port used by the P2P transfer server
    * @param p2pTransferClientPort the port used by the P2P transfer client
+   *                              the p2pTransferServerPort and p2pTransferClientPort should be same.
    * @param baseDir the base directory of the underlying storage
    * @param customizedViewFuture the future of the customized view repository
    * @return the blob transfer manager
@@ -90,7 +100,9 @@ public class BlobTransferUtil {
       int blobTransferMaxTimeoutInMin,
       AggVersionedBlobTransferStats aggVersionedBlobTransferStats,
       BlobTransferUtils.BlobTransferTableFormat transferSnapshotTableFormat,
-      int peersConnectivityFreshnessInSeconds) {
+      int peersConnectivityFreshnessInSeconds,
+      long blobTransferClientReadLimitBytesPerSec,
+      long blobTransferServiceWriteLimitBytesPerSec) {
     try {
       BlobSnapshotManager blobSnapshotManager = new BlobSnapshotManager(
           readOnlyStoreRepository,
@@ -100,12 +112,18 @@ public class BlobTransferUtil {
           snapshotRetentionTimeInMin,
           transferSnapshotTableFormat);
       BlobTransferManager<Void> manager = new NettyP2PBlobTransferManager(
-          new P2PBlobTransferService(p2pTransferServerPort, baseDir, blobTransferMaxTimeoutInMin, blobSnapshotManager),
+          new P2PBlobTransferService(
+              p2pTransferServerPort,
+              baseDir,
+              blobTransferMaxTimeoutInMin,
+              blobSnapshotManager,
+              blobTransferServiceWriteLimitBytesPerSec),
           new NettyFileTransferClient(
               p2pTransferClientPort,
               baseDir,
               storageMetadataService,
-              peersConnectivityFreshnessInSeconds),
+              peersConnectivityFreshnessInSeconds,
+              blobTransferClientReadLimitBytesPerSec),
           new ServerBlobFinder(customizedViewFuture),
           baseDir,
           aggVersionedBlobTransferStats);

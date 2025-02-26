@@ -35,7 +35,8 @@ public class P2PBlobTransferService extends AbstractVeniceService {
       int port,
       String baseDir,
       int blobTransferMaxTimeoutInMin,
-      BlobSnapshotManager blobSnapshotManager) {
+      BlobSnapshotManager blobSnapshotManager,
+      long blobTransferServiceWriteLimitBytesPerSec) {
     this.port = port;
     this.serverBootstrap = new ServerBootstrap();
 
@@ -53,7 +54,11 @@ public class P2PBlobTransferService extends AbstractVeniceService {
     serverBootstrap.group(bossGroup, workerGroup)
         .channel(socketChannelClass)
         .childHandler(
-            new BlobTransferNettyChannelInitializer(baseDir, blobTransferMaxTimeoutInMin, blobSnapshotManager))
+            new BlobTransferNettyChannelInitializer(
+                baseDir,
+                blobTransferMaxTimeoutInMin,
+                blobSnapshotManager,
+                blobTransferServiceWriteLimitBytesPerSec))
         .option(ChannelOption.SO_BACKLOG, 1000)
         .option(ChannelOption.SO_REUSEADDR, true)
         .childOption(ChannelOption.SO_KEEPALIVE, true)
