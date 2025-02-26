@@ -86,6 +86,7 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.stats.VeniceJVMStats;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.stats.metrics.MetricEntity;
@@ -110,7 +111,10 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.util.concurrent.DefaultThreadFactory;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.Rate;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.time.Duration;
@@ -214,6 +218,13 @@ public class RouterServer extends AbstractVeniceService {
   private final AggHostHealthStats aggHostHealthStats;
 
   private ScheduledExecutorService retryManagerExecutorService;
+
+  public static final String TOTAL_INFLIGHT_REQUEST_COUNT = "total_inflight_request_count";
+
+  private final MetricConfig metricConfig;
+  private final VeniceMetricsRepository localMetricRepo;
+
+  private final Sensor totalInflightRequestSensor;
 
   public static void main(String args[]) throws Exception {
     if (args.length != 1) {
@@ -341,7 +352,9 @@ public class RouterServer extends AbstractVeniceService {
             requestType,
             config.isKeyValueProfilingEnabled(),
             metadataRepository,
-            config.isUnregisterMetricForDeletedStoreEnabled()));
+            config.isUnregisterMetricForDeletedStoreEnabled(),
+            totalInflightRequestSensor,
+            localMetricRepo));
     this.schemaRepository = new HelixReadOnlySchemaRepositoryAdapter(
         new HelixReadOnlyZKSharedSchemaRepository(
             readOnlyZKSharedSystemStoreRepository,
@@ -406,6 +419,15 @@ public class RouterServer extends AbstractVeniceService {
     Class<IdentityParser> identityParserClass = ReflectUtils.loadClass(config.getIdentityParserClassName());
     this.identityParser = ReflectUtils.callConstructor(identityParserClass, new Class[0], new Object[0]);
 
+    metricConfig = new MetricConfig().timeWindow(config.getRouterInFlightMetricWindowSeconds(), TimeUnit.SECONDS);
+    localMetricRepo = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setServiceName(ROUTER_SERVICE_NAME)
+            .setMetricPrefix(ROUTER_SERVICE_METRIC_PREFIX)
+            .setTehutiMetricConfig(metricConfig)
+            .build());
+    totalInflightRequestSensor = localMetricRepo.sensor("total_inflight_request");
+    totalInflightRequestSensor.add(TOTAL_INFLIGHT_REQUEST_COUNT, new Rate());
+
     verifySslOk();
   }
 
@@ -446,7 +468,9 @@ public class RouterServer extends AbstractVeniceService {
             requestType,
             config.isKeyValueProfilingEnabled(),
             metadataRepository,
-            config.isUnregisterMetricForDeletedStoreEnabled()));
+            config.isUnregisterMetricForDeletedStoreEnabled(),
+            null,
+            null));
     this.schemaRepository = schemaRepository;
     this.storeConfigRepository = storeConfigRepository;
     this.liveInstanceMonitor = liveInstanceMonitor;

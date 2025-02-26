@@ -1,5 +1,9 @@
 package com.linkedin.venice.router;
 
+import static com.linkedin.venice.router.RouterServer.ROUTER_SERVICE_METRIC_PREFIX;
+import static com.linkedin.venice.router.RouterServer.ROUTER_SERVICE_NAME;
+import static com.linkedin.venice.router.RouterServer.TOTAL_INFLIGHT_REQUEST_COUNT;
+import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static org.mockito.Mockito.mock;
 
 import com.linkedin.alpini.router.monitoring.ScatterGatherStats;
@@ -7,10 +11,15 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterHttpRequestStats;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.Rate;
+import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
@@ -26,7 +35,14 @@ public class RouteHttpRequestStatsTest {
     MetricsRepository metrics = MetricsRepositoryUtils.createSingleThreadedVeniceMetricsRepository();
     reporter = new MockTehutiReporter();
     metrics.addReporter(reporter);
-
+    MetricConfig metricConfig = new MetricConfig().timeWindow(1, TimeUnit.SECONDS);
+    VeniceMetricsRepository localMetricRepo = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setServiceName(ROUTER_SERVICE_NAME)
+            .setMetricPrefix(ROUTER_SERVICE_METRIC_PREFIX)
+            .setTehutiMetricConfig(metricConfig)
+            .build());
+    Sensor totalInflightRequestSensor = localMetricRepo.sensor("total_inflight_request");
+    totalInflightRequestSensor.add(TOTAL_INFLIGHT_REQUEST_COUNT, new Rate());
     stats = new RouteHttpRequestStats(metrics, mock(StorageNodeClient.class));
     routerHttpRequestStats = new RouterHttpRequestStats(
         metrics,
@@ -34,7 +50,9 @@ public class RouteHttpRequestStatsTest {
         "test-cluster",
         RequestType.SINGLE_GET,
         mock(ScatterGatherStats.class),
-        false);
+        false,
+        totalInflightRequestSensor,
+        localMetricRepo);
   }
 
   @Test
@@ -59,7 +77,8 @@ public class RouteHttpRequestStatsTest {
     routerHttpRequestStats.recordIncomingRequest();
     Assert.assertTrue(RouterHttpRequestStats.getInFlightRequestRate() > 0.0);
     // After waiting for metric time window, it wil be reset back to 0
-    Utils.sleep(10000);
-    Assert.assertEquals(RouterHttpRequestStats.getInFlightRequestRate(), 0.0);
+    waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
+      Assert.assertEquals(RouterHttpRequestStats.getInFlightRequestRate(), 0.0);
+    });
   }
 }

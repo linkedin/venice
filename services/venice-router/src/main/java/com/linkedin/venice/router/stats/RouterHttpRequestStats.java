@@ -1,7 +1,6 @@
 package com.linkedin.venice.router.stats;
 
-import static com.linkedin.venice.router.RouterServer.ROUTER_SERVICE_METRIC_PREFIX;
-import static com.linkedin.venice.router.RouterServer.ROUTER_SERVICE_NAME;
+import static com.linkedin.venice.router.RouterServer.TOTAL_INFLIGHT_REQUEST_COUNT;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.ABORTED_RETRY_COUNT;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.ALLOWED_RETRY_COUNT;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.CALL_COUNT;
@@ -29,6 +28,8 @@ import static java.util.Collections.singletonList;
 import com.linkedin.alpini.router.monitoring.ScatterGatherStats;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
+import com.linkedin.venice.router.api.VeniceResponseAggregator;
 import com.linkedin.venice.stats.AbstractVeniceHttpStats;
 import com.linkedin.venice.stats.LambdaStat;
 import com.linkedin.venice.stats.TehutiUtils;
@@ -47,7 +48,6 @@ import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MeasurableStat;
-import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
@@ -60,24 +60,10 @@ import io.tehuti.metrics.stats.Rate;
 import io.tehuti.metrics.stats.Total;
 import java.util.Arrays;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 
 public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
-  private static final MetricConfig METRIC_CONFIG = new MetricConfig().timeWindow(5, TimeUnit.SECONDS);
-  private static final String TOTAL_INFLIGHT_REQUEST_COUNT = "total_inflight_request_count";
-  private static final VeniceMetricsRepository localMetricRepo = new VeniceMetricsRepository(
-      new VeniceMetricsConfig.Builder().setServiceName(ROUTER_SERVICE_NAME)
-          .setMetricPrefix(ROUTER_SERVICE_METRIC_PREFIX)
-          .setTehutiMetricConfig(METRIC_CONFIG)
-          .build());
-
-  private final static Sensor totalInflightRequestSensor = localMetricRepo.sensor("total_inflight_request");
-  static {
-    totalInflightRequestSensor.add(TOTAL_INFLIGHT_REQUEST_COUNT, new Rate());
-  }
-
   /** metrics to track incoming requests */
   private final Sensor requestSensor;
 
@@ -145,6 +131,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Attributes commonMetricDimensions;
   private final boolean emitOpenTelemetryMetrics;
   private final VeniceOpenTelemetryMetricNamingFormat openTelemetryMetricFormat;
+  private final Sensor totalInFlightRequestSensor;
+  private static VeniceMetricsRepository inflightMetricRepo = null;
 
   // QPS metrics
   public RouterHttpRequestStats(
@@ -153,7 +141,9 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
       String clusterName,
       RequestType requestType,
       ScatterGatherStats scatterGatherStats,
-      boolean isKeyValueProfilingEnabled) {
+      boolean isKeyValueProfilingEnabled,
+      Sensor totalInFlightRequestSensor,
+      VeniceMetricsRepository inflightMetricRepo) {
     super(metricsRepository, storeName, requestType);
     VeniceOpenTelemetryMetricsRepository otelRepository = null;
     if (metricsRepository instanceof VeniceMetricsRepository) {
@@ -400,6 +390,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     currentInFlightRequest = new AtomicInteger();
 
     metaStoreShadowReadSensor = registerSensor("meta_store_shadow_read", new OccurrenceRate());
+    this.totalInFlightRequestSensor = totalInFlightRequestSensor;
+    this.inflightMetricRepo = inflightMetricRepo;
   }
 
   private String getDimensionName(VeniceMetricsDimensions dimension) {
@@ -413,7 +405,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   public void recordIncomingRequest() {
     requestSensor.record(1);
     inFlightRequestSensor.record(currentInFlightRequest.incrementAndGet());
-    totalInflightRequestSensor.record();
+    totalInFlightRequestSensor.record();
   }
 
   Attributes getRequestMetricDimensions(
@@ -477,8 +469,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   /**
-   * Once we stop reporting throttled requests in {@link com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils},
-   * and we only report them in {@link com.linkedin.venice.router.api.VeniceResponseAggregator} then we will always have
+   * Once we stop reporting throttled requests in {@link RouterExceptionAndTrackingUtils},
+   * and we only report them in {@link VeniceResponseAggregator} then we will always have
    * a latency and we'll be able to remove this overload.
    *
    * TODO: Remove this overload after fixing the above.
@@ -658,7 +650,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   static public double getInFlightRequestRate() {
-    Metric metric = localMetricRepo.getMetric(TOTAL_INFLIGHT_REQUEST_COUNT);
+    Metric metric = inflightMetricRepo.getMetric(TOTAL_INFLIGHT_REQUEST_COUNT);
     // max return -infinity when there are no samples. validate only against finite value
     return Double.isFinite(metric.value()) ? metric.value() : 0.0;
   }
