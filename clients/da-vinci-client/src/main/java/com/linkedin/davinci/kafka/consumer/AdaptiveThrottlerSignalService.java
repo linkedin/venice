@@ -3,6 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.alpini.base.concurrency.ScheduledExecutorService;
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.stats.AdaptiveThrottlingServiceStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.AggregatedHeartbeatLagEntry;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -33,6 +34,7 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
   private boolean currentFollowerMaxHeartbeatLagSignal = false;
   private boolean nonCurrentLeaderMaxHeartbeatLagSignal = false;
   private boolean nonCurrentFollowerMaxHeartbeatLagSignal = false;
+  private AdaptiveThrottlingServiceStats adaptiveThrottlingServiceStats;
 
   public AdaptiveThrottlerSignalService(
       VeniceServerConfig veniceServerConfig,
@@ -41,18 +43,23 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
     this.singleGetLatencyP99Threshold = veniceServerConfig.getAdaptiveThrottlerSingleGetLatencyThreshold();
     this.metricsRepository = metricsRepository;
     this.heartbeatMonitoringService = heartbeatMonitoringService;
+    this.adaptiveThrottlingServiceStats = new AdaptiveThrottlingServiceStats(metricsRepository);
   }
 
   public void registerThrottler(VeniceAdaptiveIngestionThrottler adaptiveIngestionThrottler) {
     throttlerList.add(adaptiveIngestionThrottler);
+    adaptiveThrottlingServiceStats.registerSensorForThrottler(adaptiveIngestionThrottler);
   }
 
   public void refreshSignalAndThrottler() {
     // Update all the signals in one shot;
     updateReadLatencySignal();
     updateHeartbeatLatencySignal();
-    // Update all the throttler
-    throttlerList.forEach(VeniceAdaptiveIngestionThrottler::checkSignalAndAdjustThrottler);
+    // Update all the throttler and record the current throttle limit
+    for (VeniceAdaptiveIngestionThrottler throttler: throttlerList) {
+      throttler.checkSignalAndAdjustThrottler();
+      adaptiveThrottlingServiceStats.recordThrottleLimitForThrottler(throttler);
+    }
   }
 
   void updateReadLatencySignal() {

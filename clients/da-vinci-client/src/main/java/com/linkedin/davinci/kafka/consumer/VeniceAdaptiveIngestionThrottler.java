@@ -14,29 +14,36 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
   private final List<BooleanSupplier> limiterSuppliers = new ArrayList<>();
   private final List<BooleanSupplier> boosterSuppliers = new ArrayList<>();
 
-  private final static int MAX_THROTTLERS = 7;
-  private final List<EventThrottler> eventThrottlers = new ArrayList<>(MAX_THROTTLERS);
+  private int throttlerNum;
+  private final List<EventThrottler> eventThrottlers = new ArrayList<>();
   private final int signalIdleThreshold;
   private int signalIdleCount = 0;
-  private int currentThrottlerIndex = MAX_THROTTLERS / 2;
+  private int currentThrottlerIndex = -1;
 
   public VeniceAdaptiveIngestionThrottler(
       int signalIdleThreshold,
       long quotaPerSecond,
+      List<Double> factors,
       long timeWindow,
       String throttlerName) {
     this.signalIdleThreshold = signalIdleThreshold;
-    double factor = 0.4;
     DecimalFormat decimalFormat = new DecimalFormat("0.0");
-    for (int i = 0; i < MAX_THROTTLERS; i++) {
+    throttlerNum = factors.size();
+    for (int i = 0; i < factors.size(); i++) {
+      Double factor = factors.get(i);
+      if (factor == 1.0D) {
+        currentThrottlerIndex = i;
+      }
       EventThrottler eventThrottler = new EventThrottler(
           (long) (quotaPerSecond * factor),
           timeWindow,
-          throttlerName + decimalFormat.format(factor),
+          throttlerName + decimalFormat.format(factors.get(i)),
           false,
           EventThrottler.BLOCK_STRATEGY);
       eventThrottlers.add(eventThrottler);
-      factor = factor + 0.2;
+    }
+    if (currentThrottlerIndex == -1) {
+      throw new IllegalArgumentException("No throttler factor of 1.0D found");
     }
   }
 
@@ -79,7 +86,7 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
       if (supplier.getAsBoolean()) {
         isSignalIdle = false;
         signalIdleCount = 0;
-        if (currentThrottlerIndex < MAX_THROTTLERS - 1) {
+        if (currentThrottlerIndex < throttlerNum - 1) {
           currentThrottlerIndex++;
         }
         LOGGER.info(
@@ -92,7 +99,7 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
       signalIdleCount += 1;
       LOGGER.info("No active signal found, increasing idle count to {}/{}", signalIdleCount, signalIdleThreshold);
       if (signalIdleCount == signalIdleThreshold) {
-        if (currentThrottlerIndex < MAX_THROTTLERS - 1) {
+        if (currentThrottlerIndex < throttlerNum - 1) {
           currentThrottlerIndex++;
         }
         LOGGER.info(
@@ -102,6 +109,10 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
         signalIdleCount = 0;
       }
     }
+  }
+
+  public long getCurrentThrottlerRate() {
+    return eventThrottlers.get(currentThrottlerIndex).getMaxRatePerSecond();
   }
 
   // TEST
