@@ -48,12 +48,15 @@ import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
+import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.Update;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
+import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.DataReplicationPolicy;
@@ -76,6 +79,8 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
@@ -190,6 +195,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * for this leader validator as well, if deemed necessary.
    */
   private final KafkaDataIntegrityValidator kafkaDataIntegrityValidatorForLeaders;
+
+  private static final InternalAvroSpecificSerializer<GlobalRtDivState> globalRtDivStateSerializer =
+      AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer();
 
   /**
    * N.B.:
@@ -335,7 +343,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       this.veniceWriterForRealTime = this.veniceWriter;
     }
 
-    this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
+    this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap(); // ?
     this.kafkaDataIntegrityValidatorForLeaders = new KafkaDataIntegrityValidator(kafkaVersionTopic);
     if (builder.getVeniceViewWriterFactory() != null && !store.getViewConfigs().isEmpty()) {
       viewWriters = builder.getVeniceViewWriterFactory()
@@ -3459,6 +3467,24 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                         newPut.schemaId,
                         callback,
                         leaderMetadataWrapper);
+
+                if (shouldSyncOffset(partitionConsumptionState, consumerRecord, null, false)) {
+                  final String GLOBAL_RT_DIV_KEY = "GLOBAL_RT_DIV_KEY";
+                  InternalAvroSpecificSerializer<GlobalRtDivState> serializer =
+                      AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer();
+                  PartitionTracker rtDiv = kafkaDataIntegrityValidatorForLeaders.cloneProducerStates(partition);
+                  TopicType topicType =
+                      PartitionTracker.TopicType.of(PartitionTracker.TopicType.REALTIME_TOPIC_TYPE, kafkaUrl);
+                  GUID guid = consumerRecord.getValue().getProducerMetadata().getProducerGUID();
+                  Map<CharSequence, ProducerPartitionState> producerStates = new HashMap<>();
+                  producerStates.put(guid.toString(), rtDiv.getPartitionState(topicType, guid));
+                  GlobalRtDivState divState =
+                      new GlobalRtDivState(kafkaUrl, producerStates, consumerRecord.getOffset());
+                  byte[] valueBytes = ByteUtils.extractByteArray(serializer.serialize(divState));
+                  veniceWriter.get().sendGlobalRtDivMessage(partition, GLOBAL_RT_DIV_KEY.getBytes(), valueBytes);
+                  // updateOffsetMetadataAndSyncOffsetForLeaders(partitionConsumptionState);
+                  // syncOffset(partitionConsumptionState, record, leaderProducedRecordContext);
+                }
               }
             },
             partition,

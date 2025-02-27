@@ -1310,11 +1310,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           beforeProcessingBatchRecordsTimestampMs,
           metricsEnabled,
           elapsedTimeForPuttingIntoQueue);
-
-      if (shouldSyncOffset(partitionConsumptionState, record, null, false)) {
-        updateOffsetMetadataAndSyncOffsetForLeaders(partitionConsumptionState);
-        // syncOffset(partitionConsumptionState, record, leaderProducedRecordContext);
-      }
     }
 
     /**
@@ -2736,7 +2731,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * 1. Every ControlMessage
    * 2. Record count based strategy, which doesn't work well for stores with very small key/value pairs.
    */
-  private boolean shouldSyncOffset(
+  boolean shouldSyncOffset(
       PartitionConsumptionState pcs,
       DefaultPubSubMessage record,
       LeaderProducedRecordContext leaderProducedRecordContext,
@@ -2769,7 +2764,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (controlMessageType != START_OF_SEGMENT && controlMessageType != ControlMessageType.END_OF_SEGMENT) {
         syncOffset = true;
       }
-    } else {
+    } else { // TODO: make atomic / per-colo broker map
       syncOffset = (syncBytesInterval > 0 && (pcs.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval));
     }
     return syncOffset;

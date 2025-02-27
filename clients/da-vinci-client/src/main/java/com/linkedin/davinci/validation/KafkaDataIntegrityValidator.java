@@ -112,6 +112,12 @@ public class KafkaDataIntegrityValidator {
     this.partitionTrackers.get(partition).cloneProducerStates(destPartitionTracker);
   }
 
+  public PartitionTracker cloneProducerStates(int partition) {
+    PartitionTracker partitionTracker = partitionTrackerCreator.apply(partition);
+    this.partitionTrackers.get(partition).cloneProducerStates(partitionTracker);
+    return partitionTracker;
+  }
+
   /**
    * Only check for missing sequence number; segment starting from a positive sequence number is acceptable considering
    * real-time buffer replay would start in the middle of a segment; checksum is also ignored for the same reason.
