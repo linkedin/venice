@@ -37,6 +37,19 @@ Venice is a system which straddles the offline, nearline and online worlds, as i
 
 ![High Level Architecture Diagram](assets/images/high_level_architecture.drawio.svg)
 
+## APIs
+From the user's perspective, Venice provides a variety of read and write APIs. These are fully decoupled from one 
+another, in the sense that no matter which write APIs are used, any of the read APIs are available.
+
+Furthermore, Venice provides a rich spectrum of options in terms of simplicity on one end, and sophistication on the 
+other. It is easy to get started with the simpler APIs, and later on decide to enhance the use case via more advanced 
+APIs, either in addition to or instead of the simpler ones. In this way, Venice can accompany users as their 
+requirements evolve, in terms of scale, latency and functionality.
+
+The following diagram presents these APIs and summarizes the components coming into play to make them work.
+
+![API Overview](assets/images/api_overview.drawio.svg)
+
 ## Write Path
 
 The Venice write path can be broken down into three granularities: full dataset swap, insertion of many rows into an 
