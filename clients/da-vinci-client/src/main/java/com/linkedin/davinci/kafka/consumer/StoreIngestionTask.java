@@ -173,6 +173,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private static final Logger LOGGER = LogManager.getLogger(StoreIngestionTask.class);
 
   private static final String CONSUMER_TASK_ID_FORMAT = "SIT-%s";
+  public static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES =
+      Collections.singletonList(VeniceException.class);
   public static long SCHEMA_POLLING_DELAY_MS = SECONDS.toMillis(5);
   public static long STORE_VERSION_POLLING_DELAY_MS = MINUTES.toMillis(1);
 
@@ -2405,12 +2407,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           throw new VeniceException("Latest offset is unknown. Check if the topic: " + topicPartition + " exists.");
         }
         return offset;
-      },
-          10,
-          Duration.ofMillis(10),
-          Duration.ofMillis(500),
-          Duration.ofSeconds(5),
-          Collections.singletonList(VeniceException.class));
+      }, 10, Duration.ofMillis(10), Duration.ofMillis(500), Duration.ofSeconds(5), RETRY_FAILURE_TYPES);
     } catch (Exception e) {
       LOGGER.error(
           "Failed to get end offset for topic-partition: {} with kafka url {}  even after 10 retries",
