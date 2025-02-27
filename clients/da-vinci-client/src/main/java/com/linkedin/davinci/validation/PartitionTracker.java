@@ -137,6 +137,11 @@ public class PartitionTracker {
     }
   }
 
+  public ProducerPartitionState getPartitionState(TopicType type, GUID guid) {
+    Segment segment = getSegments(type).get(guid);
+    return (segment != null) ? segment.toProducerPartitionState() : new ProducerPartitionState();
+  }
+
   private void setSegment(TopicType type, GUID guid, Segment segment) {
     Segment previousSegment = getSegments(type).put(guid, segment);
     if (previousSegment == null) {
