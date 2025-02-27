@@ -77,6 +77,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_HEAR
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_CHECK_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_SERVICE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_REPUSH_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SCHEMA_VALIDATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
@@ -139,6 +140,9 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.LEAKED_RESOURCE_ALLOWED_LINGER_TIME_MS;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_INTERVAL_MS;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_CONCURRENCY;
 import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_STORE_VERSIONS_TO_PRESERVE;
@@ -167,12 +171,15 @@ import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_EXPIRAT
 import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
 import static com.linkedin.venice.ConfigKeys.REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS;
 import static com.linkedin.venice.ConfigKeys.REPLICATION_METADATA_VERSION;
+import static com.linkedin.venice.ConfigKeys.REPUSH_ORCHESTRATOR_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVICE_DISCOVERY_REGISTRATION_RETRY_MS;
+import static com.linkedin.venice.ConfigKeys.SKIP_DEFERRED_VERSION_SWAP_FOR_DVC_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.ConfigKeys.STORAGE_ENGINE_OVERHEAD_RATIO;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
 import static com.linkedin.venice.ConfigKeys.TERMINAL_STATE_TOPIC_CHECK_DELAY_MS;
+import static com.linkedin.venice.ConfigKeys.TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_DELAY_FACTOR;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
@@ -204,11 +211,11 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pushmonitor.LeakedPushStatusCleanUpService;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
 import com.linkedin.venice.utils.HelixUtils;
-import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -504,7 +511,7 @@ public class VeniceControllerClusterConfig {
 
   /**
    * Number of replicas for each kafka topic. It can be different from the Venice Storage Node replication factor,
-   * defined by {@value com.linkedin.venice.ConfigKeys#DEFAULT_REPLICA_FACTOR}.
+   * defined by {@value ConfigKeys#DEFAULT_REPLICA_FACTOR}.
    */
   private final int kafkaReplicationFactor;
   private final int kafkaReplicationFactorRTTopics;
@@ -556,12 +563,26 @@ public class VeniceControllerClusterConfig {
   private boolean isHybridStorePartitionCountUpdateEnabled;
   private final long deferredVersionSwapSleepMs;
   private final boolean deferredVersionSwapServiceEnabled;
-  private final boolean deferredVersionSwapServiceWithDvcCheckEnabled;
+  private final boolean skipDeferredVersionSwapForDVCEnabled;
 
   private final Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> helixGlobalRebalancePreference;
   private final List<String> helixInstanceCapacityKeys;
   private final Map<String, Integer> helixDefaultInstanceCapacityMap;
   private final Map<String, Integer> helixDefaultPartitionWeightMap;
+
+  /**
+   * Configs for repush
+   */
+  private String repushOrchestratorClassName;
+  private final VeniceProperties repushOrchestratorConfigs;
+
+  /**
+   * Configs for log compaction
+   */
+  private final boolean isLogCompactionEnabled;
+  private final int logCompactionThreadCount;
+  private final long logCompactionIntervalMS;
+  private final long timeSinceLastLogCompactionThresholdMS;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
@@ -632,7 +653,7 @@ public class VeniceControllerClusterConfig {
     this.helixSendMessageTimeoutMilliseconds = props.getInt(HELIX_SEND_MESSAGE_TIMEOUT_MS, 10000);
 
     this.kafkaSecurityProtocol = props.getString(KAFKA_SECURITY_PROTOCOL, PubSubSecurityProtocol.PLAINTEXT.name());
-    if (!KafkaSSLUtils.isKafkaProtocolValid(kafkaSecurityProtocol)) {
+    if (!ApacheKafkaUtils.isKafkaProtocolValid(kafkaSecurityProtocol)) {
       throw new ConfigurationException("Invalid kafka security protocol: " + kafkaSecurityProtocol);
     }
     if (doesControllerNeedsSslConfig()) {
@@ -643,7 +664,7 @@ public class VeniceControllerClusterConfig {
     this.sslFactoryClassName = props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
     this.refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 3);
     this.refreshIntervalForZkReconnectInMs =
-        props.getLong(REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS, java.util.concurrent.TimeUnit.SECONDS.toMillis(10));
+        props.getLong(REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS, TimeUnit.SECONDS.toMillis(10));
     this.enableOfflinePushSSLAllowlist = props.getBooleanWithAlternative(
         ENABLE_OFFLINE_PUSH_SSL_ALLOWLIST,
         // go/inclusivecode deferred(Reference will be removed when clients have migrated)
@@ -1012,6 +1033,23 @@ public class VeniceControllerClusterConfig {
     this.serviceDiscoveryRegistrationRetryMS =
         props.getLong(SERVICE_DISCOVERY_REGISTRATION_RETRY_MS, 30L * Time.MS_PER_SECOND);
     this.pushJobUserErrorCheckpoints = parsePushJobUserErrorCheckpoints(props);
+
+    this.isLogCompactionEnabled = props.getBoolean(LOG_COMPACTION_ENABLED, false);
+    if (this.isLogCompactionEnabled) {
+      try {
+        this.repushOrchestratorClassName = props.getString(REPUSH_ORCHESTRATOR_CLASS_NAME);
+      } catch (Exception e) {
+        throw new VeniceException(
+            "Log compaction enabled but missing controller.repush.orchestrator.class.name config value. Unable to set up log compaction service",
+            e);
+      }
+    }
+    this.repushOrchestratorConfigs = props.clipAndFilterNamespace(CONTROLLER_REPUSH_PREFIX);
+    this.logCompactionThreadCount = props.getInt(LOG_COMPACTION_THREAD_COUNT, 1);
+    this.logCompactionIntervalMS = props.getLong(LOG_COMPACTION_INTERVAL_MS, TimeUnit.HOURS.toMillis(1));
+    this.timeSinceLastLogCompactionThresholdMS =
+        props.getLong(TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS, TimeUnit.HOURS.toMillis(24));
+
     this.isHybridStorePartitionCountUpdateEnabled =
         props.getBoolean(ConfigKeys.CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE, false);
 
@@ -1068,8 +1106,7 @@ public class VeniceControllerClusterConfig {
     this.deferredVersionSwapSleepMs =
         props.getLong(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, TimeUnit.MINUTES.toMillis(1));
     this.deferredVersionSwapServiceEnabled = props.getBoolean(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, false);
-    this.deferredVersionSwapServiceWithDvcCheckEnabled =
-        props.getBoolean(DEFERRED_VERSION_SWAP_SERVICE_WITH_DVC_CHECK_ENABLED, true);
+    this.skipDeferredVersionSwapForDVCEnabled = props.getBoolean(SKIP_DEFERRED_VERSION_SWAP_FOR_DVC_ENABLED, true);
   }
 
   public VeniceProperties getProps() {
@@ -1086,7 +1123,7 @@ public class VeniceControllerClusterConfig {
 
   private boolean doesControllerNeedsSslConfig() {
     final boolean controllerSslEnabled = props.getBoolean(CONTROLLER_SSL_ENABLED, DEFAULT_CONTROLLER_SSL_ENABLED);
-    final boolean kafkaNeedsSsl = KafkaSSLUtils.isKafkaSSLProtocol(kafkaSecurityProtocol);
+    final boolean kafkaNeedsSsl = ApacheKafkaUtils.isKafkaSSLProtocol(kafkaSecurityProtocol);
 
     return controllerSslEnabled || kafkaNeedsSsl;
   }
@@ -1588,8 +1625,8 @@ public class VeniceControllerClusterConfig {
     return deferredVersionSwapServiceEnabled;
   }
 
-  public boolean isDeferredVersionSwapServiceWithDvcCheckEnabled() {
-    return deferredVersionSwapServiceWithDvcCheckEnabled;
+  public boolean isSkipDeferredVersionSwapForDVCEnabled() {
+    return skipDeferredVersionSwapForDVCEnabled;
   }
 
   public long getTerminalStateTopicCheckerDelayMs() {
@@ -1918,6 +1955,30 @@ public class VeniceControllerClusterConfig {
 
   public Set<PushJobCheckpoints> getPushJobUserErrorCheckpoints() {
     return pushJobUserErrorCheckpoints;
+  }
+
+  public String getRepushOrchestratorClassName() {
+    return repushOrchestratorClassName;
+  }
+
+  public VeniceProperties getRepushOrchestratorConfigs() {
+    return repushOrchestratorConfigs;
+  }
+
+  public boolean isLogCompactionEnabled() {
+    return isLogCompactionEnabled;
+  }
+
+  public int getLogCompactionThreadCount() {
+    return logCompactionThreadCount;
+  }
+
+  public long getLogCompactionIntervalMS() {
+    return logCompactionIntervalMS;
+  }
+
+  public long getTimeSinceLastLogCompactionThresholdMS() {
+    return timeSinceLastLogCompactionThresholdMS;
   }
 
   public Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> getHelixGlobalRebalancePreference() {

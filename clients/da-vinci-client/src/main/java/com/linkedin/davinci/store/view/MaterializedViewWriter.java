@@ -6,12 +6,13 @@ import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.partitioner.ComplexVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.MaterializedView;
+import com.linkedin.venice.writer.ComplexVeniceWriter;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -31,7 +32,7 @@ public class MaterializedViewWriter extends VeniceViewWriter {
   private final PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
   private final MaterializedView internalView;
   private final String materializedViewTopicName;
-  private Lazy<VeniceWriter> veniceWriter;
+  private Lazy<ComplexVeniceWriter> veniceWriter;
   private final KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
 
   public MaterializedViewWriter(
@@ -47,25 +48,26 @@ public class MaterializedViewWriter extends VeniceViewWriter {
         internalView.getTopicNamesAndConfigsForVersion(version.getNumber()).keySet().stream().findAny().get();
     this.veniceWriter = Lazy.of(
         () -> new VeniceWriterFactory(props.getCombinedProperties().toProperties(), pubSubProducerAdapterFactory, null)
-            .createVeniceWriter(buildWriterOptions()));
+            .createComplexVeniceWriter(buildWriterOptions()));
   }
 
   /**
    * package private for testing purpose
    */
-  void setVeniceWriter(VeniceWriter veniceWriter) {
+  void setVeniceWriter(ComplexVeniceWriter veniceWriter) {
     this.veniceWriter = Lazy.of(() -> veniceWriter);
   }
 
   @Override
-  public CompletableFuture<PubSubProduceResult> processRecord(
+  public CompletableFuture<Void> processRecord(
       ByteBuffer newValue,
       ByteBuffer oldValue,
       byte[] key,
       int newValueSchemaId,
       int oldValueSchemaId,
-      GenericRecord replicationMetadataRecord) {
-    return processRecord(newValue, key, newValueSchemaId, false);
+      GenericRecord replicationMetadataRecord,
+      Lazy<GenericRecord> valueProvider) {
+    return processRecord(newValue, key, newValueSchemaId, false, valueProvider);
   }
 
   /**
@@ -77,20 +79,22 @@ public class MaterializedViewWriter extends VeniceViewWriter {
    * will assemble and re-chunk.
    */
   @Override
-  public CompletableFuture<PubSubProduceResult> processRecord(
+  public CompletableFuture<Void> processRecord(
       ByteBuffer newValue,
       byte[] key,
       int newValueSchemaId,
-      boolean isChunkedKey) {
+      boolean isChunkedKey,
+      Lazy<GenericRecord> newValueProvider) {
     byte[] viewTopicKey = key;
     if (isChunkedKey) {
       viewTopicKey = keyWithChunkingSuffixSerializer.getKeyFromChunkedKey(key);
     }
+    byte[] newValueBytes = newValue == null ? null : ByteUtils.extractByteArray(newValue);
     if (newValue == null) {
       // this is a delete operation
-      return veniceWriter.get().delete(viewTopicKey, null);
+      return veniceWriter.get().complexDelete(viewTopicKey, newValueProvider);
     }
-    return veniceWriter.get().put(viewTopicKey, ByteUtils.extractByteArray(newValue), newValueSchemaId);
+    return veniceWriter.get().complexPut(viewTopicKey, newValueBytes, newValueSchemaId, newValueProvider);
   }
 
   @Override
@@ -112,5 +116,9 @@ public class MaterializedViewWriter extends VeniceViewWriter {
   // Package private for testing
   VeniceWriterOptions buildWriterOptions() {
     return setProducerOptimizations(internalView.getWriterOptionsBuilder(materializedViewTopicName, version)).build();
+  }
+
+  public boolean isComplexVenicePartitioner() {
+    return internalView.getViewPartitioner() instanceof ComplexVenicePartitioner;
   }
 }

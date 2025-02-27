@@ -59,6 +59,11 @@ import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
+import com.linkedin.venice.controller.logcompaction.CompactionManager;
+import com.linkedin.venice.controller.logcompaction.LogCompactionService;
+import com.linkedin.venice.controller.repush.RepushJobRequest;
+import com.linkedin.venice.controller.repush.RepushJobResponse;
+import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -154,6 +159,7 @@ import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
@@ -205,11 +211,11 @@ import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.HelixUtils;
-import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
+import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SslUtils;
@@ -431,6 +437,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private int defaultMaxRecordSizeBytes;
 
   private DataRecoveryManager dataRecoveryManager;
+  private CompactionManager compactionManager;
   private ParticipantStoreClientsManager participantStoreClientsManager;
   protected final PubSubTopicRepository pubSubTopicRepository;
 
@@ -605,6 +612,23 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     dataRecoveryManager =
         new DataRecoveryManager(this, icProvider, pubSubTopicRepository, participantStoreClientsManager);
 
+    if (multiClusterConfigs.isLogCompactionEnabled()) {
+      // TODO LC: extends interchangeable with implements?
+      Class<? extends RepushOrchestrator> repushOrchestratorClass =
+          ReflectUtils.loadClass(multiClusterConfigs.getRepushOrchestratorClassName());
+      try {
+        RepushOrchestrator repushOrchestrator = ReflectUtils.callConstructor(
+            repushOrchestratorClass,
+            new Class[] { VeniceProperties.class },
+            new Object[] { multiClusterConfigs.getRepushOrchestratorConfigs() });
+        compactionManager =
+            new CompactionManager(repushOrchestrator, multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS());
+      } catch (Exception e) {
+        LOGGER.error("Failed to enable " + LogCompactionService.class.getSimpleName(), e);
+        throw new VeniceException(e);
+      }
+    }
+
     List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
     initRoutines.add(
         new SystemSchemaInitializationRoutine(
@@ -740,7 +764,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     controllerConfig = new VeniceControllerClusterConfig(new VeniceProperties(clonedProperties));
     Properties properties = multiClusterConfigs.getCommonConfig().getProps().getPropertiesCopy();
     ApacheKafkaProducerConfig.copyKafkaSASLProperties(originalPros, properties, false);
-    if (KafkaSSLUtils.isKafkaSSLProtocol(controllerConfig.getKafkaSecurityProtocol())) {
+    if (ApacheKafkaUtils.isKafkaSSLProtocol(controllerConfig.getKafkaSecurityProtocol())) {
       Optional<SSLConfig> sslConfig = controllerConfig.getSslConfig();
       if (!sslConfig.isPresent()) {
         throw new VeniceException("SSLConfig should be present when Kafka SSL is enabled");
@@ -1010,7 +1034,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             storeName,
             largestUsedStoreVersion);
       }
-      configureNewStore(newStore, config, largestUsedStoreVersion);
+
+      int largestUsedRTStoreVersion = storeGraveyard.getLargestUsedRTVersionNumber(storeName);
+      if (largestUsedRTStoreVersion == Store.NON_EXISTING_VERSION) {
+        LOGGER.info(
+            "Store: {} does NOT exist in the store graveyard. Will initialize the RT version to {}.",
+            storeName,
+            Store.NON_EXISTING_VERSION);
+      } else {
+        LOGGER.info(
+            "Found store: {} in the store graveyard. Will initialize the RT version to {}.",
+            storeName,
+            largestUsedRTStoreVersion);
+      }
+
+      configureNewStore(newStore, config, largestUsedStoreVersion, largestUsedRTStoreVersion);
 
       storeRepo.addStore(newStore);
       // Create global config for that store.
@@ -1032,7 +1070,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  private void configureNewStore(Store newStore, VeniceControllerClusterConfig config, int largestUsedVersionNumber) {
+  private void configureNewStore(
+      Store newStore,
+      VeniceControllerClusterConfig config,
+      int largestUsedVersionNumber,
+      int largestUsedRTVersionNumber) {
     newStore.setNativeReplicationEnabled(config.isMultiRegion());
 
     /**
@@ -1044,6 +1086,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       newStore.setNativeReplicationSourceFabric(config.getNativeReplicationSourceFabricAsDefaultForBatchOnly());
     }
     newStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
+    newStore.setLargestUsedRTVersionNumber(largestUsedRTVersionNumber);
   }
 
   /**
@@ -6343,9 +6386,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             getReplicationFactor(clusterName, systemStoreName));
         int versionNumber = version.getNumber();
         writeEndOfPush(clusterName, systemStoreName, versionNumber, true);
-        throw new VeniceException(
-            "System store: " + systemStoreName + " pushed failed. Issuing a new empty push to create version: "
-                + versionNumber);
+        LOGGER.warn(
+            "System store: {} pushed failed. Issuing a new empty push to create version: {} ",
+            systemStoreName,
+            versionNumber);
       } else {
         throw new VeniceRetriableException(
             "System store:" + systemStoreName + " push is still ongoing, will check it again. This is not an error.");
@@ -7508,16 +7552,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @return cluster-level execution id, offset and upstream offset. If store name is specified, it returns store-level execution id.
+   * @return cluster-level execution id, offset, upstream offset, and admin operation protocol version.
+   *        If store name is specified, it returns store-level execution id.
    */
   public Map<String, Long> getAdminTopicMetadata(String clusterName, Optional<String> storeName) {
     if (storeName.isPresent()) {
-      Long executionId = executionIdAccessor.getLastSucceededExecutionIdMap(clusterName).get(storeName.get());
+      Long executionId = getExecutionIdAccessor().getLastSucceededExecutionIdMap(clusterName).get(storeName.get());
       return executionId == null
           ? Collections.emptyMap()
-          : AdminTopicMetadataAccessor.generateMetadataMap(-1, -1, executionId);
+          : AdminTopicMetadataAccessor
+              .generateMetadataMap(Optional.of(-1L), Optional.of(-1L), Optional.of(executionId), Optional.of(-1L));
     }
-    return adminConsumerServices.get(clusterName).getAdminTopicMetadata(clusterName);
+    return getAdminConsumerService(clusterName).getAdminTopicMetadata(clusterName);
   }
 
   /**
@@ -7531,14 +7577,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Optional<Long> offset,
       Optional<Long> upstreamOffset) {
     if (storeName.isPresent()) {
-      executionIdAccessor.updateLastSucceededExecutionIdMap(clusterName, storeName.get(), executionId);
+      getExecutionIdAccessor().updateLastSucceededExecutionIdMap(clusterName, storeName.get(), executionId);
     } else {
       if (!offset.isPresent() || !upstreamOffset.isPresent()) {
         throw new VeniceException("Offsets must be provided to update cluster-level admin topic metadata");
       }
-      adminConsumerServices.get(clusterName)
+      getAdminConsumerService(clusterName)
           .updateAdminTopicMetadata(clusterName, executionId, offset.get(), upstreamOffset.get());
     }
+  }
+
+  /**
+   * Update the version of admin operation protocol in admin topic metadata
+   */
+  public void updateAdminOperationProtocolVersion(String clusterName, Long adminOperationProtocolVersion) {
+    getAdminConsumerService(clusterName)
+        .updateAdminOperationProtocolVersion(clusterName, adminOperationProtocolVersion);
   }
 
   /**
@@ -7678,6 +7732,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public VeniceProperties getPubSubSSLProperties(String pubSubBrokerAddress) {
     return this.getPubSubSSLPropertiesFromControllerConfig(pubSubBrokerAddress);
+  }
+
+  // public for testing purpose
+  public AdminConsumerService getAdminConsumerService(String clusterName) {
+    return adminConsumerServices.get(clusterName);
   }
 
   private void startMonitorOfflinePush(
@@ -8002,6 +8061,47 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public Map<String, StoreDataAudit> getClusterStaleStores(String clusterName) {
     throw new UnsupportedOperationException("This function has not been implemented.");
+  }
+
+  /**
+   * - intermediary between {@link com.linkedin.venice.controller.logcompaction.LogCompactionService} and {@link CompactionManager}
+   * - injects the child controller's {@link ControllerClient} into the function {@link CompactionManager#getStoresForCompaction(String, Map)}
+   * - serves as API endpoint to query stores ready for log compaction
+   * @param clusterName
+   * @return a list of <code>StoreInfo</code> of stores in clusterName that are ready for log compaction.
+   */
+  @Override
+  public List<StoreInfo> getStoresForCompaction(String clusterName) {
+    try {
+      Map<String, ControllerClient> childControllers = getControllerClientMap(clusterName);
+      return compactionManager.getStoresForCompaction(clusterName, childControllers);
+    } catch (Exception e) {
+      throw new VeniceException("Something went wrong trying to fetch stores for compaction.", e);
+    }
+  }
+
+  /**
+   * triggers repush for storeName for log compaction of store topic
+   * <p>
+   * - intermediary between {@link com.linkedin.venice.controller.logcompaction.LogCompactionService} and
+   * {@link CompactionManager} - serves as API endpoint to trigger scheduled & adhoc log compaction
+   *
+   * @param repushJobRequest@return
+   */
+  @Override
+  public RepushJobResponse compactStore(RepushJobRequest repushJobRequest) throws Exception {
+    try {
+      return compactionManager.compactStore(repushJobRequest);
+    } catch (Exception e) {
+      LOGGER.error("Error while compacting store: {}", repushJobRequest.getStoreName(), e);
+      throw e; // this method is the first common point for scheduled & adhoc log compaction, each has different error
+    }
+  }
+
+  // for testing
+  @Override
+  public CompactionManager getCompactionManager() {
+    return compactionManager;
   }
 
   @Override

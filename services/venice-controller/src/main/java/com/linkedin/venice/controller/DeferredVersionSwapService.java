@@ -160,7 +160,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
               // Do not perform version swap for davinci stores
               // TODO remove this check once DVC delayed ingestion is completed
-              if (veniceControllerMultiClusterConfig.isDeferredVersionSwapServiceWithDvcCheckEnabled()) {
+              if (veniceControllerMultiClusterConfig.isSkipDeferredVersionSwapForDVCEnabled()) {
                 StoreResponse targetRegionStoreResponse =
                     getStoreForRegion(cluster, getTargetRegion(targetRegions), storeName);
                 if (targetRegionStoreResponse.isError()) {

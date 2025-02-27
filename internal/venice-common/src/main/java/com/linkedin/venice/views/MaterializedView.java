@@ -66,6 +66,12 @@ public class MaterializedView extends VeniceView {
         properties);
   }
 
+  @Override
+  public String composeTopicName(int version) {
+    return Version.composeKafkaTopic(storeName, version) + VIEW_NAME_SEPARATOR + viewName
+        + MATERIALIZED_VIEW_TOPIC_SUFFIX;
+  }
+
   /**
    * {@link MaterializedViewParameters#MATERIALIZED_VIEW_PARTITION_COUNT} is required to configure a new re-partition view.
    * {@link MaterializedViewParameters#MATERIALIZED_VIEW_PARTITIONER} is optional. The re-partition view will use the store level

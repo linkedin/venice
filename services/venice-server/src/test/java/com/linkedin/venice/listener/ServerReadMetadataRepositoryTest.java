@@ -158,38 +158,65 @@ public class ServerReadMetadataRepositoryTest {
     doReturn(readyToServeInstances).when(partition).getReadyToServeInstances();
     partitionAssignment.addPartition(partition);
     String schema = "\"string\"";
+    ArrayList<SchemaEntry> valueSchemas = new ArrayList<>();
+    final int schemaCount = 3;
+    for (int i = 1; i <= schemaCount; i++) {
+      valueSchemas.add(new SchemaEntry(i, schema));
+    }
     doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeName);
     Mockito.when(mockSchemaRepo.getKeySchema(storeName)).thenReturn(new SchemaEntry(0, schema));
-    Mockito.when(mockSchemaRepo.getValueSchemas(storeName))
-        .thenReturn(Collections.singletonList(new SchemaEntry(0, schema)));
+    Mockito.when(mockSchemaRepo.getValueSchemas(storeName)).thenReturn(valueSchemas);
     Mockito.when(mockCustomizedViewRepository.getPartitionAssignments(topicName)).thenReturn(partitionAssignment);
     Mockito.when(mockHelixInstanceConfigRepository.getInstanceGroupIdMapping()).thenReturn(Collections.emptyMap());
-
     mockStore.setStorageNodeReadQuotaEnabled(true);
+
+    // Request
     StorePropertiesResponse storePropertiesResponse =
         serverReadMetadataRepository.getStoreProperties(storeName, Optional.empty());
+
+    // Assert response
     Assert.assertNotNull(storePropertiesResponse);
     Assert.assertNotNull(storePropertiesResponse.getResponseRecord());
     Assert.assertNotNull(storePropertiesResponse.getResponseRecord().getStoreMetaValue());
     Assert.assertEquals(
         storePropertiesResponse.getResponseRecord().getStoreMetaValue().getStoreKeySchemas().getKeySchemaMap().get("0"),
         "\"string\"");
-    // Verify the metadata
     Assert.assertEquals(
         storePropertiesResponse.getResponseRecord().getStoreMetaValue().getStoreProperties().getVersions().size(),
         2);
     Assert.assertEquals(storePropertiesResponse.getResponseRecord().getRoutingInfo().get("0").size(), 1);
-
-    String metadataInvokeMetricName = ".ServerMetadataStats--request_based_metadata_invoke_count.Rate";
-    String metadataFailureMetricName = ".ServerMetadataStats--request_based_metadata_failure_count.Rate";
-    Assert.assertTrue(metricsRepository.getMetric(metadataInvokeMetricName).value() > 0);
-    Assert.assertEquals(metricsRepository.getMetric(metadataFailureMetricName).value(), 0d);
-
     ServerCurrentVersionResponse currentVersionResponse =
         serverReadMetadataRepository.getCurrentVersionResponse(storeName);
     Assert.assertNotNull(currentVersionResponse);
     Assert.assertEquals(currentVersionResponse.getCurrentVersion(), 2);
 
+    // Assert metrics repo
+    String metadataInvokeMetricName = ".ServerMetadataStats--request_based_metadata_invoke_count.Rate";
+    String metadataFailureMetricName = ".ServerMetadataStats--request_based_metadata_failure_count.Rate";
+    Assert.assertTrue(metricsRepository.getMetric(metadataInvokeMetricName).value() > 0);
+    Assert.assertEquals(metricsRepository.getMetric(metadataFailureMetricName).value(), 0d);
+
+    // Test largestKnownSchemaID param
+    for (int i = 0; i <= schemaCount; i++) {
+      storePropertiesResponse = serverReadMetadataRepository.getStoreProperties(storeName, Optional.of(i));
+      Assert.assertEquals(
+          storePropertiesResponse.getResponseRecord()
+              .getStoreMetaValue()
+              .getStoreValueSchemas()
+              .getValueSchemaMap()
+              .size(),
+          schemaCount - i);
+    }
+    storePropertiesResponse = serverReadMetadataRepository.getStoreProperties(storeName, Optional.empty());
+    Assert.assertEquals(
+        storePropertiesResponse.getResponseRecord()
+            .getStoreMetaValue()
+            .getStoreValueSchemas()
+            .getValueSchemaMap()
+            .size(),
+        schemaCount);
+
+    // Value update test
     mockStore.setBatchGetLimit(300);
     storePropertiesResponse = serverReadMetadataRepository.getStoreProperties(storeName, Optional.empty());
     Assert.assertEquals(

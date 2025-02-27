@@ -187,6 +187,18 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public int getLargestUsedRTVersionNumber() {
+    SystemStoreAttributes systemStoreAttributes = fetchAndBackfillSystemStoreAttributes(true);
+    return systemStoreAttributes.getLargestUsedRTVersionNumber();
+  }
+
+  @Override
+  public void setLargestUsedRTVersionNumber(int largestUsedRTVersionNumber) {
+    SystemStoreAttributes systemStoreAttributes = fetchAndBackfillSystemStoreAttributes(false);
+    systemStoreAttributes.setLargestUsedRTVersionNumber(largestUsedRTVersionNumber);
+  }
+
+  @Override
   public long getStorageQuotaInByte() {
     return zkSharedStore.getStorageQuotaInByte();
   }

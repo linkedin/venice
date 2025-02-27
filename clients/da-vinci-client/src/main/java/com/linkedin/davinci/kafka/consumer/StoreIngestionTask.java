@@ -185,6 +185,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private static final int MAX_KILL_CHECKING_ATTEMPTS = 10;
   private static final int CHUNK_MANIFEST_SCHEMA_ID =
       AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+  private static final int GLOBAL_RT_DIV_STATE_SCHEMA_ID =
+      AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
 
   protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
@@ -206,6 +208,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final String kafkaVersionTopic;
   protected final PubSubTopic versionTopic;
   protected final PubSubTopic realTimeTopic;
+  protected final PubSubTopic separateRealTimeTopic;
   protected final String storeName;
   private final boolean isUserSystemStore;
   protected final int versionNumber;
@@ -289,8 +292,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private boolean purgeTransientRecordBuffer = true;
 
   protected final boolean isWriteComputationEnabled;
-
-  protected final boolean isSeparatedRealtimeTopicEnabled;
 
   /**
    * Freeze ingestion if ready to serve or local data exists
@@ -395,6 +396,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.storeName = versionTopic.getStoreName();
     this.isUserSystemStore = VeniceSystemStoreUtils.isUserSystemStore(storeName);
     this.realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(version));
+    this.separateRealTimeTopic = version.isSeparateRealTimeTopicEnabled()
+        ? pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(storeName))
+        : null;
     this.versionNumber = Version.parseVersionFromKafkaTopicName(kafkaVersionTopic);
     this.consumerActionsQueue = new PriorityBlockingQueue<>(CONSUMER_ACTION_QUEUE_INIT_CAPACITY);
     this.partitionToPendingConsumerActionCountMap = new VeniceConcurrentHashMap<>();
@@ -447,8 +451,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.errorPartitionId = errorPartitionId;
 
     this.isWriteComputationEnabled = store.isWriteComputationEnabled();
-
-    this.isSeparatedRealtimeTopicEnabled = version.isSeparateRealTimeTopicEnabled();
 
     this.partitionStateSerializer = builder.getPartitionStateSerializer();
 
@@ -540,7 +542,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         Collections.unmodifiableMap(partitionConsumptionStateMap),
         serverConfig.isHybridQuotaEnabled(),
         serverConfig.isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled(),
-        isSeparatedRealtimeTopicEnabled,
+        version.isSeparateRealTimeTopicEnabled(),
         ingestionNotificationDispatcher,
         this::pauseConsumption,
         this::resumeConsumption);
@@ -1960,40 +1962,44 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         action.getFuture().completeExceptionally(e);
         throw e;
       } catch (Throwable e) {
-        if (action.getAttemptsCount() <= MAX_CONSUMER_ACTION_ATTEMPTS) {
-          LOGGER.warn("Failed to process consumer action {}, will retry later.", action, e);
+        if (!handleConsumerActionsError(e, action, actionProcessStartTimeInMs)) {
           return;
-        }
-        LOGGER.error(
-            "Failed to execute consumer action {} after {} attempts. Total elapsed time: {}ms",
-            action,
-            action.getAttemptsCount(),
-            LatencyUtils.getElapsedTimeFromMsToMs(actionProcessStartTimeInMs),
-            e);
-        // Mark action as failed since it has exhausted all the retries.
-        action.getFuture().completeExceptionally(e);
-        // After MAX_CONSUMER_ACTION_ATTEMPTS retries we should give up and error the ingestion task.
-        PartitionConsumptionState state = partitionConsumptionStateMap.get(action.getPartition());
-
-        // Remove the action that is failed to execute recently (not necessarily the head of consumerActionsQueue).
-        if (consumerActionsQueue.remove(action)) {
-          partitionToPendingConsumerActionCountMap.get(action.getPartition()).decrementAndGet();
-        }
-        /**
-         * {@link state} can be null if the {@link OffsetRecord} from {@link storageMetadataService} was corrupted in
-         * {@link #processCommonConsumerAction}, so the {@link PartitionConsumptionState} was never created
-         */
-        if (state == null || !state.isCompletionReported()) {
-          reportError(
-              "Error when processing consumer action: " + action,
-              action.getPartition(),
-              new VeniceException(e));
         }
       }
     }
     if (emitMetrics.get()) {
       hostLevelIngestionStats.recordProcessConsumerActionLatency(Duration.between(startTime, Instant.now()).toMillis());
     }
+  }
+
+  boolean handleConsumerActionsError(Throwable e, ConsumerAction action, long actionProcessStartTimeInMs) {
+    if (action.getAttemptsCount() <= MAX_CONSUMER_ACTION_ATTEMPTS) {
+      LOGGER.warn("Failed to process consumer action {}, will retry later.", action, e);
+      return false;
+    }
+    LOGGER.error(
+        "Failed to execute consumer action {} after {} attempts. Total elapsed time: {}ms",
+        action,
+        action.getAttemptsCount(),
+        LatencyUtils.getElapsedTimeFromMsToMs(actionProcessStartTimeInMs),
+        e);
+    // Mark action as failed since it has exhausted all the retries.
+    action.getFuture().completeExceptionally(e);
+    // After MAX_CONSUMER_ACTION_ATTEMPTS retries we should give up and error the ingestion task.
+    PartitionConsumptionState state = partitionConsumptionStateMap.get(action.getPartition());
+
+    // Remove the action that is failed to execute recently (not necessarily the head of consumerActionsQueue).
+    if (consumerActionsQueue.remove(action)) {
+      partitionToPendingConsumerActionCountMap.get(action.getPartition()).decrementAndGet();
+    }
+    /**
+     * {@link state} can be null if the {@link OffsetRecord} from {@link storageMetadataService} was corrupted in
+     * {@link #processCommonConsumerAction}, so the {@link PartitionConsumptionState} was never created
+     */
+    if (state == null || !state.isCompletionReported()) {
+      reportError("Error when processing consumer action: " + action, action.getPartition(), new VeniceException(e));
+    }
+    return true;
   }
 
   /**
@@ -2465,6 +2471,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
         LOGGER.info(msg, record.getTopicPartition(), record.getOffset());
       }
+      return false;
+    }
+
+    // Just a sanity check for something that shouldn't ever happen. Skip it and log a warning.
+    if (record.getKey().isGlobalRtDiv() && record.getTopic().isRealTime()) {
+      LOGGER.warn("Skipping Global RT DIV message from realtime topic partition: {}", record.getTopicPartition());
       return false;
     }
 
@@ -3616,7 +3628,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * This method unsubscribes topic-partition from the input.
    * If it is real-time topic and separate RT topic is enabled, it will also unsubscribe from separate real-time topic.
    */
-  public void unsubscribeFromTopic(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
+  protected void unsubscribeFromTopic(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
     consumerUnSubscribeForStateTransition(topic, partitionConsumptionState);
     if (isSeparatedRealtimeTopicEnabled() && topic.isRealTime()) {
       PubSubTopic separateRealTimeTopic =
@@ -3924,7 +3936,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private void waitReadyToProcessRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record)
       throws InterruptedException {
     KafkaMessageEnvelope kafkaValue = record.getValue();
-    if (record.getKey().isControlMessage() || kafkaValue == null) {
+    if (record.getKey().isControlMessage() || record.getKey().isGlobalRtDiv() || kafkaValue == null) {
       return;
     }
 
@@ -4644,7 +4656,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public boolean isSeparatedRealtimeTopicEnabled() {
-    return isSeparatedRealtimeTopicEnabled;
+    return separateRealTimeTopic != null;
   }
 
   /**

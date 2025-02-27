@@ -185,12 +185,50 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    *
    * @param pubSubTopicPartition The PubSub topic-partition for which to fetch the offset.
    * @param timestamp The target timestamp to search for in milliseconds since the Unix epoch.
+   * @param timeout The maximum duration to wait for the operation to complete.
+   * @return The offset of the first message with a timestamp greater than or equal to the target timestamp,
+   *         or {@code null} if no such message is found for the partition.
+   * @throws PubSubOpTimeoutException If the operation times out while fetching the offset.
+   * @throws PubSubClientException If there is an error while attempting to fetch the offset.
+   */
+  @UnderDevelopment("Under development and may change in the future.")
+  default PubSubPosition getPositionByTimestamp(
+      PubSubTopicPartition pubSubTopicPartition,
+      long timestamp,
+      Duration timeout) {
+    throw new UnsupportedOperationException("getPositionByTimestamp is not supported");
+  }
+
+  /**
+   * Retrieves the offset of the first message with a timestamp greater than or equal to the target
+   * timestamp for the specified PubSub topic-partition. If no such message is found, {@code null}
+   * will be returned for the partition.
+   *
+   * @param pubSubTopicPartition The PubSub topic-partition for which to fetch the offset.
+   * @param timestamp The target timestamp to search for in milliseconds since the Unix epoch.
    * @return The offset of the first message with a timestamp greater than or equal to the target timestamp,
    *         or {@code null} if no such message is found for the partition.
    * @throws PubSubOpTimeoutException If the operation times out while fetching the offset.
    * @throws PubSubClientException If there is an error while attempting to fetch the offset.
    */
   Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp);
+
+  /**
+   * Retrieves the offset of the first message with a timestamp greater than or equal to the target
+   * timestamp for the specified PubSub topic-partition. If no such message is found, {@code null}
+   * will be returned for the partition.
+   *
+   * @param pubSubTopicPartition The PubSub topic-partition for which to fetch the offset.
+   * @param timestamp The target timestamp to search for in milliseconds since the Unix epoch.
+   * @return The offset of the first message with a timestamp greater than or equal to the target timestamp,
+   *         or {@code null} if no such message is found for the partition.
+   * @throws PubSubOpTimeoutException If the operation times out while fetching the offset.
+   * @throws PubSubClientException If there is an error while attempting to fetch the offset.
+   */
+  @UnderDevelopment("Under development and may change in the future.")
+  default PubSubPosition getPositionByTimestamp(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
+    throw new UnsupportedOperationException("getPositionByTimestamp is not supported");
+  }
 
   /**
    * Retrieves the beginning offset for the specified PubSub topic-partition.
@@ -203,6 +241,11 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * @throws PubSubClientException If there is an error while attempting to fetch the beginning offset.
    */
   Long beginningOffset(PubSubTopicPartition pubSubTopicPartition, Duration timeout);
+
+  @UnderDevelopment("This method is under development and may be subject to change.")
+  default PubSubPosition beginningPosition(PubSubTopicPartition pubSubTopicPartition, Duration timeout) {
+    throw new UnsupportedOperationException("beginningPosition is not supported");
+  }
 
   /**
    * Retrieves the end offsets for a collection of PubSub topic-partitions. The end offset represents
@@ -218,6 +261,13 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    */
   Map<PubSubTopicPartition, Long> endOffsets(Collection<PubSubTopicPartition> partitions, Duration timeout);
 
+  @UnderDevelopment
+  default Map<PubSubTopicPartition, PubSubPosition> endPositions(
+      Collection<PubSubTopicPartition> partitions,
+      Duration timeout) {
+    throw new UnsupportedOperationException("endPositions is not supported");
+  }
+
   /**
    * Retrieves the end offset for the specified PubSub topic-partition. The end offset represents
    * the highest offset available in each specified partition, i.e., offset of the last message + 1.
@@ -229,6 +279,11 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * @throws PubSubClientException If there is an error while attempting to fetch the end offset.
    */
   Long endOffset(PubSubTopicPartition pubSubTopicPartition);
+
+  @UnderDevelopment
+  default PubSubPosition endPosition(PubSubTopicPartition pubSubTopicPartition) {
+    throw new UnsupportedOperationException("endPosition is not supported");
+  }
 
   /**
    * Retrieves the list of partitions associated with a given Pub-Sub topic.

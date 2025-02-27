@@ -1,6 +1,7 @@
 package com.linkedin.venice.router.stats;
 
 import static io.netty.handler.codec.http.HttpResponseStatus.TOO_MANY_REQUESTS;
+import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
@@ -9,7 +10,7 @@ import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.Utils;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.TehutiException;
-import org.mockito.Mockito;
+import io.tehuti.metrics.Sensor;
 import org.testng.Assert;
 import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
@@ -25,7 +26,7 @@ public class AggRouterHttpRequestStatsTest {
     this.metricsRepository = new VeniceMetricsRepository();
     reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
-    storeMetadataRepository = Mockito.mock(ReadOnlyStoreRepository.class);
+    storeMetadataRepository = mock(ReadOnlyStoreRepository.class);
   }
 
   @Test
@@ -34,8 +35,10 @@ public class AggRouterHttpRequestStatsTest {
         "test-cluster",
         metricsRepository,
         RequestType.SINGLE_GET,
+        false,
         storeMetadataRepository,
-        true);
+        true,
+        mock(Sensor.class));
 
     stats.recordRequest("store5");
     Assert.assertEquals(reporter.query(".total--request.Count").value(), 1d);
@@ -73,7 +76,8 @@ public class AggRouterHttpRequestStatsTest {
         RequestType.COMPUTE,
         true,
         storeMetadataRepository,
-        true);
+        true,
+        mock(Sensor.class));
 
     for (int i = 1; i <= 100; i += 1) {
       stats.recordKeySize(i);
@@ -97,14 +101,18 @@ public class AggRouterHttpRequestStatsTest {
         clusterName,
         metricsRepository,
         RequestType.MULTI_GET,
+        false,
         storeMetadataRepository,
-        true);
+        true,
+        mock(Sensor.class));
     AggRouterHttpRequestStats streamingMultiGetStats = new AggRouterHttpRequestStats(
         clusterName,
         metricsRepository,
         RequestType.MULTI_GET_STREAMING,
+        false,
         storeMetadataRepository,
-        true);
+        true,
+        mock(Sensor.class));
     String storeName = Utils.getUniqueString("test-store");
     multiGetStats.recordRequest(storeName);
     streamingMultiGetStats.recordRequest(storeName);

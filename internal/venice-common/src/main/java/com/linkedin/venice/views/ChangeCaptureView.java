@@ -54,6 +54,11 @@ public class ChangeCaptureView extends VeniceView {
   }
 
   @Override
+  public String composeTopicName(int version) {
+    return Version.composeKafkaTopic(storeName, version) + CHANGE_CAPTURE_TOPIC_SUFFIX;
+  }
+
+  @Override
   public String getWriterClassName() {
     return CHANGE_CAPTURE_VIEW_WRITER_CLASS_NAME;
   }

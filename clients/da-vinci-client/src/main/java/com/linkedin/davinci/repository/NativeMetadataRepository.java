@@ -1,8 +1,6 @@
 package com.linkedin.davinci.repository;
 
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
-import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_SCHEMA_ID;
-import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
 import static java.lang.Thread.currentThread;
 
 import com.linkedin.davinci.stats.NativeMetadataRepositoryStats;
@@ -25,17 +23,11 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.service.ICProvider;
-import com.linkedin.venice.system.store.MetaStoreDataType;
-import com.linkedin.venice.systemstore.schemas.StoreClusterConfig;
-import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
-import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -70,7 +62,7 @@ public abstract class NativeMetadataRepository
   private final Map<String, StoreConfig> storeConfigMap = new VeniceConcurrentHashMap<>();
   // Local cache for key/value schemas. SchemaData supports one key schema per store only, which may need to be changed
   // for key schema evolvability.
-  private final Map<String, SchemaData> schemaMap = new VeniceConcurrentHashMap<>();
+  protected Map<String, SchemaData> schemaMap = new VeniceConcurrentHashMap<>();
   private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
   private final Set<StoreDataChangedListener> listeners = new CopyOnWriteArraySet<>();
   private final AtomicLong totalStoreReadQuota = new AtomicLong();
@@ -125,11 +117,19 @@ public abstract class NativeMetadataRepository
       ClientConfig clientConfig,
       VeniceProperties backendConfig,
       ICProvider icProvider) {
+    NativeMetadataRepository nativeMetadataRepository;
+    if (clientConfig.isUseRequestBasedMetaRepository()) {
+      nativeMetadataRepository = new RequestBasedMetaRepository(clientConfig, backendConfig);
+    } else {
+      nativeMetadataRepository = new ThinClientMetaStoreBasedRepository(clientConfig, backendConfig, icProvider);
+    }
+
     LOGGER.info(
         "Initializing {} with {}",
         NativeMetadataRepository.class.getSimpleName(),
-        ThinClientMetaStoreBasedRepository.class.getSimpleName());
-    return new ThinClientMetaStoreBasedRepository(clientConfig, backendConfig, icProvider);
+        nativeMetadataRepository.getClass().getSimpleName());
+
+    return nativeMetadataRepository;
   }
 
   @Override
@@ -168,23 +168,19 @@ public abstract class NativeMetadataRepository
     return subscribedStoreMap.containsKey(storeName);
   }
 
+  // refreshOneStore will throw the VeniceNoStoreException when
+  // retrieving metadata for stores in "Deleting" state or "Missing".
   @Override
   public Store refreshOneStore(String storeName) {
     try {
-      getAndSetStoreConfigFromSystemStore(storeName);
-      StoreConfig storeConfig = storeConfigMap.get(storeName);
+      StoreConfig storeConfig = cacheStoreConfigFromRemote(storeName);
       if (storeConfig == null) {
         throw new VeniceException("StoreConfig is missing unexpectedly for store: " + storeName);
       }
-      Store newStore = getStoreFromSystemStore(storeName, storeConfig.getCluster());
-      // isDeleting check to detect deleted store is only supported by meta system store based implementation.
-      if (newStore != null && !storeConfig.isDeleting()) {
-        putStore(newStore);
-        getAndCacheSchemaDataFromSystemStore(storeName);
-        nativeMetadataRepositoryStats.updateCacheTimestamp(storeName, clock.millis());
-      } else {
-        removeStore(storeName);
-      }
+      Store newStore = fetchStoreFromRemote(storeName, storeConfig.getCluster());
+      putStore(newStore);
+      getAndCacheSchemaData(storeName);
+      nativeMetadataRepositoryStats.updateCacheTimestamp(storeName, clock.millis());
       return newStore;
     } catch (ServiceDiscoveryException | MissingKeyInStoreMetadataException e) {
       throw new VeniceNoStoreException(storeName, e);
@@ -393,74 +389,17 @@ public abstract class NativeMetadataRepository
    * Get the store cluster config from system store and update the local cache with it. Different implementation will
    * get the data differently but should all populate the store cluster config map.
    */
-  protected void getAndSetStoreConfigFromSystemStore(String storeName) {
-    storeConfigMap.put(storeName, getStoreConfigFromSystemStore(storeName));
+  protected StoreConfig cacheStoreConfigFromRemote(String storeName) {
+    StoreConfig storeConfig = fetchStoreConfigFromRemote(storeName);
+    storeConfigMap.put(storeName, storeConfig);
+    return storeConfig;
   }
 
-  protected abstract StoreConfig getStoreConfigFromSystemStore(String storeName);
+  protected abstract StoreConfig fetchStoreConfigFromRemote(String storeName);
 
-  protected abstract Store getStoreFromSystemStore(String storeName, String clusterName);
+  protected abstract Store fetchStoreFromRemote(String storeName, String clusterName);
 
-  protected abstract StoreMetaValue getStoreMetaValue(String storeName, StoreMetaKey key);
-
-  // Helper function with common code for retrieving StoreConfig from meta system store.
-  protected StoreConfig getStoreConfigFromMetaSystemStore(String storeName) {
-    StoreClusterConfig clusterConfig = getStoreMetaValue(
-        storeName,
-        MetaStoreDataType.STORE_CLUSTER_CONFIG
-            .getStoreMetaKey(Collections.singletonMap(KEY_STRING_STORE_NAME, storeName))).storeClusterConfig;
-    return new StoreConfig(clusterConfig);
-  }
-
-  // Helper function with common code for retrieving SchemaData from meta system store.
-  protected SchemaData getSchemaDataFromMetaSystemStore(String storeName) {
-    SchemaData schemaData = schemaMap.get(storeName);
-    SchemaEntry keySchema;
-    if (schemaData == null) {
-      // Retrieve the key schema and initialize SchemaData only if it's not cached yet.
-      StoreMetaKey keySchemaKey = MetaStoreDataType.STORE_KEY_SCHEMAS
-          .getStoreMetaKey(Collections.singletonMap(KEY_STRING_STORE_NAME, storeName));
-      Map<CharSequence, CharSequence> keySchemaMap =
-          getStoreMetaValue(storeName, keySchemaKey).storeKeySchemas.keySchemaMap;
-      if (keySchemaMap.isEmpty()) {
-        throw new VeniceException("No key schema found for store: " + storeName);
-      }
-      Map.Entry<CharSequence, CharSequence> keySchemaEntry = keySchemaMap.entrySet().iterator().next();
-      keySchema =
-          new SchemaEntry(Integer.parseInt(keySchemaEntry.getKey().toString()), keySchemaEntry.getValue().toString());
-      schemaData = new SchemaData(storeName, keySchema);
-    }
-    StoreMetaKey valueSchemaKey = MetaStoreDataType.STORE_VALUE_SCHEMAS
-        .getStoreMetaKey(Collections.singletonMap(KEY_STRING_STORE_NAME, storeName));
-    Map<CharSequence, CharSequence> valueSchemaMap =
-        getStoreMetaValue(storeName, valueSchemaKey).storeValueSchemas.valueSchemaMap;
-    // Check the value schema string, if it's empty then try to query the other key space for individual value schema.
-    for (Map.Entry<CharSequence, CharSequence> entry: valueSchemaMap.entrySet()) {
-      // Check if we already have the corresponding value schema
-      int valueSchemaId = Integer.parseInt(entry.getKey().toString());
-      if (schemaData.getValueSchema(valueSchemaId) != null) {
-        continue;
-      }
-      if (entry.getValue().toString().isEmpty()) {
-        // The value schemas might be too large to be stored in a single K/V.
-        StoreMetaKey individualValueSchemaKey =
-            MetaStoreDataType.STORE_VALUE_SCHEMA.getStoreMetaKey(new HashMap<String, String>() {
-              {
-                put(KEY_STRING_STORE_NAME, storeName);
-                put(KEY_STRING_SCHEMA_ID, entry.getKey().toString());
-              }
-            });
-        // Empty string is not a valid value schema therefore it's safe to throw exceptions if we also cannot find it in
-        // the individual value schema key space.
-        String valueSchema =
-            getStoreMetaValue(storeName, individualValueSchemaKey).storeValueSchema.valueSchema.toString();
-        schemaData.addValueSchema(new SchemaEntry(valueSchemaId, valueSchema));
-      } else {
-        schemaData.addValueSchema(new SchemaEntry(valueSchemaId, entry.getValue().toString()));
-      }
-    }
-    return schemaData;
-  }
+  protected abstract SchemaData getSchemaData(String storeName);
 
   protected Store putStore(Store newStore) {
     // Workaround to make old metadata compatible with new fields
@@ -516,11 +455,11 @@ public abstract class NativeMetadataRepository
     }
   }
 
-  protected SchemaData getAndCacheSchemaDataFromSystemStore(String storeName) {
+  protected SchemaData getAndCacheSchemaData(String storeName) {
     if (!hasStore(storeName)) {
       throw new VeniceNoStoreException(storeName);
     }
-    SchemaData schemaData = getSchemaDataFromSystemStore(storeName);
+    SchemaData schemaData = getSchemaData(storeName);
     schemaMap.put(storeName, schemaData);
     return schemaData;
   }
@@ -532,7 +471,7 @@ public abstract class NativeMetadataRepository
   private SchemaData getSchemaDataFromReadThroughCache(String storeName) throws VeniceNoStoreException {
     SchemaData schemaData = schemaMap.get(storeName);
     if (schemaData == null) {
-      schemaData = getAndCacheSchemaDataFromSystemStore(storeName);
+      schemaData = getAndCacheSchemaData(storeName);
     }
     return schemaData;
   }
@@ -544,8 +483,6 @@ public abstract class NativeMetadataRepository
     }
     return schemaData.getValueSchema(id);
   }
-
-  protected abstract SchemaData getSchemaDataFromSystemStore(String storeName);
 
   /**
    * This function is used to remove schema entry for the given store from local cache,

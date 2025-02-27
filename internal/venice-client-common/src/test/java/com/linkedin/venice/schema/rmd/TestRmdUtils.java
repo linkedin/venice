@@ -70,10 +70,39 @@ public class TestRmdUtils {
     list2.add(1L);
     list2.add(9L);
 
+    List<Long> list3 = new ArrayList<>();
+    list3.add(10L);
+
+    List<Long> list4 = new ArrayList<>();
+    list4.add(-1L);
+
     Assert.assertFalse(RmdUtils.hasOffsetAdvanced(list1, list2));
     Assert.assertFalse(RmdUtils.hasOffsetAdvanced(list1, Collections.emptyList()));
+    Assert.assertTrue(RmdUtils.hasOffsetAdvanced(list1, list3));
+    Assert.assertFalse(RmdUtils.hasOffsetAdvanced(list3, list1));
     Assert.assertTrue(RmdUtils.hasOffsetAdvanced(list2, list1));
     Assert.assertTrue(RmdUtils.hasOffsetAdvanced(Collections.emptyList(), list2));
+    Assert.assertTrue(RmdUtils.hasOffsetAdvanced(Collections.emptyList(), Collections.emptyList()));
+
+    List<Long> mergedList = RmdUtils.mergeOffsetVectors(list2, list1);
+    Assert.assertEquals(mergedList.get(0), list2.get(0));
+    Assert.assertEquals(mergedList.get(1), list1.get(1));
+
+    mergedList = RmdUtils.mergeOffsetVectors(list2, Collections.EMPTY_LIST);
+    Assert.assertEquals(mergedList.get(0), list2.get(0));
+    Assert.assertEquals(mergedList.get(1), list2.get(1));
+
+    mergedList = RmdUtils.mergeOffsetVectors(Collections.EMPTY_LIST, list2);
+    Assert.assertEquals(mergedList.get(0), list2.get(0));
+    Assert.assertEquals(mergedList.get(1), list2.get(1));
+
+    mergedList = RmdUtils.mergeOffsetVectors(list1, list3);
+    Assert.assertEquals(mergedList.get(0), list3.get(0));
+    Assert.assertEquals(mergedList.get(1), list1.get(1));
+
+    mergedList = RmdUtils.mergeOffsetVectors(list3, list1);
+    Assert.assertEquals(mergedList.get(0), list3.get(0));
+    Assert.assertEquals(mergedList.get(1), list1.get(1));
   }
 
   @Test(expectedExceptions = IllegalStateException.class)

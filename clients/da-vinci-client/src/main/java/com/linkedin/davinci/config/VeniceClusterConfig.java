@@ -27,8 +27,8 @@ import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
-import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -137,7 +137,7 @@ public class VeniceClusterConfig {
 
     String kafkaSecurityProtocolString =
         clusterProps.getString(KAFKA_SECURITY_PROTOCOL, PubSubSecurityProtocol.PLAINTEXT.name());
-    if (!KafkaSSLUtils.isKafkaProtocolValid(kafkaSecurityProtocolString)) {
+    if (!ApacheKafkaUtils.isKafkaProtocolValid(kafkaSecurityProtocolString)) {
       throw new ConfigurationException("Invalid kafka security protocol: " + kafkaSecurityProtocolString);
     }
     this.kafkaSecurityProtocol = PubSubSecurityProtocol.forName(kafkaSecurityProtocolString);
@@ -240,10 +240,10 @@ public class VeniceClusterConfig {
     }
     this.kafkaClusterUrlToAliasMap = Collections.unmodifiableMap(tmpKafkaClusterUrlToAliasMap);
 
-    if (!KafkaSSLUtils.isKafkaProtocolValid(kafkaSecurityProtocolString)) {
+    if (!ApacheKafkaUtils.isKafkaProtocolValid(kafkaSecurityProtocolString)) {
       throw new ConfigurationException("Invalid kafka security protocol: " + kafkaSecurityProtocolString);
     }
-    if (KafkaSSLUtils.isKafkaSSLProtocol(kafkaSecurityProtocolString)
+    if (ApacheKafkaUtils.isKafkaSSLProtocol(kafkaSecurityProtocolString)
         || kafkaBootstrapUrlToSecurityProtocol.containsValue(PubSubSecurityProtocol.SSL)) {
       this.sslConfig = Optional.of(new SSLConfig(clusterProps));
     } else {

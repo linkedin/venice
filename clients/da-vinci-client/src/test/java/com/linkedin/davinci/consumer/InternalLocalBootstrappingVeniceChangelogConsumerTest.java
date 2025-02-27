@@ -18,7 +18,7 @@ import static org.mockito.Mockito.when;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.davinci.repository.ThinClientMetaStoreBasedRepository;
+import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
 import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -113,7 +113,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
   private RecordSerializer<String> keySerializer;
   private RecordSerializer<String> valueSerializer;
   private PubSubConsumerAdapter pubSubConsumer;
-  private ThinClientMetaStoreBasedRepository metadataRepository;
+  private NativeMetadataRepositoryViewAdapter metadataRepository;
   private PubSubTopic changeCaptureTopic;
   private SchemaReader schemaReader;
   private Schema valueSchema;
@@ -129,7 +129,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
   @BeforeMethod
   public void setUp() {
     storeName = Utils.getUniqueString();
-    localStateTopicName = storeName + "_Bootstrap_v1";
+    localStateTopicName = storeName + "-changeCaptureView" + "_Bootstrap_v1";
     schemaReader = mock(SchemaReader.class);
     Schema keySchema = AvroCompatibilityHelper.parse("\"string\"");
     doReturn(keySchema).when(schemaReader).getKeySchema();
@@ -180,18 +180,22 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
             .setConsumerProperties(consumerProperties)
             .setLocalD2ZkHosts(TEST_ZOOKEEPER_ADDRESS)
             .setRocksDBBlockCacheSizeInBytes(TEST_ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES)
-            .setDatabaseSyncBytesInterval(TEST_DB_SYNC_BYTES_INTERVAL);
+            .setDatabaseSyncBytesInterval(TEST_DB_SYNC_BYTES_INTERVAL)
+            .setIsBeforeImageView(true);
     changelogClientConfig.getInnerClientConfig().setMetricsRepository(new MetricsRepository());
     bootstrappingVeniceChangelogConsumer =
         new InternalLocalBootstrappingVeniceChangelogConsumer<>(changelogClientConfig, pubSubConsumer, null);
 
-    metadataRepository = mock(ThinClientMetaStoreBasedRepository.class);
+    metadataRepository = mock(NativeMetadataRepositoryViewAdapter.class);
     Store store = mock(Store.class);
     Version mockVersion = new VersionImpl(storeName, 1, "foo");
+    mockVersion.setPartitionCount(2);
     when(store.getCurrentVersion()).thenReturn(1);
     when(store.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
+    when(store.getPartitionCount()).thenReturn(2);
     when(metadataRepository.getStore(anyString())).thenReturn(store);
     when(store.getVersionOrThrow(Mockito.anyInt())).thenReturn(mockVersion);
+    when(store.getVersion(Mockito.anyInt())).thenReturn(mockVersion);
     when(metadataRepository.getValueSchema(storeName, TEST_SCHEMA_ID))
         .thenReturn(new SchemaEntry(TEST_SCHEMA_ID, valueSchema));
     bootstrappingVeniceChangelogConsumer.setStoreRepository(metadataRepository);
@@ -230,8 +234,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     verify(mockStorageService, times(1)).start();
     verify(mockStorageService, times(1)).openStoreForNewPartition(any(), eq(0), any());
     verify(mockStorageService, times(1)).openStoreForNewPartition(any(), eq(1), any());
-    verify(metadataRepository, times(1)).start();
-    verify(metadataRepository, times(1)).subscribe(storeName);
+    verify(metadataRepository, times(2)).subscribe(storeName);
     verify(pubSubConsumer, times(1)).subscribe(topicPartition_0, LOWEST_OFFSET);
     verify(pubSubConsumer, times(1)).subscribe(topicPartition_1, LOWEST_OFFSET);
     verify(pubSubConsumer, times(1)).subscribe(topicPartition_0, 0L);

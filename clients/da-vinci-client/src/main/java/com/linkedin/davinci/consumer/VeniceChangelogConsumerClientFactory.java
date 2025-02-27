@@ -71,13 +71,36 @@ public class VeniceChangelogConsumerClientFactory {
    * each consumer can only subscribe to certain partitions. Multiple such consumers can work in parallel.
    */
   public <K, V> VeniceChangelogConsumer<K, V> getChangelogConsumer(String storeName, String consumerId, Class clazz) {
-    return storeClientMap.computeIfAbsent(suffixConsumerIdToStore(storeName, consumerId), name -> {
+    return getChangelogConsumer(storeName, consumerId, clazz, globalChangelogClientConfig.getViewName());
+  }
+
+  public <K, V> VeniceChangelogConsumer<K, V> getChangelogConsumer(
+      String storeName,
+      String consumerId,
+      Class clazz,
+      String viewNameOverride) {
+    String adjustedConsumerId;
+    if (!StringUtils.isEmpty(viewNameOverride)) {
+      if (StringUtils.isEmpty(consumerId)) {
+        adjustedConsumerId = viewNameOverride;
+      } else {
+        adjustedConsumerId = consumerId + "-" + viewNameOverride;
+      }
+    } else {
+      adjustedConsumerId = consumerId;
+    }
+    return storeClientMap.computeIfAbsent(suffixConsumerIdToStore(storeName, adjustedConsumerId), name -> {
       ChangelogClientConfig newStoreChangelogClientConfig =
           getNewStoreChangelogClientConfig(storeName).setSpecificValue(clazz);
       newStoreChangelogClientConfig.setConsumerName(name);
+      newStoreChangelogClientConfig.setViewName(viewNameOverride);
       String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
-      String consumerName = suffixConsumerIdToStore(storeName + "-" + viewClass.getClass().getSimpleName(), consumerId);
+      String consumerName =
+          suffixConsumerIdToStore(storeName + "-" + viewClass.getClass().getSimpleName(), adjustedConsumerId);
       if (viewClass.equals(ChangeCaptureView.class.getCanonicalName())) {
+        // TODO: This is a little bit of a hack. This is to deal with the an issue where the before image change
+        // capture topic doesn't follow the same naming convention as view topics.
+        newStoreChangelogClientConfig.setIsBeforeImageView(true);
         return new VeniceChangelogConsumerImpl(
             newStoreChangelogClientConfig,
             consumer != null

@@ -3,6 +3,7 @@ package com.linkedin.venice.schema.rmd;
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_POS;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import org.antlr.v4.runtime.misc.NotNull;
@@ -96,8 +97,35 @@ public class RmdUtils {
       }
       if (advancedOffset.get(i) < baseOffset.get(i)) {
         return false;
+      } else if (advancedOffset.get(i) > baseOffset.get(i)) {
+        return true;
       }
     }
     return true;
+  }
+
+  static public List<Long> mergeOffsetVectors(@NotNull List<Long> baseOffset, @NotNull List<Long> advancedOffset) {
+    List<Long> shortVector;
+    List<Long> longVector;
+
+    if (baseOffset.size() > advancedOffset.size()) {
+      shortVector = advancedOffset;
+      longVector = baseOffset;
+    } else {
+      shortVector = baseOffset;
+      longVector = advancedOffset;
+    }
+
+    List<Long> mergedVector = new ArrayList<>(longVector.size());
+
+    for (int i = 0; i < shortVector.size(); i++) {
+      mergedVector.add(Math.max(shortVector.get(i), longVector.get(i)));
+    }
+
+    if (longVector.size() != shortVector.size()) {
+      mergedVector.addAll(longVector.subList(shortVector.size(), longVector.size()));
+    }
+
+    return mergedVector;
   }
 }

@@ -291,6 +291,8 @@ public class Segment {
                     + controlMessage.getControlMessageType());
         }
       case PUT:
+      case GLOBAL_RT_DIV: // GLOBAL_RT_DIV is the same as PUT, but contains a DIV object rather than user data
+        // TODO: revisit to see if the GLOBAL_RT_DIV message is needed as part of the checksum
         updateCheckSum(messageEnvelope.getMessageType());
         updateCheckSum(key.getKey());
         Put putPayload = (Put) messageEnvelope.getPayloadUnion();

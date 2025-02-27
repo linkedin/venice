@@ -3,6 +3,7 @@ package com.linkedin.venice;
 import static com.linkedin.venice.Arg.ACCESS_CONTROL;
 import static com.linkedin.venice.Arg.ACL_PERMS;
 import static com.linkedin.venice.Arg.ACTIVE_ACTIVE_REPLICATION_ENABLED;
+import static com.linkedin.venice.Arg.ADMIN_OPERATION_PROTOCOL_VERSION;
 import static com.linkedin.venice.Arg.ALLOW_STORE_MIGRATION;
 import static com.linkedin.venice.Arg.AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED;
 import static com.linkedin.venice.Arg.BACKUP_FOLDER;
@@ -122,6 +123,7 @@ import static com.linkedin.venice.Arg.STORAGE_PERSONA;
 import static com.linkedin.venice.Arg.STORAGE_QUOTA;
 import static com.linkedin.venice.Arg.STORE;
 import static com.linkedin.venice.Arg.STORES;
+import static com.linkedin.venice.Arg.STORE_FILTER_FILE;
 import static com.linkedin.venice.Arg.STORE_SIZE;
 import static com.linkedin.venice.Arg.STORE_TYPE;
 import static com.linkedin.venice.Arg.STORE_VIEW_CONFIGS;
@@ -214,7 +216,7 @@ public enum Command {
   ),
   CLUSTER_BATCH_TASK(
       "cluster-batch-task", "Run specific task against all user stores in a cluster in parallel",
-      new Arg[] { URL, CLUSTER, TASK_NAME, CHECKPOINT_FILE }, new Arg[] { THREAD_COUNT }
+      new Arg[] { URL, CLUSTER, TASK_NAME, CHECKPOINT_FILE }, new Arg[] { THREAD_COUNT, STORE_FILTER_FILE }
   ),
   SET_VERSION(
       "set-version", "Set the version that will be served", new Arg[] { URL, STORE, VERSION }, new Arg[] { CLUSTER }
@@ -582,6 +584,10 @@ public enum Command {
       "dump-host-heartbeat",
       "Dump all heartbeat belong to a certain storage node. You can use topic/partition to filter specific resource, and you can choose to filter resources that are lagging.",
       new Arg[] { SERVER_URL, KAFKA_TOPIC_NAME }, new Arg[] { PARTITION, LAG_FILTER_ENABLED }
+  ),
+  UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION(
+      "update-admin-operation-protocol-version", "Update the admin operation protocol version",
+      new Arg[] { URL, CLUSTER, ADMIN_OPERATION_PROTOCOL_VERSION }
   );
 
   private final String commandName;

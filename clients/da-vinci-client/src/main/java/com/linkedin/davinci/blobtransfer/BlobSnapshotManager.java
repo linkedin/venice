@@ -351,6 +351,16 @@ public class BlobSnapshotManager {
    * @return the metadata for the blob transfer request
    */
   public BlobTransferPartitionMetadata prepareMetadata(BlobTransferPayload blobTransferRequest) {
+    if (storageMetadataService == null || storeVersionStateSerializer == null) {
+      throw new VeniceException("StorageMetadataService or storeVersionStateSerializer is not initialized");
+    }
+
+    if (storageMetadataService.getStoreVersionState(blobTransferRequest.getTopicName()) == null
+        || storageMetadataService
+            .getLastOffset(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition()) == null) {
+      throw new VeniceException("Cannot get store version state or offset record from storage metadata service.");
+    }
+
     // prepare metadata
     StoreVersionState storeVersionState =
         storageMetadataService.getStoreVersionState(blobTransferRequest.getTopicName());

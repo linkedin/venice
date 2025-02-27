@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
@@ -193,6 +194,7 @@ public class DaVinciClientTest {
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .build();
 
@@ -261,6 +263,7 @@ public class DaVinciClientTest {
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true)
         .put(PUSH_STATUS_STORE_ENABLED, true)
         .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
@@ -381,6 +384,7 @@ public class DaVinciClientTest {
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
         .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(PUSH_STATUS_STORE_ENABLED, true)
         .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
         .build();
@@ -458,6 +462,7 @@ public class DaVinciClientTest {
         // TODO: Looks like cache = null does not work with fast meta store repository refresh interval
         // .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .build();
 
@@ -710,6 +715,7 @@ public class DaVinciClientTest {
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .build();
 
@@ -774,6 +780,7 @@ public class DaVinciClientTest {
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .build();
 
@@ -1003,6 +1010,7 @@ public class DaVinciClientTest {
         .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true)
         .put(PUSH_STATUS_STORE_ENABLED, true)
         .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, false)
         .build();
 
@@ -1064,7 +1072,8 @@ public class DaVinciClientTest {
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testPartialSubscription(DaVinciConfig daVinciConfig) throws Exception {
     String storeName = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
-    VeniceProperties backendConfig = new PropertyBuilder().build();
+    VeniceProperties backendConfig =
+        new PropertyBuilder().put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L).build();
 
     Set<Integer> keySet = new HashSet<>();
     for (int i = 0; i < KEY_COUNT; ++i) {
@@ -1187,6 +1196,7 @@ public class DaVinciClientTest {
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(D2_ZK_HOSTS_ADDRESS, zkHosts)
         .build();
 
@@ -1265,6 +1275,7 @@ public class DaVinciClientTest {
         .put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, port2)
         .put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, port1)
         .put(PUSH_STATUS_STORE_ENABLED, true)
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 1)
         .put(BLOB_TRANSFER_MANAGER_ENABLED, true);
     VeniceProperties backendConfig2 = configBuilder.build();
@@ -1337,29 +1348,60 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testIsDavinciHeartbeatReported() throws Exception {
-    String storeName = Utils.getUniqueString("testIsDavinviHeartbeatReported");
-    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setTargetRegionSwap("test");
-    setUpStore(storeName, paramsConsumer, properties -> {}, true);
+    // Setup store and create version 1
+    String storeName = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
+    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
+    VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
+        .put(DATA_BASE_PATH, baseDataPath)
+        .put(PUSH_STATUS_STORE_ENABLED, true)
+        .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
+        .build();
 
-    try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
-      client.subscribeAll().get();
+    // Create dvc client and subscribe
+    DaVinciClient<Object, Object> client =
+        ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, new DaVinciConfig(), backendConfig);
+    client.subscribeAll().get();
+    for (int k = 0; k < KEY_COUNT; ++k) {
+      assertEquals(client.get(k).get(), 1);
     }
 
-    File inputDirectory = getTempDataDirectory();
-    String inputDirectoryPath = "file://" + inputDirectory.getAbsolutePath();
-    try {
-      writeSimpleAvroFileWithIntToStringSchema(inputDirectory);
-    } catch (IOException e) {
-      throw new RuntimeException(e);
+    // Check that dvc heartbeat is false as there was no dvc client during version 1's creation
+    try (ControllerClient controllerClient = cluster.getControllerClient()) {
+      StoreInfo store = controllerClient.getStore(storeName).getStore();
+      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MILLISECONDS, () -> {
+        Assert.assertFalse(store.getIsDavinciHeartbeatReported());
+        Assert.assertFalse(store.getVersion(1).get().getIsDavinciHeartbeatReported());
+      });
     }
-    Properties vpjProperties = defaultVPJProps(cluster, inputDirectoryPath, storeName);
-    runVPJ(vpjProperties, 2, cluster);
 
+    // Create version 2
+    Integer versionTwo = cluster.createVersion(storeName, KEY_COUNT);
+    TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      for (int k = 0; k < KEY_COUNT; ++k) {
+        assertEquals(client.get(k).get(), versionTwo);
+      }
+    });
+
+    // Check that dvc heartbeat is true as there is a dvc client subscribed during version 2's creation
     try (ControllerClient controllerClient = cluster.getControllerClient()) {
       StoreInfo store = controllerClient.getStore(storeName).getStore();
       TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MILLISECONDS, () -> {
         Assert.assertTrue(store.getIsDavinciHeartbeatReported());
-        Assert.assertTrue(store.getVersion(2).get().getIsDavinciHeartbeatReported());
+        Assert.assertTrue(store.getVersion(versionTwo).get().getIsDavinciHeartbeatReported());
+      });
+    }
+
+    // Close the dvc client
+    client.close();
+
+    // Create version 3 and check that dvc heartbeat is false as the dvc client was closed
+    Integer versionThree = cluster.createVersion(storeName, KEY_COUNT);
+    try (ControllerClient controllerClient = cluster.getControllerClient()) {
+      StoreInfo store = controllerClient.getStore(storeName).getStore();
+      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MILLISECONDS, () -> {
+        Assert.assertFalse(store.getIsDavinciHeartbeatReported());
+        Assert.assertFalse(store.getVersion(versionThree).get().getIsDavinciHeartbeatReported());
       });
     }
   }

@@ -25,6 +25,7 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -954,5 +955,90 @@ public class TestVeniceHelixAdmin {
     for (int i = 0; i < pubSubTopics.size(); i++) {
       assertEquals(pubSubTopics.get(i).getName(), expectedUpdateCompactionTopics.get(i));
     }
+  }
+
+  @Test
+  public void testGetAdminTopicMetadata() {
+    String clusterName = "test-cluster";
+    String storeName = "test-store";
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    doCallRealMethod().when(veniceHelixAdmin).getAdminTopicMetadata(clusterName, Optional.of(storeName));
+    doCallRealMethod().when(veniceHelixAdmin).getAdminTopicMetadata(clusterName, Optional.empty());
+
+    // Case 1: Not store name provided
+    Map<String, Long> remoteMetadata = AdminTopicMetadataAccessor
+        .generateMetadataMap(Optional.of(10L), Optional.of(-1L), Optional.of(1L), Optional.of(1L));
+    AdminConsumerService adminConsumerService = mock(AdminConsumerService.class);
+    when(veniceHelixAdmin.getAdminConsumerService(clusterName)).thenReturn(adminConsumerService);
+    when(adminConsumerService.getAdminTopicMetadata(anyString())).thenReturn(remoteMetadata);
+
+    Map<String, Long> metadata = veniceHelixAdmin.getAdminTopicMetadata(clusterName, Optional.empty());
+    assertEquals(metadata, remoteMetadata);
+
+    // Case 2: Store name is provided
+    ExecutionIdAccessor executionIdAccessor = mock(ExecutionIdAccessor.class);
+    Map<String, Long> executionIdMap = new HashMap<>();
+    executionIdMap.put(storeName, 10L);
+    when(veniceHelixAdmin.getExecutionIdAccessor()).thenReturn(executionIdAccessor);
+    when(executionIdAccessor.getLastSucceededExecutionIdMap(anyString())).thenReturn(executionIdMap);
+    when(veniceHelixAdmin.getExecutionIdAccessor()).thenReturn(executionIdAccessor);
+    when(adminConsumerService.getAdminTopicMetadata(anyString())).thenReturn(remoteMetadata);
+
+    Map<String, Long> expectedMetadata = AdminTopicMetadataAccessor
+        .generateMetadataMap(Optional.of(-1L), Optional.of(-1L), Optional.of(10L), Optional.of(-1L));
+    Map<String, Long> metadataForStore = veniceHelixAdmin.getAdminTopicMetadata(clusterName, Optional.of(storeName));
+    assertEquals(metadataForStore, expectedMetadata);
+  }
+
+  @Test
+  public void testUpdateAdminTopicMetadata() {
+    String clusterName = "test-cluster";
+    String storeName = "test-store";
+    long executionId = 10L;
+    Long offset = 10L;
+    Long upstreamOffset = 1L;
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    doCallRealMethod().when(veniceHelixAdmin)
+        .updateAdminTopicMetadata(clusterName, executionId, Optional.of(storeName), Optional.empty(), Optional.empty());
+    doCallRealMethod().when(veniceHelixAdmin)
+        .updateAdminTopicMetadata(
+            clusterName,
+            executionId,
+            Optional.empty(),
+            Optional.of(offset),
+            Optional.of(upstreamOffset));
+
+    // Case 1: Store name is provided
+    ExecutionIdAccessor executionIdAccessor = mock(ExecutionIdAccessor.class);
+    when(veniceHelixAdmin.getExecutionIdAccessor()).thenReturn(executionIdAccessor);
+
+    veniceHelixAdmin
+        .updateAdminTopicMetadata(clusterName, executionId, Optional.of(storeName), Optional.empty(), Optional.empty());
+    verify(executionIdAccessor, times(1)).updateLastSucceededExecutionIdMap(clusterName, storeName, executionId);
+
+    // Case 2: Store name is not provided
+    AdminConsumerService adminConsumerService = mock(AdminConsumerService.class);
+    when(veniceHelixAdmin.getAdminConsumerService(clusterName)).thenReturn(adminConsumerService);
+    veniceHelixAdmin.updateAdminTopicMetadata(
+        clusterName,
+        executionId,
+        Optional.empty(),
+        Optional.of(offset),
+        Optional.of(upstreamOffset));
+    verify(executionIdAccessor, never()).updateLastSucceededExecutionId(anyString(), anyLong());
+    verify(adminConsumerService, times(1)).updateAdminTopicMetadata(clusterName, executionId, offset, upstreamOffset);
+  }
+
+  @Test
+  public void testUpdateAdminOperationProtocolVersion() {
+    String clusterName = "test-cluster";
+    Long adminProtocolVersion = 10L;
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    doCallRealMethod().when(veniceHelixAdmin).updateAdminOperationProtocolVersion(clusterName, adminProtocolVersion);
+    AdminConsumerService adminConsumerService = mock(AdminConsumerService.class);
+    when(veniceHelixAdmin.getAdminConsumerService(clusterName)).thenReturn(adminConsumerService);
+
+    veniceHelixAdmin.updateAdminOperationProtocolVersion(clusterName, adminProtocolVersion);
+    verify(adminConsumerService, times(1)).updateAdminOperationProtocolVersion(clusterName, adminProtocolVersion);
   }
 }

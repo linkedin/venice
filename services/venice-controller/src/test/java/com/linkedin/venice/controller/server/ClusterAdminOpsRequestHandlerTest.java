@@ -23,8 +23,8 @@ import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcResponse;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcRequest;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcResponse;
+import com.linkedin.venice.protocols.controller.UpdateAdminOperationProtocolVersionGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcRequest;
-import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcResponse;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -198,10 +198,10 @@ public class ClusterAdminOpsRequestHandlerTest {
         .build();
     UpdateAdminTopicMetadataGrpcRequest request =
         UpdateAdminTopicMetadataGrpcRequest.newBuilder().setMetadata(metadata).build();
-    UpdateAdminTopicMetadataGrpcResponse response = handler.updateAdminTopicMetadata(request);
+    AdminTopicMetadataGrpcResponse response = handler.updateAdminTopicMetadata(request);
     assertNotNull(response);
-    assertEquals(response.getClusterName(), clusterName);
-    assertFalse(response.hasStoreName());
+    assertEquals(response.getMetadata().getClusterName(), clusterName);
+    assertFalse(response.getMetadata().hasStoreName());
 
     // Store name is provided
     metadata = AdminTopicGrpcMetadata.newBuilder()
@@ -212,22 +212,30 @@ public class ClusterAdminOpsRequestHandlerTest {
     request = UpdateAdminTopicMetadataGrpcRequest.newBuilder().setMetadata(metadata).build();
     response = handler.updateAdminTopicMetadata(request);
     assertNotNull(response);
-    assertEquals(response.getClusterName(), clusterName);
+    assertEquals(response.getMetadata().getClusterName(), clusterName);
   }
 
   @Test
-  public void testUpdateAdminTopicMetadataInvalidOffsets() {
+  public void testUpdateAdminTopicMetadataInvalidInputs() {
     String clusterName = "test-cluster";
     long executionId = 12345L;
 
-    AdminTopicGrpcMetadata metadata = AdminTopicGrpcMetadata.newBuilder()
+    // No execution id
+    AdminTopicGrpcMetadata metadata = AdminTopicGrpcMetadata.newBuilder().setClusterName(clusterName).build();
+    UpdateAdminTopicMetadataGrpcRequest request =
+        UpdateAdminTopicMetadataGrpcRequest.newBuilder().setMetadata(metadata).build();
+    Exception exception = expectThrows(IllegalArgumentException.class, () -> handler.updateAdminTopicMetadata(request));
+    assertTrue(exception.getMessage().contains("Admin command execution id with positive value is required"));
+
+    // Either offset or upstream offset is provided
+    metadata = AdminTopicGrpcMetadata.newBuilder()
         .setClusterName(clusterName)
         .setExecutionId(executionId)
         .setOffset(123L)
         .build();
-    UpdateAdminTopicMetadataGrpcRequest request =
+    UpdateAdminTopicMetadataGrpcRequest request1 =
         UpdateAdminTopicMetadataGrpcRequest.newBuilder().setMetadata(metadata).build();
-    Exception exception = expectThrows(VeniceException.class, () -> handler.updateAdminTopicMetadata(request));
+    exception = expectThrows(VeniceException.class, () -> handler.updateAdminTopicMetadata(request1));
     assertTrue(
         exception.getMessage().contains("Offsets must be provided to update cluster-level admin topic metadata"),
         "Actual message: " + exception.getMessage());
@@ -257,5 +265,49 @@ public class ClusterAdminOpsRequestHandlerTest {
     assertTrue(
         exception.getMessage().contains("Updating offsets is not allowed for store-level admin topic metadata"),
         "Actual message: " + exception.getMessage());
+  }
+
+  @Test
+  public void testUpdateAdminOperationProtocolVersionSuccess() {
+    String clusterName = "test-cluster";
+    long version = 12345L;
+    UpdateAdminOperationProtocolVersionGrpcRequest request = UpdateAdminOperationProtocolVersionGrpcRequest.newBuilder()
+        .setClusterName(clusterName)
+        .setAdminOperationProtocolVersion(version)
+        .build();
+    AdminTopicMetadataGrpcResponse response = handler.updateAdminOperationProtocolVersion(request);
+
+    assertNotNull(response);
+    assertEquals(response.getMetadata().getClusterName(), clusterName);
+    assertEquals(response.getMetadata().getAdminOperationProtocolVersion(), version);
+  }
+
+  @Test
+  public void testUpdateAdminOperationProtocolVersionInvalidInputs() {
+    String clusterName = "test-cluster";
+    long version = 12345L;
+
+    // No cluster name
+    UpdateAdminOperationProtocolVersionGrpcRequest request1 =
+        UpdateAdminOperationProtocolVersionGrpcRequest.newBuilder()
+            .setClusterName("")
+            .setAdminOperationProtocolVersion(version)
+            .build();
+    Exception exception =
+        expectThrows(IllegalArgumentException.class, () -> handler.updateAdminOperationProtocolVersion(request1));
+    assertTrue(
+        exception.getMessage().contains("Cluster name is required for updating admin operation protocol version"));
+
+    // Invalid version
+    UpdateAdminOperationProtocolVersionGrpcRequest request2 =
+        UpdateAdminOperationProtocolVersionGrpcRequest.newBuilder()
+            .setClusterName(clusterName)
+            .setAdminOperationProtocolVersion(0)
+            .build();
+    exception =
+        expectThrows(IllegalArgumentException.class, () -> handler.updateAdminOperationProtocolVersion(request2));
+    assertTrue(
+        exception.getMessage()
+            .contains("Admin operation protocol version is required and must be -1 or greater than 0"));
   }
 }

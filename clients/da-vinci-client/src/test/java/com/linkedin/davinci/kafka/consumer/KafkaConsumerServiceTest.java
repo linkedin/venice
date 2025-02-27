@@ -94,7 +94,7 @@ public class KafkaConsumerServiceTest {
         ConsumerPoolType.REGULAR_POOL,
         factory,
         properties,
-        1000l,
+        1000L,
         2,
         mock(IngestionThrottler.class),
         mock(KafkaClusterBasedRecordThrottler.class),
@@ -419,6 +419,18 @@ public class KafkaConsumerServiceTest {
     Assert.assertNotEquals(consumerForT2P0, consumerForT2P1);
     Assert.assertEquals(consumerForT1P0, consumerForT1P2);
     Assert.assertEquals(consumerForT1P3, consumerForT2P1);
+  }
+
+  @Test
+  public void testGenerateConsumerId() {
+    String hostName = Utils.getHostName();
+    String kafkaUrl = "abc:1234";
+    int suffix = 3;
+    ConsumerPoolType poolType = ConsumerPoolType.SEP_RT_LEADER_POOL;
+    KafkaConsumerService consumerService = mock(KafkaConsumerService.class);
+    doCallRealMethod().when(consumerService).getUniqueClientId(anyString(), anyInt(), any());
+    String expectedResult = hostName + "_" + kafkaUrl + "_" + suffix + poolType.getStatSuffix();
+    Assert.assertEquals(consumerService.getUniqueClientId(kafkaUrl, suffix, poolType), expectedResult);
   }
 
   @Test

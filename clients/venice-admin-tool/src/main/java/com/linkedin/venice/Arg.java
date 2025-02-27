@@ -228,7 +228,10 @@ public enum Arg {
       "Type of system store to backfill. Supported types are davinci_push_status_store and meta_store"
   ), TASK_NAME("task-name", "tn", true, "Name of the task for cluster command. Supported command [PushSystemStore]."),
   CHECKPOINT_FILE("checkpoint-file", "cf", true, "Checkpoint file path for cluster command."),
-  THREAD_COUNT("thread-count", "tc", true, "Number of threads to execute. 1 if not specified"),
+  STORE_FILTER_FILE(
+      "store-filter-file", "sff", true,
+      "Store filter file path for cluster command. By default we will be performing cluster operation on the intersection of this file and stores in the cluster."
+  ), THREAD_COUNT("thread-count", "tc", true, "Number of threads to execute. 1 if not specified"),
   RETRY("retry", "r", false, "Retry this operation"),
   DISABLE_LOG("disable-log", "dl", false, "Disable logs from internal classes. Only print command output on console"),
   STORE_VIEW_CONFIGS(
@@ -297,7 +300,10 @@ public enum Arg {
   ),
   DAVINCI_HEARTBEAT_REPORTED(
       "dvc-heartbeat-reported", "dvchb", true, "Flag to indicate whether DVC is bootstrapping and sending heartbeats"
-  ), ENABLE_STORE_MIGRATION("enable-store-migration", "esm", true, "Toggle store migration store config");
+  ), ENABLE_STORE_MIGRATION("enable-store-migration", "esm", true, "Toggle store migration store config"),
+  ADMIN_OPERATION_PROTOCOL_VERSION(
+      "admin-operation-protocol-version", "aopv", true, "Admin operation protocol version"
+  );
 
   private final String argName;
   private final String first;
