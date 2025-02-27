@@ -1,5 +1,6 @@
 package com.linkedin.venice.pubsub.api;
 
+import com.linkedin.venice.annotation.RestrictedApi;
 import com.linkedin.venice.pubsub.PubSubPositionFactory;
 
 
@@ -43,6 +44,11 @@ public interface PubSubPosition {
     public int hashCode() {
       return -1;
     }
+
+    @Override
+    public long getNumericOffset() {
+      throw new IllegalStateException("Cannot get numeric offset for EARLIEST position");
+    }
   };
 
   /**
@@ -81,6 +87,11 @@ public interface PubSubPosition {
     public int hashCode() {
       return -2;
     }
+
+    @Override
+    public long getNumericOffset() {
+      throw new IllegalStateException("Cannot get numeric offset for LATEST position");
+    }
   };
 
   /**
@@ -99,6 +110,10 @@ public interface PubSubPosition {
   boolean equals(Object obj);
 
   int hashCode();
+
+  @RestrictedApi("This API facilitates the transition from numeric offsets to PubSubPosition. "
+      + "It should be removed once the codebase fully adopts PubSubPosition.")
+  long getNumericOffset();
 
   /**
    * Position wrapper is used to wrap the position type and the position value.

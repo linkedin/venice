@@ -105,6 +105,11 @@ public class ApacheKafkaOffsetPosition implements PubSubPosition {
     return Long.hashCode(offset);
   }
 
+  @Override
+  public long getNumericOffset() {
+    return offset;
+  }
+
   /**
    * Position wrapper is used to wrap the position type and the position value.
    * This is used to serialize and deserialize the position object when sending and receiving it over the wire.
