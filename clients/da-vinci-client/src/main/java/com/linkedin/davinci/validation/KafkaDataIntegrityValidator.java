@@ -6,6 +6,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.HashSet;
@@ -83,7 +84,7 @@ public class KafkaDataIntegrityValidator {
    */
   public void validateMessage(
       PartitionTracker.TopicType type,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
       boolean endOfPushReceived,
       Lazy<Boolean> tolerateMissingMsgs) throws DataValidationException {
     PartitionTracker partitionTracker = registerPartition(consumerRecord.getPartition());
@@ -127,7 +128,7 @@ public class KafkaDataIntegrityValidator {
    * TODO: Open source the ETL or make it stop depending on an exotic open source API
    */
   public void checkMissingMessage(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
       Optional<PartitionTracker.DIVErrorMetricCallback> errorMetricCallback) throws DataValidationException {
     PartitionTracker partitionTracker = registerPartition(consumerRecord.getPartition());
     partitionTracker.checkMissingMessage(

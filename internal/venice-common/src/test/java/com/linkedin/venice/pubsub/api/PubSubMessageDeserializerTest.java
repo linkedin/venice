@@ -1,6 +1,7 @@
 package com.linkedin.venice.pubsub.api;
 
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER;
+import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.exceptions.VeniceMessageException;
@@ -31,9 +32,11 @@ public class PubSubMessageDeserializerTest {
   private PubSubTopicPartition topicPartition;
   private KafkaKeySerializer keySerializer;
   private KafkaValueSerializer valueSerializer;
+  private PubSubPosition position;
 
   @BeforeMethod
   public void setUp() {
+    position = mock(PubSubPosition.class);
     topicRepository = new PubSubTopicRepository();
     messageDeserializer = new PubSubMessageDeserializer(
         new OptimizedKafkaValueSerializer(),
@@ -52,7 +55,7 @@ public class PubSubMessageDeserializerTest {
   @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = ".*Illegal key header byte.*")
   public void testDeserializerFailsWhenKeyValueFormatIsInvalid() {
     messageDeserializer
-        .deserialize(topicPartition, "key".getBytes(), "value".getBytes(), new PubSubMessageHeaders(), 11L, 12L);
+        .deserialize(topicPartition, "key".getBytes(), "value".getBytes(), new PubSubMessageHeaders(), position, 12L);
   }
 
   @Test(expectedExceptions = VeniceMessageException.class, expectedExceptionsMessageRegExp = ".*Received Magic Byte 'v' which is not supported by OptimizedKafkaValueSerializer.*")
@@ -63,7 +66,7 @@ public class PubSubMessageDeserializerTest {
         keySerializer.serialize("test", key),
         "value".getBytes(),
         new PubSubMessageHeaders(),
-        11L,
+        position,
         12L);
   }
 
@@ -71,19 +74,19 @@ public class PubSubMessageDeserializerTest {
   public void testDeserializer() {
     KafkaKey key = new KafkaKey(MessageType.PUT, "key".getBytes());
     KafkaMessageEnvelope value = getDummyValue();
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message = messageDeserializer.deserialize(
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message = messageDeserializer.deserialize(
         topicPartition,
         keySerializer.serialize("test", key),
         valueSerializer.serialize("test", value),
         new PubSubMessageHeaders(),
-        11L,
+        position,
         12L);
     // verify
     KafkaKey actualKey = message.getKey();
     assertEquals(actualKey.getKeyHeaderByte(), key.getKeyHeaderByte());
     assertEquals(actualKey.getKey(), key.getKey());
     assertEquals(message.getValue(), value);
-    assertEquals((long) message.getOffset(), 11);
+    assertEquals(message.getOffset(), position);
   }
 
   @Test
@@ -92,12 +95,12 @@ public class PubSubMessageDeserializerTest {
     KafkaMessageEnvelope value = getDummyValue();
     PubSubMessageHeader header =
         new PubSubMessageHeader(VENICE_TRANSPORT_PROTOCOL_HEADER, KafkaMessageEnvelope.SCHEMA$.toString().getBytes());
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message = messageDeserializer.deserialize(
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message = messageDeserializer.deserialize(
         topicPartition,
         keySerializer.serialize("test", key),
         valueSerializer.serialize("test", value),
         new PubSubMessageHeaders().add(header),
-        11L,
+        position,
         12L);
 
     // verify
@@ -105,7 +108,7 @@ public class PubSubMessageDeserializerTest {
     assertEquals(actualKey.getKeyHeaderByte(), key.getKeyHeaderByte());
     assertEquals(actualKey.getKey(), key.getKey());
     assertEquals(message.getValue(), value);
-    assertEquals((long) message.getOffset(), 11);
+    assertEquals(message.getOffset(), position);
   }
 
   @Test
@@ -113,12 +116,12 @@ public class PubSubMessageDeserializerTest {
     KafkaKey key = new KafkaKey(MessageType.CONTROL_MESSAGE, "key".getBytes());
     KafkaMessageEnvelope value = getDummyValue();
     PubSubMessageHeader header = new PubSubMessageHeader(VENICE_TRANSPORT_PROTOCOL_HEADER, "invalid".getBytes());
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message = messageDeserializer.deserialize(
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message = messageDeserializer.deserialize(
         topicPartition,
         keySerializer.serialize("test", key),
         valueSerializer.serialize("test", value),
         new PubSubMessageHeaders().add(header),
-        11L,
+        position,
         12L);
 
     // verify
@@ -126,7 +129,7 @@ public class PubSubMessageDeserializerTest {
     assertEquals(actualKey.getKeyHeaderByte(), key.getKeyHeaderByte());
     assertEquals(actualKey.getKey(), key.getKey());
     assertEquals(message.getValue(), value);
-    assertEquals((long) message.getOffset(), 11);
+    assertEquals(message.getOffset(), position);
   }
 
   private KafkaMessageEnvelope getDummyValue() {

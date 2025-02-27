@@ -34,6 +34,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
@@ -372,18 +373,18 @@ public class KafkaTopicDumper implements AutoCloseable {
     consumer.subscribe(topicPartition, startOffset - 1);
 
     try {
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> lastProcessedRecord = null;
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> lastProcessedRecord = null;
       while (remainingAttempts > 0 && processedMessageCount < messageCount) {
         // Poll for records
-        Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> records =
+        Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> records =
             consumer.poll(5000); // Poll for up to 5 seconds
-        Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> recordIterator =
+        Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> recordIterator =
             Utils.iterateOnMapOfLists(records);
         boolean hasProcessedRecords = false;
         while (recordIterator.hasNext() && processedMessageCount < messageCount) {
-          PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = recordIterator.next();
+          PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> record = recordIterator.next();
           // Exit early if endOffset is reached
-          if (record.getOffset() > endOffset) {
+          if (record.getOffset().getNumericOffset() > endOffset) {
             LOGGER.info("Reached endOffset: {}. Total messages processed: {}", endOffset, processedMessageCount);
             return processedMessageCount;
           }
@@ -462,7 +463,7 @@ public class KafkaTopicDumper implements AutoCloseable {
   /**
    * Log the metadata for each kafka message.
    */
-  private void logRecordMetadata(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
+  private void logRecordMetadata(PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> record) {
     try {
       KafkaKey kafkaKey = record.getKey();
       KafkaMessageEnvelope kafkaMessageEnvelope = record.getValue();
@@ -496,7 +497,7 @@ public class KafkaTopicDumper implements AutoCloseable {
   }
 
   void logDataRecord(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> record,
       boolean logRecordMetadata,
       boolean logReplicationMetadata) {
     KafkaKey kafkaKey = record.getKey();
@@ -518,7 +519,7 @@ public class KafkaTopicDumper implements AutoCloseable {
   }
 
   String buildDataRecordLog(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> record,
       boolean logReplicationMetadata) {
     KafkaKey kafkaKey = record.getKey();
     KafkaMessageEnvelope kafkaMessageEnvelope = record.getValue();
@@ -583,7 +584,7 @@ public class KafkaTopicDumper implements AutoCloseable {
         : String.format("Key: %s; Value: %s; Schema: %s", keyRecord, valueRecord, valuePayloadSchemaId);
   }
 
-  void processRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
+  void processRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> record) {
     if (logTsRecord) {
       logIfTopicSwitchMessage(record);
     } else if (logDataRecord) {
@@ -596,7 +597,7 @@ public class KafkaTopicDumper implements AutoCloseable {
     }
   }
 
-  static void logIfTopicSwitchMessage(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
+  static void logIfTopicSwitchMessage(PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> record) {
     KafkaKey kafkaKey = record.getKey();
     if (!kafkaKey.isControlMessage()) {
       // TS message is a control message, so we only care about control messages.
@@ -618,7 +619,7 @@ public class KafkaTopicDumper implements AutoCloseable {
    * @param record The PubSubMessage containing the TopicSwitch message.
    * @return A formatted string representing the log message.
    */
-  static String constructTopicSwitchLog(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
+  static String constructTopicSwitchLog(PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> record) {
     KafkaMessageEnvelope kafkaMessageEnvelope = record.getValue();
     ProducerMetadata producerMetadata = kafkaMessageEnvelope.producerMetadata;
     LeaderMetadata leaderMetadata = kafkaMessageEnvelope.leaderMetadataFooter;
@@ -643,7 +644,7 @@ public class KafkaTopicDumper implements AutoCloseable {
         leaderMetadata == null ? "-" : leaderMetadata.upstreamKafkaClusterId);
   }
 
-  private void writeToFile(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
+  private void writeToFile(PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> record) {
     try {
       KafkaKey kafkaKey = record.getKey();
       KafkaMessageEnvelope kafkaMessageEnvelope = record.getValue();
@@ -695,7 +696,7 @@ public class KafkaTopicDumper implements AutoCloseable {
   }
 
   // Visible for testing
-  String getChunkMetadataLog(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) throws IOException {
+  String getChunkMetadataLog(PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> record) throws IOException {
     KafkaKey kafkaKey = record.getKey();
     KafkaMessageEnvelope kafkaMessageEnvelope = record.getValue();
     if (this.isChunkingEnabled && !kafkaKey.isControlMessage()) {

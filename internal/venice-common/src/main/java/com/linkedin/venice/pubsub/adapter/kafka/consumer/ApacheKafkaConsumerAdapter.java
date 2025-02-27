@@ -281,13 +281,14 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   @Override
-  public Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> poll(long timeoutMs) {
+  public Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> poll(
+      long timeoutMs) {
     // The timeout is not respected when hitting UNKNOWN_TOPIC_OR_PARTITION and when the
     // fetcher.retrieveOffsetsByTimes call inside kafkaConsumer times out,
     // TODO: we may want to wrap this call in our own thread to enforce the timeout...
     int attemptCount = 1;
     ConsumerRecords<byte[], byte[]> records = ConsumerRecords.empty();
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> polledPubSubMessages =
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> polledPubSubMessages =
         Collections.emptyMap();
     while (attemptCount <= config.getConsumerPollRetryTimes() && !Thread.currentThread().isInterrupted()) {
       try {
@@ -296,7 +297,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
         for (TopicPartition topicPartition: records.partitions()) {
           PubSubTopicPartition pubSubTopicPartition = assignments.get(topicPartition);
           List<ConsumerRecord<byte[], byte[]>> topicPartitionConsumerRecords = records.records(topicPartition);
-          List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> topicPartitionPubSubMessages =
+          List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> topicPartitionPubSubMessages =
               new ArrayList<>(topicPartitionConsumerRecords.size());
           for (ConsumerRecord<byte[], byte[]> consumerRecord: topicPartitionConsumerRecords) {
             topicPartitionPubSubMessages.add(deserialize(consumerRecord, pubSubTopicPartition));
@@ -630,20 +631,20 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
    * @param topicPartition the {@link PubSubTopicPartition} of the {@link ConsumerRecord}
    * @return the deserialized {@link PubSubMessage}
    */
-  private PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> deserialize(
+  private PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> deserialize(
       ConsumerRecord<byte[], byte[]> consumerRecord,
       PubSubTopicPartition topicPartition) {
     PubSubMessageHeaders pubSubMessageHeaders = new PubSubMessageHeaders();
     for (Header header: consumerRecord.headers()) {
       pubSubMessageHeaders.add(header.key(), header.value());
     }
-    long position = consumerRecord.offset();
+    PubSubPosition pubSubPosition = new ApacheKafkaOffsetPosition(consumerRecord.offset());
     return pubSubMessageDeserializer.deserialize(
         topicPartition,
         consumerRecord.key(),
         consumerRecord.value(),
         pubSubMessageHeaders,
-        position,
+        pubSubPosition,
         consumerRecord.timestamp());
   }
 }

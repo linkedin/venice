@@ -17,7 +17,7 @@ import org.testng.annotations.Test;
 public class PubSubPositionFactoryTest {
   @Test
   public void testConvertToPositionForApacheKafkaPosition() {
-    ApacheKafkaOffsetPosition position = new ApacheKafkaOffsetPosition(123);
+    ApacheKafkaOffsetPosition position = ApacheKafkaOffsetPosition.getKafkaPosition(123);
     PubSubPositionWireFormat wireFormat = position.getPositionWireFormat();
 
     PubSubPosition position1 = PubSubPositionFactory.getPositionFromWireFormat(wireFormat);
@@ -34,7 +34,7 @@ public class PubSubPositionFactoryTest {
 
   @Test
   public void testConvertToPositionFromWireFormatPositionBytes() {
-    ApacheKafkaOffsetPosition kafkaPosition = new ApacheKafkaOffsetPosition(567);
+    ApacheKafkaOffsetPosition kafkaPosition = ApacheKafkaOffsetPosition.getKafkaPosition(567);
     PubSubPositionWireFormat kafkaPositionWireFormat = kafkaPosition.getPositionWireFormat();
     InternalAvroSpecificSerializer<PubSubPositionWireFormat> wireFormatSerializer =
         AvroProtocolDefinition.PUBSUB_POSITION_WIRE_FORMAT.getSerializer();

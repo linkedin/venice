@@ -4,6 +4,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.concurrent.CompletableFuture;
@@ -63,7 +64,7 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
 
   @Override
   public void putConsumerRecord(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
       StoreIngestionTask ingestionTask,
       LeaderProducedRecordContext leaderProducedRecordContext,
       int partition,

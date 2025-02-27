@@ -13,6 +13,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -105,14 +106,15 @@ public class TopicMessageFinder {
     consumer.subscribe(assignedPubSubTopicPartition, startOffset);
     boolean done = false;
     while (!done) {
-      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
+      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> messages =
           consumer.poll(10000);
       if (messages.isEmpty()) {
         break;
       }
       long lastRecordTimestamp = 0;
-      for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record: messages.get(assignedPubSubTopicPartition)) {
-        if (record.getOffset() >= endOffset) {
+      for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> record: messages
+          .get(assignedPubSubTopicPartition)) {
+        if (record.getOffset().getNumericOffset() >= endOffset) {
           done = true;
           break;
         }

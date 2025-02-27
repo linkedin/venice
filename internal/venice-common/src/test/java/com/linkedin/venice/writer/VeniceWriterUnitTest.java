@@ -44,6 +44,7 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -210,7 +211,7 @@ public class VeniceWriterUnitTest {
     PartitionConsumptionState partitionConsumptionState = mock(PartitionConsumptionState.class);
     when(leaderProducerCallback.getPartitionConsumptionState()).thenReturn(partitionConsumptionState);
     when(partitionConsumptionState.getTransientRecord(any())).thenReturn(transientRecord);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = mock(PubSubMessage.class);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> record = mock(PubSubMessage.class);
     KafkaKey kafkaKey = mock(KafkaKey.class);
     when(record.getKey()).thenReturn(kafkaKey);
     when(kafkaKey.getKey()).thenReturn(new byte[] { 0xa });

@@ -24,6 +24,7 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
@@ -243,7 +244,7 @@ public class PartitionTracker {
    */
   public void validateMessage(
       TopicType type,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
       boolean endOfPushReceived,
       Lazy<Boolean> tolerateMissingMsgs) throws DataValidationException {
     Segment segment = getSegment(type, consumerRecord.getValue().getProducerMetadata().getProducerGUID());
@@ -252,7 +253,7 @@ public class PartitionTracker {
     trackSequenceNumber(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs, hasPreviousSegment);
     // This is the last step, because we want failures in the previous steps to short-circuit execution.
     trackCheckSum(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs);
-    segment.setLastSuccessfulOffset(consumerRecord.getOffset());
+    segment.setLastSuccessfulOffset(consumerRecord.getOffset().getNumericOffset());
     segment.setNewSegment(false);
   }
 
@@ -272,7 +273,7 @@ public class PartitionTracker {
   private Segment trackSegment(
       TopicType type,
       Segment previousSegment,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
       boolean endOfPushReceived,
       Lazy<Boolean> tolerateMissingMsgs) throws DuplicateDataException {
     int incomingSegmentNumber = consumerRecord.getValue().producerMetadata.segmentNumber;
@@ -319,7 +320,7 @@ public class PartitionTracker {
    */
   private Segment initializeNewSegment(
       TopicType type,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
       boolean endOfPushReceived,
       boolean tolerateAnyMessageType) {
     CheckSumType checkSumType = CheckSumType.NONE;
@@ -374,7 +375,7 @@ public class PartitionTracker {
    */
   private void handleUnregisteredProducer(
       String scenario,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
       Segment segment,
       boolean endOfPushReceived,
       boolean tolerateAnyMessageType) {
@@ -409,7 +410,7 @@ public class PartitionTracker {
    */
   private void trackSequenceNumber(
       Segment segment,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
       boolean endOfPushReceived,
       Lazy<Boolean> tolerateMissingMsgs,
       boolean hasPreviousSegment) throws MissingDataException, DuplicateDataException {
@@ -503,7 +504,7 @@ public class PartitionTracker {
    */
   private void trackCheckSum(
       Segment segment,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
       boolean endOfPushReceived,
       Lazy<Boolean> tolerateMissingMsgs) throws CorruptDataException {
     /**
@@ -572,7 +573,7 @@ public class PartitionTracker {
    */
   private void validateSequenceNumber(
       Segment segment,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
       long logCompactionDelayInMs,
       Optional<DIVErrorMetricCallback> errorMetricCallback) throws MissingDataException {
     int previousSequenceNumber = segment.getSequenceNumber();
@@ -626,7 +627,7 @@ public class PartitionTracker {
 
   public void checkMissingMessage(
       TopicType type,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
       Optional<PartitionTracker.DIVErrorMetricCallback> errorMetricCallback,
       long kafkaLogCompactionDelayInMs) throws DataValidationException {
     Segment segment = getSegment(type, consumerRecord.getValue().getProducerMetadata().getProducerGUID());
@@ -752,13 +753,13 @@ public class PartitionTracker {
 
     DataValidationException getNewException(
         Segment segment,
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord) {
+        PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord) {
       return getNewException(segment, consumerRecord, null);
     }
 
     DataValidationException getNewException(
         Segment segment,
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+        PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
         String extraInfo) {
       ProducerMetadata producerMetadata = consumerRecord.getValue().producerMetadata;
       MessageType messageType = MessageType.valueOf(consumerRecord.getValue());

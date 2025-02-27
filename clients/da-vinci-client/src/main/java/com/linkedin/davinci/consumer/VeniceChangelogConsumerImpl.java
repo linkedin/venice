@@ -36,6 +36,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
@@ -611,15 +612,15 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       String topicSuffix,
       boolean includeControlMessage) {
     List<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messagesMap;
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> messagesMap;
     synchronized (pubSubConsumer) {
       messagesMap = pubSubConsumer.poll(timeoutInMs);
     }
-    for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: messagesMap
+    for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> entry: messagesMap
         .entrySet()) {
       PubSubTopicPartition pubSubTopicPartition = entry.getKey();
-      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> messageList = entry.getValue();
-      for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messageList) {
+      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> messageList = entry.getValue();
+      for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message: messageList) {
         maybeUpdatePartitionToBootstrapMap(message, pubSubTopicPartition);
         if (message.getKey().isControlMessage()) {
           ControlMessage controlMessage = (ControlMessage) message.getValue().getPayloadUnion();
@@ -672,7 +673,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   void maybeUpdatePartitionToBootstrapMap(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message,
       PubSubTopicPartition pubSubTopicPartition) {
     if (getSubscribeTime() - message.getValue().producerMetadata.messageTimestamp <= TimeUnit.MINUTES.toMillis(1)) {
       getPartitionToBootstrapState().put(pubSubTopicPartition.getPartitionNumber(), true);
@@ -745,7 +746,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   protected Optional<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> convertPubSubMessageToPubSubChangeEventMessage(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message,
       PubSubTopicPartition pubSubTopicPartition) {
     Optional<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubChangeEventMessage = Optional.empty();
     byte[] keyBytes = message.getKey().getKey();
@@ -811,7 +812,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           put.getSchemaId(),
           keyBytes,
           put.getPutValue(),
-          message.getOffset(),
+          message.getOffset().getNumericOffset(),
           deserializerProvider,
           readerSchemaId,
           compressor);
@@ -828,7 +829,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             put.getPutValue(),
             pubSubTopicPartition,
             readerSchemaId,
-            message.getOffset());
+            message.getOffset().getNumericOffset());
       } catch (Exception ex) {
         throw new VeniceException(ex);
       }
@@ -960,7 +961,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       RecordChangeEvent recordChangeEvent,
       K currentKey,
       PubSubTopicPartition pubSubTopicPartition,
-      Long offset,
+      PubSubPosition pubSubPosition,
       Long timestamp,
       int payloadSize) {
     V currentValue = null;
@@ -980,7 +981,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         currentKey,
         changeEvent,
         pubSubTopicPartition,
-        offset,
+        pubSubPosition,
         timestamp,
         payloadSize,
         false);

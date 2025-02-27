@@ -19,8 +19,10 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import java.nio.ByteBuffer;
@@ -57,8 +59,13 @@ public class DictionaryUtilsTest {
     sopCM.controlMessageUnion = startOfPush;
     KafkaMessageEnvelope sopWithDictionaryValue =
         new KafkaMessageEnvelope(MessageType.CONTROL_MESSAGE.getValue(), null, sopCM, null);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> sopWithDictionary =
-        new ImmutablePubSubMessage<>(controlMessageKey, sopWithDictionaryValue, topicPartition, 0L, 0L, 0);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> sopWithDictionary = new ImmutablePubSubMessage<>(
+        controlMessageKey,
+        sopWithDictionaryValue,
+        topicPartition,
+        ApacheKafkaOffsetPosition.getKafkaPosition(0),
+        0L,
+        0);
     doReturn(Collections.singletonMap(topicPartition, Collections.singletonList(sopWithDictionary)))
         .when(pubSubConsumer)
         .poll(anyLong());
@@ -88,8 +95,13 @@ public class DictionaryUtilsTest {
     sopCM.controlMessageUnion = startOfPush;
     KafkaMessageEnvelope sopWithDictionaryValue =
         new KafkaMessageEnvelope(MessageType.CONTROL_MESSAGE.getValue(), null, sopCM, null);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> sopWithDictionary =
-        new ImmutablePubSubMessage<>(controlMessageKey, sopWithDictionaryValue, topicPartition, 0L, 0L, 0);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> sopWithDictionary = new ImmutablePubSubMessage<>(
+        controlMessageKey,
+        sopWithDictionaryValue,
+        topicPartition,
+        ApacheKafkaOffsetPosition.getKafkaPosition(0),
+        0L,
+        0);
     doReturn(Collections.singletonMap(topicPartition, Collections.singletonList(sopWithDictionary)))
         .when(pubSubConsumer)
         .poll(anyLong());
@@ -117,8 +129,13 @@ public class DictionaryUtilsTest {
     putMessage.putValue = ByteBuffer.wrap("blah".getBytes());
     putMessage.schemaId = 1;
     KafkaMessageEnvelope putMessageValue = new KafkaMessageEnvelope(MessageType.PUT.getValue(), null, putMessage, null);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> sopWithDictionary =
-        new ImmutablePubSubMessage<>(dataMessageKey, putMessageValue, topicPartition, 0L, 0L, 0);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> sopWithDictionary = new ImmutablePubSubMessage<>(
+        dataMessageKey,
+        putMessageValue,
+        topicPartition,
+        ApacheKafkaOffsetPosition.getKafkaPosition(0),
+        0L,
+        0);
     doReturn(Collections.singletonMap(topicPartition, Collections.singletonList(sopWithDictionary)))
         .when(pubSubConsumer)
         .poll(anyLong());
@@ -151,8 +168,13 @@ public class DictionaryUtilsTest {
     sopCM.controlMessageUnion = startOfPush;
     KafkaMessageEnvelope sopWithDictionaryValue =
         new KafkaMessageEnvelope(MessageType.CONTROL_MESSAGE.getValue(), null, sopCM, null);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> sopWithDictionary =
-        new ImmutablePubSubMessage<>(controlMessageKey, sopWithDictionaryValue, topicPartition, 0L, 0L, 0);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> sopWithDictionary = new ImmutablePubSubMessage<>(
+        controlMessageKey,
+        sopWithDictionaryValue,
+        topicPartition,
+        ApacheKafkaOffsetPosition.getKafkaPosition(0),
+        0L,
+        0);
     doReturn(Collections.emptyMap())
         .doReturn(Collections.singletonMap(topicPartition, Collections.singletonList(sopWithDictionary)))
         .when(pubSubConsumer)
