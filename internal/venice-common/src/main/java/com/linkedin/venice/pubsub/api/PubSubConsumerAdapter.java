@@ -100,7 +100,7 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * @throws PubSubClientException If there is an error during message retrieval from Kafka.
    * @throws PubSubClientRetriableException If a retriable exception occurs during polling attempts, with retries as configured.
    */
-  Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> poll(long timeoutMs);
+  Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> poll(long timeoutMs);
 
   /**
    * Checks if the consumer has any active topic-partition subscriptions.
