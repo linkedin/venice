@@ -1310,6 +1310,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           beforeProcessingBatchRecordsTimestampMs,
           metricsEnabled,
           elapsedTimeForPuttingIntoQueue);
+
+      if (isGlobalRtDivEnabled && shouldSyncOffset(partitionConsumptionState, record, null)) {
+        updateOffsetMetadataAndSyncOffsetForLeaders(partitionConsumptionState);
+        // syncOffset(partitionConsumptionState, record, leaderProducedRecordContext);
+      }
     }
 
     /**
@@ -1826,6 +1831,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void updateOffsetMetadataAndSyncOffset(PartitionConsumptionState pcs) {
+    updateOffsetMetadataAndSyncOffset(kafkaDataIntegrityValidator, pcs);
+  }
+
+  protected abstract void updateOffsetMetadataAndSyncOffsetForLeaders(PartitionConsumptionState pcs);
+
+  protected void updateOffsetMetadataAndSyncOffset(KafkaDataIntegrityValidator div, PartitionConsumptionState pcs) {
     /**
      * Offset metadata and producer states must be updated at the same time in OffsetRecord; otherwise, one checkpoint
      * could be ahead of the other.
@@ -1838,8 +1849,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * consumer DIV which resides in the consumer thread and then gradually retire the use of drainer DIV.
      * Keep drainer DIV the way as is today (containing both rt and vt messages).
      */
-    this.kafkaDataIntegrityValidator
-        .updateOffsetRecordForPartition(PartitionTracker.VERSION_TOPIC, pcs.getPartition(), pcs.getOffsetRecord());
+    div.updateOffsetRecordForPartition(PartitionTracker.VERSION_TOPIC, pcs.getPartition(), pcs.getOffsetRecord());
     // update the offset metadata in the OffsetRecord.
     updateOffsetMetadataInOffsetRecord(pcs);
     syncOffset(kafkaVersionTopic, pcs);
@@ -2667,7 +2677,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /*
      * Report ingestion throughput metric based on the store version
      */
-    if (!record.getKey().isControlMessage()) { // skip control messages
+    if (!record.getKey().isControlMessage() && !record.getKey().isGlobalRtDiv()) { // skip control messages and DIV
       // Still track record throughput to understand the performance benefits of disabling other record-level metrics.
       hostLevelIngestionStats.recordTotalRecordsConsumed();
       if (recordLevelMetricEnabled.get()) {
@@ -2687,9 +2697,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     reportIfCatchUpVersionTopicOffset(partitionConsumptionState);
 
-    long syncBytesInterval = partitionConsumptionState.isDeferredWrite()
-        ? databaseSyncBytesIntervalForDeferredWriteMode
-        : databaseSyncBytesIntervalForTransactionalMode;
+    long syncBytesInterval = getSyncBytesInterval(partitionConsumptionState);
     boolean recordsProcessedAboveSyncIntervalThreshold = (syncBytesInterval > 0
         && (partitionConsumptionState.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval));
     defaultReadyToServeChecker.apply(partitionConsumptionState, recordsProcessedAboveSyncIntervalThreshold);
@@ -2700,9 +2708,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Check whether offset metadata checkpoint will happen; if so, update the producer states recorded in OffsetRecord
      * with the updated producer states maintained in {@link #kafkaDataIntegrityValidator}
      */
-    if (shouldSyncOffset(partitionConsumptionState, syncBytesInterval, record, leaderProducedRecordContext)) {
+    if (!isGlobalRtDivEnabled && shouldSyncOffset(partitionConsumptionState, record, leaderProducedRecordContext)) {
       updateOffsetMetadataAndSyncOffset(partitionConsumptionState);
     }
+  }
+
+  private long getSyncBytesInterval(PartitionConsumptionState pcs) {
+    return pcs.isDeferredWrite()
+        ? databaseSyncBytesIntervalForDeferredWriteMode
+        : databaseSyncBytesIntervalForTransactionalMode;
   }
 
   protected void recordHeartbeatReceived(
@@ -2724,9 +2738,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   private boolean shouldSyncOffset(
       PartitionConsumptionState pcs,
-      long syncBytesInterval,
       DefaultPubSubMessage record,
       LeaderProducedRecordContext leaderProducedRecordContext) {
+    final long syncBytesInterval = getSyncBytesInterval(pcs);
     boolean syncOffset = false;
     if (record.getKey().isControlMessage()) {
       ControlMessage controlMessage = (leaderProducedRecordContext == null
