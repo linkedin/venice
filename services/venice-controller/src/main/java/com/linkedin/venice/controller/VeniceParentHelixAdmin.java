@@ -1476,6 +1476,32 @@ public class VeniceParentHelixAdmin implements Admin {
       boolean versionSwapDeferred,
       String targetedRegions,
       int repushSourceVersion) {
+
+    // For target region pushes with deferred swap enabled, check if we should skip target region push for dvc clients
+    // A store with dvc clients can be skipped if there is a dvc heartbeat reported for the current version and
+    // DEFERRED_VERSION_SWAP_SERVICE_WITH_DVC_CHECK_ENABLED is set to true
+    boolean isTargetRegionPushWithDeferredSwap = !StringUtils.isEmpty(targetedRegions) && versionSwapDeferred;
+    if (isTargetRegionPushWithDeferredSwap) {
+      validateTargetedRegions(targetedRegions, clusterName);
+      Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetedRegions);
+      StoreInfo childStore = getStoreInChildRegion(targetRegions.iterator().next(), clusterName, storeName);
+      Optional<Version> currentVersionInChild = childStore.getVersion(childStore.getCurrentVersion());
+      if (currentVersionInChild.isPresent()) {
+        boolean skipTargetRegionPushForDavinci = currentVersionInChild.get().getIsDavinciHeartbeatReported()
+            && multiClusterConfigs.isSkipDeferredVersionSwapForDVCEnabled();
+        if (skipTargetRegionPushForDavinci) {
+          LOGGER.info(
+              "Skip setting targetedRegions and versionSwapDeferred values for store: {} "
+                  + "because isSkipDeferredVersionSwapForDVCEnabled: {} and isDavinciHeartbeatReported: {}",
+              storeName,
+              multiClusterConfigs.isSkipDeferredVersionSwapForDVCEnabled(),
+              currentVersionInChild.get().getIsDavinciHeartbeatReported());
+          targetedRegions = "";
+          versionSwapDeferred = false;
+        }
+      }
+    }
+
     Optional<String> currentPushTopic =
         getTopicForCurrentPushJob(clusterName, storeName, pushType.isIncremental(), Version.isPushIdRePush(pushJobId));
 

@@ -3001,6 +3001,108 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertEquals(finalStatus, ExecutionStatus.DVC_INGESTION_ERROR_OTHER);
   }
 
+  @Test
+  public void testIncrementVersionIdempotentForTargetRegionsWithDvcClient() {
+    String storeName = Utils.getUniqueString("testIncrementVersionIdempotentForTargetRegionsWithDvcClient");
+    Store store = new ZKStore(
+        storeName,
+        "test_owner",
+        1,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
+
+    Version version = new VersionImpl(storeName, 1, Utils.getUniqueString("test_push_id"));
+    store.addVersion(version);
+    store.updateVersionForDaVinciHeartbeat(1, true);
+    store.setCurrentVersion(1);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+
+    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
+    ControllerClient client = mock(ControllerClient.class);
+    StoreResponse storeResponse = new StoreResponse();
+    storeResponse.setStore(StoreInfo.fromStore(store));
+    doReturn(storeResponse).when(client).getStore(storeName);
+    mockControllerClients(storeName);
+    controllerClientMap.put("region1", client);
+    doReturn(controllerClientMap).when(internalAdmin).getControllerClientMap(clusterName);
+
+    String nextPushJobId = Utils.getUniqueString("test_push_id");
+    doReturn(new Pair<>(true, version)).when(internalAdmin)
+        .addVersionAndTopicOnly(
+            clusterName,
+            storeName,
+            nextPushJobId,
+            -1,
+            1,
+            1,
+            false,
+            false,
+            Version.PushType.BATCH,
+            null,
+            null,
+            Optional.empty(),
+            -1,
+            1,
+            Optional.empty(),
+            false,
+            "",
+            -1);
+    doReturn("region1").when(config).getRegionName();
+    doReturn(true).when(config).isSkipDeferredVersionSwapForDVCEnabled();
+    try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
+        spy(new PartialMockVeniceParentHelixAdmin(internalAdmin, config))) {
+      VeniceWriter veniceWriter = mock(VeniceWriter.class);
+      partialMockParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
+      doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
+          .when(veniceWriter)
+          .put(any(), any(), anyInt());
+      when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
+          .thenReturn(
+              AdminTopicMetadataAccessor
+                  .generateMetadataMap(Optional.of(1L), Optional.of(-1L), Optional.of(1L), Optional.empty()));
+      partialMockParentAdmin.incrementVersionIdempotent(
+          clusterName,
+          storeName,
+          nextPushJobId,
+          1,
+          1,
+          Version.PushType.BATCH,
+          false,
+          false,
+          null,
+          Optional.empty(),
+          Optional.empty(),
+          -1,
+          Optional.empty(),
+          true,
+          "region1",
+          -1);
+
+      verify(internalAdmin).addVersionAndTopicOnly(
+          clusterName,
+          storeName,
+          nextPushJobId,
+          -1,
+          1,
+          1,
+          false,
+          false,
+          Version.PushType.BATCH,
+          null,
+          null,
+          Optional.empty(),
+          -1,
+          1,
+          Optional.empty(),
+          false,
+          "",
+          -1);
+    }
+  }
+
   private Store setupForStoreViewConfigUpdateTest(String storeName) {
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     store.setActiveActiveReplicationEnabled(true);
