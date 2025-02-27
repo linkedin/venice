@@ -2560,4 +2560,19 @@ public class ConfigKeys {
    * controls the TTL of the cache per entry.
    */
   public static final String ACL_IN_MEMORY_CACHE_TTL_MS = "acl.in.memory.cache.ttl.ms";
+
+  /**
+   * The interval for cleaning up the idle store ingestion tasks in a centralized way inside KafkaStoreIngestionService.
+   * If config value is -1, it means the new clean up service is disabled and the old mechanism is still in place.
+   * If config value is non-negative, it means the new clean up service is enabled and the value is the clean up
+   * schedule interval in seconds.
+   *
+   * Once enabled, Store ingestion tasks will not try to close themselves when they are idle; instead, a service
+   * is started inside KafkaStoreIngestionService to clean up idle tasks. This is completely eliminate the race
+   * conditions between store ingestion task thread and Helix state transition threads when managing the life cycle
+   * of a store ingestion task.
+   * TODO: Deprecate this config after new clean up service is fully rolled out and stable.
+   */
+  public static final String SERVER_IDLE_INGESTION_TASK_CLEANUP_INTERVAL_IN_SECONDS =
+      "server.idle.ingestion.task.cleanup.interval.in.seconds";
 }
