@@ -15,6 +15,7 @@ import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -382,7 +383,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     }
   }
 
-  public ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> subscribeConsumerFor(
+  public ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> subscribeConsumerFor(
       final String kafkaURL,
       StoreIngestionTask storeIngestionTask,
       PartitionReplicaIngestionContext partitionReplicaIngestionContext,
@@ -396,7 +397,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
           "Kafka consumer service must exist for version topic: " + versionTopic + " in Kafka cluster: " + kafkaURL);
     }
 
-    ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> dataReceiver =
+    ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> dataReceiver =
         new StorePartitionDataReceiver(
             storeIngestionTask,
             pubSubTopicPartition,

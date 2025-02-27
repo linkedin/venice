@@ -70,7 +70,9 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
@@ -134,12 +136,12 @@ public class ActiveActiveStoreIngestionTaskTest {
         .processMessageAndMaybeProduceToKafka(any(), any(), anyInt(), anyString(), anyInt(), anyLong(), anyLong());
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     when(pcs.isEndOfPushReceived()).thenReturn(false);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord = mock(PubSubMessage.class);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord = mock(PubSubMessage.class);
     KafkaKey kafkaKey = mock(KafkaKey.class);
     when(consumerRecord.getKey()).thenReturn(kafkaKey);
     KafkaMessageEnvelope kafkaValue = new KafkaMessageEnvelope();
     when(consumerRecord.getValue()).thenReturn(kafkaValue);
-    when(consumerRecord.getOffset()).thenReturn(1L);
+    when(consumerRecord.getOffset()).thenReturn(ApacheKafkaOffsetPosition.getKafkaPosition(1));
     kafkaValue.messageType = MessageType.DELETE.getValue();
     Delete deletePayload = new Delete();
     kafkaValue.payloadUnion = deletePayload;
@@ -381,8 +383,8 @@ public class ActiveActiveStoreIngestionTaskTest {
     ByteBuffer valueBytes = ByteBuffer.wrap(stringBuilder.toString().getBytes());
     ByteBuffer updatedValueBytes = ByteUtils.prependIntHeaderToByteBuffer(valueBytes, 1);
     ByteBuffer updatedRmdBytes = ByteBuffer.wrap(new byte[] { 0xa, 0xb });
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord = mock(PubSubMessage.class);
-    when(consumerRecord.getOffset()).thenReturn(100L);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord = mock(PubSubMessage.class);
+    when(consumerRecord.getOffset()).thenReturn(ApacheKafkaOffsetPosition.getKafkaPosition(100L));
 
     Put updatedPut = new Put();
     updatedPut.putValue = ByteUtils.prependIntHeaderToByteBuffer(updatedValueBytes, valueSchemaId, resultReuseInput);
@@ -390,7 +392,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     updatedPut.replicationMetadataVersionId = rmdProtocolVersionID;
     updatedPut.replicationMetadataPayload = updatedRmdBytes;
     LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext
-        .newPutRecord(kafkaClusterId, consumerRecord.getOffset(), updatedKeyBytes, updatedPut);
+        .newPutRecord(kafkaClusterId, consumerRecord.getOffset().getNumericOffset(), updatedKeyBytes, updatedPut);
 
     PartitionConsumptionState.TransientRecord transientRecord =
         new PartitionConsumptionState.TransientRecord(new byte[] { 0xa }, 0, 0, 0, 0, 0);
@@ -618,6 +620,7 @@ public class ActiveActiveStoreIngestionTaskTest {
   public void testGetUpstreamKafkaUrlFromKafkaValue() {
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("topic"), 0);
     long offset = 100;
+    PubSubPosition position = ApacheKafkaOffsetPosition.getKafkaPosition(offset);
     long timestamp = System.currentTimeMillis();
     int payloadSize = 200;
     String sourceKafka = "sourceKafkaURL";
@@ -627,12 +630,12 @@ public class ActiveActiveStoreIngestionTaskTest {
     kafkaClusterIdToUrlMap.put(1, "url1");
 
     KafkaMessageEnvelope kmeWithNullLeaderMetadata = new KafkaMessageEnvelope();
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessageWithNullLeaderMetadata =
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessageWithNullLeaderMetadata =
         new ImmutablePubSubMessage<>(
             new KafkaKey(MessageType.PUT, new byte[] { 1 }),
             kmeWithNullLeaderMetadata,
             partition,
-            offset,
+            position,
             timestamp,
             payloadSize);
     try {
@@ -648,13 +651,14 @@ public class ActiveActiveStoreIngestionTaskTest {
     kmeWithAbsentUpstreamCluster.getLeaderMetadataFooter().upstreamKafkaClusterId = -1;
     kmeWithAbsentUpstreamCluster.setMessageType(MessageType.PUT.getValue());
     kmeWithAbsentUpstreamCluster.setProducerMetadata(new ProducerMetadata());
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> msgWithAbsentUpstreamCluster = new ImmutablePubSubMessage<>(
-        new KafkaKey(MessageType.PUT, new byte[] { 1 }),
-        kmeWithAbsentUpstreamCluster,
-        partition,
-        offset,
-        timestamp,
-        payloadSize);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> msgWithAbsentUpstreamCluster =
+        new ImmutablePubSubMessage<>(
+            new KafkaKey(MessageType.PUT, new byte[] { 1 }),
+            kmeWithAbsentUpstreamCluster,
+            partition,
+            position,
+            timestamp,
+            payloadSize);
     try {
       ActiveActiveStoreIngestionTask
           .getUpstreamKafkaUrlFromKafkaValue(msgWithAbsentUpstreamCluster, sourceKafka, kafkaClusterIdToUrlMap);
@@ -672,11 +676,11 @@ public class ActiveActiveStoreIngestionTaskTest {
     controlMessage.setControlMessageType(ControlMessageType.TOPIC_SWITCH.getValue());
     kmeForControlMessage.setPayloadUnion(controlMessage);
     kmeForControlMessage.setProducerMetadata(new ProducerMetadata());
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> msgForControlMessage = new ImmutablePubSubMessage<>(
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> msgForControlMessage = new ImmutablePubSubMessage<>(
         new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[] { 1 }),
         kmeForControlMessage,
         partition,
-        offset,
+        position,
         timestamp,
         payloadSize);
     try {
@@ -694,11 +698,11 @@ public class ActiveActiveStoreIngestionTaskTest {
     validKME.setLeaderMetadataFooter(new LeaderMetadata());
     validKME.getLeaderMetadataFooter().upstreamKafkaClusterId = 0;
     validKME.setProducerMetadata(new ProducerMetadata());
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> validMsg = new ImmutablePubSubMessage<>(
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> validMsg = new ImmutablePubSubMessage<>(
         new KafkaKey(MessageType.PUT, new byte[] { 1 }),
         validKME,
         partition,
-        offset,
+        position,
         timestamp,
         payloadSize);
     assertEquals(

@@ -26,6 +26,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Utils;
@@ -104,18 +105,18 @@ public class RecoverStoreMetadata {
     String keySchema = null;
     Map<Integer, String> valueSchemas = null;
     while (true) {
-      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> records =
+      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> records =
           consumer.poll(3000); // 3 seconds
       if (records.isEmpty()) {
         break;
       }
 
-      Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> recordsIterator =
+      Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> recordsIterator =
           Utils.iterateOnMapOfLists(records);
 
       while (recordsIterator.hasNext()) {
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = recordsIterator.next();
-        if (record.getOffset() % 1000 == 0) {
+        PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> record = recordsIterator.next();
+        if (record.getOffset().getNumericOffset() % 1000 == 0) {
           System.out.println("Consumed " + record.getOffset() + " messages");
         }
         messageEnvelope = record.getValue();

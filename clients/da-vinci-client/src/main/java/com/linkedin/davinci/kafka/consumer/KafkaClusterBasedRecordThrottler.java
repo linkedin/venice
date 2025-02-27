@@ -8,6 +8,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -26,18 +27,18 @@ public class KafkaClusterBasedRecordThrottler {
   // Kafka URL to records throttler
   private final Map<String, EventThrottler> kafkaUrlToRecordsThrottler;
   // Kafka URL to throttled records
-  protected Map<String, Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> kafkaUrlToThrottledRecords;
+  protected Map<String, Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>>> kafkaUrlToThrottledRecords;
 
   public KafkaClusterBasedRecordThrottler(Map<String, EventThrottler> kafkaUrlToRecordsThrottler) {
     this.kafkaUrlToRecordsThrottler = kafkaUrlToRecordsThrottler;
     this.kafkaUrlToThrottledRecords = new VeniceConcurrentHashMap<>();
   }
 
-  public Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> poll(
+  public Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> poll(
       PubSubConsumerAdapter consumer,
       String kafkaUrl,
       long pollTimeoutMs) {
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumerRecords =
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> consumerRecords =
         kafkaUrlToThrottledRecords.get(kafkaUrl);
     if (consumerRecords == null) {
       consumerRecords = consumer.poll(pollTimeoutMs);

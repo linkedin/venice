@@ -41,6 +41,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.rmd.RmdUtils;
@@ -195,7 +196,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
   @Override
   protected DelegateConsumerRecordResult delegateConsumerRecord(
-      PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> consumerRecordWrapper,
+      PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecordWrapper,
       int partition,
       String kafkaUrl,
       int kafkaClusterId,
@@ -415,7 +416,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   private PubSubMessageProcessedResult processActiveActiveMessage(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
       PartitionConsumptionState partitionConsumptionState,
       int partition,
       String kafkaUrl,
@@ -478,7 +479,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         : Collections.singletonList(0L);
 
     // get the source offset and the id
-    long sourceOffset = consumerRecord.getOffset();
+    long sourceOffset = consumerRecord.getOffset().getNumericOffset();
     final MergeConflictResult mergeConflictResult;
 
     aggVersionedIngestionStats.recordTotalDCR(storeName, versionNumber);
@@ -568,13 +569,17 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       if (updatedValueBytes == null) {
         hostLevelIngestionStats.recordTombstoneCreatedDCR();
         aggVersionedIngestionStats.recordTombStoneCreationDCR(storeName, versionNumber);
-        partitionConsumptionState
-            .setTransientRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, valueSchemaId, rmdRecord);
+        partitionConsumptionState.setTransientRecord(
+            kafkaClusterId,
+            consumerRecord.getOffset().getNumericOffset(),
+            keyBytes,
+            valueSchemaId,
+            rmdRecord);
       } else {
         int valueLen = updatedValueBytes.remaining();
         partitionConsumptionState.setTransientRecord(
             kafkaClusterId,
-            consumerRecord.getOffset(),
+            consumerRecord.getOffset().getNumericOffset(),
             keyBytes,
             updatedValueBytes.array(),
             updatedValueBytes.position(),
@@ -598,7 +603,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   // This function may modify the original record in KME, it is unsafe to use the payload from KME directly after
   // this function.
   protected void processMessageAndMaybeProduceToKafka(
-      PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> consumerRecordWrapper,
+      PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecordWrapper,
       PartitionConsumptionState partitionConsumptionState,
       int partition,
       String kafkaUrl,
@@ -623,7 +628,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           beforeProcessingBatchRecordsTimestampMs);
       return;
     }
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord = consumerRecordWrapper.getMessage();
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord = consumerRecordWrapper.getMessage();
     KafkaKey kafkaKey = consumerRecord.getKey();
     byte[] keyBytes = kafkaKey.getKey();
     final MergeConflictResultWrapper mergeConflictResultWrapper;
@@ -829,7 +834,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       MergeConflictResultWrapper mergeConflictResultWrapper,
       PartitionConsumptionState partitionConsumptionState,
       byte[] key,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
       int partition,
       String kafkaUrl,
       int kafkaClusterId,
@@ -862,8 +867,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                   new DeleteMetadata(valueSchemaId, rmdProtocolVersionId, updatedRmdBytes),
                   oldValueManifest,
                   oldRmdManifest);
-      LeaderProducedRecordContext leaderProducedRecordContext =
-          LeaderProducedRecordContext.newDeleteRecord(kafkaClusterId, consumerRecord.getOffset(), key, deletePayload);
+      LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext
+          .newDeleteRecord(kafkaClusterId, consumerRecord.getOffset().getNumericOffset(), key, deletePayload);
       produceToLocalKafka(
           consumerRecord,
           partitionConsumptionState,
@@ -893,7 +898,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       produceToLocalKafka(
           consumerRecord,
           partitionConsumptionState,
-          LeaderProducedRecordContext.newPutRecord(kafkaClusterId, consumerRecord.getOffset(), key, updatedPut),
+          LeaderProducedRecordContext
+              .newPutRecord(kafkaClusterId, consumerRecord.getOffset().getNumericOffset(), key, updatedPut),
           produceToTopicFunction,
           partition,
           kafkaUrl,
@@ -904,7 +910,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
   @Override
   protected void produceToLocalKafka(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
       PartitionConsumptionState partitionConsumptionState,
       LeaderProducedRecordContext leaderProducedRecordContext,
       BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction,
@@ -925,7 +931,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     // necessarily received an ack back yet).
     if (partitionConsumptionState.getLeaderFollowerState() == LEADER && partitionConsumptionState.isHybrid()
         && consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
-      partitionConsumptionState.updateLatestRTOffsetTriedToProduceToVTMap(kafkaUrl, consumerRecord.getOffset());
+      partitionConsumptionState
+          .updateLatestRTOffsetTriedToProduceToVTMap(kafkaUrl, consumerRecord.getOffset().getNumericOffset());
     }
   }
 
@@ -1146,7 +1153,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   @Override
   protected void updateLatestInMemoryProcessedOffset(
       PartitionConsumptionState partitionConsumptionState,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
       LeaderProducedRecordContext leaderProducedRecordContext,
       String kafkaUrl,
       boolean dryRun) {
@@ -1183,7 +1190,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    */
   private String getUpstreamKafkaUrl(
       PartitionConsumptionState partitionConsumptionState,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
       String recordSourceKafkaUrl) {
     final String upstreamKafkaURL;
     if (isLeader(partitionConsumptionState)) {
@@ -1254,7 +1261,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * N.B. package-private for testing purposes.
    */
   static String getUpstreamKafkaUrlFromKafkaValue(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
       String recordSourceKafkaUrl,
       Int2ObjectMap<String> kafkaClusterIdToUrlMap) {
     KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
@@ -1273,7 +1280,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               kafkaClusterIdToUrlMap,
               recordSourceKafkaUrl,
               consumerRecord.getTopicPartition(),
-              consumerRecord.getOffset(),
+              consumerRecord.getOffset().getNumericOffset(),
               type.toString() + (type == MessageType.CONTROL_MESSAGE
                   ? "/" + ControlMessageType.valueOf((ControlMessage) kafkaValue.getPayloadUnion())
                   : ""),
@@ -1492,7 +1499,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   protected LeaderProducerCallback createProducerCallback(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
       PartitionConsumptionState partitionConsumptionState,
       LeaderProducedRecordContext leaderProducedRecordContext,
       int partition,

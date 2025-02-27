@@ -168,7 +168,7 @@ public class ApacheKafkaConsumerAdapterTest {
 
   @Test
   public void testSubscribeWithApacheKafkaOffsetPosition() {
-    ApacheKafkaOffsetPosition offsetPosition = new ApacheKafkaOffsetPosition(50);
+    ApacheKafkaOffsetPosition offsetPosition = ApacheKafkaOffsetPosition.getKafkaPosition(50);
     when(internalKafkaConsumer.assignment()).thenReturn(Collections.emptySet());
 
     kafkaConsumerAdapter.subscribe(pubSubTopicPartition, offsetPosition);
@@ -335,7 +335,7 @@ public class ApacheKafkaConsumerAdapterTest {
     // add partition to assignments
     kafkaConsumerAdapter.subscribe(pubSubTopicPartition, -1);
     // poll
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> messages =
         kafkaConsumerAdapter.poll(Long.MAX_VALUE);
 
     // verify

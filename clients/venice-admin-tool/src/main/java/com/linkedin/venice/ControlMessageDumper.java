@@ -12,6 +12,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
 import java.util.Arrays;
@@ -23,7 +24,8 @@ import java.util.Map;
 
 
 public class ControlMessageDumper {
-  private Map<GUID, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> producerToRecords = new HashMap<>();
+  private Map<GUID, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> producerToRecords =
+      new HashMap<>();
   private PubSubConsumerAdapter consumer;
   private int messageCount;
   private int COUNTDOWN = 3; // TODO: make this configurable
@@ -52,14 +54,14 @@ public class ControlMessageDumper {
     int currentMessageCount = 0;
 
     do {
-      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> records =
+      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> records =
           consumer.poll(1000); // up to 1 second
       int recordsCount = records.values().stream().mapToInt(List::size).sum();
-      Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> recordsIterator =
+      Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> recordsIterator =
           Utils.iterateOnMapOfLists(records);
       while (recordsIterator.hasNext() && currentMessageCount < messageCount) {
         currentMessageCount++;
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = recordsIterator.next();
+        PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> record = recordsIterator.next();
         KafkaMessageEnvelope envelope = record.getValue();
 
         if (MessageType.valueOf(envelope) == MessageType.CONTROL_MESSAGE) {
@@ -81,14 +83,14 @@ public class ControlMessageDumper {
   public int display() {
     int i = 1;
     int totalMessages = 0;
-    for (Map.Entry<GUID, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: producerToRecords
+    for (Map.Entry<GUID, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> entry: producerToRecords
         .entrySet()) {
       GUID producerGUID = entry.getKey();
       System.out.println(String.format("\nproducer %d: %s", i++, producerGUID));
 
-      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records = entry.getValue();
+      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> records = entry.getValue();
       totalMessages += records.size();
-      for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record: records) {
+      for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> record: records) {
         KafkaMessageEnvelope envelope = record.getValue();
         ProducerMetadata metadata = envelope.producerMetadata;
 

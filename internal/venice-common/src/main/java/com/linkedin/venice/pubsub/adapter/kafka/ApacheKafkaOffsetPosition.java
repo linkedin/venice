@@ -83,7 +83,7 @@ public class ApacheKafkaOffsetPosition implements PubSubPosition {
 
   @Override
   public String toString() {
-    return "ApacheKafkaOffsetPosition{" + "offset=" + offset + '}';
+    return "KafkaOffset: " + offset;
   }
 
   @Override
@@ -108,6 +108,10 @@ public class ApacheKafkaOffsetPosition implements PubSubPosition {
   @Override
   public long getNumericOffset() {
     return offset;
+  }
+
+  public static ApacheKafkaOffsetPosition getKafkaPosition(long offset) {
+    return new ApacheKafkaOffsetPosition(offset);
   }
 
   /**

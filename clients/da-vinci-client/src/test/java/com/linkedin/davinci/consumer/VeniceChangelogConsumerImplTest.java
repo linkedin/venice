@@ -39,6 +39,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
@@ -267,7 +268,7 @@ public class VeniceChangelogConsumerImplTest {
     kafkaMessageEnvelope.producerMetadata = new ProducerMetadata();
     kafkaMessageEnvelope.producerMetadata.messageTimestamp = currentTimestamp - TimeUnit.MINUTES.toMillis(2);
     kafkaMessageEnvelope.payloadUnion = controlMessage;
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message =
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message =
         new ImmutablePubSubMessage<>(KafkaKey.HEART_BEAT, kafkaMessageEnvelope, pubSubTopicPartition, 0, 0, 0);
     doReturn(currentTimestamp).when(veniceChangelogConsumer).getSubscribeTime();
     veniceChangelogConsumer.maybeUpdatePartitionToBootstrapMap(message, pubSubTopicPartition);
@@ -514,33 +515,35 @@ public class VeniceChangelogConsumerImplTest {
       PubSubTopic newVersionTopic,
       boolean addEndOfPushMessage,
       boolean repeatMessages) {
-    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> pubSubMessageList = new ArrayList<>();
+    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> pubSubMessageList = new ArrayList<>();
 
     // Add a start of push message
     pubSubMessageList.add(constructStartOfPushMessage(oldVersionTopic, partition));
 
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> pubSubMessagesMap =
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> pubSubMessagesMap =
         new HashMap<>();
     for (long i = startIdx; i < endIdx; i++) {
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = constructChangeCaptureConsumerRecord(
-          changeCaptureTopic,
-          partition,
-          "oldValue" + i,
-          "newValue" + i,
-          "key" + i,
-          Arrays.asList(i, i));
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage =
+          constructChangeCaptureConsumerRecord(
+              changeCaptureTopic,
+              partition,
+              "oldValue" + i,
+              "newValue" + i,
+              "key" + i,
+              Arrays.asList(i, i));
       pubSubMessageList.add(pubSubMessage);
     }
 
     if (repeatMessages) {
       for (long i = startIdx; i < endIdx; i++) {
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = constructChangeCaptureConsumerRecord(
-            changeCaptureTopic,
-            partition,
-            "oldValue" + i,
-            "newValue" + i,
-            "key" + i,
-            Arrays.asList(i, i));
+        PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage =
+            constructChangeCaptureConsumerRecord(
+                changeCaptureTopic,
+                partition,
+                "oldValue" + i,
+                "newValue" + i,
+                "key" + i,
+                Arrays.asList(i, i));
         pubSubMessageList.add(pubSubMessage);
       }
     }
@@ -570,11 +573,11 @@ public class VeniceChangelogConsumerImplTest {
       PubSubTopic versionTopic,
       int partition,
       boolean prepareEndOfPush) {
-    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> consumerRecordList = new ArrayList<>();
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumerRecordsMap =
+    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> consumerRecordList = new ArrayList<>();
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> consumerRecordsMap =
         new HashMap<>();
     for (long i = startIdx; i < endIdx; i++) {
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage =
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage =
           constructConsumerRecord(versionTopic, partition, "newValue" + i, "key" + i, Arrays.asList(i, i));
       consumerRecordList.add(pubSubMessage);
     }
@@ -586,7 +589,7 @@ public class VeniceChangelogConsumerImplTest {
     doReturn(consumerRecordsMap).when(pubSubConsumerAdapter).poll(100);
   }
 
-  private PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> constructVersionSwapMessage(
+  private PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> constructVersionSwapMessage(
       PubSubTopic versionTopic,
       PubSubTopic oldTopic,
       PubSubTopic newTopic,
@@ -610,7 +613,7 @@ public class VeniceChangelogConsumerImplTest {
     return new ImmutablePubSubMessage<>(kafkaKey, kafkaMessageEnvelope, pubSubTopicPartition, 0, 0, 0);
   }
 
-  private PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> constructChangeCaptureConsumerRecord(
+  private PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> constructChangeCaptureConsumerRecord(
       PubSubTopic changeCaptureVersionTopic,
       int partition,
       String oldValue,
@@ -644,7 +647,7 @@ public class VeniceChangelogConsumerImplTest {
     return new ImmutablePubSubMessage<>(kafkaKey, kafkaMessageEnvelope, pubSubTopicPartition, 0, 0, 0);
   }
 
-  private PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> constructConsumerRecord(
+  private PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> constructConsumerRecord(
       PubSubTopic changeCaptureVersionTopic,
       int partition,
       String newValue,
@@ -667,7 +670,7 @@ public class VeniceChangelogConsumerImplTest {
     return new ImmutablePubSubMessage<>(kafkaKey, kafkaMessageEnvelope, pubSubTopicPartition, 0, 0, 0);
   }
 
-  private PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> constructEndOfPushMessage(
+  private PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> constructEndOfPushMessage(
       PubSubTopic versionTopic,
       int partition,
       Long offset) {
@@ -685,7 +688,7 @@ public class VeniceChangelogConsumerImplTest {
     return new ImmutablePubSubMessage<>(kafkaKey, kafkaMessageEnvelope, pubSubTopicPartition, offset, 0, 0);
   }
 
-  private PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> constructStartOfPushMessage(
+  private PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> constructStartOfPushMessage(
       PubSubTopic versionTopic,
       int partition) {
     KafkaKey kafkaKey = new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[0]);

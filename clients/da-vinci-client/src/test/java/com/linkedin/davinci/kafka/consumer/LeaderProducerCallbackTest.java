@@ -35,7 +35,7 @@ public class LeaderProducerCallbackTest {
   @Test
   public void testOnCompletionWithNonNullException() {
     LeaderFollowerStoreIngestionTask ingestionTaskMock = mock(LeaderFollowerStoreIngestionTask.class);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> sourceConsumerRecordMock = mock(PubSubMessage.class);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> sourceConsumerRecordMock = mock(PubSubMessage.class);
     PartitionConsumptionState partitionConsumptionStateMock = mock(PartitionConsumptionState.class);
     LeaderProducedRecordContext leaderProducedRecordContextMock = mock(LeaderProducedRecordContext.class);
     AggVersionedDIVStats statsMock = mock(AggVersionedDIVStats.class);
@@ -106,7 +106,7 @@ public class LeaderProducerCallbackTest {
   @Test
   public void testLeaderProducerCallbackProduceDeprecatedChunkDeletion() throws InterruptedException {
     LeaderFollowerStoreIngestionTask storeIngestionTask = mock(LeaderFollowerStoreIngestionTask.class);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> sourceConsumerRecord = mock(PubSubMessage.class);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> sourceConsumerRecord = mock(PubSubMessage.class);
     PartitionConsumptionState partitionConsumptionState = mock(PartitionConsumptionState.class);
     LeaderProducedRecordContext leaderProducedRecordContext = mock(LeaderProducedRecordContext.class);
     LeaderProducerCallback leaderProducerCallback = new LeaderProducerCallback(

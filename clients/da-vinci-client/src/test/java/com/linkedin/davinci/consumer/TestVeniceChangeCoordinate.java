@@ -21,7 +21,7 @@ public class TestVeniceChangeCoordinate {
 
   @Test
   public void testReadAndWriteExternal() throws IOException, ClassNotFoundException {
-    PubSubPosition position = new ApacheKafkaOffsetPosition(TEST_OFFSET);
+    PubSubPosition position = ApacheKafkaOffsetPosition.getKafkaPosition(TEST_OFFSET);
     VeniceChangeCoordinate veniceChangeCoordinate =
         new VeniceChangeCoordinate(TEST_STORE_TOPIC, position, TEST_PARTITION);
 
@@ -46,26 +46,38 @@ public class TestVeniceChangeCoordinate {
 
   @Test
   public void testComparePosition() {
-    VeniceChangeCoordinate veniceChangeCoordinate =
-        new VeniceChangeCoordinate(TEST_STORE_TOPIC, new ApacheKafkaOffsetPosition(TEST_OFFSET), TEST_PARTITION);
-    VeniceChangeCoordinate veniceChangeCoordinate_1 =
-        new VeniceChangeCoordinate(TEST_STORE_TOPIC, new ApacheKafkaOffsetPosition(TEST_OFFSET), TEST_PARTITION);
+    VeniceChangeCoordinate veniceChangeCoordinate = new VeniceChangeCoordinate(
+        TEST_STORE_TOPIC,
+        ApacheKafkaOffsetPosition.getKafkaPosition(TEST_OFFSET),
+        TEST_PARTITION);
+    VeniceChangeCoordinate veniceChangeCoordinate_1 = new VeniceChangeCoordinate(
+        TEST_STORE_TOPIC,
+        ApacheKafkaOffsetPosition.getKafkaPosition(TEST_OFFSET),
+        TEST_PARTITION);
     Assert.assertEquals(veniceChangeCoordinate.comparePosition(veniceChangeCoordinate_1), 0);
 
-    VeniceChangeCoordinate veniceChangeCoordinate_2 =
-        new VeniceChangeCoordinate(TEST_STORE_TOPIC, new ApacheKafkaOffsetPosition(TEST_OFFSET), TEST_PARTITION + 1);
+    VeniceChangeCoordinate veniceChangeCoordinate_2 = new VeniceChangeCoordinate(
+        TEST_STORE_TOPIC,
+        ApacheKafkaOffsetPosition.getKafkaPosition(TEST_OFFSET),
+        TEST_PARTITION + 1);
     Assert.assertThrows(VeniceException.class, () -> veniceChangeCoordinate.comparePosition(veniceChangeCoordinate_2));
 
-    VeniceChangeCoordinate veniceChangeCoordinate_3 =
-        new VeniceChangeCoordinate(TEST_STORE_TOPIC, new ApacheKafkaOffsetPosition(TEST_OFFSET - 1), TEST_PARTITION);
+    VeniceChangeCoordinate veniceChangeCoordinate_3 = new VeniceChangeCoordinate(
+        TEST_STORE_TOPIC,
+        ApacheKafkaOffsetPosition.getKafkaPosition(TEST_OFFSET - 1),
+        TEST_PARTITION);
     Assert.assertTrue(veniceChangeCoordinate.comparePosition(veniceChangeCoordinate_3) > 0);
 
-    VeniceChangeCoordinate veniceChangeCoordinate_4 =
-        new VeniceChangeCoordinate(TEST_STORE_TOPIC, new ApacheKafkaOffsetPosition(TEST_OFFSET + 1), TEST_PARTITION);
+    VeniceChangeCoordinate veniceChangeCoordinate_4 = new VeniceChangeCoordinate(
+        TEST_STORE_TOPIC,
+        ApacheKafkaOffsetPosition.getKafkaPosition(TEST_OFFSET + 1),
+        TEST_PARTITION);
     Assert.assertTrue(veniceChangeCoordinate.comparePosition(veniceChangeCoordinate_4) < 0);
 
-    VeniceChangeCoordinate veniceChangeCoordinate_5 =
-        new VeniceChangeCoordinate(TEST_STORE_TOPIC + "v2", new ApacheKafkaOffsetPosition(TEST_OFFSET), TEST_PARTITION);
+    VeniceChangeCoordinate veniceChangeCoordinate_5 = new VeniceChangeCoordinate(
+        TEST_STORE_TOPIC + "v2",
+        ApacheKafkaOffsetPosition.getKafkaPosition(TEST_OFFSET),
+        TEST_PARTITION);
     Assert.assertTrue(veniceChangeCoordinate.comparePosition(veniceChangeCoordinate_5) < 0);
   }
 }

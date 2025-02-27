@@ -100,9 +100,9 @@ public class MockInMemoryConsumer implements PubSubConsumerAdapter {
   }
 
   @Override
-  public synchronized Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> poll(
+  public synchronized Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> poll(
       long timeout) {
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> delegatePolledMessages =
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> delegatePolledMessages =
         delegate.poll(timeout);
     if (delegatePolledMessages != null && !delegatePolledMessages.isEmpty()) {
       throw new IllegalArgumentException(
@@ -118,7 +118,7 @@ public class MockInMemoryConsumer implements PubSubConsumerAdapter {
       }
     }
 
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> pubSubMessages =
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> pubSubMessages =
         pollStrategy.poll(broker, offsetsToPoll, timeout);
     for (Map.Entry<PubSubTopicPartition, Long> entry: offsetsToPoll.entrySet()) {
       PubSubTopicPartition topicPartition = entry.getKey();

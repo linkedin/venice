@@ -46,6 +46,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -265,12 +266,12 @@ public class IngestionHeartBeatTest {
     AtomicBoolean isLeaderCompletionHeaderFound = new AtomicBoolean(false);
     AtomicBoolean isLeaderCompleted = new AtomicBoolean(false);
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
+      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> messages =
           pubSubConsumer.poll(100 * Time.MS_PER_SECOND);
-      for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: messages
+      for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> entry: messages
           .entrySet()) {
-        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> pubSubMessages = entry.getValue();
-        for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: pubSubMessages) {
+        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> pubSubMessages = entry.getValue();
+        for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message: pubSubMessages) {
           if (Arrays.equals(message.getKey().getKey(), HEART_BEAT.getKey())) {
             isHBFound.set(true);
           }

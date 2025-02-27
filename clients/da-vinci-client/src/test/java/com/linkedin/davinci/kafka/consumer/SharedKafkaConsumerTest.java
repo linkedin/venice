@@ -57,7 +57,7 @@ public class SharedKafkaConsumerTest {
     when(consumer.getAssignment()).thenReturn(assignmentReturnedConsumer);
     sharedConsumer.subscribe(nonExistingTopic1, nonExistentPubSubTopicPartition, -1);
 
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> pubSubMessagesReturnedByConsumer =
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> pubSubMessagesReturnedByConsumer =
         new HashMap<>();
     doReturn(pubSubMessagesReturnedByConsumer).when(consumer).poll(anyLong());
 

@@ -20,6 +20,7 @@ import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
@@ -494,7 +495,7 @@ class TopicMetadataFetcher implements Closeable {
     int fetchedRecordsCount;
     long startTime = System.nanoTime();
     do {
-      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> lastConsumedRecords =
+      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> lastConsumedRecords =
           consumeLatestRecords(pubSubTopicPartition, fetchSize);
       // if there are no records in this topic partition, return a special timestamp
       if (lastConsumedRecords.isEmpty()) {
@@ -503,7 +504,7 @@ class TopicMetadataFetcher implements Closeable {
       fetchedRecordsCount = lastConsumedRecords.size();
       // iterate in reverse order to find the first data message (not control message) from the end
       for (int i = lastConsumedRecords.size() - 1; i >= 0; i--) {
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = lastConsumedRecords.get(i);
+        PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> record = lastConsumedRecords.get(i);
         if (!record.getKey().isControlMessage()
             || Arrays.equals(record.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
           stats.recordLatency(GET_PRODUCER_TIMESTAMP_OF_LAST_DATA_MESSAGE, startTime);
@@ -578,7 +579,7 @@ class TopicMetadataFetcher implements Closeable {
    *   2. This method might return more than {@code lastRecordsCount} records since the consumer poll method gets a batch
    *      of consumer records each time and the batch size is arbitrary.
    */
-  List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> consumeLatestRecords(
+  List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> consumeLatestRecords(
       PubSubTopicPartition pubSubTopicPartition,
       int lastRecordsCount) {
     if (lastRecordsCount < 1) {
@@ -617,12 +618,13 @@ class TopicMetadataFetcher implements Closeable {
           pubSubTopicPartition,
           consumePastOffset + 1);
 
-      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> allConsumedRecords = new ArrayList<>(lastRecordsCount);
+      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> allConsumedRecords =
+          new ArrayList<>(lastRecordsCount);
 
       // Keep consuming records from that topic-partition until the last consumed record's
       // offset is greater or equal to the partition end offset retrieved before.
       do {
-        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> consumedBatch = Collections.emptyList();
+        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> consumedBatch = Collections.emptyList();
         int pollAttempt = 1;
         while (pollAttempt <= PubSubConstants.PUBSUB_CONSUMER_POLLING_FOR_METADATA_RETRY_MAX_ATTEMPT
             && (consumedBatch == null || consumedBatch.isEmpty())) {
@@ -642,7 +644,7 @@ class TopicMetadataFetcher implements Closeable {
           throw new VeniceException(message);
         }
         allConsumedRecords.addAll(consumedBatch);
-      } while (allConsumedRecords.get(allConsumedRecords.size() - 1).getOffset() + 1 < latestOffset);
+      } while (allConsumedRecords.get(allConsumedRecords.size() - 1).getOffset().getNumericOffset() + 1 < latestOffset);
 
       return allConsumedRecords;
     } finally {

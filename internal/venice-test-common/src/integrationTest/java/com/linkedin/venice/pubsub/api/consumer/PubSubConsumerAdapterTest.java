@@ -25,6 +25,7 @@ import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterContext;
@@ -830,13 +831,14 @@ public class PubSubConsumerAdapterTest {
     int minRecordsToConsume = 5;
     long offsetOfLastConsumedMessage = -1;
     while (minRecordsToConsume > 0) {
-      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
+      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> messages =
           pubSubConsumerAdapter.poll(15);
       assertNotNull(messages, "Messages should not be null");
-      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = messages.get(partition);
+      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> partitionMessages = messages.get(partition);
       if (partitionMessages != null && !partitionMessages.isEmpty()) {
         minRecordsToConsume -= partitionMessages.size();
-        offsetOfLastConsumedMessage = partitionMessages.get(partitionMessages.size() - 1).getOffset();
+        offsetOfLastConsumedMessage =
+            partitionMessages.get(partitionMessages.size() - 1).getOffset().getNumericOffset();
       }
     }
     assertTrue(offsetOfLastConsumedMessage > 0, "Offset of last consumed message should be greater than 0");
@@ -852,11 +854,11 @@ public class PubSubConsumerAdapterTest {
     minRecordsToConsume = 1;
     long offsetOfFirstConsumedMessage = -1L;
     while (minRecordsToConsume > 0) {
-      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
+      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> messages =
           pubSubConsumerAdapter.poll(15);
-      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = messages.get(partition);
+      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> partitionMessages = messages.get(partition);
       if (partitionMessages != null && !partitionMessages.isEmpty()) {
-        offsetOfFirstConsumedMessage = partitionMessages.get(0).getOffset();
+        offsetOfFirstConsumedMessage = partitionMessages.get(0).getOffset().getNumericOffset();
         minRecordsToConsume--;
       }
     }
@@ -971,7 +973,7 @@ public class PubSubConsumerAdapterTest {
     // first consumed message offset map
     Map<PubSubTopicPartition, Long> firstConsumedOffsetMap = new HashMap<>(4);
 
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages = null;
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> messages = null;
     Set<PubSubTopicPartition> consumptionBarMet = new HashSet<>();
     while (consumptionBarMet.size() != 4) {
       startTime = System.currentTimeMillis();
@@ -981,22 +983,24 @@ public class PubSubConsumerAdapterTest {
       assertTrue(elapsedTime <= pollTimeoutWithVariance, "Poll should not block for longer than the timeout");
       assertNotNull(messages, "Messages should not be null");
 
-      for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: messages
+      for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> entry: messages
           .entrySet()) {
         PubSubTopicPartition partition = entry.getKey();
-        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = entry.getValue();
+        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> partitionMessages = entry.getValue();
         if (partitionMessages == null || partitionMessages.isEmpty()) {
           continue;
         }
         // update first consumed offset
-        Long oldVal = firstConsumedOffsetMap.putIfAbsent(partition, partitionMessages.get(0).getOffset());
+        Long oldVal =
+            firstConsumedOffsetMap.putIfAbsent(partition, partitionMessages.get(0).getOffset().getNumericOffset());
         if (oldVal == null) {
           // assert offset is zero since this is the first time we are consuming from this topic-partition and
           // and we started consuming from the beginning (-1 last consumed offset)
           assertEquals(firstConsumedOffsetMap.get(partition), Long.valueOf(0), "First consumed offset should be 0");
         }
         // update last consumed offset
-        lastConsumedOffsetMap.put(partition, partitionMessages.get(partitionMessages.size() - 1).getOffset());
+        lastConsumedOffsetMap
+            .put(partition, partitionMessages.get(partitionMessages.size() - 1).getOffset().getNumericOffset());
         // update number of messages consumed so far
         numMessagesConsumedMap
             .compute(partition, (k, v) -> v == null ? partitionMessages.size() : v + partitionMessages.size());
@@ -1046,15 +1050,16 @@ public class PubSubConsumerAdapterTest {
       assertNull(messages.get(partitionB0), "Messages should be null for paused topic-partition: B0");
 
       // Update A1 and B1
-      for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: messages
+      for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> entry: messages
           .entrySet()) {
         PubSubTopicPartition partition = entry.getKey();
-        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = entry.getValue();
+        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> partitionMessages = entry.getValue();
         if (partitionMessages == null || partitionMessages.isEmpty()) {
           continue;
         }
         // update last consumed offset
-        lastConsumedOffsetMap.put(partition, partitionMessages.get(partitionMessages.size() - 1).getOffset());
+        lastConsumedOffsetMap
+            .put(partition, partitionMessages.get(partitionMessages.size() - 1).getOffset().getNumericOffset());
         int consumedCountSoFar = numMessagesConsumedMap.getOrDefault(partition, 0) + partitionMessages.size();
         // verify lastConsumedOffset matches records consumed so far
         assertEquals(
@@ -1098,22 +1103,24 @@ public class PubSubConsumerAdapterTest {
       assertTrue(elapsedTime <= pollTimeout + 3000, "Poll should not block for longer than the timeout");
       assertNotNull(messages, "Messages should not be null");
 
-      for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: messages
+      for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> entry: messages
           .entrySet()) {
         PubSubTopicPartition partition = entry.getKey();
-        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = entry.getValue();
+        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> partitionMessages = entry.getValue();
         if (partitionMessages == null || partitionMessages.isEmpty()) {
           continue;
         }
         // check A1 starts from 0
-        Long oldVal = firstConsumedOffsetMap.putIfAbsent(partition, partitionMessages.get(0).getOffset());
+        Long oldVal =
+            firstConsumedOffsetMap.putIfAbsent(partition, partitionMessages.get(0).getOffset().getNumericOffset());
         if (oldVal == null) {
           // we reset the offset for A1 to beginning; so the first consumed offset should be 0
           assertEquals(firstConsumedOffsetMap.get(partition), Long.valueOf(0), "First consumed offset should be 0");
         }
 
         // update last consumed offset
-        lastConsumedOffsetMap.put(partition, partitionMessages.get(partitionMessages.size() - 1).getOffset());
+        lastConsumedOffsetMap
+            .put(partition, partitionMessages.get(partitionMessages.size() - 1).getOffset().getNumericOffset());
         int consumedCountSoFar = numMessagesConsumedMap.getOrDefault(partition, 0) + partitionMessages.size();
         // verify lastConsumedOffset matches records consumed so far
         assertEquals(
@@ -1176,15 +1183,16 @@ public class PubSubConsumerAdapterTest {
       assertNull(messages.get(partitionB1), "Messages should be null for deleted topic-partition: B1");
 
       // Update A0 and A1
-      for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: messages
+      for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> entry: messages
           .entrySet()) {
         PubSubTopicPartition partition = entry.getKey();
-        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = entry.getValue();
+        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> partitionMessages = entry.getValue();
         if (partitionMessages == null || partitionMessages.isEmpty()) {
           continue;
         }
         // update last consumed offset
-        lastConsumedOffsetMap.put(partition, partitionMessages.get(partitionMessages.size() - 1).getOffset());
+        lastConsumedOffsetMap
+            .put(partition, partitionMessages.get(partitionMessages.size() - 1).getOffset().getNumericOffset());
         int consumedCountSoFar = numMessagesConsumedMap.getOrDefault(partition, 0) + partitionMessages.size();
         // verify lastConsumedOffset matches records consumed so far
         assertEquals(
@@ -1235,7 +1243,10 @@ public class PubSubConsumerAdapterTest {
     assertTrue(messages.containsKey(partitionA0), "Should have messages for A0");
     assertTrue(messages.get(partitionA0).size() > 0, "Should have messages for A0");
     // offset should be at the first message
-    assertEquals((long) messages.get(partitionA0).get(0).getOffset(), 0, "Poll should start from the beginning");
+    assertEquals(
+        messages.get(partitionA0).get(0).getOffset().getNumericOffset(),
+        0,
+        "Poll should start from the beginning");
   }
 
   // Note: The following test may not work for non-Kafka PubSub implementations.
@@ -1313,22 +1324,24 @@ public class PubSubConsumerAdapterTest {
     Set<PubSubTopicPartition> consumptionBarMet = new HashSet<>();
     while (consumptionBarMet.size() != 4) {
       startTime = System.currentTimeMillis();
-      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
+      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> messages =
           pubSubConsumerAdapter.poll(1);
       elapsedTime = System.currentTimeMillis() - startTime;
       // roughly pollTimeout * retries + (retries - 1) * backoff. Let's use 10 seconds as the upper bound
       assertTrue(elapsedTime <= 10000, "Poll should not block for longer than the timeout");
       assertNotNull(messages, "Messages should not be null");
 
-      for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: messages
+      for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> entry: messages
           .entrySet()) {
         PubSubTopicPartition partition = entry.getKey();
-        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = entry.getValue();
+        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> partitionMessages = entry.getValue();
         if (partitionMessages == null || partitionMessages.isEmpty()) {
           continue;
         }
         // check offset of the last consumed message and see if it is one less than the end offset; if yes bar is met
-        if (partitionMessages.get(partitionMessages.size() - 1).getOffset() == endOffsets.get(partition) - 1) {
+        if (partitionMessages.get(partitionMessages.size() - 1)
+            .getOffset()
+            .getNumericOffset() == endOffsets.get(partition) - 1) {
           consumptionBarMet.add(partition);
         }
       }
@@ -1353,7 +1366,7 @@ public class PubSubConsumerAdapterTest {
 
     while (consumptionBarMet.size() != 2) {
       startTime = System.currentTimeMillis();
-      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
+      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> messages =
           pubSubConsumerAdapter.poll(1);
       elapsedTime = System.currentTimeMillis() - startTime;
       // check that poll did not block for longer than the timeout; add variance of 3 seconds
@@ -1364,15 +1377,17 @@ public class PubSubConsumerAdapterTest {
       assertNull(messages.get(partitionB1), "Messages should be null for deleted topic-partition: B1");
       assertNull(messages.get(partitionA1), "Messages should be null for deleted topic-partition: A1");
 
-      for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: messages
+      for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> entry: messages
           .entrySet()) {
         PubSubTopicPartition partition = entry.getKey();
-        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = entry.getValue();
+        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> partitionMessages = entry.getValue();
         if (partitionMessages == null || partitionMessages.isEmpty()) {
           continue;
         }
         // check offset of the last consumed message and see if it is one less than the end offset; if yes bar is met
-        if (partitionMessages.get(partitionMessages.size() - 1).getOffset() == endOffsets.get(partition) - 1) {
+        if (partitionMessages.get(partitionMessages.size() - 1)
+            .getOffset()
+            .getNumericOffset() == endOffsets.get(partition) - 1) {
           consumptionBarMet.add(partition);
         }
       }
@@ -1412,7 +1427,7 @@ public class PubSubConsumerAdapterTest {
     // should not consume any messages as they already consumed all messages
     while (consumptionBarMet.size() != 3) {
       startTime = System.currentTimeMillis();
-      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
+      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> messages =
           pubSubConsumerAdapter.poll(1);
       elapsedTime = System.currentTimeMillis() - startTime;
       // roughly pollTimeout * retries + (retries - 1) * backoff. Let's use 10 seconds as the upper bound
@@ -1424,15 +1439,17 @@ public class PubSubConsumerAdapterTest {
       assertNull(messages.get(partitionB1), "Messages should be null for topic-partition: B1");
 
       // Update B0
-      for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: messages
+      for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> entry: messages
           .entrySet()) {
         PubSubTopicPartition partition = entry.getKey();
-        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessages = entry.getValue();
+        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> partitionMessages = entry.getValue();
         if (partitionMessages == null || partitionMessages.isEmpty()) {
           continue;
         }
         // check offset of the last consumed message and see if it is one less than the end offset; if yes bar is met
-        if (partitionMessages.get(partitionMessages.size() - 1).getOffset() == endOffsets.get(partition) - 1) {
+        if (partitionMessages.get(partitionMessages.size() - 1)
+            .getOffset()
+            .getNumericOffset() == endOffsets.get(partition) - 1) {
           consumptionBarMet.add(partition);
         }
       }

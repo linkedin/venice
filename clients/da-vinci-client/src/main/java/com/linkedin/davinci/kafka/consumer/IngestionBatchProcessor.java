@@ -8,6 +8,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.utils.LatencyUtils;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -32,7 +33,7 @@ public class IngestionBatchProcessor {
 
   interface ProcessingFunction {
     PubSubMessageProcessedResult apply(
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+        PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
         PartitionConsumptionState partitionConsumptionState,
         int partition,
         String kafkaUrl,
@@ -84,7 +85,7 @@ public class IngestionBatchProcessor {
    * (except Control Messages) passed by the params.
    */
   public NavigableMap<ByteArrayKey, ReentrantLock> lockKeys(
-      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records) {
+      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> records) {
     if (lockManager != null) {
       /**
        * Need to use a {@link TreeMap} to make sure the locking will be executed in a deterministic order, otherwise
@@ -114,8 +115,8 @@ public class IngestionBatchProcessor {
   }
 
   public static boolean isAllMessagesFromRTTopic(
-      Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records) {
-    for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record: records) {
+      Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> records) {
+    for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> record: records) {
       if (!record.getTopicPartition().getPubSubTopic().isRealTime()) {
         return false;
       }
@@ -123,8 +124,8 @@ public class IngestionBatchProcessor {
     return true;
   }
 
-  public List<PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long>> process(
-      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records,
+  public List<PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> process(
+      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> records,
       PartitionConsumptionState partitionConsumptionState,
       int partition,
       String kafkaUrl,
@@ -136,16 +137,16 @@ public class IngestionBatchProcessor {
       return Collections.emptyList();
     }
     boolean isAllMessagesFromRTTopic = true;
-    List<PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long>> resultList =
+    List<PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> resultList =
         new ArrayList<>(records.size());
     /**
      * We would like to process the messages belonging to the same key sequentially to avoid race conditions.
      */
     int totalNumOfRecords = 0;
-    Map<ByteArrayKey, List<PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long>>> keyGroupMap =
+    Map<ByteArrayKey, List<PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> keyGroupMap =
         new HashMap<>(records.size());
 
-    for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: records) {
+    for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message: records) {
       if (!message.getTopicPartition().getPubSubTopic().isRealTime()) {
         isAllMessagesFromRTTopic = false;
       }

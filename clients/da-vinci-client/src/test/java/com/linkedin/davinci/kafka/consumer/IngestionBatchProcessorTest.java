@@ -48,28 +48,28 @@ public class IngestionBatchProcessorTest {
     PubSubTopicPartition versionTopicPartition = new PubSubTopicPartitionImpl(versionTopic, 1);
     PubSubTopicPartition rtTopicPartition = new PubSubTopicPartitionImpl(rtTopic, 1);
 
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> vtMessage1 = new ImmutablePubSubMessage<>(
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> vtMessage1 = new ImmutablePubSubMessage<>(
         mock(KafkaKey.class),
         mock(KafkaMessageEnvelope.class),
         versionTopicPartition,
         1,
         100,
         100);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> vtMessage2 = new ImmutablePubSubMessage<>(
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> vtMessage2 = new ImmutablePubSubMessage<>(
         mock(KafkaKey.class),
         mock(KafkaMessageEnvelope.class),
         versionTopicPartition,
         2,
         101,
         100);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> rtMessage1 = new ImmutablePubSubMessage<>(
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> rtMessage1 = new ImmutablePubSubMessage<>(
         mock(KafkaKey.class),
         mock(KafkaMessageEnvelope.class),
         rtTopicPartition,
         1,
         100,
         100);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> rtMessage2 = new ImmutablePubSubMessage<>(
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> rtMessage2 = new ImmutablePubSubMessage<>(
         mock(KafkaKey.class),
         mock(KafkaMessageEnvelope.class),
         rtTopicPartition,
@@ -94,14 +94,14 @@ public class IngestionBatchProcessorTest {
 
     PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic("store_rt");
     PubSubTopicPartition rtTopicPartition = new PubSubTopicPartitionImpl(rtTopic, 1);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> rtMessage1 = new ImmutablePubSubMessage<>(
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> rtMessage1 = new ImmutablePubSubMessage<>(
         new KafkaKey(MessageType.PUT, key1),
         mock(KafkaMessageEnvelope.class),
         rtTopicPartition,
         1,
         100,
         100);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> rtMessage2 = new ImmutablePubSubMessage<>(
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> rtMessage2 = new ImmutablePubSubMessage<>(
         new KafkaKey(MessageType.PUT, key2),
         mock(KafkaMessageEnvelope.class),
         rtTopicPartition,
@@ -159,14 +159,14 @@ public class IngestionBatchProcessorTest {
     byte[] key1 = "key1".getBytes();
     byte[] key2 = "key2".getBytes();
     PubSubTopicPartition rtTopicPartition = new PubSubTopicPartitionImpl(rtTopic, 1);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> rtMessage1 = new ImmutablePubSubMessage<>(
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> rtMessage1 = new ImmutablePubSubMessage<>(
         new KafkaKey(MessageType.PUT, key1),
         mock(KafkaMessageEnvelope.class),
         rtTopicPartition,
         1,
         100,
         100);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> rtMessage2 = new ImmutablePubSubMessage<>(
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> rtMessage2 = new ImmutablePubSubMessage<>(
         new KafkaKey(MessageType.PUT, key2),
         mock(KafkaMessageEnvelope.class),
         rtTopicPartition,

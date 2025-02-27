@@ -192,9 +192,9 @@ public class KafkaConsumerServiceTest {
     consumerAssignedPartitions.add(topicPartition);
     assignedConsumer.setCurrentAssignment(consumerAssignedPartitions);
 
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumer2MessageMap =
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> consumer2MessageMap =
         new HashMap<>();
-    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> pubSubMessages = new ArrayList<>();
+    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> pubSubMessages = new ArrayList<>();
     PubSubMessage pubSubMessage = mock(PubSubMessage.class);
     when(pubSubMessage.getPayloadSize()).thenReturn(10);
     pubSubMessages.add(pubSubMessage);

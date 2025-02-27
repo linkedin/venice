@@ -55,7 +55,7 @@ public class KafkaInputRecordReaderTest {
 
     int assignedPartition = 0;
     int numRecord = 100;
-    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> consumerRecordList = new ArrayList<>();
+    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> consumerRecordList = new ArrayList<>();
     PubSubTopicPartition pubSubTopicPartition =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), assignedPartition);
     for (int i = 0; i < numRecord; ++i) {
@@ -77,7 +77,8 @@ public class KafkaInputRecordReaderTest {
       consumerRecordList.add(new ImmutablePubSubMessage<>(kafkaKey, messageEnvelope, pubSubTopicPartition, i, -1, -1));
     }
 
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> recordsMap = new HashMap<>();
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> recordsMap =
+        new HashMap<>();
     recordsMap.put(pubSubTopicPartition, consumerRecordList);
     when(consumer.poll(anyLong())).thenReturn(recordsMap, new HashMap<>());
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), 0);

@@ -2,6 +2,7 @@ package com.linkedin.venice;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
@@ -33,9 +34,11 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
@@ -113,19 +116,19 @@ public class TestKafkaTopicDumper {
 
     int numChunks = 3;
     String metadataFormat = " ChunkMd=(type:%s, FirstChunkMd=(guid:00000000000000000000000000000000,seg:1,seq:1))";
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> chunkMessage = null;
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> chunkMessage = null;
     for (int i = 0; i < numChunks; i++) {
       chunkMessage = ChunkingTestUtils.createChunkedRecord(serializedKey, 1, 1, i, 0, pubSubTopicPartition);
       String metadataLog = kafkaTopicDumper.getChunkMetadataLog(chunkMessage);
       assertEquals(metadataLog, String.format(metadataFormat, "WITH_VALUE_CHUNK, ChunkIndex: " + i));
     }
 
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> manifestMessage =
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> manifestMessage =
         ChunkingTestUtils.createChunkValueManifestRecord(serializedKey, chunkMessage, numChunks, pubSubTopicPartition);
     String manifestChunkMetadataLog = kafkaTopicDumper.getChunkMetadataLog(manifestMessage);
     assertEquals(manifestChunkMetadataLog, String.format(metadataFormat, "WITH_CHUNK_MANIFEST"));
 
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> deleteMessage =
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> deleteMessage =
         ChunkingTestUtils.createDeleteRecord(serializedKey, null, pubSubTopicPartition);
     String deleteChunkMetadataLog = kafkaTopicDumper.getChunkMetadataLog(deleteMessage);
     assertEquals(deleteChunkMetadataLog, " ChunkMd=(type:WITH_FULL_VALUE)");
@@ -229,7 +232,7 @@ public class TestKafkaTopicDumper {
     byte[] serializedValue = valueSerializer.serialize(valueRecord);
     byte[] serializedRmd = rmdSerializer.serialize(rmdRecord);
     byte[] serializedUpdate = updateSerializer.serialize(updateRecord);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> putMessage =
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> putMessage =
         ChunkingTestUtils.createPutRecord(serializedKey, serializedValue, serializedRmd, pubSubTopicPartition);
     String returnedLog = kafkaTopicDumper.buildDataRecordLog(putMessage, false);
     String expectedLog = String.format("Key: %s; Value: %s; Schema: %d", keyString, valueRecord, 1);
@@ -239,7 +242,7 @@ public class TestKafkaTopicDumper {
     assertEquals(returnedLog, expectedLog);
 
     // Test UPDATE
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> updateMessage =
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> updateMessage =
         ChunkingTestUtils.createUpdateRecord(serializedKey, serializedUpdate, pubSubTopicPartition);
     returnedLog = kafkaTopicDumper.buildDataRecordLog(updateMessage, false);
     expectedLog = String.format("Key: %s; Value: %s; Schema: %d-%d", keyString, updateRecord, 1, 1);
@@ -249,7 +252,7 @@ public class TestKafkaTopicDumper {
     assertEquals(returnedLog, expectedLog);
 
     // Test DELETE with and without RMD
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> deleteMessage =
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> deleteMessage =
         ChunkingTestUtils.createDeleteRecord(serializedKey, serializedRmd, pubSubTopicPartition);
     returnedLog = kafkaTopicDumper.buildDataRecordLog(deleteMessage, false);
     expectedLog = String.format("Key: %s; Value: %s; Schema: %d", keyString, null, 1);
@@ -282,8 +285,14 @@ public class TestKafkaTopicDumper {
     PubSubTopicPartition pubSubTopicPartition =
         new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test_topic_rt"), 0);
 
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message =
-        new ImmutablePubSubMessage<>(kafkaKey, messageEnvelope, pubSubTopicPartition, 120, 0, 0, null);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message = new ImmutablePubSubMessage<>(
+        kafkaKey,
+        messageEnvelope,
+        pubSubTopicPartition,
+        ApacheKafkaOffsetPosition.getKafkaPosition(120),
+        0,
+        0,
+        null);
 
     String actualLog = KafkaTopicDumper.constructTopicSwitchLog(message);
     assertNotNull(actualLog);
@@ -297,14 +306,26 @@ public class TestKafkaTopicDumper {
     controlMessage.controlMessageUnion = new StartOfSegment();
     messageEnvelope.payloadUnion = controlMessage;
 
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> nonTsCtrlMsg =
-        new ImmutablePubSubMessage<>(kafkaKey, messageEnvelope, pubSubTopicPartition, 120, 0, 0, null);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> nonTsCtrlMsg = new ImmutablePubSubMessage<>(
+        kafkaKey,
+        messageEnvelope,
+        pubSubTopicPartition,
+        ApacheKafkaOffsetPosition.getKafkaPosition(120),
+        0,
+        0,
+        null);
     KafkaTopicDumper.logIfTopicSwitchMessage(nonTsCtrlMsg); // Should not throw any exception
 
     // Case 3: Non-control message
     KafkaKey regularMsgKey = new KafkaKey(MessageType.PUT, Utils.getUniqueString("key-").getBytes());
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> regularMessage =
-        new ImmutablePubSubMessage<>(regularMsgKey, null, pubSubTopicPartition, 120, 0, 0, null);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> regularMessage = new ImmutablePubSubMessage<>(
+        regularMsgKey,
+        null,
+        pubSubTopicPartition,
+        ApacheKafkaOffsetPosition.getKafkaPosition(120),
+        0,
+        0,
+        null);
     KafkaTopicDumper.logIfTopicSwitchMessage(regularMessage); // Should not throw any exception
   }
 
@@ -402,8 +423,8 @@ public class TestKafkaTopicDumper {
     assertTrue(e.getMessage().contains("Invalid offset range"), "Actual error message: " + e.getMessage());
 
     // Case 3: Valid range with 5 records to process
-    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> mockMessages = createMockMessages(15, 0);
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> mockPollResult =
+    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> mockMessages = createMockMessages(15, 0);
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> mockPollResult =
         new HashMap<>();
     mockPollResult.put(topicPartition, mockMessages);
     when(mockConsumer.poll(5000L)).thenReturn(mockPollResult);
@@ -427,11 +448,14 @@ public class TestKafkaTopicDumper {
     verify(mockConsumer, atLeastOnce()).unSubscribe(topicPartition);
   }
 
-  private List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> createMockMessages(int count, long startOffset) {
-    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> messages = new ArrayList<>();
+  private List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> createMockMessages(
+      int count,
+      long startOffset) {
+    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> messages = new ArrayList<>();
     for (int i = 0; i < count; i++) {
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message = mock(PubSubMessage.class);
-      when(message.getOffset()).thenReturn(startOffset + i);
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message =
+          mock(PubSubMessage.class, RETURNS_DEEP_STUBS);
+      when(message.getOffset().getNumericOffset()).thenReturn(startOffset + i);
       messages.add(message);
     }
     return messages;

@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -16,7 +17,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class StorePartitionDataReceiver
-    implements ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> {
+    implements ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> {
   private final StoreIngestionTask storeIngestionTask;
   private final PubSubTopicPartition topicPartition;
   private final String kafkaUrl;
@@ -41,7 +42,7 @@ public class StorePartitionDataReceiver
   }
 
   @Override
-  public void write(List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> consumedData) throws Exception {
+  public void write(List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> consumedData) throws Exception {
     receivedRecordsCount += consumedData.size();
     try {
       /**

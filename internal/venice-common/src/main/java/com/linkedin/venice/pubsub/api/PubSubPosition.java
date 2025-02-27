@@ -1,6 +1,7 @@
 package com.linkedin.venice.pubsub.api;
 
 import com.linkedin.venice.annotation.RestrictedApi;
+import com.linkedin.venice.annotation.UnderDevelopment;
 import com.linkedin.venice.pubsub.PubSubPositionFactory;
 
 
@@ -100,11 +101,15 @@ public interface PubSubPosition {
    *          -1 if this position is less than the other position,
    *          and 1 if this position is greater than the other position
    */
+  @RestrictedApi("DO NOT USE THIS API for new code")
+  @UnderDevelopment("Compare API is under development and may change in the future.")
   int comparePosition(PubSubPosition other);
 
   /**
    * @return the difference between this position and the other position
    */
+  @RestrictedApi("DO NOT USE THIS API for new code")
+  @UnderDevelopment("Compare API is under development and may change in the future.")
   long diff(PubSubPosition other);
 
   boolean equals(Object obj);

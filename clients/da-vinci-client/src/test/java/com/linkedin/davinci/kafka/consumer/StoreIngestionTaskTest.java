@@ -3712,7 +3712,7 @@ public abstract class StoreIngestionTaskTest {
 
     PubSubMessageHeaders pubSubMessageHeaders = new PubSubMessageHeaders();
     pubSubMessageHeaders.add(VeniceWriter.getLeaderCompleteStateHeader(LEADER_COMPLETED));
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = new ImmutablePubSubMessage(
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage = new ImmutablePubSubMessage(
         KafkaKey.HEART_BEAT,
         kafkaMessageEnvelope,
         new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO),
@@ -4304,7 +4304,7 @@ public abstract class StoreIngestionTaskTest {
     put.replicationMetadataPayload = ByteBuffer.allocate(10);
     kafkaMessageEnvelope.payloadUnion = put;
     kafkaMessageEnvelope.producerMetadata = new ProducerMetadata();
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = new ImmutablePubSubMessage(
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage = new ImmutablePubSubMessage(
         kafkaKey,
         kafkaMessageEnvelope,
         new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO),
@@ -4382,7 +4382,7 @@ public abstract class StoreIngestionTaskTest {
 
   @Test
   public void testShouldPersistRecord() throws Exception {
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage =
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage =
         new ImmutablePubSubMessage(null, null, new PubSubTopicPartitionImpl(pubSubTopic, 1), 0, 0, 0);
 
     runTest(Collections.singleton(PARTITION_FOO), () -> {
@@ -4430,7 +4430,7 @@ public abstract class StoreIngestionTaskTest {
       PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateSupplier.get();
       PubSubTopic wrongTopic = pubSubTopicRepository.getTopic("blah_v1");
 
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage2 =
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage2 =
           new ImmutablePubSubMessage(null, null, new PubSubTopicPartitionImpl(wrongTopic, 1), 0, 0, 0);
 
       when(partitionConsumptionState.getLeaderFollowerState()).thenReturn(STANDBY);
@@ -4851,7 +4851,7 @@ public abstract class StoreIngestionTaskTest {
     put.replicationMetadataPayload = ByteBuffer.allocate(10);
     kafkaMessageEnvelope.payloadUnion = put;
     kafkaMessageEnvelope.producerMetadata = new ProducerMetadata();
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = new ImmutablePubSubMessage(
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage = new ImmutablePubSubMessage(
         kafkaKey,
         kafkaMessageEnvelope,
         new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO),
@@ -4933,7 +4933,7 @@ public abstract class StoreIngestionTaskTest {
     put.replicationMetadataPayload = ByteBuffer.allocate(10);
     kafkaMessageEnvelope.payloadUnion = put;
     kafkaMessageEnvelope.producerMetadata = new ProducerMetadata();
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = new ImmutablePubSubMessage(
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage = new ImmutablePubSubMessage(
         kafkaKey,
         kafkaMessageEnvelope,
         new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO),
@@ -5003,7 +5003,7 @@ public abstract class StoreIngestionTaskTest {
     put.replicationMetadataPayload = ByteBuffer.allocate(10);
     kafkaMessageEnvelope.payloadUnion = put;
     kafkaMessageEnvelope.producerMetadata = new ProducerMetadata();
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = new ImmutablePubSubMessage(
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage = new ImmutablePubSubMessage(
         kafkaKey,
         kafkaMessageEnvelope,
         new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO),
@@ -5082,11 +5082,12 @@ public abstract class StoreIngestionTaskTest {
     long expectedRecordSize = (long) numChunks * ChunkingTestUtils.CHUNK_LENGTH + putKeyFoo.length;
     int rmdSize = 5 * ByteUtils.BYTES_PER_KB; // arbitrary size
     PubSubTopicPartition tp = new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO);
-    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> messages = new ArrayList<>(numChunks + 1); // + manifest
+    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> messages = new ArrayList<>(numChunks + 1); // +
+                                                                                                                   // manifest
     for (int i = 0; i < numChunks; i++) {
       messages.add(ChunkingTestUtils.createChunkedRecord(putKeyFoo, 1, 1, i, 0, tp));
     }
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> manifestMessage =
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> manifestMessage =
         ChunkingTestUtils.createChunkValueManifestRecord(putKeyFoo, messages.get(0), numChunks, tp);
     messages.add(manifestMessage);
 
@@ -5097,7 +5098,7 @@ public abstract class StoreIngestionTaskTest {
               TimeUnit.SECONDS,
               () -> assertTrue(storeIngestionTaskUnderTest.hasAnySubscription()));
 
-          for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messages) {
+          for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message: messages) {
             try {
               Put put = (Put) message.getValue().getPayloadUnion();
               if (put.schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
@@ -5245,7 +5246,7 @@ public abstract class StoreIngestionTaskTest {
     put.putValue = ByteBuffer.wrap("test_value_suffix".getBytes(), 0, 10); // With trailing suffix.
     put.schemaId = 1;
     messsageEnvelope.payloadUnion = put;
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumedRecord = new ImmutablePubSubMessage<>(
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumedRecord = new ImmutablePubSubMessage<>(
         key,
         messsageEnvelope,
         new PubSubTopicPartitionImpl(
@@ -5479,7 +5480,7 @@ public abstract class StoreIngestionTaskTest {
 
     PubSubTopicPartition versionTopicPartition = new PubSubTopicPartitionImpl(versionTopic, PARTITION_FOO);
     PubSubTopicPartition rtPartition = new PubSubTopicPartitionImpl(rtTopic, PARTITION_FOO);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> vtRecord =
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> vtRecord =
         new ImmutablePubSubMessage<>(key, value, versionTopicPartition, 1, 0, 0);
 
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
@@ -5499,7 +5500,7 @@ public abstract class StoreIngestionTaskTest {
     assertTrue(ingestionTask.shouldProcessRecord(vtRecord), "RT DIV from local VT should be processed");
 
     doReturn(pubSubTopicRepository.getTopic(rtTopicName)).when(offsetRecord).getLeaderTopic(any());
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> rtRecord =
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> rtRecord =
         new ImmutablePubSubMessage<>(key, value, rtPartition, 0, 0, 0);
     assertFalse(ingestionTask.shouldProcessRecord(rtRecord), "RT DIV from RT should not be processed");
 
