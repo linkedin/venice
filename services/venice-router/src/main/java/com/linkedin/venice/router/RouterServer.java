@@ -322,7 +322,6 @@ public class RouterServer extends AbstractVeniceService {
       D2Client d2Client,
       String d2ServiceName) {
     this(properties, serviceDiscoveryAnnouncers, accessController, sslFactory, metricsRepository, true);
-    inFlightRequestStat = new InFlightRequestStat(config);
     HelixReadOnlyZKSharedSystemStoreRepository readOnlyZKSharedSystemStoreRepository =
         new HelixReadOnlyZKSharedSystemStoreRepository(zkClient, adapter, config.getSystemSchemaClusterName());
     HelixReadOnlyStoreRepository readOnlyStoreRepository = new HelixReadOnlyStoreRepository(
@@ -407,6 +406,7 @@ public class RouterServer extends AbstractVeniceService {
 
     Class<IdentityParser> identityParserClass = ReflectUtils.loadClass(config.getIdentityParserClassName());
     this.identityParser = ReflectUtils.callConstructor(identityParserClass, new Class[0], new Object[0]);
+    inFlightRequestStat = new InFlightRequestStat(config);
     verifySslOk();
   }
 

@@ -18,6 +18,7 @@ public class InFlightRequestStat {
   private final VeniceMetricsRepository localMetricRepo;
 
   private final Sensor totalInflightRequestSensor;
+  private final Metric metric;
 
   public InFlightRequestStat(VeniceRouterConfig config) {
     metricConfig = new MetricConfig().timeWindow(config.getRouterInFlightMetricWindowSeconds(), TimeUnit.SECONDS);
@@ -28,6 +29,7 @@ public class InFlightRequestStat {
             .build());
     totalInflightRequestSensor = localMetricRepo.sensor("total_inflight_request");
     totalInflightRequestSensor.add(TOTAL_INFLIGHT_REQUEST_COUNT, new Rate());
+    metric = localMetricRepo.getMetric(TOTAL_INFLIGHT_REQUEST_COUNT);
   }
 
   public Sensor getTotalInflightRequestSensor() {
@@ -35,7 +37,6 @@ public class InFlightRequestStat {
   }
 
   public double getInFlightRequestRate() {
-    Metric metric = localMetricRepo.getMetric(TOTAL_INFLIGHT_REQUEST_COUNT);
     // max return -infinity when there are no samples. validate only against finite value
     return Double.isFinite(metric.value()) ? metric.value() : 0.0;
   }
