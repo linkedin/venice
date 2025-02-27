@@ -110,6 +110,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
@@ -200,6 +201,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final Lazy<ZKHelixAdmin> zkHelixAdmin;
 
   private final ExecutorService aaWCIngestionStorageLookupThreadPool;
+
+  private final ScheduledExecutorService idleStoreIngestionTaskKillerExecutor;
 
   public KafkaStoreIngestionService(
       StorageService storageService,
@@ -450,6 +453,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       this.aaWCWorkLoadProcessingThreadPool = null;
     }
 
+    this.idleStoreIngestionTaskKillerExecutor = serverConfig.getIdleIngestionTaskCleanupIntervalInSeconds() >= 0
+        ? Executors.newScheduledThreadPool(1, new DaemonThreadFactory("idle-store-ingestion-task-clean-up-thread"))
+        : null;
+
     this.aaWCIngestionStorageLookupThreadPool = Executors.newFixedThreadPool(
         serverConfig.getAaWCIngestionStorageLookupThreadPoolSize(),
         new DaemonThreadFactory("AA_WC_INGESTION_STORAGE_LOOKUP"));
@@ -535,6 +542,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       participantStoreConsumerExecutorService =
           Executors.newSingleThreadExecutor(new DaemonThreadFactory("ParticipantStoreConsumptionTask"));
       participantStoreConsumerExecutorService.submit(participantStoreConsumptionTask);
+    }
+    final int idleIngestionTaskCleanupIntervalInSeconds = serverConfig.getIdleIngestionTaskCleanupIntervalInSeconds();
+    if (idleIngestionTaskCleanupIntervalInSeconds >= 0) {
+      this.idleStoreIngestionTaskKillerExecutor.scheduleWithFixedDelay(
+          this::scanAndCloseIdleConsumptionTasks,
+          idleIngestionTaskCleanupIntervalInSeconds,
+          idleIngestionTaskCleanupIntervalInSeconds,
+          TimeUnit.SECONDS);
     }
     // Although the StoreConsumptionTasks are now running in their own threads, there is no async
     // process that needs to finish before the KafkaStoreIngestionService can be considered
@@ -625,7 +640,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     Utils.closeQuietlyWithErrorLogged(ingestionThrottler);
     Utils.closeQuietlyWithErrorLogged(participantStoreConsumptionTask);
     shutdownExecutorService(participantStoreConsumerExecutorService, "participantStoreConsumerExecutorService", true);
-
+    shutdownExecutorService(idleStoreIngestionTaskKillerExecutor, "idleStoreIngestionTaskKillerExecutor", true);
     /*
      * We would like to gracefully shutdown {@link #ingestionExecutorService},
      * so that it will have an opportunity to checkpoint the processed offset.
@@ -958,11 +973,26 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       LOGGER.info("Reset consumption offset for topic: {}, partition: {}", topicName, partitionId);
     }
     if (!ingestionTaskHasAnySubscription(topicName)) {
-      if (isIsolatedIngestion) {
-        LOGGER.info("Ingestion task for topic {} will be kept open for the access from main process.", topicName);
-      } else {
-        LOGGER.info("Shutting down ingestion task of topic {}", topicName);
-        shutdownStoreIngestionTask(topicName);
+      shutdownIdleIngestionTask(topicName);
+    }
+  }
+
+  /**
+   * A helper function which checks the idles counter inside StoreIngestionTask; if the counter is higher than the idle
+   * threshold, treat the task as idle and shutdown the task.
+   */
+  private void shutdownIdleIngestionTask(String topicName) {
+    try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topicName)) {
+      // Must check the idle status again after acquiring the lock.
+      StoreIngestionTask ingestionTask = topicNameToIngestionTaskMap.get(topicName);
+      if (ingestionTask != null
+          && !(ingestionTask.consumerHasAnySubscription() || ingestionTask.hasAnyPendingSubscription())) {
+        if (isIsolatedIngestion) {
+          LOGGER.info("Ingestion task for topic {} will be kept open for the access from main process.", topicName);
+        } else {
+          LOGGER.info("Shutting down ingestion task of topic {}", topicName);
+          shutdownStoreIngestionTask(topicName);
+        }
       }
     }
   }
@@ -1018,6 +1048,23 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     LOGGER.info("Start killing the following ingestion tasks: {}", nonCurrentVersions);
     nonCurrentVersions.forEach(topic -> killConsumptionTask(topic));
     LOGGER.info("Finished killing the following ingestion tasks: {}", nonCurrentVersions);
+  }
+
+  private void scanAndCloseIdleConsumptionTasks() {
+    try {
+      LOGGER.info("Number of ingestion tasks before cleaning: {}", topicNameToIngestionTaskMap.size());
+      for (Map.Entry<String, StoreIngestionTask> entry: topicNameToIngestionTaskMap.entrySet()) {
+        String topicName = entry.getKey();
+        StoreIngestionTask task = entry.getValue();
+        if (task.isIdleOverThreshold()) {
+          LOGGER.info("Found idle task for topic {}, shutting it down.", topicName);
+          shutdownIdleIngestionTask(topicName);
+        }
+      }
+      LOGGER.info("Number of active ingestion tasks after cleaning: {}", topicNameToIngestionTaskMap.size());
+    } catch (VeniceException e) {
+      LOGGER.info("Error when attempting to shutdown idle store ingestion tasks", e);
+    }
   }
 
   /**
@@ -1322,7 +1369,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private boolean ingestionTaskHasAnySubscription(String topic) {
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
       StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
-      return consumerTask != null && consumerTask.hasAnySubscription();
+      return consumerTask != null
+          && (consumerTask.consumerHasAnySubscription() || consumerTask.hasAnyPendingSubscription());
     }
   }
 
