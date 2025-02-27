@@ -623,7 +623,7 @@ spotless {
     importOrder()
     removeUnusedImports()
     eclipse().configFile("$rootDir/gradle/spotless/eclipse-java-formatter.xml")
-    target '**/*.java'
+    target '**/src/**/*.java'
     targetExclude '**/generated/**'
   }
 }
