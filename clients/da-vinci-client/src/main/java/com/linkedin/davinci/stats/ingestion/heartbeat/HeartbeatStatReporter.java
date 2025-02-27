@@ -10,11 +10,11 @@ import java.util.Set;
 
 
 public class HeartbeatStatReporter extends AbstractVeniceStatsReporter<HeartbeatStat> {
-  private static final String LEADER_METRIC_PREFIX = "heartbeat_delay_ms_leader-";
-  private static final String FOLLOWER_METRIC_PREFIX = "heartbeat_delay_ms_follower-";
-  private static final String CATCHUP_UP_FOLLOWER_METRIC_PREFIX = "catching_up_heartbeat_delay_ms_follower-";
-  private static final String MAX = "-Max";
-  private static final String AVG = "-Avg";
+  static final String LEADER_METRIC_PREFIX = "heartbeat_delay_ms_leader-";
+  static final String FOLLOWER_METRIC_PREFIX = "heartbeat_delay_ms_follower-";
+  static final String CATCHUP_UP_FOLLOWER_METRIC_PREFIX = "catching_up_heartbeat_delay_ms_follower-";
+  static final String MAX = "-Max";
+  static final String AVG = "-Avg";
 
   public HeartbeatStatReporter(MetricsRepository metricsRepository, String storeName, Set<String> regions) {
     super(metricsRepository, storeName);
