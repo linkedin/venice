@@ -2252,7 +2252,8 @@ public abstract class StoreIngestionTaskTest {
       waitForNonDeterministicCompletion(
           TEST_TIMEOUT_MS,
           TimeUnit.MILLISECONDS,
-          () -> !storeIngestionTaskUnderTest.consumerHasAnySubscription());
+          () -> !storeIngestionTaskUnderTest.hasAnySubscription()
+              && !storeIngestionTaskUnderTest.hasAnyPendingSubscription());
       // Verify offset has not been processed. Because consumption task should process kill action at first.
       // offSetManager.clearOffset should only be invoked one time during clean up after killing this task.
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).clearOffset(topic, PARTITION_FOO);

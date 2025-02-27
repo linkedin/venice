@@ -759,6 +759,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
+   * Check the consumer action queue to see if there are any pending SUBSCRIBE actions.
+   */
+  public boolean hasAnyPendingSubscription() {
+    return consumerActionsQueue.stream().anyMatch(action -> action.getType() == SUBSCRIBE);
+  }
+
+  /**
+   * This helper function will check if the ingestion task has been idle for a long time.
+   */
+  public boolean isIdleOverThreshold() {
+    return getIdleCounter() > getMaxIdleCounter();
+  }
+
+  /**
    * Adds an asynchronous resetting partition consumption offset request for the task.
    */
   public synchronized void resetPartitionConsumptionOffset(PubSubTopicPartition topicPartition) {
@@ -1561,7 +1575,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Check whether current consumer has any subscription or not since 'poll' function will throw
      * {@link IllegalStateException} with empty subscription.
      */
-    if (!consumerHasAnySubscription()) {
+    if (!consumerHasAnySubscription() && !hasAnyPendingSubscription()) {
       if (++idleCounter <= getMaxIdleCounter()) {
         String message = ingestionTaskName + " Not subscribed to any partitions ";
         if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
@@ -1915,7 +1929,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // Only reset Offset and Drop Partition Messages are important, subscribe/unsubscribe will be handled
     // on the restart by Helix Controller notifications on the new StoreIngestionTask.
     this.storeRepository.unregisterStoreDataChangedListener(this.storageUtilizationManager);
-    for (ConsumerAction message: consumerActionsQueue) {
+    // Remove all the actions out of the queue in order
+    while (!consumerActionsQueue.isEmpty()) {
+      ConsumerAction message = consumerActionsQueue.poll();
       ConsumerActionType opType = message.getType();
       String topic = message.getTopic();
       int partition = message.getPartition();
@@ -4192,6 +4208,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   private void maybeCloseInactiveIngestionTask() {
+    if (serverConfig.getIdleIngestionTaskCleanupIntervalInSeconds() >= 0 && !isIsolatedIngestion) {
+      // Ingestion task will not close by itself
+      return;
+    }
     LOGGER.warn("{} Has expired due to not being subscribed to any partitions for too long.", ingestionTaskName);
     if (!consumerActionsQueue.isEmpty()) {
       LOGGER.info("{} consumerActionsQueue is not empty, will not close ingestion task.", ingestionTaskName);
