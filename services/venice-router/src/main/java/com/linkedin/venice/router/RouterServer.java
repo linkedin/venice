@@ -469,8 +469,8 @@ public class RouterServer extends AbstractVeniceService {
             config.isKeyValueProfilingEnabled(),
             metadataRepository,
             config.isUnregisterMetricForDeletedStoreEnabled(),
-            null,
-            null));
+            totalInflightRequestSensor,
+            localMetricRepo));
     this.schemaRepository = schemaRepository;
     this.storeConfigRepository = storeConfigRepository;
     this.liveInstanceMonitor = liveInstanceMonitor;
