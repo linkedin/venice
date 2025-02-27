@@ -91,8 +91,6 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
-import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
@@ -2412,7 +2410,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           Duration.ofMillis(10),
           Duration.ofMillis(500),
           Duration.ofSeconds(5),
-          Arrays.asList(PubSubTopicDoesNotExistException.class, PubSubOpTimeoutException.class, VeniceException.class));
+          Collections.singletonList(VeniceException.class));
     } catch (Exception e) {
       LOGGER.error(
           "Failed to get end offset for topic-partition: {} with kafka url {}  even after 10 retries",
