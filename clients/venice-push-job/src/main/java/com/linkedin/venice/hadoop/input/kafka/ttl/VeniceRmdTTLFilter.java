@@ -138,7 +138,7 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
       }
     }
     UpdateResultStatus updateResultStatus =
-        mergeRecordHelper.deleteRecord(valueRecord, (GenericRecord) rmdTimestampObject, filterTimestamp, 0);
+        mergeRecordHelper.deleteRecord(valueRecord, (GenericRecord) rmdTimestampObject, filterTimestamp, -1);
     if (updateResultStatus.equals(UpdateResultStatus.COMPLETELY_UPDATED)) {
       // This means the record is fully stale, we should drop it.
       return true;
