@@ -154,6 +154,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
   private final int refreshAttemptsForZkReconnect;
   private final long refreshIntervalForZkReconnectInMs;
   private final int routerNettyGracefulShutdownPeriodSeconds;
+  private final int routerInFlightMetricWindowSeconds;
   private final boolean enforceSecureOnly;
   private final boolean dnsCacheEnabled;
   private final String hostPatternForDnsCache;
@@ -265,6 +266,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
       refreshIntervalForZkReconnectInMs =
           props.getLong(REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS, java.util.concurrent.TimeUnit.SECONDS.toMillis(10));
       routerNettyGracefulShutdownPeriodSeconds = props.getInt(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 10);
+      routerInFlightMetricWindowSeconds = props.getInt(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 5);
       enforceSecureOnly = props.getBoolean(ENFORCE_SECURE_ROUTER, false);
 
       // This only needs to be enabled in some DC, where slow DNS lookup happens.
@@ -503,6 +505,10 @@ public class VeniceRouterConfig implements RouterRetryConfig {
 
   public int getRouterNettyGracefulShutdownPeriodSeconds() {
     return routerNettyGracefulShutdownPeriodSeconds;
+  }
+
+  public int getRouterInFlightMetricWindowSeconds() {
+    return routerInFlightMetricWindowSeconds;
   }
 
   public boolean isEnforcingSecureOnly() {

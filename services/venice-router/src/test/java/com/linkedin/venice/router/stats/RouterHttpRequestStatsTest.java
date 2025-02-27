@@ -54,7 +54,8 @@ public class RouterHttpRequestStatsTest {
         clusterName,
         RequestType.SINGLE_GET,
         mock(ScatterGatherStats.class),
-        false);
+        false,
+        null);
 
     if (useVeniceMetricRepository && isOtelEnabled) {
       assertTrue(routerHttpRequestStats.emitOpenTelemetryMetrics(), "Otel should be enabled");

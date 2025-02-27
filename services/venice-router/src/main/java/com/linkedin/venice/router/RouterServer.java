@@ -72,7 +72,6 @@ import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.HealthCheckStats;
 import com.linkedin.venice.router.stats.LongTailRetryStatsProvider;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
-import com.linkedin.venice.router.stats.RouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterMetricEntity;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.stats.RouterThrottleStats;
@@ -215,6 +214,8 @@ public class RouterServer extends AbstractVeniceService {
 
   private ScheduledExecutorService retryManagerExecutorService;
 
+  private InFlightRequestStat inFlightRequestStat;
+
   public static void main(String args[]) throws Exception {
     if (args.length != 1) {
       Utils.exit("USAGE: java -jar venice-router-all.jar <router_config_file_path>");
@@ -321,7 +322,6 @@ public class RouterServer extends AbstractVeniceService {
       D2Client d2Client,
       String d2ServiceName) {
     this(properties, serviceDiscoveryAnnouncers, accessController, sslFactory, metricsRepository, true);
-
     HelixReadOnlyZKSharedSystemStoreRepository readOnlyZKSharedSystemStoreRepository =
         new HelixReadOnlyZKSharedSystemStoreRepository(zkClient, adapter, config.getSystemSchemaClusterName());
     HelixReadOnlyStoreRepository readOnlyStoreRepository = new HelixReadOnlyStoreRepository(
@@ -341,7 +341,8 @@ public class RouterServer extends AbstractVeniceService {
             requestType,
             config.isKeyValueProfilingEnabled(),
             metadataRepository,
-            config.isUnregisterMetricForDeletedStoreEnabled()));
+            config.isUnregisterMetricForDeletedStoreEnabled(),
+            inFlightRequestStat.getTotalInflightRequestSensor()));
     this.schemaRepository = new HelixReadOnlySchemaRepositoryAdapter(
         new HelixReadOnlyZKSharedSchemaRepository(
             readOnlyZKSharedSystemStoreRepository,
@@ -405,7 +406,7 @@ public class RouterServer extends AbstractVeniceService {
 
     Class<IdentityParser> identityParserClass = ReflectUtils.loadClass(config.getIdentityParserClassName());
     this.identityParser = ReflectUtils.callConstructor(identityParserClass, new Class[0], new Object[0]);
-
+    inFlightRequestStat = new InFlightRequestStat(config);
     verifySslOk();
   }
 
@@ -446,7 +447,8 @@ public class RouterServer extends AbstractVeniceService {
             requestType,
             config.isKeyValueProfilingEnabled(),
             metadataRepository,
-            config.isUnregisterMetricForDeletedStoreEnabled()));
+            config.isUnregisterMetricForDeletedStoreEnabled(),
+            inFlightRequestStat.getTotalInflightRequestSensor()));
     this.schemaRepository = schemaRepository;
     this.storeConfigRepository = storeConfigRepository;
     this.liveInstanceMonitor = liveInstanceMonitor;
@@ -816,6 +818,10 @@ public class RouterServer extends AbstractVeniceService {
     optionalChannelHandlers.put(key, channelHandler);
   }
 
+  public double getInFlightRequestRate() {
+    return inFlightRequestStat.getInFlightRequestRate();
+  }
+
   @Override
   public void stopInner() throws Exception {
     for (ServiceDiscoveryAnnouncer serviceDiscoveryAnnouncer: serviceDiscoveryAnnouncers) {
@@ -852,20 +858,20 @@ public class RouterServer extends AbstractVeniceService {
      * correctly.
      */
 
+    LOGGER.info("Waiting to make sure all in-flight requests are drained");
     // Graceful shutdown: Wait till all the requests are drained
     try {
       RetryUtils.executeWithMaxAttempt(() -> {
-        if (RouterHttpRequestStats.hasInFlightRequests()) {
-          throw new VeniceException("There are still in-flight requests in router");
+        double inFlightRequestRate = inFlightRequestStat.getInFlightRequestRate();
+        if (inFlightRequestRate > 0.0) {
+          throw new VeniceException("There are still in-flight requests in router :" + inFlightRequestRate);
         }
-      },
-          10,
-          Duration.ofSeconds(config.getRouterNettyGracefulShutdownPeriodSeconds()),
-          Collections.singletonList(VeniceException.class));
+      }, 30, Duration.ofSeconds(1), Collections.singletonList(VeniceException.class));
     } catch (VeniceException e) {
       LOGGER.error(
           "There are still in-flight request during router shutdown, still continuing shutdown, it might cause unhealthy request in client");
     }
+    LOGGER.info("Drained all in-flight requests, starting to shutdown the router.");
     storageNodeClient.close();
     workerEventLoopGroup.shutdownGracefully();
     serverEventLoopGroup.shutdownGracefully();

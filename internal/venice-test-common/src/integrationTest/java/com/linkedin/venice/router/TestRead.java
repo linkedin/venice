@@ -389,6 +389,7 @@ public abstract class TestRead {
               "There should be some idle connections since test queries are finished");
         }
 
+        Assert.assertTrue(getRouterMetricValue("total_inflight_request_count") > 0.0);
         Assert.assertTrue(getAggregateRouterMetricValue(".localhost--response_waiting_time.50thPercentile") > 0);
         Assert.assertTrue(
             getAggregateRouterMetricValue(".localhost--multiget_streaming_response_waiting_time.50thPercentile") > 0);
@@ -553,6 +554,9 @@ public abstract class TestRead {
         try {
           queriesSent++;
           storeClient.batchGet(keySet).get();
+          for (VeniceRouterWrapper routerWrapper: veniceCluster.getVeniceRouters()) {
+            Assert.assertTrue(routerWrapper.getRouter().getInFlightRequestRate() > 0.0);
+          }
         } catch (ExecutionException e) {
           Throwable cause = e.getCause();
           Assert.assertTrue(
@@ -592,6 +596,12 @@ public abstract class TestRead {
           "The throttled_request metric is inconsistent with the number of quota exceptions received by the client!");
 
       getAggregateRouterMetricValue(".total--multiget_throttled_request_latency.Max");
+      for (VeniceRouterWrapper routerWrapper: veniceCluster.getVeniceRouters()) {
+        routerWrapper.getRouter().stop();
+      }
+      for (VeniceRouterWrapper routerWrapper: veniceCluster.getVeniceRouters()) {
+        Assert.assertEquals(routerWrapper.getRouter().getInFlightRequestRate(), 0.0);
+      }
       /** TODO Re-enable this assertion once we stop throwing batch get quota exceptions from {@link com.linkedin.venice.router.api.VeniceDelegateMode} */
       // Assert.assertTrue(throttledRequestLatencyForBatchGetAfterQueries > 0.0, "There should be batch get throttled
       // request latency now!");
@@ -600,6 +610,10 @@ public abstract class TestRead {
 
   private double getMaxServerMetricValue(String metricName) {
     return MetricsUtils.getMax(metricName, veniceCluster.getVeniceServers());
+  }
+
+  private double getRouterMetricValue(String metricName) {
+    return MetricsUtils.getMax(metricName, veniceCluster.getVeniceRouters());
   }
 
   private double getMaxRouterMetricValue(String metricName) {
