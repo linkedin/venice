@@ -1488,8 +1488,11 @@ public class VeniceParentHelixAdmin implements Admin {
             && multiClusterConfigs.isSkipDeferredVersionSwapForDVCEnabled();
         if (skipTargetRegionPushForDavinci) {
           LOGGER.info(
-              "Skip setting targetedRegions and versionSwapDeferred values for store: {} during a target region push with deferred swap",
-              storeName);
+              "Skip setting targetedRegions and versionSwapDeferred values for store: {} "
+                  + "because isSkipDeferredVersionSwapForDVCEnabled: {} and isDavinciHeartbeatReported: {}",
+              storeName,
+              multiClusterConfigs.isSkipDeferredVersionSwapForDVCEnabled(),
+              currentVersionInChild.get().getIsDavinciHeartbeatReported());
           targetedRegions = "";
           versionSwapDeferred = false;
         }
