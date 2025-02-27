@@ -1,8 +1,8 @@
 package com.linkedin.venice.router;
 
+import static com.linkedin.venice.router.InFlightRequestStat.TOTAL_INFLIGHT_REQUEST_COUNT;
 import static com.linkedin.venice.router.RouterServer.ROUTER_SERVICE_METRIC_PREFIX;
 import static com.linkedin.venice.router.RouterServer.ROUTER_SERVICE_NAME;
-import static com.linkedin.venice.router.RouterServer.TOTAL_INFLIGHT_REQUEST_COUNT;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static org.mockito.Mockito.mock;
 

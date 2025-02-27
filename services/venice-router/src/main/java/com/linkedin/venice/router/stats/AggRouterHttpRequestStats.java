@@ -5,7 +5,6 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.AbstractVeniceAggStoreStats;
-import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.metrics.MetricsRepository;
@@ -32,7 +31,6 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
         false,
         metadataRepository,
         isUnregisterMetricForDeletedStoreEnabled,
-        null,
         null);
   }
 
@@ -43,8 +41,7 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
       boolean isKeyValueProfilingEnabled,
       ReadOnlyStoreRepository metadataRepository,
       boolean isUnregisterMetricForDeletedStoreEnabled,
-      Sensor totalInFlightRequestSensor,
-      VeniceMetricsRepository inflightMetricRepo) {
+      Sensor totalInFlightRequestSensor) {
     super(cluster, metricsRepository, metadataRepository, isUnregisterMetricForDeletedStoreEnabled);
     // Disable store level non-streaming multi get stats reporting because it's no longer used in clients. We still
     // report to the total stats for visibility of potential old clients.

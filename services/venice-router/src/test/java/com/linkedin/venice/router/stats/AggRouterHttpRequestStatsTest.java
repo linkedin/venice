@@ -38,8 +38,7 @@ public class AggRouterHttpRequestStatsTest {
         false,
         storeMetadataRepository,
         true,
-        mock(Sensor.class),
-        mock(VeniceMetricsRepository.class));
+        mock(Sensor.class));
 
     stats.recordRequest("store5");
     Assert.assertEquals(reporter.query(".total--request.Count").value(), 1d);
@@ -78,8 +77,7 @@ public class AggRouterHttpRequestStatsTest {
         true,
         storeMetadataRepository,
         true,
-        mock(Sensor.class),
-        mock(VeniceMetricsRepository.class));
+        mock(Sensor.class));
 
     for (int i = 1; i <= 100; i += 1) {
       stats.recordKeySize(i);
@@ -106,8 +104,7 @@ public class AggRouterHttpRequestStatsTest {
         false,
         storeMetadataRepository,
         true,
-        mock(Sensor.class),
-        mock(VeniceMetricsRepository.class));
+        mock(Sensor.class));
     AggRouterHttpRequestStats streamingMultiGetStats = new AggRouterHttpRequestStats(
         clusterName,
         metricsRepository,
@@ -115,8 +112,7 @@ public class AggRouterHttpRequestStatsTest {
         false,
         storeMetadataRepository,
         true,
-        mock(Sensor.class),
-        mock(VeniceMetricsRepository.class));
+        mock(Sensor.class));
     String storeName = Utils.getUniqueString("test-store");
     multiGetStats.recordRequest(storeName);
     streamingMultiGetStats.recordRequest(storeName);
