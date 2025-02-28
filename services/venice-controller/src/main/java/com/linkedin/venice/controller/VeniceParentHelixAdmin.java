@@ -629,9 +629,10 @@ public class VeniceParentHelixAdmin implements Admin {
         VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
         Map<String, Long> metadata = adminTopicMetadataAccessor.getMetadata(clusterName);
         int adminOperationProtocolVersion = (int) AdminTopicMetadataAccessor.getAdminOperationProtocolVersion(metadata);
-        int writerSchemaId = adminOperationProtocolVersion > 0
-            ? adminOperationProtocolVersion
-            : AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
+        int writerSchemaId = (adminOperationProtocolVersion > 0
+            && adminOperationProtocolVersion <= AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
+                ? adminOperationProtocolVersion
+                : AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
 
         byte[] serializedValue = adminOperationSerializer.serialize(message, writerSchemaId);
         try {
