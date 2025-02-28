@@ -131,7 +131,7 @@ public class TestDumpIngestionContext {
       LOGGER.info("Heartbeat Info with topic filtering:\n" + heartbeatInfoMap);
       Assert.assertEquals(heartbeatInfoMap.keySet().stream().filter(x -> x.endsWith("dc-0")).count(), 3);
       Assert.assertEquals(
-          heartbeatInfoMap.keySet().stream().filter(x -> x.endsWith("dc-1")).count() * 2,
+          heartbeatInfoMap.keySet().stream().filter(x -> x.contains("dc-1")).count() * 2,
           heartbeatInfoMap.values().stream().filter(x -> x.getLeaderState().equals("LEADER")).count());
 
       heartbeatInfoMap = serverWrapper.getVeniceServer()
