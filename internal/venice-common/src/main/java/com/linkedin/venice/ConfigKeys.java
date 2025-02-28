@@ -94,8 +94,6 @@ public class ConfigKeys {
    */
   public static final String KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND = "kafka.fetch.quota.records.per.second";
 
-  public static final String KAFKA_FETCH_QUOTA_RECORDS_FACTORS_PER_SECOND =
-      "kafka.fetch.quota.records.factors.per.second";
   /**
    * How many records that one server could consume from Kafka at most in one second from the specified regions.
    * If the consume rate reached this quota, the consumption thread will be blocked until there is the available quota.
@@ -2274,12 +2272,6 @@ public class ConfigKeys {
   public static final String SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_SEP_RT_LEADER =
       "server.dedicated.consumer.pool.size.for.sep.rt.leader";
 
-  public static final String SERVER_DEDICATED_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_AA_WC_LEADER =
-      "server_dedicated_consumer_pool_records_limit_factors_for_aa_wc_leader";
-
-  public static final String SERVER_DEDICATED_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_SEP_RT_LEADER =
-      "server.dedicated.consumer.pool.records.limit.factors.for.sep.rt.leader";
-
   /**
    * Consumer Pool allocation strategy to rely on pool size to prioritize specific traffic. There will be 3 different
    * types strategy supported decided by #ConsumerPoolStrategyType.
@@ -2317,16 +2309,26 @@ public class ConfigKeys {
    */
   public static final String SERVER_CONSUMER_POOL_SIZE_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER =
       "server.consumer.pool.size.for.non.current.version.non.aa.wc.leader";
-  public static final String SERVER_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_CURRENT_VERSION_AA_WC_LEADER =
-      "server.consumer.pool.records.limit.factors.for.current.version.aa.wc.leader";
-  public static final String SERVER_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_CURRENT_VERSION_SEPARATE_RT_LEADER =
-      "server.consumer.pool.records.limit.factors.for.current.version.separate.rt.leader";
-  public static final String SERVER_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_NON_CURRENT_VERSION_AA_WC_LEADER =
-      "server.consumer.pool.records.limit.factors.for.non.current.version.aa.wc.leader";
-  public static final String SERVER_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_CURRENT_VERSION_NON_AA_WC_LEADER =
-      "server.consumer.pool.records.limit.factors.for.current.version.non.aa.wc.leader";
-  public static final String SERVER_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER =
-      "server.consumer.pool.records.limit.factors.for.non.current.version.non.aa.wc.leader";
+
+  /**
+   * A string of comma separated number to specify different factors multiplying basic throttling limit
+   * KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND, the factors will be comma separated numbers with ascending order,
+   * but we should include 1.0 as basic setting. For example, a string as: "0.8, 1.0, 1.2" means the basic setting is
+   * 1.0, and the max setting is 1.2 * basic throttling limit.
+   */
+  public static final String KAFKA_FETCH_THROTTLER_FACTORS_PER_SECOND = "kafka.fetch.throttler.factors.per.second";
+  public static final String SERVER_THROTTLER_FACTORS_FOR_AA_WC_LEADER = "server_throttler_factors_for_aa_wc_leader";
+  public static final String SERVER_THROTTLER_FACTORS_FOR_SEP_RT_LEADER = "server.throttler.factors.for.sep.rt.leader";
+  public static final String SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_AA_WC_LEADER =
+      "server.throttler.factors.for.current.version.aa.wc.leader";
+  public static final String SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_SEPARATE_RT_LEADER =
+      "server.throttler.factors.for.current.version.separate.rt.leader";
+  public static final String SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_AA_WC_LEADER =
+      "server.throttler.factors.for.non.current.version.aa.wc.leader";
+  public static final String SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_NON_AA_WC_LEADER =
+      "server.throttler.factors.for.current.version.non.aa.wc.leader";
+  public static final String SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER =
+      "server.throttler.factors.for.non.current.version.non.aa.wc.leader";
 
   /**
    * Whether to enable record-level metrics when bootstrapping current version.

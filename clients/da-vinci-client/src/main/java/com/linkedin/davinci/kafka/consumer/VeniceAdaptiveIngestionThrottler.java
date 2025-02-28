@@ -30,20 +30,23 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
     DecimalFormat decimalFormat = new DecimalFormat("0.0");
     throttlerNum = factors.size();
     for (int i = 0; i < throttlerNum; i++) {
-      Double factor = factors.get(i);
-      if (factor == 1.0D) {
+      if (factors.get(i) == 1.0D) {
         currentThrottlerIndex = i;
+        break;
       }
-      EventThrottler eventThrottler = new EventThrottler(
-          (long) (quotaPerSecond * factor),
-          timeWindow,
-          throttlerName + decimalFormat.format(factors.get(i)),
-          false,
-          EventThrottler.BLOCK_STRATEGY);
-      eventThrottlers.add(eventThrottler);
     }
     if (currentThrottlerIndex == -1) {
       throw new IllegalArgumentException("No throttler factor of 1.0D found");
+    }
+
+    for (Double factor: factors) {
+      EventThrottler eventThrottler = new EventThrottler(
+          (long) (quotaPerSecond * factor),
+          timeWindow,
+          throttlerName + decimalFormat.format(factor),
+          false,
+          EventThrottler.BLOCK_STRATEGY);
+      eventThrottlers.add(eventThrottler);
     }
   }
 

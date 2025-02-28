@@ -8,15 +8,15 @@ import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_QUOTA_RECORDS_FACTORS_PER_SECOND;
-import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_CURRENT_VERSION_AA_WC_LEADER;
-import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_CURRENT_VERSION_NON_AA_WC_LEADER;
-import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_NON_CURRENT_VERSION_AA_WC_LEADER;
-import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER;
-import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_AA_WC_LEADER;
-import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_SEP_RT_LEADER;
+import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_THROTTLER_FACTORS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
+import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_AA_WC_LEADER;
+import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_AA_WC_LEADER;
+import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_NON_AA_WC_LEADER;
+import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_AA_WC_LEADER;
+import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER;
+import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_SEP_RT_LEADER;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
@@ -65,29 +65,23 @@ public class VeniceServerConfigTest {
 
     Map<String, Function<VeniceServerConfig, List<Double>>> configMap = new HashMap<>();
 
-    configMap.put(
-        KAFKA_FETCH_QUOTA_RECORDS_FACTORS_PER_SECOND,
-        VeniceServerConfig::getKafkaFetchQuotaRecordsFactorsPerSecond);
+    configMap.put(KAFKA_FETCH_THROTTLER_FACTORS_PER_SECOND, VeniceServerConfig::getKafkaFetchThrottlerFactorsPerSecond);
+
+    configMap.put(SERVER_THROTTLER_FACTORS_FOR_AA_WC_LEADER, VeniceServerConfig::getThrottlerFactorsForAAWCLeader);
+    configMap.put(SERVER_THROTTLER_FACTORS_FOR_SEP_RT_LEADER, VeniceServerConfig::getThrottlerFactorsForSepRTLeader);
 
     configMap.put(
-        SERVER_DEDICATED_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_AA_WC_LEADER,
-        VeniceServerConfig::getDedicatedConsumerPoolRecordsLimitFactorsForAAWCLeader);
+        SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_AA_WC_LEADER,
+        VeniceServerConfig::getThrottlerFactorsForCurrentVersionAAWCLeader);
     configMap.put(
-        SERVER_DEDICATED_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_SEP_RT_LEADER,
-        VeniceServerConfig::getDedicatedConsumerPoolRecordsLimitFactorsForSepRTLeader);
-
+        SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_NON_AA_WC_LEADER,
+        VeniceServerConfig::getThrottlerFactorsForCurrentVersionNonAAWCLeader);
     configMap.put(
-        SERVER_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_CURRENT_VERSION_AA_WC_LEADER,
-        VeniceServerConfig::getConsumerPoolRecordsLimitFactorsForCurrentVersionAAWCLeader);
+        SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_AA_WC_LEADER,
+        VeniceServerConfig::getThrottlerFactorsForNonCurrentVersionAAWCLeader);
     configMap.put(
-        SERVER_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_CURRENT_VERSION_NON_AA_WC_LEADER,
-        VeniceServerConfig::getConsumerPoolRecordsLimitFactorsForCurrentVersionNonAAWCLeader);
-    configMap.put(
-        SERVER_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_NON_CURRENT_VERSION_AA_WC_LEADER,
-        VeniceServerConfig::getConsumerPoolRecordsLimitFactorsForNonCurrentVersionAAWCLeader);
-    configMap.put(
-        SERVER_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER,
-        VeniceServerConfig::getConsumerPoolRecordsLimitFactorsForNonCurrentVersionNonAAWCLeader);
+        SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER,
+        VeniceServerConfig::getThrottlerFactorsForNonCurrentVersionNonAAWCLeader);
 
     // Looping through all the factors config keys and checking if the values are same as default values
     for (Map.Entry<String, Function<VeniceServerConfig, List<Double>>> entry: configMap.entrySet()) {

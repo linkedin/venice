@@ -33,7 +33,7 @@ import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT;
 import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT_STORE_LIST;
 import static com.linkedin.venice.ConfigKeys.INGESTION_MLOCK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
-import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_QUOTA_RECORDS_FACTORS_PER_SECOND;
+import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_THROTTLER_FACTORS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_METRICS;
 import static com.linkedin.venice.ConfigKeys.KEY_VALUE_PROFILING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED;
@@ -67,11 +67,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_QUEUE_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_THREAD_NUM;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY;
-import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_CURRENT_VERSION_AA_WC_LEADER;
-import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_CURRENT_VERSION_NON_AA_WC_LEADER;
-import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_CURRENT_VERSION_SEPARATE_RT_LEADER;
-import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_NON_CURRENT_VERSION_AA_WC_LEADER;
-import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_NON_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_SEPARATE_RT_LEADER;
@@ -89,8 +84,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL
 import static com.linkedin.venice.ConfigKeys.SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEBUG_LOGGING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_CONSUMER_POOL_FOR_AA_WC_LEADER_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_AA_WC_LEADER;
-import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_SEP_RT_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_CONSUMER_POOL_SIZE_FOR_SEP_RT_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED;
@@ -172,6 +165,13 @@ import static com.linkedin.venice.ConfigKeys.SERVER_STUCK_CONSUMER_REPAIR_ENABLE
 import static com.linkedin.venice.ConfigKeys.SERVER_STUCK_CONSUMER_REPAIR_INTERVAL_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_STUCK_CONSUMER_REPAIR_THRESHOLD_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_SYSTEM_STORE_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_AA_WC_LEADER;
+import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_AA_WC_LEADER;
+import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_NON_AA_WC_LEADER;
+import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_SEPARATE_RT_LEADER;
+import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_AA_WC_LEADER;
+import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER;
+import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_SEP_RT_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
 import static com.linkedin.venice.ConfigKeys.SERVER_ZSTD_DICT_COMPRESSION_LEVEL;
 import static com.linkedin.venice.ConfigKeys.SEVER_CALCULATE_QUOTA_USAGE_BASED_ON_PARTITIONS_ASSIGNMENT_ENABLED;
@@ -554,14 +554,14 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int consumerPoolSizeForNonCurrentVersionAAWCLeader;
   private final int consumerPoolSizeForCurrentVersionNonAAWCLeader;
   private final int consumerPoolSizeForNonCurrentVersionNonAAWCLeader;
-  private final List<Double> consumerPoolRecordsLimitFactorsForCurrentVersionAAWCLeader;
-  private final List<Double> consumerPoolRecordsLimitFactorsForCurrentVersionNonAAWCLeader;
-  private final List<Double> consumerPoolRecordsLimitFactorsForCurrentVersionSepRTLeader;
-  private final List<Double> consumerPoolRecordsLimitFactorsForNonCurrentVersionAAWCLeader;
-  private final List<Double> consumerPoolRecordsLimitFactorsForNonCurrentVersionNonAAWCLeader;
-  private final List<Double> kafkaFetchQuotaRecordsFactorsPerSecond;
-  private final List<Double> dedicatedConsumerPoolRecordsLimitFactorsForAAWCLeader;
-  private final List<Double> dedicatedConsumerPoolRecordsLimitFactorsForSepRTLeader;
+  private final List<Double> throttlerFactorsForCurrentVersionAAWCLeader;
+  private final List<Double> throttlerFactorsForCurrentVersionNonAAWCLeader;
+  private final List<Double> throttlerFactorsForCurrentVersionSepRTLeader;
+  private final List<Double> throttlerFactorsForNonCurrentVersionAAWCLeader;
+  private final List<Double> throttlerFactorsForNonCurrentVersionNonAAWCLeader;
+  private final List<Double> kafkaFetchThrottlerFactorsPerSecond;
+  private final List<Double> throttlerFactorsForAAWCLeader;
+  private final List<Double> throttlerFactorsForSepRTLeader;
   private final int dedicatedConsumerPoolSizeForAAWCLeader;
   private final int dedicatedConsumerPoolSizeForSepRTLeader;
   private final boolean useDaVinciSpecificExecutionStatusForError;
@@ -884,9 +884,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     ingestionMlockEnabled = serverProperties.getBoolean(INGESTION_MLOCK_ENABLED, false);
     if (!serverProperties.getString(INGESTION_MEMORY_LIMIT_STORE_LIST, "").isEmpty()) {
       ingestionMemoryLimitStoreSet =
-          serverProperties.getList(INGESTION_MEMORY_LIMIT_STORE_LIST, Collections.emptyList())
-              .stream()
-              .collect(Collectors.toSet());
+          new HashSet<>(serverProperties.getList(INGESTION_MEMORY_LIMIT_STORE_LIST, Collections.emptyList()));
     } else {
       ingestionMemoryLimitStoreSet = Collections.emptySet();
     }
@@ -931,30 +929,24 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     consumerPoolSizeForCurrentVersionAAWCLeader =
         serverProperties.getInt(SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_AA_WC_LEADER, 10);
 
-    kafkaFetchQuotaRecordsFactorsPerSecond =
-        extractThrottleLimitFactorsFor(serverProperties, KAFKA_FETCH_QUOTA_RECORDS_FACTORS_PER_SECOND);
-    dedicatedConsumerPoolRecordsLimitFactorsForAAWCLeader = extractThrottleLimitFactorsFor(
+    kafkaFetchThrottlerFactorsPerSecond =
+        extractThrottleLimitFactorsFor(serverProperties, KAFKA_FETCH_THROTTLER_FACTORS_PER_SECOND);
+    throttlerFactorsForAAWCLeader =
+        extractThrottleLimitFactorsFor(serverProperties, SERVER_THROTTLER_FACTORS_FOR_AA_WC_LEADER);
+    throttlerFactorsForSepRTLeader =
+        extractThrottleLimitFactorsFor(serverProperties, SERVER_THROTTLER_FACTORS_FOR_SEP_RT_LEADER);
+    throttlerFactorsForCurrentVersionAAWCLeader =
+        extractThrottleLimitFactorsFor(serverProperties, SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_AA_WC_LEADER);
+    throttlerFactorsForCurrentVersionNonAAWCLeader =
+        extractThrottleLimitFactorsFor(serverProperties, SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_NON_AA_WC_LEADER);
+    throttlerFactorsForCurrentVersionSepRTLeader = extractThrottleLimitFactorsFor(
         serverProperties,
-        SERVER_DEDICATED_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_AA_WC_LEADER);
-    dedicatedConsumerPoolRecordsLimitFactorsForSepRTLeader = extractThrottleLimitFactorsFor(
+        SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_SEPARATE_RT_LEADER);
+    throttlerFactorsForNonCurrentVersionAAWCLeader =
+        extractThrottleLimitFactorsFor(serverProperties, SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_AA_WC_LEADER);
+    throttlerFactorsForNonCurrentVersionNonAAWCLeader = extractThrottleLimitFactorsFor(
         serverProperties,
-        SERVER_DEDICATED_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_SEP_RT_LEADER);
-
-    consumerPoolRecordsLimitFactorsForCurrentVersionAAWCLeader = extractThrottleLimitFactorsFor(
-        serverProperties,
-        SERVER_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_CURRENT_VERSION_AA_WC_LEADER);
-    consumerPoolRecordsLimitFactorsForCurrentVersionNonAAWCLeader = extractThrottleLimitFactorsFor(
-        serverProperties,
-        SERVER_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_CURRENT_VERSION_NON_AA_WC_LEADER);
-    consumerPoolRecordsLimitFactorsForCurrentVersionSepRTLeader = extractThrottleLimitFactorsFor(
-        serverProperties,
-        SERVER_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_CURRENT_VERSION_SEPARATE_RT_LEADER);
-    consumerPoolRecordsLimitFactorsForNonCurrentVersionAAWCLeader = extractThrottleLimitFactorsFor(
-        serverProperties,
-        SERVER_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_NON_CURRENT_VERSION_AA_WC_LEADER);
-    consumerPoolRecordsLimitFactorsForNonCurrentVersionNonAAWCLeader = extractThrottleLimitFactorsFor(
-        serverProperties,
-        SERVER_CONSUMER_POOL_RECORDS_LIMIT_FACTORS_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER);
+        SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER);
 
     consumerPoolSizeForCurrentVersionSepRTLeader =
         serverProperties.getInt(SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_SEPARATE_RT_LEADER, 10);
@@ -1636,36 +1628,36 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return batchReportEOIPEnabled;
   }
 
-  public List<Double> getConsumerPoolRecordsLimitFactorsForCurrentVersionAAWCLeader() {
-    return consumerPoolRecordsLimitFactorsForCurrentVersionAAWCLeader;
+  public List<Double> getThrottlerFactorsForCurrentVersionAAWCLeader() {
+    return throttlerFactorsForCurrentVersionAAWCLeader;
   }
 
-  public List<Double> getConsumerPoolRecordsLimitFactorsForCurrentVersionNonAAWCLeader() {
-    return consumerPoolRecordsLimitFactorsForCurrentVersionNonAAWCLeader;
+  public List<Double> getThrottlerFactorsForCurrentVersionNonAAWCLeader() {
+    return throttlerFactorsForCurrentVersionNonAAWCLeader;
   }
 
-  public List<Double> getConsumerPoolRecordsLimitFactorsForCurrentVersionSepRTLeader() {
-    return consumerPoolRecordsLimitFactorsForCurrentVersionSepRTLeader;
+  public List<Double> getThrottlerFactorsForCurrentVersionSepRTLeader() {
+    return throttlerFactorsForCurrentVersionSepRTLeader;
   }
 
-  public List<Double> getConsumerPoolRecordsLimitFactorsForNonCurrentVersionAAWCLeader() {
-    return consumerPoolRecordsLimitFactorsForNonCurrentVersionAAWCLeader;
+  public List<Double> getThrottlerFactorsForNonCurrentVersionAAWCLeader() {
+    return throttlerFactorsForNonCurrentVersionAAWCLeader;
   }
 
-  public List<Double> getConsumerPoolRecordsLimitFactorsForNonCurrentVersionNonAAWCLeader() {
-    return consumerPoolRecordsLimitFactorsForNonCurrentVersionNonAAWCLeader;
+  public List<Double> getThrottlerFactorsForNonCurrentVersionNonAAWCLeader() {
+    return throttlerFactorsForNonCurrentVersionNonAAWCLeader;
   }
 
-  public List<Double> getKafkaFetchQuotaRecordsFactorsPerSecond() {
-    return kafkaFetchQuotaRecordsFactorsPerSecond;
+  public List<Double> getKafkaFetchThrottlerFactorsPerSecond() {
+    return kafkaFetchThrottlerFactorsPerSecond;
   }
 
-  public List<Double> getDedicatedConsumerPoolRecordsLimitFactorsForAAWCLeader() {
-    return dedicatedConsumerPoolRecordsLimitFactorsForAAWCLeader;
+  public List<Double> getThrottlerFactorsForAAWCLeader() {
+    return throttlerFactorsForAAWCLeader;
   }
 
-  public List<Double> getDedicatedConsumerPoolRecordsLimitFactorsForSepRTLeader() {
-    return dedicatedConsumerPoolRecordsLimitFactorsForSepRTLeader;
+  public List<Double> getThrottlerFactorsForSepRTLeader() {
+    return throttlerFactorsForSepRTLeader;
   }
 
   public enum IncrementalPushStatusWriteMode {
