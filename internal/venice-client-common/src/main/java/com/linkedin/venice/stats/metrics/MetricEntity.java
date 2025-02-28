@@ -14,6 +14,11 @@ public class MetricEntity {
   private final MetricType metricType;
   private final MetricUnit unit;
   private final String description;
+  /**
+   * List of dimensions that this metric is associated with. This is currently used to validate
+   * whether the Attributes object hold all these dimensions while creating the Attributes.
+   * Check {@link MetricEntityState#validateRequiredDimensions} for more details.
+   */
   private final Set<VeniceMetricsDimensions> dimensionsList;
 
   public MetricEntity(

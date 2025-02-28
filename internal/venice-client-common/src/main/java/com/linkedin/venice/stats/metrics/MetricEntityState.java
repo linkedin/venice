@@ -8,7 +8,6 @@ import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.Sensor;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -18,10 +17,15 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * Operational state of a metric. It holds: <br>
- * 1. A {@link MetricEntity} <br>
- * 2. One OpenTelemetry (Otel) Instrument <br>
- * 3. Zero or one (out of zero for new metrics or more for existing metrics) Tehuti sensors for this Otel Metric. <br>
+ * Abstract operational state of a metric which should be extended by different MetricEntityStates
+ * to pre-create/cache the {@link Attributes} for different number/type of dimensions. check out the
+ * classes extending this for more details. <br>
+ *
+ * This abstract class holds: <br>
+ * 1. Whether otel is enabled or not <br>
+ * 2. A {@link MetricEntity} <br>
+ * 3. One OpenTelemetry (Otel) Instrument <br>
+ * 4. Zero or one (out of zero for new metrics or more for existing metrics) Tehuti sensors for this Otel Metric. <br>
  *
  * One Otel instrument can cover multiple Tehuti sensors through the use of dimensions. Ideally, this class should represent a one-to-many
  * mapping between an Otel instrument and Tehuti sensors. However, to simplify lookup during runtime, this class holds one Otel instrument
@@ -36,10 +40,6 @@ public abstract class MetricEntityState {
   private Object otelMetric = null;
   /** Respective tehuti metric */
   private Sensor tehutiSensor = null;
-
-  public MetricEntityState(MetricEntity metricEntity, VeniceOpenTelemetryMetricsRepository otelRepository) {
-    this(metricEntity, otelRepository, null, null, Collections.EMPTY_LIST);
-  }
 
   public MetricEntityState(
       MetricEntity metricEntity,
@@ -140,7 +140,8 @@ public abstract class MetricEntityState {
         } catch (ClassCastException e) {
           // Handle potential ClassCastException if enumType is not the expected type.
           throw new IllegalArgumentException(
-              "Provided class is not a valid enum of type VeniceDimensionInterface: " + enumType.getName(),
+              "Provided class is not a valid enum of type VeniceDimensionInterface: " + enumType.getName()
+                  + " for MetricEntity: " + metricEntity.getMetricName(),
               e);
         }
       }
@@ -156,7 +157,8 @@ public abstract class MetricEntityState {
     if (!requiredDimensions.containsAll(currentDimensions)) {
       currentDimensions.removeAll(requiredDimensions); // find the missing dimensions
       throw new IllegalArgumentException(
-          "MetricEntity dimensions are missing some or all required dimensions: " + currentDimensions);
+          "MetricEntity dimensions are missing some or all required dimensions: " + currentDimensions
+              + " for MetricEntity: " + metricEntity.getMetricName());
     }
   }
 

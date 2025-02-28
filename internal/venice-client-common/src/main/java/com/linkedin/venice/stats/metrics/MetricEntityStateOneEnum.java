@@ -8,12 +8,21 @@ import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import io.opentelemetry.api.common.Attributes;
 import io.tehuti.metrics.MeasurableStat;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 
+/**
+ * This version of {@link MetricEntityState} is used when the metric entity has one dynamic dimension
+ * which is an {@link Enum} implementing {@link VeniceDimensionInterface}.
+ * The base dimensions that are common for all invocation of this instance are passed in the constructor
+ * which is used along with all possible values for the dynamic dimensions to create an EnumMap of
+ * {@link Attributes} for each possible value of the dynamic dimension. These attributes are used during
+ * every record() call, the key to the EnumMap being the value of the dynamic dimension.
+ */
 public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterface> extends MetricEntityState {
   private final EnumMap<E, Attributes> attributesEnumMap;
   private final Class<E> enumTypeClass;
@@ -24,13 +33,7 @@ public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterfa
       VeniceOpenTelemetryMetricsRepository otelRepository,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
       Class<E> enumTypeClass) {
-    super(metricEntity, otelRepository);
-    validateRequiredDimensions(metricEntity, baseDimensionsMap, enumTypeClass);
-    this.enumTypeClass = enumTypeClass;
-    this.attributesEnumMap = new EnumMap<>(enumTypeClass);
-    if (emitOpenTelemetryMetrics()) {
-      createAttributesEnumMap(metricEntity, otelRepository, baseDimensionsMap);
-    }
+    this(metricEntity, otelRepository, null, null, Collections.EMPTY_LIST, baseDimensionsMap, enumTypeClass);
   }
 
   /** should not be called directly, call {@link #create} instead */
@@ -46,7 +49,7 @@ public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterfa
     validateRequiredDimensions(metricEntity, baseDimensionsMap, enumTypeClass);
     this.enumTypeClass = enumTypeClass;
     this.attributesEnumMap = new EnumMap<>(enumTypeClass);
-    if (otelRepository != null) {
+    if (emitOpenTelemetryMetrics()) {
       createAttributesEnumMap(metricEntity, otelRepository, baseDimensionsMap);
     }
   }
