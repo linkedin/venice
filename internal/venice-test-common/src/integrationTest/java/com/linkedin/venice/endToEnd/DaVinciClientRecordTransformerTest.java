@@ -1,5 +1,12 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_DELETE_ERROR_COUNT;
+import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_DELETE_LATENCY;
+import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_ON_END_VERSION_INGESTION_LATENCY;
+import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_ON_RECOVERY_LATENCY;
+import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_ON_START_VERSION_INGESTION_LATENCY;
+import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_PUT_ERROR_COUNT;
+import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_PUT_LATENCY;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
@@ -37,6 +44,7 @@ import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -44,8 +52,9 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
+import com.linkedin.venice.producer.online.OnlineProducerFactory;
+import com.linkedin.venice.producer.online.OnlineVeniceProducer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
-import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
@@ -107,8 +116,10 @@ public class DaVinciClientRecordTransformerTest {
     Utils.closeQuietlyWithErrorLogged(cluster);
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
-  public void testRecordTransformer(DaVinciConfig clientConfig) throws Exception {
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testRecordTransformer() throws Exception {
+    DaVinciConfig clientConfig = new DaVinciConfig();
+
     String storeName = Utils.getUniqueString("test-store");
     boolean pushStatusStoreEnabled = false;
     boolean chunkingEnabled = false;
@@ -145,12 +156,62 @@ public class DaVinciClientRecordTransformerTest {
         String expectedValue = "a" + k + "Transformed";
         assertEquals(valueObj.toString(), expectedValue);
       }
-      clientWithRecordTransformer.unsubscribeAll();
+
+      try (OnlineVeniceProducer producer = OnlineProducerFactory.createProducer(
+          ClientConfig.defaultGenericClientConfig(storeName)
+              .setD2Client(d2Client)
+              .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME),
+          VeniceProperties.empty(),
+          null)) {
+        producer.asyncDelete(1).get();
+
+        // Validate metrics
+        String metricPrefix = "." + storeName + "_total--";
+        String metricPostfix = "_avg_ms.DaVinciRecordTransformerStatsGauge";
+
+        String deleteLatency = metricPrefix + RECORD_TRANSFORMER_DELETE_LATENCY + metricPostfix;
+
+        TestUtils.waitForNonDeterministicAssertion(
+            10,
+            TimeUnit.SECONDS,
+            true,
+            () -> assertTrue(metricsRepository.getMetric(deleteLatency).value() > 0));
+
+        // Exception should be thrown in the DVRT implementation when key doesn't exist
+        // to test RECORD_TRANSFORMER_DELETE_ERROR_COUNT
+        producer.asyncDelete(1).get();
+        String deleteErrorCount =
+            metricPrefix + RECORD_TRANSFORMER_DELETE_ERROR_COUNT + ".DaVinciRecordTransformerStatsGauge";
+        TestUtils.waitForNonDeterministicAssertion(
+            10,
+            TimeUnit.SECONDS,
+            true,
+            () -> assertTrue(metricsRepository.getMetric(deleteErrorCount).value() == 1.0));
+
+        clientWithRecordTransformer.unsubscribeAll();
+
+        String startLatency = metricPrefix + RECORD_TRANSFORMER_ON_START_VERSION_INGESTION_LATENCY + metricPostfix;
+        assertTrue(metricsRepository.getMetric(startLatency).value() > 0);
+
+        String endLatency = metricPrefix + RECORD_TRANSFORMER_ON_END_VERSION_INGESTION_LATENCY + metricPostfix;
+        assertTrue(metricsRepository.getMetric(endLatency).value() > 0);
+
+        String onRecoveryLatency = metricPrefix + RECORD_TRANSFORMER_ON_RECOVERY_LATENCY + metricPostfix;
+        assertTrue(metricsRepository.getMetric(onRecoveryLatency).value() > 0);
+
+        String putLatency = metricPrefix + RECORD_TRANSFORMER_PUT_LATENCY + metricPostfix;
+        assertTrue(metricsRepository.getMetric(putLatency).value() > 0);
+
+        String putErrorCount =
+            metricPrefix + RECORD_TRANSFORMER_PUT_ERROR_COUNT + ".DaVinciRecordTransformerStatsGauge";
+        assertEquals(metricsRepository.getMetric(putErrorCount).value(), 0.0);
+      }
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
-  public void testTypeChangeRecordTransformer(DaVinciConfig clientConfig) throws Exception {
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testTypeChangeRecordTransformer() throws Exception {
+    DaVinciConfig clientConfig = new DaVinciConfig();
     String storeName = Utils.getUniqueString("test-store");
     boolean pushStatusStoreEnabled = false;
     boolean chunkingEnabled = false;
@@ -192,8 +253,9 @@ public class DaVinciClientRecordTransformerTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
-  public void testRecordTransformerOnRecovery(DaVinciConfig clientConfig) throws Exception {
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testRecordTransformerOnRecovery() throws Exception {
+    DaVinciConfig clientConfig = new DaVinciConfig();
     String storeName = Utils.getUniqueString("test-store");
     boolean pushStatusStoreEnabled = true;
     boolean chunkingEnabled = false;
@@ -268,8 +330,9 @@ public class DaVinciClientRecordTransformerTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
-  public void testRecordTransformerChunking(DaVinciConfig clientConfig) throws Exception {
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testRecordTransformerChunking() throws Exception {
+    DaVinciConfig clientConfig = new DaVinciConfig();
     // Construct a large string to trigger chunking
     // (2MB = 2 * 1024 * 1024 bytes)
     int sizeInBytes = 2 * 1024 * 1024;
@@ -352,8 +415,9 @@ public class DaVinciClientRecordTransformerTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
-  public void testRecordTransformerWithEmptyDaVinci(DaVinciConfig clientConfig) throws Exception {
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testRecordTransformerWithEmptyDaVinci() throws Exception {
+    DaVinciConfig clientConfig = new DaVinciConfig();
     String storeName = Utils.getUniqueString("test-store");
     boolean pushStatusStoreEnabled = false;
     boolean chunkingEnabled = false;
@@ -407,8 +471,9 @@ public class DaVinciClientRecordTransformerTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
-  public void testSkipResultRecordTransformer(DaVinciConfig clientConfig) throws Exception {
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testSkipResultRecordTransformer() throws Exception {
+    DaVinciConfig clientConfig = new DaVinciConfig();
     String storeName = Utils.getUniqueString("test-store");
     boolean pushStatusStoreEnabled = false;
     boolean chunkingEnabled = false;
@@ -461,8 +526,9 @@ public class DaVinciClientRecordTransformerTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
-  public void testUnchangedResultRecordTransformer(DaVinciConfig clientConfig) throws Exception {
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testUnchangedResultRecordTransformer() throws Exception {
+    DaVinciConfig clientConfig = new DaVinciConfig();
     String storeName = Utils.getUniqueString("test-store");
     boolean pushStatusStoreEnabled = false;
     boolean chunkingEnabled = false;
@@ -693,7 +759,10 @@ public class DaVinciClientRecordTransformerTest {
     final int numPartitions = 3;
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPartitionCount(numPartitions)
         .setChunkingEnabled(chunkingEnabled)
-        .setCompressionStrategy(compressionStrategy);
+        .setCompressionStrategy(compressionStrategy)
+        .setHybridOffsetLagThreshold(10)
+        .setHybridRewindSeconds(1);
+    ;
 
     paramsConsumer.accept(params);
 

@@ -26,6 +26,7 @@ import com.linkedin.davinci.notifier.PushStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
+import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.ParticipantStoreConsumptionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
@@ -463,6 +464,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         "Enabled a thread pool for AA/WC ingestion lookup with {} threads.",
         serverConfig.getAaWCIngestionStorageLookupThreadPoolSize());
 
+    AggVersionedDaVinciRecordTransformerStats recordTransformerStats = null;
+    if (recordTransformerConfig != null) {
+      recordTransformerStats =
+          new AggVersionedDaVinciRecordTransformerStats(metricsRepository, metadataRepo, serverConfig);
+    }
+
     ingestionTaskFactory = StoreIngestionTaskFactory.builder()
         .setVeniceWriterFactory(veniceWriterFactory)
         .setStorageEngineRepository(storageService.getStorageEngineRepository())
@@ -473,6 +480,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setTopicManagerRepository(topicManagerRepository)
         .setHostLevelIngestionStats(hostLevelIngestionStats)
         .setVersionedDIVStats(versionedDIVStats)
+        .setDaVinciRecordTransformerStats(recordTransformerStats)
         .setVersionedIngestionStats(versionedIngestionStats)
         .setStoreBufferService(storeBufferService)
         .setServerConfig(serverConfig)
