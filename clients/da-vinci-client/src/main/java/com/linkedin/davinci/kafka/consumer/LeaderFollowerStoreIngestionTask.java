@@ -66,6 +66,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
@@ -3469,9 +3470,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                         leaderMetadataWrapper);
 
                 if (shouldSyncOffset(partitionConsumptionState, consumerRecord, null, false)) {
-                  final String GLOBAL_RT_DIV_KEY = "GLOBAL_RT_DIV_KEY";
+                  final String GLOBAL_RT_DIV_KEY = "GLOBAL_RT_DIV_KEY." + kafkaUrl;
                   InternalAvroSpecificSerializer<GlobalRtDivState> serializer =
-                      AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer();
+                      AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer(); // can't be static because of state?
                   PartitionTracker rtDiv = kafkaDataIntegrityValidatorForLeaders.cloneProducerStates(partition);
                   TopicType topicType =
                       PartitionTracker.TopicType.of(PartitionTracker.TopicType.REALTIME_TOPIC_TYPE, kafkaUrl);
@@ -3482,10 +3483,31 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                       new GlobalRtDivState(kafkaUrl, producerStates, consumerRecord.getOffset());
                   byte[] valueBytes = ByteUtils.extractByteArray(serializer.serialize(divState));
                   // veniceWriter.get().sendGlobalRtDivMessage(partition, GLOBAL_RT_DIV_KEY.getBytes(), valueBytes);
-                  int dummyValueSchemaId = 0;
-                  LeaderProducerCallback divCallback = null;// createProducerCallback(consumerRecord,
-                                                            // partitionConsumptionState, leaderProducedRecordContext,
-                                                            // partition, kafkaUrl, beforeProcessingRecordTimestampNs);
+                  int dummyValueSchemaId = 0; // shouldn't be used for MessageType.GLOBAL_RT_DIV
+                  KafkaKey divKey = new KafkaKey(MessageType.GLOBAL_RT_DIV, GLOBAL_RT_DIV_KEY.getBytes());
+                  // TODO: incrementSequenceNumber? are the pubsubmessage fields correct?
+                  KafkaMessageEnvelope divEnvelope = veniceWriter.get()
+                      .getKafkaMessageEnvelope(
+                          MessageType.PUT,
+                          false,
+                          partition,
+                          true,
+                          leaderMetadataWrapper,
+                          APP_DEFAULT_LOGICAL_TS);
+                  PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> divMessage = new ImmutablePubSubMessage<>(
+                      divKey,
+                      divEnvelope,
+                      consumerRecord.getTopicPartition(),
+                      consumerRecord.getOffset(),
+                      consumerRecord.getPubSubMessageTime(),
+                      GLOBAL_RT_DIV_KEY.getBytes().length + valueBytes.length); // TODO: offset?
+                  LeaderProducerCallback divCallback = createProducerCallback(
+                      divMessage,
+                      partitionConsumptionState,
+                      leaderProducedRecordContext,
+                      partition,
+                      kafkaUrl,
+                      beforeProcessingRecordTimestampNs);
                   veniceWriter.get()
                       .put(
                           GLOBAL_RT_DIV_KEY.getBytes(),
