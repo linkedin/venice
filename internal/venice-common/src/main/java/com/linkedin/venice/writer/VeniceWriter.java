@@ -946,7 +946,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         logicalTs,
         putMetadata,
         oldValueManifest,
-        oldRmdManifest);
+        oldRmdManifest,
+        true);
   }
 
   /**
@@ -987,7 +988,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   /**
    * Write a record with new DIV to a predetermined partition.
    */
-  protected CompletableFuture<PubSubProduceResult> put(
+  public CompletableFuture<PubSubProduceResult> put(
       byte[] serializedKey,
       byte[] serializedValue,
       int partition,
@@ -997,7 +998,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       long logicalTs,
       PutMetadata putMetadata,
       ChunkedValueManifest oldValueManifest,
-      ChunkedValueManifest oldRmdManifest) {
+      ChunkedValueManifest oldRmdManifest,
+      boolean isPutMessage) {
     int replicationMetadataPayloadSize = putMetadata == null ? 0 : putMetadata.getSerializedSize();
     isChunkingFlagInvoked = true;
 
@@ -1019,7 +1021,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             logicalTs,
             putMetadata,
             oldValueManifest,
-            oldRmdManifest);
+            oldRmdManifest,
+            isPutMessage);
       } else {
         throw new RecordTooLargeException(
             "This record exceeds the maximum size. "
@@ -1036,10 +1039,13 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           .setChunkingInfo(serializedKey, null, null, null, null, oldValueManifest, oldRmdManifest);
     }
 
-    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, serializedKey);
+    MessageType type = (isPutMessage) ? MessageType.PUT : MessageType.GLOBAL_RT_DIV;
+    KafkaKey kafkaKey = new KafkaKey(type, serializedKey);
+    int schemaId =
+        (isPutMessage) ? valueSchemaId : AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
 
     // Initialize the SpecificRecord instances used by the Avro-based Kafka protocol
-    Put putPayload = buildPutPayload(serializedValue, valueSchemaId, putMetadata);
+    Put putPayload = buildPutPayload(serializedValue, schemaId, putMetadata);
     CompletableFuture<PubSubProduceResult> produceResultFuture = sendMessage(
         producerMetadata -> kafkaKey,
         MessageType.PUT,
@@ -1669,7 +1675,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       long logicalTs,
       PutMetadata putMetadata,
       ChunkedValueManifest oldValueManifest,
-      ChunkedValueManifest oldRmdManifest) {
+      ChunkedValueManifest oldRmdManifest,
+      boolean isPutMessage) {
     int replicationMetadataPayloadSize = putMetadata == null ? 0 : putMetadata.getSerializedSize();
     final Supplier<String> reportSizeGenerator =
         () -> getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize);

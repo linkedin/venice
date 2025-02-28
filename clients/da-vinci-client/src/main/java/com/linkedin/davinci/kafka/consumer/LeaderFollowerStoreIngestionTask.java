@@ -3481,7 +3481,25 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                   GlobalRtDivState divState =
                       new GlobalRtDivState(kafkaUrl, producerStates, consumerRecord.getOffset());
                   byte[] valueBytes = ByteUtils.extractByteArray(serializer.serialize(divState));
-                  veniceWriter.get().sendGlobalRtDivMessage(partition, GLOBAL_RT_DIV_KEY.getBytes(), valueBytes);
+                  // veniceWriter.get().sendGlobalRtDivMessage(partition, GLOBAL_RT_DIV_KEY.getBytes(), valueBytes);
+                  int dummyValueSchemaId = 0;
+                  LeaderProducerCallback divCallback = null;// createProducerCallback(consumerRecord,
+                                                            // partitionConsumptionState, leaderProducedRecordContext,
+                                                            // partition, kafkaUrl, beforeProcessingRecordTimestampNs);
+                  veniceWriter.get()
+                      .put(
+                          GLOBAL_RT_DIV_KEY.getBytes(),
+                          valueBytes,
+                          partition,
+                          dummyValueSchemaId,
+                          divCallback,
+                          leaderMetadataWrapper,
+                          APP_DEFAULT_LOGICAL_TS,
+                          null,
+                          null,
+                          null,
+                          false);
+                  // requires pubsubmessage
                   // updateOffsetMetadataAndSyncOffsetForLeaders(partitionConsumptionState);
                   // syncOffset(partitionConsumptionState, record, leaderProducedRecordContext);
                 }
