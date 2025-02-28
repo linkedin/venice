@@ -58,6 +58,7 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.memory.InstanceSizeEstimator;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.PartitionerConfig;
@@ -3469,61 +3470,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                         callback,
                         leaderMetadataWrapper);
 
-                if (shouldSyncOffset(partitionConsumptionState, consumerRecord, null, false)) {
-                  final String GLOBAL_RT_DIV_KEY = "GLOBAL_RT_DIV_KEY." + kafkaUrl;
-                  InternalAvroSpecificSerializer<GlobalRtDivState> serializer =
-                      AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer(); // can't be static because of state?
-                  PartitionTracker rtDiv = kafkaDataIntegrityValidatorForLeaders.cloneProducerStates(partition);
-                  TopicType topicType =
-                      PartitionTracker.TopicType.of(PartitionTracker.TopicType.REALTIME_TOPIC_TYPE, kafkaUrl);
-                  GUID guid = consumerRecord.getValue().getProducerMetadata().getProducerGUID();
-                  Map<CharSequence, ProducerPartitionState> producerStates = new HashMap<>();
-                  producerStates.put(guid.toString(), rtDiv.getPartitionState(topicType, guid));
-                  GlobalRtDivState divState =
-                      new GlobalRtDivState(kafkaUrl, producerStates, consumerRecord.getOffset());
-                  byte[] valueBytes = ByteUtils.extractByteArray(serializer.serialize(divState));
-                  // veniceWriter.get().sendGlobalRtDivMessage(partition, GLOBAL_RT_DIV_KEY.getBytes(), valueBytes);
-                  int dummyValueSchemaId = 0; // shouldn't be used for MessageType.GLOBAL_RT_DIV
-                  KafkaKey divKey = new KafkaKey(MessageType.GLOBAL_RT_DIV, GLOBAL_RT_DIV_KEY.getBytes());
-                  // TODO: incrementSequenceNumber? are the pubsubmessage fields correct?
-                  KafkaMessageEnvelope divEnvelope = veniceWriter.get()
-                      .getKafkaMessageEnvelope(
-                          MessageType.PUT,
-                          false,
-                          partition,
-                          true,
-                          leaderMetadataWrapper,
-                          APP_DEFAULT_LOGICAL_TS);
-                  PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> divMessage = new ImmutablePubSubMessage<>(
-                      divKey,
-                      divEnvelope,
-                      consumerRecord.getTopicPartition(),
-                      consumerRecord.getOffset(),
-                      consumerRecord.getPubSubMessageTime(),
-                      GLOBAL_RT_DIV_KEY.getBytes().length + valueBytes.length); // TODO: offset?
-                  LeaderProducerCallback divCallback = createProducerCallback(
-                      divMessage,
+                if (shouldSendGlobalRtDiv(consumerRecord, partitionConsumptionState, kafkaUrl)) {
+                  sendGlobalRtDivMessage(
+                      consumerRecord,
                       partitionConsumptionState,
-                      leaderProducedRecordContext,
                       partition,
                       kafkaUrl,
-                      beforeProcessingRecordTimestampNs);
-                  veniceWriter.get()
-                      .put(
-                          GLOBAL_RT_DIV_KEY.getBytes(),
-                          valueBytes,
-                          partition,
-                          dummyValueSchemaId,
-                          divCallback,
-                          leaderMetadataWrapper,
-                          APP_DEFAULT_LOGICAL_TS,
-                          null,
-                          null,
-                          null,
-                          false);
-                  // requires pubsubmessage
-                  // updateOffsetMetadataAndSyncOffsetForLeaders(partitionConsumptionState);
-                  // syncOffset(partitionConsumptionState, record, leaderProducedRecordContext);
+                      beforeProcessingRecordTimestampNs,
+                      leaderMetadataWrapper,
+                      leaderProducedRecordContext);
                 }
               }
             },
@@ -3600,6 +3555,77 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         throw new VeniceMessageException(
             ingestionTaskName + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
+  }
+
+  /**
+   * The leader produces GlobalRtDivState (RT DIV + latestOffset) to local kafka for the followers to consume.
+   * Upon completion, the LeaderProducerCallback will enqueue the RT + VT DIV to the drainer.
+   * Note: This method is called per-broker. The broker url is included in the key.
+   * @param previousMessage the last message validated and produced to kafka before this GlobalRtDiv will be produced
+   */
+  private void sendGlobalRtDivMessage(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> previousMessage,
+      PartitionConsumptionState partitionConsumptionState,
+      int partition,
+      String kafkaUrl,
+      long beforeProcessingRecordTimestampNs,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      LeaderProducedRecordContext leaderProducedRecordContext) {
+    final InternalAvroSpecificSerializer<GlobalRtDivState> serializer =
+        AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer(); // TODO: can't be static because of state?
+    final String GLOBAL_RT_DIV_KEY_WITH_URL = "GLOBAL_RT_DIV_KEY." + kafkaUrl; // broker url included in key
+    TopicType realTimeTopicType = TopicType.of(TopicType.REALTIME_TOPIC_TYPE, kafkaUrl);
+    GUID guid = previousMessage.getValue().getProducerMetadata().getProducerGUID();
+
+    // Create GlobalRtDivState (RT DIV + latestOffset) and serialize it
+    PartitionTracker producerStatesClone = kafkaDataIntegrityValidatorForLeaders.cloneProducerStates(partition);
+    Map<CharSequence, ProducerPartitionState> pps = new HashMap<>();
+    pps.put(guid.toString(), producerStatesClone.getPartitionState(realTimeTopicType, guid)); // contains only RT DIV
+    GlobalRtDivState globalRtDiv = new GlobalRtDivState(kafkaUrl, pps, previousMessage.getOffset());
+    byte[] valueBytes = ByteUtils.extractByteArray(serializer.serialize(globalRtDiv));
+    // veniceWriter.get().sendGlobalRtDivMessage(partition, GLOBAL_RT_DIV_KEY.getBytes(), valueBytes);
+
+    // Create PubSubMessage for the LeaderProducerCallback to enqueue the RT + VT DIV to the drainer
+    KafkaKey divKey = new KafkaKey(MessageType.GLOBAL_RT_DIV, GLOBAL_RT_DIV_KEY_WITH_URL.getBytes());
+    // TODO: incrementSequenceNumber? are the pubsubmessage fields correct?
+    KafkaMessageEnvelope divEnvelope = veniceWriter.get()
+        .getKafkaMessageEnvelope(
+            MessageType.PUT,
+            false,
+            partition,
+            true,
+            leaderMetadataWrapper,
+            APP_DEFAULT_LOGICAL_TS);
+    divEnvelope.payloadUnion = producerStatesClone; // contains RT + VT DIV
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> divMessage = new ImmutablePubSubMessage<>(
+        divKey,
+        divEnvelope,
+        previousMessage.getTopicPartition(),
+        previousMessage.getOffset(), // TODO: are these reused fields correct?
+        previousMessage.getPubSubMessageTime(),
+        GLOBAL_RT_DIV_KEY_WITH_URL.getBytes().length + InstanceSizeEstimator.getObjectSize(producerStatesClone));
+    LeaderProducerCallback divCallback = createProducerCallback(
+        divMessage,
+        partitionConsumptionState,
+        leaderProducedRecordContext,
+        partition,
+        kafkaUrl,
+        beforeProcessingRecordTimestampNs);
+
+    // Produce to local kafka for the Global RT DIV + latestOffset (GlobalRtDivState)
+    veniceWriter.get()
+        .put(
+            GLOBAL_RT_DIV_KEY_WITH_URL.getBytes(),
+            valueBytes,
+            partition,
+            1, // dummy value schema id which shouldn't be used for MessageType.GLOBAL_RT_DIV
+            divCallback,
+            leaderMetadataWrapper,
+            APP_DEFAULT_LOGICAL_TS,
+            null,
+            null,
+            null,
+            false);
   }
 
   /**
