@@ -1,13 +1,20 @@
 package com.linkedin.venice.stats.metrics;
 
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
+import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
+import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.Sensor;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -21,7 +28,9 @@ import java.util.List;
  * and one Tehuti sensor. If an Otel instrument corresponds to multiple Tehuti sensors, there will be multiple {@link MetricEntityState}
  * objects, each containing the same Otel instrument but different Tehuti sensors.
  */
-public class MetricEntityState {
+public abstract class MetricEntityState {
+  static final Logger LOGGER = LogManager.getLogger(MetricEntityState.class);
+  private final boolean emitOpenTelemetryMetrics;
   private final MetricEntity metricEntity;
   /** Otel metric */
   private Object otelMetric = null;
@@ -39,6 +48,7 @@ public class MetricEntityState {
       TehutiMetricNameEnum tehutiMetricNameEnum,
       List<MeasurableStat> tehutiMetricStats) {
     this.metricEntity = metricEntity;
+    this.emitOpenTelemetryMetrics = (otelRepository != null) && otelRepository.emitOpenTelemetryMetrics();
     createMetric(otelRepository, tehutiMetricNameEnum, tehutiMetricStats, registerTehutiSensorFn);
   }
 
@@ -63,8 +73,7 @@ public class MetricEntityState {
       TehutiMetricNameEnum tehutiMetricNameEnum,
       List<MeasurableStat> tehutiMetricStats,
       TehutiSensorRegistrationFunction registerTehutiSensorFn) {
-    // Otel metric: otelRepository will be null if otel is not enabled
-    if (otelRepository != null) {
+    if (emitOpenTelemetryMetrics) {
       setOtelMetric(otelRepository.createInstrument(this.metricEntity));
     }
     // tehuti metric
@@ -78,16 +87,16 @@ public class MetricEntityState {
   /**
    * Record otel metrics
    */
-  void recordOtelMetric(double value, Attributes otelDimensions) {
+  void recordOtelMetric(double value, Attributes attributes) {
     if (otelMetric != null) {
       MetricType metricType = this.metricEntity.getMetricType();
       switch (metricType) {
         case HISTOGRAM:
         case MIN_MAX_COUNT_SUM_AGGREGATIONS:
-          ((DoubleHistogram) otelMetric).record(value, otelDimensions);
+          ((DoubleHistogram) otelMetric).record(value, attributes);
           break;
         case COUNTER:
-          ((LongCounter) otelMetric).add((long) value, otelDimensions);
+          ((LongCounter) otelMetric).add((long) value, attributes);
           break;
 
         default:
@@ -102,14 +111,57 @@ public class MetricEntityState {
     }
   }
 
-  public void record(long value, Attributes otelDimensions) {
-    recordOtelMetric(value, otelDimensions);
+  protected final void record(long value, Attributes attributes) {
+    recordOtelMetric(value, attributes);
     recordTehutiMetric(value);
   }
 
-  public void record(double value, Attributes otelDimensions) {
-    recordOtelMetric(value, otelDimensions);
+  protected final void record(double value, Attributes attributes) {
+    recordOtelMetric(value, attributes);
     recordTehutiMetric(value);
+  }
+
+  /**
+   * Validate that the {@link MetricEntityState} has all required dimensions passed in as defined in
+   * {@link MetricEntity#getDimensionsList}
+   */
+  void validateRequiredDimensions(
+      MetricEntity metricEntity,
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap,
+      Class<?>... enumTypes) {
+    Set<VeniceMetricsDimensions> currentDimensions = new HashSet<>();
+    for (Class<?> enumType: enumTypes) {
+      if (enumType != null && enumType.isEnum() && VeniceDimensionInterface.class.isAssignableFrom(enumType)) {
+        try {
+          VeniceDimensionInterface[] enumConstants = (VeniceDimensionInterface[]) enumType.getEnumConstants();
+          if (enumConstants.length > 0) {
+            currentDimensions.add(enumConstants[0].getDimensionName());
+          }
+        } catch (ClassCastException e) {
+          // Handle potential ClassCastException if enumType is not the expected type.
+          throw new IllegalArgumentException(
+              "Provided class is not a valid enum of type VeniceDimensionInterface: " + enumType.getName(),
+              e);
+        }
+      }
+    }
+
+    // copy all baseDimensionsMap into currentDimensions
+    for (Map.Entry<VeniceMetricsDimensions, String> entry: baseDimensionsMap.entrySet()) {
+      currentDimensions.add(entry.getKey());
+    }
+
+    Set<VeniceMetricsDimensions> requiredDimensions = metricEntity.getDimensionsList();
+
+    if (!requiredDimensions.containsAll(currentDimensions)) {
+      currentDimensions.removeAll(requiredDimensions); // find the missing dimensions
+      throw new IllegalArgumentException(
+          "MetricEntity dimensions are missing some or all required dimensions: " + currentDimensions);
+    }
+  }
+
+  boolean emitOpenTelemetryMetrics() {
+    return emitOpenTelemetryMetrics;
   }
 
   public MetricEntity getMetricEntity() {

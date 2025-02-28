@@ -11,16 +11,16 @@ public class RequestRetryAbortReasonTest {
     for (RequestRetryAbortReason reason: RequestRetryAbortReason.values()) {
       switch (reason) {
         case SLOW_ROUTE:
-          assertEquals(reason.getAbortReason(), "slow_route");
+          assertEquals(reason.getDimensionValue(), "slow_route");
           break;
         case DELAY_CONSTRAINT:
-          assertEquals(reason.getAbortReason(), "delay_constraint");
+          assertEquals(reason.getDimensionValue(), "delay_constraint");
           break;
         case MAX_RETRY_ROUTE_LIMIT:
-          assertEquals(reason.getAbortReason(), "max_retry_route_limit");
+          assertEquals(reason.getDimensionValue(), "max_retry_route_limit");
           break;
         case NO_AVAILABLE_REPLICA:
-          assertEquals(reason.getAbortReason(), "no_available_replica");
+          assertEquals(reason.getDimensionValue(), "no_available_replica");
           break;
         default:
           throw new IllegalArgumentException("Unknown reason: " + reason);

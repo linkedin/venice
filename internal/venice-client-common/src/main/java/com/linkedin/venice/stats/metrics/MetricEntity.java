@@ -2,10 +2,7 @@ package com.linkedin.venice.stats.metrics;
 
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import java.util.Set;
-import java.util.SortedSet;
-import java.util.TreeSet;
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import org.apache.commons.lang.Validate;
 
 
@@ -17,24 +14,25 @@ public class MetricEntity {
   private final MetricType metricType;
   private final MetricUnit unit;
   private final String description;
-  /**
-   * {@link SortedSet} is used to preserve an order while crafting the cache key for the metric.
-   * Sorting happens only while initializing this metric for the first time and then remain unmodified.
-   */
-  private final SortedSet<VeniceMetricsDimensions> dimensionsList;
+  private final Set<VeniceMetricsDimensions> dimensionsList;
 
   public MetricEntity(
       @Nonnull String metricName,
       @Nonnull MetricType metricType,
       @Nonnull MetricUnit unit,
       @Nonnull String description,
-      @Nullable Set<VeniceMetricsDimensions> dimensionsList) {
+      @Nonnull Set<VeniceMetricsDimensions> dimensionsList) {
     Validate.notEmpty(metricName, "Metric name cannot be null or empty");
+    Validate.notNull(metricType, "Metric type cannot be null");
+    Validate.notNull(unit, "Metric unit cannot be null");
+    Validate.notEmpty(description, "Metric description cannot be null");
+    Validate.notEmpty(dimensionsList, "Dimensions list cannot be null");
+    Validate.notEmpty(dimensionsList, "Dimensions list cannot be null or empty");
     this.metricName = metricName;
     this.metricType = metricType;
     this.unit = unit;
     this.description = description;
-    this.dimensionsList = dimensionsList != null ? new TreeSet<>(dimensionsList) : new TreeSet<>();
+    this.dimensionsList = dimensionsList;
   }
 
   @Nonnull
@@ -58,7 +56,7 @@ public class MetricEntity {
   }
 
   @Nonnull
-  public SortedSet<VeniceMetricsDimensions> getDimensionsList() {
+  public Set<VeniceMetricsDimensions> getDimensionsList() {
     return dimensionsList;
   }
 }
