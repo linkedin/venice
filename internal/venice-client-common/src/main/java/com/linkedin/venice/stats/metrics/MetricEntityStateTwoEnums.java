@@ -8,12 +8,16 @@ import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import io.opentelemetry.api.common.Attributes;
 import io.tehuti.metrics.MeasurableStat;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 
+/**
+ * Similar to {@link MetricEntityStateOneEnum} but with two dynamic dimensions.
+ */
 public class MetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensionInterface, E2 extends Enum<E2> & VeniceDimensionInterface>
     extends MetricEntityState {
   private final EnumMap<E1, EnumMap<E2, Attributes>> attributesEnumMap;
@@ -27,14 +31,15 @@ public class MetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensionInte
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
       Class<E1> enumTypeClass1,
       Class<E2> enumTypeClass2) {
-    super(metricEntity, otelRepository);
-    validateRequiredDimensions(metricEntity, baseDimensionsMap, enumTypeClass1, enumTypeClass2);
-    this.enumTypeClass1 = enumTypeClass1;
-    this.enumTypeClass2 = enumTypeClass2;
-    this.attributesEnumMap = new EnumMap<>(enumTypeClass1);
-    if (emitOpenTelemetryMetrics()) {
-      createAttributesEnumMap(metricEntity, otelRepository, baseDimensionsMap);
-    }
+    this(
+        metricEntity,
+        otelRepository,
+        null,
+        null,
+        Collections.EMPTY_LIST,
+        baseDimensionsMap,
+        enumTypeClass1,
+        enumTypeClass2);
   }
 
   /** should not be called directly, call {@link #create} instead */
@@ -52,7 +57,7 @@ public class MetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensionInte
     this.enumTypeClass1 = enumTypeClass1;
     this.enumTypeClass2 = enumTypeClass2;
     this.attributesEnumMap = new EnumMap<>(enumTypeClass1);
-    if (otelRepository != null) {
+    if (emitOpenTelemetryMetrics()) {
       createAttributesEnumMap(metricEntity, otelRepository, baseDimensionsMap);
     }
   }

@@ -8,12 +8,16 @@ import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import io.opentelemetry.api.common.Attributes;
 import io.tehuti.metrics.MeasurableStat;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 
+/**
+ * Similar to {@link MetricEntityStateOneEnum} but with three dynamic dimensions.
+ */
 public class MetricEntityStateThreeEnums<E1 extends Enum<E1> & VeniceDimensionInterface, E2 extends Enum<E2> & VeniceDimensionInterface, E3 extends Enum<E3> & VeniceDimensionInterface>
     extends MetricEntityState {
   private final EnumMap<E1, EnumMap<E2, EnumMap<E3, Attributes>>> attributesEnumMap;
@@ -30,15 +34,16 @@ public class MetricEntityStateThreeEnums<E1 extends Enum<E1> & VeniceDimensionIn
       Class<E1> enumTypeClass1,
       Class<E2> enumTypeClass2,
       Class<E3> enumTypeClass3) {
-    super(metricEntity, otelRepository);
-    validateRequiredDimensions(metricEntity, baseDimensionsMap, enumTypeClass1, enumTypeClass2, enumTypeClass3);
-    this.enumTypeClass1 = enumTypeClass1;
-    this.enumTypeClass2 = enumTypeClass2;
-    this.enumTypeClass3 = enumTypeClass3;
-    this.attributesEnumMap = new EnumMap<>(enumTypeClass1);
-    if (emitOpenTelemetryMetrics()) {
-      createAttributesEnumMap(metricEntity, otelRepository, baseDimensionsMap);
-    }
+    this(
+        metricEntity,
+        otelRepository,
+        null,
+        null,
+        Collections.EMPTY_LIST,
+        baseDimensionsMap,
+        enumTypeClass1,
+        enumTypeClass2,
+        enumTypeClass3);
   }
 
   /** should not be called directly, call {@link #create} instead */
@@ -58,7 +63,7 @@ public class MetricEntityStateThreeEnums<E1 extends Enum<E1> & VeniceDimensionIn
     this.enumTypeClass2 = enumTypeClass2;
     this.enumTypeClass3 = enumTypeClass3;
     this.attributesEnumMap = new EnumMap<>(enumTypeClass1);
-    if (otelRepository != null) {
+    if (emitOpenTelemetryMetrics()) {
       createAttributesEnumMap(metricEntity, otelRepository, baseDimensionsMap);
     }
   }
