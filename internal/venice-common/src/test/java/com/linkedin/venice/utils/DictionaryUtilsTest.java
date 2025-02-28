@@ -63,7 +63,7 @@ public class DictionaryUtilsTest {
         controlMessageKey,
         sopWithDictionaryValue,
         topicPartition,
-        ApacheKafkaOffsetPosition.getKafkaPosition(0),
+        ApacheKafkaOffsetPosition.of(0),
         0L,
         0);
     doReturn(Collections.singletonMap(topicPartition, Collections.singletonList(sopWithDictionary)))
@@ -99,7 +99,7 @@ public class DictionaryUtilsTest {
         controlMessageKey,
         sopWithDictionaryValue,
         topicPartition,
-        ApacheKafkaOffsetPosition.getKafkaPosition(0),
+        ApacheKafkaOffsetPosition.of(0),
         0L,
         0);
     doReturn(Collections.singletonMap(topicPartition, Collections.singletonList(sopWithDictionary)))
@@ -133,7 +133,7 @@ public class DictionaryUtilsTest {
         dataMessageKey,
         putMessageValue,
         topicPartition,
-        ApacheKafkaOffsetPosition.getKafkaPosition(0),
+        ApacheKafkaOffsetPosition.of(0),
         0L,
         0);
     doReturn(Collections.singletonMap(topicPartition, Collections.singletonList(sopWithDictionary)))
@@ -172,7 +172,7 @@ public class DictionaryUtilsTest {
         controlMessageKey,
         sopWithDictionaryValue,
         topicPartition,
-        ApacheKafkaOffsetPosition.getKafkaPosition(0),
+        ApacheKafkaOffsetPosition.of(0),
         0L,
         0);
     doReturn(Collections.emptyMap())

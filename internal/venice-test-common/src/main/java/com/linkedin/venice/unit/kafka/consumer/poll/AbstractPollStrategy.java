@@ -91,7 +91,7 @@ public abstract class AbstractPollStrategy implements PollStrategy {
             message.get().key,
             message.get().value,
             pubSubTopicPartition,
-            ApacheKafkaOffsetPosition.getKafkaPosition(nextOffset),
+            ApacheKafkaOffsetPosition.of(nextOffset),
             System.currentTimeMillis(),
             -1,
             message.get().headers);

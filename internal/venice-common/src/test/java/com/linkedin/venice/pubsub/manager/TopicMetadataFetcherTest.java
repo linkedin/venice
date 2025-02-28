@@ -398,7 +398,7 @@ public class TopicMetadataFetcherTest {
         key,
         val,
         topicPartition,
-        ApacheKafkaOffsetPosition.getKafkaPosition(offset),
+        ApacheKafkaOffsetPosition.of(offset),
         System.currentTimeMillis(),
         512);
   }
@@ -414,7 +414,7 @@ public class TopicMetadataFetcherTest {
         key,
         val,
         topicPartition,
-        ApacheKafkaOffsetPosition.getKafkaPosition(offset),
+        ApacheKafkaOffsetPosition.of(offset),
         System.currentTimeMillis(),
         512);
   }

@@ -141,7 +141,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(consumerRecord.getKey()).thenReturn(kafkaKey);
     KafkaMessageEnvelope kafkaValue = new KafkaMessageEnvelope();
     when(consumerRecord.getValue()).thenReturn(kafkaValue);
-    when(consumerRecord.getOffset()).thenReturn(ApacheKafkaOffsetPosition.getKafkaPosition(1));
+    when(consumerRecord.getOffset()).thenReturn(ApacheKafkaOffsetPosition.of(1));
     kafkaValue.messageType = MessageType.DELETE.getValue();
     Delete deletePayload = new Delete();
     kafkaValue.payloadUnion = deletePayload;
@@ -384,7 +384,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     ByteBuffer updatedValueBytes = ByteUtils.prependIntHeaderToByteBuffer(valueBytes, 1);
     ByteBuffer updatedRmdBytes = ByteBuffer.wrap(new byte[] { 0xa, 0xb });
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord = mock(PubSubMessage.class);
-    when(consumerRecord.getOffset()).thenReturn(ApacheKafkaOffsetPosition.getKafkaPosition(100L));
+    when(consumerRecord.getOffset()).thenReturn(ApacheKafkaOffsetPosition.of(100L));
 
     Put updatedPut = new Put();
     updatedPut.putValue = ByteUtils.prependIntHeaderToByteBuffer(updatedValueBytes, valueSchemaId, resultReuseInput);
@@ -620,7 +620,7 @@ public class ActiveActiveStoreIngestionTaskTest {
   public void testGetUpstreamKafkaUrlFromKafkaValue() {
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("topic"), 0);
     long offset = 100;
-    PubSubPosition position = ApacheKafkaOffsetPosition.getKafkaPosition(offset);
+    PubSubPosition position = ApacheKafkaOffsetPosition.of(offset);
     long timestamp = System.currentTimeMillis();
     int payloadSize = 200;
     String sourceKafka = "sourceKafkaURL";

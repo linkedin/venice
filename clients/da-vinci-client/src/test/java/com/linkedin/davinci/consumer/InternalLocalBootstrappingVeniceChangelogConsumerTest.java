@@ -47,6 +47,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -330,10 +331,8 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
         bootstrappingVeniceChangelogConsumer.getBootstrapStateMap();
     InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState bootstrapState =
         new InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState();
-    bootstrapState.currentPubSubPosition = new VeniceChangeCoordinate(
-        TEST_TOPIC,
-        ApacheKafkaOffsetPosition.getKafkaPosition(TEST_OFFSET_OLD),
-        TEST_PARTITION_ID_0);
+    bootstrapState.currentPubSubPosition =
+        new VeniceChangeCoordinate(TEST_TOPIC, ApacheKafkaOffsetPosition.of(TEST_OFFSET_OLD), TEST_PARTITION_ID_0);
     bootstrapStateMap.put(TEST_PARTITION_ID_0, bootstrapState);
 
     ByteBuffer decompressedBytes = compressor.decompress(value);
@@ -347,8 +346,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
         TEST_OFFSET_NEW);
 
     Assert.assertEquals(
-        ((ApacheKafkaOffsetPosition) bootstrapStateMap.get(TEST_PARTITION_ID_0).currentPubSubPosition.getPosition())
-            .getOffset(),
+        bootstrapStateMap.get(TEST_PARTITION_ID_0).currentPubSubPosition.getPosition().getNumericOffset(),
         TEST_OFFSET_NEW);
     verify(mockStorageEngine, times(1)).put(eq(TEST_PARTITION_ID_0), eq(key), any(byte[].class));
   }
@@ -385,10 +383,8 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
         bootstrappingVeniceChangelogConsumer.getBootstrapStateMap();
     InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState bootstrapState =
         new InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState();
-    bootstrapState.currentPubSubPosition = new VeniceChangeCoordinate(
-        TEST_TOPIC,
-        ApacheKafkaOffsetPosition.getKafkaPosition(TEST_OFFSET_OLD),
-        TEST_PARTITION_ID_0);
+    bootstrapState.currentPubSubPosition =
+        new VeniceChangeCoordinate(TEST_TOPIC, ApacheKafkaOffsetPosition.of(TEST_OFFSET_OLD), TEST_PARTITION_ID_0);
     bootstrapStateMap.put(TEST_PARTITION_ID_0, bootstrapState);
 
     ByteBuffer decompressedBytes = compressor.decompress(value);
@@ -402,8 +398,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
         TEST_OFFSET_NEW);
 
     Assert.assertEquals(
-        ((ApacheKafkaOffsetPosition) bootstrapStateMap.get(TEST_PARTITION_ID_0).currentPubSubPosition.getPosition())
-            .getOffset(),
+        bootstrapStateMap.get(TEST_PARTITION_ID_0).currentPubSubPosition.getPosition().getNumericOffset(),
         TEST_OFFSET_NEW);
     verify(storageEngine, times(1)).put(eq(TEST_PARTITION_ID_0), eq(key), any(byte[].class));
     verify(storageEngineReloadedFromRepo, times(1)).sync(TEST_PARTITION_ID_0);
@@ -437,7 +432,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
         VeniceChangeCoordinate.convertVeniceChangeCoordinateToStringAndEncode(
             new VeniceChangeCoordinate(
                 TEST_TOPIC,
-                ApacheKafkaOffsetPosition.getKafkaPosition(TEST_OFFSET_NEW),
+                ApacheKafkaOffsetPosition.of(TEST_OFFSET_NEW),
                 TEST_PARTITION_ID_2)));
     lastOffsetRecord.setDatabaseInfo(databaseInfo);
     when(mockStorageMetadataService.getLastOffset(anyString(), anyInt())).thenReturn(lastOffsetRecord);
@@ -538,6 +533,12 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
         null);
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, keySerializer.serialize(key));
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(changeCaptureVersionTopic, partition);
-    return new ImmutablePubSubMessage<>(kafkaKey, kafkaMessageEnvelope, pubSubTopicPartition, 0, 0, 0);
+    return new ImmutablePubSubMessage<>(
+        kafkaKey,
+        kafkaMessageEnvelope,
+        pubSubTopicPartition,
+        mock(PubSubPosition.class),
+        0,
+        0);
   }
 }

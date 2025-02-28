@@ -21,8 +21,10 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.utils.ByteUtils;
@@ -74,7 +76,14 @@ public class KafkaInputRecordReaderTest {
       put.putValue = ByteBuffer.wrap(valueBytes);
       put.replicationMetadataPayload = ByteBuffer.allocate(0);
       messageEnvelope.payloadUnion = put;
-      consumerRecordList.add(new ImmutablePubSubMessage<>(kafkaKey, messageEnvelope, pubSubTopicPartition, i, -1, -1));
+      consumerRecordList.add(
+          new ImmutablePubSubMessage<>(
+              kafkaKey,
+              messageEnvelope,
+              pubSubTopicPartition,
+              ApacheKafkaOffsetPosition.of(i),
+              -1,
+              -1));
     }
 
     Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> recordsMap =

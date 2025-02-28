@@ -25,6 +25,7 @@ import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -48,9 +49,11 @@ public class StoreBufferServiceTest {
   private static final int TIMEOUT_IN_MS = 1000;
   private final MetricsRepository mockMetricRepo = mock(MetricsRepository.class);
   private StoreBufferServiceStats mockedStats;
+  PubSubPosition mockPosition;
 
   @BeforeMethod
   public void setUp() {
+    mockPosition = mock(PubSubPosition.class);
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricRepo).sensor(anyString(), any());
     mockedStats = mock(StoreBufferServiceStats.class);
@@ -61,6 +64,7 @@ public class StoreBufferServiceTest {
     StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites, mockedStats);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = Utils.getUniqueString("test_topic") + "_v1";
+    PubSubPosition mockPosition = mock(PubSubPosition.class);
     int partition1 = 1;
     int partition2 = 2;
     int partition3 = 3;
@@ -72,13 +76,13 @@ public class StoreBufferServiceTest {
     PubSubTopicPartition pubSubTopicPartition4 = new PubSubTopicPartitionImpl(pubSubTopic, partition4);
     String kafkaUrl = "blah";
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> cr1 =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, -1, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, mockPosition, 0, 0);
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> cr2 =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition2, -1, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition2, mockPosition, 0, 0);
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> cr3 =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition3, -1, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition3, mockPosition, 0, 0);
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> cr4 =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition4, -1, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition4, mockPosition, 0, 0);
 
     bufferService.putConsumerRecord(cr1, mockTask, null, partition1, kafkaUrl, 0L);
     bufferService.putConsumerRecord(cr2, mockTask, null, partition2, kafkaUrl, 0L);
@@ -106,6 +110,7 @@ public class StoreBufferServiceTest {
     StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites, mockedStats);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = Utils.getUniqueString("test_topic") + "_v1";
+    PubSubPosition mockPosition = mock(PubSubPosition.class);
     int partition1 = 1;
     int partition2 = 2;
     PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topic);
@@ -113,9 +118,9 @@ public class StoreBufferServiceTest {
     PubSubTopicPartition pubSubTopicPartition2 = new PubSubTopicPartitionImpl(pubSubTopic, partition2);
     String kafkaUrl = "blah";
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> cr1 =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, -1, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, mockPosition, 0, 0);
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> cr2 =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition2, -1, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition2, mockPosition, 0, 0);
     Exception e = new VeniceException("test_exception");
 
     doThrow(e).when(mockTask).processConsumerRecord(cr1, null, partition1, kafkaUrl, 0L);
@@ -136,12 +141,13 @@ public class StoreBufferServiceTest {
     StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites, mockedStats);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = Utils.getUniqueString("test_topic") + "_v1";
+    PubSubPosition mockPosition = mock(PubSubPosition.class);
     int partition = 1;
     PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topic);
     PubSubTopicPartition pubSubTopicPartition1 = new PubSubTopicPartitionImpl(pubSubTopic, partition);
     String kafkaUrl = "blah";
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> cr =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, -1, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, mockPosition, 0, 0);
     bufferService.start();
     bufferService.putConsumerRecord(cr, mockTask, null, partition, kafkaUrl, 0L);
     int nonExistingPartition = 2;
@@ -160,9 +166,10 @@ public class StoreBufferServiceTest {
     int partition = 1;
     PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topic);
     PubSubTopicPartition pubSubTopicPartition1 = new PubSubTopicPartitionImpl(pubSubTopic, partition);
+    PubSubPosition mockPosition = mock(PubSubPosition.class);
     String kafkaUrl = "blah";
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> cr =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, 100, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, mockPosition, 0, 0);
     bufferService.start();
     bufferService.putConsumerRecord(cr, mockTask, null, partition, kafkaUrl, 0L);
     bufferService.internalDrainBufferedRecordsFromTopicPartition(pubSubTopicPartition1, 3, 50);
@@ -187,8 +194,13 @@ public class StoreBufferServiceTest {
     doReturn(queueLeaderWrites).when(serverConfig).isStoreWriterBufferAfterLeaderLogicEnabled();
     SeparatedStoreBufferService bufferService = new SeparatedStoreBufferService(serverConfig, mockMetricRepo);
     for (int partition = 0; partition < partitionCount; ++partition) {
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> cr =
-          new ImmutablePubSubMessage<>(key, value, new PubSubTopicPartitionImpl(pubSubTopic, partition), 100, 0, 0);
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> cr = new ImmutablePubSubMessage<>(
+          key,
+          value,
+          new PubSubTopicPartitionImpl(pubSubTopic, partition),
+          mock(PubSubPosition.class),
+          0,
+          0);
       int drainerIndex;
       if (partition < 16) {
         drainerIndex = bufferService.sortedStoreBufferServiceDelegate.getDrainerIndexForConsumerRecord(cr, partition);
@@ -217,8 +229,13 @@ public class StoreBufferServiceTest {
     }
     StoreBufferService bufferService = new StoreBufferService(8, 10000, 1000, queueLeaderWrites, mockedStats);
     for (int partition = 0; partition < partitionCount; ++partition) {
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> cr =
-          new ImmutablePubSubMessage<>(key, value, new PubSubTopicPartitionImpl(pubSubTopic, partition), 100, 0, 0);
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> cr = new ImmutablePubSubMessage<>(
+          key,
+          value,
+          new PubSubTopicPartitionImpl(pubSubTopic, partition),
+          mockPosition,
+          0,
+          0);
       int drainerIndex = bufferService.getDrainerIndexForConsumerRecord(cr, partition);
       ++drainerPartitionCount[drainerIndex];
     }
@@ -240,9 +257,9 @@ public class StoreBufferServiceTest {
     PubSubTopicPartition pubSubTopicPartition2 = new PubSubTopicPartitionImpl(pubSubTopic, partition2);
     String kafkaUrl = "blah";
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> cr1 =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, -1, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, mockPosition, 0, 0);
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> cr2 =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition2, -1, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition2, mockPosition, 0, 0);
     Exception e = new VeniceChecksumException("test_exception");
     doThrow(e).when(mockTask).processConsumerRecord(cr1, null, partition1, kafkaUrl, 0L);
 
@@ -283,13 +300,13 @@ public class StoreBufferServiceTest {
     PubSubTopicPartition pubSubTopicPartition2 = new PubSubTopicPartitionImpl(pubSubTopic, partition2);
     String kafkaUrl = "blah";
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> cr1 =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, 0, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, mock(PubSubPosition.class), 0, 0);
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> cr2 =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition2, 0, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition2, mock(PubSubPosition.class), 0, 0);
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> cr3 =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, 1, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, mock(PubSubPosition.class), 0, 0);
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> cr4 =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition2, 1, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition2, mock(PubSubPosition.class), 0, 0);
     doReturn(true).when(mockTask).isHybridMode();
 
     bufferService.putConsumerRecord(cr1, mockTask, null, partition1, kafkaUrl, 0);

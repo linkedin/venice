@@ -26,6 +26,7 @@ import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
@@ -52,28 +53,28 @@ public class IngestionBatchProcessorTest {
         mock(KafkaKey.class),
         mock(KafkaMessageEnvelope.class),
         versionTopicPartition,
-        1,
+        mock(PubSubPosition.class),
         100,
         100);
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> vtMessage2 = new ImmutablePubSubMessage<>(
         mock(KafkaKey.class),
         mock(KafkaMessageEnvelope.class),
         versionTopicPartition,
-        2,
+        mock(PubSubPosition.class),
         101,
         100);
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> rtMessage1 = new ImmutablePubSubMessage<>(
         mock(KafkaKey.class),
         mock(KafkaMessageEnvelope.class),
         rtTopicPartition,
-        1,
+        mock(PubSubPosition.class),
         100,
         100);
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> rtMessage2 = new ImmutablePubSubMessage<>(
         mock(KafkaKey.class),
         mock(KafkaMessageEnvelope.class),
         rtTopicPartition,
-        2,
+        mock(PubSubPosition.class),
         101,
         100);
 
@@ -98,14 +99,14 @@ public class IngestionBatchProcessorTest {
         new KafkaKey(MessageType.PUT, key1),
         mock(KafkaMessageEnvelope.class),
         rtTopicPartition,
-        1,
+        mock(PubSubPosition.class),
         100,
         100);
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> rtMessage2 = new ImmutablePubSubMessage<>(
         new KafkaKey(MessageType.PUT, key2),
         mock(KafkaMessageEnvelope.class),
         rtTopicPartition,
-        2,
+        mock(PubSubPosition.class),
         101,
         100);
 
@@ -163,14 +164,14 @@ public class IngestionBatchProcessorTest {
         new KafkaKey(MessageType.PUT, key1),
         mock(KafkaMessageEnvelope.class),
         rtTopicPartition,
-        1,
+        mock(PubSubPosition.class),
         100,
         100);
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> rtMessage2 = new ImmutablePubSubMessage<>(
         new KafkaKey(MessageType.PUT, key2),
         mock(KafkaMessageEnvelope.class),
         rtTopicPartition,
-        2,
+        mock(PubSubPosition.class),
         101,
         100);
 
@@ -200,21 +201,22 @@ public class IngestionBatchProcessorTest {
         mockAggVersionedIngestionStats,
         mockHostLevelIngestionStats);
 
-    List<PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long>> result = batchProcessor.process(
-        Arrays.asList(rtMessage1, rtMessage2),
-        mock(PartitionConsumptionState.class),
-        1,
-        "test_kafka",
-        1,
-        1,
-        1);
+    List<PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> result =
+        batchProcessor.process(
+            Arrays.asList(rtMessage1, rtMessage2),
+            mock(PartitionConsumptionState.class),
+            1,
+            "test_kafka",
+            1,
+            1,
+            1);
 
     assertEquals(result.size(), 2);
-    PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> resultForKey1 = result.get(0);
+    PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, PubSubPosition> resultForKey1 = result.get(0);
     assertEquals(
         resultForKey1.getProcessedResult().getWriteComputeResultWrapper().getNewPut().putValue.array(),
         "value1".getBytes());
-    PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> resultForKey2 = result.get(1);
+    PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, PubSubPosition> resultForKey2 = result.get(1);
     assertEquals(
         resultForKey2.getProcessedResult().getWriteComputeResultWrapper().getNewPut().putValue.array(),
         "value2".getBytes());

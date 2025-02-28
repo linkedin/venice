@@ -18,7 +18,9 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -146,7 +148,7 @@ public class TestPartitionTracker {
             getControlMessageKey(startOfSegmentMessage),
             startOfSegmentMessage,
             pubSubTopicPartition,
-            offset++,
+            ApacheKafkaOffsetPosition.of(offset++),
             System.currentTimeMillis() + 1000,
             0);
     partitionTracker.validateMessage(type, controlMessageConsumerRecord, false, Lazy.FALSE);
@@ -160,7 +162,7 @@ public class TestPartitionTracker {
         firstMessageKey,
         firstMessage,
         pubSubTopicPartition,
-        offset++,
+        ApacheKafkaOffsetPosition.of(offset++),
         System.currentTimeMillis() + 1000,
         0);
     partitionTracker.validateMessage(type, firstConsumerRecord, false, Lazy.FALSE);
@@ -175,7 +177,7 @@ public class TestPartitionTracker {
         secondMessageKey,
         secondMessage,
         pubSubTopicPartition,
-        offset++,
+        ApacheKafkaOffsetPosition.of(offset++),
         System.currentTimeMillis() + 1000,
         0);
     Assert.assertThrows(
@@ -192,7 +194,7 @@ public class TestPartitionTracker {
         thirdMessageKey,
         thirdMessage,
         pubSubTopicPartition,
-        offset++,
+        ApacheKafkaOffsetPosition.of(offset++),
         System.currentTimeMillis() + 1000,
         0);
     // It doesn't matter whether EOP is true/false. The result is same.
@@ -208,7 +210,7 @@ public class TestPartitionTracker {
         fourthMessageKey,
         fourthMessage,
         pubSubTopicPartition,
-        offset,
+        ApacheKafkaOffsetPosition.of(offset),
         System.currentTimeMillis() + 1000,
         0);
     partitionTracker.validateMessage(type, fourthConsumerRecord, false, Lazy.TRUE);
@@ -242,7 +244,7 @@ public class TestPartitionTracker {
         firstMessageKey,
         firstMessage,
         pubSubTopicPartition,
-        offset,
+        ApacheKafkaOffsetPosition.of(offset),
         System.currentTimeMillis(),
         0);
     partitionTracker.validateMessage(type, firstConsumerRecord, endOfPushReceived, Lazy.FALSE);
@@ -274,7 +276,7 @@ public class TestPartitionTracker {
             getControlMessageKey(startOfSegmentMessage),
             startOfSegmentMessage,
             pubSubTopicPartition,
-            offset++,
+            ApacheKafkaOffsetPosition.of(offset++),
             System.currentTimeMillis() + 1000,
             0);
     partitionTracker.validateMessage(type, controlMessageConsumerRecord, true, Lazy.FALSE);
@@ -289,7 +291,7 @@ public class TestPartitionTracker {
         firstMessageKey,
         firstMessage,
         pubSubTopicPartition,
-        offset,
+        ApacheKafkaOffsetPosition.of(offset),
         System.currentTimeMillis() + 1000,
         0);
     /**
@@ -335,7 +337,7 @@ public class TestPartitionTracker {
             getControlMessageKey(startOfSegmentMessage),
             startOfSegmentMessage,
             pubSubTopicPartition,
-            offset++,
+            ApacheKafkaOffsetPosition.of(offset++),
             System.currentTimeMillis() + 1000,
             0);
     partitionTracker.validateMessage(type, controlMessageConsumerRecord, true, Lazy.FALSE);
@@ -351,7 +353,7 @@ public class TestPartitionTracker {
         getControlMessageKey(endOfSegmentMessage),
         endOfSegmentMessage,
         pubSubTopicPartition,
-        offset++,
+        ApacheKafkaOffsetPosition.of(offset++),
         System.currentTimeMillis() + 1000,
         0);
     partitionTracker.validateMessage(type, controlMessageConsumerRecord, true, Lazy.TRUE);
@@ -366,7 +368,7 @@ public class TestPartitionTracker {
         firstMessageKey,
         firstMessage,
         pubSubTopicPartition,
-        offset,
+        ApacheKafkaOffsetPosition.of(offset),
         System.currentTimeMillis() + 1000,
         0);
     Assert.assertThrows(
@@ -402,7 +404,7 @@ public class TestPartitionTracker {
             getControlMessageKey(startOfSegmentMessage),
             startOfSegmentMessage,
             pubSubTopicPartition,
-            offset++,
+            ApacheKafkaOffsetPosition.of(offset++),
             System.currentTimeMillis() + 1000,
             0);
     partitionTracker.validateMessage(type, controlMessageConsumerRecord, true, Lazy.FALSE);
@@ -424,7 +426,7 @@ public class TestPartitionTracker {
         firstMessageKey,
         firstMessage,
         pubSubTopicPartition,
-        offset,
+        ApacheKafkaOffsetPosition.of(offset),
         System.currentTimeMillis() + 1000,
         0);
     partitionTracker.validateMessage(type, firstConsumerRecord, true, Lazy.TRUE);

@@ -426,7 +426,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         PubSubTopic topic = pubSubTopicRepository.getTopic(coordinate.getTopic());
         PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(topic, coordinate.getPartition());
         internalSeek(Collections.singleton(coordinate.getPartition()), topic, foo -> {
-          Long topicOffset = ((ApacheKafkaOffsetPosition) coordinate.getPosition()).getOffset();
+          Long topicOffset = coordinate.getPosition().getNumericOffset();
           pubSubConsumerSeek(pubSubTopicPartition, topicOffset);
         }).join();
       }

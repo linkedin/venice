@@ -1024,9 +1024,10 @@ public class PartialUpdateTest {
       veniceProducer.stop();
     }
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
-      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id_v2", 1000);
+      VersionCreationResponse response =
+          TestUtils.assertCommand(parentControllerClient.emptyPush(storeName, "test_push_id_v2", 1000));
       TestUtils.waitForNonDeterministicPushCompletion(
-          Version.composeKafkaTopic(storeName, 2),
+          response.getKafkaTopic(),
           parentControllerClient,
           30,
           TimeUnit.SECONDS);

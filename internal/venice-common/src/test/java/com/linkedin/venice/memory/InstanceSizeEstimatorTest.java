@@ -99,7 +99,7 @@ public class InstanceSizeEstimatorTest extends HeapSizeEstimatorTest {
             kafkaKeySupplier.get(),
             kmeSupplier.get(),
             pubSubTopicPartition,
-            ApacheKafkaOffsetPosition.getKafkaPosition(0),
+            ApacheKafkaOffsetPosition.of(0),
             0,
             0);
 
