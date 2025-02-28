@@ -154,11 +154,10 @@ public class PubSubProducerAdapterContext {
       if (pubSubMessageSerializer == null) {
         pubSubMessageSerializer = PubSubMessageSerializer.DEFAULT_PUBSUB_SERIALIZER;
       }
-      if (compressionType == null) {
-        compressionType = "gzip";
-      }
       if (!isProducerCompressionEnabled) {
         compressionType = "none";
+      } else if (compressionType == null) {
+        compressionType = "gzip";
       }
       return new PubSubProducerAdapterContext(this);
     }
