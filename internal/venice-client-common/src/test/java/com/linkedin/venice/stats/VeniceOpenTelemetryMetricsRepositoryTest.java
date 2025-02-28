@@ -11,6 +11,7 @@ import static org.testng.Assert.assertSame;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
@@ -18,6 +19,8 @@ import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.sdk.metrics.export.MetricExporter;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 import org.mockito.Mockito;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -64,12 +67,14 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
     // Verify that metrics-related fields are null when metrics are disabled
     assertNull(metricsRepository.getSdkMeterProvider());
     assertNull(metricsRepository.getMeter());
+    Set<VeniceMetricsDimensions> dimensionsSet = new HashSet<>();
+    dimensionsSet.add(VeniceMetricsDimensions.VENICE_REQUEST_METHOD); // dummy
+    assertNull(
+        metricsRepository.createInstrument(
+            new MetricEntity("test", MetricType.HISTOGRAM, MetricUnit.NUMBER, "desc", dimensionsSet)));
     assertNull(
         metricsRepository
-            .createInstrument(new MetricEntity("test", MetricType.HISTOGRAM, MetricUnit.NUMBER, "desc", null)));
-    assertNull(
-        metricsRepository
-            .createInstrument(new MetricEntity("test", MetricType.COUNTER, MetricUnit.NUMBER, "desc", null)));
+            .createInstrument(new MetricEntity("test", MetricType.COUNTER, MetricUnit.NUMBER, "desc", dimensionsSet)));
   }
 
   @Test
@@ -110,10 +115,12 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
 
   @Test
   public void testCreateTwoHistograms() {
-    DoubleHistogram histogram1 = (DoubleHistogram) metricsRepository
-        .createInstrument(new MetricEntity("test_histogram", MetricType.HISTOGRAM, MetricUnit.NUMBER, "desc", null));
-    DoubleHistogram histogram2 = (DoubleHistogram) metricsRepository
-        .createInstrument(new MetricEntity("test_histogram", MetricType.HISTOGRAM, MetricUnit.NUMBER, "desc", null));
+    Set<VeniceMetricsDimensions> dimensionsSet = new HashSet<>();
+    dimensionsSet.add(VeniceMetricsDimensions.VENICE_REQUEST_METHOD); // dummy
+    DoubleHistogram histogram1 = (DoubleHistogram) metricsRepository.createInstrument(
+        new MetricEntity("test_histogram", MetricType.HISTOGRAM, MetricUnit.NUMBER, "desc", dimensionsSet));
+    DoubleHistogram histogram2 = (DoubleHistogram) metricsRepository.createInstrument(
+        new MetricEntity("test_histogram", MetricType.HISTOGRAM, MetricUnit.NUMBER, "desc", dimensionsSet));
 
     assertNotNull(histogram1);
     assertSame(histogram1, histogram2, "Should return the same instance for the same histogram name.");
@@ -121,10 +128,12 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
 
   @Test
   public void testCreateTwoCounters() {
-    LongCounter counter1 = (LongCounter) metricsRepository
-        .createInstrument(new MetricEntity("test_counter", MetricType.COUNTER, MetricUnit.NUMBER, "desc", null));
-    LongCounter counter2 = (LongCounter) metricsRepository
-        .createInstrument(new MetricEntity("test_counter", MetricType.COUNTER, MetricUnit.NUMBER, "desc", null));
+    Set<VeniceMetricsDimensions> dimensionsSet = new HashSet<>();
+    dimensionsSet.add(VeniceMetricsDimensions.VENICE_REQUEST_METHOD); // dummy
+    LongCounter counter1 = (LongCounter) metricsRepository.createInstrument(
+        new MetricEntity("test_counter", MetricType.COUNTER, MetricUnit.NUMBER, "desc", dimensionsSet));
+    LongCounter counter2 = (LongCounter) metricsRepository.createInstrument(
+        new MetricEntity("test_counter", MetricType.COUNTER, MetricUnit.NUMBER, "desc", dimensionsSet));
 
     assertNotNull(counter1);
     assertSame(counter1, counter2, "Should return the same instance for the same counter name.");

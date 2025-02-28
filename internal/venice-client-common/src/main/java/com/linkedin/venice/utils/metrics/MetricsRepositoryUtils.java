@@ -36,21 +36,18 @@ public class MetricsRepositoryUtils {
         TimeUnit.MINUTES.toMillis(1),
         100,
         false,
-        false,
         VeniceOpenTelemetryMetricNamingFormat.getDefaultFormat(),
         null);
   }
 
   public static MetricsRepository createSingleThreadedVeniceMetricsRepository(
       boolean isOtelEnabled,
-      boolean useDimensionsCache,
       VeniceOpenTelemetryMetricNamingFormat otelFormat,
       Collection<MetricEntity> metricEntities) {
     return createSingleThreadedVeniceMetricsRepository(
         TimeUnit.MINUTES.toMillis(1),
         100,
         isOtelEnabled,
-        useDimensionsCache,
         otelFormat,
         metricEntities);
   }
@@ -59,13 +56,11 @@ public class MetricsRepositoryUtils {
       long maxMetricsMeasurementTimeoutMs,
       long initialMetricsMeasurementTimeoutMs,
       boolean isOtelEnabled,
-      boolean useDimensionsCache,
       VeniceOpenTelemetryMetricNamingFormat otelFormat,
       Collection<MetricEntity> metricEntities) {
 
     return new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setEmitOtelMetrics(isOtelEnabled)
-            .setUseDimensionsCache(useDimensionsCache)
             .setMetricEntities(metricEntities)
             .setMetricNamingFormat(otelFormat)
             .setTehutiMetricConfig(getMetricConfig(maxMetricsMeasurementTimeoutMs, initialMetricsMeasurementTimeoutMs))

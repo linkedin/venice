@@ -6,26 +6,19 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.TreeSet;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class MetricEntityTest {
-  @Test
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Dimensions list cannot be null")
   public void testMetricEntityConstructorWithoutDimensions() {
     String metricName = "testMetric";
     MetricType metricType = MetricType.COUNTER;
     MetricUnit unit = MetricUnit.MILLISECOND;
     String description = "Test description";
 
-    MetricEntity metricEntity = new MetricEntity(metricName, metricType, unit, description, null);
-
-    Assert.assertEquals(metricEntity.getMetricName(), metricName, "Metric name should match");
-    Assert.assertEquals(metricEntity.getMetricType(), metricType, "Metric type should match");
-    Assert.assertEquals(metricEntity.getUnit(), unit, "Metric unit should match");
-    Assert.assertEquals(metricEntity.getDescription(), description, "Description should match");
-    Assert.assertEquals(metricEntity.getDimensionsList(), new TreeSet<>(), "Dimensions list should be empty");
+    new MetricEntity(metricName, metricType, unit, description, null);
   }
 
   @Test
