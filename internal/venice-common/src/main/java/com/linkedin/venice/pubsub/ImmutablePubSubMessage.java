@@ -1,18 +1,20 @@
 package com.linkedin.venice.pubsub;
 
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.memory.ClassSizeEstimator;
 import com.linkedin.venice.memory.InstanceSizeEstimator;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import java.util.Objects;
 
 
-public class ImmutablePubSubMessage<K, V> implements PubSubMessage<K, V, PubSubPosition> {
+public class ImmutablePubSubMessage implements DefaultPubSubMessage {
   private static final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(ImmutablePubSubMessage.class);
-  private final K key;
-  private final V value;
+  private final KafkaKey key;
+  private final KafkaMessageEnvelope value;
   private final PubSubTopicPartition topicPartition;
   private final PubSubPosition pubSubPosition;
   private final long timestamp;
@@ -21,8 +23,8 @@ public class ImmutablePubSubMessage<K, V> implements PubSubMessage<K, V, PubSubP
   private final PubSubMessageHeaders pubSubMessageHeaders;
 
   public ImmutablePubSubMessage(
-      K key,
-      V value,
+      KafkaKey key,
+      KafkaMessageEnvelope value,
       PubSubTopicPartition topicPartition,
       PubSubPosition pubSubPosition,
       long timestamp,
@@ -31,8 +33,8 @@ public class ImmutablePubSubMessage<K, V> implements PubSubMessage<K, V, PubSubP
   }
 
   public ImmutablePubSubMessage(
-      K key,
-      V value,
+      KafkaKey key,
+      KafkaMessageEnvelope value,
       PubSubTopicPartition topicPartition,
       PubSubPosition pubSubPosition,
       long timestamp,
@@ -48,12 +50,12 @@ public class ImmutablePubSubMessage<K, V> implements PubSubMessage<K, V, PubSubP
   }
 
   @Override
-  public K getKey() {
+  public KafkaKey getKey() {
     return key;
   }
 
   @Override
-  public V getValue() {
+  public KafkaMessageEnvelope getValue() {
     return value;
   }
 

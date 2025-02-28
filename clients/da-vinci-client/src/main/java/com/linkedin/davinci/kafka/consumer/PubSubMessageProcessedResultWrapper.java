@@ -1,17 +1,17 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 
 
-public class PubSubMessageProcessedResultWrapper<K, V, OFFSET> {
-  private final PubSubMessage<K, V, OFFSET> message;
+public class PubSubMessageProcessedResultWrapper {
+  private final DefaultPubSubMessage message;
   private PubSubMessageProcessedResult processedResult;
 
-  public PubSubMessageProcessedResultWrapper(PubSubMessage<K, V, OFFSET> message) {
+  public PubSubMessageProcessedResultWrapper(DefaultPubSubMessage message) {
     this.message = message;
   }
 
-  public PubSubMessage<K, V, OFFSET> getMessage() {
+  public DefaultPubSubMessage getMessage() {
     return message;
   }
 

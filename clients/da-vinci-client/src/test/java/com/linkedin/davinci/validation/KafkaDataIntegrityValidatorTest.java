@@ -28,8 +28,7 @@ import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -76,7 +75,7 @@ public class KafkaDataIntegrityValidatorTest {
       return;
     }
     assertNotEquals(producerGuid0, producerGuid1);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> p0g0record0 = buildSoSRecord(
+    DefaultPubSubMessage p0g0record0 = buildSoSRecord(
         topicPartition0,
         offsetForPartition0++,
         producerGuid0,
@@ -87,7 +86,7 @@ public class KafkaDataIntegrityValidatorTest {
 
     time.sleep(10);
 
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> p0g0record1 = buildPutRecord(
+    DefaultPubSubMessage p0g0record1 = buildPutRecord(
         topicPartition0,
         offsetForPartition0++,
         producerGuid0,
@@ -118,7 +117,7 @@ public class KafkaDataIntegrityValidatorTest {
      * be cleared yet, since {@link KafkaDataIntegrityValidator#clearExpiredState(int, LongSupplier)} will not have
      * been called.
      */
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> p0g1record0 = buildSoSRecord(
+    DefaultPubSubMessage p0g1record0 = buildSoSRecord(
         topicPartition0,
         offsetForPartition0++,
         producerGuid1,
@@ -135,7 +134,7 @@ public class KafkaDataIntegrityValidatorTest {
     assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 1);
 
     // Start writing into another partition
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> p1g0record0 = buildSoSRecord(
+    DefaultPubSubMessage p1g0record0 = buildSoSRecord(
         topicPartition1,
         offsetForPartition1,
         producerGuid0,
@@ -147,7 +146,7 @@ public class KafkaDataIntegrityValidatorTest {
     assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 2);
 
     // If, somehow, a message still came from this GUID in partition 0, after clearing the state, DIV should catch it
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> p0g0record2 = buildPutRecord(
+    DefaultPubSubMessage p0g0record2 = buildPutRecord(
         topicPartition0,
         offsetForPartition0,
         producerGuid0,
@@ -181,7 +180,7 @@ public class KafkaDataIntegrityValidatorTest {
      * record is 28 hours ago.
      */
     GUID producerGUID = GuidUtils.getGUID(VeniceProperties.empty());
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> record = buildPutRecord(
+    DefaultPubSubMessage record = buildPutRecord(
         topicPartition,
         100,
         producerGUID,
@@ -196,7 +195,7 @@ public class KafkaDataIntegrityValidatorTest {
      * Create a record with sequence number 101 in the same segment and the broken timestamp for this record is 27 hours
      * ago; no error should be thrown since sequence number is incrementing without gap.
      */
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> record2 = buildPutRecord(
+    DefaultPubSubMessage record2 = buildPutRecord(
         topicPartition,
         101,
         producerGUID,
@@ -210,7 +209,7 @@ public class KafkaDataIntegrityValidatorTest {
      * ago; there is a gap between sequence number 101 and 103; however, since the previous record is older than the
      * log compaction delay threshold (24 hours), missing message is allowed.
      */
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> record3 = buildPutRecord(
+    DefaultPubSubMessage record3 = buildPutRecord(
         topicPartition,
         200,
         producerGUID,
@@ -225,7 +224,7 @@ public class KafkaDataIntegrityValidatorTest {
      * because the previous message for the same segment is fresh (20 hours ago), Kafka log compaction hasn't started
      * yet, so missing message is not expected
      */
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> record4 = buildPutRecord(
+    DefaultPubSubMessage record4 = buildPutRecord(
         topicPartition,
         205,
         producerGUID,
@@ -241,7 +240,7 @@ public class KafkaDataIntegrityValidatorTest {
     /**
      * Create a record with a gap in segment number. MISSING_MESSAGE exception should be thrown
      */
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> record5 = buildPutRecord(
+    DefaultPubSubMessage record5 = buildPutRecord(
         topicPartition,
         206,
         producerGUID,
@@ -254,7 +253,7 @@ public class KafkaDataIntegrityValidatorTest {
     verify(errorMetricCallback, times(1)).execute(any());
   }
 
-  private static PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> buildPutRecord(
+  private static DefaultPubSubMessage buildPutRecord(
       PubSubTopicPartition topicPartition,
       long offset,
       GUID producerGUID,
@@ -264,7 +263,7 @@ public class KafkaDataIntegrityValidatorTest {
     return buildPutRecord(topicPartition, offset, producerGUID, segmentNumber, sequenceNumber, brokerTimestamp, null);
   }
 
-  private static PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> buildPutRecord(
+  private static DefaultPubSubMessage buildPutRecord(
       PubSubTopicPartition topicPartition,
       long offset,
       GUID producerGUID,
@@ -289,7 +288,7 @@ public class KafkaDataIntegrityValidatorTest {
         offsetRecord);
   }
 
-  private static PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> buildSoSRecord(
+  private static DefaultPubSubMessage buildSoSRecord(
       PubSubTopicPartition topicPartition,
       long offset,
       GUID producerGUID,
@@ -314,7 +313,7 @@ public class KafkaDataIntegrityValidatorTest {
         offsetRecord);
   }
 
-  private static PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> buildRecord(
+  private static DefaultPubSubMessage buildRecord(
       PubSubTopicPartition topicPartition,
       long offset,
       GUID producerGUID,
@@ -341,7 +340,7 @@ public class KafkaDataIntegrityValidatorTest {
       when(offsetRecord.getMaxMessageTimeInMs()).thenReturn(brokerTimestamp);
     }
 
-    return new ImmutablePubSubMessage<>(
+    return new ImmutablePubSubMessage(
         kafkaKey,
         messageEnvelope,
         topicPartition,

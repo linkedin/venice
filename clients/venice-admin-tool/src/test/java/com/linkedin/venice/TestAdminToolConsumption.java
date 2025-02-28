@@ -31,8 +31,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
 import java.nio.ByteBuffer;
@@ -58,10 +57,9 @@ public class TestAdminToolConsumption {
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), assignedPartition);
     int adminMessageNum = 10;
     int dumpedMessageNum = 2;
-    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> pubSubMessageList =
+    List<DefaultPubSubMessage> pubSubMessageList =
         prepareAdminPubSubMessageList(STORE_NAME, pubSubTopicPartition, adminMessageNum);
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> messagesMap =
-        new HashMap<>();
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messagesMap = new HashMap<>();
     messagesMap.put(pubSubTopicPartition, pubSubMessageList);
     ApacheKafkaConsumerAdapter apacheKafkaConsumer = mock(ApacheKafkaConsumerAdapter.class);
     when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, Collections.EMPTY_MAP);
@@ -70,11 +68,11 @@ public class TestAdminToolConsumption {
     Assert.assertEquals(adminOperationInfos.size(), dumpedMessageNum);
   }
 
-  private List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> prepareAdminPubSubMessageList(
+  private List<DefaultPubSubMessage> prepareAdminPubSubMessageList(
       String storeName,
       PubSubTopicPartition pubSubTopicPartition,
       int messageNum) {
-    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> pubSubMessageList = new ArrayList<>();
+    List<DefaultPubSubMessage> pubSubMessageList = new ArrayList<>();
     for (int i = 0; i < messageNum; i++) {
       String keyString = "test";
       byte[] serializedKey = TopicMessageFinder.serializeKey(keyString, SCHEMA_STRING);
@@ -107,7 +105,7 @@ public class TestAdminToolConsumption {
       put.putValue = ByteBuffer.wrap(putValueBytes);
       put.replicationMetadataPayload = ByteBuffer.allocate(0);
       messageEnvelope.payloadUnion = put;
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage = new ImmutablePubSubMessage<>(
+      DefaultPubSubMessage pubSubMessage = new ImmutablePubSubMessage(
           kafkaKey,
           messageEnvelope,
           pubSubTopicPartition,
@@ -162,14 +160,14 @@ public class TestAdminToolConsumption {
     messageEnvelope2.payloadUnion = delete;
     PubSubTopicPartition pubSubTopicPartition =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), assignedPartition);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage1 = new ImmutablePubSubMessage<>(
+    DefaultPubSubMessage pubSubMessage1 = new ImmutablePubSubMessage(
         kafkaKey,
         messageEnvelope,
         pubSubTopicPartition,
         ApacheKafkaOffsetPosition.of(0),
         0,
         20);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage2 = new ImmutablePubSubMessage<>(
+    DefaultPubSubMessage pubSubMessage2 = new ImmutablePubSubMessage(
         kafkaKey,
         messageEnvelope2,
         pubSubTopicPartition,
@@ -189,7 +187,7 @@ public class TestAdminToolConsumption {
     kafkaMessageEnvelope.producerMetadata.messageSequenceNumber = 0;
     kafkaMessageEnvelope.producerMetadata.segmentNumber = 0;
     kafkaMessageEnvelope.producerMetadata.producerGUID = new GUID();
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage3 = new ImmutablePubSubMessage<>(
+    DefaultPubSubMessage pubSubMessage3 = new ImmutablePubSubMessage(
         kafkaControlMessageKey,
         kafkaMessageEnvelope,
         pubSubTopicPartition,
@@ -197,12 +195,11 @@ public class TestAdminToolConsumption {
         0,
         20);
 
-    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> pubSubMessageList = new ArrayList<>();
+    List<DefaultPubSubMessage> pubSubMessageList = new ArrayList<>();
     pubSubMessageList.add(pubSubMessage1);
     pubSubMessageList.add(pubSubMessage2);
     pubSubMessageList.add(pubSubMessage3);
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> messagesMap =
-        new HashMap<>();
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messagesMap = new HashMap<>();
     messagesMap.put(pubSubTopicPartition, pubSubMessageList);
     ApacheKafkaConsumerAdapter apacheKafkaConsumer = mock(ApacheKafkaConsumerAdapter.class);
     when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, Collections.EMPTY_MAP);

@@ -34,10 +34,9 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
@@ -320,8 +319,7 @@ public class TopicMetadataFetcherTest {
     endOffsetsMap.put(topicPartition, 0L);
     when(consumerMock.endOffsets(eq(Collections.singletonList(topicPartition)), any(Duration.class)))
         .thenReturn(endOffsetsMap);
-    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> consumedRecords =
-        topicMetadataFetcher.consumeLatestRecords(topicPartition, 1);
+    List<DefaultPubSubMessage> consumedRecords = topicMetadataFetcher.consumeLatestRecords(topicPartition, 1);
     assertEquals(consumedRecords.size(), 0);
 
     // test when beginningOffset (non-zero) is same as endOffset
@@ -357,16 +355,13 @@ public class TopicMetadataFetcherTest {
 
     // poll returns 1, then 2 and then 4 records (to simulate a condition where records get added after getEndOffsets
     // API call)
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> batch1 =
-        new HashMap<>();
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> batch1 = new HashMap<>();
     batch1.put(topicPartition, Collections.singletonList(getPubSubMessage(topicPartition, true, 5)));
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> batch2 =
-        new HashMap<>();
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> batch2 = new HashMap<>();
     batch2.put(
         topicPartition,
         Arrays.asList(getPubSubMessage(topicPartition, true, 6), getPubSubMessage(topicPartition, false, 7)));
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> batch3 =
-        new HashMap<>();
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> batch3 = new HashMap<>();
     batch3.put(
         topicPartition,
         Arrays.asList(
@@ -376,7 +371,7 @@ public class TopicMetadataFetcherTest {
             getPubSubMessage(topicPartition, false, 11)));
     when(consumerMock.poll(anyLong())).thenReturn(batch1).thenReturn(batch2).thenReturn(batch3);
 
-    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> allConsumedRecords =
+    List<DefaultPubSubMessage> allConsumedRecords =
         topicMetadataFetcher.consumeLatestRecords(topicPartition, numRecordsToRead);
     assertTrue(allConsumedRecords.size() >= numRecordsToRead);
     long firstOffset = allConsumedRecords.get(0).getOffset().getNumericOffset();
@@ -388,7 +383,7 @@ public class TopicMetadataFetcherTest {
     verify(consumerMock, times(2)).unSubscribe(eq(topicPartition));
   }
 
-  private PubSubMessage getHeartBeatPubSubMessage(PubSubTopicPartition topicPartition, long offset) {
+  private DefaultPubSubMessage getHeartBeatPubSubMessage(PubSubTopicPartition topicPartition, long offset) {
     KafkaKey key = KafkaKey.HEART_BEAT;
     KafkaMessageEnvelope val = mock(KafkaMessageEnvelope.class);
     ProducerMetadata producerMetadata = new ProducerMetadata();
@@ -403,7 +398,10 @@ public class TopicMetadataFetcherTest {
         512);
   }
 
-  private PubSubMessage getPubSubMessage(PubSubTopicPartition topicPartition, boolean isControlMessage, long offset) {
+  private DefaultPubSubMessage getPubSubMessage(
+      PubSubTopicPartition topicPartition,
+      boolean isControlMessage,
+      long offset) {
     KafkaKey key = mock(KafkaKey.class);
     when(key.isControlMessage()).thenReturn(isControlMessage);
     KafkaMessageEnvelope val = mock(KafkaMessageEnvelope.class);
@@ -430,7 +428,7 @@ public class TopicMetadataFetcherTest {
     verify(metadataFetcherSpy, times(1)).consumeLatestRecords(eq(topicPartition), anyInt());
 
     // test when there are no data messages and heartbeat messages to consume
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> cm = getPubSubMessage(topicPartition, true, 5);
+    DefaultPubSubMessage cm = getPubSubMessage(topicPartition, true, 5);
     doReturn(Collections.singletonList(cm)).when(metadataFetcherSpy).consumeLatestRecords(eq(topicPartition), anyInt());
     Throwable t = expectThrows(
         VeniceException.class,
@@ -438,13 +436,13 @@ public class TopicMetadataFetcherTest {
     assertTrue(t.getMessage().contains("No data message found in topic-partition"));
 
     // test when there are heartbeat messages but no data messages to consume
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> hm = getHeartBeatPubSubMessage(topicPartition, 6);
+    DefaultPubSubMessage hm = getHeartBeatPubSubMessage(topicPartition, 6);
     doReturn(Collections.singletonList(hm)).when(metadataFetcherSpy).consumeLatestRecords(eq(topicPartition), anyInt());
     timestamp = metadataFetcherSpy.getProducerTimestampOfLastDataMessage(topicPartition);
     assertEquals(timestamp, hm.getValue().getProducerMetadata().getMessageTimestamp());
 
     // test when there are data messages to consume
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> dm0 = getPubSubMessage(topicPartition, false, 4);
+    DefaultPubSubMessage dm0 = getPubSubMessage(topicPartition, false, 4);
     doReturn(Collections.singletonList(dm0)).when(metadataFetcherSpy)
         .consumeLatestRecords(eq(topicPartition), anyInt());
     timestamp = metadataFetcherSpy.getProducerTimestampOfLastDataMessage(topicPartition);
@@ -458,7 +456,7 @@ public class TopicMetadataFetcherTest {
     assertEquals(timestamp, dm0.getValue().getProducerMetadata().getMessageTimestamp());
 
     // test: return 2 data messages
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> dm1 = getPubSubMessage(topicPartition, false, 3);
+    DefaultPubSubMessage dm1 = getPubSubMessage(topicPartition, false, 3);
     doReturn(Arrays.asList(dm1, dm0)).when(metadataFetcherSpy).consumeLatestRecords(eq(topicPartition), anyInt());
     timestamp = metadataFetcherSpy.getProducerTimestampOfLastDataMessage(topicPartition);
     assertEquals(timestamp, dm0.getValue().getProducerMetadata().getMessageTimestamp());

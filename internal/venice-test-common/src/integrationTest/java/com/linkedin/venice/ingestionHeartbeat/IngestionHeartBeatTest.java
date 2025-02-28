@@ -33,20 +33,17 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
-import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -266,12 +263,10 @@ public class IngestionHeartBeatTest {
     AtomicBoolean isLeaderCompletionHeaderFound = new AtomicBoolean(false);
     AtomicBoolean isLeaderCompleted = new AtomicBoolean(false);
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> messages =
-          pubSubConsumer.poll(100 * Time.MS_PER_SECOND);
-      for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> entry: messages
-          .entrySet()) {
-        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> pubSubMessages = entry.getValue();
-        for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message: pubSubMessages) {
+      Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages = pubSubConsumer.poll(100 * Time.MS_PER_SECOND);
+      for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: messages.entrySet()) {
+        List<DefaultPubSubMessage> pubSubMessages = entry.getValue();
+        for (DefaultPubSubMessage message: pubSubMessages) {
           if (Arrays.equals(message.getKey().getKey(), HEART_BEAT.getKey())) {
             isHBFound.set(true);
           }

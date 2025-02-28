@@ -40,7 +40,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -353,7 +353,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
   private PubSubMessageProcessedResultWrapper getMockMessage(int seqNumber) {
     PubSubMessageProcessedResultWrapper pubSubMessageProcessedResultWrapper =
         mock(PubSubMessageProcessedResultWrapper.class);
-    PubSubMessage pubSubMessage = mock(PubSubMessage.class);
+    DefaultPubSubMessage pubSubMessage = mock(DefaultPubSubMessage.class);
     doReturn(pubSubMessage).when(pubSubMessageProcessedResultWrapper).getMessage();
     KafkaKey kafkaKey = mock(KafkaKey.class);
     doReturn(kafkaKey).when(pubSubMessage).getKey();

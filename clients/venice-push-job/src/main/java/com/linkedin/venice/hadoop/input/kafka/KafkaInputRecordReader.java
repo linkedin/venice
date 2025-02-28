@@ -18,10 +18,9 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
-import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
@@ -79,7 +78,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
   /**
    * Iterator pointing to the current messages fetched from the Kafka topic partition.
    */
-  private Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> recordIterator;
+  private Iterator<DefaultPubSubMessage> recordIterator;
 
   private final DataWriterTaskTracker taskTracker;
   /**
@@ -157,7 +156,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
    */
   @Override
   public boolean next(KafkaInputMapperKey key, KafkaInputMapperValue value) throws IOException {
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage;
+    DefaultPubSubMessage pubSubMessage;
     while (hasPendingData()) {
       try {
         loadRecords();
@@ -304,8 +303,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
    */
   private void loadRecords() throws InterruptedException {
     if ((recordIterator == null) || !recordIterator.hasNext()) {
-      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> messages =
-          new HashMap<>();
+      Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages = new HashMap<>();
       int retry = 0;
       while (retry++ < CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES) {
         messages = consumer.poll(CONSUMER_POLL_TIMEOUT);

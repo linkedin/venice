@@ -8,13 +8,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.SystemTime;
@@ -58,8 +55,7 @@ public class SharedKafkaConsumerTest {
     when(consumer.getAssignment()).thenReturn(assignmentReturnedConsumer);
     sharedConsumer.subscribe(nonExistingTopic1, nonExistentPubSubTopicPartition, -1);
 
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> pubSubMessagesReturnedByConsumer =
-        new HashMap<>();
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> pubSubMessagesReturnedByConsumer = new HashMap<>();
     doReturn(pubSubMessagesReturnedByConsumer).when(consumer).poll(anyLong());
 
     sharedConsumer.poll(1000);
