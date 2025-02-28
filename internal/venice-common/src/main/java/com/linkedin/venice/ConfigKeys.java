@@ -56,6 +56,8 @@ public class ConfigKeys {
    */
   public static final String PUBSUB_CLIENT_CONFIG_PREFIX = PubSubConstants.PUBSUB_CLIENT_CONFIG_PREFIX;
 
+  public static final String PUBSUB_BROKER_ADDRESS = PubSubConstants.PUBSUB_BROKER_ADDRESS;
+
   public static final String KAFKA_CONFIG_PREFIX = ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX;
   public static final String KAFKA_BOOTSTRAP_SERVERS = ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS;
   public static final String SSL_KAFKA_BOOTSTRAP_SERVERS = ApacheKafkaProducerConfig.SSL_KAFKA_BOOTSTRAP_SERVERS;

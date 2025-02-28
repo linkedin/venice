@@ -559,7 +559,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     veniceWriterFactory = new VeniceWriterFactory(
         commonConfig.getProps().toProperties(),
         pubSubClientsFactory.getProducerAdapterFactory(),
-        null);
+        metricsRepository);
     this.realTimeTopicSwitcher = new RealTimeTopicSwitcher(
         topicManagerRepository.getLocalTopicManager(),
         veniceWriterFactory,
@@ -1428,8 +1428,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           value.getSchema().toString());
       return getVeniceWriterFactory().createVeniceWriter(
           new VeniceWriterOptions.Builder(pushJobDetailsRTTopic.getName())
-              .setKeySerializer(new VeniceAvroKafkaSerializer(key.getSchema().toString()))
-              .setValueSerializer(new VeniceAvroKafkaSerializer(value.getSchema().toString()))
+              .setKeyPayloadSerializer(new VeniceAvroKafkaSerializer(key.getSchema().toString()))
+              .setValuePayloadSerializer(new VeniceAvroKafkaSerializer(value.getSchema().toString()))
               .build());
     });
 
@@ -2992,6 +2992,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 if (multiClusterConfigs.isParent() && version.isNativeReplicationEnabled()) {
                   // Produce directly into one of the child fabric
                   vwOptionsBuilder.setBrokerAddress(version.getPushStreamSourceAddress());
+                } else {
+                  vwOptionsBuilder.setBrokerAddress(getKafkaBootstrapServers(isSslToKafka()));
                 }
                 veniceWriter = getVeniceWriterFactory().createVeniceWriter(vwOptionsBuilder.build());
                 veniceWriter.broadcastStartOfPush(

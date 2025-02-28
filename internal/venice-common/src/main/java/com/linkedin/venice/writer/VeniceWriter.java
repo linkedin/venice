@@ -309,9 +309,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       PubSubProducerAdapter producerAdapter,
       Schema overrideProtocolSchema) {
     super(params.getTopicName());
-    this.keySerializer = params.getKeySerializer();
-    this.valueSerializer = params.getValueSerializer();
-    this.writeComputeSerializer = params.getWriteComputeSerializer();
+    this.keySerializer = params.getKeyPayloadSerializer();
+    this.valueSerializer = params.getValuePayloadSerializer();
+    this.writeComputeSerializer = params.getWriteComputePayloadSerializer();
     this.time = params.getTime();
     this.partitioner = params.getPartitioner();
     this.closeTimeOutInMs = props.getInt(CLOSE_TIMEOUT_MS, DEFAULT_CLOSE_TIMEOUT_MS);

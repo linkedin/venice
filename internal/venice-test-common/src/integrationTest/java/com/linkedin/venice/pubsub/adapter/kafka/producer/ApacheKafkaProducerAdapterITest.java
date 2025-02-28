@@ -1,6 +1,5 @@
 package com.linkedin.venice.pubsub.adapter.kafka.producer;
 
-import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_CLIENT_ID;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
@@ -23,10 +22,12 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.adapter.PubSubProducerCallbackSimpleImpl;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Collections;
@@ -39,6 +40,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -90,9 +92,11 @@ public class ApacheKafkaProducerAdapterITest {
   public void setupProducerAdapter() {
     topicName = Utils.getUniqueString("test-topic");
     Properties properties = new Properties();
-    properties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
     properties.put(KAFKA_CLIENT_ID, topicName);
-    ApacheKafkaProducerConfig producerConfig = new ApacheKafkaProducerConfig(properties);
+    ApacheKafkaProducerConfig producerConfig = new ApacheKafkaProducerConfig(
+        new PubSubProducerAdapterContext.Builder().setBrokerAddress(pubSubBrokerWrapper.getAddress())
+            .setVeniceProperties(new VeniceProperties(properties))
+            .build());
     producerAdapter = new ApacheKafkaProducerAdapter(producerConfig);
   }
 
@@ -180,13 +184,12 @@ public class ApacheKafkaProducerAdapterITest {
     Thread closeProducerThread = new Thread(() -> producerAdapter.close(doFlush ? Integer.MAX_VALUE : 0));
     closeProducerThread.start();
     // We need to make sure that the Producer::close is always invoked first to ensure the correctness of this test
-    waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      assertTrue(
-          closeProducerThread.getState().equals(Thread.State.WAITING)
-              || closeProducerThread.getState().equals(Thread.State.TIMED_WAITING)
-              || closeProducerThread.getState().equals(Thread.State.BLOCKED)
-              || closeProducerThread.getState().equals(Thread.State.TERMINATED));
-    });
+    waitForNonDeterministicAssertion(
+        30,
+        TimeUnit.SECONDS,
+        () -> assertTrue(
+            isThreadInBlockedState(closeProducerThread)
+                || closeProducerThread.getState().equals(Thread.State.TERMINATED)));
 
     // Let's make sure that none of the m2 to m99 are ACKed by Kafka yet
     produceResults.forEach((cb, future) -> {
@@ -291,7 +294,9 @@ public class ApacheKafkaProducerAdapterITest {
     ExecutorService executor = Executors.newCachedThreadPool();
     CountDownLatch countDownLatch = new CountDownLatch(1);
 
+    AtomicReference<Thread> blockedSentThread = new AtomicReference<>();
     Future<?> sendMessageFuture = executor.submit(() -> {
+      blockedSentThread.set(Thread.currentThread());
       Thread.currentThread().setName("sendMessageThread");
       countDownLatch.countDown();
       try {
@@ -311,8 +316,14 @@ public class ApacheKafkaProducerAdapterITest {
 
     try {
       countDownLatch.await();
-      // Still wait for some time to make sure blocking sendMessage is inside kafka before closing it.
-      Utils.sleep(50);
+      Thread sendMessageThread = blockedSentThread.get();
+      // wait until sendMessage thread is blocked
+      waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          () -> assertTrue(
+              isThreadInBlockedState(sendMessageThread),
+              "sendMessage thread should be blocked but it is " + sendMessageThread.getState()));
       long timeout = zeroTimeout ? 0 : 5000;
       producerAdapter.close(timeout);
       sendMessageFuture.get(); // this is necessary to check whether expectations in sendMessage thread were met
@@ -321,5 +332,10 @@ public class ApacheKafkaProducerAdapterITest {
     } finally {
       executor.shutdownNow();
     }
+  }
+
+  private boolean isThreadInBlockedState(Thread thread) {
+    Thread.State state = thread.getState();
+    return state == Thread.State.BLOCKED || state == Thread.State.WAITING || state == Thread.State.TIMED_WAITING;
   }
 }

@@ -200,7 +200,7 @@ public class VeniceClusterInitializer implements Closeable {
     VeniceWriterFactory vwFactory = IntegrationTestPushUtils
         .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory);
     try (VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory.createVeniceWriter(
-        new VeniceWriterOptions.Builder(pushVersionTopic).setKeySerializer(keySerializer).build())) {
+        new VeniceWriterOptions.Builder(pushVersionTopic).setKeyPayloadSerializer(keySerializer).build())) {
       veniceWriter.broadcastStartOfPush(Collections.emptyMap());
       Future[] writerFutures = new Future[ENTRY_COUNT];
       for (int i = 0; i < ENTRY_COUNT; i++) {

@@ -379,16 +379,17 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     VenicePartitioner partitioner = PartitionUtils.getVenicePartitioner(props);
 
     String topicName = props.getString(TOPIC_PROP);
-    VeniceWriterOptions options = new VeniceWriterOptions.Builder(topicName).setKeySerializer(new DefaultSerializer())
-        .setValueSerializer(new DefaultSerializer())
-        .setWriteComputeSerializer(new DefaultSerializer())
-        .setChunkingEnabled(chunkingEnabled)
-        .setRmdChunkingEnabled(rmdChunkingEnabled)
-        .setTime(SystemTime.INSTANCE)
-        .setPartitionCount(getPartitionCount())
-        .setPartitioner(partitioner)
-        .setMaxRecordSizeBytes(Integer.parseInt(maxRecordSizeBytesStr))
-        .build();
+    VeniceWriterOptions options =
+        new VeniceWriterOptions.Builder(topicName).setKeyPayloadSerializer(new DefaultSerializer())
+            .setValuePayloadSerializer(new DefaultSerializer())
+            .setWriteComputePayloadSerializer(new DefaultSerializer())
+            .setChunkingEnabled(chunkingEnabled)
+            .setRmdChunkingEnabled(rmdChunkingEnabled)
+            .setTime(SystemTime.INSTANCE)
+            .setPartitionCount(getPartitionCount())
+            .setPartitioner(partitioner)
+            .setMaxRecordSizeBytes(Integer.parseInt(maxRecordSizeBytesStr))
+            .build();
     String flatViewConfigMapString = props.getString(PUSH_JOB_VIEW_CONFIGS, "");
     if (!flatViewConfigMapString.isEmpty()) {
       mainWriter = veniceWriterFactoryFactory.createVeniceWriter(options);

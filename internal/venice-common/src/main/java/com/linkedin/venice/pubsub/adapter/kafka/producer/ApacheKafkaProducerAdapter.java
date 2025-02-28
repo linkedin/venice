@@ -1,12 +1,15 @@
 package com.linkedin.venice.pubsub.adapter.kafka.producer;
 
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
+import com.linkedin.venice.pubsub.api.PubSubMessageSerializer;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
@@ -40,8 +43,9 @@ import org.apache.logging.log4j.Logger;
 public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
   private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaProducerAdapter.class);
 
-  private KafkaProducer<KafkaKey, KafkaMessageEnvelope> producer;
+  private KafkaProducer<byte[], byte[]> producer;
   private final ApacheKafkaProducerConfig producerConfig;
+  private final PubSubMessageSerializer messageSerializer;
 
   /**
    * @param producerConfig contains producer configs
@@ -50,9 +54,11 @@ public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
     this(producerConfig, new KafkaProducer<>(producerConfig.getProducerProperties()));
   }
 
-  ApacheKafkaProducerAdapter(ApacheKafkaProducerConfig cfg, KafkaProducer<KafkaKey, KafkaMessageEnvelope> producer) {
+  @VisibleForTesting
+  ApacheKafkaProducerAdapter(ApacheKafkaProducerConfig cfg, KafkaProducer<byte[], byte[]> producer) {
     this.producerConfig = cfg;
     this.producer = producer;
+    this.messageSerializer = cfg.getPubSubMessageSerializer();
   }
 
   /**
@@ -91,11 +97,40 @@ public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
       PubSubMessageHeaders pubsubMessageHeaders,
       PubSubProducerCallback pubsubProducerCallback) {
     ensureProducerIsNotClosed();
-    ProducerRecord<KafkaKey, KafkaMessageEnvelope> record = new ProducerRecord<>(
+    byte[] keyBytes = messageSerializer.serializeKey(topic, key);
+    byte[] valueBytes = messageSerializer.serializeValue(topic, value);
+    return sendMessage(topic, partition, keyBytes, valueBytes, pubsubMessageHeaders, pubsubProducerCallback);
+  }
+
+  @Override
+  public CompletableFuture<PubSubProduceResult> sendMessage(
+      PubSubTopicPartition pubSubTopicPartition,
+      byte[] keyBytes,
+      byte[] valueBytes,
+      PubSubMessageHeaders pubsubMessageHeaders,
+      PubSubProducerCallback pubsubProducerCallback) {
+    return sendMessage(
+        pubSubTopicPartition.getTopicName(),
+        pubSubTopicPartition.getPartitionNumber(),
+        keyBytes,
+        valueBytes,
+        pubsubMessageHeaders,
+        pubsubProducerCallback);
+  }
+
+  private CompletableFuture<PubSubProduceResult> sendMessage(
+      String topic,
+      Integer partition,
+      byte[] keyBytes,
+      byte[] valueBytes,
+      PubSubMessageHeaders pubsubMessageHeaders,
+      PubSubProducerCallback pubsubProducerCallback) {
+    ensureProducerIsNotClosed();
+    ProducerRecord<byte[], byte[]> record = new ProducerRecord<>(
         topic,
         partition,
-        key,
-        value,
+        keyBytes,
+        valueBytes,
         ApacheKafkaUtils.convertToKafkaSpecificHeaders(pubsubMessageHeaders));
     ApacheKafkaProducerCallback kafkaCallback = new ApacheKafkaProducerCallback(pubsubProducerCallback);
     try {

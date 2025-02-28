@@ -245,8 +245,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     producerAdapterFactory = pubSubClientsFactory.getProducerAdapterFactory();
     VeniceWriterFactory veniceWriterFactory =
         new VeniceWriterFactory(veniceWriterProperties, producerAdapterFactory, metricsRepository);
-    VeniceWriterFactory veniceWriterFactoryForMetaStoreWriter =
-        new VeniceWriterFactory(veniceWriterProperties, producerAdapterFactory, null);
     this.adaptiveThrottlerSignalService = adaptiveThrottlerSignalService;
     this.ingestionThrottler = new IngestionThrottler(
         isDaVinciClient,
@@ -301,7 +299,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     if (zkSharedSchemaRepository.isPresent()) {
       this.metaStoreWriter = new MetaStoreWriter(
           topicManagerRepository.getLocalTopicManager(),
-          veniceWriterFactoryForMetaStoreWriter,
+          veniceWriterFactory,
           zkSharedSchemaRepository.get(),
           pubSubTopicRepository,
           serverConfig.getMetaStoreWriterCloseTimeoutInMS(),

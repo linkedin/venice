@@ -29,7 +29,7 @@ public class ChangeCaptureView extends VeniceView {
   public VeniceWriterOptions.Builder getWriterOptionsBuilder(String viewTopicName, Version version) {
     VeniceWriterOptions.Builder configBuilder = new VeniceWriterOptions.Builder(viewTopicName);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(RecordChangeEvent.getClassSchema());
-    configBuilder.setValueSerializer(valueSerializer);
+    configBuilder.setValuePayloadSerializer(valueSerializer);
 
     // Set writer properties based on the store version config
     PartitionerConfig partitionerConfig = version.getPartitionerConfig();

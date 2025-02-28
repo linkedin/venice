@@ -32,11 +32,11 @@ public class ApacheKafkaConsumerConfigTest {
     props.put("kafka.sasl.jaas.config", SASL_JAAS_CONFIG);
     props.put("kafka.sasl.mechanism", SASL_MECHANISM);
     props.put("kafka.security.protocol", "SASL_SSL");
-    ApacheKafkaProducerConfig apacheKafkaProducerConfig = new ApacheKafkaProducerConfig(props);
-    Properties producerProperties = apacheKafkaProducerConfig.getProducerProperties();
-    assertEquals(SASL_JAAS_CONFIG, producerProperties.get("sasl.jaas.config"));
-    assertEquals(SASL_MECHANISM, producerProperties.get("sasl.mechanism"));
-    assertEquals("SASL_SSL", producerProperties.get("security.protocol"));
+    ApacheKafkaConsumerConfig consumerConfig = new ApacheKafkaConsumerConfig(new VeniceProperties(props), null);
+    Properties consumerProps = consumerConfig.getConsumerProperties();
+    assertEquals(SASL_JAAS_CONFIG, consumerProps.get("sasl.jaas.config"));
+    assertEquals(SASL_MECHANISM, consumerProps.get("sasl.mechanism"));
+    assertEquals("SASL_SSL", consumerProps.get("security.protocol"));
   }
 
   @Test

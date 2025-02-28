@@ -1,5 +1,6 @@
 package com.linkedin.venice.pubsub.api;
 
+import com.linkedin.venice.annotation.UnderDevelopment;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
@@ -49,6 +50,16 @@ public interface PubSubProducerAdapter {
       KafkaMessageEnvelope value,
       PubSubMessageHeaders pubSubMessageHeaders,
       PubSubProducerCallback pubSubProducerCallback);
+
+  @UnderDevelopment
+  default CompletableFuture<PubSubProduceResult> sendMessage(
+      PubSubTopicPartition pubSubTopicPartition,
+      byte[] keyBytes,
+      byte[] valueBytes,
+      PubSubMessageHeaders pubSubMessageHeaders,
+      PubSubProducerCallback pubSubProducerCallback) {
+    throw new UnsupportedOperationException("Method not implemented");
+  }
 
   void flush();
 

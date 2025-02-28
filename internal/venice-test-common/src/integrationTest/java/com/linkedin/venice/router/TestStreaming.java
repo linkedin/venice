@@ -150,7 +150,8 @@ public class TestStreaming {
         veniceCluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
     veniceWriter = IntegrationTestPushUtils
         .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory)
-        .createVeniceWriter(new VeniceWriterOptions.Builder(storeVersionName).setKeySerializer(keySerializer).build());
+        .createVeniceWriter(
+            new VeniceWriterOptions.Builder(storeVersionName).setKeyPayloadSerializer(keySerializer).build());
 
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
 

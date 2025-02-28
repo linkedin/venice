@@ -27,6 +27,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
@@ -115,8 +116,13 @@ public class PubSubConsumerAdapterTest {
     VeniceProperties veniceProperties = new VeniceProperties(pubSubProperties);
     pubSubConsumerAdapter = pubSubClientsFactory.getConsumerAdapterFactory()
         .create(veniceProperties, false, pubSubMessageDeserializer, clientId);
-    pubSubProducerAdapterLazy =
-        Lazy.of(() -> pubSubClientsFactory.getProducerAdapterFactory().create(veniceProperties, clientId, null));
+    pubSubProducerAdapterLazy = Lazy.of(
+        () -> pubSubClientsFactory.getProducerAdapterFactory()
+            .create(
+                new PubSubProducerAdapterContext.Builder().setVeniceProperties(veniceProperties)
+                    .setProducerName(clientId)
+                    .setBrokerAddress(pubSubBrokerWrapper.getAddress())
+                    .build()));
     pubSubAdminAdapterLazy =
         Lazy.of(() -> pubSubClientsFactory.getAdminAdapterFactory().create(veniceProperties, pubSubTopicRepository));
   }

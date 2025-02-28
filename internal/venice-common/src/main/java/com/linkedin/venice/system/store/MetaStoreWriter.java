@@ -4,14 +4,12 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
-import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
@@ -20,7 +18,6 @@ import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.systemstore.schemas.StoreKeySchemas;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
-import com.linkedin.venice.systemstore.schemas.StoreReplicaStatus;
 import com.linkedin.venice.systemstore.schemas.StoreValueSchema;
 import com.linkedin.venice.systemstore.schemas.StoreValueSchemas;
 import com.linkedin.venice.utils.Utils;
@@ -224,39 +221,6 @@ public class MetaStoreWriter implements Closeable {
   }
 
   /**
-   * This function is used to produce a snapshot for replica statuses.
-   */
-  public void writeReadyToServerStoreReplicas(
-      String clusterName,
-      String storeName,
-      int version,
-      int partitionId,
-      Collection<Instance> readyToServeInstances) {
-    write(storeName, MetaStoreDataType.STORE_REPLICA_STATUSES, () -> new HashMap<String, String>() {
-      {
-        put(KEY_STRING_STORE_NAME, storeName);
-        put(KEY_STRING_CLUSTER_NAME, clusterName);
-        put(KEY_STRING_VERSION_NUMBER, Integer.toString(version));
-        put(KEY_STRING_PARTITION_ID, Integer.toString(partitionId));
-      }
-    }, () -> {
-      StoreMetaValue value = new StoreMetaValue();
-      Map<CharSequence, StoreReplicaStatus> replicaMap = new HashMap<>();
-      for (Instance instance: readyToServeInstances) {
-        StoreReplicaStatus storeReplicaStatus = new StoreReplicaStatus();
-        storeReplicaStatus.status = ExecutionStatus.COMPLETED.getValue();
-        replicaMap.put(instance.getUrl(true), storeReplicaStatus);
-      }
-      value.storeReplicaStatuses = replicaMap;
-      return value;
-    });
-  }
-
-  Schema getDerivedComputeSchema() {
-    return this.derivedComputeSchema;
-  }
-
-  /**
    * Write {@link com.linkedin.venice.meta.StoreConfig} equivalent to the meta system store. This is still only invoked
    * by child controllers only.
    */
@@ -269,26 +233,6 @@ public class MetaStoreWriter implements Closeable {
       StoreMetaValue value = new StoreMetaValue();
       value.storeClusterConfig = storeConfig.dataModel();
       return value;
-    });
-  }
-
-  /**
-   * Clean up deprecated replica statuses.
-   * Currently, it is being used when cleaning up a deprecated version topic, where it guarantees all the
-   * partition replicas have been removed from Venice Cluster in {@literal TopicCleanupService}.
-   */
-  public void deleteStoreReplicaStatus(String clusterName, String storeName, int version, int partitionId) {
-    String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-    StoreMetaKey key = MetaStoreDataType.STORE_REPLICA_STATUSES.getStoreMetaKey(new HashMap<String, String>() {
-      {
-        put(KEY_STRING_STORE_NAME, storeName);
-        put(KEY_STRING_CLUSTER_NAME, clusterName);
-        put(KEY_STRING_VERSION_NUMBER, Integer.toString(version));
-        put(KEY_STRING_PARTITION_ID, Integer.toString(partitionId));
-      }
-    });
-    writeMessageWithRetry(metaStoreName, vw -> {
-      vw.delete(key, null);
     });
   }
 
@@ -421,13 +365,13 @@ public class MetaStoreWriter implements Closeable {
       }
 
       VeniceWriterOptions options = new VeniceWriterOptions.Builder(rtTopic.getName())
-          .setKeySerializer(
+          .setKeyPayloadSerializer(
               new VeniceAvroKafkaSerializer(
                   AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()))
-          .setValueSerializer(
+          .setValuePayloadSerializer(
               new VeniceAvroKafkaSerializer(
                   AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema()))
-          .setWriteComputeSerializer(new VeniceAvroKafkaSerializer(derivedComputeSchema))
+          .setWriteComputePayloadSerializer(new VeniceAvroKafkaSerializer(derivedComputeSchema))
           .setChunkingEnabled(false)
           .setPartitionCount(1)
           .build();

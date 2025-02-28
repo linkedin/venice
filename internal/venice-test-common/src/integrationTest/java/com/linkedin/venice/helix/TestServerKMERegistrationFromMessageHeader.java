@@ -89,7 +89,8 @@ public class TestServerKMERegistrationFromMessageHeader {
 
     veniceWriter =
         IntegrationTestPushUtils.getVeniceWriterFactory(cluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory)
-            .createVeniceWriter(new VeniceWriterOptions.Builder(storeVersion).setKeySerializer(keySerializer).build());
+            .createVeniceWriter(
+                new VeniceWriterOptions.Builder(storeVersion).setKeyPayloadSerializer(keySerializer).build());
 
     VeniceControllerWrapper leaderController = cluster.getLeaderVeniceController();
     KafkaValueSerializer valueSerializer =

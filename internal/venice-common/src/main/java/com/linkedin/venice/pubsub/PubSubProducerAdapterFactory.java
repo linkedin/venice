@@ -1,6 +1,7 @@
 package com.linkedin.venice.pubsub;
 
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterContext;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.Closeable;
 
@@ -23,7 +24,12 @@ public interface PubSubProducerAdapterFactory<ADAPTER extends PubSubProducerAdap
    *                             If this value is null, local broker address present in veniceProperties will be used.
    * @return                     Returns an instance of a producer adapter
    */
+  @Deprecated
   ADAPTER create(VeniceProperties veniceProperties, String producerName, String targetBrokerAddress);
+
+  default ADAPTER create(PubSubProducerAdapterContext context) {
+    return create(context.getVeniceProperties(), context.getProducerName(), context.getBrokerAddress());
+  }
 
   String getName();
 }

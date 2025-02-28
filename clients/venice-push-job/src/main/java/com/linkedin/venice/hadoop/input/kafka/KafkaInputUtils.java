@@ -2,6 +2,7 @@ package com.linkedin.venice.hadoop.input.kafka;
 
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_CLUSTER_D2_SERVICE_NAME;
@@ -66,6 +67,7 @@ public class KafkaInputUtils {
      */
     consumerFactoryProperties.setProperty(CommonClientConfigs.RECEIVE_BUFFER_CONFIG, Long.toString(4 * 1024 * 1024));
     consumerFactoryProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, config.get(KAFKA_INPUT_BROKER_URL));
+    consumerFactoryProperties.setProperty(PUBSUB_BROKER_ADDRESS, config.get(KAFKA_INPUT_BROKER_URL));
 
     ApacheKafkaProducerConfig.copyKafkaSASLProperties(HadoopUtils.getProps(config), consumerFactoryProperties, true);
 

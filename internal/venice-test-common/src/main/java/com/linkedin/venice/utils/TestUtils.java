@@ -461,8 +461,8 @@ public class TestUtils {
       Stream<Map.Entry> batchData) {
 
     try (VeniceWriter<Object, Object, byte[]> writer = writerFactory.createVeniceWriter(
-        new VeniceWriterOptions.Builder(kafkaTopic).setKeySerializer(new VeniceAvroKafkaSerializer(keySchema))
-            .setValueSerializer(new VeniceAvroKafkaSerializer(valueSchema))
+        new VeniceWriterOptions.Builder(kafkaTopic).setKeyPayloadSerializer(new VeniceAvroKafkaSerializer(keySchema))
+            .setValuePayloadSerializer(new VeniceAvroKafkaSerializer(valueSchema))
             .setPartitionCount(partitionCount)
             .setPartitioner(venicePartitioner)
             .build())) {
