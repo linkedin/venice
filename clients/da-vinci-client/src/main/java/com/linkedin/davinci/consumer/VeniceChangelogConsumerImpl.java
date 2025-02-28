@@ -22,7 +22,6 @@ import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
@@ -34,6 +33,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -612,15 +612,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       String topicSuffix,
       boolean includeControlMessage) {
     List<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> messagesMap;
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messagesMap;
     synchronized (pubSubConsumer) {
       messagesMap = pubSubConsumer.poll(timeoutInMs);
     }
-    for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> entry: messagesMap
-        .entrySet()) {
+    for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: messagesMap.entrySet()) {
       PubSubTopicPartition pubSubTopicPartition = entry.getKey();
-      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> messageList = entry.getValue();
-      for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message: messageList) {
+      List<DefaultPubSubMessage> messageList = entry.getValue();
+      for (DefaultPubSubMessage message: messageList) {
         maybeUpdatePartitionToBootstrapMap(message, pubSubTopicPartition);
         if (message.getKey().isControlMessage()) {
           ControlMessage controlMessage = (ControlMessage) message.getValue().getPayloadUnion();
@@ -672,9 +671,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return pubSubMessages;
   }
 
-  void maybeUpdatePartitionToBootstrapMap(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message,
-      PubSubTopicPartition pubSubTopicPartition) {
+  void maybeUpdatePartitionToBootstrapMap(DefaultPubSubMessage message, PubSubTopicPartition pubSubTopicPartition) {
     if (getSubscribeTime() - message.getValue().producerMetadata.messageTimestamp <= TimeUnit.MINUTES.toMillis(1)) {
       getPartitionToBootstrapState().put(pubSubTopicPartition.getPartitionNumber(), true);
     }
@@ -746,7 +743,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   protected Optional<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> convertPubSubMessageToPubSubChangeEventMessage(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message,
+      DefaultPubSubMessage message,
       PubSubTopicPartition pubSubTopicPartition) {
     Optional<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubChangeEventMessage = Optional.empty();
     byte[] keyBytes = message.getKey().getKey();

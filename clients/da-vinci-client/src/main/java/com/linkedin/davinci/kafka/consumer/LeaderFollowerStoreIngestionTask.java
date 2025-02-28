@@ -65,10 +65,10 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
-import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -1373,7 +1373,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   protected void updateOffsetsFromConsumerRecord(
       PartitionConsumptionState partitionConsumptionState,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       LeaderProducedRecordContext leaderProducedRecordContext,
       UpdateVersionTopicOffset updateVersionTopicOffsetFunction,
       UpdateUpstreamTopicOffset updateUpstreamTopicOffsetFunction,
@@ -1475,7 +1475,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PartitionConsumptionState partitionConsumptionState,
       LeaderProducedRecordContext leaderProducedRecordContext,
       String upstreamKafkaURL,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       UpdateVersionTopicOffset updateVersionTopicOffsetFunction,
       UpdateUpstreamTopicOffset updateUpstreamTopicOffsetFunction) {
     // Leader will only update the offset from leaderProducedRecordContext in VT.
@@ -1503,7 +1503,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   @Override
   protected void updateLatestInMemoryProcessedOffset(
       PartitionConsumptionState partitionConsumptionState,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecordWrapper,
+      DefaultPubSubMessage consumerRecordWrapper,
       LeaderProducedRecordContext leaderProducedRecordContext,
       String kafkaUrl,
       boolean dryRun) {
@@ -1528,7 +1528,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected static void checkAndHandleUpstreamOffsetRewind(
       PartitionConsumptionState partitionConsumptionState,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       final long newUpstreamOffset,
       final long previousUpstreamOffset,
       LeaderFollowerStoreIngestionTask ingestionTask) {
@@ -1673,7 +1673,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   protected void produceToLocalKafka(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       PartitionConsumptionState partitionConsumptionState,
       LeaderProducedRecordContext leaderProducedRecordContext,
       BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction,
@@ -1847,7 +1847,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * for leader, it's possible that it consumers from real-time topic or GF topic.
    */
   @Override
-  protected boolean shouldProcessRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> record) {
+  protected boolean shouldProcessRecord(DefaultPubSubMessage record) {
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(record.getPartition());
     if (partitionConsumptionState == null) {
       LOGGER.info(
@@ -1940,7 +1940,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   @Override
   protected boolean shouldPersistRecord(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> record,
+      DefaultPubSubMessage record,
       PartitionConsumptionState partitionConsumptionState) {
     if (!super.shouldPersistRecord(record, partitionConsumptionState)) {
       return false;
@@ -2187,7 +2187,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   private void propagateHeartbeatFromUpstreamTopicToLocalVersionTopic(
       PartitionConsumptionState partitionConsumptionState,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       LeaderProducedRecordContext leaderProducedRecordContext,
       int partition,
       String kafkaUrl,
@@ -2229,7 +2229,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   @Override
   protected void recordHeartbeatReceived(
       PartitionConsumptionState partitionConsumptionState,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       String kafkaUrl) {
     if (heartbeatMonitoringService == null) {
       // Not enabled!
@@ -2256,8 +2256,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> validateAndFilterOutDuplicateMessagesFromLeaderTopic(
-      Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> records,
+  protected Iterable<DefaultPubSubMessage> validateAndFilterOutDuplicateMessagesFromLeaderTopic(
+      Iterable<DefaultPubSubMessage> records,
       String kafkaUrl,
       PubSubTopicPartition topicPartition) {
     final PartitionConsumptionState pcs = partitionConsumptionStateMap.get(topicPartition.getPartitionNumber());
@@ -2277,9 +2277,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * Just to note this code is getting executed in Leader only. Leader DIV check progress is always ahead of the
      * actual data persisted on disk. Leader DIV check results will not be persisted on disk.
      */
-    Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> iter = records.iterator();
+    Iterator<DefaultPubSubMessage> iter = records.iterator();
     while (iter.hasNext()) {
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> record = iter.next();
+      DefaultPubSubMessage record = iter.next();
       boolean isRealTimeTopic = record.getTopicPartition().getPubSubTopic().isRealTime();
       try {
         /**
@@ -2337,13 +2337,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   @Override
   protected DelegateConsumerRecordResult delegateConsumerRecord(
-      PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecordWrapper,
+      PubSubMessageProcessedResultWrapper consumerRecordWrapper,
       int partition,
       String kafkaUrl,
       int kafkaClusterId,
       long beforeProcessingPerRecordTimestampNs,
       long beforeProcessingBatchRecordsTimestampMs) {
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord = consumerRecordWrapper.getMessage();
+    DefaultPubSubMessage consumerRecord = consumerRecordWrapper.getMessage();
     try {
       KafkaKey kafkaKey = consumerRecord.getKey();
       KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
@@ -2769,7 +2769,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * Extend this function when there is new check needed.
    */
   private void validateRecordBeforeProducingToLocalKafka(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       PartitionConsumptionState partitionConsumptionState,
       String kafkaUrl,
       int kafkaClusterId) {
@@ -3152,7 +3152,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   private PubSubMessageProcessedResult processMessage(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       PartitionConsumptionState partitionConsumptionState,
       int partition,
       String kafkaUrl,
@@ -3341,14 +3341,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   protected void processMessageAndMaybeProduceToKafka(
-      PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecordWrapper,
+      PubSubMessageProcessedResultWrapper consumerRecordWrapper,
       PartitionConsumptionState partitionConsumptionState,
       int partition,
       String kafkaUrl,
       int kafkaClusterId,
       long beforeProcessingRecordTimestampNs,
       long beforeProcessingBatchRecordsTimestampMs) {
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord = consumerRecordWrapper.getMessage();
+    DefaultPubSubMessage consumerRecord = consumerRecordWrapper.getMessage();
     KafkaKey kafkaKey = consumerRecord.getKey();
     KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
     byte[] keyBytes = kafkaKey.getKey();
@@ -3396,7 +3396,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   private void produceToLocalKafkaHelper(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       PartitionConsumptionState partitionConsumptionState,
       WriteComputeResultWrapper writeComputeResultWrapper,
       int partition,
@@ -3697,7 +3697,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   protected LeaderProducerCallback createProducerCallback(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       PartitionConsumptionState partitionConsumptionState,
       LeaderProducedRecordContext leaderProducedRecordContext,
       int partition,

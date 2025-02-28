@@ -4,11 +4,8 @@ import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.utils.LatencyUtils;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -33,7 +30,7 @@ public class IngestionBatchProcessor {
 
   interface ProcessingFunction {
     PubSubMessageProcessedResult apply(
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> consumerRecord,
+        DefaultPubSubMessage consumerRecord,
         PartitionConsumptionState partitionConsumptionState,
         int partition,
         String kafkaUrl,
@@ -84,8 +81,7 @@ public class IngestionBatchProcessor {
    * When {@link #lockManager} is not null, this function will try to lock all the keys
    * (except Control Messages) passed by the params.
    */
-  public NavigableMap<ByteArrayKey, ReentrantLock> lockKeys(
-      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> records) {
+  public NavigableMap<ByteArrayKey, ReentrantLock> lockKeys(List<DefaultPubSubMessage> records) {
     if (lockManager != null) {
       /**
        * Need to use a {@link TreeMap} to make sure the locking will be executed in a deterministic order, otherwise
@@ -114,9 +110,8 @@ public class IngestionBatchProcessor {
     }
   }
 
-  public static boolean isAllMessagesFromRTTopic(
-      Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> records) {
-    for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> record: records) {
+  public static boolean isAllMessagesFromRTTopic(Iterable<DefaultPubSubMessage> records) {
+    for (DefaultPubSubMessage record: records) {
       if (!record.getTopicPartition().getPubSubTopic().isRealTime()) {
         return false;
       }
@@ -124,8 +119,8 @@ public class IngestionBatchProcessor {
     return true;
   }
 
-  public List<PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> process(
-      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> records,
+  public List<PubSubMessageProcessedResultWrapper> process(
+      List<DefaultPubSubMessage> records,
       PartitionConsumptionState partitionConsumptionState,
       int partition,
       String kafkaUrl,
@@ -137,20 +132,18 @@ public class IngestionBatchProcessor {
       return Collections.emptyList();
     }
     boolean isAllMessagesFromRTTopic = true;
-    List<PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> resultList =
-        new ArrayList<>(records.size());
+    List<PubSubMessageProcessedResultWrapper> resultList = new ArrayList<>(records.size());
     /**
      * We would like to process the messages belonging to the same key sequentially to avoid race conditions.
      */
     int totalNumOfRecords = 0;
-    Map<ByteArrayKey, List<PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> keyGroupMap =
-        new HashMap<>(records.size());
+    Map<ByteArrayKey, List<PubSubMessageProcessedResultWrapper>> keyGroupMap = new HashMap<>(records.size());
 
-    for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message: records) {
+    for (DefaultPubSubMessage message: records) {
       if (!message.getTopicPartition().getPubSubTopic().isRealTime()) {
         isAllMessagesFromRTTopic = false;
       }
-      PubSubMessageProcessedResultWrapper resultWrapper = new PubSubMessageProcessedResultWrapper<>(message);
+      PubSubMessageProcessedResultWrapper resultWrapper = new PubSubMessageProcessedResultWrapper(message);
       resultList.add(resultWrapper);
       if (!message.getKey().isControlMessage() && isAllMessagesFromRTTopic) {
         ByteArrayKey byteArrayKey = ByteArrayKey.wrap(message.getKey().getKey());

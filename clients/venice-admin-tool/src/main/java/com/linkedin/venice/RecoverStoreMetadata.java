@@ -20,13 +20,11 @@ import com.linkedin.venice.helix.StoreJSONSerializer;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Utils;
@@ -105,17 +103,15 @@ public class RecoverStoreMetadata {
     String keySchema = null;
     Map<Integer, String> valueSchemas = null;
     while (true) {
-      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> records =
-          consumer.poll(3000); // 3 seconds
+      Map<PubSubTopicPartition, List<DefaultPubSubMessage>> records = consumer.poll(3000); // 3 seconds
       if (records.isEmpty()) {
         break;
       }
 
-      Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> recordsIterator =
-          Utils.iterateOnMapOfLists(records);
+      Iterator<DefaultPubSubMessage> recordsIterator = Utils.iterateOnMapOfLists(records);
 
       while (recordsIterator.hasNext()) {
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> record = recordsIterator.next();
+        DefaultPubSubMessage record = recordsIterator.next();
         if (record.getOffset().getNumericOffset() % 1000 == 0) {
           System.out.println("Consumed " + record.getOffset() + " messages");
         }

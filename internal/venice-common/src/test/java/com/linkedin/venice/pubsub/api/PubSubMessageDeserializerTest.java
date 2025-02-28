@@ -74,7 +74,7 @@ public class PubSubMessageDeserializerTest {
   public void testDeserializer() {
     KafkaKey key = new KafkaKey(MessageType.PUT, "key".getBytes());
     KafkaMessageEnvelope value = getDummyValue();
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message = messageDeserializer.deserialize(
+    DefaultPubSubMessage message = messageDeserializer.deserialize(
         topicPartition,
         keySerializer.serialize("test", key),
         valueSerializer.serialize("test", value),
@@ -95,7 +95,7 @@ public class PubSubMessageDeserializerTest {
     KafkaMessageEnvelope value = getDummyValue();
     PubSubMessageHeader header =
         new PubSubMessageHeader(VENICE_TRANSPORT_PROTOCOL_HEADER, KafkaMessageEnvelope.SCHEMA$.toString().getBytes());
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message = messageDeserializer.deserialize(
+    DefaultPubSubMessage message = messageDeserializer.deserialize(
         topicPartition,
         keySerializer.serialize("test", key),
         valueSerializer.serialize("test", value),
@@ -116,7 +116,7 @@ public class PubSubMessageDeserializerTest {
     KafkaKey key = new KafkaKey(MessageType.CONTROL_MESSAGE, "key".getBytes());
     KafkaMessageEnvelope value = getDummyValue();
     PubSubMessageHeader header = new PubSubMessageHeader(VENICE_TRANSPORT_PROTOCOL_HEADER, "invalid".getBytes());
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message = messageDeserializer.deserialize(
+    DefaultPubSubMessage message = messageDeserializer.deserialize(
         topicPartition,
         keySerializer.serialize("test", key),
         valueSerializer.serialize("test", value),

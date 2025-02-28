@@ -45,6 +45,7 @@ import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -244,10 +245,9 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
 
     // Verify onRecordReceivedForStorage for partition 0
     Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> resultSet = new ArrayList<>();
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> testRecords =
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> testRecords =
         prepareChangeCaptureRecordsToBePolled(TEST_KEY_1, changeCaptureTopic, 0);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> testRecord =
-        testRecords.values().stream().findFirst().get().get(0);
+    DefaultPubSubMessage testRecord = testRecords.values().stream().findFirst().get().get(0);
     Map<Integer, String> expectedPartitionToKey = new HashMap<>();
     expectedPartitionToKey.put(0, TEST_KEY_1);
     ValueBytes valueBytes = new ValueBytes();
@@ -486,20 +486,19 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     Assert.assertEquals(value.getCurrentValue(), record.getValue().getCurrentValue().toString());
   }
 
-  private Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> prepareChangeCaptureRecordsToBePolled(
+  private Map<PubSubTopicPartition, List<DefaultPubSubMessage>> prepareChangeCaptureRecordsToBePolled(
       String key,
       PubSubTopic changeCaptureTopic,
       int partition) {
-    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> pubSubMessageList = new ArrayList<>();
+    List<DefaultPubSubMessage> pubSubMessageList = new ArrayList<>();
     pubSubMessageList.add(constructChangeCaptureConsumerRecord(changeCaptureTopic, partition, key));
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> pubSubMessagesMap =
-        new HashMap<>();
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> pubSubMessagesMap = new HashMap<>();
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(changeCaptureTopic, partition);
     pubSubMessagesMap.put(topicPartition, pubSubMessageList);
     return pubSubMessagesMap;
   }
 
-  private PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> constructChangeCaptureConsumerRecord(
+  private DefaultPubSubMessage constructChangeCaptureConsumerRecord(
       PubSubTopic changeCaptureVersionTopic,
       int partition,
       String key) {
@@ -533,7 +532,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
         null);
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, keySerializer.serialize(key));
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(changeCaptureVersionTopic, partition);
-    return new ImmutablePubSubMessage<>(
+    return new ImmutablePubSubMessage(
         kafkaKey,
         kafkaMessageEnvelope,
         pubSubTopicPartition,

@@ -32,7 +32,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.adapter.kafka.TopicPartitionsOffsetsTracker;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -335,8 +335,7 @@ public class ApacheKafkaConsumerAdapterTest {
     // add partition to assignments
     kafkaConsumerAdapter.subscribe(pubSubTopicPartition, -1);
     // poll
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> messages =
-        kafkaConsumerAdapter.poll(Long.MAX_VALUE);
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages = kafkaConsumerAdapter.poll(Long.MAX_VALUE);
 
     // verify
     assertEquals(messages.size(), 1);

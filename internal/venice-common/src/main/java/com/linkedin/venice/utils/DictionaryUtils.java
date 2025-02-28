@@ -9,10 +9,9 @@ import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
-import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
@@ -70,15 +69,13 @@ public class DictionaryUtils {
       KafkaKey kafkaKey;
       KafkaMessageEnvelope kafkaValue = null;
       while (!startOfPushReceived) {
-        Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>>> messages =
-            pubSubConsumer.poll(10 * Time.MS_PER_SECOND);
+        Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages = pubSubConsumer.poll(10 * Time.MS_PER_SECOND);
 
         if (!messages.containsKey(pubSubTopicPartition)) {
           continue;
         }
 
-        for (final PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message: messages
-            .get(pubSubTopicPartition)) {
+        for (final DefaultPubSubMessage message: messages.get(pubSubTopicPartition)) {
           kafkaKey = message.getKey();
           kafkaValue = message.getValue();
           if (kafkaKey.isControlMessage()) {
