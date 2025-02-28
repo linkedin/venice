@@ -142,16 +142,14 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               String kafkaTopicName = Version.composeKafkaTopic(storeName, targetVersionNum);
               Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetRegionsString);
               Map<String, Long> storePushCompletionTimes = storePushCompletionTimeCache.getIfPresent(kafkaTopicName);
+              int targetRegionWaitTime = targetVersion.getTargetSwapRegionWaitTime();
               if (storePushCompletionTimes != null) {
-                if (!didWaitTimeElapseInTargetRegions(
-                    storePushCompletionTimes,
-                    targetRegions,
-                    store.getTargetSwapRegionWaitTime())) {
-                  LOGGER.info(
+                if (!didWaitTimeElapseInTargetRegions(storePushCompletionTimes, targetRegions, targetRegionWaitTime)) {
+                  LOGGER.debug(
                       "Skipping version swap for store: {} on version: {} as wait time: {} has not passed",
                       storeName,
                       targetVersionNum,
-                      store.getTargetSwapRegionWaitTime());
+                      targetRegionWaitTime);
                   continue;
                 }
               }
@@ -269,14 +267,14 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               boolean didWaitTimeElapseInTargetRegions = didWaitTimeElapseInTargetRegions(
                   pushStatusInfo.getExtraInfoUpdateTimestamp(),
                   targetRegions,
-                  store.getTargetSwapRegionWaitTime());
+                  targetRegionWaitTime);
 
               if (!didWaitTimeElapseInTargetRegions) {
-                LOGGER.info(
+                LOGGER.debug(
                     "Skipping version swap for store: {} on version: {} as wait time: {} has not passed",
                     storeName,
                     targetVersionNum,
-                    store.getTargetSwapRegionWaitTime());
+                    targetRegionWaitTime);
                 storePushCompletionTimeCache.put(kafkaTopicName, pushStatusInfo.getExtraInfoUpdateTimestamp());
                 continue;
               }
