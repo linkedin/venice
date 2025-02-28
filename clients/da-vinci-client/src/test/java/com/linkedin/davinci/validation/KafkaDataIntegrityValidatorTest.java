@@ -27,7 +27,9 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -339,6 +341,12 @@ public class KafkaDataIntegrityValidatorTest {
       when(offsetRecord.getMaxMessageTimeInMs()).thenReturn(brokerTimestamp);
     }
 
-    return new ImmutablePubSubMessage<>(kafkaKey, messageEnvelope, topicPartition, offset, brokerTimestamp, 0);
+    return new ImmutablePubSubMessage<>(
+        kafkaKey,
+        messageEnvelope,
+        topicPartition,
+        ApacheKafkaOffsetPosition.of(offset),
+        brokerTimestamp,
+        0);
   }
 }

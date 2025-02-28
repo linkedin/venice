@@ -18,9 +18,9 @@ import org.testng.annotations.Test;
 public class ApacheKafkaOffsetPositionTest {
   @Test
   public void testComparePosition() {
-    ApacheKafkaOffsetPosition position1 = ApacheKafkaOffsetPosition.getKafkaPosition(1);
-    ApacheKafkaOffsetPosition position2 = ApacheKafkaOffsetPosition.getKafkaPosition(2);
-    ApacheKafkaOffsetPosition position3 = ApacheKafkaOffsetPosition.getKafkaPosition(3);
+    ApacheKafkaOffsetPosition position1 = ApacheKafkaOffsetPosition.of(1);
+    ApacheKafkaOffsetPosition position2 = ApacheKafkaOffsetPosition.of(2);
+    ApacheKafkaOffsetPosition position3 = ApacheKafkaOffsetPosition.of(3);
 
     assertTrue(position1.comparePosition(position2) < 0);
     assertTrue(position2.comparePosition(position1) > 0);
@@ -31,9 +31,9 @@ public class ApacheKafkaOffsetPositionTest {
 
   @Test
   public void testDiff() {
-    ApacheKafkaOffsetPosition position1 = ApacheKafkaOffsetPosition.getKafkaPosition(1);
-    ApacheKafkaOffsetPosition position2 = ApacheKafkaOffsetPosition.getKafkaPosition(2);
-    ApacheKafkaOffsetPosition position3 = ApacheKafkaOffsetPosition.getKafkaPosition(3);
+    ApacheKafkaOffsetPosition position1 = ApacheKafkaOffsetPosition.of(1);
+    ApacheKafkaOffsetPosition position2 = ApacheKafkaOffsetPosition.of(2);
+    ApacheKafkaOffsetPosition position3 = ApacheKafkaOffsetPosition.of(3);
 
     assertEquals(position1.diff(position2), -1);
     assertEquals(position2.diff(position1), 1);
@@ -44,33 +44,33 @@ public class ApacheKafkaOffsetPositionTest {
 
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cannot compare ApacheKafkaOffsetPosition with null")
   public void testComparePositionWithNull() {
-    ApacheKafkaOffsetPosition position1 = ApacheKafkaOffsetPosition.getKafkaPosition(1);
+    ApacheKafkaOffsetPosition position1 = ApacheKafkaOffsetPosition.of(1);
     position1.comparePosition(null);
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cannot compare ApacheKafkaOffsetPosition with null")
   public void testDiffWithNull() {
-    ApacheKafkaOffsetPosition position1 = ApacheKafkaOffsetPosition.getKafkaPosition(1);
+    ApacheKafkaOffsetPosition position1 = ApacheKafkaOffsetPosition.of(1);
     position1.diff(null);
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cannot compare ApacheKafkaOffsetPosition with .*")
   public void testComparePositionWithDifferentType() {
-    ApacheKafkaOffsetPosition position1 = ApacheKafkaOffsetPosition.getKafkaPosition(1);
+    ApacheKafkaOffsetPosition position1 = ApacheKafkaOffsetPosition.of(1);
     position1.comparePosition(mock(PubSubPosition.class));
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cannot compare ApacheKafkaOffsetPosition with .*")
   public void testDiffWithDifferentType() {
-    ApacheKafkaOffsetPosition position1 = ApacheKafkaOffsetPosition.getKafkaPosition(1);
+    ApacheKafkaOffsetPosition position1 = ApacheKafkaOffsetPosition.of(1);
     position1.diff(mock(PubSubPosition.class));
   }
 
   @Test
   public void testEquals() {
-    ApacheKafkaOffsetPosition position1 = ApacheKafkaOffsetPosition.getKafkaPosition(1);
-    ApacheKafkaOffsetPosition position2 = ApacheKafkaOffsetPosition.getKafkaPosition(2);
-    ApacheKafkaOffsetPosition position3 = ApacheKafkaOffsetPosition.getKafkaPosition(1);
+    ApacheKafkaOffsetPosition position1 = ApacheKafkaOffsetPosition.of(1);
+    ApacheKafkaOffsetPosition position2 = ApacheKafkaOffsetPosition.of(2);
+    ApacheKafkaOffsetPosition position3 = ApacheKafkaOffsetPosition.of(1);
 
     assertEquals(position1, position1);
     assertEquals(position1, position3);
@@ -82,9 +82,9 @@ public class ApacheKafkaOffsetPositionTest {
 
   @Test
   public void testHashCode() {
-    ApacheKafkaOffsetPosition position1 = ApacheKafkaOffsetPosition.getKafkaPosition(1);
-    ApacheKafkaOffsetPosition position2 = ApacheKafkaOffsetPosition.getKafkaPosition(2);
-    ApacheKafkaOffsetPosition position3 = ApacheKafkaOffsetPosition.getKafkaPosition(1);
+    ApacheKafkaOffsetPosition position1 = ApacheKafkaOffsetPosition.of(1);
+    ApacheKafkaOffsetPosition position2 = ApacheKafkaOffsetPosition.of(2);
+    ApacheKafkaOffsetPosition position3 = ApacheKafkaOffsetPosition.of(1);
     assertEquals(position1.hashCode(), position1.hashCode());
     assertEquals(position1.hashCode(), position3.hashCode());
     assertNotEquals(position1.hashCode(), position2.hashCode());
@@ -92,13 +92,13 @@ public class ApacheKafkaOffsetPositionTest {
 
   @Test
   public void testToString() {
-    ApacheKafkaOffsetPosition position1 = ApacheKafkaOffsetPosition.getKafkaPosition(1);
-    assertEquals(position1.toString(), "ApacheKafkaOffsetPosition{offset=1}");
+    ApacheKafkaOffsetPosition position1 = ApacheKafkaOffsetPosition.of(1);
+    assertEquals(position1.toString(), "KafkaOffset: 1");
   }
 
   @Test
   public void testGetOffset() throws IOException {
-    ApacheKafkaOffsetPosition position1 = ApacheKafkaOffsetPosition.getKafkaPosition(1234);
+    ApacheKafkaOffsetPosition position1 = ApacheKafkaOffsetPosition.of(1234);
     assertEquals(position1.getOffset(), 1234);
     PubSubPositionWireFormat wireFormat = position1.getPositionWireFormat();
     ApacheKafkaOffsetPosition position2 = new ApacheKafkaOffsetPosition(wireFormat.rawBytes);
@@ -113,7 +113,7 @@ public class ApacheKafkaOffsetPositionTest {
 
   @Test
   public void testGetPositionWireFormat() throws IOException {
-    ApacheKafkaOffsetPosition kafkaPosition = ApacheKafkaOffsetPosition.getKafkaPosition(Long.MAX_VALUE);
+    ApacheKafkaOffsetPosition kafkaPosition = ApacheKafkaOffsetPosition.of(Long.MAX_VALUE);
     PubSubPositionWireFormat wireFormat = kafkaPosition.getPositionWireFormat();
     assertEquals(wireFormat.type, PubSubPositionType.APACHE_KAFKA_OFFSET);
     ApacheKafkaOffsetPosition kafkaPosition2 = new ApacheKafkaOffsetPosition(wireFormat.rawBytes);
@@ -123,6 +123,6 @@ public class ApacheKafkaOffsetPositionTest {
 
   @Test(expectedExceptions = IllegalArgumentException.class)
   void testIllegalPosition() {
-    ApacheKafkaOffsetPosition.getKafkaPosition(OffsetRecord.LOWEST_OFFSET - 1);
+    ApacheKafkaOffsetPosition.of(OffsetRecord.LOWEST_OFFSET - 1);
   }
 }

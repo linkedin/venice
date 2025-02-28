@@ -96,7 +96,7 @@ public final class ChunkingTestUtils {
         kafkaKey,
         messageEnvelope,
         pubSubTopicPartition,
-        ApacheKafkaOffsetPosition.getKafkaPosition(newOffset),
+        ApacheKafkaOffsetPosition.of(newOffset),
         0,
         20);
   }
@@ -131,7 +131,7 @@ public final class ChunkingTestUtils {
         kafkaKey,
         messageEnvelope,
         pubSubTopicPartition,
-        ApacheKafkaOffsetPosition.getKafkaPosition(newOffset),
+        ApacheKafkaOffsetPosition.of(newOffset),
         0,
         20);
   }
@@ -165,7 +165,7 @@ public final class ChunkingTestUtils {
         kafkaKey,
         messageEnvelope,
         pubSubTopicPartition,
-        ApacheKafkaOffsetPosition.getKafkaPosition(1),
+        ApacheKafkaOffsetPosition.of(1),
         0,
         20);
   }
@@ -191,7 +191,7 @@ public final class ChunkingTestUtils {
         kafkaKey,
         messageEnvelope,
         pubSubTopicPartition,
-        ApacheKafkaOffsetPosition.getKafkaPosition(1),
+        ApacheKafkaOffsetPosition.of(1),
         0,
         serializedValue.length);
   }
@@ -213,7 +213,7 @@ public final class ChunkingTestUtils {
         kafkaKey,
         messageEnvelope,
         pubSubTopicPartition,
-        ApacheKafkaOffsetPosition.getKafkaPosition(1),
+        ApacheKafkaOffsetPosition.of(1),
         0,
         serializedValue.length);
   }

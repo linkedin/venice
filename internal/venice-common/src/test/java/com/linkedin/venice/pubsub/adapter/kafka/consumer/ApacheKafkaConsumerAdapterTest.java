@@ -168,7 +168,7 @@ public class ApacheKafkaConsumerAdapterTest {
 
   @Test
   public void testSubscribeWithApacheKafkaOffsetPosition() {
-    ApacheKafkaOffsetPosition offsetPosition = ApacheKafkaOffsetPosition.getKafkaPosition(50);
+    ApacheKafkaOffsetPosition offsetPosition = ApacheKafkaOffsetPosition.of(50);
     when(internalKafkaConsumer.assignment()).thenReturn(Collections.emptySet());
 
     kafkaConsumerAdapter.subscribe(pubSubTopicPartition, offsetPosition);

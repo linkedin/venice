@@ -314,7 +314,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
          * TODO: Should we introduce a magic position to handle the zero-offset case?
          * Or use {@link com.linkedin.venice.pubsub.api.PubSubPosition.EARLIEST} as an alternative.
          */
-        ApacheKafkaOffsetPosition.getKafkaPosition(0),
+        ApacheKafkaOffsetPosition.of(0),
         0,
         value.length * 8,
         false);
@@ -337,7 +337,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
               null,
               null,
               getTopicPartition(partition),
-              ApacheKafkaOffsetPosition.getKafkaPosition(0),
+              ApacheKafkaOffsetPosition.of(0),
               0,
               0,
               true));
@@ -562,7 +562,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
    * Helper method to get offset in long value from VeniceChangeCoordinate.
    */
   private long getOffset(VeniceChangeCoordinate veniceChangeCoordinate) {
-    return ((ApacheKafkaOffsetPosition) (veniceChangeCoordinate.getPosition())).getOffset();
+    return veniceChangeCoordinate.getPosition().getNumericOffset();
   }
 
   enum PollState {

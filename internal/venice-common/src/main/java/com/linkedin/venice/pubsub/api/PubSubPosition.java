@@ -2,13 +2,15 @@ package com.linkedin.venice.pubsub.api;
 
 import com.linkedin.venice.annotation.RestrictedApi;
 import com.linkedin.venice.annotation.UnderDevelopment;
+import com.linkedin.venice.memory.ClassSizeEstimator;
+import com.linkedin.venice.memory.Measurable;
 import com.linkedin.venice.pubsub.PubSubPositionFactory;
 
 
 /**
  * Represents a position of a message in a partition of a topic.
  */
-public interface PubSubPosition {
+public interface PubSubPosition extends Measurable {
   /**
    * A special position representing the earliest available message in a partition. All pub-sub adapters must support
    * this position, and all pub-sub client implementations should interpret it as the earliest retrievable message in
@@ -16,6 +18,13 @@ public interface PubSubPosition {
    * in the underlying pub-sub system.
    */
   PubSubPosition EARLIEST = new PubSubPosition() {
+    private final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(PubSubPosition.class);
+
+    @Override
+    public int getHeapSize() {
+      return SHALLOW_CLASS_OVERHEAD;
+    }
+
     @Override
     public int comparePosition(PubSubPosition other) {
       throw new IllegalStateException("Cannot compare EARLIEST position");
@@ -59,6 +68,13 @@ public interface PubSubPosition {
    * in the underlying pub-sub system.
    */
   PubSubPosition LATEST = new PubSubPosition() {
+    private final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(PubSubPosition.class);
+
+    @Override
+    public int getHeapSize() {
+      return SHALLOW_CLASS_OVERHEAD;
+    }
+
     @Override
     public int comparePosition(PubSubPosition other) {
       throw new IllegalStateException("Cannot compare LATEST position");

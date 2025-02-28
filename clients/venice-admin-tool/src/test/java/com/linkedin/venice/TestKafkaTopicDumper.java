@@ -2,7 +2,6 @@ package com.linkedin.venice;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
@@ -289,7 +288,7 @@ public class TestKafkaTopicDumper {
         kafkaKey,
         messageEnvelope,
         pubSubTopicPartition,
-        ApacheKafkaOffsetPosition.getKafkaPosition(120),
+        ApacheKafkaOffsetPosition.of(120),
         0,
         0,
         null);
@@ -310,7 +309,7 @@ public class TestKafkaTopicDumper {
         kafkaKey,
         messageEnvelope,
         pubSubTopicPartition,
-        ApacheKafkaOffsetPosition.getKafkaPosition(120),
+        ApacheKafkaOffsetPosition.of(120),
         0,
         0,
         null);
@@ -322,7 +321,7 @@ public class TestKafkaTopicDumper {
         regularMsgKey,
         null,
         pubSubTopicPartition,
-        ApacheKafkaOffsetPosition.getKafkaPosition(120),
+        ApacheKafkaOffsetPosition.of(120),
         0,
         0,
         null);
@@ -453,9 +452,10 @@ public class TestKafkaTopicDumper {
       long startOffset) {
     List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> messages = new ArrayList<>();
     for (int i = 0; i < count; i++) {
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message =
-          mock(PubSubMessage.class, RETURNS_DEEP_STUBS);
-      when(message.getOffset().getNumericOffset()).thenReturn(startOffset + i);
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message = mock(PubSubMessage.class);
+      PubSubPosition pubSubPosition = mock(PubSubPosition.class);
+      when(pubSubPosition.getNumericOffset()).thenReturn(startOffset + i);
+      when(message.getOffset()).thenReturn(pubSubPosition);
       messages.add(message);
     }
     return messages;

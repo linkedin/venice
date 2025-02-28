@@ -29,8 +29,10 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
 import java.nio.ByteBuffer;
@@ -105,8 +107,13 @@ public class TestAdminToolConsumption {
       put.putValue = ByteBuffer.wrap(putValueBytes);
       put.replicationMetadataPayload = ByteBuffer.allocate(0);
       messageEnvelope.payloadUnion = put;
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage =
-          new ImmutablePubSubMessage<>(kafkaKey, messageEnvelope, pubSubTopicPartition, 0, 0, 20);
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage = new ImmutablePubSubMessage<>(
+          kafkaKey,
+          messageEnvelope,
+          pubSubTopicPartition,
+          ApacheKafkaOffsetPosition.of(0),
+          0,
+          20);
       pubSubMessageList.add(pubSubMessage);
     }
     return pubSubMessageList;
@@ -155,10 +162,20 @@ public class TestAdminToolConsumption {
     messageEnvelope2.payloadUnion = delete;
     PubSubTopicPartition pubSubTopicPartition =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), assignedPartition);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage1 =
-        new ImmutablePubSubMessage<>(kafkaKey, messageEnvelope, pubSubTopicPartition, 0, 0, 20);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage2 =
-        new ImmutablePubSubMessage<>(kafkaKey, messageEnvelope2, pubSubTopicPartition, 1, 0, 10);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage1 = new ImmutablePubSubMessage<>(
+        kafkaKey,
+        messageEnvelope,
+        pubSubTopicPartition,
+        ApacheKafkaOffsetPosition.of(0),
+        0,
+        20);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage2 = new ImmutablePubSubMessage<>(
+        kafkaKey,
+        messageEnvelope2,
+        pubSubTopicPartition,
+        ApacheKafkaOffsetPosition.of(1),
+        0,
+        10);
     KafkaKey kafkaControlMessageKey = new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[0]);
     EndOfPush endOfPush = new EndOfPush();
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
@@ -172,8 +189,13 @@ public class TestAdminToolConsumption {
     kafkaMessageEnvelope.producerMetadata.messageSequenceNumber = 0;
     kafkaMessageEnvelope.producerMetadata.segmentNumber = 0;
     kafkaMessageEnvelope.producerMetadata.producerGUID = new GUID();
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage3 =
-        new ImmutablePubSubMessage<>(kafkaControlMessageKey, kafkaMessageEnvelope, pubSubTopicPartition, 2, 0, 20);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage3 = new ImmutablePubSubMessage<>(
+        kafkaControlMessageKey,
+        kafkaMessageEnvelope,
+        pubSubTopicPartition,
+        ApacheKafkaOffsetPosition.of(2),
+        0,
+        20);
 
     List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> pubSubMessageList = new ArrayList<>();
     pubSubMessageList.add(pubSubMessage1);
