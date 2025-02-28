@@ -617,9 +617,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     blobTransferPeersConnectivityFreshnessInSeconds =
         serverProperties.getInt(BLOB_TRANSFER_PEERS_CONNECTIVITY_FRESHNESS_IN_SECONDS, 30);
     blobTransferClientReadLimitBytesPerSec =
-        serverProperties.getSizeInBytes(BLOB_TRANSFER_CLIENT_READ_LIMIT_BYTES_PER_SEC, 20971520L);
+        serverProperties.getSizeInBytes(BLOB_TRANSFER_CLIENT_READ_LIMIT_BYTES_PER_SEC, 157286400L); // default 150 MB/s
     blobTransferServiceWriteLimitBytesPerSec =
-        serverProperties.getSizeInBytes(BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC, 20971520L);
+        serverProperties.getSizeInBytes(BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC, 157286400L);
     blobTransferDisabledOffsetLagThreshold =
         serverProperties.getLong(BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, 100000L);
     dvcP2pBlobTransferServerPort = serverProperties.getInt(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, -1);

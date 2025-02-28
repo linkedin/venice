@@ -21,7 +21,7 @@ import io.netty.handler.codec.http.HttpClientCodec;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.timeout.IdleStateHandler;
-import io.netty.handler.traffic.ChannelTrafficShapingHandler;
+import io.netty.handler.traffic.GlobalChannelTrafficShapingHandler;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -46,8 +46,6 @@ public class NettyFileTransferClient {
   private static final int CONNECTION_TIMEOUT_IN_MINUTES = 1;
   // Maximum time that Netty will wait to establish the initial connection before failing.
   private static final int CONNECTION_ESTABLISHMENT_TIMEOUT_MS = 30 * 1000;
-  private static final long WRITE_LIMIT = 20971520L; // 20 MB/s
-  private static final long CHECK_INTERVAL_MS = 1000L; // traffic shaping checks every 1 second
   EventLoopGroup workerGroup;
   Bootstrap clientBootstrap;
   private final String baseDir;
@@ -69,7 +67,7 @@ public class NettyFileTransferClient {
       String baseDir,
       StorageMetadataService storageMetadataService,
       int peersConnectivityFreshnessInSeconds,
-      long blobTransferClientReadLimitBytesPerSec) {
+      GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler) {
     this.baseDir = baseDir;
     this.serverPort = serverPort;
     this.storageMetadataService = storageMetadataService;
@@ -84,15 +82,8 @@ public class NettyFileTransferClient {
     clientBootstrap.handler(new ChannelInitializer<SocketChannel>() {
       @Override
       public void initChannel(SocketChannel ch) {
-        // Add traffic shaper to limit the read and write speed
-        // This blobTransferClientReadLimitBytesPerSec is control read speed at per connection level
-        ch.pipeline()
-            .addLast(
-                "trafficShaper",
-                new ChannelTrafficShapingHandler(
-                    WRITE_LIMIT,
-                    blobTransferClientReadLimitBytesPerSec,
-                    CHECK_INTERVAL_MS));
+        // globalChannelTrafficShapingHandler is shared across all network channels to enforce global rate limits
+        ch.pipeline().addLast("globalTrafficShaper", globalChannelTrafficShapingHandler);
         ch.pipeline().addLast(new HttpClientCodec());
       }
     });

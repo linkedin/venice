@@ -1,5 +1,6 @@
 package com.linkedin.davinci.blobtransfer;
 
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtil.getGlobalTrafficShapingHandler;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -25,6 +26,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.netty.handler.traffic.GlobalChannelTrafficShapingHandler;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -80,6 +82,9 @@ public class TestNettyP2PBlobTransferManager {
     blobTransferStats = mock(AggVersionedBlobTransferStats.class);
     ReadOnlyStoreRepository readOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
     StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
+    GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler =
+        getGlobalTrafficShapingHandler(2000000, 2000000);
+
     blobSnapshotManager =
         Mockito.spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
 
@@ -88,9 +93,14 @@ public class TestNettyP2PBlobTransferManager {
         tmpSnapshotDir.toString(),
         blobTransferMaxTimeoutInMin,
         blobSnapshotManager,
-        2000000);
-    client =
-        Mockito.spy(new NettyFileTransferClient(port, tmpPartitionDir.toString(), storageMetadataService, 30, 2000000));
+        globalChannelTrafficShapingHandler);
+    client = Mockito.spy(
+        new NettyFileTransferClient(
+            port,
+            tmpPartitionDir.toString(),
+            storageMetadataService,
+            30,
+            globalChannelTrafficShapingHandler));
     finder = mock(BlobFinder.class);
 
     manager = new NettyP2PBlobTransferManager(server, client, finder, tmpPartitionDir.toString(), blobTransferStats);

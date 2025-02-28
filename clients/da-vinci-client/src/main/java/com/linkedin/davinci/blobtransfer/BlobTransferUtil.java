@@ -10,6 +10,7 @@ import com.linkedin.venice.blobtransfer.ServerBlobFinder;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import io.netty.handler.traffic.GlobalChannelTrafficShapingHandler;
 import java.util.concurrent.CompletableFuture;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -46,6 +47,10 @@ public class BlobTransferUtil {
       long blobTransferClientReadLimitBytesPerSec,
       long blobTransferServiceWriteLimitBytesPerSec) {
     try {
+      GlobalChannelTrafficShapingHandler globalTrafficHandler = getGlobalTrafficShapingHandler(
+          blobTransferClientReadLimitBytesPerSec,
+          blobTransferServiceWriteLimitBytesPerSec);
+
       BlobSnapshotManager blobSnapshotManager = new BlobSnapshotManager(
           readOnlyStoreRepository,
           storageEngineRepository,
@@ -59,13 +64,13 @@ public class BlobTransferUtil {
               baseDir,
               blobTransferMaxTimeoutInMin,
               blobSnapshotManager,
-              blobTransferServiceWriteLimitBytesPerSec),
+              globalTrafficHandler),
           new NettyFileTransferClient(
               p2pTransferClientPort,
               baseDir,
               storageMetadataService,
               peersConnectivityFreshnessInSeconds,
-              blobTransferClientReadLimitBytesPerSec),
+              globalTrafficHandler),
           new DaVinciBlobFinder(clientConfig),
           baseDir,
           aggVersionedBlobTransferStats);
@@ -104,6 +109,10 @@ public class BlobTransferUtil {
       long blobTransferClientReadLimitBytesPerSec,
       long blobTransferServiceWriteLimitBytesPerSec) {
     try {
+      GlobalChannelTrafficShapingHandler globalTrafficHandler = getGlobalTrafficShapingHandler(
+          blobTransferClientReadLimitBytesPerSec,
+          blobTransferServiceWriteLimitBytesPerSec);
+
       BlobSnapshotManager blobSnapshotManager = new BlobSnapshotManager(
           readOnlyStoreRepository,
           storageEngineRepository,
@@ -117,13 +126,13 @@ public class BlobTransferUtil {
               baseDir,
               blobTransferMaxTimeoutInMin,
               blobSnapshotManager,
-              blobTransferServiceWriteLimitBytesPerSec),
+              globalTrafficHandler),
           new NettyFileTransferClient(
               p2pTransferClientPort,
               baseDir,
               storageMetadataService,
               peersConnectivityFreshnessInSeconds,
-              blobTransferClientReadLimitBytesPerSec),
+              globalTrafficHandler),
           new ServerBlobFinder(customizedViewFuture),
           baseDir,
           aggVersionedBlobTransferStats);
@@ -134,5 +143,25 @@ public class BlobTransferUtil {
       LOGGER.warn("Failed to start up the P2P blob transfer manager for server", e);
       return null;
     }
+  }
+
+  /**
+   * Get or create a global traffic shaping handler for P2P blob transfers.
+   * This single handler will be used across all channels for both server/client side to enforce global rate limits.
+   *
+   * @param blobTransferClientReadLimitBytesPerSec read limit in bytes per second
+   * @param blobTransferServiceWriteLimitBytesPerSec write limit in bytes per second
+   * @return the global traffic shaping handler
+   */
+  static GlobalChannelTrafficShapingHandler getGlobalTrafficShapingHandler(
+      long blobTransferClientReadLimitBytesPerSec,
+      long blobTransferServiceWriteLimitBytesPerSec) {
+    LOGGER.info(
+        "Global traffic shaping configured with read limit: {} bytes/sec, write limit: {} bytes/sec",
+        blobTransferClientReadLimitBytesPerSec,
+        blobTransferServiceWriteLimitBytesPerSec);
+
+    return BlobTransferGlobalTrafficShapingHandlerHolder
+        .getOrCreate(blobTransferClientReadLimitBytesPerSec, blobTransferServiceWriteLimitBytesPerSec);
   }
 }
