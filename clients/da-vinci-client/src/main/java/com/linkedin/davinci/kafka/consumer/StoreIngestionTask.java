@@ -2407,7 +2407,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           throw new VeniceException("Latest offset is unknown. Check if the topic: " + topicPartition + " exists.");
         }
         return offset;
-      }, 10, Duration.ofMillis(10), Duration.ofMillis(500), Duration.ofSeconds(5), RETRY_FAILURE_TYPES);
+      }, 10, Duration.ofMillis(10), Duration.ofMillis(500), Duration.ofSeconds(60), RETRY_FAILURE_TYPES);
     } catch (Exception e) {
       LOGGER.error(
           "Failed to get end offset for topic-partition: {} with kafka url {}  even after 10 retries",
