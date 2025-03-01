@@ -150,7 +150,7 @@ public class IngestionHeartBeatTest {
       assertCommand(
           parentControllerClient
               .createNewStore(storeName, "test_owner", keySchemaStr, NAME_RECORD_V1_SCHEMA.toString()));
-      StoreInfo storeInfo = TestUtils.assertCommand(parentControllerClient.getStore(storeName)).getStore();
+      TestUtils.assertCommand(parentControllerClient.getStore(storeName));
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setCompressionStrategy(CompressionStrategy.NO_OP)
@@ -209,7 +209,7 @@ public class IngestionHeartBeatTest {
         });
       }
 
-      storeInfo = TestUtils.assertCommand(parentControllerClient.getStore(storeName)).getStore();
+      StoreInfo storeInfo = TestUtils.assertCommand(parentControllerClient.getStore(storeName)).getStore();
 
       // create consumer to consume from RT/VT to verify HB and Leader completed header
       for (int dc = 0; dc < NUMBER_OF_CHILD_DATACENTERS; dc++) {
