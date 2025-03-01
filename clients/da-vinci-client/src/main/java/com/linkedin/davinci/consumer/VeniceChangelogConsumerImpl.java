@@ -1000,17 +1000,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       Integer upstreamPartition) {
     int partitionId = pubSubTopicPartition.getPartitionNumber();
     List<Long> localOffset = (List<Long>) currentVersionHighWatermarks.getOrDefault(partitionId, Collections.EMPTY_MAP)
-        .getOrDefault(upstreamPartition, Collections.EMPTY_LIST);
-    if (localOffset != null) {
-      if (RmdUtils.hasOffsetAdvanced(localOffset, recordCheckpointVector)) {
-        currentVersionHighWatermarks.putIfAbsent(pubSubTopicPartition.getPartitionNumber(), new HashMap<>());
-        // We need to merge
-        currentVersionHighWatermarks.get(pubSubTopicPartition.getPartitionNumber())
-            .put(upstreamPartition, RmdUtils.mergeOffsetVectors(localOffset, recordCheckpointVector));
-        return false;
-      } else {
-        return true;
-      }
+        .getOrDefault(upstreamPartition, new ArrayList<>());
+    if (recordCheckpointVector != null) {
+      return !RmdUtils.hasOffsetAdvanced(localOffset, recordCheckpointVector);
     }
     // Has not met version swap message after client initialization.
     return false;

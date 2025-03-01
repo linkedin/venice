@@ -725,7 +725,7 @@ public class TestChangelogConsumer {
     versionTopicConsumer.seekToBeginningOfPush().get();
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
-      Assert.assertEquals(versionTopicEvents.size(), 10);
+      Assert.assertEquals(versionTopicEvents.size(), 30);
     });
 
     // Verify version swap count matches with version count - 1 (since we don't transmit from version 0 to version 1).
