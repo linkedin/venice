@@ -1,6 +1,6 @@
 package com.linkedin.davinci.blobtransfer;
 
-import static com.linkedin.davinci.blobtransfer.BlobTransferUtil.getGlobalTrafficShapingHandler;
+import static com.linkedin.davinci.blobtransfer.BlobTransferGlobalTrafficShapingHandlerHolder.getGlobalChannelTrafficShapingHandlerInstance;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -83,7 +83,7 @@ public class TestNettyP2PBlobTransferManager {
     ReadOnlyStoreRepository readOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
     StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
     GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler =
-        getGlobalTrafficShapingHandler(2000000, 2000000);
+        getGlobalChannelTrafficShapingHandlerInstance(2000000, 2000000);
 
     blobSnapshotManager =
         Mockito.spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
