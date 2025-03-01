@@ -75,8 +75,17 @@ public class AdminOperationSerializer {
 
     // If writer schema is not the latest schema, we need to deserialize the serialized bytes to GenericRecord with
     // the writer schema, then serialize it to bytes with the writer schema.
-    GenericRecord genericRecord = deserialize(serializedBytes, targetSchema, targetSchemaId);
-    return serialize(genericRecord, targetSchema, targetSchemaId);
+    try {
+      GenericDatumReader<GenericRecord> datumReader = new GenericDatumReader<>(LATEST_SCHEMA, targetSchema);
+      InputStream in = new ByteArrayInputStream(serializedBytes);
+      BinaryDecoder decoder = AvroCompatibilityHelper.newBinaryDecoder(in, true, null);
+      GenericRecord genericRecord = datumReader.read(null, decoder);
+      return serialize(genericRecord, targetSchema, targetSchemaId);
+    } catch (IOException e) {
+      throw new VeniceMessageException(
+          "Could not deserialize bytes back into GenericRecord object with reader version: " + targetSchema,
+          e);
+    }
   }
 
   public AdminOperation deserialize(ByteBuffer byteBuffer, int writerSchemaId) {
@@ -127,22 +136,6 @@ public class AdminOperationSerializer {
       throw new VeniceMessageException(
           "Could not serialize object: " + object.getClass().getTypeName() + " with writer schema id: "
               + writerSchemaId,
-          e);
-    }
-  }
-
-  /**
-   * Deserialize the object from the writer schema to the reader schema, returning a GenericRecord.
-   */
-  private GenericRecord deserialize(byte[] serializedRecord, Schema readerSchema, int readerSchemaId) {
-    try {
-      GenericDatumReader<GenericRecord> datumReader = new GenericDatumReader<>(LATEST_SCHEMA, readerSchema);
-      InputStream in = new ByteArrayInputStream(serializedRecord);
-      BinaryDecoder decoder = AvroCompatibilityHelper.newBinaryDecoder(in, true, null);
-      return datumReader.read(null, decoder);
-    } catch (IOException e) {
-      throw new VeniceMessageException(
-          "Could not deserialize bytes back into GenericRecord object with reader version: " + readerSchemaId,
           e);
     }
   }
