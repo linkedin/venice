@@ -1,10 +1,12 @@
 package com.linkedin.venice.utils;
 
 import static com.linkedin.venice.HttpConstants.LOCALHOST;
+import static com.linkedin.venice.meta.Version.SEPARATE_REAL_TIME_TOPIC_SUFFIX;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
@@ -576,16 +578,8 @@ public class Utils {
     return storeName + Version.REAL_TIME_TOPIC_SUFFIX;
   }
 
-  public static String getRealTimeTopicNameFromStoreConfig(Store store) {
-    HybridStoreConfig hybridStoreConfig = store.getHybridStoreConfig();
-    String storeName = store.getName();
-
-    if (hybridStoreConfig != null) {
-      String realTimeTopicName = hybridStoreConfig.getRealTimeTopicName();
-      return getRealTimeTopicNameIfEmpty(realTimeTopicName, storeName);
-    } else {
-      return composeRealTimeTopic(storeName);
-    }
+  public static String composeRealTimeTopic(String storeName, int versionNumber) {
+    return storeName + "_v" + versionNumber + Version.REAL_TIME_TOPIC_SUFFIX;
   }
 
   /**
@@ -608,9 +602,17 @@ public class Utils {
         storeInfo.getHybridStoreConfig());
   }
 
+  public static boolean isFollowingRTVersioning(String storeName) {
+    return !(VeniceSystemStoreUtils.isSystemStore(storeName) || VeniceSystemStoreUtils.isUserSystemStore(storeName)
+        || VeniceSystemStoreUtils.isParticipantStore(storeName) || storeName.endsWith(SEPARATE_REAL_TIME_TOPIC_SUFFIX));
+  }
+
   public static String getRealTimeTopicName(Version version) {
-    HybridStoreConfig hybridStoreConfig = version.getHybridStoreConfig();
-    if (hybridStoreConfig != null) {
+    if (!isFollowingRTVersioning(version.getStoreName())) {
+      return composeRealTimeTopic(version.getStoreName());
+    }
+
+    if (version.isHybrid()) {
       String realTimeTopicName = version.getHybridStoreConfig().getRealTimeTopicName();
       return getRealTimeTopicNameIfEmpty(realTimeTopicName, version.getStoreName());
     } else {
@@ -625,7 +627,7 @@ public class Utils {
       List<Version> versions,
       int currentVersionNumber,
       HybridStoreConfig hybridStoreConfig) {
-    if (currentVersionNumber < 1) {
+    if (!isFollowingRTVersioning(storeName)) {
       return composeRealTimeTopic(storeName);
     }
 
@@ -636,11 +638,6 @@ public class Utils {
       if (StringUtils.isNotBlank(realTimeTopicName)) {
         return realTimeTopicName;
       }
-    }
-
-    if (hybridStoreConfig != null) {
-      String realTimeTopicName = hybridStoreConfig.getRealTimeTopicName();
-      return getRealTimeTopicNameIfEmpty(realTimeTopicName, storeName);
     }
 
     Set<String> realTimeTopicNames = new HashSet<>();
@@ -668,35 +665,16 @@ public class Utils {
       return realTimeTopicNames.iterator().next();
     }
 
+    if (hybridStoreConfig != null) {
+      String realTimeTopicName = hybridStoreConfig.getRealTimeTopicName();
+      return getRealTimeTopicNameIfEmpty(realTimeTopicName, storeName);
+    }
+
     return composeRealTimeTopic(storeName);
   }
 
   private static String getRealTimeTopicNameIfEmpty(String realTimeTopicName, String storeName) {
     return StringUtils.isBlank(realTimeTopicName) ? composeRealTimeTopic(storeName) : realTimeTopicName;
-  }
-
-  public static String createNewRealTimeTopicName(String oldRealTimeTopicName) {
-    if (oldRealTimeTopicName == null || !oldRealTimeTopicName.endsWith(Version.REAL_TIME_TOPIC_SUFFIX)) {
-      throw new IllegalArgumentException("Invalid old name format");
-    }
-
-    // Extract the base name and current version
-    int suffixLength = Version.REAL_TIME_TOPIC_SUFFIX.length();
-    String base = oldRealTimeTopicName.substring(0, oldRealTimeTopicName.length() - suffixLength);
-
-    // Locate the last version separator "_v" in the base
-    int versionSeparatorIndex = base.lastIndexOf("_v");
-    if (versionSeparatorIndex > -1 && versionSeparatorIndex < base.length() - 2) {
-      // Extract and increment the version
-      String versionStr = base.substring(versionSeparatorIndex + 2);
-      int version = Integer.parseInt(versionStr) + 1;
-      base = base.substring(0, versionSeparatorIndex) + "_v" + version;
-    } else {
-      // Start with version 2 if no valid version is present
-      base = base + "_v2";
-    }
-
-    return base + Version.REAL_TIME_TOPIC_SUFFIX;
   }
 
   private static class TimeUnitInfo {

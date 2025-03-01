@@ -1884,7 +1884,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).getVersion(1).isSeparateRealTimeTopicEnabled());
 
     Store store = Objects.requireNonNull(veniceAdmin.getStore(clusterName, storeName), "Store should not be null");
-
     String rtTopic = Utils.getRealTimeTopicName(store);
     PubSubTopic rtPubSubTopic = pubSubTopicRepository.getTopic(rtTopic);
     String incrementalPushRealTimeTopic = Version.composeSeparateRealTimeTopic(storeName);
@@ -1919,6 +1918,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,
         TimeUnit.MILLISECONDS,
         () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 3);
+
+    store = Objects.requireNonNull(veniceAdmin.getStore(clusterName, storeName), "Store should not be null");
+    rtTopic = Utils.getRealTimeTopicName(store);
+
     Assert.assertTrue(veniceAdmin.isTopicTruncated(rtTopic));
     Assert.assertTrue(veniceAdmin.isTopicTruncated(incrementalPushRealTimeTopic));
   }

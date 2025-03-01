@@ -512,6 +512,7 @@ public abstract class StoreIngestionTaskTest {
 
     mockStorageEngineRepository = mock(StorageEngineRepository.class);
     storeInfo = mock(StoreInfo.class, RETURNS_DEEP_STUBS);
+    when(storeInfo.getName()).thenReturn(storeNameWithoutVersionInfo);
     when(storeInfo.getHybridStoreConfig().getRealTimeTopicName())
         .thenReturn(Utils.composeRealTimeTopic(storeNameWithoutVersionInfo));
 
@@ -3834,6 +3835,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(versionTopic).when(mockVeniceStoreVersionConfig).getStoreVersionName();
 
     Version mockVersion = mock(Version.class);
+    doReturn(storeName).when(mockVersion).getStoreName();
     doReturn(1).when(mockVersion).getPartitionCount();
     doReturn(VersionStatus.STARTED).when(mockVersion).getStatus();
 
@@ -3972,6 +3974,7 @@ public abstract class StoreIngestionTaskTest {
 
     Version version = mock(Version.class);
     doReturn(1).when(version).getPartitionCount();
+    doReturn("store").when(version).getStoreName();
     doReturn(null).when(version).getPartitionerConfig();
     doReturn(VersionStatus.ONLINE).when(version).getStatus();
     doReturn(true).when(version).isNativeReplicationEnabled();
@@ -4523,6 +4526,7 @@ public abstract class StoreIngestionTaskTest {
   public void testBatchOnlyStoreDataRecovery() {
     Version version = mock(Version.class);
     doReturn(1).when(version).getPartitionCount();
+    doReturn("store").when(version).getStoreName();
     doReturn(VersionStatus.STARTED).when(version).getStatus();
     doReturn(true).when(version).isNativeReplicationEnabled();
     DataRecoveryVersionConfig dataRecoveryVersionConfig = new DataRecoveryVersionConfigImpl("dc-0", false, 1);
@@ -4614,6 +4618,7 @@ public abstract class StoreIngestionTaskTest {
     VeniceStoreVersionConfig mockVeniceStoreVersionConfig = mock(VeniceStoreVersionConfig.class);
     doReturn(versionTopic).when(mockVeniceStoreVersionConfig).getStoreVersionName();
     Version mockVersion = mock(Version.class);
+    doReturn(storeName).when(mockVersion).getStoreName();
     doReturn(1).when(mockVersion).getPartitionCount();
     doReturn(VersionStatus.STARTED).when(mockVersion).getStatus();
     doReturn(true).when(mockVersion).isUseVersionLevelHybridConfig();
@@ -4706,6 +4711,7 @@ public abstract class StoreIngestionTaskTest {
     VeniceStoreVersionConfig mockVeniceStoreVersionConfig = mock(VeniceStoreVersionConfig.class);
     doReturn(versionTopic).when(mockVeniceStoreVersionConfig).getStoreVersionName();
     Version mockVersion = mock(Version.class);
+    doReturn(storeName).when(mockVersion).getStoreName();
     doReturn(2).when(mockVersion).getPartitionCount();
     doReturn(VersionStatus.STARTED).when(mockVersion).getStatus();
     doReturn(true).when(mockVersion).isUseVersionLevelHybridConfig();
@@ -5588,6 +5594,7 @@ public abstract class StoreIngestionTaskTest {
 
     Version version = mock(Version.class);
     doReturn(1).when(version).getPartitionCount();
+    doReturn("store").when(version).getStoreName();
     doReturn(VersionStatus.STARTED).when(version).getStatus();
     doReturn(true).when(version).isNativeReplicationEnabled();
     DataRecoveryVersionConfig dataRecoveryVersionConfig = new DataRecoveryVersionConfigImpl("dc-0", false, 1);
