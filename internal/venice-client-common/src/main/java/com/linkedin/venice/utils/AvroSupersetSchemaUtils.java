@@ -15,6 +15,7 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.commons.lang.StringUtils;
+import org.apache.logging.log4j.LogManager;
 
 
 public class AvroSupersetSchemaUtils {
@@ -158,8 +159,18 @@ public class AvroSupersetSchemaUtils {
       if (fieldInExistingSchema != null) {
         fieldBuilder.setSchema(generateSupersetSchema(fieldInExistingSchema.schema(), fieldInNewSchema.schema()))
             .setDoc(fieldInNewSchema.doc() != null ? fieldInNewSchema.doc() : fieldInExistingSchema.doc());
+        if (!fieldInNewSchema.hasDefaultValue() && fieldInExistingSchema.hasDefaultValue()) {
+          fieldBuilder.setDefault(getFieldDefault(fieldInExistingSchema));
+        }
       }
-      fields.add(fieldBuilder.build());
+      Schema.Field geneartedField = fieldBuilder.build();
+      LogManager.getLogger(AvroSupersetSchemaUtils.class)
+          .info(
+              "generated: {} {} {}",
+              fieldInNewSchema.hasDefaultValue(),
+              geneartedField.hasDefaultValue(),
+              fieldInExistingSchema == null ? null : fieldInExistingSchema.hasDefaultValue());
+      fields.add(geneartedField);
     }
 
     for (Schema.Field fieldInExistingSchema: existingSchema.getFields()) {
