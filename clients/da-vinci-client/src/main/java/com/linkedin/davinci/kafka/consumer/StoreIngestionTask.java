@@ -101,6 +101,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.ByteUtils;
@@ -172,6 +173,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private static final Logger LOGGER = LogManager.getLogger(StoreIngestionTask.class);
 
   private static final String CONSUMER_TASK_ID_FORMAT = "SIT-%s";
+  public static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES =
+      Collections.singletonList(VeniceException.class);
   public static long SCHEMA_POLLING_DELAY_MS = SECONDS.toMillis(5);
   public static long STORE_VERSION_POLLING_DELAY_MS = MINUTES.toMillis(1);
 
@@ -181,6 +184,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected static final long WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED = MINUTES.toMillis(1); // 1 min
 
   static final int MAX_CONSUMER_ACTION_ATTEMPTS = 5;
+
+  static final int MAX_OFFSET_FETCH_ATTEMPTS = 10;
+
   private static final int CONSUMER_ACTION_QUEUE_INIT_CAPACITY = 11;
   protected static final long KILL_WAIT_TIME_MS = 5000L;
   private static final int MAX_KILL_CHECKING_ATTEMPTS = 10;
@@ -2405,14 +2411,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
         return offset;
       },
-          10,
+          MAX_OFFSET_FETCH_ATTEMPTS,
           Duration.ofMillis(10),
           Duration.ofMillis(500),
-          Duration.ofSeconds(5),
-          Collections.singletonList(VeniceException.class));
+          Duration.ofSeconds(60),
+          RETRY_FAILURE_TYPES);
     } catch (Exception e) {
-      LOGGER.error("Could not find latest offset for {} even after 5 retries", pubSubTopic.getName());
-      return -1;
+      LOGGER.error(
+          "Failed to get end offset for topic-partition: {} with kafka url {} even after {} retries",
+          topicPartition,
+          kafkaUrl,
+          MAX_OFFSET_FETCH_ATTEMPTS,
+          e);
+      return StatsErrorCode.LAG_MEASUREMENT_FAILURE.code;
     }
   }
 
