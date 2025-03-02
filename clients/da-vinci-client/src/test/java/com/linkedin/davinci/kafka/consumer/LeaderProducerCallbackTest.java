@@ -14,9 +14,8 @@ import static org.testng.Assert.assertEquals;
 
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.InMemoryLogAppender;
 import com.linkedin.venice.utils.Utils;
@@ -35,7 +34,7 @@ public class LeaderProducerCallbackTest {
   @Test
   public void testOnCompletionWithNonNullException() {
     LeaderFollowerStoreIngestionTask ingestionTaskMock = mock(LeaderFollowerStoreIngestionTask.class);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> sourceConsumerRecordMock = mock(PubSubMessage.class);
+    DefaultPubSubMessage sourceConsumerRecordMock = mock(DefaultPubSubMessage.class);
     PartitionConsumptionState partitionConsumptionStateMock = mock(PartitionConsumptionState.class);
     LeaderProducedRecordContext leaderProducedRecordContextMock = mock(LeaderProducedRecordContext.class);
     AggVersionedDIVStats statsMock = mock(AggVersionedDIVStats.class);
@@ -106,7 +105,7 @@ public class LeaderProducerCallbackTest {
   @Test
   public void testLeaderProducerCallbackProduceDeprecatedChunkDeletion() throws InterruptedException {
     LeaderFollowerStoreIngestionTask storeIngestionTask = mock(LeaderFollowerStoreIngestionTask.class);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> sourceConsumerRecord = mock(PubSubMessage.class);
+    DefaultPubSubMessage sourceConsumerRecord = mock(DefaultPubSubMessage.class);
     PartitionConsumptionState partitionConsumptionState = mock(PartitionConsumptionState.class);
     LeaderProducedRecordContext leaderProducedRecordContext = mock(LeaderProducedRecordContext.class);
     LeaderProducerCallback leaderProducerCallback = new LeaderProducerCallback(

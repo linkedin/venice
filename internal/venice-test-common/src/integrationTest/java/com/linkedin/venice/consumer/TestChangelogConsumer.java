@@ -667,7 +667,7 @@ public class TestChangelogConsumer {
     polledChangeEvents.clear();
 
     // Seek to a bogus checkpoint
-    PubSubPosition badPubSubPosition = new ApacheKafkaOffsetPosition(1337L);
+    PubSubPosition badPubSubPosition = ApacheKafkaOffsetPosition.of(1337L);
     VeniceChangeCoordinate badCoordinate = new MockVeniceChangeCoordinate(storeName + "_v777777", badPubSubPosition, 0);
     Set<VeniceChangeCoordinate> badCheckpointSet = new HashSet<>();
     badCheckpointSet.add(badCoordinate);

@@ -13,7 +13,8 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
@@ -93,12 +94,12 @@ public class InstanceSizeEstimatorTest extends HeapSizeEstimatorTest {
       empiricalInstanceMeasurement(KafkaMessageEnvelope.class, kmeSupplier);
     }
 
-    BiFunction<Supplier<KafkaKey>, Supplier<KafkaMessageEnvelope>, PubSubMessage> psmProvider =
-        (kafkaKeySupplier, kmeSupplier) -> new ImmutablePubSubMessage<>(
+    BiFunction<Supplier<KafkaKey>, Supplier<KafkaMessageEnvelope>, DefaultPubSubMessage> psmProvider =
+        (kafkaKeySupplier, kmeSupplier) -> new ImmutablePubSubMessage(
             kafkaKeySupplier.get(),
             kmeSupplier.get(),
             pubSubTopicPartition,
-            0,
+            ApacheKafkaOffsetPosition.of(0),
             0,
             0);
 

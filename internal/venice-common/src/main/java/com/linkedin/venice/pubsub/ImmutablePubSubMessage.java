@@ -1,58 +1,61 @@
 package com.linkedin.venice.pubsub;
 
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.memory.ClassSizeEstimator;
 import com.linkedin.venice.memory.InstanceSizeEstimator;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import java.util.Objects;
 
 
-public class ImmutablePubSubMessage<K, V> implements PubSubMessage<K, V, Long> {
+public class ImmutablePubSubMessage implements DefaultPubSubMessage {
   private static final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(ImmutablePubSubMessage.class);
-  private final K key;
-  private final V value;
+  private final KafkaKey key;
+  private final KafkaMessageEnvelope value;
   private final PubSubTopicPartition topicPartition;
-  private final long offset;
+  private final PubSubPosition pubSubPosition;
   private final long timestamp;
   private final int payloadSize;
 
   private final PubSubMessageHeaders pubSubMessageHeaders;
 
   public ImmutablePubSubMessage(
-      K key,
-      V value,
+      KafkaKey key,
+      KafkaMessageEnvelope value,
       PubSubTopicPartition topicPartition,
-      long offset,
+      PubSubPosition pubSubPosition,
       long timestamp,
       int payloadSize) {
-    this(key, value, topicPartition, offset, timestamp, payloadSize, null);
+    this(key, value, topicPartition, pubSubPosition, timestamp, payloadSize, null);
   }
 
   public ImmutablePubSubMessage(
-      K key,
-      V value,
+      KafkaKey key,
+      KafkaMessageEnvelope value,
       PubSubTopicPartition topicPartition,
-      long offset,
+      PubSubPosition pubSubPosition,
       long timestamp,
       int payloadSize,
       PubSubMessageHeaders pubSubMessageHeaders) {
     this.key = key;
     this.value = value;
     this.topicPartition = Objects.requireNonNull(topicPartition);
-    this.offset = offset;
+    this.pubSubPosition = pubSubPosition;
     this.timestamp = timestamp;
     this.payloadSize = payloadSize;
     this.pubSubMessageHeaders = pubSubMessageHeaders;
   }
 
   @Override
-  public K getKey() {
+  public KafkaKey getKey() {
     return key;
   }
 
   @Override
-  public V getValue() {
+  public KafkaMessageEnvelope getValue() {
     return value;
   }
 
@@ -62,8 +65,8 @@ public class ImmutablePubSubMessage<K, V> implements PubSubMessage<K, V, Long> {
   }
 
   @Override
-  public Long getOffset() {
-    return offset;
+  public PubSubPosition getOffset() {
+    return pubSubPosition;
   }
 
   @Override
@@ -88,13 +91,13 @@ public class ImmutablePubSubMessage<K, V> implements PubSubMessage<K, V, Long> {
 
   @Override
   public String toString() {
-    return "PubSubMessage{" + topicPartition + ", offset=" + offset + ", timestamp=" + timestamp + '}';
+    return "PubSubMessage{" + topicPartition + ", position=" + pubSubPosition + ", timestamp=" + timestamp + '}';
   }
 
   @Override
   public int getHeapSize() {
     /** The {@link #topicPartition} is supposed to be a shared instance, and is therefore ignored. */
     return SHALLOW_CLASS_OVERHEAD + InstanceSizeEstimator.getObjectSize(key)
-        + InstanceSizeEstimator.getObjectSize(value);
+        + InstanceSizeEstimator.getObjectSize(value) + InstanceSizeEstimator.getObjectSize(pubSubPosition);
   }
 }

@@ -4,9 +4,9 @@ import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaMessage;
@@ -37,12 +37,12 @@ public abstract class AbstractPollStrategy implements PollStrategy {
 
   protected abstract PubSubTopicPartitionOffset getNextPoll(Map<PubSubTopicPartition, Long> offsets);
 
-  public synchronized Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> poll(
+  public synchronized Map<PubSubTopicPartition, List<DefaultPubSubMessage>> poll(
       InMemoryKafkaBroker broker,
       Map<PubSubTopicPartition, Long> offsets,
       long timeout) {
 
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> records = new HashMap<>();
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> records = new HashMap<>();
 
     long startTime = System.currentTimeMillis();
     int numberOfRecords = 0;
@@ -84,11 +84,11 @@ public abstract class AbstractPollStrategy implements PollStrategy {
           }
         }
 
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord = new ImmutablePubSubMessage<>(
+        DefaultPubSubMessage consumerRecord = new ImmutablePubSubMessage(
             message.get().key,
             message.get().value,
             pubSubTopicPartition,
-            nextOffset,
+            ApacheKafkaOffsetPosition.of(nextOffset),
             System.currentTimeMillis(),
             -1,
             message.get().headers);
