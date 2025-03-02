@@ -266,6 +266,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
   }
 
   private void recordProducerStats(int producedRecordSize, int producedRecordNum) {
+    // TODO: skip?
     ingestionTask.getVersionIngestionStats()
         .recordLeaderProduced(
             ingestionTask.getStoreName(),
