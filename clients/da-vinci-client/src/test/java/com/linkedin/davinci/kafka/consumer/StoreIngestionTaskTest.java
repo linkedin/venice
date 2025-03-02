@@ -5585,7 +5585,6 @@ public abstract class StoreIngestionTaskTest {
     DefaultPubSubMessage rtRecord =
         new ImmutablePubSubMessage(key, value, rtPartition, ApacheKafkaOffsetPosition.of(0), 0, 0);
     assertFalse(ingestionTask.shouldProcessRecord(rtRecord), "RT DIV from RT should not be processed");
-
   }
 
   @Test

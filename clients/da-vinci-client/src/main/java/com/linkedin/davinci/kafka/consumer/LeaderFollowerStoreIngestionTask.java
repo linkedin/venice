@@ -4174,8 +4174,4 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return supplier.get();
     }
   }
-
-  protected void updateOffsetMetadataAndSyncOffsetForLeaders(PartitionConsumptionState pcs) {
-    updateOffsetMetadataAndSyncOffset(kafkaDataIntegrityValidatorForLeaders, pcs);
-  }
 }

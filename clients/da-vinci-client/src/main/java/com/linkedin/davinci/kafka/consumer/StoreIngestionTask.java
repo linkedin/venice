@@ -1833,12 +1833,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void updateOffsetMetadataAndSyncOffset(PartitionConsumptionState pcs) {
-    updateOffsetMetadataAndSyncOffset(kafkaDataIntegrityValidator, pcs);
-  }
-
-  protected abstract void updateOffsetMetadataAndSyncOffsetForLeaders(PartitionConsumptionState pcs);
-
-  protected void updateOffsetMetadataAndSyncOffset(KafkaDataIntegrityValidator div, PartitionConsumptionState pcs) {
     /**
      * Offset metadata and producer states must be updated at the same time in OffsetRecord; otherwise, one checkpoint
      * could be ahead of the other.
@@ -1851,7 +1845,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * consumer DIV which resides in the consumer thread and then gradually retire the use of drainer DIV.
      * Keep drainer DIV the way as is today (containing both rt and vt messages).
      */
-    div.updateOffsetRecordForPartition(PartitionTracker.VERSION_TOPIC, pcs.getPartition(), pcs.getOffsetRecord());
+    this.kafkaDataIntegrityValidator
+        .updateOffsetRecordForPartition(PartitionTracker.VERSION_TOPIC, pcs.getPartition(), pcs.getOffsetRecord());
     // update the offset metadata in the OffsetRecord.
     updateOffsetMetadataInOffsetRecord(pcs);
     syncOffset(kafkaVersionTopic, pcs);
