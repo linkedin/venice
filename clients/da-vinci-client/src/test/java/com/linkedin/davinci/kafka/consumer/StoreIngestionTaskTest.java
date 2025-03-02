@@ -5502,7 +5502,6 @@ public abstract class StoreIngestionTaskTest {
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> rtRecord =
         new ImmutablePubSubMessage<>(key, value, rtPartition, 0, 0, 0);
     assertFalse(ingestionTask.shouldProcessRecord(rtRecord), "RT DIV from RT should not be processed");
-
   }
 
   @Test
