@@ -2686,7 +2686,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private long getSyncBytesInterval(PartitionConsumptionState pcs) {
+  long getSyncBytesInterval(PartitionConsumptionState pcs) {
     return pcs.isDeferredWrite()
         ? databaseSyncBytesIntervalForDeferredWriteMode
         : databaseSyncBytesIntervalForTransactionalMode;
@@ -2703,15 +2703,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record,
       PartitionConsumptionState pcs,
       String kafkaUrl) {
-    if (!isGlobalRtDivEnabled) {
+    if (!isGlobalRtDivEnabled()) {
       return false;
     }
 
     // The Global RT DIV is sent on a per-broker basis, so divide the size limit by the number of brokers
-    final long syncBytesInterval = getSyncBytesInterval(pcs) / processedRecordSizeSinceLastSync.size();
+    final long syncBytesInterval = getSyncBytesInterval(pcs) / getProcessedRecordSizeSinceLastSync().size();
     boolean shouldSync = false;
     if (!record.getKey().isControlMessage()) { // TODO: should the control message logic remain?
-      shouldSync = (syncBytesInterval > 0 && (processedRecordSizeSinceLastSync.get(kafkaUrl) >= syncBytesInterval));
+      shouldSync =
+          (syncBytesInterval > 0 && (getProcessedRecordSizeSinceLastSync().get(kafkaUrl) >= syncBytesInterval));
     }
     return shouldSync;
   }
@@ -2726,11 +2727,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * 1. Every ControlMessage
    * 2. Record count based strategy, which doesn't work well for stores with very small key/value pairs.
    */
-  private boolean shouldSyncOffset(
+  boolean shouldSyncOffset(
       PartitionConsumptionState pcs,
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record,
       LeaderProducedRecordContext leaderProducedRecordContext) {
-    if (isGlobalRtDivEnabled) {
+    if (isGlobalRtDivEnabled()) {
       return false; // If Global RT DIV is enabled, OffsetRecord is synced by ConsumptionTask rather than the Drainer
     }
 
@@ -4782,5 +4783,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (isHybridAggregateMode()) {
       getReadyToServeChecker().apply(partitionConsumptionState);
     }
+  }
+
+  VeniceConcurrentHashMap<String, Long> getProcessedRecordSizeSinceLastSync() {
+    return processedRecordSizeSinceLastSync; // mainly for unit test mocks
+  }
+
+  boolean isGlobalRtDivEnabled() {
+    return isGlobalRtDivEnabled; // mainly for unit test mocks
   }
 }
