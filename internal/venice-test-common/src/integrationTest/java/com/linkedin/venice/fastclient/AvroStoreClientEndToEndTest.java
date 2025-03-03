@@ -15,6 +15,7 @@ import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.fastclient.utils.ClientTestUtils;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
 import java.util.Map;
@@ -172,6 +173,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         }
       } else {
         for (int i = 0; i < recordCnt; ++i) {
+          Utils.sleep(200);
           String key = keyPrefix + i;
           GenericRecord value = genericFastClient.get(key).get();
           assertEquals((int) value.get(VALUE_FIELD_NAME), i);

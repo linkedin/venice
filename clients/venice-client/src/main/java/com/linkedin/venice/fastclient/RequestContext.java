@@ -49,6 +49,9 @@ public abstract class RequestContext {
   int helixGroupId = -1;
 
   boolean retryRequest = false;
+  boolean requestRejectedByLoadController = false;
+
+  double requestRejectionRatio = 0;
 
   public RequestContext() {
   }

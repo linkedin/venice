@@ -58,6 +58,8 @@ public class InstanceHealthMonitor implements Closeable {
 
   private final Consumer<String> counterResetConsumer;
 
+  private final InstanceLoadController loadController;
+
   public InstanceHealthMonitor(InstanceHealthMonitorConfig config) {
     this.config = config;
     this.timeoutProcessor = new TimeoutProcessor(null, true, 1);
@@ -81,6 +83,7 @@ public class InstanceHealthMonitor implements Closeable {
         return v - 1;
       });
     };
+    this.loadController = new InstanceLoadController(config);
   }
 
   private void heartBeat() {
@@ -206,6 +209,8 @@ public class InstanceHealthMonitor implements Closeable {
       } else {
         counterResetConsumer.accept(instance);
       }
+
+      loadController.recordResponse(instance, httpStatus);
     });
 
     return new ChainedCompletableFuture<>(requestFuture, resultFuture);
@@ -229,6 +234,14 @@ public class InstanceHealthMonitor implements Closeable {
     return getPendingRequestCounter(instance) >= config.getRoutingPendingRequestCounterInstanceBlockThreshold();
   }
 
+  public boolean shouldRejectRequest(String instance) {
+    return loadController.shouldRejectRequest(instance);
+  }
+
+  public boolean isRequestAllowed(String instance) {
+    return isInstanceHealthy(instance) && !isInstanceBlocked(instance) && !shouldRejectRequest(instance);
+  }
+
   public int getBlockedInstanceCount() {
     int blockedInstanceCount = 0;
     // TODO: need to evaluate whether it is too expensive to emit a metric per request for this.
@@ -238,6 +251,14 @@ public class InstanceHealthMonitor implements Closeable {
       }
     }
     return blockedInstanceCount;
+  }
+
+  public int getOverloadedInstanceCount() {
+    return loadController.getTotalNumberOfOverLoadedInstances();
+  }
+
+  public double getRejectionRatio(String instance) {
+    return loadController.getRejectionRatio(instance);
   }
 
   public int getUnhealthyInstanceCount() {
