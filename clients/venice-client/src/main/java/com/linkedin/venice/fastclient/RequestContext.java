@@ -31,6 +31,10 @@ public abstract class RequestContext {
 
   String serverClusterName;
 
+  boolean requestRejectedByLoadController = false;
+
+  double requestRejectionRatio = 0;
+
   public RequestContext() {
   }
 
