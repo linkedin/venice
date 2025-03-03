@@ -22,6 +22,7 @@ import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.stats.AggServerHttpRequestStats;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import com.linkedin.venice.stats.ServerConnectionStats;
+import com.linkedin.venice.stats.ServerLoadStats;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
@@ -62,7 +63,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   private AggServerQuotaUsageStats quotaUsageStats;
   List<ServerInterceptor> aclInterceptors;
   private final IdentityParser identityParser;
-
+  private final ServerLoadControllerHandler loadControllerHandler;
   private boolean isDaVinciClient;
 
   public HttpChannelInitializer(
@@ -165,6 +166,14 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     } else {
       this.serverConnectionStatsHandler = null;
     }
+    if (serverConfig.isLoadControllerEnabled()) {
+      this.loadControllerHandler =
+          new ServerLoadControllerHandler(serverConfig, new ServerLoadStats(metricsRepository, "server_load"));
+      LOGGER.info("Server load controller is enabled");
+    } else {
+      this.loadControllerHandler = null;
+      LOGGER.info("Server load controller is disabled");
+    }
   }
 
   /*
@@ -191,7 +200,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     }
 
     ChannelPipelineConsumer httpPipelineInitializer = (pipeline, whetherNeedServerCodec) -> {
-      StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats);
+      StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats, loadControllerHandler);
       pipeline.addLast(statsHandler);
       if (whetherNeedServerCodec) {
         pipeline.addLast(new HttpServerCodec());
@@ -218,6 +227,9 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       pipeline.addLast(new HttpObjectAggregator(serverConfig.getMaxRequestSize()))
           .addLast(new OutboundHttpWrapperHandler(statsHandler))
           .addLast(new IdleStateHandler(0, 0, serverConfig.getNettyIdleTimeInSeconds()));
+      if (loadControllerHandler != null) {
+        pipeline.addLast(loadControllerHandler);
+      }
       if (sslFactory.isPresent()) {
         pipeline.addLast(verifySsl);
         if (aclHandler.isPresent()) {
@@ -250,7 +262,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   public VeniceServerGrpcRequestProcessor initGrpcRequestProcessor() {
     VeniceServerGrpcRequestProcessor grpcServerRequestProcessor = new VeniceServerGrpcRequestProcessor();
 
-    StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats);
+    StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats, null);
     GrpcStatsHandler grpcStatsHandler = new GrpcStatsHandler(statsHandler);
     grpcServerRequestProcessor.addHandler(grpcStatsHandler);
 

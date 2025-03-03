@@ -138,6 +138,10 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       FastClientStats clientStats) {
     return innerFuture.handle((value, throwable) -> {
       double latency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS);
+      clientStats.recordRejectionRatio(requestContext.requestRejectionRatio);
+      if (requestContext.requestRejectedByLoadController) {
+        clientStats.recordRejectedRequestByLoadController();
+      }
       clientStats.recordRequestKeyCount(numberOfKeys);
       // If partial success is allowed, the previous layers will not complete the future exceptionally. In such cases,
       // we check if the request is completed successfully with partial exceptions - and these are considered unhealthy
@@ -245,6 +249,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       if (monitor != null) {
         clusterStats.recordBlockedInstanceCount(monitor.getBlockedInstanceCount());
         clusterStats.recordUnhealthyInstanceCount(monitor.getUnhealthyInstanceCount());
+        clusterStats.recordOverloadedInstanceCount(monitor.getOverloadedInstanceCount());
       }
       replicaRequestFuture.forEach((instance, future) -> {
         future.whenComplete((status, throwable) -> {
@@ -268,6 +273,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
 
           routeStats.recordRequest();
           routeStats.recordResponseWaitingTime(LatencyUtils.getElapsedTimeFromNSToMS(requestSentTimestampNS));
+          routeStats.recordRejectionRatio(monitor.getRejectionRatio(instance));
           switch (status) {
             case SC_OK:
             case SC_NOT_FOUND:

@@ -45,6 +45,8 @@ public class HttpConstants {
 
   public static final int SC_MISDIRECTED_REQUEST = 421;
 
+  public static final int SC_SERVICE_OVERLOADED = 529;
+
   private HttpConstants() {
   }
 }
