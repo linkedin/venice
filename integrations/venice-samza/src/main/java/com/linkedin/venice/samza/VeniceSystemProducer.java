@@ -5,6 +5,8 @@ import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProdu
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation;
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation;
 
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
@@ -38,7 +40,6 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
-import com.linkedin.venice.utils.BoundedHashMap;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SystemTime;
@@ -136,7 +137,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private Schema keySchema;
   private String canonicalKeySchemaStr;
   // To avoid the excessive usage of the cache in case each message is using a unique key schema
-  private final Map<Schema, String> canonicalSchemaStrCache = new BoundedHashMap<>(10, true);
+  private final LoadingCache<Schema, String> canonicalSchemaStrCache =
+      Caffeine.newBuilder().maximumSize(10).build(AvroCompatibilityHelper::toParsingForm);
 
   private D2Client primaryControllerColoD2Client;
   private D2Client childColoD2Client;
@@ -722,8 +724,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
   protected CompletableFuture<Void> send(Object keyObject, Object valueObject) {
     Schema keyObjectSchema = getSchemaFromObject(keyObject);
-    String canonicalSchemaStr = canonicalSchemaStrCache
-        .computeIfAbsent(keyObjectSchema, k -> AvroCompatibilityHelper.toParsingForm(keyObjectSchema));
+    String canonicalSchemaStr = canonicalSchemaStrCache.get(keyObjectSchema);
 
     if (!canonicalKeySchemaStr.equals(canonicalSchemaStr)) {
       throw new SamzaException(
