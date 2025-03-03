@@ -2313,6 +2313,26 @@ public class ConfigKeys {
       "server.consumer.pool.size.for.non.current.version.non.aa.wc.leader";
 
   /**
+   * A string of comma separated number to specify different factors multiplying basic throttling limit
+   * KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND, the factors will be comma separated numbers with ascending order,
+   * but we should include 1.0 as basic setting. For example, a string as: "0.8, 1.0, 1.2" means the basic setting is
+   * 1.0, and the max setting is 1.2 * basic throttling limit.
+   */
+  public static final String KAFKA_FETCH_THROTTLER_FACTORS_PER_SECOND = "kafka.fetch.throttler.factors.per.second";
+  public static final String SERVER_THROTTLER_FACTORS_FOR_AA_WC_LEADER = "server_throttler_factors_for_aa_wc_leader";
+  public static final String SERVER_THROTTLER_FACTORS_FOR_SEP_RT_LEADER = "server.throttler.factors.for.sep.rt.leader";
+  public static final String SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_AA_WC_LEADER =
+      "server.throttler.factors.for.current.version.aa.wc.leader";
+  public static final String SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_SEPARATE_RT_LEADER =
+      "server.throttler.factors.for.current.version.separate.rt.leader";
+  public static final String SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_AA_WC_LEADER =
+      "server.throttler.factors.for.non.current.version.aa.wc.leader";
+  public static final String SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_NON_AA_WC_LEADER =
+      "server.throttler.factors.for.current.version.non.aa.wc.leader";
+  public static final String SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER =
+      "server.throttler.factors.for.non.current.version.non.aa.wc.leader";
+
+  /**
    * Whether to enable record-level metrics when bootstrapping current version.
    * This feature will be mainly used by DaVinci to speed up bootstrapping.
    */

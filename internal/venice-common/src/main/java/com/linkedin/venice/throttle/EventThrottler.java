@@ -311,6 +311,10 @@ public class EventThrottler implements VeniceRateLimiter {
     return quota;
   }
 
+  public String getThrottlerName() {
+    return throttlerName;
+  }
+
   @Override
   public String toString() {
     return "EventThrottler{" + "maxRatePerSecondProvider=" + maxRatePerSecondProvider + ", enforcementIntervalMs="

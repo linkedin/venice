@@ -8,8 +8,15 @@ import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_THROTTLER_FACTORS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
+import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_AA_WC_LEADER;
+import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_AA_WC_LEADER;
+import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_NON_AA_WC_LEADER;
+import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_AA_WC_LEADER;
+import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER;
+import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_SEP_RT_LEADER;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
@@ -18,8 +25,13 @@ import static org.testng.Assert.expectThrows;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.testng.annotations.Test;
 
 
@@ -45,6 +57,50 @@ public class VeniceServerConfigTest {
     assertEquals(jvmArgs.size(), 2);
     assertEquals(jvmArgs.get(0), "-Xms256M");
     assertEquals(jvmArgs.get(1), "-Xmx256G");
+  }
+
+  @Test
+  public void testConfig() {
+    Properties props = populatedBasicProperties();
+
+    Map<String, Function<VeniceServerConfig, List<Double>>> configMap = new HashMap<>();
+
+    configMap.put(KAFKA_FETCH_THROTTLER_FACTORS_PER_SECOND, VeniceServerConfig::getKafkaFetchThrottlerFactorsPerSecond);
+
+    configMap.put(SERVER_THROTTLER_FACTORS_FOR_AA_WC_LEADER, VeniceServerConfig::getThrottlerFactorsForAAWCLeader);
+    configMap.put(SERVER_THROTTLER_FACTORS_FOR_SEP_RT_LEADER, VeniceServerConfig::getThrottlerFactorsForSepRTLeader);
+
+    configMap.put(
+        SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_AA_WC_LEADER,
+        VeniceServerConfig::getThrottlerFactorsForCurrentVersionAAWCLeader);
+    configMap.put(
+        SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_NON_AA_WC_LEADER,
+        VeniceServerConfig::getThrottlerFactorsForCurrentVersionNonAAWCLeader);
+    configMap.put(
+        SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_AA_WC_LEADER,
+        VeniceServerConfig::getThrottlerFactorsForNonCurrentVersionAAWCLeader);
+    configMap.put(
+        SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER,
+        VeniceServerConfig::getThrottlerFactorsForNonCurrentVersionNonAAWCLeader);
+
+    // Looping through all the factors config keys and checking if the values are same as default values
+    for (Map.Entry<String, Function<VeniceServerConfig, List<Double>>> entry: configMap.entrySet()) {
+      VeniceServerConfig config = new VeniceServerConfig(new VeniceProperties(props));
+      List<Double> consumerPoolRecordsLimitFactors = entry.getValue().apply(config);
+      assertEquals(consumerPoolRecordsLimitFactors.size(), config.getDefaultConsumerPoolLimitFactorsList().size());
+      assertEquals(
+          consumerPoolRecordsLimitFactors.toArray(),
+          config.getDefaultConsumerPoolLimitFactorsList().toArray());
+      Double[] factors = new Double[] { 0.6D, 0.8D, 1.0D, 1.2D };
+      List<Double> factorsList = Arrays.asList(factors);
+      // Convert list of double to string with comma separated
+      String factorsListStr = factorsList.stream().map(String::valueOf).collect(Collectors.joining(", "));
+      props.put(entry.getKey(), factorsListStr);
+      config = new VeniceServerConfig(new VeniceProperties(props));
+      consumerPoolRecordsLimitFactors = entry.getValue().apply(config);
+      assertEquals(consumerPoolRecordsLimitFactors.size(), 4);
+      assertEquals(consumerPoolRecordsLimitFactors.toArray(), factors);
+    }
   }
 
   @Test

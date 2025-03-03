@@ -1,6 +1,9 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.davinci.kafka.consumer.AdaptiveThrottlerSignalService.SINGLE_GET_LATENCY_P99_METRIC_NAME;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
@@ -10,6 +13,7 @@ import com.linkedin.davinci.stats.ingestion.heartbeat.AggregatedHeartbeatLagEntr
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.Sensor;
 import java.util.concurrent.TimeUnit;
 import org.mockito.Mockito;
 import org.testng.Assert;
@@ -58,6 +62,8 @@ public class AdaptiveThrottlerSingalServiceTest {
   @Test
   public void testRegisterThrottler() {
     MetricsRepository metricsRepository = mock(MetricsRepository.class);
+    Sensor sensor = mock(Sensor.class);
+    doReturn(sensor).when(metricsRepository).sensor(anyString(), any());
     HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
     VeniceServerConfig veniceServerConfig = mock(VeniceServerConfig.class);
     when(veniceServerConfig.getAdaptiveThrottlerSingleGetLatencyThreshold()).thenReturn(10d);

@@ -71,6 +71,7 @@ public class IngestionThrottler implements Closeable {
       globalRecordAdaptiveIngestionThrottler = new VeniceAdaptiveIngestionThrottler(
           serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
           serverConfig.getKafkaFetchQuotaRecordPerSecond(),
+          serverConfig.getKafkaFetchThrottlerFactorsPerSecond(),
           serverConfig.getKafkaFetchQuotaTimeWindow(),
           "kafka_consumption_records_count");
       globalRecordAdaptiveIngestionThrottler
@@ -80,6 +81,7 @@ public class IngestionThrottler implements Closeable {
       globalBandwidthAdaptiveIngestionThrottler = new VeniceAdaptiveIngestionThrottler(
           serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
           serverConfig.getKafkaFetchQuotaBytesPerSecond(),
+          serverConfig.getKafkaFetchThrottlerFactorsPerSecond(),
           serverConfig.getKafkaFetchQuotaTimeWindow(),
           "kafka_consumption_bandwidth");
       globalBandwidthAdaptiveIngestionThrottler
