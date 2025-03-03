@@ -38,7 +38,6 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
-import com.linkedin.venice.utils.BoundedHashMap;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SystemTime;
@@ -136,7 +135,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private Schema keySchema;
   private String canonicalKeySchemaStr;
   // To avoid the excessive usage of the cache in case each message is using a unique key schema
-  private final Map<Schema, String> canonicalSchemaStrCache = new BoundedHashMap<>(10, true);
+  private final Map<Schema, String> canonicalSchemaStrCache = new VeniceConcurrentHashMap<>(10);
 
   private D2Client primaryControllerColoD2Client;
   private D2Client childColoD2Client;
