@@ -674,7 +674,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         Lazy<GenericRecord> valueProvider = mergeConflictResultWrapper.getValueProvider();
         queueUpVersionTopicWritesWithViewWriters(
             partitionConsumptionState,
-            (viewWriter) -> viewWriter.processRecord(
+            (viewWriter, ignored) -> viewWriter.processRecord(
                 mergeConflictResultWrapper.getUpdatedValueBytes(),
                 oldValueBB,
                 keyBytes,
@@ -682,6 +682,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                 oldValueSchemaId,
                 mergeConflictResult.getRmdRecord(),
                 valueProvider),
+            null,
             produceToVersionTopic);
       } else {
         // This function may modify the original record in KME and it is unsafe to use the payload from KME directly
