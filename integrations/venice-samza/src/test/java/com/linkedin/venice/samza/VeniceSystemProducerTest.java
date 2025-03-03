@@ -331,7 +331,8 @@ public class VeniceSystemProducerTest {
     canonicalSchemaStrCache.get(KafkaMessageEnvelope.SCHEMA$);
 
     for (int i = 0; i < 100; ++i) {
-      Schema.Field field1 = new Schema.Field("field1", Schema.create(Schema.Type.STRING), "doc", "default");
+      Schema.Field field1 =
+          AvroCompatibilityHelper.createSchemaField("field1", Schema.create(Schema.Type.STRING), "doc", "default");
       Schema schema = Schema.createRecord("test_record" + i, "doc", "namespace", false, Arrays.asList(field1));
       canonicalSchemaStrCache.get(schema);
     }
