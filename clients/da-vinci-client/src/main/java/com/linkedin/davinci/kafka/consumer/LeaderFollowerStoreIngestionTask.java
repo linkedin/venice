@@ -13,11 +13,13 @@ import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.END_OF
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.kafka.protocol.enums.MessageType.UPDATE;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
+import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_VIEW_PARTITIONS_MAP_HEADER;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
 import static java.lang.Long.max;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
@@ -81,6 +83,7 @@ import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -117,8 +120,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
-import java.util.function.Function;
 import java.util.function.LongPredicate;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -3383,17 +3386,43 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     // Write to views
     if (hasViewWriters()) {
       Put newPut = writeComputeResultWrapper.getNewPut();
-      // keys will be serialized with chunk suffix during pass-through mode in L/F NR if chunking is enabled
-      boolean isChunkedKey = isChunked() && !partitionConsumptionState.isEndOfPushReceived();
+      Map<String, Set<Integer>> viewPartitionMap = null;
+      if (!partitionConsumptionState.isEndOfPushReceived()) {
+        // NR pass-through records are expected to carry view partition map in the message header
+        viewPartitionMap = extractViewPartitionMap(consumerRecord.getPubSubMessageHeaders());
+      }
       Lazy<GenericRecord> newValueProvider = writeComputeResultWrapper.getValueProvider();
       queueUpVersionTopicWritesWithViewWriters(
           partitionConsumptionState,
-          (viewWriter) -> viewWriter
-              .processRecord(newPut.putValue, keyBytes, newPut.schemaId, isChunkedKey, newValueProvider),
+          (viewWriter, viewPartitionSet) -> viewWriter
+              .processRecord(newPut.putValue, keyBytes, newPut.schemaId, viewPartitionSet, newValueProvider),
+          viewPartitionMap,
           produceToVersionTopic);
     } else {
       produceToVersionTopic.run();
     }
+  }
+
+  protected Map<String, Set<Integer>> extractViewPartitionMap(PubSubMessageHeaders pubSubMessageHeaders) {
+    Map<String, Set<Integer>> viewPartitionMap = null;
+    for (PubSubMessageHeader header: pubSubMessageHeaders) {
+      if (header.key().equals(VENICE_VIEW_PARTITIONS_MAP_HEADER)) {
+        try {
+          TypeReference<Map<String, Set<Integer>>> typeReference = new TypeReference<Map<String, Set<Integer>>>() {
+          };
+          viewPartitionMap = ObjectMapperFactory.getInstance().readValue(header.value(), typeReference);
+        } catch (IOException e) {
+          throw new VeniceException(
+              "Failed to parse view partition map from the record's VENICE_VIEW_PARTITIONS_MAP_HEADER",
+              e);
+        }
+        break;
+      }
+    }
+    if (viewPartitionMap == null) {
+      throw new VeniceException("Unable to find VENICE_VIEW_PARTITIONS_MAP_HEADER in the record's message headers");
+    }
+    return viewPartitionMap;
   }
 
   private void produceToLocalKafkaHelper(
@@ -3974,7 +4003,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected void queueUpVersionTopicWritesWithViewWriters(
       PartitionConsumptionState partitionConsumptionState,
-      Function<VeniceViewWriter, CompletableFuture<Void>> viewWriterRecordProcessor,
+      BiFunction<VeniceViewWriter, Set<Integer>, CompletableFuture<Void>> viewWriterRecordProcessor,
+      Map<String, Set<Integer>> viewPartitionMap,
       Runnable versionTopicWrite) {
     long preprocessingTime = System.currentTimeMillis();
     CompletableFuture<Void> currentVersionTopicWrite = new CompletableFuture<>();
@@ -3983,7 +4013,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     // The first future is for the previous write to VT
     viewWriterFutures[index++] = partitionConsumptionState.getLastVTProduceCallFuture();
     for (VeniceViewWriter writer: viewWriters.values()) {
-      viewWriterFutures[index++] = viewWriterRecordProcessor.apply(writer);
+      Set<Integer> viewPartitionSet = null;
+      if (viewPartitionMap != null && writer instanceof MaterializedViewWriter) {
+        MaterializedViewWriter mvWriter = (MaterializedViewWriter) writer;
+        viewPartitionSet = viewPartitionMap.get(mvWriter.getViewName());
+        if (viewPartitionSet == null) {
+          throw new VeniceException("Unable to find view partition set for view: " + mvWriter.getViewName());
+        }
+      }
+      viewWriterFutures[index++] = viewWriterRecordProcessor.apply(writer, viewPartitionSet);
     }
     hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
     CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
