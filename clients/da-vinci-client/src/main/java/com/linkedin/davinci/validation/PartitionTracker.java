@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -137,9 +138,13 @@ public class PartitionTracker {
     }
   }
 
-  public ProducerPartitionState getPartitionState(TopicType type, GUID guid) {
-    Segment segment = getSegments(type).get(guid);
-    return (segment != null) ? segment.toProducerPartitionState() : new ProducerPartitionState();
+  public Map<CharSequence, ProducerPartitionState> getPartitionStates(TopicType type) {
+    return getSegments(type).entrySet()
+        .stream()
+        .collect(
+            Collectors.toMap(
+                entry -> GuidUtils.getCharSequenceFromGuid(entry.getKey()),
+                entry -> entry.getValue().toProducerPartitionState()));
   }
 
   private void setSegment(TopicType type, GUID guid, Segment segment) {
@@ -156,12 +161,15 @@ public class PartitionTracker {
   }
 
   // Clone both vtSegment and rtSegment to the destination PartitionTracker.
-  public void cloneProducerStates(PartitionTracker destProducerTracker) {
+  public void cloneProducerStates(PartitionTracker destProducerTracker, String brokerUrl) {
     for (Map.Entry<GUID, Segment> entry: vtSegments.entrySet()) {
       destProducerTracker.setSegment(PartitionTracker.VERSION_TOPIC, entry.getKey(), new Segment(entry.getValue()));
     }
 
     for (Map.Entry<String, VeniceConcurrentHashMap<GUID, Segment>> entry: rtSegments.entrySet()) {
+      if (brokerUrl != null && !brokerUrl.equals(entry.getKey())) {
+        continue; // filter by brokerUrl if specified
+      }
       for (Map.Entry<GUID, Segment> rtEntry: entry.getValue().entrySet()) {
         destProducerTracker.setSegment(
             TopicType.of(TopicType.REALTIME_TOPIC_TYPE, entry.getKey()),
