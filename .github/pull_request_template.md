@@ -14,26 +14,33 @@ Note: PRs with titles not following the format will not be merged
 ## Problem Statement
 <!--
 Describe
-- What problem are you trying to solve? - What issues or limitations exist in the current code? 
+- What problem are you trying to solve
+- What issues or limitations exist in the current code
+- Why this change is necessary 
 -->
 ## Solution
 <!--
 Describe
-- What changes you are making and why. - How these changes solve the problem.
+- What changes you are making and why. 
+- How these changes solve the problem.
 - Any performance considerations or trade-offs. 
 - Describe what testings you have done, for example, performance testing etc.
 -->
 
 
 ###  Code changes
-- [ ] Added new code behind **a config**. If so list the config names and their default values.
-- [ ] If introducing new **log lines** and if the log needs to be **rate limited**.
+- [ ] Added new code behind **a config**. If so list the config names and their default values in the PR description.
+- [ ] Introduced new **log lines**. 
+  - [ ] Confirmed if logs need to be **rate limited** to avoid excessive logging.
 
-### 🔥 **Concurrency-Specific Checks**
+###  **Concurrency-Specific Checks**
+Both reviewer and PR author to verify
 - [ ] Code has **no race conditions** or **thread safety issues**.
 - [ ] Proper **synchronization mechanisms** (e.g., `synchronized`, `RWLock`) are used where needed.
 - [ ] No **blocking calls** inside critical sections that could lead to deadlocks.
 - [ ] Verified **thread-safe collections** are used (e.g., `ConcurrentHashMap`, `CopyOnWriteArrayList`).
+- [ ] Validated proper exception handling in multi-threaded code to avoid thread termination.
+
 
 ## How was this PR tested?
 <!--
@@ -51,4 +58,4 @@ If yes, please clarify the previous behavior and the change this PR proposes - p
 If no, choose 'No'.
 -->
 - [ ] No. You can skip the rest of this section.
-- [ ] Yes. Make sure to explain your proposed changes and call out the behavior change.
+- [ ] Yes. Clearly explain the behavior change and its impact.
