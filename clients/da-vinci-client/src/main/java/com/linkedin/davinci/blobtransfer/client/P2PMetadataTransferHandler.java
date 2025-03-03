@@ -17,6 +17,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.IOException;
 import org.apache.logging.log4j.LogManager;
@@ -67,6 +68,15 @@ public class P2PMetadataTransferHandler extends SimpleChannelInboundHandler<Full
 
     ByteBuf content = msg.content();
     byte[] metadataBytes = new byte[content.readableBytes()];
+    LOGGER.info(
+        "Received metadata from remote peer for topic {} with size {}. ",
+        payload.getTopicName(),
+        metadataBytes.length);
+    // verify the byte size of metadata
+    if (metadataBytes.length != Long.parseLong(msg.headers().get(HttpHeaderNames.CONTENT_LENGTH))) {
+      throw new VeniceException("Metadata byte size mismatch for topic " + payload.getTopicName());
+    }
+
     ObjectMapper objectMapper = ObjectMapperFactory.getInstance();
     content.readBytes(metadataBytes);
     BlobTransferPartitionMetadata transferredMetadata =

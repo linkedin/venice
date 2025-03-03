@@ -274,7 +274,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
 
     ctx.writeAndFlush(metadataResponse).addListener(future -> {
       if (future.isSuccess()) {
-        LOGGER.debug("Metadata for {} sent successfully", metadata.getTopicName());
+        LOGGER.debug("Metadata for {} sent successfully with size {}", metadata.getTopicName(), metadataBytes.length);
       } else {
         LOGGER.error("Failed to send metadata for {}", metadata.getTopicName());
       }

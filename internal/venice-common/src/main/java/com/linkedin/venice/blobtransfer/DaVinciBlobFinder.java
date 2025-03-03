@@ -15,7 +15,6 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -84,15 +83,7 @@ public class DaVinciBlobFinder implements BlobFinder {
       }
     }).exceptionally(throwable -> handleError(ERROR_DISCOVERY_MESSAGE, storeName, version, partition, throwable));
 
-    // Shuffle the list to avoid always picking the same host
-    BlobPeersDiscoveryResponse response = futureResponse.join();
-    List<String> discoveryResult = response.getDiscoveryResult();
-    if (discoveryResult != null && !discoveryResult.isEmpty()) {
-      Collections.shuffle(discoveryResult);
-      response.setDiscoveryResult(discoveryResult);
-    }
-
-    return response;
+    return futureResponse.join();
   }
 
   private String buildUriForBlobDiscovery(String storeName, int version, int partition) {
