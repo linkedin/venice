@@ -1,17 +1,20 @@
 package com.linkedin.venice.writer;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.ComplexVenicePartitioner;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
-import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import org.apache.avro.generic.GenericRecord;
 
@@ -22,11 +25,7 @@ import org.apache.avro.generic.GenericRecord;
  * {@link VeniceWriter} APIs.
  */
 public class ComplexVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
-  private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
-      RedundantExceptionFilter.getRedundantExceptionFilter();
-  private static final String SKIP_LARGE_RECORD = "SkipLargeRecord";
   private final ComplexVenicePartitioner complexPartitioner;
-  private final AtomicLong skippedLargeRecords = new AtomicLong(0);
 
   public ComplexVeniceWriter(
       VeniceWriterOptions params,
@@ -40,27 +39,41 @@ public class ComplexVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
     }
   }
 
+  public CompletableFuture<Void> complexPut(K key, V value, int valueSchemaId, Lazy<GenericRecord> valueProvider) {
+    return complexPut(key, value, valueSchemaId, valueProvider, null, null, null);
+  }
+
   /**
    * {@link ComplexVenicePartitioner} offers a more sophisticated getPartitionId API. It also takes value as a
-   * parameter, and could return a single, multiple or no partition(s).
+   * parameter, and could return a single, multiple or no partition(s). The API also accepts a partition consumer to
+   * offer the resulting partition(s) of this complexPut.
    */
-  public CompletableFuture<Void> complexPut(K key, V value, int valueSchemaId, Lazy<GenericRecord> valueProvider) {
+  public CompletableFuture<Void> complexPut(
+      K key,
+      V value,
+      int valueSchemaId,
+      Lazy<GenericRecord> valueProvider,
+      Consumer<int[]> partitionConsumer,
+      PubSubProducerCallback callback,
+      PutMetadata putMetadata) {
     CompletableFuture<Void> finalCompletableFuture = new CompletableFuture<>();
     if (value == null) {
       // Ignore null value
       throw new VeniceException("Put value should not be null");
     } else {
       // Write updated/put record to materialized view topic partition(s)
+      byte[] serializedKey = keySerializer.serialize(topicName, key);
       if (complexPartitioner == null) {
         // No VeniceComplexPartitioner involved, perform simple put.
-        byte[] serializedKey = keySerializer.serialize(topicName, key);
         byte[] serializedValue = valueSerializer.serialize(topicName, value);
         int partition = getPartition(serializedKey);
         propagateVeniceWriterFuture(
-            put(serializedKey, serializedValue, valueSchemaId, partition),
+            put(serializedKey, serializedValue, partition, valueSchemaId, callback, putMetadata),
             finalCompletableFuture);
+        if (partitionConsumer != null) {
+          partitionConsumer.accept(new int[] { partition });
+        }
       } else {
-        byte[] serializedKey = keySerializer.serialize(topicName, key);
         int[] partitions = complexPartitioner.getPartitionId(serializedKey, valueProvider.get(), numberOfPartitions);
         if (partitions.length == 0) {
           finalCompletableFuture.complete(null);
@@ -69,10 +82,42 @@ public class ComplexVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
           performMultiPartitionAction(
               partitions,
               finalCompletableFuture,
-              (partition) -> this.put(serializedKey, serializedValue, valueSchemaId, partition));
+              (partition) -> put(serializedKey, serializedValue, partition, valueSchemaId, callback, putMetadata));
+        }
+        if (partitionConsumer != null) {
+          partitionConsumer.accept(partitions);
         }
       }
     }
+    return finalCompletableFuture;
+  }
+
+  /**
+   * Used during NR pass-through in remote region to forward records or chunks of records to corresponding view
+   * partition based on provided view partition map. This way the producing leader don't need to worry about large
+   * record assembly or chunking for view topic(s) when ingesting from source VT during NR pass-through.
+   */
+  public CompletableFuture<Void> forwardPut(K key, V value, int valueSchemaId, Set<Integer> partitions) {
+    if (partitions.isEmpty()) {
+      return CompletableFuture.completedFuture(null);
+    }
+    byte[] serializedKey = keySerializer.serialize(topicName, key);
+    byte[] serializedValue = valueSerializer.serialize(topicName, value);
+    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, serializedKey);
+    Put putPayload = buildPutPayload(serializedValue, valueSchemaId, null);
+    int[] partitionArray = partitions.stream().mapToInt(i -> i).toArray();
+    CompletableFuture<Void> finalCompletableFuture = new CompletableFuture<>();
+    performMultiPartitionAction(
+        partitionArray,
+        finalCompletableFuture,
+        (partition) -> sendMessage(
+            producerMetadata -> kafkaKey,
+            MessageType.PUT,
+            putPayload,
+            partition,
+            null,
+            DEFAULT_LEADER_METADATA_WRAPPER,
+            APP_DEFAULT_LOGICAL_TS));
     return finalCompletableFuture;
   }
 
@@ -103,36 +148,11 @@ public class ComplexVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
           performMultiPartitionAction(
               partitions,
               finalCompletableFuture,
-              (partition) -> this.delete(serializedKey, null, partition));
+              (partition) -> delete(serializedKey, null, partition));
         }
       }
     }
     return finalCompletableFuture;
-  }
-
-  /**
-   * Prevent the {@link ComplexVeniceWriter} from writing any actual chunks for large values. This is because we are
-   * only using ComplexVeniceWriter for writing to materialized view. The consumers of materialized view do not fully
-   * support assembling the chunks correctly yet. The behavior is the same for both large values from VPJ and leader
-   * replicas.
-   */
-  @Override
-  protected CompletableFuture<PubSubProduceResult> putLargeValue(
-      byte[] serializedKey,
-      byte[] serializedValue,
-      int valueSchemaId,
-      PubSubProducerCallback callback,
-      int partition,
-      LeaderMetadataWrapper leaderMetadataWrapper,
-      long logicalTs,
-      PutMetadata putMetadata,
-      ChunkedValueManifest oldValueManifest,
-      ChunkedValueManifest oldRmdManifest) {
-    skippedLargeRecords.incrementAndGet();
-    if (!REDUNDANT_LOGGING_FILTER.isRedundantException(topicName, SKIP_LARGE_RECORD)) {
-      logger.warn("Skipped writing {} large record(s) to topic: {}", skippedLargeRecords.getAndSet(0), topicName);
-    }
-    return CompletableFuture.completedFuture(null);
   }
 
   @Override
@@ -196,17 +216,19 @@ public class ComplexVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
   private CompletableFuture<PubSubProduceResult> put(
       byte[] serializedKey,
       byte[] serializedValue,
+      int partition,
       int valueSchemaId,
-      int partition) {
+      PubSubProducerCallback callback,
+      PutMetadata putMetadata) {
     return put(
         serializedKey,
         serializedValue,
         partition,
         valueSchemaId,
-        null,
+        callback,
         DEFAULT_LEADER_METADATA_WRAPPER,
         APP_DEFAULT_LOGICAL_TS,
-        null,
+        putMetadata,
         null,
         null);
   }
