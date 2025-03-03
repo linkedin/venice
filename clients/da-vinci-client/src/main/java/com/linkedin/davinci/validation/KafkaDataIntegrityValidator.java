@@ -109,12 +109,15 @@ public class KafkaDataIntegrityValidator {
 
   public void cloneProducerStates(int partition, KafkaDataIntegrityValidator newValidator) {
     PartitionTracker destPartitionTracker = newValidator.registerPartition(partition);
-    this.partitionTrackers.get(partition).cloneProducerStates(destPartitionTracker);
+    this.partitionTrackers.get(partition).cloneProducerStates(destPartitionTracker, null);
   }
 
-  public PartitionTracker cloneProducerStates(int partition) {
+  /**
+   * Returns the RT DIV state for a given partition and broker URL, and the VT DIV state
+   */
+  public PartitionTracker cloneProducerStates(int partition, String brokerUrl) {
     PartitionTracker partitionTracker = partitionTrackerCreator.apply(partition);
-    this.partitionTrackers.get(partition).cloneProducerStates(partitionTracker);
+    this.partitionTrackers.get(partition).cloneProducerStates(partitionTracker, brokerUrl); // single broker
     return partitionTracker;
   }
 
