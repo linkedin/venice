@@ -26,8 +26,6 @@ import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
@@ -327,10 +325,10 @@ public class VeniceSystemProducerTest {
       canonicalSchemaStrCache.get(schema);
     }
 
-    canonicalSchemaStrCache.get(KafkaMessageEnvelope.SCHEMA$);
-    canonicalSchemaStrCache.get(PartitionState.getClassSchema());
+    long cacheSize = canonicalSchemaStrCache.estimatedSize();
     Assert.assertTrue(
         canonicalSchemaStrCache.estimatedSize() < 10,
-        "The size of the cache shouldn't go beyond 10 when specifying the maximum size as 3 even with estimation");
+        "The size of the cache shouldn't go beyond 10 when specifying the maximum size as 3 even with estimation, but got: "
+            + cacheSize);
   }
 }
