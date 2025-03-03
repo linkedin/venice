@@ -21,7 +21,6 @@ import static org.testng.Assert.fail;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -29,13 +28,11 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
-import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
-import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -322,13 +319,6 @@ public class VeniceSystemProducerTest {
   public void testSchemaCache() {
     final LoadingCache<Schema, String> canonicalSchemaStrCache =
         Caffeine.newBuilder().maximumSize(3).build(AvroCompatibilityHelper::toParsingForm);
-    canonicalSchemaStrCache.get(KafkaMessageEnvelope.SCHEMA$);
-    canonicalSchemaStrCache.get(KafkaMessageEnvelope.SCHEMA$);
-    canonicalSchemaStrCache.get(PartitionState.getClassSchema());
-    canonicalSchemaStrCache.get(StoreVersionState.getClassSchema());
-    canonicalSchemaStrCache.get(MultiGetResponseRecordV1.SCHEMA$);
-    canonicalSchemaStrCache.get(ComputeResponseRecordV1.getClassSchema());
-    canonicalSchemaStrCache.get(KafkaMessageEnvelope.SCHEMA$);
 
     for (int i = 0; i < 100; ++i) {
       Schema.Field field1 =
