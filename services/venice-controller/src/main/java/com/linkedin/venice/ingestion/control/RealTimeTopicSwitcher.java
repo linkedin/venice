@@ -213,7 +213,6 @@ public class RealTimeTopicSwitcher {
   }
 
   public void transmitVersionSwapMessage(Store store, int previousVersion, int nextVersion) {
-
     if (previousVersion == Store.NON_EXISTING_VERSION || nextVersion == Store.NON_EXISTING_VERSION) {
       // NoOp
       return;
@@ -222,42 +221,54 @@ public class RealTimeTopicSwitcher {
     Version previousStoreVersion = store.getVersionOrThrow(previousVersion);
     Version nextStoreVersion = store.getVersionOrThrow(nextVersion);
 
-    // Only transmit version swap message to RT's if there is a view config (temporary check)
-    if (!hasViewConfigs(nextStoreVersion, previousStoreVersion)) {
-      // NoOp for now
-      return;
+    // If there exists an RT, then broadcast the VersionSwapMessage to it,
+    // otherwise broadcast it to the VT of the previous version
+    String storeName = store.getName();
+    if (!topicManager.containsTopic(pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName)))) {
+      LOGGER.info("RT topic doesn't exist for store: {}. Broadcasting VersionSwapMessage directly to VT.", storeName);
+
+      /**
+       * In a hybrid mode, the VSM gets emitted to the previous and next version topics by the Leader.
+       * In a batch only mode, we will need to do the same in the controller. This is because there exists a
+       * race-condition inside DaVinci. If we only emit the VSM to the previous version, it's possible that DaVinci
+       * can complete consumption of the next version before the previous can consume the VSM. When this happens,
+       * DaVinci will delete the previous version inside StoreBackend::setDaVinciCurrentVersion. Thus, the previous
+       * version will never be able to consume the VSM.
+       * Because of this, we need to emit the VSM to both the previous and next version.
+       */
+      broadcastVersionSwap(previousStoreVersion, nextStoreVersion, previousStoreVersion.kafkaTopicName());
+      broadcastVersionSwap(previousStoreVersion, nextStoreVersion, nextStoreVersion.kafkaTopicName());
+    } else {
+      broadcastVersionSwap(previousStoreVersion, nextStoreVersion, Utils.getRealTimeTopicName(store));
+    }
+  }
+
+  private void broadcastVersionSwap(Version previousStoreVersion, Version nextStoreVersion, String topicName) {
+    String storeName = previousStoreVersion.getStoreName();
+    int partitionCount;
+
+    // Partition count across versions for a batch-only store can vary, so we need to determine the correct
+    // number of partitions. For a hybrid store, the partition count always stays the same between versions.
+    if (topicName.equals(nextStoreVersion.kafkaTopicName())) {
+      partitionCount = nextStoreVersion.getPartitionCount();
+    } else {
+      partitionCount = previousStoreVersion.getPartitionCount();
     }
 
-    // Only transmit version swap for stores which have an RT.
-    // if a previous version didn't have an RT, then there will be no
-    // version consuming the topic switch message. We'll transmit the version switch
-    // message so long as there exists some RT
-    if (!topicManager.containsTopic(pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(store.getName())))) {
-      // NoOp
-      return;
-    }
-    // Write the thing!
     try (VeniceWriter veniceWriter = getVeniceWriterFactory().createVeniceWriter(
-        new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(store)).setTime(getTimer())
-            .setPartitionCount(previousStoreVersion.getPartitionCount())
-            .build())) {
+        new VeniceWriterOptions.Builder(topicName).setTime(getTimer()).setPartitionCount(partitionCount).build())) {
       veniceWriter.broadcastVersionSwap(
           previousStoreVersion.kafkaTopicName(),
           nextStoreVersion.kafkaTopicName(),
           Collections.emptyMap());
     }
-    LOGGER.info(
-        "Successfully sent VersionTopicSwitch for store {} from version {} to version {}",
-        store.getName(),
-        previousVersion,
-        nextVersion);
-  }
 
-  // TODO: Delete this function once we have confidence in version swap to not stipulate views as a precondition for
-  // transmitting version swap messages on RT.
-  public boolean hasViewConfigs(Version nextStoreVersion, Version previousStoreVersion) {
-    return ((previousStoreVersion.getViewConfigs() != null) && !previousStoreVersion.getViewConfigs().isEmpty())
-        || ((nextStoreVersion.getViewConfigs() != null) && !nextStoreVersion.getViewConfigs().isEmpty());
+    LOGGER.info(
+        "Successfully sent VersionSwapMessage for store: {} from version: {} to version: {} to topic: {}",
+        storeName,
+        previousStoreVersion.getNumber(),
+        nextStoreVersion.getNumber(),
+        topicName);
   }
 
   public void switchToRealTimeTopic(

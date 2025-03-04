@@ -2631,7 +2631,24 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 beforeProcessingPerRecordTimestampNs);
             break;
           case VERSION_SWAP:
-            return DelegateConsumerRecordResult.QUEUED_TO_DRAINER;
+            produceToLocalKafka(
+                consumerRecord,
+                partitionConsumptionState,
+                leaderProducedRecordContext,
+                (callback, leaderMetadataWrapper) -> partitionConsumptionState.getVeniceWriterLazyRef()
+                    .get()
+                    .asyncSendControlMessage(
+                        controlMessage,
+                        consumerRecord.getTopicPartition().getPartitionNumber(),
+                        new HashMap<>(),
+                        callback,
+                        DEFAULT_LEADER_METADATA_WRAPPER),
+                partition,
+                kafkaUrl,
+                kafkaClusterId,
+                beforeProcessingPerRecordTimestampNs);
+
+            break;
           default:
             // do nothing
             break;
