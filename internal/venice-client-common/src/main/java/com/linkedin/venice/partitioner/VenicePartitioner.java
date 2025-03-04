@@ -15,6 +15,10 @@ import org.apache.avro.Schema;
  *       not need to depend on Kafka.
  */
 public abstract class VenicePartitioner {
+  public enum VenicePartitionerType {
+    DEFAULT, COMPLEX
+  }
+
   protected final VeniceProperties props; // available for sub-classes to use.
 
   public VenicePartitioner() {
@@ -65,5 +69,9 @@ public abstract class VenicePartitioner {
    * @throws PartitionerSchemaMismatchException should the provided schema not match the partitioner (with a message that explains why).
    */
   protected void checkSchema(@Nonnull Schema keySchema) throws PartitionerSchemaMismatchException {
+  }
+
+  public VenicePartitionerType getPartitionerType() {
+    return VenicePartitionerType.DEFAULT;
   }
 }

@@ -36,7 +36,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ViewConfig;
-import com.linkedin.venice.partitioner.ComplexVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
@@ -75,7 +74,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.logging.log4j.LogManager;
@@ -425,9 +423,8 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       Version version = new VersionImpl(storeName, versionNumber, "ignored");
       version.setChunkingEnabled(chunkingEnabled);
       version.setRmdChunkingEnabled(rmdChunkingEnabled);
-      // Default deser and decompress function for simple partitioner where value provider is not going to be used.
-      BiFunction<byte[], Integer, GenericRecord> deserializeFunction = (valueBytes, valueSchemaId) -> null;
-      Function<byte[], byte[]> decompressFunction = (valueBytes) -> valueBytes;
+      // Default deser and decompress function for simple partitioner where value provider is never going to be used.
+      BiFunction<byte[], Integer, GenericRecord> valueExtractor = (valueBytes, valueSchemaId) -> null;
       boolean complexPartitionerConfigured = false;
       int index = 0;
       for (ViewConfig viewConfig: viewConfigMap.values()) {
@@ -436,23 +433,26 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         String viewTopic = view.getTopicNamesAndConfigsForVersion(versionNumber).keySet().stream().findAny().get();
         if (view instanceof MaterializedView) {
           MaterializedView materializedView = (MaterializedView) view;
-          if (materializedView.getViewPartitioner() instanceof ComplexVenicePartitioner
+          if (materializedView.getViewPartitioner()
+              .getPartitionerType() == VenicePartitioner.VenicePartitionerType.COMPLEX
               && !complexPartitionerConfigured) {
             // Initialize value schemas, deser cache and other variables needed by ComplexVenicePartitioner
             initializeSchemaSourceAndDeserCache();
-            deserializeFunction = (valueBytes, valueSchemaId) -> valueDeserializerCache
-                .computeIfAbsent(valueSchemaId, this::getValueDeserializer)
-                .deserialize(valueBytes);
             compressor.get();
-            decompressFunction = (valueBytes) -> {
+            valueExtractor = (valueBytes, valueSchemaId) -> {
+              byte[] decompressedBytes;
               if (compressor.get() == null) {
-                return valueBytes;
+                decompressedBytes = valueBytes;
+              } else {
+                try {
+                  decompressedBytes =
+                      ByteUtils.extractByteArray(compressor.get().decompress(valueBytes, 0, valueBytes.length));
+                } catch (IOException e) {
+                  throw new VeniceException("Unable to decompress value bytes", e);
+                }
               }
-              try {
-                return ByteUtils.extractByteArray(compressor.get().decompress(valueBytes, 0, valueBytes.length));
-              } catch (IOException e) {
-                throw new VeniceException("Unable to decompress value bytes", e);
-              }
+              return valueDeserializerCache.computeIfAbsent(valueSchemaId, this::getValueDeserializer)
+                  .deserialize(decompressedBytes);
             };
             // We only need to configure these variables once per CompositeVeniceWriter
             complexPartitionerConfigured = true;
@@ -468,8 +468,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
           mainWriter,
           childWriters,
           new ChildWriterProducerCallback(),
-          deserializeFunction,
-          decompressFunction);
+          valueExtractor);
     } catch (Exception e) {
       String errorMessage = String.format("Failed to create composite writer for push to store version: %s", topicName);
       LOGGER.error(errorMessage, e);

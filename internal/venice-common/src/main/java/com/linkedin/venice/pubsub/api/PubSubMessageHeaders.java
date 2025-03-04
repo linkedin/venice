@@ -48,6 +48,10 @@ public class PubSubMessageHeaders implements Measurable, Iterable<PubSubMessageH
     return this;
   }
 
+  public PubSubMessageHeader get(String key) {
+    return headers.get(key);
+  }
+
   /**
    * @return the headers as a List<PubSubMessageHeader>.
    *    Mutating this list will not affect the PubSubMessageHeaders.

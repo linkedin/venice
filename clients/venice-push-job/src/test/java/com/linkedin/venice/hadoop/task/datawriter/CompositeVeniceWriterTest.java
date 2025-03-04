@@ -19,7 +19,6 @@ import com.linkedin.venice.writer.VeniceWriter;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.function.BiFunction;
-import java.util.function.Function;
 import org.apache.avro.generic.GenericRecord;
 import org.mockito.InOrder;
 import org.testng.Assert;
@@ -28,9 +27,7 @@ import org.testng.annotations.Test;
 
 public class CompositeVeniceWriterTest {
   private static final String TEST_VIEW_TOPIC_NAME = "testStore_v1_compositeTestView_mv";
-  private final BiFunction<byte[], Integer, GenericRecord> defaultDeserializeFunction =
-      (valueBytes, valueSchemaId) -> null;
-  private final Function<byte[], byte[]> defaultDecompressFunction = (valueBytes) -> valueBytes;
+  private final BiFunction<byte[], Integer, GenericRecord> defaultValueExtractor = (valueBytes, valueSchemaId) -> null;
 
   @Test
   public void testChildWriteExceptions() {
@@ -45,13 +42,8 @@ public class CompositeVeniceWriterTest {
     childWriterFuture.completeExceptionally(new VeniceException("Expected exception"));
     ComplexVeniceWriter[] childWriters = new ComplexVeniceWriter[1];
     childWriters[0] = mockChildWriter;
-    AbstractVeniceWriter<byte[], byte[], byte[]> compositeVeniceWriter = new CompositeVeniceWriter(
-        "test_v1",
-        mockMainWriter,
-        childWriters,
-        null,
-        defaultDeserializeFunction,
-        defaultDecompressFunction);
+    AbstractVeniceWriter<byte[], byte[], byte[]> compositeVeniceWriter =
+        new CompositeVeniceWriter("test_v1", mockMainWriter, childWriters, null, defaultValueExtractor);
     CompletableFuture compositeWriteFuture = compositeVeniceWriter.put(new byte[1], new byte[1], 1, null);
     ExecutionException e = Assert.expectThrows(ExecutionException.class, compositeWriteFuture::get);
     Assert.assertTrue(e.getCause().getMessage().contains("Expected"));
@@ -63,13 +55,8 @@ public class CompositeVeniceWriterTest {
     ComplexVeniceWriter<byte[], byte[], byte[]> mockChildWriter = mock(ComplexVeniceWriter.class);
     ComplexVeniceWriter[] childWriters = new ComplexVeniceWriter[1];
     childWriters[0] = mockChildWriter;
-    AbstractVeniceWriter<byte[], byte[], byte[]> compositeVeniceWriter = new CompositeVeniceWriter(
-        "test_v1",
-        mockMainWriter,
-        childWriters,
-        null,
-        defaultDeserializeFunction,
-        defaultDecompressFunction);
+    AbstractVeniceWriter<byte[], byte[], byte[]> compositeVeniceWriter =
+        new CompositeVeniceWriter("test_v1", mockMainWriter, childWriters, null, defaultValueExtractor);
     compositeVeniceWriter.flush();
     InOrder inOrder = inOrder(mockChildWriter, mockMainWriter);
     inOrder.verify(mockChildWriter).flush();
@@ -99,8 +86,7 @@ public class CompositeVeniceWriterTest {
             mockMainWriter,
             childWriters,
             childPubSubProducerCallback,
-            defaultDeserializeFunction,
-            defaultDecompressFunction);
+            defaultValueExtractor);
     compositeVeniceWriter.put(new byte[1], new byte[1], 1, null, mockPutMetadata);
     CompletableFuture lastWriteFuture = compositeVeniceWriter.delete(new byte[1], null, deleteMetadata);
     lastWriteFuture.get();

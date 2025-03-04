@@ -13,13 +13,11 @@ import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.END_OF
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.kafka.protocol.enums.MessageType.UPDATE;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
-import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_VIEW_PARTITIONS_MAP_HEADER;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
 import static java.lang.Long.max;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
@@ -83,11 +81,11 @@ import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
@@ -350,7 +348,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       for (Map.Entry<String, VeniceViewWriter> viewWriter: viewWriters.entrySet()) {
         if (viewWriter.getValue() instanceof ChangeCaptureViewWriter) {
           tmpValueForHasChangeCaptureViewWriter = true;
-        } else if (viewWriter.getValue() instanceof MaterializedViewWriter) {
+        } else if (viewWriter.getValue().getViewWriterType() == VeniceViewWriter.ViewWriterType.MATERIALIZED_VIEW) {
           if (((MaterializedViewWriter) viewWriter.getValue()).isComplexVenicePartitioner()) {
             tmpValueForHasComplexVenicePartitioner = true;
           }
@@ -3389,7 +3387,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       Map<String, Set<Integer>> viewPartitionMap = null;
       if (!partitionConsumptionState.isEndOfPushReceived()) {
         // NR pass-through records are expected to carry view partition map in the message header
-        viewPartitionMap = extractViewPartitionMap(consumerRecord.getPubSubMessageHeaders());
+        viewPartitionMap = ViewUtils.extractViewPartitionMap(consumerRecord.getPubSubMessageHeaders());
       }
       Lazy<GenericRecord> newValueProvider = writeComputeResultWrapper.getValueProvider();
       queueUpVersionTopicWritesWithViewWriters(
@@ -3401,28 +3399,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     } else {
       produceToVersionTopic.run();
     }
-  }
-
-  protected Map<String, Set<Integer>> extractViewPartitionMap(PubSubMessageHeaders pubSubMessageHeaders) {
-    Map<String, Set<Integer>> viewPartitionMap = null;
-    for (PubSubMessageHeader header: pubSubMessageHeaders) {
-      if (header.key().equals(VENICE_VIEW_PARTITIONS_MAP_HEADER)) {
-        try {
-          TypeReference<Map<String, Set<Integer>>> typeReference = new TypeReference<Map<String, Set<Integer>>>() {
-          };
-          viewPartitionMap = ObjectMapperFactory.getInstance().readValue(header.value(), typeReference);
-        } catch (IOException e) {
-          throw new VeniceException(
-              "Failed to parse view partition map from the record's VENICE_VIEW_PARTITIONS_MAP_HEADER",
-              e);
-        }
-        break;
-      }
-    }
-    if (viewPartitionMap == null) {
-      throw new VeniceException("Unable to find VENICE_VIEW_PARTITIONS_MAP_HEADER in the record's message headers");
-    }
-    return viewPartitionMap;
   }
 
   private void produceToLocalKafkaHelper(
@@ -4014,7 +3990,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     viewWriterFutures[index++] = partitionConsumptionState.getLastVTProduceCallFuture();
     for (VeniceViewWriter writer: viewWriters.values()) {
       Set<Integer> viewPartitionSet = null;
-      if (viewPartitionMap != null && writer instanceof MaterializedViewWriter) {
+      if (viewPartitionMap != null && writer.getViewWriterType() == VeniceViewWriter.ViewWriterType.MATERIALIZED_VIEW) {
         MaterializedViewWriter mvWriter = (MaterializedViewWriter) writer;
         viewPartitionSet = viewPartitionMap.get(mvWriter.getViewName());
         if (viewPartitionSet == null) {

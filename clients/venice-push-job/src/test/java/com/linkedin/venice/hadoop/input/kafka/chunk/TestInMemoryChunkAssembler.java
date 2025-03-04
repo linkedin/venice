@@ -26,7 +26,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class TestChunkAssembler {
+public class TestInMemoryChunkAssembler {
   private final ChunkAssembler chunkAssembler = new ChunkAssembler(false);
   private final ChunkAssembler rmdChunkingEnabledChunkAssembler = new ChunkAssembler(true);
   private static final int CHUNK_MANIFEST_SCHEMA_ID =

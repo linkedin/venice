@@ -9,7 +9,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.utils.lazy.Lazy;
-import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.ComplexVeniceWriter;
 import com.linkedin.venice.writer.DeleteMetadata;
@@ -25,7 +24,6 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.function.BiFunction;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.avro.generic.GenericRecord;
 
@@ -42,16 +40,16 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
   private final VeniceWriter<K, V, U> mainWriter;
   private final ComplexVeniceWriter<K, V, U>[] childWriters;
   private final PubSubProducerCallback childCallback;
-  private final BiFunction<V, Integer, GenericRecord> deserializeFunction;
-  private final Function<V, V> decompressFunction;
+
+  // the extractor should be capable of extracting the value from bytes even if it's compressed.
+  private final BiFunction<V, Integer, GenericRecord> valueExtractor;
 
   public CompositeVeniceWriter(
       String topicName,
       VeniceWriter<K, V, U> mainWriter,
       ComplexVeniceWriter<K, V, U>[] childWriters,
       PubSubProducerCallback childCallback,
-      BiFunction<V, Integer, GenericRecord> deserializeFunction,
-      Function<V, V> decompressFunction) {
+      BiFunction<V, Integer, GenericRecord> valueExtractor) {
     super(topicName);
     if (childWriters.length < 1) {
       throw new IllegalArgumentException("A composite writer is not needed if there are no child writers");
@@ -59,8 +57,7 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
     this.mainWriter = mainWriter;
     this.childWriters = childWriters;
     this.childCallback = childCallback;
-    this.deserializeFunction = deserializeFunction;
-    this.decompressFunction = decompressFunction;
+    this.valueExtractor = valueExtractor;
   }
 
   @Override
@@ -74,7 +71,7 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
       V value,
       int valueSchemaId,
       PubSubProducerCallback callback) {
-    return compositePut(key, value, valueSchemaId, childCallback, callback, null);
+    return compositePut(key, value, valueSchemaId, callback, null);
   }
 
   @Override
@@ -84,7 +81,7 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
       int valueSchemaId,
       PubSubProducerCallback callback,
       PutMetadata putMetadata) {
-    return compositePut(key, value, valueSchemaId, childCallback, callback, putMetadata);
+    return compositePut(key, value, valueSchemaId, callback, putMetadata);
   }
 
   /**
@@ -135,18 +132,14 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
       K key,
       V value,
       int valueSchemaId,
-      PubSubProducerCallback childWriterCallback,
       PubSubProducerCallback mainWriterCallback,
       PutMetadata putMetadata) {
     CompletableFuture<PubSubProduceResult> finalFuture = new CompletableFuture<>();
     CompletableFuture<Void>[] childFutures = new CompletableFuture[childWriters.length];
-    Lazy<GenericRecord> valueProvider =
-        Lazy.of(() -> deserializeFunction.apply(decompressFunction.apply(value), valueSchemaId));
+    Lazy<GenericRecord> valueProvider = Lazy.of(() -> valueExtractor.apply(value, valueSchemaId));
     Map<String, Set<Integer>> viewPartitionMap = new HashMap<>();
     int index = 0;
     for (ComplexVeniceWriter<K, V, U> writer: childWriters) {
-      String viewName =
-          VeniceView.getViewNameFromViewStoreName(VeniceView.parseStoreAndViewFromViewTopic(writer.getTopicName()));
       // There should be an entry for every materialized view, even if the partition set is empty. This way we can
       // differentiate between skipped view write and missing view partition info unexpectedly.
       childFutures[index++] = writer.complexPut(
@@ -154,9 +147,10 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
           value,
           valueSchemaId,
           valueProvider,
-          (partitionArray) -> viewPartitionMap
-              .put(viewName, Arrays.stream(partitionArray).boxed().collect(Collectors.toCollection(HashSet::new))),
-          childWriterCallback,
+          (partitionArray) -> viewPartitionMap.put(
+              writer.getViewName(),
+              Arrays.stream(partitionArray).boxed().collect(Collectors.toCollection(HashSet::new))),
+          childCallback,
           putMetadata);
     }
     LeaderMetadataWrapper leaderMetadataWrapper =

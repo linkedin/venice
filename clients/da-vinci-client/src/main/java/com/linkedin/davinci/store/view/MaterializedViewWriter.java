@@ -7,7 +7,7 @@ import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.partitioner.ComplexVenicePartitioner;
+import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -99,6 +99,11 @@ public class MaterializedViewWriter extends VeniceViewWriter {
   }
 
   @Override
+  public ViewWriterType getViewWriterType() {
+    return ViewWriterType.MATERIALIZED_VIEW;
+  }
+
+  @Override
   public void processControlMessage(
       KafkaKey kafkaKey,
       KafkaMessageEnvelope kafkaMessageEnvelope,
@@ -120,7 +125,7 @@ public class MaterializedViewWriter extends VeniceViewWriter {
   }
 
   public boolean isComplexVenicePartitioner() {
-    return internalView.getViewPartitioner() instanceof ComplexVenicePartitioner;
+    return internalView.getViewPartitioner().getPartitionerType() == VenicePartitioner.VenicePartitionerType.COMPLEX;
   }
 
   public String getViewName() {

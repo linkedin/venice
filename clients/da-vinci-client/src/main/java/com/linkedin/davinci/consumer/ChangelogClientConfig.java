@@ -36,6 +36,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    * RocksDB block cache size per BootstrappingVeniceChangelogConsumer. Default is 1 MB.
    */
   private long rocksDBBlockCacheSizeInBytes = 1024 * 1024L;
+  private String rocksDBChunkAssemblerStoragePath;
 
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
@@ -221,7 +222,8 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setConsumerName(config.consumerName)
         .setDatabaseSyncBytesInterval(config.getDatabaseSyncBytesInterval())
         .setShouldCompactMessages(config.shouldCompactMessages())
-        .setIsBeforeImageView(config.isBeforeImageView());
+        .setIsBeforeImageView(config.isBeforeImageView())
+        .setRocksDBChunkAssemblerStoragePath(config.getRocksDBChunkAssemblerStoragePath());
     return newConfig;
   }
 
@@ -232,5 +234,14 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   public ChangelogClientConfig setIsBeforeImageView(Boolean beforeImageView) {
     isBeforeImageView = beforeImageView;
     return this;
+  }
+
+  public ChangelogClientConfig setRocksDBChunkAssemblerStoragePath(String path) {
+    this.rocksDBChunkAssemblerStoragePath = path;
+    return this;
+  }
+
+  public String getRocksDBChunkAssemblerStoragePath() {
+    return rocksDBChunkAssemblerStoragePath;
   }
 }

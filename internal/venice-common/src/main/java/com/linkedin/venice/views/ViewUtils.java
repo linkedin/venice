@@ -1,15 +1,23 @@
 package com.linkedin.venice.views;
 
+import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_VIEW_PARTITIONS_MAP_HEADER;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ViewConfig;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.io.IOException;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 
 
 public class ViewUtils {
@@ -68,5 +76,39 @@ public class ViewUtils {
       viewTopicNamesAndConfigs.putAll(veniceView.getTopicNamesAndConfigsForVersion(version));
     }
     return viewTopicNamesAndConfigs;
+  }
+
+  public static Map<String, Set<Integer>> extractViewPartitionMap(PubSubMessageHeaders pubSubMessageHeaders) {
+    Map<String, Set<Integer>> viewPartitionMap = null;
+    PubSubMessageHeader header = pubSubMessageHeaders.get(VENICE_VIEW_PARTITIONS_MAP_HEADER);
+    if (header != null) {
+      try {
+        TypeReference<Map<String, Set<Integer>>> typeReference = new TypeReference<Map<String, Set<Integer>>>() {
+        };
+        viewPartitionMap = ObjectMapperFactory.getInstance().readValue(header.value(), typeReference);
+      } catch (IOException e) {
+        throw new VeniceException(
+            "Failed to parse view partition map from the record's VENICE_VIEW_PARTITIONS_MAP_HEADER",
+            e);
+      }
+    }
+    if (viewPartitionMap == null) {
+      throw new VeniceException("Unable to find VENICE_VIEW_PARTITIONS_MAP_HEADER in the record's message headers");
+    }
+    return viewPartitionMap;
+  }
+
+  public static PubSubMessageHeader getViewDestinationPartitionHeader(
+      Map<String, Set<Integer>> destinationPartitionMap) {
+    if (destinationPartitionMap == null) {
+      return null;
+    }
+    try {
+      // We could explore more storage efficient ways to pass this information.
+      byte[] value = ObjectMapperFactory.getInstance().writeValueAsBytes(destinationPartitionMap);
+      return new PubSubMessageHeader(VENICE_VIEW_PARTITIONS_MAP_HEADER, value);
+    } catch (JsonProcessingException e) {
+      throw new VeniceException("Failed to serialize view destination partition map", e);
+    }
   }
 }
