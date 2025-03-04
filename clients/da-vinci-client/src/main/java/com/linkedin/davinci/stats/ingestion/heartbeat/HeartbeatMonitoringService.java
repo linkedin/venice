@@ -98,6 +98,9 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
           Map<String, HeartbeatTimeStampEntry> regionTimestamps = new VeniceConcurrentHashMap<>();
           if (version.isActiveActiveReplicationEnabled() && !isFollower) {
             for (String region: regionNames) {
+              if (Utils.isSeparateTopicRegion(region) && !version.isSeparateRealTimeTopicEnabled()) {
+                continue;
+              }
               regionTimestamps.put(region, new HeartbeatTimeStampEntry(System.currentTimeMillis(), false, false));
             }
           } else {
