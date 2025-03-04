@@ -138,8 +138,9 @@ public class AdminConsumptionTaskIntegrationTest {
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     writer.put(new byte[0], goodMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
-    Utils.sleep(5000); // Non-deterministic, but whatever. This should never fail.
-    Assert.assertTrue(parentControllerClient.getStore(storeName).isError());
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertTrue(parentControllerClient.getStore(storeName).isError());
+    });
 
     parentControllerClient.skipAdminMessage(Long.toString(badOffset), false);
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT * 3, TimeUnit.MILLISECONDS, () -> {
