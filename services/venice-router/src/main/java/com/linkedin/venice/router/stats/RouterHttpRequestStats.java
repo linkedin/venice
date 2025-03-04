@@ -459,40 +459,47 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     totalInFlightRequestSensor.record();
   }
 
-  public void recordHealthyRequest(Double latency, HttpResponseStatus responseStatus, int keyNum) {
-    HttpResponseStatusCode httpResponseStatusCode = transformHttpResponseStatusToHttpResponseStatusCode(responseStatus);
-    HttpResponseStatusCodeCategory httpResponseStatusCodeCategory =
-        getVeniceHttpResponseStatusCodeCategory(responseStatus);
-    VeniceResponseStatusCategory veniceResponseStatusCategory = VeniceResponseStatusCategory.SUCCESS;
-
-    healthyRequestMetric
-        .record(1, httpResponseStatusCode, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
-    keyCountMetric.record(keyNum, httpResponseStatusCode, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
-    if (latency != null) {
-      healthyLatencyMetric
-          .record(latency, httpResponseStatusCode, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
-    }
+  public void recordHealthyRequest(double latency, HttpResponseStatus responseStatus, int keyNum) {
+    recordRequestMetrics(
+        keyNum,
+        latency,
+        responseStatus,
+        VeniceResponseStatusCategory.SUCCESS,
+        healthyRequestMetric,
+        healthyLatencyMetric);
   }
 
   public void recordUnhealthyRequest(HttpResponseStatus responseStatus) {
-    HttpResponseStatusCode httpResponseStatusCode = transformHttpResponseStatusToHttpResponseStatusCode(responseStatus);
-    HttpResponseStatusCodeCategory httpResponseStatusCodeCategory =
-        getVeniceHttpResponseStatusCodeCategory(responseStatus);
-    VeniceResponseStatusCategory veniceResponseStatusCategory = VeniceResponseStatusCategory.FAIL;
-    unhealthyRequestMetric
-        .record(1, httpResponseStatusCode, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
+    unhealthyRequestMetric.record(
+        1,
+        transformHttpResponseStatusToHttpResponseStatusCode(responseStatus),
+        getVeniceHttpResponseStatusCodeCategory(responseStatus),
+        VeniceResponseStatusCategory.FAIL);
   }
 
   public void recordUnhealthyRequest(double latency, HttpResponseStatus responseStatus, int keyNum) {
+    recordRequestMetrics(
+        keyNum,
+        latency,
+        responseStatus,
+        VeniceResponseStatusCategory.FAIL,
+        unhealthyRequestMetric,
+        unhealthyLatencyMetric);
+  }
+
+  private void recordRequestMetrics(
+      int keyNum,
+      double latency,
+      HttpResponseStatus responseStatus,
+      VeniceResponseStatusCategory veniceResponseStatusCategory,
+      MetricEntityStateThreeEnums<HttpResponseStatusCode, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> requestMetric,
+      MetricEntityStateThreeEnums<HttpResponseStatusCode, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> latencyMetric) {
     HttpResponseStatusCode httpResponseStatusCode = transformHttpResponseStatusToHttpResponseStatusCode(responseStatus);
     HttpResponseStatusCodeCategory httpResponseStatusCodeCategory =
         getVeniceHttpResponseStatusCodeCategory(responseStatus);
-    VeniceResponseStatusCategory veniceResponseStatusCategory = VeniceResponseStatusCategory.FAIL;
-    unhealthyRequestMetric
-        .record(1, httpResponseStatusCode, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
+    requestMetric.record(1, httpResponseStatusCode, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
     keyCountMetric.record(keyNum, httpResponseStatusCode, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
-    unhealthyLatencyMetric
-        .record(latency, httpResponseStatusCode, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
+    latencyMetric.record(latency, httpResponseStatusCode, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
   }
 
   public void recordUnavailableReplicaStreamingRequest() {
@@ -508,26 +515,23 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   public void recordTardyRequest(double latency, HttpResponseStatus responseStatus, int keyNum) {
-    HttpResponseStatusCode httpResponseStatusCode = transformHttpResponseStatusToHttpResponseStatusCode(responseStatus);
-    HttpResponseStatusCodeCategory httpResponseStatusCodeCategory =
-        getVeniceHttpResponseStatusCodeCategory(responseStatus);
-    VeniceResponseStatusCategory veniceResponseStatusCategory = VeniceResponseStatusCategory.SUCCESS;
-    tardyRequestMetric.record(1, httpResponseStatusCode, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
-    keyCountMetric.record(keyNum, httpResponseStatusCode, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
-    tardyLatencyMetric
-        .record(latency, httpResponseStatusCode, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
+    recordRequestMetrics(
+        keyNum,
+        latency,
+        responseStatus,
+        VeniceResponseStatusCategory.SUCCESS,
+        tardyRequestMetric,
+        tardyLatencyMetric);
   }
 
   public void recordThrottledRequest(double latency, HttpResponseStatus responseStatus, int keyNum) {
-    HttpResponseStatusCode httpResponseStatusCode = transformHttpResponseStatusToHttpResponseStatusCode(responseStatus);
-    HttpResponseStatusCodeCategory httpResponseStatusCodeCategory =
-        getVeniceHttpResponseStatusCodeCategory(responseStatus);
-    VeniceResponseStatusCategory veniceResponseStatusCategory = VeniceResponseStatusCategory.FAIL;
-    throttledRequestMetric
-        .record(1, httpResponseStatusCode, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
-    keyCountMetric.record(keyNum, httpResponseStatusCode, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
-    throttledLatencyMetric
-        .record(latency, httpResponseStatusCode, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
+    recordRequestMetrics(
+        keyNum,
+        latency,
+        responseStatus,
+        VeniceResponseStatusCategory.FAIL,
+        throttledRequestMetric,
+        throttledLatencyMetric);
   }
 
   /**
