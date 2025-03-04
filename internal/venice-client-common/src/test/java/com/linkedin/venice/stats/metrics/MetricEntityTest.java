@@ -11,7 +11,7 @@ import org.testng.annotations.Test;
 
 
 public class MetricEntityTest {
-  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Dimensions list cannot be null")
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Dimensions list cannot be null or empty")
   public void testMetricEntityConstructorWithoutDimensions() {
     String metricName = "testMetric";
     MetricType metricType = MetricType.COUNTER;

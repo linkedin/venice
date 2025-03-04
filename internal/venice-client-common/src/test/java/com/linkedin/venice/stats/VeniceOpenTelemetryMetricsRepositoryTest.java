@@ -3,23 +3,31 @@ package com.linkedin.venice.stats;
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE;
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.transformMetricName;
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.validateMetricName;
+import static java.util.Collections.singletonList;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
+import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.MetricEntity;
+import com.linkedin.venice.stats.metrics.MetricEntityState;
+import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.sdk.metrics.export.MetricExporter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import org.mockito.Mockito;
 import org.testng.annotations.AfterMethod;
@@ -113,30 +121,113 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
     assertEquals(transformedName, "test.testMetricName");
   }
 
+  /**
+   * This test verifies that the {@link VeniceOpenTelemetryMetricsRepository#createInstrument} creates the correct instrument
+   * type and {@link MetricEntityState#recordOtelMetric} casts it to the same instrument type.
+   */
+  @Test
+  public void testCreateAndRecordMetricsForAllMetricTypes() {
+    for (MetricType metricType: MetricType.values()) {
+      MetricEntity metricEntity = new MetricEntity(
+          "test_metric_" + metricType.name().toLowerCase(),
+          metricType,
+          MetricUnit.NUMBER,
+          "desc",
+          new HashSet<>(singletonList(VeniceMetricsDimensions.VENICE_REQUEST_METHOD)));
+
+      Object instrument = metricsRepository.createInstrument(metricEntity);
+      assertNotNull(instrument, "Instrument should not be null for metric type: " + metricType);
+
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap = new HashMap<>();
+      baseDimensionsMap
+          .put(VeniceMetricsDimensions.VENICE_REQUEST_METHOD, RequestType.MULTI_GET_STREAMING.getDimensionValue());
+      Attributes baseAttributes = Attributes.builder()
+          .put(
+              VeniceMetricsDimensions.VENICE_REQUEST_METHOD
+                  .getDimensionName(VeniceOpenTelemetryMetricNamingFormat.getDefaultFormat()),
+              RequestType.MULTI_GET_STREAMING.getDimensionValue())
+          .build();
+
+      MetricEntityState metricEntityState =
+          new MetricEntityStateBase(metricEntity, metricsRepository, baseDimensionsMap, baseAttributes);
+      metricEntityState.setOtelMetric(instrument);
+
+      Attributes attributes = Attributes.builder().put("key", "value").build();
+      double value = 10.0;
+
+      switch (metricType) {
+        case HISTOGRAM:
+        case MIN_MAX_COUNT_SUM_AGGREGATIONS:
+          assertTrue(
+              instrument instanceof DoubleHistogram,
+              "Instrument should be a DoubleHistogram for metric type: " + metricType);
+          metricEntityState.recordOtelMetric(value, attributes);
+          break;
+        case COUNTER:
+          assertTrue(
+              instrument instanceof LongCounter,
+              "Instrument should be a LongCounter for metric type: " + metricType);
+          metricEntityState.recordOtelMetric(value, attributes);
+          break;
+        default:
+          fail("Unsupported metric type: " + metricType);
+      }
+    }
+  }
+
   @Test
   public void testCreateTwoHistograms() {
     Set<VeniceMetricsDimensions> dimensionsSet = new HashSet<>();
     dimensionsSet.add(VeniceMetricsDimensions.VENICE_REQUEST_METHOD); // dummy
-    DoubleHistogram histogram1 = (DoubleHistogram) metricsRepository.createInstrument(
+    Object instrument1 = metricsRepository.createInstrument(
         new MetricEntity("test_histogram", MetricType.HISTOGRAM, MetricUnit.NUMBER, "desc", dimensionsSet));
-    DoubleHistogram histogram2 = (DoubleHistogram) metricsRepository.createInstrument(
+    Object instrument2 = metricsRepository.createInstrument(
         new MetricEntity("test_histogram", MetricType.HISTOGRAM, MetricUnit.NUMBER, "desc", dimensionsSet));
+    assertNotNull(instrument1);
+    assertNotNull(instrument2);
+    assertTrue(instrument1 instanceof DoubleHistogram);
+    assertTrue(instrument2 instanceof DoubleHistogram);
+    assertSame(instrument1, instrument2, "Should return the same instance for the same histogram name.");
+  }
 
-    assertNotNull(histogram1);
-    assertSame(histogram1, histogram2, "Should return the same instance for the same histogram name.");
+  @Test
+  public void testCreateTwoHistogramsWithMinMaxCountAggregations() {
+    Set<VeniceMetricsDimensions> dimensionsSet = new HashSet<>();
+    dimensionsSet.add(VeniceMetricsDimensions.VENICE_REQUEST_METHOD); // dummy
+    Object instrument1 = metricsRepository.createInstrument(
+        new MetricEntity(
+            "test_histogram",
+            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricUnit.NUMBER,
+            "desc",
+            dimensionsSet));
+    Object instrument2 = metricsRepository.createInstrument(
+        new MetricEntity(
+            "test_histogram",
+            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricUnit.NUMBER,
+            "desc",
+            dimensionsSet));
+    assertNotNull(instrument1);
+    assertNotNull(instrument2);
+    assertTrue(instrument1 instanceof DoubleHistogram);
+    assertTrue(instrument2 instanceof DoubleHistogram);
+    assertSame(instrument1, instrument2, "Should return the same instance for the same histogram name.");
   }
 
   @Test
   public void testCreateTwoCounters() {
     Set<VeniceMetricsDimensions> dimensionsSet = new HashSet<>();
     dimensionsSet.add(VeniceMetricsDimensions.VENICE_REQUEST_METHOD); // dummy
-    LongCounter counter1 = (LongCounter) metricsRepository.createInstrument(
+    Object instrument1 = metricsRepository.createInstrument(
         new MetricEntity("test_counter", MetricType.COUNTER, MetricUnit.NUMBER, "desc", dimensionsSet));
-    LongCounter counter2 = (LongCounter) metricsRepository.createInstrument(
+    Object instrument2 = metricsRepository.createInstrument(
         new MetricEntity("test_counter", MetricType.COUNTER, MetricUnit.NUMBER, "desc", dimensionsSet));
-
-    assertNotNull(counter1);
-    assertSame(counter1, counter2, "Should return the same instance for the same counter name.");
+    assertNotNull(instrument1);
+    assertNotNull(instrument2);
+    assertTrue(instrument1 instanceof LongCounter);
+    assertTrue(instrument2 instanceof LongCounter);
+    assertSame(instrument1, instrument2, "Should return the same instance for the same counter name.");
   }
 
   @Test

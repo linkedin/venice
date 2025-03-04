@@ -8,10 +8,13 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
-import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
+import com.linkedin.venice.stats.dimensions.RequestRetryAbortReason;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
@@ -73,7 +76,7 @@ public class MetricEntityStateOneEnumTest {
     MetricEntityStateOneEnum<MetricEntityStateTest.DimensionEnum1> metricEntityState = MetricEntityStateOneEnum
         .create(mockMetricEntity, null, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
     assertNotNull(metricEntityState);
-    assertEquals(metricEntityState.getAttributesEnumMap().size(), 0);
+    assertNull(metricEntityState.getAttributesEnumMap());
     assertNull(metricEntityState.getAttributes(MetricEntityStateTest.DimensionEnum1.DIMENSION_ONE));
     assertNull(metricEntityState.getAttributes(MetricEntityStateTest.DimensionEnum1.DIMENSION_TWO));
   }
@@ -95,8 +98,8 @@ public class MetricEntityStateOneEnumTest {
     assertEquals(attributes, attributesDimensionTwo);
   }
 
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "The dimensions map is empty. Please check the enum types and ensure they are properly defined.")
-  public void testCreateAttributesEnumMapEmptyEnum() {
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*has no constants.*")
+  public void testCreateAttributesEnumMapWithEmptyEnum() {
     MetricEntityStateOneEnum.create(
         mockMetricEntity,
         mockOtelRepository,
@@ -134,5 +137,54 @@ public class MetricEntityStateOneEnumTest {
     // Null key will cause IllegalArgumentException in getDimension, record should catch it.
     metricEntityState.record(100L, (MetricEntityStateTest.DimensionEnum1) null);
     metricEntityState.record(100.5, (MetricEntityStateTest.DimensionEnum1) null);
+  }
+
+  @Test
+  public void testValidateRequiredDimensions() {
+    Map<VeniceMetricsDimensions, String> baseDimensionsMap = new HashMap<>();
+    // case 1: right values
+    baseDimensionsMap
+        .put(VeniceMetricsDimensions.VENICE_REQUEST_METHOD, RequestType.MULTI_GET_STREAMING.getDimensionValue());
+    MetricEntityStateOneEnum<MetricEntityStateTest.DimensionEnum1> metricEntityState = MetricEntityStateOneEnum
+        .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
+    assertNotNull(metricEntityState);
+
+    // case 2: baseDimensionsMap has extra values
+    baseDimensionsMap.clear();
+    baseDimensionsMap
+        .put(VeniceMetricsDimensions.VENICE_REQUEST_METHOD, RequestType.MULTI_GET_STREAMING.getDimensionValue());
+    baseDimensionsMap.put(
+        VeniceMetricsDimensions.VENICE_REQUEST_RETRY_ABORT_REASON,
+        RequestRetryAbortReason.SLOW_ROUTE.getDimensionValue());
+    try {
+      MetricEntityStateOneEnum
+          .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
+    }
+
+    // case 3: baseDimensionsMap has less values
+    baseDimensionsMap.clear();
+    try {
+      MetricEntityStateOneEnum
+          .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
+    }
+
+    // case 4: baseDimensionsMap has same count, but different dimensions
+    baseDimensionsMap.clear();
+    baseDimensionsMap.put(
+        VeniceMetricsDimensions.VENICE_REQUEST_RETRY_ABORT_REASON,
+        RequestRetryAbortReason.SLOW_ROUTE.getDimensionValue());
+    try {
+      MetricEntityStateOneEnum
+          .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
+    }
   }
 }

@@ -2,7 +2,6 @@ package com.linkedin.venice.stats.metrics;
 
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository.REDUNDANT_LOG_FILTER;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
@@ -48,10 +47,7 @@ public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterfa
     super(metricEntity, otelRepository, registerTehutiSensorFn, tehutiMetricNameEnum, tehutiMetricStats);
     validateRequiredDimensions(metricEntity, baseDimensionsMap, enumTypeClass);
     this.enumTypeClass = enumTypeClass;
-    this.attributesEnumMap = new EnumMap<>(enumTypeClass);
-    if (emitOpenTelemetryMetrics()) {
-      createAttributesEnumMap(metricEntity, otelRepository, baseDimensionsMap);
-    }
+    this.attributesEnumMap = createAttributesEnumMap(metricEntity, otelRepository, baseDimensionsMap);
   }
 
   /** Factory method with named parameters to ensure the passed in enumTypeClass are in the same order as E */
@@ -82,20 +78,24 @@ public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterfa
         enumTypeClass);
   }
 
-  private void createAttributesEnumMap(
+  /**
+   * Creates an EnumMap of {@link Attributes} for each possible value of the dynamic dimension {@link #enumTypeClass}
+   */
+  private EnumMap<E, Attributes> createAttributesEnumMap(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap) {
+    if (!emitOpenTelemetryMetrics()) {
+      return null;
+    }
+    EnumMap<E, Attributes> attributesEnumMap = new EnumMap<>(enumTypeClass);
     Map<VeniceMetricsDimensions, String> additionalDimensionsMap = new HashMap<>();
     for (E enumValue: enumTypeClass.getEnumConstants()) {
       additionalDimensionsMap.put(enumValue.getDimensionName(), enumValue.getDimensionValue());
       attributesEnumMap
           .put(enumValue, otelRepository.createAttributes(metricEntity, baseDimensionsMap, additionalDimensionsMap));
     }
-    if (attributesEnumMap.isEmpty()) {
-      throw new VeniceException(
-          "The dimensions map is empty. Please check the enum types and ensure they are properly defined.");
-    }
+    return attributesEnumMap;
   }
 
   Attributes getAttributes(E key) {
@@ -107,12 +107,21 @@ public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterfa
           "The key for otel dimension cannot be null for metric Entity: " + getMetricEntity().getMetricName());
     }
     if (!enumTypeClass.isInstance(key)) {
-      // defensive check: This only happens if the instance is declared without the explicit types
+      // defensive check: This can only happen if the instance is declared without the explicit types
+      // and passed in wrong args
       throw new IllegalArgumentException(
           "The key for otel dimension is not of the correct type: " + key.getClass() + " for metric Entity: "
               + getMetricEntity().getMetricName());
     }
-    return attributesEnumMap.get(key);
+
+    Attributes attributes = attributesEnumMap.get(key);
+
+    if (attributes == null) {
+      // defensive check: attributes for all entries of bounded enums should be pre created
+      throw new IllegalArgumentException(
+          "No dimensions found for key: " + key + " for metric Entity: " + getMetricEntity().getMetricName());
+    }
+    return attributes;
   }
 
   public void record(long value, E key) {

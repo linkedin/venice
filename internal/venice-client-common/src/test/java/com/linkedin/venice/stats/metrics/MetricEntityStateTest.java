@@ -7,10 +7,14 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
+import com.linkedin.venice.stats.dimensions.RequestRetryType;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import io.opentelemetry.api.common.Attributes;
@@ -32,7 +36,7 @@ public class MetricEntityStateTest {
   private MetricEntity mockMetricEntity;
   private MetricEntityState.TehutiSensorRegistrationFunction sensorRegistrationFunction;
   private Sensor mockSensor;
-  Map<VeniceMetricsDimensions, String> baseDimensionsMap;
+  private Map<VeniceMetricsDimensions, String> baseDimensionsMap;
   private Attributes baseAttributes;
 
   private enum TestTehutiMetricNameEnum implements TehutiMetricNameEnum {
@@ -165,6 +169,56 @@ public class MetricEntityStateTest {
     metricEntityState.record(20.0, attributes);
     verify(doubleHistogram, times(2)).record(20.0, attributes);
     verify(mockSensor, times(2)).record(20.0);
+  }
+
+  @Test
+  public void testValidateRequiredDimensions() {
+    Map<VeniceMetricsDimensions, String> baseDimensionsMap = new HashMap<>();
+    // case 1: right values
+    baseDimensionsMap
+        .put(VeniceMetricsDimensions.VENICE_REQUEST_METHOD, RequestType.MULTI_GET_STREAMING.getDimensionValue());
+    Attributes baseAttributes = Attributes.builder()
+        .put(
+            VeniceMetricsDimensions.VENICE_REQUEST_METHOD
+                .getDimensionName(VeniceOpenTelemetryMetricNamingFormat.getDefaultFormat()),
+            RequestType.MULTI_GET_STREAMING.getDimensionValue())
+        .build();
+    MetricEntityState metricEntityState =
+        new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
+    assertNotNull(metricEntityState);
+
+    // case 2: baseDimensionsMap has extra values
+    baseDimensionsMap.clear();
+    baseDimensionsMap
+        .put(VeniceMetricsDimensions.VENICE_REQUEST_METHOD, RequestType.MULTI_GET_STREAMING.getDimensionValue());
+    baseDimensionsMap
+        .put(VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE, RequestRetryType.ERROR_RETRY.getDimensionValue());
+    try {
+      new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
+    }
+
+    // case 3: baseDimensionsMap has less values
+    baseDimensionsMap.clear();
+    try {
+      new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
+    }
+
+    // case 4: baseDimensionsMap has same count, but different dimensions
+    baseDimensionsMap.clear();
+    baseDimensionsMap
+        .put(VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE, RequestRetryType.ERROR_RETRY.getDimensionValue());
+    try {
+      new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
+    }
   }
 
   enum DimensionEnum1 implements VeniceDimensionInterface {

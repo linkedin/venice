@@ -73,7 +73,7 @@ public abstract class MetricEntityState {
       TehutiMetricNameEnum tehutiMetricNameEnum,
       List<MeasurableStat> tehutiMetricStats,
       TehutiSensorRegistrationFunction registerTehutiSensorFn) {
-    if (emitOpenTelemetryMetrics) {
+    if (emitOpenTelemetryMetrics()) {
       setOtelMetric(otelRepository.createInstrument(this.metricEntity));
     }
     // tehuti metric
@@ -87,7 +87,7 @@ public abstract class MetricEntityState {
   /**
    * Record otel metrics
    */
-  void recordOtelMetric(double value, Attributes attributes) {
+  public void recordOtelMetric(double value, Attributes attributes) {
     if (otelMetric != null) {
       MetricType metricType = this.metricEntity.getMetricType();
       switch (metricType) {
@@ -136,6 +136,10 @@ public abstract class MetricEntityState {
           VeniceDimensionInterface[] enumConstants = (VeniceDimensionInterface[]) enumType.getEnumConstants();
           if (enumConstants.length > 0) {
             currentDimensions.add(enumConstants[0].getDimensionName());
+          } else {
+            throw new IllegalArgumentException(
+                "Enum type " + enumType.getName() + " has no constants for MetricEntity: "
+                    + metricEntity.getMetricName());
           }
         } catch (ClassCastException e) {
           // Handle potential ClassCastException if enumType is not the expected type.
@@ -147,18 +151,18 @@ public abstract class MetricEntityState {
       }
     }
 
-    // copy all baseDimensionsMap into currentDimensions
-    for (Map.Entry<VeniceMetricsDimensions, String> entry: baseDimensionsMap.entrySet()) {
-      currentDimensions.add(entry.getKey());
-    }
+    // verify if the currentDimensions match the required dimensions
+    if (emitOpenTelemetryMetrics()) {
+      // copy all baseDimensionsMap into currentDimensions
+      currentDimensions.addAll(baseDimensionsMap.keySet());
 
-    Set<VeniceMetricsDimensions> requiredDimensions = metricEntity.getDimensionsList();
+      Set<VeniceMetricsDimensions> requiredDimensions = metricEntity.getDimensionsList();
 
-    if (!requiredDimensions.containsAll(currentDimensions)) {
-      currentDimensions.removeAll(requiredDimensions); // find the missing dimensions
-      throw new IllegalArgumentException(
-          "MetricEntity dimensions are missing some or all required dimensions: " + currentDimensions
-              + " for MetricEntity: " + metricEntity.getMetricName());
+      if (!requiredDimensions.equals(currentDimensions)) {
+        throw new IllegalArgumentException(
+            "Input dimensions " + currentDimensions + " doesn't match with the required dimensions "
+                + requiredDimensions + " for metric: " + metricEntity.getMetricName());
+      }
     }
   }
 

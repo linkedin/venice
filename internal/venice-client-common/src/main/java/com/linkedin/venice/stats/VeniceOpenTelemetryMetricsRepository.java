@@ -184,7 +184,7 @@ public class VeniceOpenTelemetryMetricsRepository {
   }
 
   public DoubleHistogram createHistogram(MetricEntity metricEntity) {
-    if (!emitOpenTelemetryMetrics) {
+    if (!emitOpenTelemetryMetrics()) {
       return null;
     }
     return histogramMap.computeIfAbsent(metricEntity.getMetricName(), key -> {
@@ -201,7 +201,7 @@ public class VeniceOpenTelemetryMetricsRepository {
   }
 
   public LongCounter createCounter(MetricEntity metricEntity) {
-    if (!emitOpenTelemetryMetrics) {
+    if (!emitOpenTelemetryMetrics()) {
       return null;
     }
     return counterMap.computeIfAbsent(metricEntity.getMetricName(), key -> {
@@ -246,6 +246,15 @@ public class VeniceOpenTelemetryMetricsRepository {
     }
   }
 
+  private void validateDimensionValuesAndBuildAttributes(
+      MetricEntity metricEntity,
+      VeniceMetricsDimensions dimension,
+      String dimensionValue,
+      AttributesBuilder attributesBuilder) {
+    validateDimensionValuesAndThrow(metricEntity, dimension, dimensionValue);
+    attributesBuilder.put(getDimensionName(dimension), dimensionValue);
+  }
+
   public Attributes createAttributes(
       MetricEntity metricEntity,
       Map<VeniceMetricsDimensions, String> commonDimensionsMap,
@@ -253,25 +262,16 @@ public class VeniceOpenTelemetryMetricsRepository {
     AttributesBuilder attributesBuilder = Attributes.builder();
 
     // add common dimensions
-    for (Map.Entry<VeniceMetricsDimensions, String> entry: commonDimensionsMap.entrySet()) {
-      VeniceMetricsDimensions dimension = entry.getKey();
-      String dimensionValue = entry.getValue();
-      validateDimensionValuesAndThrow(metricEntity, dimension, dimensionValue);
-      attributesBuilder.put(getDimensionName(dimension), dimensionValue);
-    }
+    commonDimensionsMap.forEach(
+        (key, value) -> validateDimensionValuesAndBuildAttributes(metricEntity, key, value, attributesBuilder));
 
     // add additional dimensions
-    for (Map.Entry<VeniceMetricsDimensions, String> entry: additionalDimensionsMap.entrySet()) {
-      VeniceMetricsDimensions dimension = entry.getKey();
-      String dimensionValue = entry.getValue();
-      validateDimensionValuesAndThrow(metricEntity, dimension, dimensionValue);
-      attributesBuilder.put(getDimensionName(dimension), dimensionValue);
-    }
+    additionalDimensionsMap.forEach(
+        (key, value) -> validateDimensionValuesAndBuildAttributes(metricEntity, key, value, attributesBuilder));
 
     // add custom dimensions passed in by the user
-    for (Map.Entry<String, String> entry: getMetricsConfig().getOtelCustomDimensionsMap().entrySet()) {
-      attributesBuilder.put(entry.getKey(), entry.getValue());
-    }
+    getMetricsConfig().getOtelCustomDimensionsMap().forEach(attributesBuilder::put);
+
     return attributesBuilder.build();
   }
 

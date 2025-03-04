@@ -30,8 +30,7 @@ public class MetricEntity {
     Validate.notEmpty(metricName, "Metric name cannot be null or empty");
     Validate.notNull(metricType, "Metric type cannot be null");
     Validate.notNull(unit, "Metric unit cannot be null");
-    Validate.notEmpty(description, "Metric description cannot be null");
-    Validate.notEmpty(dimensionsList, "Dimensions list cannot be null");
+    Validate.notEmpty(description, "Metric description cannot be empty");
     Validate.notEmpty(dimensionsList, "Dimensions list cannot be null or empty");
     this.metricName = metricName;
     this.metricType = metricType;
