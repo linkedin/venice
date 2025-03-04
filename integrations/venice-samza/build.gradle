@@ -18,6 +18,7 @@ dependencies {
 
   implementation libraries.log4j2api
   implementation libraries.samzaApi
+  implementation libraries.caffeine
 }
 
 ext {
