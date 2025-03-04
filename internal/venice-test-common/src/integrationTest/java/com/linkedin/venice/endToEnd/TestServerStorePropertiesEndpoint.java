@@ -17,6 +17,7 @@ import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.SslUtils;
+import com.linkedin.venice.utils.Time;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
@@ -31,6 +32,7 @@ import org.testng.annotations.Test;
 
 public class TestServerStorePropertiesEndpoint extends AbstractClientEndToEndSetup {
   private static final Logger LOGGER = LogManager.getLogger(TestServerStorePropertiesEndpoint.class);
+  private static final int TIME_OUT = 120 * Time.MS_PER_SECOND;
 
   private Random RANDOM;
 
