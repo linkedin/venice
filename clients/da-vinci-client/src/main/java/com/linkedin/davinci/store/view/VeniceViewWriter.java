@@ -33,6 +33,10 @@ import org.apache.avro.generic.GenericRecord;
  * view implementations.
  */
 public abstract class VeniceViewWriter extends VeniceView {
+  public enum ViewWriterType {
+    MATERIALIZED_VIEW, CHANGE_CAPTURE_VIEW
+  }
+
   protected final Version version;
   protected final int versionNumber;
   protected Optional<Boolean> isNearlineProducerCompressionEnabled = Optional.empty();
@@ -97,6 +101,8 @@ public abstract class VeniceViewWriter extends VeniceView {
       int newValueSchemaId,
       Set<Integer> viewPartitionSet,
       Lazy<GenericRecord> newValueProvider);
+
+  public abstract ViewWriterType getViewWriterType();
 
   /**
    * Called when the server encounters a control message. There isn't (today) a strict ordering

@@ -30,4 +30,9 @@ public abstract class ComplexVenicePartitioner extends VenicePartitioner {
    * @return int array containing the partition id(s)
    */
   public abstract int[] getPartitionId(byte[] keyBytes, GenericRecord value, int numPartitions);
+
+  @Override
+  public VenicePartitionerType getPartitionerType() {
+    return VenicePartitionerType.COMPLEX;
+  }
 }

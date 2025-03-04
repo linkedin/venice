@@ -5,12 +5,14 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.ComplexVenicePartitioner;
+import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.views.VeniceView;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
@@ -26,17 +28,21 @@ import org.apache.avro.generic.GenericRecord;
  */
 public class ComplexVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
   private final ComplexVenicePartitioner complexPartitioner;
+  private final String viewName;
 
   public ComplexVeniceWriter(
       VeniceWriterOptions params,
       VeniceProperties props,
       PubSubProducerAdapter producerAdapter) {
     super(params, props, producerAdapter);
-    if (partitioner instanceof ComplexVenicePartitioner) {
+    if (partitioner.getPartitionerType() == VenicePartitioner.VenicePartitionerType.COMPLEX) {
       complexPartitioner = (ComplexVenicePartitioner) partitioner;
     } else {
       complexPartitioner = null;
     }
+    // For now, we expect ComplexVeniceWriter to be used only for writing to MaterializedView
+    viewName =
+        VeniceView.getViewNameFromViewStoreName(VeniceView.parseStoreAndViewFromViewTopic(params.getTopicName()));
   }
 
   public CompletableFuture<Void> complexPut(K key, V value, int valueSchemaId, Lazy<GenericRecord> valueProvider) {
@@ -231,6 +237,10 @@ public class ComplexVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
         putMetadata,
         null,
         null);
+  }
+
+  public String getViewName() {
+    return viewName;
   }
 
   /**

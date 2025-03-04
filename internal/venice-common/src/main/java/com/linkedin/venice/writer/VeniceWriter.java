@@ -5,9 +5,7 @@ import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.message.KafkaKey.CONTROL_MESSAGE_KAFKA_KEY_LENGTH;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER;
-import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_VIEW_PARTITIONS_MAP_HEADER;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -57,11 +55,11 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.VeniceResourceCloseResult;
+import com.linkedin.venice.views.ViewUtils;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -70,7 +68,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -1510,7 +1507,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           partition,
           callback,
           updateDIV,
-          getViewDestinationPartitionHeader(leaderMetadataWrapper.getViewPartitionMap()));
+          ViewUtils.getViewDestinationPartitionHeader(leaderMetadataWrapper.getViewPartitionMap()));
     }
   }
 
@@ -1641,20 +1638,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     byte[] val = new byte[1];
     val[0] = (byte) (leaderCompleteState.getValue());
     return new PubSubMessageHeader(VENICE_LEADER_COMPLETION_STATE_HEADER, val);
-  }
-
-  public static PubSubMessageHeader getViewDestinationPartitionHeader(
-      Map<String, Set<Integer>> destinationPartitionMap) {
-    if (destinationPartitionMap == null) {
-      return null;
-    }
-    try {
-      // We could explore more storage efficient ways to pass this information.
-      byte[] value = ObjectMapperFactory.getInstance().writeValueAsBytes(destinationPartitionMap);
-      return new PubSubMessageHeader(VENICE_VIEW_PARTITIONS_MAP_HEADER, value);
-    } catch (JsonProcessingException e) {
-      throw new VeniceException("Failed to serialize view destination partition map", e);
-    }
   }
 
   /**

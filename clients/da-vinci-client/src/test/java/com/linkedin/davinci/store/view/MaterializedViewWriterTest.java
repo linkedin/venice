@@ -97,7 +97,7 @@ public class MaterializedViewWriterTest {
     VeniceConfigLoader props = getMockProps();
     VeniceViewWriterFactory viewWriterFactory = new VeniceViewWriterFactory(props);
     VeniceViewWriter viewWriter = viewWriterFactory.buildStoreViewWriters(store, 1, SCHEMA).get(viewName);
-    Assert.assertTrue(viewWriter instanceof MaterializedViewWriter);
+    Assert.assertEquals(viewWriter.getViewWriterType(), VeniceViewWriter.ViewWriterType.MATERIALIZED_VIEW);
     MaterializedViewWriter materializedViewWriter = (MaterializedViewWriter) viewWriter;
     VeniceWriterOptions writerOptions = materializedViewWriter.buildWriterOptions();
     Assert.assertEquals(

@@ -677,6 +677,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         int oldValueSchemaId =
             oldValueBB == null ? -1 : mergeConflictResultWrapper.getOldValueProvider().get().writerSchemaId();
         Lazy<GenericRecord> valueProvider = mergeConflictResultWrapper.getValueProvider();
+        // The helper function takes in a BiFunction but the parameter for view partition set will never be used and
+        // always null for A/A ingestion of the RT topic.
         queueUpVersionTopicWritesWithViewWriters(
             partitionConsumptionState,
             (viewWriter, ignored) -> viewWriter.processRecord(

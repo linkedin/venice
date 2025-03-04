@@ -96,6 +96,11 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
   }
 
   @Override
+  public ViewWriterType getViewWriterType() {
+    return ViewWriterType.CHANGE_CAPTURE_VIEW;
+  }
+
+  @Override
   public void processControlMessage(
       KafkaKey kafkaKey,
       KafkaMessageEnvelope kafkaMessageEnvelope,
