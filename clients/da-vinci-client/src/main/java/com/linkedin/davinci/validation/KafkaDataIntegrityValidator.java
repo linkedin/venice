@@ -115,9 +115,12 @@ public class KafkaDataIntegrityValidator {
   /**
    * Returns the RT DIV state for a given partition and broker URL, and the VT DIV state
    */
+  // TODO: does this need synchronized because it can be called from multiple consumer threads?
   public PartitionTracker cloneProducerStates(int partition, String brokerUrl) {
     PartitionTracker partitionTracker = partitionTrackerCreator.apply(partition);
-    this.partitionTrackers.get(partition).cloneProducerStates(partitionTracker, brokerUrl); // single broker
+    if (this.partitionTrackers.contains(partition)) {
+      this.partitionTrackers.get(partition).cloneProducerStates(partitionTracker, brokerUrl); // for a single broker
+    }
     return partitionTracker;
   }
 

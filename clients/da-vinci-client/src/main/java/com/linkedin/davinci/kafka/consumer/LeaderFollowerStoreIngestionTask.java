@@ -57,7 +57,6 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
-import com.linkedin.venice.memory.InstanceSizeEstimator;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.PartitionerConfig;
@@ -196,9 +195,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * for this leader validator as well, if deemed necessary.
    */
   private final KafkaDataIntegrityValidator kafkaDataIntegrityValidatorForLeaders;
-
-  private static final InternalAvroSpecificSerializer<GlobalRtDivState> globalRtDivStateSerializer =
-      AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer();
 
   /**
    * N.B.:
@@ -2296,7 +2292,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         /**
          * TODO: An improvement can be made to fail all future versions for fatal DIV exceptions after EOP.
          */
-        final TopicType topicType = (isGlobalRtDivEnabled)
+        final TopicType topicType = (isGlobalRtDivEnabled())
             ? TopicType.of(isRealTimeTopic ? REALTIME_TOPIC_TYPE : VERSION_TOPIC_TYPE, kafkaUrl)
             : PartitionTracker.VERSION_TOPIC;
         validateMessage(topicType, kafkaDataIntegrityValidatorForLeaders, record, isEndOfPushReceived, pcs);
@@ -3557,34 +3553,41 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
+   * The Global RT DIV is produced on a per-broker basis, so the name includes the broker URL for differentiation.
+   */
+  public static String getGlobalRtDivKeyName(String brokerUrl) {
+    return "GLOBAL_RT_DIV_KEY." + brokerUrl;
+  }
+
+  /**
    * The leader produces GlobalRtDivState (RT DIV + latestOffset) to local kafka for the followers to consume.
    * Upon completion, the LeaderProducerCallback will enqueue the RT + VT DIV to the drainer.
    * Note: This method is called per-broker. The broker url is included in the key.
    * @param previousMessage the last message validated and produced to kafka before this GlobalRtDiv will be produced
    */
-  private void sendGlobalRtDivMessage(
+  void sendGlobalRtDivMessage(
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> previousMessage,
       PartitionConsumptionState partitionConsumptionState,
       int partition,
-      String kafkaUrl,
+      String brokerUrl,
       long beforeProcessingRecordTimestampNs,
       LeaderMetadataWrapper leaderMetadataWrapper,
       LeaderProducedRecordContext leaderProducedRecordContext) {
     final InternalAvroSpecificSerializer<GlobalRtDivState> serializer =
         AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer(); // TODO: can't be static because of state?
-    final String GLOBAL_RT_DIV_KEY_WITH_URL = "GLOBAL_RT_DIV_KEY." + kafkaUrl; // broker url included in key
-    TopicType realTimeTopicType = TopicType.of(TopicType.REALTIME_TOPIC_TYPE, kafkaUrl);
+    final byte[] keyBytes = getGlobalRtDivKeyName(brokerUrl).getBytes();
+    TopicType realTimeTopicType = TopicType.of(TopicType.REALTIME_TOPIC_TYPE, brokerUrl);
 
     // Snapshot the VT DIV + RT DIV (single broker URL) in preparation to be produced
-    PartitionTracker divSnapshot = kafkaDataIntegrityValidatorForLeaders.cloneProducerStates(partition, kafkaUrl);
+    PartitionTracker divSnapshot = kafkaDataIntegrityValidatorForLeaders.cloneProducerStates(partition, brokerUrl);
     Map<CharSequence, ProducerPartitionState> rtDiv = divSnapshot.getPartitionStates(realTimeTopicType); // only RT DIV
-    // Create GlobalRtDivState (RT DIV + latestOffset) and serialize it
-    GlobalRtDivState globalRtDiv = new GlobalRtDivState(kafkaUrl, rtDiv, previousMessage.getOffset());
+    // Create GlobalRtDivState (RT DIV + latestOffset) which will be serialized into a byte array
+    GlobalRtDivState globalRtDiv = new GlobalRtDivState(brokerUrl, rtDiv, previousMessage.getOffset());
 
     // Create PubSubMessage for the LeaderProducerCallback to enqueue the RT + VT DIV to the drainer
-    KafkaKey divKey = new KafkaKey(MessageType.GLOBAL_RT_DIV, GLOBAL_RT_DIV_KEY_WITH_URL.getBytes());
+    KafkaKey divKey = new KafkaKey(MessageType.GLOBAL_RT_DIV, keyBytes);
     // TODO: incrementSequenceNumber? are the pubsubmessage fields correct?
-    KafkaMessageEnvelope divEnvelope = veniceWriter.get()
+    KafkaMessageEnvelope divEnvelope = getVeniceWriter(partitionConsumptionState).get()
         .getKafkaMessageEnvelope(
             MessageType.PUT,
             false,
@@ -3599,19 +3602,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         previousMessage.getTopicPartition(),
         previousMessage.getOffset(), // TODO: are these reused fields correct?
         previousMessage.getPubSubMessageTime(),
-        GLOBAL_RT_DIV_KEY_WITH_URL.getBytes().length + InstanceSizeEstimator.getObjectSize(divSnapshot));
+        divKey.getHeapSize()); // TODO: should the envelope size also be estimated?
     LeaderProducerCallback divCallback = createProducerCallback(
         divMessage,
         partitionConsumptionState,
         leaderProducedRecordContext,
         partition,
-        kafkaUrl,
+        brokerUrl,
         beforeProcessingRecordTimestampNs);
 
     // Produce to local kafka for the Global RT DIV + latestOffset (GlobalRtDivState)
-    veniceWriter.get()
+    getVeniceWriter(partitionConsumptionState).get()
         .put(
-            GLOBAL_RT_DIV_KEY_WITH_URL.getBytes(),
+            keyBytes,
             ByteUtils.extractByteArray(serializer.serialize(globalRtDiv)),
             partition,
             1, // dummy value schema id which shouldn't be used for MessageType.GLOBAL_RT_DIV
@@ -3619,7 +3622,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             leaderMetadataWrapper,
             APP_DEFAULT_LOGICAL_TS,
             null,
-            null,
+            null, // TODO: do oldValueManifest and rmd need to be populated?
             null,
             false);
   }
