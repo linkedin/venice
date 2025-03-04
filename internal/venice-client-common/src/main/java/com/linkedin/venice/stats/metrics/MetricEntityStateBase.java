@@ -21,7 +21,7 @@ public class MetricEntityStateBase extends MetricEntityState {
   public MetricEntityStateBase(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
-      @Nonnull Map<VeniceMetricsDimensions, String> baseDimensionsMap,
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap,
       @Nonnull Attributes baseAttributes) {
     this(metricEntity, otelRepository, null, null, Collections.EMPTY_LIST, baseDimensionsMap, baseAttributes);
   }
@@ -32,7 +32,7 @@ public class MetricEntityStateBase extends MetricEntityState {
       TehutiSensorRegistrationFunction registerTehutiSensorFn,
       TehutiMetricNameEnum tehutiMetricNameEnum,
       List<MeasurableStat> tehutiMetricStats,
-      @Nonnull Map<VeniceMetricsDimensions, String> baseDimensionsMap,
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap,
       @Nonnull Attributes baseAttributes) {
     super(metricEntity, otelRepository, registerTehutiSensorFn, tehutiMetricNameEnum, tehutiMetricStats);
     validateRequiredDimensions(metricEntity, baseDimensionsMap);

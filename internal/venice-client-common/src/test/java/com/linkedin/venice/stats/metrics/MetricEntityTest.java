@@ -11,16 +11,6 @@ import org.testng.annotations.Test;
 
 
 public class MetricEntityTest {
-  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Dimensions list cannot be null or empty")
-  public void testMetricEntityConstructorWithoutDimensions() {
-    String metricName = "testMetric";
-    MetricType metricType = MetricType.COUNTER;
-    MetricUnit unit = MetricUnit.MILLISECOND;
-    String description = "Test description";
-
-    new MetricEntity(metricName, metricType, unit, description, null);
-  }
-
   @Test
   public void testMetricEntityConstructorWithDimensions() {
     String metricName = "testMetric";
@@ -42,8 +32,23 @@ public class MetricEntityTest {
     Assert.assertEquals(metricEntity.getDimensionsList(), dimensions, "Dimensions list should match");
   }
 
-  @Test(expectedExceptions = IllegalArgumentException.class)
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Metric name cannot be empty")
   public void testMetricEntityConstructorWithEmptyName() {
-    new MetricEntity("", MetricType.COUNTER, MetricUnit.MILLISECOND, "Empty name test", null);
+    new MetricEntity("", MetricType.COUNTER, MetricUnit.MILLISECOND, "Empty name test", new HashSet<>());
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Metric description cannot be empty")
+  public void testMetricEntityConstructorWithEmptyDescription() {
+    new MetricEntity("testMetric", MetricType.COUNTER, MetricUnit.MILLISECOND, "", new HashSet<>());
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Dimensions list cannot be empty")
+  public void testMetricEntityConstructorWithEmptyDimensionsList() {
+    new MetricEntity(
+        "testMetric",
+        MetricType.COUNTER,
+        MetricUnit.MILLISECOND,
+        "test empty dimension list",
+        new HashSet<>());
   }
 }

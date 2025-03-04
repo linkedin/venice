@@ -93,7 +93,7 @@ public class VeniceOpenTelemetryMetricsRepository {
       // Register MeterProvider with the OpenTelemetry instance
       OpenTelemetry openTelemetry = OpenTelemetrySdk.builder().setMeterProvider(sdkMeterProvider).build();
 
-      this.meter = openTelemetry.getMeter(transformMetricName(getMetricPrefix(), getMetricFormat()));
+      this.meter = openTelemetry.getMeter(transformMetricName(getMetricPrefix(), metricFormat));
       LOGGER.info(
           "OpenTelemetry initialization for {} completed with config: {}",
           metricsConfig.getServiceName(),

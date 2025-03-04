@@ -27,11 +27,11 @@ public class MetricEntity {
       @Nonnull MetricUnit unit,
       @Nonnull String description,
       @Nonnull Set<VeniceMetricsDimensions> dimensionsList) {
-    Validate.notEmpty(metricName, "Metric name cannot be null or empty");
+    Validate.notEmpty(metricName, "Metric name cannot be empty");
     Validate.notNull(metricType, "Metric type cannot be null");
     Validate.notNull(unit, "Metric unit cannot be null");
     Validate.notEmpty(description, "Metric description cannot be empty");
-    Validate.notEmpty(dimensionsList, "Dimensions list cannot be null or empty");
+    Validate.notEmpty(dimensionsList, "Dimensions list cannot be empty");
     this.metricName = metricName;
     this.metricType = metricType;
     this.unit = unit;

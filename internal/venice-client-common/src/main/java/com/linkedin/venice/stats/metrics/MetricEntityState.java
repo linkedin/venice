@@ -154,8 +154,9 @@ public abstract class MetricEntityState {
     // verify if the currentDimensions match the required dimensions
     if (emitOpenTelemetryMetrics()) {
       // copy all baseDimensionsMap into currentDimensions
-      currentDimensions.addAll(baseDimensionsMap.keySet());
-
+      if (baseDimensionsMap != null) {
+        currentDimensions.addAll(baseDimensionsMap.keySet());
+      }
       Set<VeniceMetricsDimensions> requiredDimensions = metricEntity.getDimensionsList();
 
       if (!requiredDimensions.equals(currentDimensions)) {

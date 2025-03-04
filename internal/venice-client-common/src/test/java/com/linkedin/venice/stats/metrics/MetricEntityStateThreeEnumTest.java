@@ -131,14 +131,13 @@ public class MetricEntityStateThreeEnumTest {
 
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*has no constants.*")
   public void testCreateAttributesEnumMapWithEmptyEnum() {
-    MetricEntityStateThreeEnums<MetricEntityStateTest.EmptyDimensionEnum, MetricEntityStateTest.EmptyDimensionEnum, MetricEntityStateTest.EmptyDimensionEnum> metricEntityState =
-        MetricEntityStateThreeEnums.create(
-            mockMetricEntity,
-            mockOtelRepository,
-            baseDimensionsMap,
-            MetricEntityStateTest.EmptyDimensionEnum.class,
-            MetricEntityStateTest.EmptyDimensionEnum.class,
-            MetricEntityStateTest.EmptyDimensionEnum.class);
+    MetricEntityStateThreeEnums.create(
+        mockMetricEntity,
+        mockOtelRepository,
+        baseDimensionsMap,
+        MetricEntityStateTest.EmptyDimensionEnum.class,
+        MetricEntityStateTest.EmptyDimensionEnum.class,
+        MetricEntityStateTest.EmptyDimensionEnum.class);
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "The key for otel dimension cannot be null.*")

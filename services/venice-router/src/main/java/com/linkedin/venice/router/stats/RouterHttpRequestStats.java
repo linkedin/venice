@@ -131,7 +131,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Sensor totalInFlightRequestSensor;
   private final Attributes baseAttributes;
-  private final Map<VeniceMetricsDimensions, String> baseDimensionsMap = new HashMap<>();
+  private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
   // QPS metrics
   public RouterHttpRequestStats(
@@ -150,6 +150,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
       emitOpenTelemetryMetrics = veniceMetricsConfig.emitOtelMetrics() && !isTotalStats();
       if (emitOpenTelemetryMetrics) {
         otelRepository = veniceMetricsRepository.getOpenTelemetryMetricsRepository();
+        baseDimensionsMap = new HashMap<>();
         baseDimensionsMap.put(VENICE_STORE_NAME, storeName);
         baseDimensionsMap.put(VENICE_REQUEST_METHOD, requestType.getDimensionValue());
         baseDimensionsMap.put(VENICE_CLUSTER_NAME, clusterName);
@@ -162,11 +163,13 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
       } else {
         otelRepository = null;
         baseAttributes = null;
+        baseDimensionsMap = null;
       }
     } else {
-      otelRepository = null;
       emitOpenTelemetryMetrics = false;
+      otelRepository = null;
       baseAttributes = null;
+      baseDimensionsMap = null;
     }
 
     this.systemStoreName = VeniceSystemStoreUtils.extractSystemStoreType(storeName);
