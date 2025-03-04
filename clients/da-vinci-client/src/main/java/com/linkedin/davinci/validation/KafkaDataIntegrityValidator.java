@@ -147,6 +147,10 @@ public class KafkaDataIntegrityValidator {
         this.kafkaLogCompactionDelayInMs);
   }
 
+  public void updateLatestConsumedVtOffset(int partition, long offset) {
+    partitionTrackers.get(partition).updateLatestConsumedVtOffset(offset); // TODO: should null check be added here?
+  }
+
   /**
    * N.B. Intended for tests only
    *

@@ -72,20 +72,36 @@ public class PartitionTracker {
   private final Logger logger;
   private final String topicName;
   private final int partition;
+  // TODO: clear vtSegments
   private final VeniceConcurrentHashMap<GUID, Segment> vtSegments = new VeniceConcurrentHashMap<>();
+  /**
+   * The equivalent for RT is not stored. The
+   */
+  private long latestConsumedVtOffset;
 
-  // rtSegments is a map of source Kafka URL to a map of GUID to Segment.
+  /**
+   * rtSegments is a map of source broker URL to a map of GUID to Segment.
+   */
   private final VeniceConcurrentHashMap<String, VeniceConcurrentHashMap<GUID, Segment>> rtSegments =
       new VeniceConcurrentHashMap<>();
 
   public PartitionTracker(String topicName, int partition) {
     this.topicName = topicName;
     this.partition = partition;
+    this.latestConsumedVtOffset = 0L;
     this.logger = LogManager.getLogger(this.toString());
   }
 
   public int getPartition() {
     return partition;
+  }
+
+  public long getLatestConsumedVtOffset() {
+    return latestConsumedVtOffset;
+  }
+
+  public void updateLatestConsumedVtOffset(long offset) {
+    latestConsumedVtOffset = Math.max(latestConsumedVtOffset, offset);
   }
 
   public final String toString() {
@@ -160,7 +176,9 @@ public class PartitionTracker {
     }
   }
 
-  // Clone both vtSegment and rtSegment to the destination PartitionTracker.
+  /**
+   * Clone both vtSegment and rtSegment to the destination PartitionTracker. May be called concurrently.
+   */
   public void cloneProducerStates(PartitionTracker destProducerTracker, String brokerUrl) {
     for (Map.Entry<GUID, Segment> entry: vtSegments.entrySet()) {
       destProducerTracker.setSegment(PartitionTracker.VERSION_TOPIC, entry.getKey(), new Segment(entry.getValue()));

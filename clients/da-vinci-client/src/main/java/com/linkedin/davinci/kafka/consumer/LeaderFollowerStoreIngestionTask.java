@@ -2405,6 +2405,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           partitionConsumptionState.getVeniceWriterLazyRef().ifPresent(vw -> vw.flush());
           partitionConsumptionState.setVeniceWriterLazyRef(veniceWriterForRealTime);
         }
+
+        if (isGlobalRtDivEnabled() && consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()
+            && msgType != MessageType.GLOBAL_RT_DIV) {
+          kafkaDataIntegrityValidatorForLeaders.updateLatestConsumedVtOffset(partition, consumerRecord.getOffset());
+        }
+
         /**
          * Materialized view need to produce to the corresponding view topic for the batch portion of the data. This is
          * achieved in the following ways:
