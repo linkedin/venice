@@ -34,30 +34,35 @@ public class BlockingDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
     this.recordTransformer = recordTransformer;
   }
 
-  public DaVinciRecordTransformerResult<O> transform(Lazy<K> key, Lazy<V> value) {
-    return this.recordTransformer.transform(key, value);
+  @Override
+  public DaVinciRecordTransformerResult<O> transform(Lazy<K> key, Lazy<V> value, int partitionId) {
+    return this.recordTransformer.transform(key, value, partitionId);
   }
 
-  public void processPut(Lazy<K> key, Lazy<O> value) {
+  @Override
+  public void processPut(Lazy<K> key, Lazy<O> value, int partitionId) {
     try {
       // Waiting for onStartIngestionTask to complete before proceeding
       startLatch.await();
-      this.recordTransformer.processPut(key, value);
+      this.recordTransformer.processPut(key, value, partitionId);
     } catch (InterruptedException e) {
       // Restore the interrupt status
       Thread.currentThread().interrupt();
     }
   }
 
-  public void processDelete(Lazy<K> key) {
-    this.recordTransformer.processDelete(key);
+  @Override
+  public void processDelete(Lazy<K> key, int partitionId) {
+    this.recordTransformer.processDelete(key, partitionId);
   }
 
+  @Override
   public void onStartVersionIngestion(boolean isCurrentVersion) {
     this.recordTransformer.onStartVersionIngestion(isCurrentVersion);
     startLatch.countDown();
   }
 
+  @Override
   public void onEndVersionIngestion(int currentVersion) {
     this.recordTransformer.onEndVersionIngestion(currentVersion);
   }

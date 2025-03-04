@@ -206,6 +206,9 @@ public class DaVinciClientRecordTransformerTest {
             metricPrefix + RECORD_TRANSFORMER_PUT_ERROR_COUNT + ".DaVinciRecordTransformerStatsGauge";
         assertEquals(metricsRepository.getMetric(putErrorCount).value(), 0.0);
       }
+      // cluster.createVersion(storeName, numKeys);
+      // clientWithRecordTransformer.subscribeAll().get();
+      // int b = 0;
     }
   }
 

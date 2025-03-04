@@ -75,14 +75,15 @@ public class DuckDBDaVinciRecordTransformerTest {
       valueRecord.put("lastName", "Goose");
       Lazy<GenericRecord> lazyValue = Lazy.of(() -> valueRecord);
 
-      DaVinciRecordTransformerResult<GenericRecord> transformerResult = recordTransformer.transform(lazyKey, lazyValue);
-      recordTransformer.processPut(lazyKey, lazyValue);
+      DaVinciRecordTransformerResult<GenericRecord> transformerResult =
+          recordTransformer.transform(lazyKey, lazyValue, partitionId);
+      recordTransformer.processPut(lazyKey, lazyValue, partitionId);
       assertEquals(transformerResult.getResult(), DaVinciRecordTransformerResult.Result.UNCHANGED);
       // Result will be empty when it's UNCHANGED
       assertNull(transformerResult.getValue());
-      assertNull(recordTransformer.transformAndProcessPut(lazyKey, lazyValue));
+      assertNull(recordTransformer.transformAndProcessPut(lazyKey, lazyValue, partitionId));
 
-      recordTransformer.processDelete(lazyKey);
+      recordTransformer.processDelete(lazyKey, partitionId);
 
       assertFalse(recordTransformer.getStoreRecordsInDaVinci());
 
@@ -141,13 +142,13 @@ public class DuckDBDaVinciRecordTransformerTest {
     valueRecord_v1.put("firstName", "Duck");
     valueRecord_v1.put("lastName", "Goose");
     Lazy<GenericRecord> lazyValue = Lazy.of(() -> valueRecord_v1);
-    recordTransformer_v1.processPut(lazyKey, lazyValue);
+    recordTransformer_v1.processPut(lazyKey, lazyValue, partitionId);
 
     GenericRecord valueRecord_v2 = new GenericData.Record(NAME_RECORD_V1_SCHEMA);
     valueRecord_v2.put("firstName", "Goose");
     valueRecord_v2.put("lastName", "Duck");
     lazyValue = Lazy.of(() -> valueRecord_v2);
-    recordTransformer_v2.processPut(lazyKey, lazyValue);
+    recordTransformer_v2.processPut(lazyKey, lazyValue, partitionId);
 
     try (Connection connection = DriverManager.getConnection(duckDBUrl);
         Statement stmt = connection.createStatement()) {
@@ -208,7 +209,7 @@ public class DuckDBDaVinciRecordTransformerTest {
     valueRecordForStore1.put("firstName", "Duck");
     valueRecordForStore1.put("lastName", "Goose");
     Lazy<GenericRecord> lazyValueForStore1 = Lazy.of(() -> valueRecordForStore1);
-    recordTransformerForStore1.processPut(lazyKeyForStore1, lazyValueForStore1);
+    recordTransformerForStore1.processPut(lazyKeyForStore1, lazyValueForStore1, partitionId);
 
     recordTransformerForStore2.onStartVersionIngestion(true);
 
@@ -227,7 +228,7 @@ public class DuckDBDaVinciRecordTransformerTest {
     valueRecordForStore2.put("firstName", "Duck");
     valueRecordForStore2.put("lastName", "Goose");
     Lazy<GenericRecord> lazyValueForStore2 = Lazy.of(() -> valueRecordForStore2);
-    recordTransformerForStore2.processPut(lazyKeyForStore2, lazyValueForStore2);
+    recordTransformerForStore2.processPut(lazyKeyForStore2, lazyValueForStore2, partitionId);
 
     try (Connection connection = DriverManager.getConnection(duckDBUrl);
         Statement stmt = connection.createStatement()) {
@@ -244,11 +245,11 @@ public class DuckDBDaVinciRecordTransformerTest {
 
       assertJoin(stmt, store1, store2, true);
 
-      recordTransformerForStore2.processDelete(lazyKeyForStore2);
+      recordTransformerForStore2.processDelete(lazyKeyForStore2, partitionId);
 
       assertJoin(stmt, store1, store2, false);
 
-      recordTransformerForStore1.processDelete(lazyKeyForStore1);
+      recordTransformerForStore1.processDelete(lazyKeyForStore1, partitionId);
 
       try (ResultSet rs = stmt.executeQuery(getJoinQuery(store1, store2))) {
         assertFalse(rs.next());

@@ -82,19 +82,22 @@ public class DuckDBDaVinciRecordTransformer
   }
 
   @Override
-  public DaVinciRecordTransformerResult<GenericRecord> transform(Lazy<GenericRecord> key, Lazy<GenericRecord> value) {
+  public DaVinciRecordTransformerResult<GenericRecord> transform(
+      Lazy<GenericRecord> key,
+      Lazy<GenericRecord> value,
+      int partitionId) {
     // Record transformation happens inside processPut as we need access to the connection object to create the prepared
     // statement
     return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.UNCHANGED);
   }
 
   @Override
-  public void processPut(Lazy<GenericRecord> key, Lazy<GenericRecord> value) {
+  public void processPut(Lazy<GenericRecord> key, Lazy<GenericRecord> value, int partitionId) {
     this.upsertProcessor.process(key.get(), value.get(), this.upsertPreparedStatement.get());
   }
 
   @Override
-  public void processDelete(Lazy<GenericRecord> key) {
+  public void processDelete(Lazy<GenericRecord> key, int partitionId) {
     this.deleteProcessor.process(key.get(), null, this.deletePreparedStatement.get());
   }
 

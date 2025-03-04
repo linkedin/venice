@@ -3210,9 +3210,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       case START_OF_SEGMENT:
       case END_OF_SEGMENT:
       case VERSION_SWAP:
+        // ToDo: Remove this comment
         /**
          * Nothing to do here as all the processing is being done in {@link StoreIngestionTask#delegateConsumerRecord(ConsumerRecord, int, String)}.
          */
+        // int i = 0;
+        // if (recordTransformer != null) {
+        // int i = 0;
+        // VersionSwap versionSwap = (VersionSwap) controlMessage.controlMessageUnion;
+        // int currentVersion =
+        // Version.parseVersionFromVersionTopicName(versionSwap.getOldServingVersionTopic().toString());
+        // int futureVersion =
+        // Version.parseVersionFromVersionTopicName(versionSwap.getNewServingVersionTopic().toString());
+        // recordTransformer.onVersionSwap(currentVersion, futureVersion, partition);
+        // }
         break;
       case START_OF_INCREMENTAL_PUSH:
         processStartOfIncrementalPush(controlMessage, partitionConsumptionState);
@@ -3821,7 +3832,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
           DaVinciRecordTransformerResult transformerResult;
           try {
-            transformerResult = recordTransformer.transformAndProcessPut(lazyKey, lazyValue);
+            transformerResult = recordTransformer.transformAndProcessPut(lazyKey, lazyValue, producedPartition);
           } catch (Exception e) {
             daVinciRecordTransformerStats.recordPutError(storeName, versionNumber, currentTimeMs);
             String errorMessage =
@@ -3888,7 +3899,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
           long startTime = System.nanoTime();
           try {
-            recordTransformer.processDelete(lazyKey);
+            recordTransformer.processDelete(lazyKey, producedPartition);
           } catch (Exception e) {
             daVinciRecordTransformerStats.recordDeleteError(storeName, versionNumber, currentTimeMs);
             String errorMessage = "DaVinciRecordTransformer experienced an error when deleting key: " + lazyKey.get();

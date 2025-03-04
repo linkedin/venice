@@ -58,13 +58,14 @@ public class RecordTransformerTest {
 
     Lazy<Integer> lazyKey = Lazy.of(() -> 42);
     Lazy<String> lazyValue = Lazy.of(() -> "SampleValue");
-    DaVinciRecordTransformerResult<String> transformerResult = recordTransformer.transform(lazyKey, lazyValue);
-    recordTransformer.processPut(lazyKey, lazyValue);
+    DaVinciRecordTransformerResult<String> transformerResult =
+        recordTransformer.transform(lazyKey, lazyValue, partitionId);
+    recordTransformer.processPut(lazyKey, lazyValue, partitionId);
     assertEquals(transformerResult.getResult(), DaVinciRecordTransformerResult.Result.TRANSFORMED);
     assertEquals(transformerResult.getValue(), "SampleValueTransformed");
-    assertNull(recordTransformer.transformAndProcessPut(lazyKey, lazyValue));
+    assertNull(recordTransformer.transformAndProcessPut(lazyKey, lazyValue, partitionId));
 
-    recordTransformer.processDelete(lazyKey);
+    recordTransformer.processDelete(lazyKey, partitionId);
 
     assertFalse(recordTransformer.getStoreRecordsInDaVinci());
 
@@ -207,10 +208,10 @@ public class RecordTransformerTest {
     Lazy<Integer> lazyKey = Lazy.of(() -> 42);
     Lazy<String> lazyValue = Lazy.of(() -> "SampleValue");
     DaVinciRecordTransformerResult<String> recordTransformerResult =
-        recordTransformer.transformAndProcessPut(lazyKey, lazyValue);
+        recordTransformer.transformAndProcessPut(lazyKey, lazyValue, partitionId);
     assertEquals(recordTransformerResult.getValue(), "SampleValueTransformed");
 
-    recordTransformer.processDelete(lazyKey);
+    recordTransformer.processDelete(lazyKey, partitionId);
 
     recordTransformer.onEndVersionIngestion(2);
   }
