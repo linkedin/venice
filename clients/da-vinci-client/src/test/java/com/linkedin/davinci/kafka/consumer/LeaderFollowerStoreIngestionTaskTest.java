@@ -445,6 +445,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
     assertEquals(callbackPayload.getValue().getMessageType(), MessageType.PUT.getValue());
     assertEquals(callbackPayload.getPartition(), partition);
     assertTrue(callbackPayload.getValue().payloadUnion instanceof DivSnapshot); // direct access bc the KME is a mock
+    DivSnapshot divSnapshot = (DivSnapshot) callbackPayload.getValue().payloadUnion;
+    assertEquals(divSnapshot.latestConsumedRtOffset, offset);
+    assertEquals(divSnapshot.partitionTracker.getPartition(), partition);
   }
 
   @Test

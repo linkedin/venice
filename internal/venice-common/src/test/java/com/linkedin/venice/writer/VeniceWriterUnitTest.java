@@ -687,8 +687,8 @@ public class VeniceWriterUnitTest {
     ChunkedValueManifestSerializer manifestSerializer = new ChunkedValueManifestSerializer(true);
     final VeniceKafkaSerializer<Object> serializer = new VeniceAvroKafkaSerializer(TestWriteUtils.STRING_SCHEMA);
     final VeniceWriterOptions options = new VeniceWriterOptions.Builder("testTopic").setPartitionCount(1)
-        .setKeySerializer(serializer)
-        .setValueSerializer(serializer)
+        .setKeyPayloadSerializer(serializer)
+        .setValuePayloadSerializer(serializer)
         .setChunkingEnabled(true)
         .setMaxRecordSizeBytes(maxRecordSizeBytes)
         .build();
