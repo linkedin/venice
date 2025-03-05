@@ -127,7 +127,8 @@ public class ComplexVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
       long logicalTs,
       PutMetadata putMetadata,
       ChunkedValueManifest oldValueManifest,
-      ChunkedValueManifest oldRmdManifest) {
+      ChunkedValueManifest oldRmdManifest,
+      boolean isPutMessage) {
     skippedLargeRecords.incrementAndGet();
     if (!REDUNDANT_LOGGING_FILTER.isRedundantException(topicName, SKIP_LARGE_RECORD)) {
       logger.warn("Skipped writing {} large record(s) to topic: {}", skippedLargeRecords.getAndSet(0), topicName);
@@ -208,7 +209,8 @@ public class ComplexVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
         APP_DEFAULT_LOGICAL_TS,
         null,
         null,
-        null);
+        null,
+        true);
   }
 
   /**

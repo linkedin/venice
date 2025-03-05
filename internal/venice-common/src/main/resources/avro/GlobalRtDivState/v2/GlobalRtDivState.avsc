@@ -1,0 +1,90 @@
+{
+  "name": "GlobalRtDivState",
+  "namespace": "com.linkedin.venice.kafka.protocol.state",
+  "doc": "Global Realtime Topic Data Integrity Validator is the RT DIV snapshot propagated from the leader to the followers via local VT",
+  "type": "record",
+  "fields": [
+    {
+      "name": "srcUrl",
+      "doc": "Upstream broker bootstrap server url.",
+      "type": [
+        "null",
+        "string"
+      ],
+      "default": null
+    },
+    {
+      "name": "producerStates",
+      "type": {
+        "type": "map",
+        "doc": "A map that maps producer GUID -> producer state for realtime data.",
+        "values": {
+          "name": "ProducerPartitionState",
+          "namespace": "com.linkedin.venice.kafka.protocol.state",
+          "doc": "A record containing the state pertaining to the data sent by one upstream producer into one partition.",
+          "type": "record",
+          "fields": [
+            {
+              "name": "segmentNumber",
+              "doc": "The current segment number corresponds to the last (highest) segment number for which we have seen a StartOfSegment control message.",
+              "type": "int"
+            },
+            {
+              "name": "segmentStatus",
+              "doc": "The status of the current segment: 0 => NOT_STARTED, 1 => IN_PROGRESS, 2 => END_OF_INTERMEDIATE_SEGMENT, 3 => END_OF_FINAL_SEGMENT.",
+              "type": "int"
+            },
+            {
+              "name": "isRegistered",
+              "doc": "Whether the segment is registered. i.e. received Start_Of_Segment to initialize the segment.",
+              "type": "boolean",
+              "default": false
+            },
+            {
+              "name": "messageSequenceNumber",
+              "doc": "The current message sequence number, within the current segment, which we have seen for this partition/producer pair.",
+              "type": "int"
+            },
+            {
+              "name": "messageTimestamp",
+              "doc": "The timestamp included in the last message we have seen for this partition/producer pair.",
+              "type": "long"
+            },
+            {
+              "name": "checksumType",
+              "doc": "The current mapping is the following: 0 => None, 1 => MD5, 2 => Adler32, 3 => CRC32.",
+              "type": "int"
+            },
+            {
+              "name": "checksumState",
+              "doc": "The value of the checksum computed since the last StartOfSegment ControlMessage.",
+              "type": "bytes"
+            },
+            {
+              "name": "aggregates",
+              "doc": "The aggregates that have been computed so far since the last StartOfSegment ControlMessage.",
+              "type": {
+                "type": "map",
+                "values": "long"
+              }
+            },
+            {
+              "name": "debugInfo",
+              "doc": "The debug info received as part of the last StartOfSegment ControlMessage.",
+              "type": {
+                "type": "map",
+                "values": "string"
+              }
+            }
+          ]
+        }
+      },
+      "default": {}
+    },
+    {
+      "name": "latestOffset",
+      "doc": "The last Kafka offset consumed successfully in this partition.",
+      "type": "long"
+    }
+  ]
+}

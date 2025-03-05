@@ -410,6 +410,20 @@ public class Segment {
     return deduped;
   }
 
+  public ProducerPartitionState toProducerPartitionState() {
+    ProducerPartitionState pps = new ProducerPartitionState();
+    pps.segmentNumber = segmentNumber;
+    pps.segmentStatus = getStatus().getValue();
+    pps.messageSequenceNumber = sequenceNumber;
+    pps.checksumState = ByteBuffer.wrap(checkSum.getEncodedState());
+    pps.checksumType = checkSum.getType().getValue();
+    pps.aggregates = aggregates;
+    pps.debugInfo = debugInfo;
+    pps.messageTimestamp = lastRecordProducerTimestamp;
+    pps.isRegistered = registered;
+    return pps;
+  }
+
   // Only for testing.
   public void setStarted(boolean started) {
     this.started = started;

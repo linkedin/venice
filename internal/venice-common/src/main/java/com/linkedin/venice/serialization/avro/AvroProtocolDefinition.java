@@ -186,7 +186,7 @@ public enum AvroProtocolDefinition {
   /**
    * Global Realtime Topic Data Integrity Validator is the RT DIV snapshot propagated from the leader to followers.
    */
-  GLOBAL_RT_DIV_STATE(1, GlobalRtDivState.class);
+  GLOBAL_RT_DIV_STATE(2, GlobalRtDivState.class);
 
   private static final Set<Byte> magicByteSet = validateMagicBytes();
 

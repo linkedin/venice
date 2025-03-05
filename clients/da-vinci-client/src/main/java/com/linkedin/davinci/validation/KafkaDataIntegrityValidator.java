@@ -111,7 +111,20 @@ public class KafkaDataIntegrityValidator {
 
   public void cloneProducerStates(int partition, KafkaDataIntegrityValidator newValidator) {
     PartitionTracker destPartitionTracker = newValidator.registerPartition(partition);
-    this.partitionTrackers.get(partition).cloneProducerStates(destPartitionTracker);
+    this.partitionTrackers.get(partition).cloneProducerStates(destPartitionTracker, null);
+  }
+
+  /**
+   * Returns the RT DIV state for a given partition and broker URL, and the VT DIV state
+   */
+  // TODO: does this need synchronized because it can be called from multiple consumer threads?
+  public PartitionTracker cloneProducerStates(int partition, String brokerUrl) {
+    PartitionTracker clonedPartitionTracker = partitionTrackerCreator.apply(partition);
+    final PartitionTracker existingPartitionTracker = this.partitionTrackers.get(partition);
+    if (existingPartitionTracker != null) {
+      existingPartitionTracker.cloneProducerStates(clonedPartitionTracker, brokerUrl); // for a single broker
+    }
+    return clonedPartitionTracker;
   }
 
   /**
@@ -135,6 +148,11 @@ public class KafkaDataIntegrityValidator {
         consumerRecord,
         errorMetricCallback,
         this.kafkaLogCompactionDelayInMs);
+  }
+
+  public void updateLatestConsumedVtOffset(int partition, long offset) {
+    PartitionTracker partitionTracker = registerPartition(partition);
+    partitionTracker.updateLatestConsumedVtOffset(offset); // TODO: should null check be added here?
   }
 
   /**

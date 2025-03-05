@@ -4,15 +4,20 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -24,12 +29,15 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
+import com.linkedin.davinci.validation.DivSnapshot;
+import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.Store;
@@ -43,6 +51,8 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -212,19 +222,20 @@ public class LeaderFollowerStoreIngestionTaskTest {
     String versionTopic = version.kafkaTopicName();
     doReturn(versionTopic).when(mockVeniceStoreVersionConfig).getStoreVersionName();
 
-    leaderFollowerStoreIngestionTask = new LeaderFollowerStoreIngestionTask(
-        mockStorageService,
-        builder,
-        mockStore,
-        version,
-        mockProperties,
-        mockBooleanSupplier,
-        mockVeniceStoreVersionConfig,
-        0,
-        false,
-        Optional.empty(),
-        null,
-        null);
+    leaderFollowerStoreIngestionTask = spy(
+        new LeaderFollowerStoreIngestionTask(
+            mockStorageService,
+            builder,
+            mockStore,
+            version,
+            mockProperties,
+            mockBooleanSupplier,
+            mockVeniceStoreVersionConfig,
+            0,
+            false,
+            Optional.empty(),
+            null,
+            null));
 
     leaderFollowerStoreIngestionTask.addPartitionConsumptionState(0, mockPartitionConsumptionState);
   }
@@ -377,5 +388,84 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(ControlMessageType.START_OF_SEGMENT.getValue()).when(controlMessage).getControlMessageType();
     doReturn((long) seqNumber).when(pubSubMessage).getOffset();
     return pubSubMessageProcessedResultWrapper;
+  }
+
+  @Test
+  public void testSendGlobalRtDivMessage() throws InterruptedException {
+    setUp();
+    int partition = 1;
+    long offset = 3L;
+    long messageTime = 5;
+    PubSubMessage mockMessage = mock(PubSubMessage.class);
+    PubSubTopicPartition mockTopicPartition = mock(PubSubTopicPartition.class);
+    doReturn(partition).when(mockTopicPartition).getPartitionNumber();
+    doReturn(offset).when(mockMessage).getOffset();
+    doReturn(mockTopicPartition).when(mockMessage).getTopicPartition();
+    doReturn(messageTime).when(mockMessage).getPubSubMessageTime();
+    VeniceWriter mockWriter = mock(VeniceWriter.class);
+    Lazy<VeniceWriter<byte[], byte[], byte[]>> lazyMockWriter = Lazy.of(() -> mockWriter);
+    doReturn(lazyMockWriter).when(mockPartitionConsumptionState).getVeniceWriterLazyRef();
+    doReturn(mock(KafkaMessageEnvelope.class)).when(mockWriter)
+        .getKafkaMessageEnvelope(any(), anyBoolean(), anyInt(), anyBoolean(), any(), anyLong());
+    String brokerUrl = "localhost:1234";
+    byte[] keyBytes = LeaderFollowerStoreIngestionTask.getGlobalRtDivKeyName(brokerUrl).getBytes();
+
+    leaderFollowerStoreIngestionTask
+        .sendGlobalRtDivMessage(mockMessage, mockPartitionConsumptionState, partition, brokerUrl, 0L, null, null);
+
+    ArgumentCaptor<byte[]> valueBytesArgumentCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<LeaderProducerCallback> callbackArgumentCaptor =
+        ArgumentCaptor.forClass(LeaderProducerCallback.class);
+    verify(mockWriter, times(1)).put(
+        eq(keyBytes),
+        valueBytesArgumentCaptor.capture(),
+        eq(partition),
+        anyInt(),
+        callbackArgumentCaptor.capture(),
+        any(),
+        anyLong(),
+        any(),
+        any(),
+        any(),
+        eq(false));
+
+    // Verify that GlobalRtDivState is correctly serialized from the VeniceWriter#put() call
+    byte[] valueBytes = valueBytesArgumentCaptor.getValue();
+    InternalAvroSpecificSerializer<GlobalRtDivState> serializer =
+        AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer();
+    GlobalRtDivState globalRtDiv =
+        serializer.deserialize(valueBytes, AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
+    assertNotNull(globalRtDiv);
+
+    // Verify the callback has PartitionTracker (VT + RT DIV)
+    LeaderProducerCallback callback = callbackArgumentCaptor.getValue();
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> callbackPayload = callback.getSourceConsumerRecord();
+    assertEquals(callbackPayload.getKey().getKey(), keyBytes);
+    assertEquals(callbackPayload.getKey().getKeyHeaderByte(), MessageType.GLOBAL_RT_DIV.getKeyHeaderByte());
+    assertEquals(callbackPayload.getValue().getMessageType(), MessageType.PUT.getValue());
+    assertEquals(callbackPayload.getPartition(), partition);
+    assertTrue(callbackPayload.getValue().payloadUnion instanceof DivSnapshot); // direct access bc the KME is a mock
+    DivSnapshot divSnapshot = (DivSnapshot) callbackPayload.getValue().payloadUnion;
+    assertEquals(divSnapshot.latestConsumedRtOffset, offset);
+    assertEquals(divSnapshot.partitionTracker.getPartition(), partition);
+  }
+
+  @Test
+  public void testUpdateLatestConsumedVtOffset() throws InterruptedException {
+    setUp();
+    LeaderFollowerStoreIngestionTask mockIngestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    PubSubMessageProcessedResultWrapper cm = getMockMessage(1);
+    PubSubTopic mockTopic = cm.getMessage().getTopicPartition().getPubSubTopic();
+    doReturn(false).when(mockTopic).isRealTime();
+    doReturn(mockPartitionConsumptionState).when(mockIngestionTask).getPartitionConsumptionState(anyInt());
+    doReturn(LeaderFollowerStateType.STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
+    doCallRealMethod().when(mockIngestionTask)
+        .delegateConsumerRecord(any(), anyInt(), any(), anyInt(), anyLong(), anyLong());
+    KafkaDataIntegrityValidator consumerDiv = mock(KafkaDataIntegrityValidator.class);
+    doReturn(consumerDiv).when(mockIngestionTask).getKafkaDataIntegrityValidatorForLeaders();
+    doReturn(true).when(mockIngestionTask).isGlobalRtDivEnabled();
+
+    mockIngestionTask.delegateConsumerRecord(cm, 0, "testURL", 0, 0, 0);
+    verify(consumerDiv, times(1)).updateLatestConsumedVtOffset(0, 1L);
   }
 }
