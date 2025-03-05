@@ -4,7 +4,6 @@ import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_CLUSTE
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_SCHEMA_ID;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
 
-import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -29,6 +28,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
@@ -38,6 +38,8 @@ import java.util.concurrent.TimeUnit;
 public class ThinClientMetaStoreBasedRepository extends NativeMetadataRepository {
   private final Map<String, AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue>> storeClientMap =
       new VeniceConcurrentHashMap<>();
+  private final static List<Class<? extends Throwable>> RETRIABLE_EXCEPTIONS =
+      Collections.singletonList(VeniceRetriableException.class);
   private final ICProvider icProvider;
 
   public ThinClientMetaStoreBasedRepository(
@@ -91,22 +93,25 @@ public class ThinClientMetaStoreBasedRepository extends NativeMetadataRepository
     final Callable<CompletableFuture<StoreMetaValue>> supplier = () -> getAvroClientForMetaStore(storeName).get(key);
     Callable<CompletableFuture<StoreMetaValue>> wrappedSupplier =
         icProvider == null ? supplier : () -> icProvider.call(getClass().getCanonicalName(), supplier);
-    StoreMetaValue value = RetryUtils.executeWithMaxAttempt(() -> {
-      try {
-        return wrappedSupplier.call().get(5, TimeUnit.SECONDS);
-      } catch (ServiceDiscoveryException e) {
-        throw e;
-      } catch (Exception e) {
-        throw new VeniceRetriableException(
-            "Failed to get data from meta store using thin client for store: " + storeName + " with key: " + key,
-            e);
-      }
-    }, 10, Duration.ofSeconds(1), Collections.singletonList(VeniceRetriableException.class));
 
-    if (value == null) {
+    try {
+      return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
+        try {
+          StoreMetaValue storeMetaValue = wrappedSupplier.call().get(3, TimeUnit.SECONDS);
+          if (storeMetaValue == null) {
+            throw new VeniceRetriableException(
+                "Failed to get data from meta store using thin client for store: " + storeName + " with key: " + key);
+          }
+          return storeMetaValue;
+        } catch (Exception e) {
+          throw new VeniceRetriableException(
+              "Failed to get data from meta store using thin client for store: " + storeName + " with key: " + key,
+              e);
+        }
+      }, 15, Duration.ofSeconds(1), Duration.ofSeconds(3), Duration.ofMinutes(3), RETRIABLE_EXCEPTIONS);
+    } catch (Exception e) {
       throw new MissingKeyInStoreMetadataException(key.toString(), StoreMetaValue.class.getSimpleName());
     }
-    return value;
   }
 
   @Override
