@@ -25,6 +25,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
@@ -82,6 +83,74 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
+  public void testOldStoresWithHybridStoreVersioning() throws IOException {
+    String storeName = Utils.getUniqueString("TestOldStoresWithHybridStoreVersioning");
+    String clusterName = CLUSTER_NAMES[0];
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+
+    ControllerClient parentControllerClient =
+        ControllerClient.constructClusterControllerClient(clusterName, parentControllerURLs);
+    ControllerClient[] childControllerClients = new ControllerClient[childDatacenters.size()];
+    for (int i = 0; i < childDatacenters.size(); i++) {
+      childControllerClients[i] =
+          new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString());
+    }
+
+    NewStoreResponse newStoreResponse =
+        parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
+    Assert.assertFalse(
+        newStoreResponse.isError(),
+        "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+
+    // make it an old-style store by removing the rt name
+    String newRealTimeTopicNameInCofnig = "";
+    String newRealTimeTopicName = storeName + Version.REAL_TIME_TOPIC_SUFFIX;
+    UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams();
+    updateStoreParams.setIncrementalPushEnabled(true)
+        .setBackupStrategy(BackupStrategy.KEEP_MIN_VERSIONS)
+        .setNumVersionsToPreserve(2)
+        .setHybridRewindSeconds(1000)
+        .setActiveActiveReplicationEnabled(true)
+        .setRealTimeTopicName(newRealTimeTopicNameInCofnig)
+        .setHybridOffsetLagThreshold(1000);
+    TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
+
+    for (ControllerClient childControllerClient: childControllerClients) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        StoreInfo storeInfo = childControllerClient.getStore(storeName).getStore();
+        Assert.assertNotNull(storeInfo.getHybridStoreConfig());
+        String realTimeTopicNameInStore = storeInfo.getHybridStoreConfig().getRealTimeTopicName();
+
+        Assert.assertEquals(realTimeTopicNameInStore, newRealTimeTopicNameInCofnig);
+      });
+    }
+
+    // create new version by doing an empty push
+    parentControllerClient
+        .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
+
+    for (ControllerClient controllerClient: childControllerClients) {
+      Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 1);
+    }
+
+    for (ControllerClient childControllerClient: childControllerClients) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        StoreInfo storeInfo = childControllerClient.getStore(storeName).getStore();
+        Version version = storeInfo.getVersions().get(0);
+        String realTimeTopicNameInStore = storeInfo.getHybridStoreConfig().getRealTimeTopicName();
+        String realTimeTopicNameInVersion = version.getHybridStoreConfig().getRealTimeTopicName();
+        String realTimeTopicInStoreThroughAPI = Utils.getRealTimeTopicName(storeInfo);
+        String realTimeTopicInVersionThroughAPI = Utils.getRealTimeTopicName(version);
+
+        Assert.assertEquals(realTimeTopicNameInStore, newRealTimeTopicNameInCofnig);
+        Assert.assertEquals(realTimeTopicNameInVersion, newRealTimeTopicNameInCofnig);
+        Assert.assertEquals(realTimeTopicInStoreThroughAPI, newRealTimeTopicName);
+        Assert.assertEquals(realTimeTopicInVersionThroughAPI, newRealTimeTopicName);
+      });
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
   public void testUpdateRealTimeTopicName() {
     String storeName = Utils.getUniqueString("TestUpdateRealTimeTopicName");
     String clusterName = CLUSTER_NAMES[0];
@@ -134,7 +203,7 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
   }
 
   @Test(timeOut = 5 * TEST_TIMEOUT)
-  public void testHybridStoreRepartitioning() {
+  public void testHybridStoreVersioning() {
     String storeName = Utils.getUniqueString("TestHybridStoreRepartitioning");
     String clusterName = CLUSTER_NAMES[0];
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
