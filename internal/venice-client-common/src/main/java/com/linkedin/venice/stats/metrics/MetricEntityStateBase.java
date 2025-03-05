@@ -7,7 +7,7 @@ import io.tehuti.metrics.MeasurableStat;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import javax.annotation.Nonnull;
+import org.apache.commons.lang.Validate;
 
 
 /**
@@ -22,7 +22,7 @@ public class MetricEntityStateBase extends MetricEntityState {
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
-      @Nonnull Attributes baseAttributes) {
+      Attributes baseAttributes) {
     this(metricEntity, otelRepository, null, null, Collections.EMPTY_LIST, baseDimensionsMap, baseAttributes);
   }
 
@@ -33,11 +33,16 @@ public class MetricEntityStateBase extends MetricEntityState {
       TehutiMetricNameEnum tehutiMetricNameEnum,
       List<MeasurableStat> tehutiMetricStats,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
-      @Nonnull Attributes baseAttributes) {
+      Attributes baseAttributes) {
     super(metricEntity, otelRepository, registerTehutiSensorFn, tehutiMetricNameEnum, tehutiMetricStats);
-    validateRequiredDimensions(metricEntity, baseDimensionsMap);
-    // directly passing in the Attributes as multiple MetricEntityState can reuse the same base attributes object.
-    // If we want to fully abstract the Attribute creation inside these classes, we can create it here instead
+    validateRequiredDimensions(metricEntity, baseAttributes, baseDimensionsMap);
+    // directly using the Attributes as multiple MetricEntityState can reuse the same base attributes object.
+    // If we want to fully abstract the Attribute creation inside these classes, we can create it here instead.
+    if (emitOpenTelemetryMetrics()) {
+      Validate.notNull(
+          baseAttributes,
+          "Base attributes cannot be null for MetricEntityStateBase for metric: " + metricEntity.getMetricName());
+    }
     this.attributes = baseAttributes;
   }
 

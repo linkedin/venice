@@ -2,6 +2,9 @@ package com.linkedin.venice.stats.metrics;
 
 import static com.linkedin.venice.read.RequestType.MULTI_GET_STREAMING;
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.getDefaultFormat;
+import static com.linkedin.venice.stats.dimensions.RequestRetryAbortReason.SLOW_ROUTE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_ABORT_REASON;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
@@ -11,10 +14,8 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
-import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
-import com.linkedin.venice.stats.dimensions.RequestRetryAbortReason;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
@@ -45,12 +46,12 @@ public class MetricEntityStateTwoEnumTest {
     when(mockOtelRepository.getMetricsConfig()).thenReturn(mockMetricsConfig);
     mockMetricEntity = Mockito.mock(MetricEntity.class);
     Set<VeniceMetricsDimensions> dimensionsSet = new HashSet<>();
-    dimensionsSet.add(VeniceMetricsDimensions.VENICE_REQUEST_METHOD);
+    dimensionsSet.add(VENICE_REQUEST_METHOD);
     dimensionsSet.add(MetricEntityStateTest.DimensionEnum1.DIMENSION_ONE.getDimensionName());
     dimensionsSet.add(MetricEntityStateTest.DimensionEnum2.DIMENSION_ONE.getDimensionName());
     doReturn(dimensionsSet).when(mockMetricEntity).getDimensionsList();
     baseDimensionsMap = new HashMap<>();
-    baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_REQUEST_METHOD, MULTI_GET_STREAMING.getDimensionValue());
+    baseDimensionsMap.put(VENICE_REQUEST_METHOD, MULTI_GET_STREAMING.getDimensionValue());
 
     MetricEntityStateTest.DimensionEnum1[] enum1Values = MetricEntityStateTest.DimensionEnum1.values();
     MetricEntityStateTest.DimensionEnum2[] enum2Values = MetricEntityStateTest.DimensionEnum2.values();
@@ -188,8 +189,7 @@ public class MetricEntityStateTwoEnumTest {
   public void testValidateRequiredDimensions() {
     Map<VeniceMetricsDimensions, String> baseDimensionsMap = new HashMap<>();
     // case 1: right values
-    baseDimensionsMap
-        .put(VeniceMetricsDimensions.VENICE_REQUEST_METHOD, RequestType.MULTI_GET_STREAMING.getDimensionValue());
+    baseDimensionsMap.put(VENICE_REQUEST_METHOD, MULTI_GET_STREAMING.getDimensionValue());
     MetricEntityStateTwoEnums<MetricEntityStateTest.DimensionEnum1, MetricEntityStateTest.DimensionEnum2> metricEntityState =
         MetricEntityStateTwoEnums.create(
             mockMetricEntity,
@@ -201,11 +201,8 @@ public class MetricEntityStateTwoEnumTest {
 
     // case 2: baseDimensionsMap has extra values
     baseDimensionsMap.clear();
-    baseDimensionsMap
-        .put(VeniceMetricsDimensions.VENICE_REQUEST_METHOD, RequestType.MULTI_GET_STREAMING.getDimensionValue());
-    baseDimensionsMap.put(
-        VeniceMetricsDimensions.VENICE_REQUEST_RETRY_ABORT_REASON,
-        RequestRetryAbortReason.SLOW_ROUTE.getDimensionValue());
+    baseDimensionsMap.put(VENICE_REQUEST_METHOD, MULTI_GET_STREAMING.getDimensionValue());
+    baseDimensionsMap.put(VENICE_REQUEST_RETRY_ABORT_REASON, SLOW_ROUTE.getDimensionValue());
     try {
       MetricEntityStateTwoEnums.create(
           mockMetricEntity,
@@ -234,9 +231,7 @@ public class MetricEntityStateTwoEnumTest {
 
     // case 4: baseDimensionsMap has same count, but different dimensions
     baseDimensionsMap.clear();
-    baseDimensionsMap.put(
-        VeniceMetricsDimensions.VENICE_REQUEST_RETRY_ABORT_REASON,
-        RequestRetryAbortReason.SLOW_ROUTE.getDimensionValue());
+    baseDimensionsMap.put(VENICE_REQUEST_RETRY_ABORT_REASON, SLOW_ROUTE.getDimensionValue());
     try {
       MetricEntityStateTwoEnums.create(
           mockMetricEntity,

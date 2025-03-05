@@ -1,7 +1,15 @@
 package com.linkedin.venice.stats.metrics;
 
+import static com.linkedin.venice.read.RequestType.MULTI_GET_STREAMING;
+import static com.linkedin.venice.stats.dimensions.RequestRetryType.ERROR_RETRY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.metrics.MetricType.HISTOGRAM;
 import static java.util.Collections.singletonList;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -11,13 +19,12 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
-import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
-import com.linkedin.venice.stats.dimensions.RequestRetryType;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.common.AttributesBuilder;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.tehuti.metrics.Sensor;
@@ -58,22 +65,58 @@ public class MetricEntityStateTest {
   public void setUp() {
     mockOtelRepository = mock(VeniceOpenTelemetryMetricsRepository.class);
     when(mockOtelRepository.emitOpenTelemetryMetrics()).thenReturn(true);
+    when(mockOtelRepository.getMetricFormat()).thenReturn(VeniceOpenTelemetryMetricNamingFormat.getDefaultFormat());
+    when(mockOtelRepository.getDimensionName(any())).thenCallRealMethod();
     mockMetricEntity = mock(MetricEntity.class);
     doReturn(HISTOGRAM).when(mockMetricEntity).getMetricType();
     Set<VeniceMetricsDimensions> dimensionsSet = new HashSet<>();
-    dimensionsSet.add(VeniceMetricsDimensions.VENICE_REQUEST_METHOD);
+    dimensionsSet.add(VENICE_REQUEST_METHOD);
     doReturn(dimensionsSet).when(mockMetricEntity).getDimensionsList();
     sensorRegistrationFunction = (name, stats) -> mock(Sensor.class);
     mockSensor = mock(Sensor.class);
     baseDimensionsMap = new HashMap<>();
-    baseDimensionsMap
-        .put(VeniceMetricsDimensions.VENICE_REQUEST_METHOD, RequestType.MULTI_GET_STREAMING.getDimensionValue());
+    baseDimensionsMap.put(VENICE_REQUEST_METHOD, MULTI_GET_STREAMING.getDimensionValue());
     baseAttributes = Attributes.builder()
         .put(
-            VeniceMetricsDimensions.VENICE_REQUEST_METHOD
-                .getDimensionName(VeniceOpenTelemetryMetricNamingFormat.getDefaultFormat()),
-            RequestType.MULTI_GET_STREAMING.getDimensionValue())
+            VENICE_REQUEST_METHOD.getDimensionName(VeniceOpenTelemetryMetricNamingFormat.getDefaultFormat()),
+            MULTI_GET_STREAMING.getDimensionValue())
         .build();
+  }
+
+  @Test
+  public void testCreateMetricWithOtelDisabled() {
+    when(mockMetricEntity.getMetricType()).thenReturn(MetricType.COUNTER);
+    LongCounter longCounter = mock(LongCounter.class);
+    when(mockOtelRepository.createInstrument(mockMetricEntity)).thenReturn(longCounter);
+
+    // without tehuti sensor
+    MetricEntityState metricEntityState =
+        new MetricEntityStateBase(mockMetricEntity, null, baseDimensionsMap, baseAttributes);
+    Assert.assertNotNull(metricEntityState);
+    Assert.assertNull(metricEntityState.getOtelMetric());
+    Assert.assertNull(metricEntityState.getTehutiSensor()); // No Tehuti sensors added
+    Assert.assertEquals(((MetricEntityStateBase) metricEntityState).getAttributes(), baseAttributes);
+
+    // without tehuti sensor with empty attributes
+    metricEntityState = new MetricEntityStateBase(mockMetricEntity, null, baseDimensionsMap, null);
+    Assert.assertNotNull(metricEntityState);
+    Assert.assertNull(metricEntityState.getOtelMetric());
+    Assert.assertNull(metricEntityState.getTehutiSensor()); // No Tehuti sensors added
+    Assert.assertNull(((MetricEntityStateBase) metricEntityState).getAttributes());
+
+    // with tehuti sensor
+    metricEntityState = new MetricEntityStateBase(
+        mockMetricEntity,
+        null,
+        sensorRegistrationFunction,
+        TestTehutiMetricNameEnum.TEST_METRIC,
+        singletonList(new Count()),
+        baseDimensionsMap,
+        baseAttributes);
+    Assert.assertNotNull(metricEntityState);
+    Assert.assertNull(metricEntityState.getOtelMetric());
+    Assert.assertNotNull(metricEntityState.getTehutiSensor());
+    Assert.assertEquals(((MetricEntityStateBase) metricEntityState).getAttributes(), baseAttributes);
   }
 
   @Test
@@ -89,6 +132,14 @@ public class MetricEntityStateTest {
     Assert.assertNotNull(metricEntityState.getOtelMetric());
     Assert.assertNull(metricEntityState.getTehutiSensor()); // No Tehuti sensors added
     Assert.assertEquals(((MetricEntityStateBase) metricEntityState).getAttributes(), baseAttributes);
+
+    // without tehuti sensor but with empty attributes
+    try {
+      new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, null);
+      fail();
+    } catch (IllegalArgumentException e) {
+      Assert.assertTrue(e.getMessage().contains("Base attributes cannot be null for MetricEntityStateBase"));
+    }
 
     // with tehuti sensor
     metricEntityState = new MetricEntityStateBase(
@@ -175,50 +226,74 @@ public class MetricEntityStateTest {
   public void testValidateRequiredDimensions() {
     Map<VeniceMetricsDimensions, String> baseDimensionsMap = new HashMap<>();
     // case 1: right values
-    baseDimensionsMap
-        .put(VeniceMetricsDimensions.VENICE_REQUEST_METHOD, RequestType.MULTI_GET_STREAMING.getDimensionValue());
-    Attributes baseAttributes = Attributes.builder()
-        .put(
-            VeniceMetricsDimensions.VENICE_REQUEST_METHOD
-                .getDimensionName(VeniceOpenTelemetryMetricNamingFormat.getDefaultFormat()),
-            RequestType.MULTI_GET_STREAMING.getDimensionValue())
-        .build();
+    baseDimensionsMap.put(VENICE_REQUEST_METHOD, MULTI_GET_STREAMING.getDimensionValue());
+    Attributes baseAttributes1 = getBaseAttributes(baseDimensionsMap);
     MetricEntityState metricEntityState =
-        new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
+        new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes1);
     assertNotNull(metricEntityState);
 
-    // case 2: baseDimensionsMap has extra values
-    baseDimensionsMap.clear();
-    baseDimensionsMap
-        .put(VeniceMetricsDimensions.VENICE_REQUEST_METHOD, RequestType.MULTI_GET_STREAMING.getDimensionValue());
-    baseDimensionsMap
-        .put(VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE, RequestRetryType.ERROR_RETRY.getDimensionValue());
+    // case 2: baseAttributes have different count than baseDimensionsMap
+    Attributes baseAttributes2 = Attributes.builder().build();
     try {
-      new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
+      new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes2);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertTrue(e.getMessage().contains("should have the same size and values"));
+    }
+
+    // case 3: baseAttributes have same count as baseDimensionsMap but different content
+    Map<VeniceMetricsDimensions, String> baseAttributes3Map = new HashMap<>();
+    baseAttributes3Map.put(VENICE_REQUEST_RETRY_TYPE, ERROR_RETRY.getDimensionValue());
+    Attributes baseAttributes3 = getBaseAttributes(baseAttributes3Map);
+    try {
+      new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes3);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertTrue(e.getMessage().contains("should contain all the keys in baseDimensionsMap"));
+    }
+
+    // case 4: baseDimensionsMap has extra values
+    baseDimensionsMap.clear();
+    baseDimensionsMap.put(VENICE_REQUEST_METHOD, MULTI_GET_STREAMING.getDimensionValue());
+    baseDimensionsMap.put(VENICE_REQUEST_RETRY_TYPE, ERROR_RETRY.getDimensionValue());
+    Attributes baseAttributes4 = getBaseAttributes(baseDimensionsMap);
+    try {
+      new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes4);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
     }
 
-    // case 3: baseDimensionsMap has less values
+    // case 5: baseDimensionsMap has less values
     baseDimensionsMap.clear();
+    Attributes baseAttributes5 = Attributes.builder().build();
     try {
-      new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
+      new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes5);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
     }
 
-    // case 4: baseDimensionsMap has same count, but different dimensions
+    // case 6: baseDimensionsMap has same count, but different dimensions
     baseDimensionsMap.clear();
-    baseDimensionsMap
-        .put(VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE, RequestRetryType.ERROR_RETRY.getDimensionValue());
+    baseDimensionsMap.put(VENICE_REQUEST_RETRY_TYPE, ERROR_RETRY.getDimensionValue());
+    Attributes baseAttributes6 = getBaseAttributes(baseDimensionsMap);
     try {
-      new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
+      new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes6);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
     }
+  }
+
+  private Attributes getBaseAttributes(Map<VeniceMetricsDimensions, String> inputMap) {
+    AttributesBuilder builder = Attributes.builder();
+    for (Map.Entry<VeniceMetricsDimensions, String> entry: inputMap.entrySet()) {
+      builder.put(
+          entry.getKey().getDimensionName(VeniceOpenTelemetryMetricNamingFormat.getDefaultFormat()),
+          entry.getValue());
+    }
+    return builder.build();
   }
 
   enum DimensionEnum1 implements VeniceDimensionInterface {
@@ -232,7 +307,7 @@ public class MetricEntityStateTest {
 
     @Override
     public VeniceMetricsDimensions getDimensionName() {
-      return VeniceMetricsDimensions.VENICE_STORE_NAME; // Dummy dimension
+      return VENICE_STORE_NAME; // Dummy dimension
     }
 
     @Override
@@ -252,7 +327,7 @@ public class MetricEntityStateTest {
 
     @Override
     public VeniceMetricsDimensions getDimensionName() {
-      return VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE; // Dummy dimension
+      return HTTP_RESPONSE_STATUS_CODE; // Dummy dimension
     }
 
     @Override
@@ -272,7 +347,7 @@ public class MetricEntityStateTest {
 
     @Override
     public VeniceMetricsDimensions getDimensionName() {
-      return VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY; // Dummy dimension
+      return HTTP_RESPONSE_STATUS_CODE_CATEGORY; // Dummy dimension
     }
 
     @Override
@@ -285,7 +360,7 @@ public class MetricEntityStateTest {
     ; // Empty enum
     @Override
     public VeniceMetricsDimensions getDimensionName() {
-      return VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
+      return VENICE_REQUEST_METHOD;
     }
 
     @Override

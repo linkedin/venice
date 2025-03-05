@@ -45,7 +45,7 @@ public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterfa
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
       Class<E> enumTypeClass) {
     super(metricEntity, otelRepository, registerTehutiSensorFn, tehutiMetricNameEnum, tehutiMetricStats);
-    validateRequiredDimensions(metricEntity, baseDimensionsMap, enumTypeClass);
+    validateRequiredDimensions(metricEntity, null, baseDimensionsMap, enumTypeClass);
     this.enumTypeClass = enumTypeClass;
     this.attributesEnumMap = createAttributesEnumMap(metricEntity, otelRepository, baseDimensionsMap);
   }

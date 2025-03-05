@@ -3,6 +3,7 @@ package com.linkedin.venice.stats.metrics;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
@@ -11,6 +12,7 @@ import io.tehuti.metrics.Sensor;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -35,6 +37,7 @@ import org.apache.logging.log4j.Logger;
 public abstract class MetricEntityState {
   static final Logger LOGGER = LogManager.getLogger(MetricEntityState.class);
   private final boolean emitOpenTelemetryMetrics;
+  private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final MetricEntity metricEntity;
   /** Otel metric */
   private Object otelMetric = null;
@@ -49,6 +52,7 @@ public abstract class MetricEntityState {
       List<MeasurableStat> tehutiMetricStats) {
     this.metricEntity = metricEntity;
     this.emitOpenTelemetryMetrics = (otelRepository != null) && otelRepository.emitOpenTelemetryMetrics();
+    this.otelRepository = otelRepository;
     createMetric(otelRepository, tehutiMetricNameEnum, tehutiMetricStats, registerTehutiSensorFn);
   }
 
@@ -127,6 +131,7 @@ public abstract class MetricEntityState {
    */
   void validateRequiredDimensions(
       MetricEntity metricEntity,
+      Attributes baseAttributes,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
       Class<?>... enumTypes) {
     Set<VeniceMetricsDimensions> currentDimensions = new HashSet<>();
@@ -151,8 +156,28 @@ public abstract class MetricEntityState {
       }
     }
 
-    // verify if the currentDimensions match the required dimensions
+    // validate the input dimensions and compare against the required dimensions
     if (emitOpenTelemetryMetrics()) {
+      if (baseAttributes != null) {
+        // check if baseAttributes has all the dimensions in baseDimensionsMap
+        if (baseAttributes.size() != baseDimensionsMap.size()) {
+          throw new IllegalArgumentException(
+              "baseAttributes: " + baseAttributes.asMap().keySet() + " and baseDimensionsMap: "
+                  + baseDimensionsMap.keySet() + " should have the same size and values");
+        }
+        for (Map.Entry<VeniceMetricsDimensions, String> entry: baseDimensionsMap.entrySet()) {
+          AttributeKey<String> key = AttributeKey.stringKey(otelRepository.getDimensionName(entry.getKey()));
+          Map<AttributeKey<?>, Object> baseAttributesAsMap = baseAttributes.asMap();
+          if (!baseAttributesAsMap.containsKey(key)
+              || !Objects.equals(baseAttributesAsMap.get(key), entry.getValue())) {
+            throw new IllegalArgumentException(
+                "baseAttributes: " + baseAttributes.asMap().keySet()
+                    + " should contain all the keys in baseDimensionsMap: " + baseDimensionsMap.keySet());
+          }
+        }
+      }
+
+      // check if the required dimensions match with the base+current dimensions
       // copy all baseDimensionsMap into currentDimensions
       if (baseDimensionsMap != null) {
         currentDimensions.addAll(baseDimensionsMap.keySet());
