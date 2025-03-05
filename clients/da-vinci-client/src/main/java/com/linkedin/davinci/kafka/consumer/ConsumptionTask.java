@@ -126,7 +126,8 @@ class ConsumptionTask implements Runnable {
             addSomeDelay = false;
           }
           beforePollingTimeStamp = System.currentTimeMillis();
-          topicPartitionsToUnsub = cleaner.getTopicPartitionsToUnsubscribe(topicPartitionsToUnsub); // N.B. cheap call
+          // N.B. cheap call
+          topicPartitionsToUnsub = cleaner.getTopicPartitionsToUnsubscribe(topicPartitionsToUnsub, dataReceiverMap);
           for (PubSubTopicPartition topicPartitionToUnSub: topicPartitionsToUnsub) {
             ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> dataReceiver =
                 dataReceiverMap.remove(topicPartitionToUnSub);
