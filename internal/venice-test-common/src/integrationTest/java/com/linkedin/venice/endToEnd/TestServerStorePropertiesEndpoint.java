@@ -1,6 +1,8 @@
 package com.linkedin.venice.endToEnd;
 
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -17,10 +19,12 @@ import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.SslUtils;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -74,13 +78,15 @@ public class TestServerStorePropertiesEndpoint extends AbstractClientEndToEndSet
         .setStoreLargestUsedVersion(clusterName, storeName, largestUsedVersion);
 
     Optional<Integer> largestKnownSchemaId = Optional.empty();
-    StorePropertiesResponseRecord record = getStorePropertiesResponseRecord(storeName, largestKnownSchemaId);
+    TestUtils.waitForNonDeterministicAssertion(TIME_OUT, TimeUnit.SECONDS, () -> {
+      StorePropertiesResponseRecord record = getStorePropertiesResponseRecord(storeName, largestKnownSchemaId);
 
-    assertEquals(record.storeMetaValue.storeProperties.owner.toString(), owner);
-    assertEquals(record.storeMetaValue.storeProperties.largestUsedVersionNumber, largestUsedVersion);
+      assertEquals(record.storeMetaValue.storeProperties.owner.toString(), owner);
+      assertEquals(record.storeMetaValue.storeProperties.largestUsedVersionNumber, largestUsedVersion);
 
-    Admin admin = veniceCluster.getLeaderVeniceController().getVeniceAdmin();
-    assertStorePropertiesResponseRecord(record, admin, storeName, largestKnownSchemaId);
+      Admin admin = veniceCluster.getLeaderVeniceController().getVeniceAdmin();
+      assertStorePropertiesResponseRecord(record, admin, storeName, largestKnownSchemaId);
+    });
   }
 
   @Test(timeOut = TIME_OUT)
@@ -96,13 +102,15 @@ public class TestServerStorePropertiesEndpoint extends AbstractClientEndToEndSet
         .setStoreLargestUsedVersion(clusterName, storeName, largestUsedVersion);
 
     Optional<Integer> largestKnownSchemaId = Optional.of(1);
-    StorePropertiesResponseRecord record = getStorePropertiesResponseRecord(storeName, largestKnownSchemaId);
+    TestUtils.waitForNonDeterministicAssertion(TIME_OUT, TimeUnit.SECONDS, () -> {
+      StorePropertiesResponseRecord record = getStorePropertiesResponseRecord(storeName, largestKnownSchemaId);
 
-    assertEquals(record.storeMetaValue.storeProperties.owner.toString(), owner);
-    assertEquals(record.storeMetaValue.storeProperties.largestUsedVersionNumber, largestUsedVersion);
+      assertEquals(record.storeMetaValue.storeProperties.owner.toString(), owner);
+      assertEquals(record.storeMetaValue.storeProperties.largestUsedVersionNumber, largestUsedVersion);
 
-    Admin admin = veniceCluster.getLeaderVeniceController().getVeniceAdmin();
-    assertStorePropertiesResponseRecord(record, admin, storeName, largestKnownSchemaId);
+      Admin admin = veniceCluster.getLeaderVeniceController().getVeniceAdmin();
+      assertStorePropertiesResponseRecord(record, admin, storeName, largestKnownSchemaId);
+    });
   }
 
   private StorePropertiesResponseRecord getStorePropertiesResponseRecord(
@@ -113,20 +121,21 @@ public class TestServerStorePropertiesEndpoint extends AbstractClientEndToEndSet
     // Request
     ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(_storeName).setVeniceURL(serverUrl);
     clientConfig.setSslFactory(sslFactory.get());
-    TransportClient transportClient = ClientFactory.getTransportClient(clientConfig);
-    String requestUrl = QueryAction.STORE_PROPERTIES.toString().toLowerCase() + "/" + _storeName;
-    if (largestKnownSchemaId.isPresent()) {
-      requestUrl += "/" + largestKnownSchemaId.get();
+    try (TransportClient transportClient = ClientFactory.getTransportClient(clientConfig)) {
+      String requestUrl = QueryAction.STORE_PROPERTIES.toString().toLowerCase() + "/" + _storeName;
+      if (largestKnownSchemaId.isPresent()) {
+        requestUrl += "/" + largestKnownSchemaId.get();
+      }
+      TransportClientResponse response = transportClient.get(requestUrl).get();
+
+      // Deserialize
+      Schema writerSchema = StorePropertiesResponseRecord.SCHEMA$;
+      RecordDeserializer<StorePropertiesResponseRecord> recordDeserializer = FastSerializerDeserializerFactory
+          .getFastAvroSpecificDeserializer(writerSchema, StorePropertiesResponseRecord.class);
+      record = recordDeserializer.deserialize(response.getBody());
+
+      return record;
     }
-    TransportClientResponse response = transportClient.get(requestUrl).get();
-
-    // Deserialize
-    Schema writerSchema = StorePropertiesResponseRecord.SCHEMA$;
-    RecordDeserializer<StorePropertiesResponseRecord> recordDeserializer = FastSerializerDeserializerFactory
-        .getFastAvroSpecificDeserializer(writerSchema, StorePropertiesResponseRecord.class);
-    record = recordDeserializer.deserialize(response.getBody());
-
-    return record;
   }
 
   private void assertStorePropertiesResponseRecord(
