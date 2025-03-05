@@ -75,7 +75,7 @@ public class PartitionTracker {
   // TODO: clear vtSegments
   private final VeniceConcurrentHashMap<GUID, Segment> vtSegments = new VeniceConcurrentHashMap<>();
   /**
-   * The equivalent for RT is not stored. The
+   * The equivalent for RT is not stored. It's the instantaneous offset when a DIV sync is triggered.
    */
   private long latestConsumedVtOffset;
 

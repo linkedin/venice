@@ -35,6 +35,7 @@ import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.view.ChangeCaptureViewWriter;
 import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
+import com.linkedin.davinci.validation.DivSnapshot;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
 import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.davinci.validation.PartitionTracker.TopicType;
@@ -2359,7 +2360,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * {@link StoreIngestionTask.waitForAllMessageToBeProcessedFromTopicPartition} only ensure the buffer queue is
        * drained before unsubscribe. Records being processed by shared consumer may see invalid partitionConsumptionState.
        */
-      PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
+      PartitionConsumptionState partitionConsumptionState = getPartitionConsumptionState(partition);
       if (partitionConsumptionState == null) {
         // The partition is likely unsubscribed, will skip these messages.
         return DelegateConsumerRecordResult.SKIPPED_MESSAGE;
@@ -2402,9 +2403,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           partitionConsumptionState.setVeniceWriterLazyRef(veniceWriterForRealTime);
         }
 
-        if (isGlobalRtDivEnabled() && consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()
+        if (isGlobalRtDivEnabled() && !consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()
             && msgType != MessageType.GLOBAL_RT_DIV) {
-          kafkaDataIntegrityValidatorForLeaders.updateLatestConsumedVtOffset(partition, consumerRecord.getOffset());
+          final long offset = consumerRecord.getOffset();
+          getKafkaDataIntegrityValidatorForLeaders().updateLatestConsumedVtOffset(partition, offset);
         }
 
         /**
@@ -3567,8 +3569,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     TopicType realTimeTopicType = TopicType.of(TopicType.REALTIME_TOPIC_TYPE, brokerUrl);
 
     // Snapshot the VT DIV + RT DIV (single broker URL) in preparation to be produced
-    PartitionTracker divSnapshot = kafkaDataIntegrityValidatorForLeaders.cloneProducerStates(partition, brokerUrl);
-    Map<CharSequence, ProducerPartitionState> rtDiv = divSnapshot.getPartitionStates(realTimeTopicType); // only RT DIV
+    PartitionTracker divClone = kafkaDataIntegrityValidatorForLeaders.cloneProducerStates(partition, brokerUrl);
+    Map<CharSequence, ProducerPartitionState> rtDiv = divClone.getPartitionStates(realTimeTopicType);
+
     // Create GlobalRtDivState (RT DIV + latestOffset) which will be serialized into a byte array
     GlobalRtDivState globalRtDiv = new GlobalRtDivState(brokerUrl, rtDiv, previousMessage.getOffset());
 
@@ -3583,7 +3586,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             true,
             leaderMetadataWrapper,
             APP_DEFAULT_LOGICAL_TS);
-    divEnvelope.payloadUnion = divSnapshot; // contains both VT + RT DIV
+    divEnvelope.payloadUnion = new DivSnapshot(divClone, previousMessage.getOffset()); // contains both VT + RT DIV
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> divMessage = new ImmutablePubSubMessage<>(
         divKey,
         divEnvelope,
@@ -4151,5 +4154,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     } else {
       return supplier.get();
     }
+  }
+
+  KafkaDataIntegrityValidator getKafkaDataIntegrityValidatorForLeaders() {
+    return kafkaDataIntegrityValidatorForLeaders; // mainly for testing
   }
 }
