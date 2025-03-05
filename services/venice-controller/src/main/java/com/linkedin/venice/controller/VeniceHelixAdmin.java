@@ -64,6 +64,7 @@ import com.linkedin.venice.controller.logcompaction.LogCompactionService;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
+import com.linkedin.venice.controller.stats.DeadStoreStats;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -8097,6 +8098,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String storeName,
       boolean isPartitionDetailEnabled) {
     throw new UnsupportedOperationException("This function has not been implemented.");
+  }
+
+  /**
+   * @see Admin#getDeadStores(String)
+   */
+  @Override
+  public List<StoreInfo> getDeadStores(String clusterName) {
+    return new DeadStoreStats().getDeadStores(getAllStores(clusterName))
   }
 
   /**

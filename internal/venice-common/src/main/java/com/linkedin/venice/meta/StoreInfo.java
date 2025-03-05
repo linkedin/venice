@@ -6,6 +6,7 @@ import static com.linkedin.venice.meta.Store.NUM_VERSION_PRESERVE_NOT_SET;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.writer.VeniceWriter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -320,6 +321,16 @@ public class StoreInfo {
    * Whether storage node read quota is enabled for this store.
    */
   private boolean storageNodeReadQuotaEnabled;
+
+  /**
+   * If isStoreDead is true, the store is considered dead and the reasonsStoreIsDead list contains the reasons why.
+   */
+  private List<String> reasonsStoreIsDead = new ArrayList<>();
+
+  /**
+   * flag to indicate if the store is dead
+   */
+  private boolean isStoreDead;
 
   private long minCompactionLagSeconds;
 
@@ -874,5 +885,21 @@ public class StoreInfo {
 
   public boolean getIsDavinciHeartbeatReported() {
     return this.isDavinciHeartbeatReported;
+  }
+
+  public void setIsStoreDead(boolean isStoreDead) {
+    this.isStoreDead = isStoreDead;
+  }
+
+  public boolean getIsStoreDead() {
+    return this.isStoreDead;
+  }
+
+  public void setReasonsStoreIsDead(List<String> reasons) {
+    this.reasonsStoreIsDead = reasons == null ? List.of() : List.copyOf(reasons);
+  }
+
+  public List<String> getReasonsStoreIsDead() {
+    return reasonsStoreIsDead;
   }
 }
