@@ -959,7 +959,12 @@ public interface Admin extends AutoCloseable, Closeable {
   int getLargestUsedVersionFromStoreGraveyard(String clusterName, String storeName);
 
   /**
-   * @return list of stores infos that are considered dead.
+   * @return list of stores infos that are considered dead. A store is considered dead if it exists but has no
+   * user traffic in it's read or write path.
+   *
+   * Linkedin deduces a store is dead if the acls associated with the store's
+   * current, future, and backup versions have no activity by non Venice services (excluding venice services to avoid
+   * venice ingestion traffic which doesn't reflect user traffic).
    */
   List<StoreInfo> getDeadStores(String clusterName);
 

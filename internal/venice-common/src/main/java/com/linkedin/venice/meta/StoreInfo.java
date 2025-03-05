@@ -322,6 +322,16 @@ public class StoreInfo {
    */
   private boolean storageNodeReadQuotaEnabled;
 
+  /**
+   * If isStoreDead is true, the store is considered dead and the reasonsStoreIsDead list contains the reasons why.
+   */
+  private List<String> reasonsStoreIsDead = new ArrayList<>();
+
+  /**
+   * flag to indicate if the store is dead
+   */
+  private boolean isStoreDead;
+
   private long minCompactionLagSeconds;
 
   private long maxCompactionLagSeconds;
@@ -339,8 +349,6 @@ public class StoreInfo {
   private String targetRegionSwap;
   private int targetRegionSwapWaitTime;
   private boolean isDavinciHeartbeatReported;
-  private final List<String> reasonsStoreIsDead = new ArrayList<>();
-  private boolean isStoreDead;
 
   public StoreInfo() {
   }

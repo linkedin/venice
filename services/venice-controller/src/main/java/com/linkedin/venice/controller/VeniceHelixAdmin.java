@@ -8110,10 +8110,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public List<StoreInfo> getDeadStores(String clusterName) {
-    checkControllerLeadershipFor(clusterName);
-    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
-    List<Store> storeList = resources.getStoreMetadataRepository().getAllStores();
-    return new DeadStoreStats().getDeadStores(storeList);
+    return new DeadStoreStats().getDeadStores(getAllStores(clusterName))
   }
 
   /**
