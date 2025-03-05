@@ -1,6 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
+import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
 
 import com.linkedin.d2.balancer.D2Client;
@@ -129,6 +130,11 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       extraProperties.put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterNames[0]);
       extraProperties.putAll(KafkaTestUtils.getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));
       pubBrokerDetails.forEach((key, value) -> extraProperties.putIfAbsent(key, value));
+      if (controllerProperties.containsKey(PARTICIPANT_MESSAGE_STORE_ENABLED)) {
+        extraProperties
+            .put(PARTICIPANT_MESSAGE_STORE_ENABLED, controllerProperties.get(PARTICIPANT_MESSAGE_STORE_ENABLED));
+      }
+
       VeniceClusterCreateOptions.Builder vccBuilder =
           new VeniceClusterCreateOptions.Builder().regionName(options.getRegionName())
               .multiRegion(options.isMultiRegion())

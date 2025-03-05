@@ -354,9 +354,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           serverConfig.getParticipantMessageConsumptionDelayMs(),
           icProvider);
     } else {
-      LOGGER.info(
-          "Unable to start participant store consumption task because client config is not provided, jobs "
-              + "may not be killed if admin helix messaging channel is disabled");
+      LOGGER.warn(
+          "Unable to start participant store consumption task because {}. Jobs may not be killed if the "
+              + "admin Helix messaging channel is disabled.",
+          !clientConfig.isPresent() ? "client config is missing" : "participant message store is disabled");
     }
 
     /**
