@@ -58,7 +58,7 @@ public class ApacheKafkaProducerConfigTest {
     ApacheKafkaProducerConfig producerConfig = new ApacheKafkaProducerConfig(context);
     assertNotNull(producerConfig);
     assertEquals(producerConfig.getBrokerAddress(), KAFKA_BROKER_ADDR);
-    assertFalse(producerConfig.getProducerProperties().containsKey(ProducerConfig.CLIENT_ID_CONFIG));
+    assertTrue(producerConfig.getProducerProperties().containsKey(ProducerConfig.CLIENT_ID_CONFIG));
 
     String overriddenBrokerAddress = "target.broker.com:8181";
     context = mock(PubSubProducerAdapterContext.class);
@@ -69,7 +69,8 @@ public class ApacheKafkaProducerConfigTest {
     ApacheKafkaProducerConfig producerConfig1 = new ApacheKafkaProducerConfig(context);
     // broker address from props should be used
     assertEquals(producerConfig1.getBrokerAddress(), overriddenBrokerAddress);
-    assertEquals(producerConfig1.getProducerProperties().getProperty(ProducerConfig.CLIENT_ID_CONFIG), PRODUCER_NAME);
+    assertTrue(
+        producerConfig1.getProducerProperties().getProperty(ProducerConfig.CLIENT_ID_CONFIG).contains(PRODUCER_NAME));
   }
 
   @Test

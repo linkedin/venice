@@ -173,6 +173,11 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       finalChildControllerProperties.putAll(pubSubBrokerProps); // child controllers
 
       Properties additionalServerProps = new Properties();
+      if (finalParentControllerProperties.containsKey(PARTICIPANT_MESSAGE_STORE_ENABLED)) {
+        additionalServerProps.put(
+            PARTICIPANT_MESSAGE_STORE_ENABLED,
+            finalParentControllerProperties.get(PARTICIPANT_MESSAGE_STORE_ENABLED));
+      }
       Properties serverPropsOverride = options.getServerProperties();
       if (serverPropsOverride != null) {
         additionalServerProps.putAll(serverPropsOverride);

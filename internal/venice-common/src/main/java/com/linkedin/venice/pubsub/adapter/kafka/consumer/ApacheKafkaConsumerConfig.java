@@ -1,6 +1,7 @@
 package com.linkedin.venice.pubsub.adapter.kafka.consumer;
 
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CONSUMER_POSITION_RESET_STRATEGY;
+import static com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils.generateClientId;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX;
 
 import com.linkedin.venice.pubsub.PubSubConstants;
@@ -48,9 +49,9 @@ public class ApacheKafkaConsumerConfig {
   ApacheKafkaConsumerConfig(VeniceProperties veniceProperties, String consumerName) {
     this.consumerProperties =
         getValidConsumerProperties(veniceProperties.clipAndFilterNamespace(KAFKA_CONFIG_PREFIX).toProperties());
-    if (consumerName != null) {
-      consumerProperties.put(ConsumerConfig.CLIENT_ID_CONFIG, consumerName);
-    }
+    consumerProperties.put(
+        ConsumerConfig.CLIENT_ID_CONFIG,
+        generateClientId(consumerName, consumerProperties.getProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG)));
 
     // Setup ssl config if needed.
     isSslEnabled = ApacheKafkaUtils.validateAndCopyKafkaSSLConfig(veniceProperties, this.consumerProperties);
