@@ -53,7 +53,7 @@ public abstract class MetricEntityState {
     this.metricEntity = metricEntity;
     this.emitOpenTelemetryMetrics = (otelRepository != null) && otelRepository.emitOpenTelemetryMetrics();
     this.otelRepository = otelRepository;
-    createMetric(otelRepository, tehutiMetricNameEnum, tehutiMetricStats, registerTehutiSensorFn);
+    createMetric(tehutiMetricNameEnum, tehutiMetricStats, registerTehutiSensorFn);
   }
 
   public void setOtelMetric(Object otelMetric) {
@@ -73,7 +73,6 @@ public abstract class MetricEntityState {
   }
 
   public void createMetric(
-      VeniceOpenTelemetryMetricsRepository otelRepository,
       TehutiMetricNameEnum tehutiMetricNameEnum,
       List<MeasurableStat> tehutiMetricStats,
       TehutiSensorRegistrationFunction registerTehutiSensorFn) {
@@ -192,7 +191,7 @@ public abstract class MetricEntityState {
     }
   }
 
-  boolean emitOpenTelemetryMetrics() {
+  final boolean emitOpenTelemetryMetrics() {
     return emitOpenTelemetryMetrics;
   }
 
