@@ -11,6 +11,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Properties;
+import java.util.concurrent.ThreadLocalRandom;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.logging.log4j.LogManager;
@@ -77,7 +78,13 @@ public class ApacheKafkaProducerConfig {
     this.producerProperties.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, brokerAddress);
     validateAndUpdateProperties(this.producerProperties, strictConfigs);
     if (producerName != null) {
-      this.producerProperties.put(ProducerConfig.CLIENT_ID_CONFIG, producerName);
+      this.producerProperties.put(
+          ProducerConfig.CLIENT_ID_CONFIG,
+          String.format("%s-%s-%s", producerName, brokerAddress, System.currentTimeMillis()));
+    } else {
+      this.producerProperties.put(
+          ProducerConfig.CLIENT_ID_CONFIG,
+          String.format("%s-%s-%s", brokerAddress, System.currentTimeMillis(), ThreadLocalRandom.current().nextInt()));
     }
 
     if (allVeniceProperties.getBoolean(PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS, false)) {

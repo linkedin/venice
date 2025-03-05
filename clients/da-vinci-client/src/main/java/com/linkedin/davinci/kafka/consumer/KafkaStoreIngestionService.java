@@ -344,7 +344,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     }
     this.kafkaMessageEnvelopeSchemaReader = kafkaMessageEnvelopeSchemaReader;
 
-    if (clientConfig.isPresent()) {
+    if (clientConfig.isPresent() && serverConfig.isParticipantMessageStoreEnabled()) {
       String clusterName = veniceConfigLoader.getVeniceClusterConfig().getClusterName();
       participantStoreConsumptionTask = new ParticipantStoreConsumptionTask(
           this,

@@ -24,7 +24,6 @@ import java.util.Random;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -40,24 +39,18 @@ public class TestServerStorePropertiesEndpoint extends AbstractClientEndToEndSet
   private VeniceServerWrapper veniceServerWrapper;
   private String serverUrl;
 
-  @BeforeClass
+  @BeforeClass(alwaysRun = true)
   public void beforeClassServerStoreProperties() {
     long seed = System.nanoTime();
     RANDOM = new Random(seed);
     LOGGER.info("Random seed set: {}", seed);
   }
 
-  @BeforeMethod
+  @BeforeMethod(alwaysRun = true)
   public void beforeMethodServerStoreProperties() {
     sslFactory = Optional.of(SslUtils.getVeniceLocalSslFactory());
     veniceServerWrapper = veniceCluster.getVeniceServers().stream().findAny().get();
     serverUrl = "https://" + veniceServerWrapper.getHost() + ":" + veniceServerWrapper.getPort();
-  }
-
-  @AfterMethod
-  public void afterMethodServerStoreProperties() {
-    veniceServerWrapper.close();
-    veniceCluster.close();
   }
 
   @Test(timeOut = TIME_OUT)

@@ -8,6 +8,7 @@ import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
 import java.util.Properties;
+import java.util.concurrent.ThreadLocalRandom;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.logging.log4j.LogManager;
@@ -49,7 +50,17 @@ public class ApacheKafkaConsumerConfig {
     this.consumerProperties =
         getValidConsumerProperties(veniceProperties.clipAndFilterNamespace(KAFKA_CONFIG_PREFIX).toProperties());
     if (consumerName != null) {
-      consumerProperties.put(ConsumerConfig.CLIENT_ID_CONFIG, consumerName);
+      consumerProperties.put(
+          ConsumerConfig.CLIENT_ID_CONFIG,
+          consumerName + "-" + System.currentTimeMillis() + "-" + ThreadLocalRandom.current().nextInt());
+    } else {
+      consumerProperties.put(
+          ConsumerConfig.CLIENT_ID_CONFIG,
+          String.format(
+              "%s-%s-%s",
+              consumerProperties.getProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "unknown"),
+              System.currentTimeMillis(),
+              ThreadLocalRandom.current().nextInt()));
     }
 
     // Setup ssl config if needed.

@@ -1056,6 +1056,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       ReadWriteSchemaRepository schemaRepo = clusterResources.getSchemaRepository();
       schemaRepo.initKeySchema(storeName, keySchema);
       schemaRepo.addValueSchema(storeName, valueSchema, HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
+      VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
+      if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
+        setUpMetaStoreAndMayProduceSnapshot(clusterName, systemStoreType.extractRegularStoreName(storeName));
+      }
       LOGGER.info(
           "Completed creating Store {} in cluster {} with owner {} and largestUsedVersionNumber {}",
           storeName,
@@ -2591,6 +2595,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               version.getCompressionStrategy(),
               Optional.ofNullable(compressionDictBuffer),
               Collections.emptyMap());
+          veniceWriter.flush();
         }
       }
     }
@@ -3005,6 +3010,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                       -1L, // -1 indicates rewinding from the beginning of the source topic
                       new HashMap<>());
                 }
+                veniceWriter.flush();
               } finally {
                 if (veniceWriter != null) {
                   veniceWriter.close();

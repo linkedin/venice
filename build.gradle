@@ -415,6 +415,10 @@ subprojects {
     jvmArgs "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED"
     jvmArgs "--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED"
 
+    // Disable Kafka JMX registration to prevent InstanceAlreadyExistsException
+    jvmArgs "-Dcom.sun.management.jmxremote=false"
+    jvmArgs "-Dkafka.metrics.jmx.reporter.enabled=false"
+
     if (JavaVersion.current() == JavaVersion.VERSION_11) {
       jvmArgs "-Dio.netty.tryReflectionSetAccessible=true"
     }
