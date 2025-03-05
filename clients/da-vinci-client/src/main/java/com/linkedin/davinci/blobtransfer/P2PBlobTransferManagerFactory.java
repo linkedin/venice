@@ -63,34 +63,63 @@ public class P2PBlobTransferManagerFactory {
     this.aggVersionedBlobTransferStats = aggVersionedBlobTransferStats;
   }
 
-  public P2PBlobTransferConfig getBlobTransferConfig() {
-    return blobTransferConfig;
+  /**
+   * Get the P2P blob transfer manager and start it.
+   * @return the blob transfer manager
+   */
+  public BlobTransferManager<Void> getP2PBlobTransferManagerAndStart() {
+    try {
+      BlobFinder blobFinder = null;
+      if (customizedViewFuture != null && clientConfig == null) {
+        blobFinder = new ServerBlobFinder(customizedViewFuture);
+      } else if (customizedViewFuture == null && clientConfig != null) {
+        blobFinder = new DaVinciBlobFinder(clientConfig);
+      } else {
+        throw new IllegalArgumentException(
+            "The client config and customized view future must one of them be null during the initialization for blob transfer manager.");
+      }
+
+      GlobalChannelTrafficShapingHandler globalTrafficHandler = getGlobalChannelTrafficShapingHandlerInstance(
+          blobTransferConfig.getBlobTransferClientReadLimitBytesPerSec(),
+          blobTransferConfig.getBlobTransferServiceWriteLimitBytesPerSec());
+
+      BlobSnapshotManager blobSnapshotManager = new BlobSnapshotManager(
+          readOnlyStoreRepository,
+          storageEngineRepository,
+          storageMetadataService,
+          blobTransferConfig.getMaxConcurrentSnapshotUser(),
+          blobTransferConfig.getSnapshotRetentionTimeInMin(),
+          blobTransferConfig.getTransferSnapshotTableFormat());
+
+      BlobTransferManager<Void> manager = new NettyP2PBlobTransferManager(
+          new P2PBlobTransferService(
+              blobTransferConfig.getP2pTransferServerPort(),
+              blobTransferConfig.getBaseDir(),
+              blobTransferConfig.getBlobTransferMaxTimeoutInMin(),
+              blobSnapshotManager,
+              globalTrafficHandler),
+          new NettyFileTransferClient(
+              blobTransferConfig.getP2pTransferClientPort(),
+              blobTransferConfig.getBaseDir(),
+              storageMetadataService,
+              blobTransferConfig.getPeersConnectivityFreshnessInSeconds(),
+              globalTrafficHandler),
+          blobFinder,
+          blobTransferConfig.getBaseDir(),
+          aggVersionedBlobTransferStats);
+
+      manager.start();
+      return manager;
+    } catch (Exception e) {
+      // swallow the exception and continue the consumption via pubsub system
+      LOGGER.warn("Failed to start up the P2P blob transfer manager", e);
+      return null;
+    }
   }
 
-  public ClientConfig getClientConfig() {
-    return clientConfig;
-  }
-
-  public CompletableFuture<HelixCustomizedViewOfflinePushRepository> getCustomizedViewFuture() {
-    return customizedViewFuture;
-  }
-
-  public StorageMetadataService getStorageMetadataService() {
-    return storageMetadataService;
-  }
-
-  public ReadOnlyStoreRepository getReadOnlyStoreRepository() {
-    return readOnlyStoreRepository;
-  }
-
-  public StorageEngineRepository getStorageEngineRepository() {
-    return storageEngineRepository;
-  }
-
-  public AggVersionedBlobTransferStats getAggVersionedBlobTransferStats() {
-    return aggVersionedBlobTransferStats;
-  }
-
+  /**
+   * Builder for {@link P2PBlobTransferManagerFactory} to create a new instance.
+   */
   public static class P2PBlobTransferManagerFactoryBuilder {
     private P2PBlobTransferConfig blobTransferConfig;
     private ClientConfig clientConfig;
@@ -149,56 +178,6 @@ public class P2PBlobTransferManagerFactory {
           readOnlyStoreRepository,
           storageEngineRepository,
           aggVersionedBlobTransferStats);
-    }
-  }
-
-  public BlobTransferManager<Void> getP2PBlobTransferManagerAndStart() {
-    try {
-      BlobFinder blobFinder = null;
-      if (customizedViewFuture != null && clientConfig == null) {
-        blobFinder = new ServerBlobFinder(customizedViewFuture);
-      } else if (customizedViewFuture == null && clientConfig != null) {
-        blobFinder = new DaVinciBlobFinder(clientConfig);
-      } else {
-        throw new IllegalArgumentException(
-            "The client config and customized view future must one of them be null during the initialization for blob transfer manager.");
-      }
-
-      GlobalChannelTrafficShapingHandler globalTrafficHandler = getGlobalChannelTrafficShapingHandlerInstance(
-          blobTransferConfig.getBlobTransferClientReadLimitBytesPerSec(),
-          blobTransferConfig.getBlobTransferServiceWriteLimitBytesPerSec());
-
-      BlobSnapshotManager blobSnapshotManager = new BlobSnapshotManager(
-          readOnlyStoreRepository,
-          storageEngineRepository,
-          storageMetadataService,
-          blobTransferConfig.getMaxConcurrentSnapshotUser(),
-          blobTransferConfig.getSnapshotRetentionTimeInMin(),
-          blobTransferConfig.getTransferSnapshotTableFormat());
-
-      BlobTransferManager<Void> manager = new NettyP2PBlobTransferManager(
-          new P2PBlobTransferService(
-              blobTransferConfig.getP2pTransferServerPort(),
-              blobTransferConfig.getBaseDir(),
-              blobTransferConfig.getBlobTransferMaxTimeoutInMin(),
-              blobSnapshotManager,
-              globalTrafficHandler),
-          new NettyFileTransferClient(
-              blobTransferConfig.getP2pTransferClientPort(),
-              blobTransferConfig.getBaseDir(),
-              storageMetadataService,
-              blobTransferConfig.getPeersConnectivityFreshnessInSeconds(),
-              globalTrafficHandler),
-          blobFinder,
-          blobTransferConfig.getBaseDir(),
-          aggVersionedBlobTransferStats);
-
-      manager.start();
-      return manager;
-    } catch (Exception e) {
-      // swallow the exception and continue the consumption via pubsub system
-      LOGGER.warn("Failed to start up the P2P blob transfer manager", e);
-      return null;
     }
   }
 }
