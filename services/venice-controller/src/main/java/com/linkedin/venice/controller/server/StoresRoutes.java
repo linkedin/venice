@@ -46,6 +46,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REPUSH_INFO;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STALE_STORES_IN_CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STORES_FOR_COMPACTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STORES_IN_CLUSTER;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DEAD_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_STORE_PUSH_INFO;
 import static com.linkedin.venice.controllerapi.ControllerRoute.MIGRATE_STORE;
@@ -1010,6 +1011,21 @@ public class StoresRoutes extends AbstractRoute {
         String cluster = request.queryParams(CLUSTER);
         String storeName = request.queryParams(STORE_NAME);
         veniceResponse.setVersion(admin.getLargestUsedVersionFromStoreGraveyard(cluster, storeName));
+      }
+    };
+  }
+
+  /**
+   * @see Admin#getDeadStores(String)
+   */
+  public Route getDeadStores(Admin admin) {
+    return new VeniceRouteHandler<MultiStoreInfoResponse>(MultiStoreInfoResponse.class) {
+      @Override
+      public void internalHandle(Request request, MultiStoreInfoResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, GET_DEAD_STORES.getParams(), admin);
+        String cluster = request.queryParams(CLUSTER);
+        List<StoreInfo> storeList = admin.getDeadStores(cluster);
+        veniceResponse.setStoreInfoList(storeList);
       }
     };
   }

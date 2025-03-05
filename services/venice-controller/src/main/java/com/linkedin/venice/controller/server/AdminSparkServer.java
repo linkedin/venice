@@ -41,6 +41,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_REPLICAT
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_VALUE_AND_DERIVED_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_VALUE_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_CLUSTER_STORAGE_PERSONAS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DEAD_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DELETABLE_STORE_TOPICS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_HEARTBEAT_TIMESTAMP_FROM_SYSTEM_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_INUSE_SCHEMA_IDS;
@@ -603,6 +604,9 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(
         GET_STORE_LARGEST_USED_VERSION.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getStoreLargestUsedVersion(admin)));
+    httpService.get(
+        GET_DEAD_STORES.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getDeadStores(admin)));
     httpService.get(
         GET_REGION_PUSH_DETAILS.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getRegionPushDetails(admin)));

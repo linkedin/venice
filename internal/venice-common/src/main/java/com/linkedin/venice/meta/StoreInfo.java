@@ -6,6 +6,7 @@ import static com.linkedin.venice.meta.Store.NUM_VERSION_PRESERVE_NOT_SET;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.writer.VeniceWriter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -338,6 +339,8 @@ public class StoreInfo {
   private String targetRegionSwap;
   private int targetRegionSwapWaitTime;
   private boolean isDavinciHeartbeatReported;
+  private final List<String> reasonsStoreIsDead = new ArrayList<>();
+  private boolean isStoreDead;
 
   public StoreInfo() {
   }
@@ -874,5 +877,21 @@ public class StoreInfo {
 
   public boolean getIsDavinciHeartbeatReported() {
     return this.isDavinciHeartbeatReported;
+  }
+
+  public void setIsStoreDead(boolean isStoreDead) {
+    this.isStoreDead = isStoreDead;
+  }
+
+  public boolean getIsStoreDead() {
+    return this.isStoreDead;
+  }
+
+  public void setReasonsStoreIsDead(List<String> reasons) {
+    this.reasonsStoreIsDead = reasons == null ? List.of() : List.copyOf(reasons);
+  }
+
+  public List<String> getReasonsStoreIsDead() {
+    return reasonsStoreIsDead;
   }
 }

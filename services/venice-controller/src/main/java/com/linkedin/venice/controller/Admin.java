@@ -958,6 +958,11 @@ public interface Admin extends AutoCloseable, Closeable {
    */
   int getLargestUsedVersionFromStoreGraveyard(String clusterName, String storeName);
 
+  /**
+   * @return list of stores infos that are considered dead.
+   */
+  List<StoreInfo> getDeadStores(String clusterName);
+
   Map<String, RegionPushDetails> listStorePushInfo(
       String clusterName,
       String storeName,
