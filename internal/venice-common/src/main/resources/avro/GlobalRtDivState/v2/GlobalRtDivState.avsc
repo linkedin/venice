@@ -85,6 +85,12 @@
       "name": "latestOffset",
       "doc": "The last Kafka offset consumed successfully in this partition.",
       "type": "long"
+    },
+    {
+      "name": "latestPubSubPosition",
+      "doc": "The last PubSubPosition consumed successfully in this partition.",
+      "type": "bytes",
+      "default": ""
     }
   ]
 }
