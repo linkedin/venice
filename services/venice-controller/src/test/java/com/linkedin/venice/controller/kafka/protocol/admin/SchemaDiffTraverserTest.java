@@ -1,16 +1,20 @@
 package com.linkedin.venice.controller.kafka.protocol.admin;
 
+import static com.linkedin.venice.controller.kafka.protocol.serializer.SchemaDiffTraverser.*;
 import static org.testng.Assert.*;
 
-import com.linkedin.avroutil1.compatibility.shaded.org.apache.commons.lang3.function.TriFunction;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.kafka.protocol.serializer.SchemaDiffTraverser;
 import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiConsumer;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
 import org.testng.annotations.Test;
 
 
@@ -53,7 +57,7 @@ public class SchemaDiffTraverserTest {
     AtomicBoolean flag = new AtomicBoolean(false);
     ArrayList<String> fieldName = new ArrayList<>();
 
-    TriFunction<Object, String, Pair<Schema.Field, Schema.Field>, Object> filter =
+    BiConsumer<Object, Pair<Schema.Field, Schema.Field>> filter =
         schemaDiffTraverser.usingNewSemanticCheck(flag, fieldName);
 
     schemaDiffTraverser.traverse(adminMessage, currentSchema, targetSchema, "", filter);
@@ -62,9 +66,104 @@ public class SchemaDiffTraverserTest {
     assertTrue(flag.get(), "The flag should be set to true");
     // Check if the field name is as expected
     ArrayList<String> expectedFieldName = new ArrayList<>();
-    expectedFieldName.add("realTimeTopicName");
-    expectedFieldName.add("separateRealTimeTopicEnabled");
-    expectedFieldName.add("targetSwapRegionWaitTime");
+    expectedFieldName.add("payloadUnion_UpdateStore_hybridStoreConfig_HybridStoreConfigRecord_realTimeTopicName");
+    expectedFieldName.add("payloadUnion_UpdateStore_separateRealTimeTopicEnabled");
+    expectedFieldName.add("payloadUnion_UpdateStore_targetSwapRegionWaitTime");
+    assertEquals(fieldName, expectedFieldName, "The field name should be as expected");
+  }
+
+  @Test
+  public void testNestedArrayTraverse() {
+    String schemaJson = "{" + "\"type\": \"array\"," + "\"items\": {" + "  \"type\": \"record\","
+        + "  \"name\": \"ExampleRecord\"," + "  \"fields\": [" + "    {\"name\": \"field1\", \"type\": \"string\"},"
+        + "    {\"name\": \"field2\", \"type\": \"int\"}" + "  ]" + "}" + "}";
+
+    String targetSchemaJson =
+        "{" + "\"type\": \"array\"," + "\"items\": {" + "  \"type\": \"record\"," + "  \"name\": \"ExampleRecord\","
+            + "  \"fields\": [" + "    {\"name\": \"field1\", \"type\": \"string\"}" + "  ]" + "}" + "}";
+
+    Schema.Parser parser1 = new Schema.Parser();
+    Schema schema = parser1.parse(schemaJson);
+    Schema.Parser parser2 = new Schema.Parser();
+    Schema targetSchema = parser2.parse(targetSchemaJson);
+
+    // Create records for the schema
+    Schema recordSchema = schema.getElementType();
+    GenericRecord record1 = new GenericData.Record(recordSchema);
+    record1.put("field1", "exampleString");
+    record1.put("field2", 123);
+
+    GenericRecord record2 = new GenericData.Record(recordSchema);
+    record2.put("field1", "");
+    record2.put("field2", 0);
+
+    // Create an array and add the record to it
+    GenericData.Array<GenericRecord> array = new GenericData.Array<>(1, schema);
+    array.add(record1);
+    array.add(record2);
+
+    // Traverse the array
+    SchemaDiffTraverser schemaDiffTraverser = new SchemaDiffTraverser();
+    AtomicBoolean flag = new AtomicBoolean(false);
+    ArrayList<String> fieldName = new ArrayList<>();
+    BiConsumer<Object, Pair<Schema.Field, Schema.Field>> filter =
+        schemaDiffTraverser.usingNewSemanticCheck(flag, fieldName);
+
+    schemaDiffTraverser.traverse(array, schema, targetSchema, "", filter);
+
+    // Check if the flag is set to true
+    assertTrue(flag.get(), "The flag should be set to true");
+    // Check if the field name is as expected
+    ArrayList<String> expectedFieldName = new ArrayList<>();
+    expectedFieldName.add("array_ExampleRecord_0_field2");
+
+    assertEquals(fieldName, expectedFieldName, "The field name should be as expected");
+  }
+
+  @Test
+  public void testNestedMapTraverse() {
+    String schemaJson = "{" + "\"type\": \"map\"," + "\"values\": {" + "  \"type\": \"record\","
+        + "  \"name\": \"ExampleRecord\"," + "  \"fields\": [" + "    {\"name\": \"field1\", \"type\": \"string\"},"
+        + "    {\"name\": \"field2\", \"type\": \"int\"}" + "  ]" + "}" + "}";
+
+    String targetSchemaJson =
+        "{" + "\"type\": \"map\"," + "\"values\": {" + "  \"type\": \"record\"," + "  \"name\": \"ExampleRecord\","
+            + "  \"fields\": [" + "    {\"name\": \"field1\", \"type\": \"string\"}" + "  ]" + "}" + "}";
+
+    Schema schema = new Schema.Parser().parse(schemaJson);
+    Schema targetSchema = new Schema.Parser().parse(targetSchemaJson);
+
+    // Create records for the schema
+    Schema recordSchema = schema.getValueType();
+    GenericRecord record1 = new GenericData.Record(recordSchema);
+    record1.put("field1", "exampleString");
+    record1.put("field2", 123);
+
+    GenericRecord record2 = new GenericData.Record(recordSchema);
+    record2.put("field1", "exampleString");
+    record2.put("field2", 0);
+
+    // Create a map and add the record to it
+    HashMap<String, Object> map = new HashMap<>();
+    map.put("key0", record1);
+    map.put("key1", record2);
+
+    // Traverse the map
+    SchemaDiffTraverser schemaDiffTraverser = new SchemaDiffTraverser();
+
+    // collect the pair fields
+    AtomicBoolean flag = new AtomicBoolean(false);
+    ArrayList<String> fieldName = new ArrayList<>();
+    BiConsumer<Object, Pair<Schema.Field, Schema.Field>> filter =
+        schemaDiffTraverser.usingNewSemanticCheck(flag, fieldName);
+
+    schemaDiffTraverser.traverse(map, schema, targetSchema, "", filter);
+
+    // Check if the flag is set to true
+    assertTrue(flag.get(), "The flag should be set to true");
+    // Check if the field name is as expected
+    ArrayList<String> expectedFieldName = new ArrayList<>();
+    expectedFieldName.add("map_ExampleRecord_key0_field2");
     assertEquals(fieldName, expectedFieldName, "The field name should be as expected");
   }
 }

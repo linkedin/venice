@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller.kafka.protocol.serializer;
 
-import com.linkedin.avroutil1.compatibility.shaded.org.apache.commons.lang3.function.TriFunction;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
@@ -8,6 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -28,14 +28,14 @@ public class SchemaDiffTraverser {
       Schema currentSchema,
       Schema targetSchema,
       String parentName,
-      TriFunction<Object, String, Pair<Schema.Field, Schema.Field>, Object> filter) {
+      BiConsumer<Object, Pair<Schema.Field, Schema.Field>> filter) {
     // if object is null, do nothing
     if (object == null) {
       return;
     }
     // if target schema is null, this is leaf node
     if (targetSchema == null) {
-      filter.apply(object, parentName, new Pair<>(generateField(parentName, currentSchema), null));
+      filter.accept(object, new Pair<>(generateField(parentName, currentSchema, "", null), null));
       return;
     }
     // if current schema and target schema are the same, do nothing
@@ -53,15 +53,25 @@ public class SchemaDiffTraverser {
           Object value = ((GenericRecord) object).get(field.name());
           if (targetField == null) {
             // there is no corresponding field in target schema => leaf node
-            filter.apply(value, fieldName, new Pair<>(field, null));
+            filter.accept(
+                value,
+                new Pair<>(generateField(fieldName, field.schema(), field.doc(), field.defaultVal()), null));
             continue;
           }
           if (isNestedField(field.schema().getType())) {
             // if the field is a nested field, traverse it
             traverse(value, field.schema(), targetField.schema(), fieldName, filter);
           } else {
-            // if the field is not a nested field, apply the filter
-            filter.apply(value, fieldName, new Pair<>(field, targetField));
+            // if the field is not a nested field, leaf node and apply the filter
+            filter.accept(
+                value,
+                new Pair<>(
+                    generateField(fieldName, field.schema(), field.doc(), field.defaultVal()),
+                    generateField(
+                        buildFieldPath(parentName, targetField.name()),
+                        targetField.schema(),
+                        targetField.doc(),
+                        targetField.defaultVal())));
           }
         }
         break;
@@ -87,7 +97,7 @@ public class SchemaDiffTraverser {
           }
           // if the object schema cannot be found in the target schema => leaf node
           if (!found) {
-            filter.apply(object, name, new Pair<>(generateField(name, subCurrentSchema), null));
+            filter.accept(object, new Pair<>(generateField(name, subCurrentSchema, "", null), null));
           }
         }
         break;
@@ -95,43 +105,54 @@ public class SchemaDiffTraverser {
         String arrayName = buildFieldPath(parentName, currentSchema.getName());
         if (isNestedField(currentSchema.getElementType().getType())) {
           // if the element type of the array is a nested field, traverse it
+          String nestedArrayName = buildFieldPath(arrayName, currentSchema.getElementType().getName());
           List<Object> array = (List<Object>) object;
-          for (Object element: array) {
-            traverse(element, currentSchema.getElementType(), targetSchema.getElementType(), arrayName, filter);
+          for (int i = 0; i < array.size(); i++) {
+            traverse(
+                array.get(i),
+                currentSchema.getElementType(),
+                targetSchema.getElementType(),
+                buildFieldPath(nestedArrayName, String.valueOf(i)),
+                filter);
           }
           break;
         }
-        filter.apply(
+        filter.accept(
             object,
-            parentName,
             new Pair<>(
-                generateField(arrayName, currentSchema.getElementType()),
-                generateField(arrayName, targetSchema.getElementType())));
+                generateField(arrayName, currentSchema.getElementType(), "", null),
+                generateField(arrayName, targetSchema.getElementType(), "", null)));
         break;
       case MAP:
         String mapName = buildFieldPath(parentName, currentSchema.getName());
         if (isNestedField(currentSchema.getValueType().getType())) {
           // if the value type of the map is a nested field, traverse it
+          String nestedMapName = buildFieldPath(mapName, currentSchema.getValueType().getName());
           Map<String, Object> map = (Map<String, Object>) object;
           for (Map.Entry<String, Object> entry: map.entrySet()) {
-            traverse(entry.getValue(), currentSchema.getValueType(), targetSchema.getValueType(), mapName, filter);
+            traverse(
+                entry.getValue(),
+                currentSchema.getValueType(),
+                targetSchema.getValueType(),
+                buildFieldPath(nestedMapName, entry.getKey()),
+                filter);
           }
 
           break;
         }
-        filter.apply(
+        filter.accept(
             object,
-            parentName,
             new Pair<>(
-                generateField(mapName, currentSchema.getValueType()),
-                generateField(mapName, targetSchema.getValueType())));
+                generateField(mapName, currentSchema.getValueType(), "", null),
+                generateField(mapName, targetSchema.getValueType(), "", null)));
         break;
       default:
         // for all other types, apply the filter
-        filter.apply(
+        filter.accept(
             object,
-            parentName,
-            new Pair<>(generateField(parentName, currentSchema), generateField(parentName, targetSchema)));
+            new Pair<>(
+                generateField(parentName, currentSchema, "", null),
+                generateField(parentName, targetSchema, "", null)));
         break;
     }
   }
@@ -166,17 +187,15 @@ public class SchemaDiffTraverser {
     defaultValues.put(Schema.Type.BYTES, new byte[0]);
     Object schemaDefaultValue = field.defaultVal();
     Object predefinedDefault = defaultValues.getOrDefault(field.schema().getType(), null);
-    System.out.println(
-        "Hmm, condition is: "
-            + (value != null && !value.equals(predefinedDefault) && !value.equals(schemaDefaultValue)));
+
     return value != null && !value.equals(predefinedDefault) && !value.equals(schemaDefaultValue);
   }
 
   /**
    * Helper method to generate a field with a given name and schema.
    */
-  private Schema.Field generateField(String fieldName, Schema schema) {
-    return new Schema.Field(fieldName, schema, schema.getDoc(), null);
+  public static Schema.Field generateField(String fieldName, Schema schema, String doc, Object defaultValue) {
+    return new Schema.Field(fieldName, schema, doc, defaultValue);
   }
 
   /**
@@ -185,15 +204,14 @@ public class SchemaDiffTraverser {
    * @param fieldName: List of fields that are non-default values
    * @return TriFunction that takes an object, field name, and a pair of schema fields
    */
-  public TriFunction<Object, String, Pair<Schema.Field, Schema.Field>, Object> usingNewSemanticCheck(
+  public BiConsumer<Object, Pair<Schema.Field, Schema.Field>> usingNewSemanticCheck(
       AtomicBoolean flag,
       ArrayList<String> fieldName) {
-    TriFunction<Object, String, Pair<Schema.Field, Schema.Field>, Object> filter = (object, name, schemasPair) -> {
-      System.out.println("Getting into filter, name: " + name);
+    BiConsumer<Object, Pair<Schema.Field, Schema.Field>> filter = (object, schemasPair) -> {
       Schema.Field currentField = schemasPair.getFirst();
       Schema.Field targetField = schemasPair.getSecond();
       if (currentField == null || object == null) {
-        return false;
+        return;
       }
       if (targetField == null) {
         // if the current field is a nested field and the object is non-null, all fields in the record are not
@@ -201,20 +219,18 @@ public class SchemaDiffTraverser {
         if (isNestedField(currentField.schema().getType())) {
           flag.set(true);
           fieldName.add(currentField.name());
-          return true;
+          return;
         }
         if (isNonDefaultValue(object, currentField)) {
-          System.out.println("Field: " + name + " is non-default value");
+          System.out.println("Field: " + currentField.name() + " is non-default value");
           fieldName.add(currentField.name());
           flag.set(true);
-          return true;
         }
-        return false;
       } else {
         // If two schemas are the same, we don't need to check, not likely to happen but just in case
         if (com.linkedin.venice.utils.AvroSchemaUtils
             .compareSchemaIgnoreFieldOrder(currentField.schema(), targetField.schema())) {
-          return false;
+          return;
         }
         switch (currentField.schema().getType()) {
           case ENUM:
@@ -226,10 +242,10 @@ public class SchemaDiffTraverser {
                 .filter(symbol -> !(enumSymbols).contains(symbol))
                 .collect(Collectors.toList());
             if (differingEnumSymbols.contains(object)) {
-              System.out.println("Field: " + name + " is non-default value");
+              System.out.println("Field: " + currentField.name() + " is non-default value");
               fieldName.add(currentField.name());
               flag.set(true);
-              return true;
+              return;
             }
             break;
           case FIXED:
@@ -237,14 +253,13 @@ public class SchemaDiffTraverser {
           default:
             // If the current field is a Schema.Field, we need to check if the target field is a non-default value
             if (isNonDefaultValue(object, currentField)) {
-              System.out.println("Field: " + name + " is non-default value");
+              System.out.println("Field: " + currentField.name() + " is non-default value");
               fieldName.add(currentField.name());
               flag.set(true);
-              return true;
+              return;
             }
             break;
         }
-        return false;
       }
     };
     return filter;
