@@ -17,7 +17,7 @@ import org.testng.annotations.Test;
 
 
 public class AggRouterHttpRequestStatsTest {
-  VeniceMetricsRepository metricsRepository;
+  private VeniceMetricsRepository metricsRepository;
   private MockTehutiReporter reporter;
   private ReadOnlyStoreRepository storeMetadataRepository;
 

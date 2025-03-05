@@ -11,10 +11,10 @@ public class RequestRetryTypeTest {
     for (RequestRetryType retryType: RequestRetryType.values()) {
       switch (retryType) {
         case ERROR_RETRY:
-          assertEquals(retryType.getRetryType(), "error_retry");
+          assertEquals(retryType.getDimensionValue(), "error_retry");
           break;
         case LONG_TAIL_RETRY:
-          assertEquals(retryType.getRetryType(), "long_tail_retry");
+          assertEquals(retryType.getDimensionValue(), "long_tail_retry");
           break;
         default:
           throw new IllegalArgumentException("Unknown retry type: " + retryType);

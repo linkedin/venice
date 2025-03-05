@@ -495,14 +495,13 @@ public class VeniceMetricsConfig {
   @Override
   public String toString() {
     return "VeniceMetricsConfig{" + "serviceName='" + serviceName + '\'' + ", metricPrefix='" + metricPrefix + '\''
-        + ", metricEntities=" + metricEntities + ", emitOTelMetrics=" + emitOTelMetrics
-        + ", exportOtelMetricsToEndpoint=" + exportOtelMetricsToEndpoint + ", otelCustomDimensionsMap="
+        + ", emitOTelMetrics=" + emitOTelMetrics + ", exportOtelMetricsToEndpoint=" + exportOtelMetricsToEndpoint
+        + ", exportOtelMetricsIntervalInSeconds=" + exportOtelMetricsIntervalInSeconds + ", otelCustomDimensionsMap="
         + otelCustomDimensionsMap + ", otelExportProtocol='" + otelExportProtocol + '\'' + ", otelEndpoint='"
-        + otelEndpoint + '\'' + ", otelHeaders=" + otelHeaders + ", exportOtelMetricsToLog=" + exportOtelMetricsToLog
-        + ", metricNamingFormat=" + metricNamingFormat + ", otelAggregationTemporalitySelector="
-        + otelAggregationTemporalitySelector + ", useOtelExponentialHistogram=" + useOtelExponentialHistogram
-        + ", otelExponentialHistogramMaxScale=" + otelExponentialHistogramMaxScale
-        + ", otelExponentialHistogramMaxBuckets=" + otelExponentialHistogramMaxBuckets + ", tehutiMetricConfig="
-        + tehutiMetricConfig + '}';
+        + otelEndpoint + '\'' + ", exportOtelMetricsToLog=" + exportOtelMetricsToLog + ", metricNamingFormat="
+        + metricNamingFormat + ", otelAggregationTemporalitySelector=" + otelAggregationTemporalitySelector
+        + ", useOtelExponentialHistogram=" + useOtelExponentialHistogram + ", otelExponentialHistogramMaxScale="
+        + otelExponentialHistogramMaxScale + ", otelExponentialHistogramMaxBuckets="
+        + otelExponentialHistogramMaxBuckets + '}';
   }
 }
