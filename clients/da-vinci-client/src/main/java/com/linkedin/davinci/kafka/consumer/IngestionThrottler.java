@@ -107,12 +107,19 @@ public class IngestionThrottler implements Closeable {
     this.poolTypeRecordThrottlerMap = new VeniceConcurrentHashMap<>();
     this.poolTypeRecordThrottlerMap.put(
         ConsumerPoolType.AA_WC_LEADER_POOL,
-        new EventThrottler(
-            serverConfig.getAaWCLeaderQuotaRecordsPerSecond(),
-            serverConfig.getKafkaFetchQuotaTimeWindow(),
-            "aa_wc_leader_records_count",
-            false,
-            EventThrottler.BLOCK_STRATEGY));
+        isAdaptiveThrottlerEnabled
+            ? new VeniceAdaptiveIngestionThrottler(
+                serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
+                serverConfig.getAaWCLeaderQuotaRecordsPerSecond(),
+                serverConfig.getThrottlerFactorsForAAWCLeader(),
+                serverConfig.getKafkaFetchQuotaTimeWindow(),
+                "aa_wc_leader_records_count")
+            : new EventThrottler(
+                serverConfig.getAaWCLeaderQuotaRecordsPerSecond(),
+                serverConfig.getKafkaFetchQuotaTimeWindow(),
+                "aa_wc_leader_records_count",
+                false,
+                EventThrottler.BLOCK_STRATEGY));
     this.poolTypeRecordThrottlerMap.put(
         ConsumerPoolType.SEP_RT_LEADER_POOL,
         new EventThrottler(
