@@ -321,13 +321,15 @@ public class DaVinciBackend implements Closeable {
             backendConfig.getBlobTransferClientReadLimitBytesPerSec(),
             backendConfig.getBlobTransferServiceWriteLimitBytesPerSec());
 
-        blobTransferManager = P2PBlobTransferManagerFactory.getP2PBlobTransferManagerForDVCAndStart(
-            p2PBlobTransferConfig,
-            clientConfig,
-            storageMetadataService,
-            readOnlyStoreRepository,
-            storageService.getStorageEngineRepository(),
-            aggVersionedBlobTransferStats);
+        blobTransferManager = new P2PBlobTransferManagerFactory.P2PBlobTransferManagerFactoryBuilder()
+            .setBlobTransferConfig(p2PBlobTransferConfig)
+            .setClientConfig(clientConfig)
+            .setStorageMetadataService(storageMetadataService)
+            .setReadOnlyStoreRepository(readOnlyStoreRepository)
+            .setStorageEngineRepository(storageService.getStorageEngineRepository())
+            .setAggVersionedBlobTransferStats(aggVersionedBlobTransferStats)
+            .build()
+            .getP2PBlobTransferManagerAndStart();
       } else {
         aggVersionedBlobTransferStats = null;
         blobTransferManager = null;

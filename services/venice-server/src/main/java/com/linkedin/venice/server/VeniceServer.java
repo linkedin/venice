@@ -493,13 +493,15 @@ public class VeniceServer {
           serverConfig.getBlobTransferClientReadLimitBytesPerSec(),
           serverConfig.getBlobTransferServiceWriteLimitBytesPerSec());
 
-      blobTransferManager = P2PBlobTransferManagerFactory.getP2PBlobTransferManagerForServerAndStart(
-          p2PBlobTransferConfig,
-          customizedViewFuture,
-          storageMetadataService,
-          metadataRepo,
-          storageService.getStorageEngineRepository(),
-          aggVersionedBlobTransferStats);
+      blobTransferManager = new P2PBlobTransferManagerFactory.P2PBlobTransferManagerFactoryBuilder()
+          .setBlobTransferConfig(p2PBlobTransferConfig)
+          .setCustomizedViewFuture(customizedViewFuture)
+          .setStorageMetadataService(storageMetadataService)
+          .setReadOnlyStoreRepository(metadataRepo)
+          .setStorageEngineRepository(storageService.getStorageEngineRepository())
+          .setAggVersionedBlobTransferStats(aggVersionedBlobTransferStats)
+          .build()
+          .getP2PBlobTransferManagerAndStart();
     } else {
       aggVersionedBlobTransferStats = null;
       blobTransferManager = null;

@@ -7,6 +7,7 @@ import com.linkedin.davinci.blobtransfer.server.P2PBlobTransferService;
 import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.DaVinciBlobFinder;
 import com.linkedin.venice.blobtransfer.ServerBlobFinder;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -20,82 +21,149 @@ import org.apache.logging.log4j.Logger;
 
 public class P2PBlobTransferManagerFactory {
   private static final Logger LOGGER = LogManager.getLogger(P2PBlobTransferManagerFactory.class);
+  private final P2PBlobTransferConfig blobTransferConfig;
+  private final ClientConfig clientConfig;
+  private final CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewFuture;
+  private final StorageMetadataService storageMetadataService;
+  private final ReadOnlyStoreRepository readOnlyStoreRepository;
+  private final StorageEngineRepository storageEngineRepository;
+  private final AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
 
-  /**
-   * Get a P2P blob transfer manager for DaVinci Client and start it.
-   * @param blobTransferConfig the P2P blob transfer config
-   * @param clientConfig the client config
-   * @param storageMetadataService the storage metadata service
-   * @param readOnlyStoreRepository the read only store repository
-   * @param storageEngineRepository the storage engine repository
-   * @param aggVersionedBlobTransferStats the aggregated versioned blob transfer stats
-   * @return the blob transfer manager for DaVinci Client
-   * @throws Exception
-   */
-  public static BlobTransferManager<Void> getP2PBlobTransferManagerForDVCAndStart(
+  public P2PBlobTransferManagerFactory(
       P2PBlobTransferConfig blobTransferConfig,
       ClientConfig clientConfig,
-      StorageMetadataService storageMetadataService,
-      ReadOnlyStoreRepository readOnlyStoreRepository,
-      StorageEngineRepository storageEngineRepository,
-      AggVersionedBlobTransferStats aggVersionedBlobTransferStats) {
-    try {
-      GlobalChannelTrafficShapingHandler globalTrafficHandler = getGlobalChannelTrafficShapingHandlerInstance(
-          blobTransferConfig.getBlobTransferClientReadLimitBytesPerSec(),
-          blobTransferConfig.getBlobTransferServiceWriteLimitBytesPerSec());
-
-      BlobSnapshotManager blobSnapshotManager = new BlobSnapshotManager(
-          readOnlyStoreRepository,
-          storageEngineRepository,
-          storageMetadataService,
-          blobTransferConfig.getMaxConcurrentSnapshotUser(),
-          blobTransferConfig.getSnapshotRetentionTimeInMin(),
-          blobTransferConfig.getTransferSnapshotTableFormat());
-
-      BlobTransferManager<Void> manager = new NettyP2PBlobTransferManager(
-          new P2PBlobTransferService(
-              blobTransferConfig.getP2pTransferServerPort(),
-              blobTransferConfig.getBaseDir(),
-              blobTransferConfig.getBlobTransferMaxTimeoutInMin(),
-              blobSnapshotManager,
-              globalTrafficHandler),
-          new NettyFileTransferClient(
-              blobTransferConfig.getP2pTransferClientPort(),
-              blobTransferConfig.getBaseDir(),
-              storageMetadataService,
-              blobTransferConfig.getPeersConnectivityFreshnessInSeconds(),
-              globalTrafficHandler),
-          new DaVinciBlobFinder(clientConfig),
-          blobTransferConfig.getBaseDir(),
-          aggVersionedBlobTransferStats);
-
-      manager.start();
-      return manager;
-    } catch (Exception e) {
-      // swallow the exception and continue the consumption via pubsub system
-      LOGGER.warn("Failed to start up the P2P blob transfer manager for DaVinci Client", e);
-      return null;
-    }
-  }
-
-  /**
-   * Get a P2P blob transfer manager for Server and start it.
-   * @param blobTransferConfig the P2P blob transfer config
-   * @param customizedViewFuture the customized view future
-   * @param storageMetadataService the storage metadata service
-   * @param readOnlyStoreRepository the read only store repository
-   * @param storageEngineRepository the storage engine repository
-   * @param aggVersionedBlobTransferStats the aggregated versioned blob transfer stats
-   * @return the blob transfer manager for server
-   */
-  public static BlobTransferManager<Void> getP2PBlobTransferManagerForServerAndStart(
-      P2PBlobTransferConfig blobTransferConfig,
       CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewFuture,
       StorageMetadataService storageMetadataService,
       ReadOnlyStoreRepository readOnlyStoreRepository,
       StorageEngineRepository storageEngineRepository,
       AggVersionedBlobTransferStats aggVersionedBlobTransferStats) {
+    // the client config and customized view future must one of them be null,
+    // because it either for DaVinci Client or Server blob finder
+    if (clientConfig == null && customizedViewFuture == null) {
+      throw new IllegalArgumentException("The client config and customized view future must one of them be null");
+    }
+
+    if (clientConfig != null && customizedViewFuture != null) {
+      throw new IllegalArgumentException("The client config and customized view future must one of them be null");
+    }
+
+    if (blobTransferConfig == null || storageMetadataService == null || readOnlyStoreRepository == null
+        || storageEngineRepository == null || aggVersionedBlobTransferStats == null) {
+      throw new IllegalArgumentException(
+          "The blob transfer config, storage metadata service, read only store repository, storage engine repository, "
+              + "and agg versioned blob transfer stats must not be null");
+    }
+
+    this.blobTransferConfig = blobTransferConfig;
+    this.clientConfig = clientConfig;
+    this.customizedViewFuture = customizedViewFuture;
+    this.storageMetadataService = storageMetadataService;
+    this.readOnlyStoreRepository = readOnlyStoreRepository;
+    this.storageEngineRepository = storageEngineRepository;
+    this.aggVersionedBlobTransferStats = aggVersionedBlobTransferStats;
+  }
+
+  public P2PBlobTransferConfig getBlobTransferConfig() {
+    return blobTransferConfig;
+  }
+
+  public ClientConfig getClientConfig() {
+    return clientConfig;
+  }
+
+  public CompletableFuture<HelixCustomizedViewOfflinePushRepository> getCustomizedViewFuture() {
+    return customizedViewFuture;
+  }
+
+  public StorageMetadataService getStorageMetadataService() {
+    return storageMetadataService;
+  }
+
+  public ReadOnlyStoreRepository getReadOnlyStoreRepository() {
+    return readOnlyStoreRepository;
+  }
+
+  public StorageEngineRepository getStorageEngineRepository() {
+    return storageEngineRepository;
+  }
+
+  public AggVersionedBlobTransferStats getAggVersionedBlobTransferStats() {
+    return aggVersionedBlobTransferStats;
+  }
+
+  public static class P2PBlobTransferManagerFactoryBuilder {
+    private P2PBlobTransferConfig blobTransferConfig;
+    private ClientConfig clientConfig;
+    private CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewFuture;
+    private StorageMetadataService storageMetadataService;
+    private ReadOnlyStoreRepository readOnlyStoreRepository;
+    private StorageEngineRepository storageEngineRepository;
+    private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
+
+    public P2PBlobTransferManagerFactoryBuilder setBlobTransferConfig(P2PBlobTransferConfig blobTransferConfig) {
+      this.blobTransferConfig = blobTransferConfig;
+      return this;
+    }
+
+    public P2PBlobTransferManagerFactoryBuilder setClientConfig(ClientConfig clientConfig) {
+      this.clientConfig = clientConfig;
+      return this;
+    }
+
+    public P2PBlobTransferManagerFactoryBuilder setCustomizedViewFuture(
+        CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewFuture) {
+      this.customizedViewFuture = customizedViewFuture;
+      return this;
+    }
+
+    public P2PBlobTransferManagerFactoryBuilder setStorageMetadataService(
+        StorageMetadataService storageMetadataService) {
+      this.storageMetadataService = storageMetadataService;
+      return this;
+    }
+
+    public P2PBlobTransferManagerFactoryBuilder setReadOnlyStoreRepository(
+        ReadOnlyStoreRepository readOnlyStoreRepository) {
+      this.readOnlyStoreRepository = readOnlyStoreRepository;
+      return this;
+    }
+
+    public P2PBlobTransferManagerFactoryBuilder setStorageEngineRepository(
+        StorageEngineRepository storageEngineRepository) {
+      this.storageEngineRepository = storageEngineRepository;
+      return this;
+    }
+
+    public P2PBlobTransferManagerFactoryBuilder setAggVersionedBlobTransferStats(
+        AggVersionedBlobTransferStats aggVersionedBlobTransferStats) {
+      this.aggVersionedBlobTransferStats = aggVersionedBlobTransferStats;
+      return this;
+    }
+
+    public P2PBlobTransferManagerFactory build() {
+      return new P2PBlobTransferManagerFactory(
+          blobTransferConfig,
+          clientConfig,
+          customizedViewFuture,
+          storageMetadataService,
+          readOnlyStoreRepository,
+          storageEngineRepository,
+          aggVersionedBlobTransferStats);
+    }
+  }
+
+  public BlobTransferManager<Void> getP2PBlobTransferManagerAndStart() {
     try {
+      BlobFinder blobFinder = null;
+      if (customizedViewFuture != null && clientConfig == null) {
+        blobFinder = new ServerBlobFinder(customizedViewFuture);
+      } else if (customizedViewFuture == null && clientConfig != null) {
+        blobFinder = new DaVinciBlobFinder(clientConfig);
+      } else {
+        throw new IllegalArgumentException(
+            "The client config and customized view future must one of them be null during the initialization for blob transfer manager.");
+      }
+
       GlobalChannelTrafficShapingHandler globalTrafficHandler = getGlobalChannelTrafficShapingHandlerInstance(
           blobTransferConfig.getBlobTransferClientReadLimitBytesPerSec(),
           blobTransferConfig.getBlobTransferServiceWriteLimitBytesPerSec());
@@ -121,7 +189,7 @@ public class P2PBlobTransferManagerFactory {
               storageMetadataService,
               blobTransferConfig.getPeersConnectivityFreshnessInSeconds(),
               globalTrafficHandler),
-          new ServerBlobFinder(customizedViewFuture),
+          blobFinder,
           blobTransferConfig.getBaseDir(),
           aggVersionedBlobTransferStats);
 
@@ -129,7 +197,7 @@ public class P2PBlobTransferManagerFactory {
       return manager;
     } catch (Exception e) {
       // swallow the exception and continue the consumption via pubsub system
-      LOGGER.warn("Failed to start up the P2P blob transfer manager for server", e);
+      LOGGER.warn("Failed to start up the P2P blob transfer manager", e);
       return null;
     }
   }

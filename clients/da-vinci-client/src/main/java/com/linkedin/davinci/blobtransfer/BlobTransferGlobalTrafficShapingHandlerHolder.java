@@ -48,9 +48,6 @@ public class BlobTransferGlobalTrafficShapingHandlerHolder {
 
     GlobalChannelTrafficShapingHandler handler = GLOBAL_CHANNEL_TRAFFIC_SHAPING_HANDLER.get();
 
-    // Update limits in case the handler was already created with different limits
-    handler.configure(writeLimit, readLimit);
-
     return handler;
   }
 }
