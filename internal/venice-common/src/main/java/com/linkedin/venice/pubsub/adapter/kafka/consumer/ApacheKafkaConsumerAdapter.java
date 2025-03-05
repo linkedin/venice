@@ -635,7 +635,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     for (Header header: consumerRecord.headers()) {
       pubSubMessageHeaders.add(header.key(), header.value());
     }
-    PubSubPosition pubSubPosition = new ApacheKafkaOffsetPosition(consumerRecord.offset());
+    PubSubPosition pubSubPosition = ApacheKafkaOffsetPosition.of(consumerRecord.offset());
     return pubSubMessageDeserializer.deserialize(
         topicPartition,
         consumerRecord.key(),
