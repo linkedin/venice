@@ -1,6 +1,7 @@
 package com.linkedin.venice.pubsub.adapter.kafka.consumer;
 
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CONSUMER_POSITION_RESET_STRATEGY;
+import static com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils.generateClientId;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX;
 
 import com.linkedin.venice.pubsub.PubSubConstants;
@@ -8,7 +9,6 @@ import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
 import java.util.Properties;
-import java.util.concurrent.ThreadLocalRandom;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.logging.log4j.LogManager;
@@ -49,19 +49,9 @@ public class ApacheKafkaConsumerConfig {
   ApacheKafkaConsumerConfig(VeniceProperties veniceProperties, String consumerName) {
     this.consumerProperties =
         getValidConsumerProperties(veniceProperties.clipAndFilterNamespace(KAFKA_CONFIG_PREFIX).toProperties());
-    if (consumerName != null) {
-      consumerProperties.put(
-          ConsumerConfig.CLIENT_ID_CONFIG,
-          consumerName + "-" + System.currentTimeMillis() + "-" + ThreadLocalRandom.current().nextInt());
-    } else {
-      consumerProperties.put(
-          ConsumerConfig.CLIENT_ID_CONFIG,
-          String.format(
-              "%s-%s-%s",
-              consumerProperties.getProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "unknown"),
-              System.currentTimeMillis(),
-              ThreadLocalRandom.current().nextInt()));
-    }
+    consumerProperties.put(
+        ConsumerConfig.CLIENT_ID_CONFIG,
+        generateClientId(consumerName, consumerProperties.getProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG)));
 
     // Setup ssl config if needed.
     isSslEnabled = ApacheKafkaUtils.validateAndCopyKafkaSSLConfig(veniceProperties, this.consumerProperties);
