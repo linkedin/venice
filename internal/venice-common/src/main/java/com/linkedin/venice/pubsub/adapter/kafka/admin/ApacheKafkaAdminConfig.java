@@ -44,6 +44,8 @@ public class ApacheKafkaAdminConfig {
         PubSubConstants.PUBSUB_ADMIN_API_DEFAULT_TIMEOUT_MS_DEFAULT_VALUE);
     defaultApiTimeout = Duration.ofMillis(defaultApiTimeoutInMs);
     this.adminProperties.put(AdminClientConfig.REQUEST_TIMEOUT_MS_CONFIG, defaultApiTimeoutInMs);
+    this.adminProperties
+        .put(AdminClientConfig.CLIENT_ID_CONFIG, ApacheKafkaUtils.generateClientId("KcAdmin", brokerAddress));
 
     LOGGER.debug("Created ApacheKafkaAdminConfig: {} - adminProperties: {}", this, adminProperties);
   }
