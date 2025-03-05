@@ -1580,9 +1580,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void updateIngestionRoleIfStoreChanged(Store store) throws InterruptedException {
-    if (store.isSystemStore()) {
-      return;
-    }
     PartitionReplicaIngestionContext.VersionRole newVersionRole =
         PartitionReplicaIngestionContext.getStoreVersionRole(versionTopic, store);
     PartitionReplicaIngestionContext.WorkloadType newWorkloadType =
