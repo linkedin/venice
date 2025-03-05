@@ -14,9 +14,9 @@ public class VeniceAdaptiveIngestionThrottlerTest {
         new VeniceAdaptiveIngestionThrottler(10, 100, factors, 10, "test");
     adaptiveIngestionThrottler.registerLimiterSignal(() -> true);
     adaptiveIngestionThrottler.checkSignalAndAdjustThrottler();
-    Assert.assertEquals(adaptiveIngestionThrottler.getCurrentThrottlerIndex(), 2);
-    adaptiveIngestionThrottler.checkSignalAndAdjustThrottler();
     Assert.assertEquals(adaptiveIngestionThrottler.getCurrentThrottlerIndex(), 1);
+    adaptiveIngestionThrottler.checkSignalAndAdjustThrottler();
+    Assert.assertEquals(adaptiveIngestionThrottler.getCurrentThrottlerIndex(), 0);
     adaptiveIngestionThrottler.checkSignalAndAdjustThrottler();
     Assert.assertEquals(adaptiveIngestionThrottler.getCurrentThrottlerIndex(), 0);
     adaptiveIngestionThrottler.checkSignalAndAdjustThrottler();
