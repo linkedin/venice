@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -27,7 +28,8 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
-import com.linkedin.davinci.validation.PartitionTracker;
+import com.linkedin.davinci.validation.DivSnapshot;
+import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
@@ -443,6 +445,25 @@ public class LeaderFollowerStoreIngestionTaskTest {
     assertEquals(callbackPayload.getKey().getKeyHeaderByte(), MessageType.GLOBAL_RT_DIV.getKeyHeaderByte());
     assertEquals(callbackPayload.getValue().getMessageType(), MessageType.PUT.getValue());
     assertEquals(callbackPayload.getPartition(), partition);
-    assertTrue(callbackPayload.getValue().payloadUnion instanceof PartitionTracker); // direct access bc it's a mock
+    assertTrue(callbackPayload.getValue().payloadUnion instanceof DivSnapshot); // direct access bc the KME is a mock
+  }
+
+  @Test
+  public void testUpdateLatestConsumedVtOffset() throws InterruptedException {
+    setUp();
+    LeaderFollowerStoreIngestionTask mockIngestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    PubSubMessageProcessedResultWrapper cm = getMockMessage(1);
+    PubSubTopic mockTopic = cm.getMessage().getTopicPartition().getPubSubTopic();
+    doReturn(false).when(mockTopic).isRealTime();
+    doReturn(mockPartitionConsumptionState).when(mockIngestionTask).getPartitionConsumptionState(anyInt());
+    doReturn(LeaderFollowerStateType.STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
+    doCallRealMethod().when(mockIngestionTask)
+        .delegateConsumerRecord(any(), anyInt(), any(), anyInt(), anyLong(), anyLong());
+    KafkaDataIntegrityValidator consumerDiv = mock(KafkaDataIntegrityValidator.class);
+    doReturn(consumerDiv).when(mockIngestionTask).getKafkaDataIntegrityValidatorForLeaders();
+    doReturn(true).when(mockIngestionTask).isGlobalRtDivEnabled();
+
+    mockIngestionTask.delegateConsumerRecord(cm, 0, "testURL", 0, 0, 0);
+    verify(consumerDiv, times(1)).updateLatestConsumedVtOffset(0, 1L);
   }
 }
