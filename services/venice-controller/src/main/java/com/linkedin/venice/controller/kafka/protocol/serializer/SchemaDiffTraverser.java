@@ -93,6 +93,14 @@ public class SchemaDiffTraverser {
         break;
       case ARRAY:
         String arrayName = buildFieldPath(parentName, currentSchema.getName());
+        if (isNestedField(currentSchema.getElementType().getType())) {
+          // if the element type of the array is a nested field, traverse it
+          List<Object> array = (List<Object>) object;
+          for (Object element: array) {
+            traverse(element, currentSchema.getElementType(), targetSchema.getElementType(), arrayName, filter);
+          }
+          break;
+        }
         filter.apply(
             object,
             parentName,
@@ -102,6 +110,15 @@ public class SchemaDiffTraverser {
         break;
       case MAP:
         String mapName = buildFieldPath(parentName, currentSchema.getName());
+        if (isNestedField(currentSchema.getValueType().getType())) {
+          // if the value type of the map is a nested field, traverse it
+          Map<String, Object> map = (Map<String, Object>) object;
+          for (Map.Entry<String, Object> entry: map.entrySet()) {
+            traverse(entry.getValue(), currentSchema.getValueType(), targetSchema.getValueType(), mapName, filter);
+          }
+
+          break;
+        }
         filter.apply(
             object,
             parentName,
