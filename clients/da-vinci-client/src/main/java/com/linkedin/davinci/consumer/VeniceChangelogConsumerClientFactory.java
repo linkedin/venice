@@ -138,12 +138,21 @@ public class VeniceChangelogConsumerClientFactory {
           String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
           String consumerName =
               suffixConsumerIdToStore(storeName + "-" + viewClass.getClass().getSimpleName(), consumerId);
-          return new LocalBootstrappingVeniceChangelogConsumer(
-              newStoreChangelogClientConfig,
-              consumer != null
-                  ? consumer
-                  : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName),
-              consumerId);
+          PubSubConsumerAdapter tempConsumer = consumer != null
+              ? consumer
+              : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName);
+
+          if (globalChangelogClientConfig.isBlobTransferClientEnabled()) {
+            return new BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>(
+                newStoreChangelogClientConfig,
+                tempConsumer,
+                consumerId);
+          } else {
+            return new LocalBootstrappingVeniceChangelogConsumer(
+                newStoreChangelogClientConfig,
+                tempConsumer,
+                consumerId);
+          }
         });
   }
 

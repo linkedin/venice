@@ -3214,7 +3214,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         break;
       case VERSION_SWAP:
         if (recordTransformer != null) {
-          int storeVersion = recordTransformer.getStoreVersion();
           VersionSwap versionSwap = (VersionSwap) controlMessage.controlMessageUnion;
           int currentVersion =
               Version.parseVersionFromVersionTopicName(versionSwap.getOldServingVersionTopic().toString());

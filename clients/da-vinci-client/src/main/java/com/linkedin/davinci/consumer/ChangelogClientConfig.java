@@ -37,6 +37,8 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    */
   private long rocksDBBlockCacheSizeInBytes = 1024 * 1024L;
 
+  private Boolean isBlobTransferClientEnabled = false;
+
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
   }
@@ -221,7 +223,8 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setConsumerName(config.consumerName)
         .setDatabaseSyncBytesInterval(config.getDatabaseSyncBytesInterval())
         .setShouldCompactMessages(config.shouldCompactMessages())
-        .setIsBeforeImageView(config.isBeforeImageView());
+        .setIsBeforeImageView(config.isBeforeImageView())
+        .setIsBlobTransferClientEnabled(config.isBlobTransferClientEnabled());
     return newConfig;
   }
 
@@ -231,6 +234,19 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
 
   public ChangelogClientConfig setIsBeforeImageView(Boolean beforeImageView) {
     isBeforeImageView = beforeImageView;
+    return this;
+  }
+
+  protected Boolean isBlobTransferClientEnabled() {
+    return isBlobTransferClientEnabled;
+  }
+
+  /**
+   * This uses a highly experimental client that speeds up bootstrapping times using blob transfer.
+   * It is currently only supported for {@link BootstrappingVeniceChangelogConsumer}.
+   */
+  public ChangelogClientConfig setIsBlobTransferClientEnabled(Boolean blobTransferClientEnabled) {
+    isBlobTransferClientEnabled = blobTransferClientEnabled;
     return this;
   }
 }

@@ -22,6 +22,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -30,8 +31,10 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -44,7 +47,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
-    implements BootstrappingVeniceChangelogConsumer<K, V> {
+    extends VeniceAfterImageConsumerImpl<K, V> implements BootstrappingVeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER =
       LogManager.getLogger(BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class);
 
@@ -61,7 +64,13 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   private boolean isStarted = false;
   private final CountDownLatch startLatch = new CountDownLatch(1);
 
-  public BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl(ChangelogClientConfig changelogClientConfig) {
+  private Set<Integer> subscribedPartitions = new HashSet<>();
+
+  public BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl(
+      ChangelogClientConfig changelogClientConfig,
+      PubSubConsumerAdapter pubSubConsumer,
+      String consumerId) {
+    super(changelogClientConfig, pubSubConsumer);
     this.changelogClientConfig = changelogClientConfig;
     this.storeName = changelogClientConfig.getStoreName();
     this.daVinciConfig = new DaVinciConfig();
@@ -81,12 +90,19 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
         changelogClientConfig.getD2ServiceName(),
         innerClientConfig.getMetricsRepository(),
         buildVeniceConfig(changelogClientConfig.getBootstrapFileSystemPath()));
-    this.daVinciClient = this.daVinciClientFactory.getGenericAvroClient(this.storeName, this.daVinciConfig);
+
+    if (innerClientConfig.isSpecificClient()) {
+      this.daVinciClient = this.daVinciClientFactory
+          .getSpecificAvroClient(this.storeName, this.daVinciConfig, innerClientConfig.getSpecificValueClass());
+    } else {
+      this.daVinciClient = this.daVinciClientFactory.getGenericAvroClient(this.storeName, this.daVinciConfig);
+    }
   }
 
   @Override
   public CompletableFuture<Void> start(Set<Integer> partitions) {
     internalStart();
+    subscribedPartitions.addAll(partitions);
 
     /*
      * Avoid waiting on the CompletableFuture to prevent a circular dependency.
@@ -151,7 +167,8 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
 
   private void internalStart() {
     if (isStarted) {
-      throw new VeniceException("Bootstrapping Changelog client is already started!");
+      // throw new VeniceException("Bootstrapping Changelog client is already started!");
+      return;
     }
 
     daVinciClient.start();
@@ -176,6 +193,9 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   }
 
   public class DaVinciRecordTransformerBootstrappingChangelogConsumer extends DaVinciRecordTransformer<K, V, V> {
+    private final String topicName;
+    private final Map<Integer, PubSubTopicPartition> pubSubTopicPartitionMap = new HashMap<>();
+
     public DaVinciRecordTransformerBootstrappingChangelogConsumer(
         int storeVersion,
         Schema keySchema,
@@ -183,6 +203,18 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
         Schema outputValueSchema,
         DaVinciRecordTransformerConfig recordTransformerConfig) {
       super(storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
+      this.topicName = Version.composeKafkaTopic(changelogClientConfig.getStoreName(), getStoreVersion());
+    }
+
+    @Override
+    public void onStartVersionIngestion(boolean isCurrentVersion) {
+      if (isCurrentVersion) {
+        for (int partitionId: subscribedPartitions) {
+          partitionToVersionToServe.put(partitionId, getStoreVersion());
+          pubSubTopicPartitionMap
+              .put(partitionId, new PubSubTopicPartitionImpl(new PubSubTopicImpl(topicName), partitionId));
+        }
+      }
     }
 
     @Override
@@ -191,17 +223,19 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
       return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.UNCHANGED);
     }
 
-    @Override
-    public void processPut(Lazy<K> key, Lazy<V> value, int partitionId) {
+    public void addMessageToBuffer(K key, V value, int partitionId) {
       if (partitionToVersionToServe.get(partitionId) == getStoreVersion()) {
-        ChangeEvent<V> changeEvent = new ChangeEvent<>(null, value.get());
-        String topicName = Version.composeKafkaTopic(changelogClientConfig.getStoreName(), getStoreVersion());
-        PubSubTopicPartition pubSubTopicPartition =
-            new PubSubTopicPartitionImpl(new PubSubTopicImpl(topicName), partitionId);
-
+        ChangeEvent<V> changeEvent = new ChangeEvent<>(null, value);
         try {
           pubSubMessages.put(
-              new ImmutableChangeCapturePubSubMessage<>(key.get(), changeEvent, pubSubTopicPartition, 0, 0, 0, false));
+              new ImmutableChangeCapturePubSubMessage<>(
+                  key,
+                  changeEvent,
+                  pubSubTopicPartitionMap.get(partitionId),
+                  0,
+                  0,
+                  0,
+                  false));
         } catch (InterruptedException e) {
           LOGGER.error("Thread was interrupted while putting a message into pubSubMessages", e);
           Thread.currentThread().interrupt();
@@ -209,6 +243,17 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
       }
       startLatch.countDown();
     }
+
+    @Override
+    public void processPut(Lazy<K> key, Lazy<V> value, int partitionId) {
+      addMessageToBuffer(key.get(), value.get(), partitionId);
+    }
+
+    @Override
+    public void processDelete(Lazy<K> key, int partitionId) {
+      // When value is null, it indicates it's a delete
+      addMessageToBuffer(key.get(), null, partitionId);
+    };
 
     @Override
     public void onVersionSwap(int currentVersion, int futureVersion, int partitionId) {
