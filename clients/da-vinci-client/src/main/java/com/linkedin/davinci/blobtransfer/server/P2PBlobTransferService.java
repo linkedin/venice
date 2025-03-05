@@ -12,6 +12,7 @@ import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollServerSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.handler.traffic.GlobalChannelTrafficShapingHandler;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -35,7 +36,8 @@ public class P2PBlobTransferService extends AbstractVeniceService {
       int port,
       String baseDir,
       int blobTransferMaxTimeoutInMin,
-      BlobSnapshotManager blobSnapshotManager) {
+      BlobSnapshotManager blobSnapshotManager,
+      GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler) {
     this.port = port;
     this.serverBootstrap = new ServerBootstrap();
 
@@ -53,7 +55,11 @@ public class P2PBlobTransferService extends AbstractVeniceService {
     serverBootstrap.group(bossGroup, workerGroup)
         .channel(socketChannelClass)
         .childHandler(
-            new BlobTransferNettyChannelInitializer(baseDir, blobTransferMaxTimeoutInMin, blobSnapshotManager))
+            new BlobTransferNettyChannelInitializer(
+                baseDir,
+                blobTransferMaxTimeoutInMin,
+                blobSnapshotManager,
+                globalChannelTrafficShapingHandler))
         .option(ChannelOption.SO_BACKLOG, 1000)
         .option(ChannelOption.SO_REUSEADDR, true)
         .childOption(ChannelOption.SO_KEEPALIVE, true)
