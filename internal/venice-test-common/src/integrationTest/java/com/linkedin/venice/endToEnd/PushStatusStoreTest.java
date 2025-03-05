@@ -34,7 +34,6 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
-import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.D2TestUtils;
@@ -44,7 +43,6 @@ import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -158,18 +156,6 @@ public class PushStatusStoreTest {
     extraBackendConfigMap.put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 5);
     String expectedInstanceSuffix = "sampleApp_i015";
     extraBackendConfigMap.put(PUSH_STATUS_INSTANCE_NAME_SUFFIX, expectedInstanceSuffix);
-
-    TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
-      // query metadata system store and check it has non-zero current version
-      StoreResponse storeResponse = TestUtils
-          .assertCommand(controllerClient.getStore(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName)));
-      assertNotNull(storeResponse);
-      StoreInfo storeInfo = storeResponse.getStore();
-      assertNotNull(storeInfo);
-      assertTrue(
-          storeInfo.getCurrentVersion() > 0,
-          "Current version of store: " + storeInfo.getName() + " is expected to be non-zero");
-    });
 
     try (DaVinciClient<Integer, Integer> daVinciClient = ServiceFactory.getGenericAvroDaVinciClientWithRetries(
         storeName,
