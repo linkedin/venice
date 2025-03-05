@@ -18,7 +18,8 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -141,11 +142,11 @@ public class TestPartitionTracker {
     KafkaMessageEnvelope startOfSegmentMessage =
         getKafkaMessageEnvelope(MessageType.CONTROL_MESSAGE, guid, currentSegment, Optional.empty(), startOfSegment);
     long offset = 10;
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> controlMessageConsumerRecord = new ImmutablePubSubMessage<>(
+    DefaultPubSubMessage controlMessageConsumerRecord = new ImmutablePubSubMessage(
         getControlMessageKey(startOfSegmentMessage),
         startOfSegmentMessage,
         pubSubTopicPartition,
-        offset++,
+        ApacheKafkaOffsetPosition.of(offset++),
         System.currentTimeMillis() + 1000,
         0);
     partitionTracker.validateMessage(type, controlMessageConsumerRecord, false, Lazy.FALSE);
@@ -155,11 +156,11 @@ public class TestPartitionTracker {
         getKafkaMessageEnvelope(MessageType.PUT, guid, currentSegment, Optional.empty(), firstPut); // sequence number
                                                                                                     // is 1
     KafkaKey firstMessageKey = getPutMessageKey("first_key".getBytes());
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> firstConsumerRecord = new ImmutablePubSubMessage<>(
+    DefaultPubSubMessage firstConsumerRecord = new ImmutablePubSubMessage(
         firstMessageKey,
         firstMessage,
         pubSubTopicPartition,
-        offset++,
+        ApacheKafkaOffsetPosition.of(offset++),
         System.currentTimeMillis() + 1000,
         0);
     partitionTracker.validateMessage(type, firstConsumerRecord, false, Lazy.FALSE);
@@ -170,11 +171,11 @@ public class TestPartitionTracker {
         getKafkaMessageEnvelope(MessageType.PUT, guid, currentSegment, Optional.of(100), secondPut); // sequence number
                                                                                                      // is 100
     KafkaKey secondMessageKey = getPutMessageKey("second_key".getBytes());
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> secondConsumerRecord = new ImmutablePubSubMessage<>(
+    DefaultPubSubMessage secondConsumerRecord = new ImmutablePubSubMessage(
         secondMessageKey,
         secondMessage,
         pubSubTopicPartition,
-        offset++,
+        ApacheKafkaOffsetPosition.of(offset++),
         System.currentTimeMillis() + 1000,
         0);
     Assert.assertThrows(
@@ -187,11 +188,11 @@ public class TestPartitionTracker {
         getKafkaMessageEnvelope(MessageType.PUT, guid, currentSegment, Optional.of(2), thirdPut); // sequence number is
                                                                                                   // 2
     KafkaKey thirdMessageKey = getPutMessageKey("third_key".getBytes());
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> thirdConsumerRecord = new ImmutablePubSubMessage<>(
+    DefaultPubSubMessage thirdConsumerRecord = new ImmutablePubSubMessage(
         thirdMessageKey,
         thirdMessage,
         pubSubTopicPartition,
-        offset++,
+        ApacheKafkaOffsetPosition.of(offset++),
         System.currentTimeMillis() + 1000,
         0);
     // It doesn't matter whether EOP is true/false. The result is same.
@@ -203,11 +204,11 @@ public class TestPartitionTracker {
         getKafkaMessageEnvelope(MessageType.PUT, guid, currentSegment, Optional.of(100), fourthPut); // sequence number
                                                                                                      // is 100
     KafkaKey fourthMessageKey = getPutMessageKey("fourth_key".getBytes());
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> fourthConsumerRecord = new ImmutablePubSubMessage<>(
+    DefaultPubSubMessage fourthConsumerRecord = new ImmutablePubSubMessage(
         fourthMessageKey,
         fourthMessage,
         pubSubTopicPartition,
-        offset,
+        ApacheKafkaOffsetPosition.of(offset),
         System.currentTimeMillis() + 1000,
         0);
     partitionTracker.validateMessage(type, fourthConsumerRecord, false, Lazy.TRUE);
@@ -237,11 +238,11 @@ public class TestPartitionTracker {
     KafkaMessageEnvelope firstMessage =
         getKafkaMessageEnvelope(MessageType.PUT, guid, segment, Optional.of(sequenceNum), firstPut);
     KafkaKey firstMessageKey = getPutMessageKey("first_key".getBytes());
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> firstConsumerRecord = new ImmutablePubSubMessage<>(
+    DefaultPubSubMessage firstConsumerRecord = new ImmutablePubSubMessage(
         firstMessageKey,
         firstMessage,
         pubSubTopicPartition,
-        offset,
+        ApacheKafkaOffsetPosition.of(offset),
         System.currentTimeMillis(),
         0);
     partitionTracker.validateMessage(type, firstConsumerRecord, endOfPushReceived, Lazy.FALSE);
@@ -268,11 +269,11 @@ public class TestPartitionTracker {
                                                                                                                     // number
                                                                                                                     // is
                                                                                                                     // zero
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> controlMessageConsumerRecord = new ImmutablePubSubMessage<>(
+    DefaultPubSubMessage controlMessageConsumerRecord = new ImmutablePubSubMessage(
         getControlMessageKey(startOfSegmentMessage),
         startOfSegmentMessage,
         pubSubTopicPartition,
-        offset++,
+        ApacheKafkaOffsetPosition.of(offset++),
         System.currentTimeMillis() + 1000,
         0);
     partitionTracker.validateMessage(type, controlMessageConsumerRecord, true, Lazy.FALSE);
@@ -283,11 +284,11 @@ public class TestPartitionTracker {
     KafkaMessageEnvelope firstMessage =
         getKafkaMessageEnvelope(MessageType.PUT, guid, secondSegment, Optional.of(skipSequenceNumber), firstPut);
     KafkaKey firstMessageKey = getPutMessageKey("key".getBytes());
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> firstConsumerRecord = new ImmutablePubSubMessage<>(
+    DefaultPubSubMessage firstConsumerRecord = new ImmutablePubSubMessage(
         firstMessageKey,
         firstMessage,
         pubSubTopicPartition,
-        offset,
+        ApacheKafkaOffsetPosition.of(offset),
         System.currentTimeMillis() + 1000,
         0);
     /**
@@ -328,11 +329,11 @@ public class TestPartitionTracker {
                                                                                                                     // number
                                                                                                                     // is
                                                                                                                     // 0
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> controlMessageConsumerRecord = new ImmutablePubSubMessage<>(
+    DefaultPubSubMessage controlMessageConsumerRecord = new ImmutablePubSubMessage(
         getControlMessageKey(startOfSegmentMessage),
         startOfSegmentMessage,
         pubSubTopicPartition,
-        offset++,
+        ApacheKafkaOffsetPosition.of(offset++),
         System.currentTimeMillis() + 1000,
         0);
     partitionTracker.validateMessage(type, controlMessageConsumerRecord, true, Lazy.FALSE);
@@ -344,11 +345,11 @@ public class TestPartitionTracker {
         getKafkaMessageEnvelope(MessageType.CONTROL_MESSAGE, guid, firstSegment, Optional.of(5), endOfSegment); // sequence
                                                                                                                 // number
                                                                                                                 // is 5
-    controlMessageConsumerRecord = new ImmutablePubSubMessage<>(
+    controlMessageConsumerRecord = new ImmutablePubSubMessage(
         getControlMessageKey(endOfSegmentMessage),
         endOfSegmentMessage,
         pubSubTopicPartition,
-        offset++,
+        ApacheKafkaOffsetPosition.of(offset++),
         System.currentTimeMillis() + 1000,
         0);
     partitionTracker.validateMessage(type, controlMessageConsumerRecord, true, Lazy.TRUE);
@@ -359,11 +360,11 @@ public class TestPartitionTracker {
     KafkaMessageEnvelope firstMessage =
         getKafkaMessageEnvelope(MessageType.PUT, guid, firstSegment, Optional.of(1), firstPut); // sequence number is 1
     KafkaKey firstMessageKey = getPutMessageKey("first_key".getBytes());
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> firstConsumerRecord = new ImmutablePubSubMessage<>(
+    DefaultPubSubMessage firstConsumerRecord = new ImmutablePubSubMessage(
         firstMessageKey,
         firstMessage,
         pubSubTopicPartition,
-        offset,
+        ApacheKafkaOffsetPosition.of(offset),
         System.currentTimeMillis() + 1000,
         0);
     Assert.assertThrows(
@@ -394,11 +395,11 @@ public class TestPartitionTracker {
     ControlMessage startOfSegment = getStartOfSegment(checkSumType);
     KafkaMessageEnvelope startOfSegmentMessage =
         getKafkaMessageEnvelope(MessageType.CONTROL_MESSAGE, guid, firstSegment, Optional.empty(), startOfSegment);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> controlMessageConsumerRecord = new ImmutablePubSubMessage<>(
+    DefaultPubSubMessage controlMessageConsumerRecord = new ImmutablePubSubMessage(
         getControlMessageKey(startOfSegmentMessage),
         startOfSegmentMessage,
         pubSubTopicPartition,
-        offset++,
+        ApacheKafkaOffsetPosition.of(offset++),
         System.currentTimeMillis() + 1000,
         0);
     partitionTracker.validateMessage(type, controlMessageConsumerRecord, true, Lazy.FALSE);
@@ -416,11 +417,11 @@ public class TestPartitionTracker {
     KafkaMessageEnvelope firstMessage =
         getKafkaMessageEnvelope(MessageType.PUT, guid, secondSegment, Optional.empty(), firstPut);
     KafkaKey firstMessageKey = getPutMessageKey("first_key".getBytes());
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> firstConsumerRecord = new ImmutablePubSubMessage<>(
+    DefaultPubSubMessage firstConsumerRecord = new ImmutablePubSubMessage(
         firstMessageKey,
         firstMessage,
         pubSubTopicPartition,
-        offset,
+        ApacheKafkaOffsetPosition.of(offset),
         System.currentTimeMillis() + 1000,
         0);
     partitionTracker.validateMessage(type, firstConsumerRecord, true, Lazy.TRUE);

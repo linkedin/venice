@@ -21,8 +21,9 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.utils.ByteUtils;
@@ -55,7 +56,7 @@ public class KafkaInputRecordReaderTest {
 
     int assignedPartition = 0;
     int numRecord = 100;
-    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> consumerRecordList = new ArrayList<>();
+    List<DefaultPubSubMessage> consumerRecordList = new ArrayList<>();
     PubSubTopicPartition pubSubTopicPartition =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), assignedPartition);
     for (int i = 0; i < numRecord; ++i) {
@@ -74,10 +75,17 @@ public class KafkaInputRecordReaderTest {
       put.putValue = ByteBuffer.wrap(valueBytes);
       put.replicationMetadataPayload = ByteBuffer.allocate(0);
       messageEnvelope.payloadUnion = put;
-      consumerRecordList.add(new ImmutablePubSubMessage<>(kafkaKey, messageEnvelope, pubSubTopicPartition, i, -1, -1));
+      consumerRecordList.add(
+          new ImmutablePubSubMessage(
+              kafkaKey,
+              messageEnvelope,
+              pubSubTopicPartition,
+              ApacheKafkaOffsetPosition.of(i),
+              -1,
+              -1));
     }
 
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> recordsMap = new HashMap<>();
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> recordsMap = new HashMap<>();
     recordsMap.put(pubSubTopicPartition, consumerRecordList);
     when(consumer.poll(anyLong())).thenReturn(recordsMap, new HashMap<>());
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), 0);

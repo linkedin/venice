@@ -3,10 +3,8 @@ package com.linkedin.davinci.consumer;
 import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
-import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -123,7 +121,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
           // filter out from the user
           PubSubConsumerAdapter consumerAdapter = internalSeekConsumer.get().getPubSubConsumer();
 
-          Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> polledResults;
+          Map<PubSubTopicPartition, List<DefaultPubSubMessage>> polledResults;
           Map<Integer, Boolean> endOfPushConsumedPerPartitionMap = new HashMap<>();
           Set<VeniceChangeCoordinate> checkpoints = new HashSet<>();
 
@@ -141,11 +139,10 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
               counter++;
               polledResults = consumerAdapter.poll(5000L);
               // Loop through all polled messages
-              for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: polledResults
-                  .entrySet()) {
+              for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: polledResults.entrySet()) {
                 PubSubTopicPartition pubSubTopicPartition = entry.getKey();
-                List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> messageList = entry.getValue();
-                for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messageList) {
+                List<DefaultPubSubMessage> messageList = entry.getValue();
+                for (DefaultPubSubMessage message: messageList) {
                   if (message.getKey().isControlMessage()) {
                     ControlMessage controlMessage = (ControlMessage) message.getValue().getPayloadUnion();
                     ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
@@ -155,7 +152,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
                       endOfPushConsumedPerPartitionMap.put(pubSubTopicPartition.getPartitionNumber(), true);
                       VeniceChangeCoordinate coordinate = new VeniceChangeCoordinate(
                           pubSubTopicPartition.getPubSubTopic().getName(),
-                          new ApacheKafkaOffsetPosition(message.getOffset()),
+                          message.getOffset(),
                           pubSubTopicPartition.getPartitionNumber());
                       checkpoints.add(coordinate);
                       Set<Integer> unsubSet = new HashSet<>();
