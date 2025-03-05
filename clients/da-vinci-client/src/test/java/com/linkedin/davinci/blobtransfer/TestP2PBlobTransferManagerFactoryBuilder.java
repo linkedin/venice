@@ -89,6 +89,7 @@ public class TestP2PBlobTransferManagerFactoryBuilder {
           .setAggVersionedBlobTransferStats(blobTransferStats)
           .build()
           .getP2PBlobTransferManagerAndStart();
+      Assert.assertNull(blobTransferManager);
     } catch (IllegalArgumentException e) {
       Assert
           .assertTrue(e.getMessage().contains("The client config and customized view future must one of them be null"));
@@ -96,16 +97,18 @@ public class TestP2PBlobTransferManagerFactoryBuilder {
 
     // Case 2: expect exception is thrown due to both clientConfig and customizedViewFuture are null
     try {
-      BlobTransferManager blobTransferManager = new P2PBlobTransferManagerFactory.P2PBlobTransferManagerFactoryBuilder()
-          .setBlobTransferConfig(blobTransferConfig)
-          .setClientConfig(null)
-          .setCustomizedViewFuture(null)
-          .setStorageMetadataService(storageMetadataService)
-          .setReadOnlyStoreRepository(readOnlyStoreRepository)
-          .setStorageEngineRepository(storageEngineRepository)
-          .setAggVersionedBlobTransferStats(blobTransferStats)
-          .build()
-          .getP2PBlobTransferManagerAndStart();
+      BlobTransferManager blobTransferManager1 =
+          new P2PBlobTransferManagerFactory.P2PBlobTransferManagerFactoryBuilder()
+              .setBlobTransferConfig(blobTransferConfig)
+              .setClientConfig(null)
+              .setCustomizedViewFuture(null)
+              .setStorageMetadataService(storageMetadataService)
+              .setReadOnlyStoreRepository(readOnlyStoreRepository)
+              .setStorageEngineRepository(storageEngineRepository)
+              .setAggVersionedBlobTransferStats(blobTransferStats)
+              .build()
+              .getP2PBlobTransferManagerAndStart();
+      Assert.assertNull(blobTransferManager1);
     } catch (IllegalArgumentException e) {
       Assert
           .assertTrue(e.getMessage().contains("The client config and customized view future must one of them be null"));
@@ -113,7 +116,7 @@ public class TestP2PBlobTransferManagerFactoryBuilder {
 
     // Case 3: expect exception is thrown due to null blobTransferConfig
     try {
-      BlobTransferManager blobTransferManager =
+      BlobTransferManager blobTransferManager2 =
           new P2PBlobTransferManagerFactory.P2PBlobTransferManagerFactoryBuilder().setBlobTransferConfig(null)
               .setClientConfig(clientConfig)
               .setCustomizedViewFuture(null)
@@ -123,6 +126,7 @@ public class TestP2PBlobTransferManagerFactoryBuilder {
               .setAggVersionedBlobTransferStats(blobTransferStats)
               .build()
               .getP2PBlobTransferManagerAndStart();
+      Assert.assertNull(blobTransferManager2);
     } catch (IllegalArgumentException e) {
       Assert.assertTrue(
           e.getMessage()
