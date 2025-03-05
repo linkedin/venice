@@ -1,10 +1,16 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Time;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.IntConsumer;
@@ -83,7 +89,8 @@ public class ConsumerSubscriptionCleaner {
    * If yes, this function will remove the topic partition subscriptions to these non-existing topics.
    */
   Set<PubSubTopicPartition> getTopicPartitionsToUnsubscribe(
-      Set<PubSubTopicPartition> returnSetOfTopicPartitionsToUnsub) {
+      Set<PubSubTopicPartition> returnSetOfTopicPartitionsToUnsub,
+      Map<PubSubTopicPartition, ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> dataReceiverMap) {
     returnSetOfTopicPartitionsToUnsub.clear();
     if (++pollTimesSinceLastSanitization < sanitizeTopicSubscriptionAfterPollTimes) {
       /**
@@ -156,10 +163,13 @@ public class ConsumerSubscriptionCleaner {
 
     recordNumberOfTopicsToUnsub.accept(topicsToUnsubscribe.size());
 
+    Set<PubSubTopicPartition> topicPartitionsForNonAliveDataReceiver =
+        getTopicPartitionsForNonAliveDataReceiver(dataReceiverMap);
     // Get the current subscription for this topic and unsubscribe them
     Set<PubSubTopicPartition> newAssignment = new HashSet<>();
     for (PubSubTopicPartition pubSubTopicPartition: currentAssignment) {
-      if (topicsToUnsubscribe.contains(pubSubTopicPartition.getPubSubTopic().getName())) {
+      if (topicsToUnsubscribe.contains(pubSubTopicPartition.getPubSubTopic().getName())
+          || topicPartitionsForNonAliveDataReceiver.contains(pubSubTopicPartition)) {
         returnSetOfTopicPartitionsToUnsub.add(pubSubTopicPartition);
       } else {
         newAssignment.add(pubSubTopicPartition);
@@ -168,7 +178,26 @@ public class ConsumerSubscriptionCleaner {
     if (newAssignment.size() != currentAssignment.size()) {
       batchUnsubscribeFunction.accept(returnSetOfTopicPartitionsToUnsub);
     }
+    return returnSetOfTopicPartitionsToUnsub;
+  }
 
+  /**
+   * This function is used to find whether there is any subscription to the non-alive data receivers. As non-alive
+   * data receivers could not process polled records properly.
+   */
+  private Set<PubSubTopicPartition> getTopicPartitionsForNonAliveDataReceiver(
+      Map<PubSubTopicPartition, ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> dataReceiverMap) {
+    Set<PubSubTopicPartition> returnSetOfTopicPartitionsToUnsub = new HashSet<>();
+    for (Map.Entry<PubSubTopicPartition, ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> entry: dataReceiverMap
+        .entrySet()) {
+      if (!entry.getValue().isDataReceiverAlive()) {
+        returnSetOfTopicPartitionsToUnsub.add(entry.getKey());
+        LOGGER.warn(
+            "Detected the non-alive data receiver for data receiver of: {} for: {}",
+            entry.getValue().destinationIdentifier(),
+            entry.getKey());
+      }
+    }
     return returnSetOfTopicPartitionsToUnsub;
   }
 

@@ -1,6 +1,5 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -61,22 +60,17 @@ public class PartitionReplicaIngestionContext {
     return workloadType;
   }
 
-  public static WorkloadType getWorkloadType(PubSubTopic versionTopic, Store store) {
-    checkVersionTopicStoreOrThrow(versionTopic, store);
-    int versionNumber = Version.parseVersionFromKafkaTopicName(versionTopic.getName());
-    Version version = store.getVersion(versionNumber);
-    if (version == null) {
-      return WorkloadType.NON_AA_OR_WRITE_COMPUTE;
-    }
+  public static WorkloadType getWorkloadType(Version version, Store store) {
+    checkVersionTopicStoreOrThrow(version, store);
     if (store.isWriteComputationEnabled() || version.isActiveActiveReplicationEnabled()) {
       return WorkloadType.AA_OR_WRITE_COMPUTE;
     }
     return WorkloadType.NON_AA_OR_WRITE_COMPUTE;
   }
 
-  public static VersionRole getStoreVersionRole(PubSubTopic versionTopic, Store store) {
-    checkVersionTopicStoreOrThrow(versionTopic, store);
-    int versionNumber = Version.parseVersionFromKafkaTopicName(versionTopic.getName());
+  public static VersionRole getStoreVersionRole(Version version, Store store) {
+    checkVersionTopicStoreOrThrow(version, store);
+    int versionNumber = version.getNumber();
     int currentVersionNumber = store.getCurrentVersion();
     if (currentVersionNumber < versionNumber) {
       return VersionRole.FUTURE;
@@ -87,16 +81,14 @@ public class PartitionReplicaIngestionContext {
     }
   }
 
-  private static void checkVersionTopicStoreOrThrow(PubSubTopic versionTopic, Store store) {
-    if (store == null) {
-      LOGGER.error("Invalid store meta-data for {}", versionTopic);
-      throw new VeniceNoStoreException(versionTopic.getStoreName());
+  public static void checkVersionTopicStoreOrThrow(Version version, Store store) {
+    if (version == null) {
+      throw new IllegalArgumentException("Version input should not be null");
     }
 
-    if (!store.getName().equals(versionTopic.getStoreName())) {
-      throw new VeniceException(
-          "Store name mismatch for store " + store.getName() + " and version topic " + versionTopic);
+    if (store == null) {
+      LOGGER.error("Invalid store meta-data for {}", version.kafkaTopicName());
+      throw new VeniceNoStoreException(version.getStoreName());
     }
   }
-
 }
