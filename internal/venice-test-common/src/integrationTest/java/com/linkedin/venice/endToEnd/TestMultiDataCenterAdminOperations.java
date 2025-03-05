@@ -122,7 +122,7 @@ public class TestMultiDataCenterAdminOperations {
     ControllerResponse response = controllerClient.updateStore(
         storeName,
         new UpdateStoreQueryParams().setHybridRewindSeconds(259200).setHybridOffsetLagThreshold(1000));
-    assertFalse(response.isError(), "There is error in setting hybrid config");
+    assertFalse(response.isError(), "There is error in setting hybrid config. Error: " + response.getError());
 
     // Try to update partitioner config on hybrid store, expect to fail.
     response =
