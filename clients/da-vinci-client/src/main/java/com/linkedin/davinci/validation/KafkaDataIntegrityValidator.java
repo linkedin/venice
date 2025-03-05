@@ -117,11 +117,12 @@ public class KafkaDataIntegrityValidator {
    */
   // TODO: does this need synchronized because it can be called from multiple consumer threads?
   public PartitionTracker cloneProducerStates(int partition, String brokerUrl) {
-    PartitionTracker partitionTracker = partitionTrackerCreator.apply(partition);
-    if (this.partitionTrackers.contains(partition)) {
-      this.partitionTrackers.get(partition).cloneProducerStates(partitionTracker, brokerUrl); // for a single broker
+    PartitionTracker clonedPartitionTracker = partitionTrackerCreator.apply(partition);
+    final PartitionTracker existingPartitionTracker = this.partitionTrackers.get(partition);
+    if (existingPartitionTracker != null) {
+      existingPartitionTracker.cloneProducerStates(clonedPartitionTracker, brokerUrl); // for a single broker
     }
-    return partitionTracker;
+    return clonedPartitionTracker;
   }
 
   /**
@@ -148,7 +149,8 @@ public class KafkaDataIntegrityValidator {
   }
 
   public void updateLatestConsumedVtOffset(int partition, long offset) {
-    partitionTrackers.get(partition).updateLatestConsumedVtOffset(offset); // TODO: should null check be added here?
+    PartitionTracker partitionTracker = registerPartition(partition);
+    partitionTracker.updateLatestConsumedVtOffset(offset); // TODO: should null check be added here?
   }
 
   /**

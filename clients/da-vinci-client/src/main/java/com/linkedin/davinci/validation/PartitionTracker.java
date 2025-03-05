@@ -73,6 +73,9 @@ public class PartitionTracker {
   private final String topicName;
   private final int partition;
   // TODO: clear vtSegments
+  /**
+   * There should only be one {@link ConsumptionTask} for VT, so there shouldn't need to be any locking.
+   */
   private final VeniceConcurrentHashMap<GUID, Segment> vtSegments = new VeniceConcurrentHashMap<>();
   /**
    * The equivalent for RT is not stored. It's the instantaneous offset when a DIV sync is triggered.
@@ -81,6 +84,7 @@ public class PartitionTracker {
 
   /**
    * rtSegments is a map of source broker URL to a map of GUID to Segment.
+   * There should only be one {@link ConsumptionTask} for each broker URL, so there shouldn't need to be any locking.
    */
   private final VeniceConcurrentHashMap<String, VeniceConcurrentHashMap<GUID, Segment>> rtSegments =
       new VeniceConcurrentHashMap<>();
