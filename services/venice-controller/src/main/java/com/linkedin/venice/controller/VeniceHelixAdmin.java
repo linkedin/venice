@@ -2738,7 +2738,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     LOGGER.info(
         "During store migration, version configs from source cluster {}: {}",
         migrationSourceCluster,
-        srcStoreResponse.getStore().getVersion(versionNumber).get());
+        srcStoreInfo.getVersion(versionNumber).get());
     return srcStoreResponse.getStore().getVersion(versionNumber);
   }
 
@@ -2814,14 +2814,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             throwStoreDoesNotExist(clusterName, storeName);
           }
           currentVersionBeforePush = store.getCurrentVersion();
+
           // Dest child controllers skip the version whose kafka topic is truncated
-          if (store.isMigrating() && skipMigratingVersion(clusterName, storeName, versionNumber)) {
+          if (store.isMigrating() && skipMigratingVersion(clusterName, storeName, versionNumber, store)) {
             if (versionNumber > store.getLargestUsedVersionNumber()) {
               store.setLargestUsedVersionNumber(versionNumber);
               repository.updateStore(store);
             }
             LOGGER.warn(
-                "Skip adding version: {} for store: {} in cluster: {} because the version topic is truncated",
+                "Skip adding version: {} for store: {} in cluster: {} because the version topic is truncated/deleted",
                 versionNumber,
                 storeName,
                 clusterName);
@@ -3274,13 +3275,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * During store migration, skip a version if:
    * This is the child controller of the destination cluster
    * And the kafka topic of related store and version is truncated
+   * And kafka topic doesn't exist and the version is smaller than the largest used version number which means the version is already deleted in the source cluster.
    *
    * @param clusterName the name of the cluster
    * @param storeName the name of the store
    * @param versionNumber version number
    * @return whether to skip adding the version
    */
-  private boolean skipMigratingVersion(String clusterName, String storeName, int versionNumber) {
+  private boolean skipMigratingVersion(String clusterName, String storeName, int versionNumber, Store store) {
     if (multiClusterConfigs.isParent()) {
       return false;
     }
@@ -3289,8 +3291,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (clusterName.equals(destCluster)) {
       PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, versionNumber));
       // If the topic doesn't exist, we don't know whether it's not created or already deleted, so we don't skip
-      return getTopicManager().containsTopic(versionTopic) && isTopicTruncated(versionTopic.getName());
+      return getTopicManager().containsTopic(versionTopic) && isTopicTruncated(versionTopic.getName()) ||
+      // If the topic doesn't exist and the version smaller than the largest used version number should be skipped as
+      // it's already deleted(older version).
+          !getTopicManager().containsTopic(versionTopic) && (versionNumber <= store.getLargestUsedVersionNumber());
     }
+
     return false;
   }
 
