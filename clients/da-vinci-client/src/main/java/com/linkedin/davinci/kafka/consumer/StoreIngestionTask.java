@@ -403,9 +403,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.versionTopic = pubSubTopicRepository.getTopic(kafkaVersionTopic);
     this.storeName = versionTopic.getStoreName();
     this.isUserSystemStore = VeniceSystemStoreUtils.isUserSystemStore(storeName);
-    this.realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(version));
+    // using store instead of version is safer, because the current version may be non-hybrid
+    this.realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
     this.separateRealTimeTopic = version.isSeparateRealTimeTopicEnabled()
-        ? pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(storeName))
+        ? pubSubTopicRepository.getTopic(Utils.getSeparateRealTimeTopicName(store))
         : null;
     this.versionNumber = Version.parseVersionFromKafkaTopicName(kafkaVersionTopic);
     this.consumerActionsQueue = new PriorityBlockingQueue<>(CONSUMER_ACTION_QUEUE_INIT_CAPACITY);
@@ -3647,7 +3648,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     consumerUnSubscribeForStateTransition(topic, partitionConsumptionState);
     if (isSeparatedRealtimeTopicEnabled() && topic.isRealTime()) {
       PubSubTopic separateRealTimeTopic =
-          getPubSubTopicRepository().getTopic(Version.composeSeparateRealTimeTopic(topic.getStoreName()));
+          getPubSubTopicRepository().getTopic(Utils.getSeparateRealTimeTopicName(topic.getName()));
       consumerUnSubscribeForStateTransition(separateRealTimeTopic, partitionConsumptionState);
     }
   }
@@ -4709,7 +4710,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   PubSubTopic resolveTopicWithKafkaURL(PubSubTopic topic, String kafkaURL) {
     if (topic.isRealTime() && getKafkaClusterUrlResolver() != null
         && !kafkaURL.equals(getKafkaClusterUrlResolver().apply(kafkaURL))) {
-      return getPubSubTopicRepository().getTopic(Version.composeSeparateRealTimeTopic(topic.getStoreName()));
+      return getPubSubTopicRepository().getTopic(Utils.getSeparateRealTimeTopicName(topic.getName()));
     }
     return topic;
   }
