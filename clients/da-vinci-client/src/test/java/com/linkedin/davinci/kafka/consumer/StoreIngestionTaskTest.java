@@ -4197,6 +4197,68 @@ public abstract class StoreIngestionTaskTest {
     runTest(config);
   }
 
+  public void testResubscribeForStaleVersion() throws Exception {
+    // Set up the environment.
+    StoreIngestionTaskFactory.Builder builder = mock(StoreIngestionTaskFactory.Builder.class);
+    StorageEngineRepository mockStorageEngineRepository = mock(StorageEngineRepository.class);
+    doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStorageEngineRepository)
+        .getLocalStorageEngine(anyString());
+    doReturn(mockStorageEngineRepository).when(builder).getStorageEngineRepository();
+
+    VeniceServerConfig veniceServerConfig = mock(VeniceServerConfig.class);
+    doReturn(VeniceProperties.empty()).when(veniceServerConfig).getClusterProperties();
+    doReturn(VeniceProperties.empty()).when(veniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
+    doReturn(VeniceProperties.empty()).when(veniceServerConfig).getKafkaConsumerConfigsForRemoteConsumption();
+    doReturn(Object2IntMaps.emptyMap()).when(veniceServerConfig).getKafkaClusterUrlToIdMap();
+    doReturn(veniceServerConfig).when(builder).getServerConfig();
+    doReturn(mock(ReadOnlyStoreRepository.class)).when(builder).getMetadataRepo();
+    doReturn(mock(ReadOnlySchemaRepository.class)).when(builder).getSchemaRepo();
+    doReturn(mock(AggKafkaConsumerService.class)).when(builder).getAggKafkaConsumerService();
+    doReturn(mockAggStoreIngestionStats).when(builder).getIngestionStats();
+    doReturn(pubSubTopicRepository).when(builder).getPubSubTopicRepository();
+
+    // Prepare the meaningful store version
+    Version version = mock(Version.class);
+    doReturn(1).when(version).getPartitionCount();
+    doReturn(null).when(version).getPartitionerConfig();
+    doReturn(VersionStatus.ONLINE).when(version).getStatus();
+    doReturn(true).when(version).isNativeReplicationEnabled();
+    doReturn("localhost").when(version).getPushStreamSourceAddress();
+
+    String versionTopicName = "testStore_v1";
+    doReturn(versionTopicName).when(version).kafkaTopicName();
+    Store store = mock(Store.class);
+    doReturn(version).when(store).getVersion(eq(1));
+    doReturn(Version.parseStoreFromVersionTopic(versionTopicName)).when(store).getName();
+    String rtTopicName = "testStore_rt";
+    doReturn(Version.parseStoreFromVersionTopic(versionTopicName)).when(version).getStoreName();
+
+    VeniceStoreVersionConfig storeConfig = mock(VeniceStoreVersionConfig.class);
+    doReturn(Version.parseStoreFromVersionTopic(versionTopicName)).when(store).getName();
+    doReturn(versionTopicName).when(storeConfig).getStoreVersionName();
+
+    LeaderFollowerStoreIngestionTask ingestionTask = spy(
+        new LeaderFollowerStoreIngestionTask(
+            mock(StorageService.class),
+            builder,
+            store,
+            version,
+            mock(Properties.class),
+            mock(BooleanSupplier.class),
+            storeConfig,
+            -1,
+            false,
+            Optional.empty(),
+            null,
+            null));
+
+    // Simulate the version has been deleted.
+    ingestionTask.setVersionRole(PartitionReplicaIngestionContext.VersionRole.BACKUP);
+    doReturn(null).when(store).getVersion(eq(1));
+    ingestionTask.updateIngestionRoleIfStoreChanged(store);
+    verify(ingestionTask, never()).resubscribeForAllPartitions();
+  }
+
   @Test(dataProvider = "aaConfigProvider")
   public void testWrappedInterruptExceptionDuringGracefulShutdown(AAConfig aaConfig) throws Exception {
     hybridStoreConfig = Optional.of(

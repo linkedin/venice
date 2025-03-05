@@ -551,8 +551,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         this::pauseConsumption,
         this::resumeConsumption);
     this.storeRepository.registerStoreDataChangedListener(this.storageUtilizationManager);
-    this.versionRole = PartitionReplicaIngestionContext.getStoreVersionRole(versionTopic, store);
-    this.workloadType = PartitionReplicaIngestionContext.getWorkloadType(versionTopic, store);
+    this.versionRole = PartitionReplicaIngestionContext.getStoreVersionRole(version, store);
+    this.workloadType = PartitionReplicaIngestionContext.getWorkloadType(version, store);
     this.kafkaClusterUrlResolver = serverConfig.getKafkaClusterUrlResolver();
     Object2IntMap<String> kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
     this.localKafkaClusterId = kafkaClusterUrlToIdMap.getOrDefault(localKafkaServer, Integer.MIN_VALUE);
@@ -1580,10 +1580,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void updateIngestionRoleIfStoreChanged(Store store) throws InterruptedException {
+    Version version = store.getVersion(versionNumber);
+    if (version == null) {
+      LOGGER.warn(
+          "Store version: {} is not found in store: {}. Skipping resubscription check.",
+          versionNumber,
+          storeName);
+      return;
+    }
     PartitionReplicaIngestionContext.VersionRole newVersionRole =
-        PartitionReplicaIngestionContext.getStoreVersionRole(versionTopic, store);
+        PartitionReplicaIngestionContext.getStoreVersionRole(version, store);
     PartitionReplicaIngestionContext.WorkloadType newWorkloadType =
-        PartitionReplicaIngestionContext.getWorkloadType(versionTopic, store);
+        PartitionReplicaIngestionContext.getWorkloadType(version, store);
     if (serverConfig.isResubscriptionTriggeredByVersionIngestionContextChangeEnabled() && isHybridMode()) {
       if (!newVersionRole.equals(versionRole) || !newWorkloadType.equals(workloadType)) {
         LOGGER.info(

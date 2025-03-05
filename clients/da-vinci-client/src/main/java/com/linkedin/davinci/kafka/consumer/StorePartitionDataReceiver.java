@@ -91,6 +91,11 @@ public class StorePartitionDataReceiver
     storeIngestionTask.setLastConsumerException(new VeniceException("Topic " + topicName + " got deleted."));
   }
 
+  @Override
+  public boolean isDataReceiverAlive() {
+    return storeIngestionTask.isRunning();
+  }
+
   private void handleDataReceiverException(Exception e) throws Exception {
     if (ExceptionUtils.recursiveClassEquals(e, InterruptedException.class)) {
       // We sometimes wrap InterruptedExceptions, so not taking any chances...
