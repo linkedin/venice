@@ -500,8 +500,7 @@ public class VeniceServer {
           .setReadOnlyStoreRepository(metadataRepo)
           .setStorageEngineRepository(storageService.getStorageEngineRepository())
           .setAggVersionedBlobTransferStats(aggVersionedBlobTransferStats)
-          .build()
-          .getP2PBlobTransferManagerAndStart();
+          .build();
     } else {
       aggVersionedBlobTransferStats = null;
       blobTransferManager = null;

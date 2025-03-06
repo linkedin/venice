@@ -328,8 +328,7 @@ public class DaVinciBackend implements Closeable {
             .setReadOnlyStoreRepository(readOnlyStoreRepository)
             .setStorageEngineRepository(storageService.getStorageEngineRepository())
             .setAggVersionedBlobTransferStats(aggVersionedBlobTransferStats)
-            .build()
-            .getP2PBlobTransferManagerAndStart();
+            .build();
       } else {
         aggVersionedBlobTransferStats = null;
         blobTransferManager = null;

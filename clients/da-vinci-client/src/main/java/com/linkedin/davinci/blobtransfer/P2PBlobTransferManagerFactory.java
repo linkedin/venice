@@ -28,6 +28,7 @@ public class P2PBlobTransferManagerFactory {
   private final ReadOnlyStoreRepository readOnlyStoreRepository;
   private final StorageEngineRepository storageEngineRepository;
   private final AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
+  private BlobTransferManager<Void> p2pBlobTransferManager;
 
   public P2PBlobTransferManagerFactory(
       P2PBlobTransferConfig blobTransferConfig,
@@ -61,13 +62,8 @@ public class P2PBlobTransferManagerFactory {
     this.readOnlyStoreRepository = readOnlyStoreRepository;
     this.storageEngineRepository = storageEngineRepository;
     this.aggVersionedBlobTransferStats = aggVersionedBlobTransferStats;
-  }
 
-  /**
-   * Get the P2P blob transfer manager and start it.
-   * @return the blob transfer manager
-   */
-  public BlobTransferManager<Void> getP2PBlobTransferManagerAndStart() {
+    // initialize the P2P blob transfer manager
     try {
       BlobFinder blobFinder = null;
       if (customizedViewFuture != null && clientConfig == null) {
@@ -91,7 +87,7 @@ public class P2PBlobTransferManagerFactory {
           blobTransferConfig.getSnapshotRetentionTimeInMin(),
           blobTransferConfig.getTransferSnapshotTableFormat());
 
-      BlobTransferManager<Void> manager = new NettyP2PBlobTransferManager(
+      p2pBlobTransferManager = new NettyP2PBlobTransferManager(
           new P2PBlobTransferService(
               blobTransferConfig.getP2pTransferServerPort(),
               blobTransferConfig.getBaseDir(),
@@ -108,12 +104,11 @@ public class P2PBlobTransferManagerFactory {
           blobTransferConfig.getBaseDir(),
           aggVersionedBlobTransferStats);
 
-      manager.start();
-      return manager;
+      // start the P2P blob transfer manager
+      p2pBlobTransferManager.start();
     } catch (Exception e) {
       // swallow the exception and continue the consumption via pubsub system
       LOGGER.warn("Failed to start up the P2P blob transfer manager", e);
-      return null;
     }
   }
 
@@ -169,8 +164,8 @@ public class P2PBlobTransferManagerFactory {
       return this;
     }
 
-    public P2PBlobTransferManagerFactory build() {
-      return new P2PBlobTransferManagerFactory(
+    public BlobTransferManager<Void> build() {
+      P2PBlobTransferManagerFactory p2pBlobTransferManagerFactory = new P2PBlobTransferManagerFactory(
           blobTransferConfig,
           clientConfig,
           customizedViewFuture,
@@ -178,6 +173,8 @@ public class P2PBlobTransferManagerFactory {
           readOnlyStoreRepository,
           storageEngineRepository,
           aggVersionedBlobTransferStats);
+
+      return p2pBlobTransferManagerFactory.p2pBlobTransferManager;
     }
   }
 }

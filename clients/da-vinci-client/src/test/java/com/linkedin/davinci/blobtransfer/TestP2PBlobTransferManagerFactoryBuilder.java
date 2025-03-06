@@ -48,8 +48,7 @@ public class TestP2PBlobTransferManagerFactoryBuilder {
         .setReadOnlyStoreRepository(readOnlyStoreRepository)
         .setStorageEngineRepository(storageEngineRepository)
         .setAggVersionedBlobTransferStats(blobTransferStats)
-        .build()
-        .getP2PBlobTransferManagerAndStart();
+        .build();
 
     Assert.assertNotNull(blobTransferManager);
   }
@@ -87,8 +86,7 @@ public class TestP2PBlobTransferManagerFactoryBuilder {
           .setReadOnlyStoreRepository(readOnlyStoreRepository)
           .setStorageEngineRepository(storageEngineRepository)
           .setAggVersionedBlobTransferStats(blobTransferStats)
-          .build()
-          .getP2PBlobTransferManagerAndStart();
+          .build();
       Assert.assertNull(blobTransferManager);
     } catch (IllegalArgumentException e) {
       Assert
@@ -106,8 +104,7 @@ public class TestP2PBlobTransferManagerFactoryBuilder {
               .setReadOnlyStoreRepository(readOnlyStoreRepository)
               .setStorageEngineRepository(storageEngineRepository)
               .setAggVersionedBlobTransferStats(blobTransferStats)
-              .build()
-              .getP2PBlobTransferManagerAndStart();
+              .build();
       Assert.assertNull(blobTransferManager1);
     } catch (IllegalArgumentException e) {
       Assert
@@ -124,8 +121,7 @@ public class TestP2PBlobTransferManagerFactoryBuilder {
               .setReadOnlyStoreRepository(readOnlyStoreRepository)
               .setStorageEngineRepository(storageEngineRepository)
               .setAggVersionedBlobTransferStats(blobTransferStats)
-              .build()
-              .getP2PBlobTransferManagerAndStart();
+              .build();
       Assert.assertNull(blobTransferManager2);
     } catch (IllegalArgumentException e) {
       Assert.assertTrue(
@@ -134,5 +130,4 @@ public class TestP2PBlobTransferManagerFactoryBuilder {
                   "The blob transfer config, storage metadata service, read only store repository, storage engine repository, and agg versioned blob transfer stats must not be null"));
     }
   }
-
 }
