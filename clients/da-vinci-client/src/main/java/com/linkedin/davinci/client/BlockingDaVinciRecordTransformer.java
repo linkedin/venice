@@ -67,6 +67,11 @@ public class BlockingDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
     this.recordTransformer.onEndVersionIngestion(currentVersion);
   }
 
+  @Override
+  public void onVersionSwap(int currentVersion, int futureVersion, int partitionId) {
+    this.recordTransformer.onVersionSwap(currentVersion, futureVersion, partitionId);
+  }
+
   public void internalOnRecovery(
       AbstractStorageEngine storageEngine,
       int partitionId,

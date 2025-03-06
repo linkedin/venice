@@ -44,6 +44,7 @@ import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.VeniceUserStoreType;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
@@ -221,7 +222,7 @@ public class TestBootstrappingChangelogConsumer {
         int expectedRecordCount = DEFAULT_USER_DATA_RECORD_COUNT + 9 + consumerCount;
         Assert.assertEquals(polledChangeEventsList.size(), expectedRecordCount);
 
-        verifyPut(polledChangeEventsMap, 100, 110);
+        verifyPut(polledChangeEventsMap, 100, 110, 1);
 
         // Verify the 10 deletes were compacted away
         for (int i = 110; i < 120; i++) {
@@ -256,8 +257,8 @@ public class TestBootstrappingChangelogConsumer {
             polledChangeEventsList,
             bootstrappingVeniceChangelogConsumerList);
         Assert.assertEquals(polledChangeEventsList.size(), 20);
-        verifyPut(polledChangeEventsMap, 120, 130);
-        verifyDelete(polledChangeEventsMap, 130, 140);
+        verifyPut(polledChangeEventsMap, 120, 130, 1);
+        verifyDelete(polledChangeEventsMap, 130, 140, 1);
       });
       polledChangeEventsList.clear();
       polledChangeEventsMap.clear();
@@ -290,7 +291,7 @@ public class TestBootstrappingChangelogConsumer {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  @Test(timeOut = TEST_TIMEOUT * 2, priority = 3)
   public void testVeniceChangelogConsumerDaVinciRecordTransformerImpl() throws Exception {
     // Only supports 1 consumer atm
     int consumerCount = 1;
@@ -373,8 +374,8 @@ public class TestBootstrappingChangelogConsumer {
         // 21 events for near-line events
         int expectedRecordCount = DEFAULT_USER_DATA_RECORD_COUNT + 20 + consumerCount;
         Assert.assertEquals(polledChangeEventsList.size(), expectedRecordCount);
-        verifyPut(polledChangeEventsMap, 100, 110);
-        verifyDelete(polledChangeEventsMap, 110, 120);
+        verifyPut(polledChangeEventsMap, 100, 110, 1);
+        verifyDelete(polledChangeEventsMap, 110, 120, 1);
       });
       polledChangeEventsList.clear();
       polledChangeEventsMap.clear();
@@ -402,8 +403,8 @@ public class TestBootstrappingChangelogConsumer {
             polledChangeEventsList,
             bootstrappingVeniceChangelogConsumerList);
         Assert.assertEquals(polledChangeEventsList.size(), 20);
-        verifyPut(polledChangeEventsMap, 120, 130);
-        verifyDelete(polledChangeEventsMap, 130, 140);
+        verifyPut(polledChangeEventsMap, 120, 130, 1);
+        verifyDelete(polledChangeEventsMap, 130, 140, 1);
       });
       polledChangeEventsList.clear();
       polledChangeEventsMap.clear();
@@ -416,14 +417,48 @@ public class TestBootstrappingChangelogConsumer {
         Assert.assertEquals(polledChangeEventsMap.size(), 0);
       });
 
-      VeniceChangelogConsumer<Utf8, Utf8> afterImageChangelogConsumer =
-          veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName);
-      afterImageChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0, 1, 2))).get();
+      // Create new version
+      Properties props =
+          TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+      TestWriteUtils.runPushJob("Run push job v2", props);
+      // No events should be returned
+      pollChangeEventsFromChangeCaptureConsumer(
+          polledChangeEventsMap,
+          polledChangeEventsList,
+          bootstrappingVeniceChangelogConsumerList);
+      Assert.assertEquals(polledChangeEventsList.size(), 0);
 
-      List<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> changedEventList = new ArrayList<>();
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        pollChangeEventsFromChangeCaptureConsumerToList(changedEventList, afterImageChangelogConsumer);
-        Assert.assertEquals(changedEventList.size(), 141);
+      clusterWrapper.useControllerClient(controllerClient -> {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+          Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 2);
+        });
+      });
+
+      try (VeniceSystemProducer veniceProducer =
+          factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+        veniceProducer.start();
+        // Run Samza job to send PUT and DELETE requests.
+        runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 140);
+      }
+
+      try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName)
+              .setVeniceURL(clusterWrapper.getRandomRouterURL())
+              .setMetricsRepository(metricsRepository))) {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+          Assert.assertNotNull(client.get(Integer.toString(149)).get());
+        });
+      }
+
+      // Change events should be from version 2
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+        pollChangeEventsFromChangeCaptureConsumer(
+            polledChangeEventsMap,
+            polledChangeEventsList,
+            bootstrappingVeniceChangelogConsumerList);
+        Assert.assertEquals(polledChangeEventsList.size(), 20);
+        verifyPut(polledChangeEventsMap, 140, 150, 2);
+        verifyDelete(polledChangeEventsMap, 150, 160, 2);
       });
 
       parentControllerClient.disableAndDeleteStore(storeName);
@@ -531,10 +566,14 @@ public class TestBootstrappingChangelogConsumer {
   private void verifyPut(
       Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEventsMap,
       int startIndex,
-      int endIndex) {
+      int endIndex,
+      int version) {
     for (int i = startIndex; i < endIndex; i++) {
       String key = Integer.toString(i);
-      ChangeEvent<Utf8> changeEvent = polledChangeEventsMap.get(key).getValue();
+      PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = polledChangeEventsMap.get((key));
+      ChangeEvent<Utf8> changeEvent = message.getValue();
+      int versionFromMessage = Version.parseVersionFromVersionTopicName(message.getTopicPartition().getTopicName());
+      Assert.assertEquals(versionFromMessage, version);
       Assert.assertNotNull(changeEvent);
       Assert.assertNull(changeEvent.getPreviousValue());
       Assert.assertEquals(changeEvent.getCurrentValue().toString(), "stream_" + i);
@@ -544,11 +583,14 @@ public class TestBootstrappingChangelogConsumer {
   private void verifyDelete(
       Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEventsMap,
       int startIndex,
-      int endIndex) {
+      int endIndex,
+      int version) {
     for (int i = startIndex; i < endIndex; i++) {
       String key = Integer.toString(i);
       PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = polledChangeEventsMap.get((key));
       ChangeEvent<Utf8> changeEvent = message.getValue();
+      int versionFromMessage = Version.parseVersionFromVersionTopicName(message.getTopicPartition().getTopicName());
+      Assert.assertEquals(versionFromMessage, version);
       Assert.assertNotNull(changeEvent);
       Assert.assertNull(changeEvent.getPreviousValue());
       Assert.assertNull(changeEvent.getCurrentValue());

@@ -238,12 +238,12 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
                   0,
                   0,
                   false));
+          startLatch.countDown();
         } catch (InterruptedException e) {
           LOGGER.error("Thread was interrupted while putting a message into pubSubMessages", e);
           Thread.currentThread().interrupt();
         }
       }
-      startLatch.countDown();
     }
 
     @Override
