@@ -23,6 +23,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
@@ -145,8 +146,8 @@ public class HeartbeatMonitoringServiceTest {
 
   }
 
-  @Test
-  public void testAddLeaderLagMonitor() {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testAddLeaderLagMonitor(boolean enableSepRT) {
 
     // Default hybrid store config
     HybridStoreConfig hybridStoreConfig =
@@ -159,6 +160,9 @@ public class HeartbeatMonitoringServiceTest {
     futureVersion.setHybridStoreConfig(hybridStoreConfig);
 
     currentVersion.setActiveActiveReplicationEnabled(true);
+    if (enableSepRT) {
+      currentVersion.setSeparateRealTimeTopicEnabled(true);
+    }
 
     Store mockStore = mock(Store.class);
     Mockito.when(mockStore.getName()).thenReturn(TEST_STORE);
@@ -175,6 +179,7 @@ public class HeartbeatMonitoringServiceTest {
     Set<String> regions = new HashSet<>();
     regions.add(LOCAL_FABRIC);
     regions.add(REMOTE_FABRIC);
+    regions.add(REMOTE_FABRIC + SEPARATE_TOPIC_SUFFIX);
     HeartbeatMonitoringService heartbeatMonitoringService =
         new HeartbeatMonitoringService(mockMetricsRepository, mockReadOnlyRepository, regions, LOCAL_FABRIC, null);
 
@@ -286,6 +291,14 @@ public class HeartbeatMonitoringServiceTest {
     // Non hybrid version shouldn't be recorded
     Assert.assertNull(
         heartbeatMonitoringService.getLeaderHeartbeatTimeStamps().get(TEST_STORE).get(backupVersion.getNumber()));
+
+    Assert.assertEquals(
+        heartbeatMonitoringService.getLeaderHeartbeatTimeStamps()
+            .get(TEST_STORE)
+            .get(currentVersion.getNumber())
+            .get(1)
+            .size(),
+        2 + (enableSepRT ? 1 : 0));
 
     // Go back to follower
     heartbeatMonitoringService.addFollowerLagMonitor(currentVersion, 1);
