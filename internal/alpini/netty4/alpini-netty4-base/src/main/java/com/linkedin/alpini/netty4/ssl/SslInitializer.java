@@ -296,10 +296,12 @@ public class SslInitializer extends ChannelInitializer<Channel> {
       if (evt instanceof SslHandshakeCompletionEvent) {
         ctx.pipeline().remove(this);
         boolean succeed = ((SslHandshakeCompletionEvent) evt).isSuccess();
+        String failedCause = "";
         if (succeed) {
           _handshakesSuccessful.increment();
         } else {
           _handshakesFailed.increment();
+          failedCause = ((SslHandshakeCompletionEvent) evt).cause().toString();
         }
         if (ctx.channel().hasAttr(SSL_HANDSHAKE_START_TS)) {
           SslHandler handler = ctx.pipeline().get(SslHandler.class);
@@ -324,11 +326,12 @@ public class SslInitializer extends ChannelInitializer<Channel> {
             LOG.warn("Unable to obtain remote CN for {}", ctx.channel().remoteAddress(), ex);
           }
           LOG.info(
-              "SSL Handshake with {} ({}) {} in {} ms.",
+              "SSL Handshake with {} ({}) {} in {} ms.{}",
               ctx.channel().remoteAddress(),
               remoteCN != null ? remoteCN : "unknown principal",
               succeed ? "succeeded" : "failed",
-              (Time.nanoTime() - ctx.channel().attr(SSL_HANDSHAKE_START_TS).getAndSet(null)) / 1000000);
+              (Time.nanoTime() - ctx.channel().attr(SSL_HANDSHAKE_START_TS).getAndSet(null)) / 1000000,
+              succeed ? "" : " Failed cause: " + failedCause);
         }
       }
 
