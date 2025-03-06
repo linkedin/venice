@@ -2,10 +2,12 @@ package com.linkedin.venice.controller.kafka.protocol.admin;
 
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.kafka.protocol.serializer.SchemaDiffTraverser;
 import com.linkedin.venice.utils.Pair;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.concurrent.atomic.AtomicReference;
@@ -59,12 +61,13 @@ public class SchemaDiffTraverserTest {
         schemaDiffTraverser.createSemanticCheck(errorMessage);
 
     // Traverse the admin message
-    boolean isNewSemanticUsage = schemaDiffTraverser.traverse(adminMessage, currentSchema, targetSchema, "", filter);
+    boolean isNewSemanticUsage =
+        schemaDiffTraverser.traverse(adminMessage, null, currentSchema, targetSchema, "", filter);
 
     assertTrue(isNewSemanticUsage, "The flag should be set to true");
     assertTrue(
         errorMessage.get()
-            .contains("payloadUnion_UpdateStore_hybridStoreConfig_HybridStoreConfigRecord_realTimeTopicName"),
+            .contains("payloadUnion.UpdateStore.hybridStoreConfig.HybridStoreConfigRecord.realTimeTopicName"),
         "The error message should contain the field name");
   }
 
@@ -78,10 +81,8 @@ public class SchemaDiffTraverserTest {
         "{" + "\"type\": \"array\"," + "\"items\": {" + "  \"type\": \"record\"," + "  \"name\": \"ExampleRecord\","
             + "  \"fields\": [" + "    {\"name\": \"field1\", \"type\": \"string\"}" + "  ]" + "}" + "}";
 
-    Schema.Parser parser1 = new Schema.Parser();
-    Schema schema = parser1.parse(schemaJson);
-    Schema.Parser parser2 = new Schema.Parser();
-    Schema targetSchema = parser2.parse(targetSchemaJson);
+    Schema schema = AvroCompatibilityHelper.parse(schemaJson);
+    Schema targetSchema = AvroCompatibilityHelper.parse(targetSchemaJson);
 
     // Create records for the schema
     Schema recordSchema = schema.getElementType();
@@ -105,13 +106,13 @@ public class SchemaDiffTraverserTest {
     BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> filter =
         schemaDiffTraverser.createSemanticCheck(errorMessage);
 
-    boolean isUsingNewSemantic = schemaDiffTraverser.traverse(array, schema, targetSchema, "", filter);
+    boolean isUsingNewSemantic = schemaDiffTraverser.traverse(array, null, schema, targetSchema, "", filter);
 
     // Check if the flag is set to true
     // Check if the field name is as expected
     assertTrue(isUsingNewSemantic, "The flag should be set to true");
     assertTrue(
-        errorMessage.get().contains("array_ExampleRecord_0_field2"),
+        errorMessage.get().contains("array.ExampleRecord.0.field2"),
         "The error message should contain the field name");
   }
 
@@ -125,8 +126,8 @@ public class SchemaDiffTraverserTest {
         "{" + "\"type\": \"map\"," + "\"values\": {" + "  \"type\": \"record\"," + "  \"name\": \"ExampleRecord\","
             + "  \"fields\": [" + "    {\"name\": \"field1\", \"type\": \"string\"}" + "  ]" + "}" + "}";
 
-    Schema schema = new Schema.Parser().parse(schemaJson);
-    Schema targetSchema = new Schema.Parser().parse(targetSchemaJson);
+    Schema schema = AvroCompatibilityHelper.parse(schemaJson);
+    Schema targetSchema = AvroCompatibilityHelper.parse(targetSchemaJson);
 
     // Create records for the schema
     Schema recordSchema = schema.getValueType();
@@ -152,13 +153,89 @@ public class SchemaDiffTraverserTest {
     BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> filter =
         schemaDiffTraverser.createSemanticCheck(errorMessage);
 
-    boolean isUsingNewSemantic = schemaDiffTraverser.traverse(map, schema, targetSchema, "", filter);
+    boolean isUsingNewSemantic = schemaDiffTraverser.traverse(map, null, schema, targetSchema, "", filter);
 
     // Check if the flag is set to true
     assertTrue(isUsingNewSemantic, "The traverse should return true");
     // Check if the field name is as expected
     assertTrue(
-        errorMessage.get().contains("map_ExampleRecord_key0_field2"),
+        errorMessage.get().contains("map.ExampleRecord.key0.field2"),
+        "The error message should contain the field name");
+  }
+
+  @Test
+  public void testDefaultValueOfArray() {
+    String schemaJson = "{" + "\"type\": \"map\"," + "\"values\": {" + "  \"type\": \"record\","
+        + "  \"name\": \"ExampleRecord\"," + "  \"fields\": [" + "    {\"name\": \"field1\", \"type\": \"string\"},"
+        + "    {\"name\": \"field2\", \"type\": \"int\"}," + "    {\"name\": \"owners\", \"type\": {"
+        + "      \"type\": \"array\", \"items\": \"string\"}, \"default\": [\"venice\"]" + "    }" + "  ]" + "}" + "}";
+
+    String targetSchemaJson = "{" + "\"type\": \"map\"," + "\"values\": {" + "  \"type\": \"record\","
+        + "  \"name\": \"ExampleRecord\"," + "  \"fields\": [" + "    {\"name\": \"field1\", \"type\": \"string\"},"
+        + "    {\"name\": \"field2\", \"type\": \"int\"}" + "  ]" + "}" + "}";
+
+    Schema currentSchema = AvroCompatibilityHelper.parse(schemaJson);
+    Schema targetSchema = AvroCompatibilityHelper.parse(targetSchemaJson);
+
+    // Create records for the schema
+    Schema recordSchema = currentSchema.getValueType();
+    GenericRecord record1 = new GenericData.Record(recordSchema);
+    record1.put("field1", "exampleString");
+    record1.put("field2", 123);
+    record1.put("owners", new ArrayList<>());
+
+    GenericRecord record2 = new GenericData.Record(recordSchema);
+    record2.put("field1", "exampleString");
+    record2.put("field2", 0);
+    record2.put("owners", new ArrayList<>(Collections.singletonList("owner")));
+
+    // Create a map and add the record to it
+    HashMap<String, Object> map = new HashMap<>();
+    map.put("key0", record1);
+    map.put("key1", record2);
+
+    SchemaDiffTraverser schemaDiffTraverser = new SchemaDiffTraverser();
+    AtomicReference<String> errorMessage = new AtomicReference<>();
+
+    BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> filter =
+        schemaDiffTraverser.createSemanticCheck(errorMessage);
+
+    boolean isUsingNewSemantic = schemaDiffTraverser.traverse(map, null, currentSchema, targetSchema, "", filter);
+
+    assertTrue(isUsingNewSemantic, "The traverse should return true");
+    assertTrue(
+        errorMessage.get().contains("map.ExampleRecord.key1.owners"),
+        "The error message should contain the field name");
+  }
+
+  @Test()
+  public void testNewRecordFieldInCurrentSchema() {
+    DeleteUnusedValueSchemas deleteUnusedValueSchemas = new DeleteUnusedValueSchemas();
+    deleteUnusedValueSchemas.clusterName = "clusterName";
+    deleteUnusedValueSchemas.storeName = "storeName";
+    deleteUnusedValueSchemas.schemaIds = new ArrayList<>();
+
+    AdminOperation adminMessage = new AdminOperation();
+    adminMessage.operationType = AdminMessageType.DELETE_UNUSED_VALUE_SCHEMA.getValue();
+    adminMessage.payloadUnion = deleteUnusedValueSchemas;
+    adminMessage.executionId = 1;
+
+    AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
+    Schema targetSchema = adminOperationSerializer.getSchema(74);
+    Schema currentSchema = adminOperationSerializer.getSchema(84);
+
+    SchemaDiffTraverser schemaDiffTraverser = new SchemaDiffTraverser();
+    AtomicReference<String> errorMessage = new AtomicReference<>();
+
+    BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> filter =
+        schemaDiffTraverser.createSemanticCheck(errorMessage);
+
+    boolean isUsingNewSemantic =
+        schemaDiffTraverser.traverse(adminMessage, null, currentSchema, targetSchema, "", filter);
+
+    assertTrue(isUsingNewSemantic, "The traverse should return true");
+    assertTrue(
+        errorMessage.get().contains("payloadUnion.DeleteUnusedValueSchemas"),
         "The error message should contain the field name");
   }
 }
