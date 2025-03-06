@@ -176,6 +176,7 @@ public class TestGlobalRtDiv {
     GlobalRtDivState state = new GlobalRtDivState();
     state.producerStates = new HashMap<>();
     state.setSrcUrl(srcUrl);
+    state.setLatestPubSubPosition(ByteBuffer.wrap(new byte[0]));
 
     final int entryCount = (isChunked) ? 20000 : 1; // Create a large state with 20k entries to trigger chunking
     for (int i = 0; i < entryCount; i++) {
