@@ -209,12 +209,13 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
 
     @Override
     public void onStartVersionIngestion(boolean isCurrentVersion) {
-      if (isCurrentVersion) {
-        for (int partitionId: subscribedPartitions) {
+      for (int partitionId: subscribedPartitions) {
+        if (isCurrentVersion) {
           partitionToVersionToServe.put(partitionId, getStoreVersion());
-          pubSubTopicPartitionMap
-              .put(partitionId, new PubSubTopicPartitionImpl(new PubSubTopicImpl(topicName), partitionId));
         }
+
+        pubSubTopicPartitionMap
+            .put(partitionId, new PubSubTopicPartitionImpl(new PubSubTopicImpl(topicName), partitionId));
       }
     }
 
