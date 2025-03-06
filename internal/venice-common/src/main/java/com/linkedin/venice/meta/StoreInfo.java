@@ -8,6 +8,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
