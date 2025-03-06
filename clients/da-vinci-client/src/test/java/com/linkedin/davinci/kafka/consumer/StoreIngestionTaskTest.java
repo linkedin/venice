@@ -5607,11 +5607,11 @@ public abstract class StoreIngestionTaskTest {
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     doReturn(100L).when(pcs).getProcessedRecordSizeSinceLastSync(); // just needs to be greater than syncBytesInterval
     VeniceConcurrentHashMap<String, Long> lastProcessedMap = new VeniceConcurrentHashMap<>();
-    String kafkaUrl = "localhost:1234";
-    lastProcessedMap.put(kafkaUrl, 100L); // just needs to be greater than syncBytesInterval
-    doReturn(lastProcessedMap).when(storeIngestionTask).getProcessedRecordSizeSinceLastSync();
+    String brokerUrl = "localhost:1234";
+    lastProcessedMap.put(brokerUrl, 100L); // just needs to be greater than syncBytesInterval
+    doReturn(lastProcessedMap).when(storeIngestionTask).getConsumedBytesSinceLastSync();
 
-    boolean shouldSendGlobalRtDiv = storeIngestionTask.shouldSendGlobalRtDiv(message, pcs, kafkaUrl);
+    boolean shouldSendGlobalRtDiv = storeIngestionTask.shouldSendGlobalRtDiv(message, pcs, brokerUrl);
     boolean shouldSyncOffset = storeIngestionTask.shouldSyncOffset(pcs, message, null);
 
     // Feature flag should stop drainer from syncing OffsetRecord, and ConsumptionTask should send Global RT DIV

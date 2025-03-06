@@ -169,6 +169,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private static final Logger LOGGER = LogManager.getLogger(LeaderFollowerStoreIngestionTask.class);
+  public static final String GLOBAL_RT_DIV_KEY_PREFIX = "GLOBAL_RT_DIV_KEY.";
 
   /**
    * The new leader will stay inactive (not switch to any new topic or produce anything) for
@@ -341,7 +342,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       this.veniceWriterForRealTime = this.veniceWriter;
     }
 
-    this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap(); // ?
+    this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
     this.kafkaDataIntegrityValidatorForLeaders = new KafkaDataIntegrityValidator(kafkaVersionTopic);
     if (builder.getVeniceViewWriterFactory() != null && !store.getViewConfigs().isEmpty()) {
       viewWriters = builder.getVeniceViewWriterFactory()
@@ -3564,7 +3565,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * The Global RT DIV is produced on a per-broker basis, so the name includes the broker URL for differentiation.
    */
   public static String getGlobalRtDivKeyName(String brokerUrl) {
-    return "GLOBAL_RT_DIV_KEY." + brokerUrl;
+    return GLOBAL_RT_DIV_KEY_PREFIX + brokerUrl;
   }
 
   /**
@@ -3591,7 +3592,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     Map<CharSequence, ProducerPartitionState> rtDiv = divClone.getPartitionStates(realTimeTopicType);
 
     // Create GlobalRtDivState (RT DIV + latestOffset) which will be serialized into a byte array
-    GlobalRtDivState globalRtDiv = new GlobalRtDivState(brokerUrl, rtDiv, previousMessage.getOffset());
+    ByteBuffer emptyBuffer = ByteBuffer.allocate(0);
+    GlobalRtDivState globalRtDiv = new GlobalRtDivState(brokerUrl, rtDiv, previousMessage.getOffset(), emptyBuffer);
 
     // Create PubSubMessage for the LeaderProducerCallback to enqueue the RT + VT DIV to the drainer
     KafkaKey divKey = new KafkaKey(MessageType.GLOBAL_RT_DIV, keyBytes);
@@ -3634,6 +3636,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             null, // TODO: do oldValueManifest and rmd need to be populated?
             null,
             false);
+
+    consumedBytesSinceLastSync.put(brokerUrl, 0L); // reset the timer for the next sync
   }
 
   /**

@@ -438,7 +438,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
         serializer.deserialize(valueBytes, AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
     assertNotNull(globalRtDiv);
 
-    // Verify the callback has PartitionTracker (VT + RT DIV)
+    // Verify the callback has DivSnapshot (VT + RT DIV)
     LeaderProducerCallback callback = callbackArgumentCaptor.getValue();
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> callbackPayload = callback.getSourceConsumerRecord();
     assertEquals(callbackPayload.getKey().getKey(), keyBytes);

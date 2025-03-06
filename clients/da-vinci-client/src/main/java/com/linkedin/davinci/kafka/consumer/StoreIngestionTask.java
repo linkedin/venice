@@ -262,8 +262,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * flushed to the metadata partition of the storage engine regularly in {@link #syncOffset(String, PartitionConsumptionState)}
    */
   private final KafkaDataIntegrityValidator kafkaDataIntegrityValidator;
-  /** Map of broker URL to the total size of records processed since the last sync */
-  protected final VeniceConcurrentHashMap<String, Long> processedRecordSizeSinceLastSync;
+  /** Map of broker URL to the total bytes consumed by ConsumptionTask since the last Global RT DIV sync */
+  protected final VeniceConcurrentHashMap<String, Long> consumedBytesSinceLastSync;
   protected final HostLevelIngestionStats hostLevelIngestionStats;
   protected final AggVersionedDIVStats versionedDIVStats;
   protected final AggVersionedIngestionStats versionedIngestionStats;
@@ -438,7 +438,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // Could be accessed from multiple threads since there are multiple worker threads.
     this.kafkaDataIntegrityValidator =
         new KafkaDataIntegrityValidator(this.kafkaVersionTopic, DISABLED, producerStateMaxAgeMs);
-    this.processedRecordSizeSinceLastSync = new VeniceConcurrentHashMap<>();
+    this.consumedBytesSinceLastSync = new VeniceConcurrentHashMap<>();
     this.ingestionTaskName = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
     this.topicManagerRepository = builder.getTopicManagerRepository();
     this.readOnlyForBatchOnlyStoreEnabled = storeVersionConfig.isReadOnlyForBatchOnlyStoreEnabled();
@@ -1315,7 +1315,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           elapsedTimeForPuttingIntoQueue);
       totalBytesRead += recordSize;
       if (isGlobalRtDivEnabled) {
-        processedRecordSizeSinceLastSync.compute(kafkaUrl, (k, v) -> (v == null) ? recordSize : v + recordSize);
+        consumedBytesSinceLastSync.compute(kafkaUrl, (k, v) -> (v == null) ? recordSize : v + recordSize);
       }
     }
 
@@ -2732,11 +2732,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     // The Global RT DIV is sent on a per-broker basis, so divide the size limit by the number of brokers
-    final long syncBytesInterval = getSyncBytesInterval(pcs) / getProcessedRecordSizeSinceLastSync().size();
+    final long syncBytesInterval = getSyncBytesInterval(pcs) / getConsumedBytesSinceLastSync().size();
     boolean shouldSync = false;
     if (!record.getKey().isControlMessage()) { // TODO: should the control message logic remain?
-      shouldSync =
-          (syncBytesInterval > 0 && (getProcessedRecordSizeSinceLastSync().get(kafkaUrl) >= syncBytesInterval));
+      shouldSync = (syncBytesInterval > 0 && (getConsumedBytesSinceLastSync().get(kafkaUrl) >= syncBytesInterval));
     }
     return shouldSync;
   }
@@ -4803,8 +4802,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  VeniceConcurrentHashMap<String, Long> getProcessedRecordSizeSinceLastSync() {
-    return processedRecordSizeSinceLastSync; // mainly for unit test mocks
+  VeniceConcurrentHashMap<String, Long> getConsumedBytesSinceLastSync() {
+    return consumedBytesSinceLastSync; // mainly for unit test mocks
   }
 
   boolean isGlobalRtDivEnabled() {
