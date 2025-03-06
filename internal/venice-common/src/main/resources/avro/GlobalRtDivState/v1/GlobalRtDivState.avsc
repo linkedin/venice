@@ -27,14 +27,12 @@
             {
               "name": "segmentNumber",
               "doc": "The current segment number corresponds to the last (highest) segment number for which we have seen a StartOfSegment control message.",
-              "type": "int",
-              "default": -1
+              "type": "int"
             },
             {
               "name": "segmentStatus",
               "doc": "The status of the current segment: 0 => NOT_STARTED, 1 => IN_PROGRESS, 2 => END_OF_INTERMEDIATE_SEGMENT, 3 => END_OF_FINAL_SEGMENT.",
-              "type": "int",
-              "default": -1
+              "type": "int"
             },
             {
               "name": "isRegistered",
@@ -45,34 +43,29 @@
             {
               "name": "messageSequenceNumber",
               "doc": "The current message sequence number, within the current segment, which we have seen for this partition/producer pair.",
-              "type": "int",
-              "default": -1
+              "type": "int"
             },
             {
               "name": "messageTimestamp",
               "doc": "The timestamp included in the last message we have seen for this partition/producer pair.",
-              "type": "long",
-              "default": -1
+              "type": "long"
             },
             {
               "name": "checksumType",
               "doc": "The current mapping is the following: 0 => None, 1 => MD5, 2 => Adler32, 3 => CRC32.",
-              "type": "int",
-              "default": -1
+              "type": "int"
             },
             {
               "name": "checksumState",
               "doc": "The value of the checksum computed since the last StartOfSegment ControlMessage.",
-              "type": "bytes",
-              "default": ""
+              "type": "bytes"
             },
             {
               "name": "aggregates",
               "doc": "The aggregates that have been computed so far since the last StartOfSegment ControlMessage.",
               "type": {
                 "type": "map",
-                "values": "long",
-                "default": -1
+                "values": "long"
               }
             },
             {
@@ -80,8 +73,7 @@
               "doc": "The debug info received as part of the last StartOfSegment ControlMessage.",
               "type": {
                 "type": "map",
-                "values": "string",
-                "default": ""
+                "values": "string"
               }
             }
           ]
