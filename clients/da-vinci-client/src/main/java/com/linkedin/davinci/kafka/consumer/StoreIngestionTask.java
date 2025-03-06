@@ -1548,16 +1548,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       } else {
         if (!hybridStoreConfig.isPresent() && serverConfig.isUnsubscribeAfterBatchpushEnabled() && subscribedCount != 0
             && subscribedCount == forceUnSubscribedCount) {
-          String msg =
-              ingestionTaskName + " Going back to sleep as consumption has finished and topics are unsubscribed";
-          if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-            LOGGER.info(msg);
-          }
-          Thread.sleep(readCycleDelayMs * 20);
-          idleCounter = 0;
-        } else {
-          maybeCloseInactiveIngestionTask();
+          LOGGER.info(
+              "Closing ingestion task for {} as it as has been unsubsceribed after batch push.",
+              ingestionTaskName);
         }
+        maybeCloseInactiveIngestionTask();
       }
       return;
     }
