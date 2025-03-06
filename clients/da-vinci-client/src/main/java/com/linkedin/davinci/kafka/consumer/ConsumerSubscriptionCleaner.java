@@ -1,9 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Time;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
@@ -90,7 +88,7 @@ public class ConsumerSubscriptionCleaner {
    */
   Set<PubSubTopicPartition> getTopicPartitionsToUnsubscribe(
       Set<PubSubTopicPartition> returnSetOfTopicPartitionsToUnsub,
-      Map<PubSubTopicPartition, ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> dataReceiverMap) {
+      Map<PubSubTopicPartition, ConsumedDataReceiver<List<DefaultPubSubMessage>>> dataReceiverMap) {
     returnSetOfTopicPartitionsToUnsub.clear();
     if (++pollTimesSinceLastSanitization < sanitizeTopicSubscriptionAfterPollTimes) {
       /**
@@ -186,9 +184,9 @@ public class ConsumerSubscriptionCleaner {
    * data receivers could not process polled records properly.
    */
   private Set<PubSubTopicPartition> getTopicPartitionsForNonAliveDataReceiver(
-      Map<PubSubTopicPartition, ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> dataReceiverMap) {
+      Map<PubSubTopicPartition, ConsumedDataReceiver<List<DefaultPubSubMessage>>> dataReceiverMap) {
     Set<PubSubTopicPartition> returnSetOfTopicPartitionsToUnsub = new HashSet<>();
-    for (Map.Entry<PubSubTopicPartition, ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> entry: dataReceiverMap
+    for (Map.Entry<PubSubTopicPartition, ConsumedDataReceiver<List<DefaultPubSubMessage>>> entry: dataReceiverMap
         .entrySet()) {
       if (!entry.getValue().isDataReceiverAlive()) {
         returnSetOfTopicPartitionsToUnsub.add(entry.getKey());

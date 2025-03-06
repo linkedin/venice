@@ -9,11 +9,9 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.TestMockTime;
@@ -46,11 +44,10 @@ public class ConsumerSubscriptionCleanerTest {
     PubSubTopicPartition nonExistentTopicPartition = new PubSubTopicPartitionImpl(nonExistingTopic1, 1);
     PubSubTopicPartition nonAliveDataReceiverTopicPartition =
         new PubSubTopicPartitionImpl(existingTopicWithoutIngestionTask1, 2);
-    Map<PubSubTopicPartition, ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> dataReceiverMap =
+    Map<PubSubTopicPartition, ConsumedDataReceiver<List<DefaultPubSubMessage>>> dataReceiverMap =
         new VeniceConcurrentHashMap<>();
 
-    ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> aliveDataReceiver1 =
-        mock(ConsumedDataReceiver.class);
+    ConsumedDataReceiver<List<DefaultPubSubMessage>> aliveDataReceiver1 = mock(ConsumedDataReceiver.class);
     doReturn(true).when(aliveDataReceiver1).isDataReceiverAlive();
     PubSubTopicPartition existingTopicPartition1 = new PubSubTopicPartitionImpl(existingTopic1, 1);
     currentAssignment.add(existingTopicPartition1);
@@ -58,8 +55,7 @@ public class ConsumerSubscriptionCleanerTest {
 
     PubSubTopicPartition existingTopicPartition2 = new PubSubTopicPartitionImpl(existingTopic2, 1);
     currentAssignment.add(existingTopicPartition2);
-    ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> aliveDataReceiver2 =
-        mock(ConsumedDataReceiver.class);
+    ConsumedDataReceiver<List<DefaultPubSubMessage>> aliveDataReceiver2 = mock(ConsumedDataReceiver.class);
     doReturn(true).when(aliveDataReceiver2).isDataReceiverAlive();
     dataReceiverMap.put(existingTopicPartition2, aliveDataReceiver2);
 
@@ -101,8 +97,7 @@ public class ConsumerSubscriptionCleanerTest {
 
     // If there's a non-alive data receiver, it should be unsubbed
     currentAssignment.add(nonAliveDataReceiverTopicPartition);
-    ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> nonAliveDataReceiver =
-        mock(ConsumedDataReceiver.class);
+    ConsumedDataReceiver<List<DefaultPubSubMessage>> nonAliveDataReceiver = mock(ConsumedDataReceiver.class);
     doReturn(false).when(nonAliveDataReceiver).isDataReceiverAlive();
     dataReceiverMap.put(nonAliveDataReceiverTopicPartition, nonAliveDataReceiver);
     time.addMilliseconds(NON_EXISTING_TOPIC_CLEANUP_DELAY_MS + 1);
