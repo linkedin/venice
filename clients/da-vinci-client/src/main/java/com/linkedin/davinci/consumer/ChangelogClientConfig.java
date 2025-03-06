@@ -33,7 +33,8 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   private long databaseSyncBytesInterval = 32 * 1024 * 1024L;
 
   /**
-   * RocksDB block cache size per BootstrappingVeniceChangelogConsumer. Default is 1 MB.
+   * RocksDB block cache size per BootstrappingVeniceChangelogConsumer. Default is 1 MB. This config is used for both
+   * the internal bootstrapping change log consumer and chunk assembler's RocksDB usage.
    */
   private long rocksDBBlockCacheSizeInBytes = 1024 * 1024L;
   private String rocksDBChunkAssemblerStoragePath;
