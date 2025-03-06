@@ -319,7 +319,8 @@ subprojects {
       def versionOverrides = [
 //        project(':internal:venice-common').file('src/main/resources/avro/StoreVersionState/v5', PathValidation.DIRECTORY)
         project(':internal:venice-common').file('src/main/resources/avro/PartitionState/v15', PathValidation.DIRECTORY),
-        project(':internal:venice-common').file('src/main/resources/avro/KafkaMessageEnvelope/v11', PathValidation.DIRECTORY)
+        project(':internal:venice-common').file('src/main/resources/avro/KafkaMessageEnvelope/v11', PathValidation.DIRECTORY),
+        project(':internal:venice-common').file('src/main/resources/avro/GlobalRtDivState/v2', PathValidation.DIRECTORY)
       ]
 
       def schemaDirs = [sourceDir]
