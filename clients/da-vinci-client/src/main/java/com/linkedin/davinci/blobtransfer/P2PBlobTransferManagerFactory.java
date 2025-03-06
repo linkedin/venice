@@ -30,38 +30,32 @@ public class P2PBlobTransferManagerFactory {
   private final AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
   private BlobTransferManager<Void> p2pBlobTransferManager;
 
-  public P2PBlobTransferManagerFactory(
-      P2PBlobTransferConfig blobTransferConfig,
-      ClientConfig clientConfig,
-      CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewFuture,
-      StorageMetadataService storageMetadataService,
-      ReadOnlyStoreRepository readOnlyStoreRepository,
-      StorageEngineRepository storageEngineRepository,
-      AggVersionedBlobTransferStats aggVersionedBlobTransferStats) {
+  public P2PBlobTransferManagerFactory(P2PBlobTransferManagerFactoryBuilder builder) {
     // the client config and customized view future must one of them be null,
     // because it either for DaVinci Client or Server blob finder
-    if (clientConfig == null && customizedViewFuture == null) {
+    if (builder.clientConfig == null && builder.customizedViewFuture == null) {
       throw new IllegalArgumentException("The client config and customized view future must one of them be null");
     }
 
-    if (clientConfig != null && customizedViewFuture != null) {
+    if (builder.clientConfig != null && builder.customizedViewFuture != null) {
       throw new IllegalArgumentException("The client config and customized view future must one of them be null");
     }
 
-    if (blobTransferConfig == null || storageMetadataService == null || readOnlyStoreRepository == null
-        || storageEngineRepository == null || aggVersionedBlobTransferStats == null) {
+    if (builder.blobTransferConfig == null || builder.storageMetadataService == null
+        || builder.readOnlyStoreRepository == null || builder.storageEngineRepository == null
+        || builder.aggVersionedBlobTransferStats == null) {
       throw new IllegalArgumentException(
           "The blob transfer config, storage metadata service, read only store repository, storage engine repository, "
               + "and agg versioned blob transfer stats must not be null");
     }
 
-    this.blobTransferConfig = blobTransferConfig;
-    this.clientConfig = clientConfig;
-    this.customizedViewFuture = customizedViewFuture;
-    this.storageMetadataService = storageMetadataService;
-    this.readOnlyStoreRepository = readOnlyStoreRepository;
-    this.storageEngineRepository = storageEngineRepository;
-    this.aggVersionedBlobTransferStats = aggVersionedBlobTransferStats;
+    this.blobTransferConfig = builder.blobTransferConfig;
+    this.clientConfig = builder.clientConfig;
+    this.customizedViewFuture = builder.customizedViewFuture;
+    this.storageMetadataService = builder.storageMetadataService;
+    this.readOnlyStoreRepository = builder.readOnlyStoreRepository;
+    this.storageEngineRepository = builder.storageEngineRepository;
+    this.aggVersionedBlobTransferStats = builder.aggVersionedBlobTransferStats;
 
     // initialize the P2P blob transfer manager
     try {
@@ -165,14 +159,7 @@ public class P2PBlobTransferManagerFactory {
     }
 
     public BlobTransferManager<Void> build() {
-      P2PBlobTransferManagerFactory p2pBlobTransferManagerFactory = new P2PBlobTransferManagerFactory(
-          blobTransferConfig,
-          clientConfig,
-          customizedViewFuture,
-          storageMetadataService,
-          readOnlyStoreRepository,
-          storageEngineRepository,
-          aggVersionedBlobTransferStats);
+      P2PBlobTransferManagerFactory p2pBlobTransferManagerFactory = new P2PBlobTransferManagerFactory(this);
 
       return p2pBlobTransferManagerFactory.p2pBlobTransferManager;
     }
