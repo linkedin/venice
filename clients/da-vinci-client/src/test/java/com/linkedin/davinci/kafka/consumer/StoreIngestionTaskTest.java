@@ -4228,13 +4228,13 @@ public abstract class StoreIngestionTaskTest {
     doReturn(VersionStatus.ONLINE).when(version).getStatus();
     doReturn(true).when(version).isNativeReplicationEnabled();
     doReturn("localhost").when(version).getPushStreamSourceAddress();
+    doReturn(true).when(version).isActiveActiveReplicationEnabled();
 
     String versionTopicName = "testStore_v1";
     doReturn(versionTopicName).when(version).kafkaTopicName();
     Store store = mock(Store.class);
     doReturn(version).when(store).getVersion(eq(1));
     doReturn(Version.parseStoreFromVersionTopic(versionTopicName)).when(store).getName();
-    String rtTopicName = "testStore_rt";
     doReturn(Version.parseStoreFromVersionTopic(versionTopicName)).when(version).getStoreName();
 
     VeniceStoreVersionConfig storeConfig = mock(VeniceStoreVersionConfig.class);
@@ -4259,7 +4259,10 @@ public abstract class StoreIngestionTaskTest {
     // Simulate the version has been deleted.
     ingestionTask.setVersionRole(PartitionReplicaIngestionContext.VersionRole.BACKUP);
     doReturn(null).when(store).getVersion(eq(1));
-    ingestionTask.updateIngestionRoleIfStoreChanged(store);
+    ingestionTask.refreshIngestionContextIfChanged(store);
+    verify(ingestionTask, never()).resubscribeForAllPartitions();
+    doReturn(Store.NON_EXISTING_VERSION).when(store).getCurrentVersion();
+    ingestionTask.refreshIngestionContextIfChanged(store);
     verify(ingestionTask, never()).resubscribeForAllPartitions();
   }
 

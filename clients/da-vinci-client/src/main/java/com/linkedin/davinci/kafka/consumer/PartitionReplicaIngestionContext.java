@@ -1,8 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import org.apache.logging.log4j.LogManager;
@@ -60,35 +58,21 @@ public class PartitionReplicaIngestionContext {
     return workloadType;
   }
 
-  public static WorkloadType getWorkloadType(Version version, Store store) {
-    checkVersionTopicStoreOrThrow(version, store);
-    if (store.isWriteComputationEnabled() || version.isActiveActiveReplicationEnabled()) {
+  public static WorkloadType getWorkloadType(boolean isActiveActiveReplicationEnabled, Store store) {
+    if (store.isWriteComputationEnabled() || isActiveActiveReplicationEnabled) {
       return WorkloadType.AA_OR_WRITE_COMPUTE;
     }
     return WorkloadType.NON_AA_OR_WRITE_COMPUTE;
   }
 
-  public static VersionRole getStoreVersionRole(Version version, Store store) {
-    checkVersionTopicStoreOrThrow(version, store);
-    int versionNumber = version.getNumber();
+  public static VersionRole getStoreVersionRole(int versionNumber, Store store) {
     int currentVersionNumber = store.getCurrentVersion();
     if (currentVersionNumber < versionNumber) {
       return VersionRole.FUTURE;
-    } else if (currentVersionNumber > versionNumber) {
+    }
+    if (currentVersionNumber > versionNumber) {
       return VersionRole.BACKUP;
-    } else {
-      return VersionRole.CURRENT;
     }
-  }
-
-  public static void checkVersionTopicStoreOrThrow(Version version, Store store) {
-    if (version == null) {
-      throw new IllegalArgumentException("Version input should not be null");
-    }
-
-    if (store == null) {
-      LOGGER.error("Invalid store meta-data for {}", version.kafkaTopicName());
-      throw new VeniceNoStoreException(version.getStoreName());
-    }
+    return VersionRole.CURRENT;
   }
 }
