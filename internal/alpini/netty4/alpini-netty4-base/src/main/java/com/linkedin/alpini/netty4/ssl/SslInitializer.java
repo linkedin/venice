@@ -53,6 +53,7 @@ import javax.net.ssl.SSLParameters;
 import javax.net.ssl.SSLSession;
 import javax.net.ssl.SSLSessionContext;
 import javax.security.auth.x500.X500Principal;
+import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -325,13 +326,20 @@ public class SslInitializer extends ChannelInitializer<Channel> {
           } catch (Throwable ex) {
             LOG.warn("Unable to obtain remote CN for {}", ctx.channel().remoteAddress(), ex);
           }
-          LOG.info(
-              "SSL Handshake with {} ({}) {} in {} ms.{}",
-              ctx.channel().remoteAddress(),
-              remoteCN != null ? remoteCN : "unknown principal",
-              succeed ? "succeeded" : "failed",
-              (Time.nanoTime() - ctx.channel().attr(SSL_HANDSHAKE_START_TS).getAndSet(null)) / 1000000,
-              succeed ? "" : " Failed cause: " + failedCause);
+          StringBuilder logMessage = new StringBuilder();
+          logMessage.append("SSL Handshake with ")
+              .append(ctx.channel().remoteAddress())
+              .append(" (")
+              .append(remoteCN != null ? remoteCN : "unknown principal")
+              .append(") ")
+              .append(succeed ? "succeeded" : "failed")
+              .append(" in ")
+              .append((Time.nanoTime() - ctx.channel().attr(SSL_HANDSHAKE_START_TS).getAndSet(null)) / 1000000)
+              .append(" ms.");
+          if (!succeed) {
+            logMessage.append(" Failed cause: ").append(failedCause);
+          }
+          LOG.log(succeed ? Level.INFO : Level.ERROR, logMessage.toString());
         }
       }
 
