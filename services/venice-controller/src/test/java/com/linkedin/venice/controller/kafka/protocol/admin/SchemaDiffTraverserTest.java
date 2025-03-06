@@ -1,7 +1,6 @@
 package com.linkedin.venice.controller.kafka.protocol.admin;
 
-import static com.linkedin.venice.controller.kafka.protocol.serializer.SchemaDiffTraverser.*;
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
