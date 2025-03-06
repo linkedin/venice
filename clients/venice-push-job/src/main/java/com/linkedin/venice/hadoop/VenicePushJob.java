@@ -854,7 +854,8 @@ public class VenicePushJob implements AutoCloseable {
             controllerClient,
             pushJobSetting,
             pushJobSetting.targetedRegions,
-            pushJobSetting.isTargetedRegionPushEnabled);
+            pushJobSetting.isTargetedRegionPushEnabled,
+            pushJobSetting.isTargetRegionPushWithDeferredSwapEnabled);
       }
 
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
@@ -999,6 +1000,7 @@ public class VenicePushJob implements AutoCloseable {
           controllerClient,
           pushJobSetting,
           RegionUtils.composeRegionList(candidateRegions),
+          false,
           false);
     }
     pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
@@ -2439,7 +2441,8 @@ public class VenicePushJob implements AutoCloseable {
       ControllerClient controllerClient,
       PushJobSetting pushJobSetting,
       String targetedRegions,
-      boolean isTargetedRegionPush) {
+      boolean isTargetedRegionPush,
+      boolean isTargetRegionPushWithDeferredSwap) {
     // Set of datacenters that have reported a completed status at least once.
     Set<String> completedDatacenters = new HashSet<>();
     // Datacenter-specific details. Stored in memory to avoid printing repetitive details.
@@ -2475,8 +2478,11 @@ public class VenicePushJob implements AutoCloseable {
       JobStatusQueryResponse response = ControllerClient.retryableRequest(
           controllerClient,
           pushJobSetting.controllerStatusPollRetries,
-          client -> client
-              .queryOverallJobStatus(topicToMonitor, Optional.ofNullable(incrementalPushVersion), targetedRegions));
+          client -> client.queryOverallJobStatus(
+              topicToMonitor,
+              Optional.ofNullable(incrementalPushVersion),
+              targetedRegions,
+              isTargetRegionPushWithDeferredSwap));
 
       if (response.isError()) {
         // status could not be queried which could be due to a communication error.

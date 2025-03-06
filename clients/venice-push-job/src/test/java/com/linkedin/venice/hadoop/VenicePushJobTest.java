@@ -290,7 +290,7 @@ public class VenicePushJobTest {
       pushJobSetting.storeResponse.setStore(storeInfo);
       VeniceException exception = Assert.expectThrows(
           VeniceException.class,
-          () -> pushJob.pollStatusUntilComplete(null, client, pushJobSetting, null, false));
+          () -> pushJob.pollStatusUntilComplete(null, client, pushJobSetting, null, false, false));
       Assert
           .assertEquals(exception.getMessage(), "Failing push-job for store abc which is still running after 0 hours.");
     }
@@ -320,7 +320,7 @@ public class VenicePushJobTest {
       StoreInfo storeInfo = new StoreInfo();
       storeInfo.setBootstrapToOnlineTimeoutInHours(10);
       pushJobSetting.storeResponse.setStore(storeInfo);
-      pushJob.pollStatusUntilComplete(null, client, pushJobSetting, null, false);
+      pushJob.pollStatusUntilComplete(null, client, pushJobSetting, null, false, false);
     } catch (Exception e) {
       fail("The test should be completed successfully without any timeout exception");
     }
