@@ -76,7 +76,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
     this.daVinciConfig = new DaVinciConfig();
     ClientConfig innerClientConfig = changelogClientConfig.getInnerClientConfig();
 
-    // ToDo: Determine default capacity
+    // ToDo: Determine default capacity and make configurable by the user
     this.pubSubMessages = new ArrayBlockingQueue<>(1000);
     this.partitionToVersionToServe = new ConcurrentHashMap<>();
 
@@ -149,6 +149,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   @Override
   public void stop() throws Exception {
     daVinciClientFactory.close();
+    isStarted = false;
   }
 
   @Override
