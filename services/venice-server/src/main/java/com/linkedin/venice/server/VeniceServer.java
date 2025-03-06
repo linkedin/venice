@@ -2,9 +2,9 @@ package com.linkedin.venice.server;
 
 import com.linkedin.avro.fastserde.FastDeserializerGeneratorAccessor;
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
+import com.linkedin.davinci.blobtransfer.BlobTransferManagerBuilder;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.blobtransfer.P2PBlobTransferConfig;
-import com.linkedin.davinci.blobtransfer.P2PBlobTransferManagerFactory;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -493,8 +493,7 @@ public class VeniceServer {
           serverConfig.getBlobTransferClientReadLimitBytesPerSec(),
           serverConfig.getBlobTransferServiceWriteLimitBytesPerSec());
 
-      blobTransferManager = new P2PBlobTransferManagerFactory.P2PBlobTransferManagerFactoryBuilder()
-          .setBlobTransferConfig(p2PBlobTransferConfig)
+      blobTransferManager = new BlobTransferManagerBuilder().setBlobTransferConfig(p2PBlobTransferConfig)
           .setCustomizedViewFuture(customizedViewFuture)
           .setStorageMetadataService(storageMetadataService)
           .setReadOnlyStoreRepository(metadataRepo)

@@ -9,9 +9,9 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERRO
 import static java.lang.Thread.currentThread;
 
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
+import com.linkedin.davinci.blobtransfer.BlobTransferManagerBuilder;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.blobtransfer.P2PBlobTransferConfig;
-import com.linkedin.davinci.blobtransfer.P2PBlobTransferManagerFactory;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.StoreBackendConfig;
@@ -321,8 +321,7 @@ public class DaVinciBackend implements Closeable {
             backendConfig.getBlobTransferClientReadLimitBytesPerSec(),
             backendConfig.getBlobTransferServiceWriteLimitBytesPerSec());
 
-        blobTransferManager = new P2PBlobTransferManagerFactory.P2PBlobTransferManagerFactoryBuilder()
-            .setBlobTransferConfig(p2PBlobTransferConfig)
+        blobTransferManager = new BlobTransferManagerBuilder().setBlobTransferConfig(p2PBlobTransferConfig)
             .setClientConfig(clientConfig)
             .setStorageMetadataService(storageMetadataService)
             .setReadOnlyStoreRepository(readOnlyStoreRepository)

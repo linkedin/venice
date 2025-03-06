@@ -17,9 +17,9 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class TestP2PBlobTransferManagerFactoryBuilder {
+public class TestBlobTransferManagerBuilder {
   @Test
-  public void testInitP2PBlobTransferManager() throws IOException {
+  public void testInitBlobTransferManager() throws IOException {
     int port = TestUtils.getFreePort();
     Path tmpPartitionDir = Files.createTempDirectory("tmpPartitionDir");
     StorageMetadataService storageMetadataService = mock(StorageMetadataService.class);
@@ -40,8 +40,7 @@ public class TestP2PBlobTransferManagerFactoryBuilder {
         2000000,
         2000000);
 
-    BlobTransferManager blobTransferManager = new P2PBlobTransferManagerFactory.P2PBlobTransferManagerFactoryBuilder()
-        .setBlobTransferConfig(blobTransferConfig)
+    BlobTransferManager blobTransferManager = new BlobTransferManagerBuilder().setBlobTransferConfig(blobTransferConfig)
         .setClientConfig(clientConfig)
         .setCustomizedViewFuture(null)
         .setStorageMetadataService(storageMetadataService)
@@ -78,15 +77,15 @@ public class TestP2PBlobTransferManagerFactoryBuilder {
 
     // Case 1: expect exception is thrown due to both clientConfig and customizedViewFuture are not null
     try {
-      BlobTransferManager blobTransferManager = new P2PBlobTransferManagerFactory.P2PBlobTransferManagerFactoryBuilder()
-          .setBlobTransferConfig(blobTransferConfig)
-          .setClientConfig(clientConfig)
-          .setCustomizedViewFuture(customizedViewFuture)
-          .setStorageMetadataService(storageMetadataService)
-          .setReadOnlyStoreRepository(readOnlyStoreRepository)
-          .setStorageEngineRepository(storageEngineRepository)
-          .setAggVersionedBlobTransferStats(blobTransferStats)
-          .build();
+      BlobTransferManager blobTransferManager =
+          new BlobTransferManagerBuilder().setBlobTransferConfig(blobTransferConfig)
+              .setClientConfig(clientConfig)
+              .setCustomizedViewFuture(customizedViewFuture)
+              .setStorageMetadataService(storageMetadataService)
+              .setReadOnlyStoreRepository(readOnlyStoreRepository)
+              .setStorageEngineRepository(storageEngineRepository)
+              .setAggVersionedBlobTransferStats(blobTransferStats)
+              .build();
       Assert.assertNull(blobTransferManager);
     } catch (IllegalArgumentException e) {
       Assert
@@ -96,8 +95,7 @@ public class TestP2PBlobTransferManagerFactoryBuilder {
     // Case 2: expect exception is thrown due to both clientConfig and customizedViewFuture are null
     try {
       BlobTransferManager blobTransferManager1 =
-          new P2PBlobTransferManagerFactory.P2PBlobTransferManagerFactoryBuilder()
-              .setBlobTransferConfig(blobTransferConfig)
+          new BlobTransferManagerBuilder().setBlobTransferConfig(blobTransferConfig)
               .setClientConfig(null)
               .setCustomizedViewFuture(null)
               .setStorageMetadataService(storageMetadataService)
@@ -113,15 +111,14 @@ public class TestP2PBlobTransferManagerFactoryBuilder {
 
     // Case 3: expect exception is thrown due to null blobTransferConfig
     try {
-      BlobTransferManager blobTransferManager2 =
-          new P2PBlobTransferManagerFactory.P2PBlobTransferManagerFactoryBuilder().setBlobTransferConfig(null)
-              .setClientConfig(clientConfig)
-              .setCustomizedViewFuture(null)
-              .setStorageMetadataService(storageMetadataService)
-              .setReadOnlyStoreRepository(readOnlyStoreRepository)
-              .setStorageEngineRepository(storageEngineRepository)
-              .setAggVersionedBlobTransferStats(blobTransferStats)
-              .build();
+      BlobTransferManager blobTransferManager2 = new BlobTransferManagerBuilder().setBlobTransferConfig(null)
+          .setClientConfig(clientConfig)
+          .setCustomizedViewFuture(null)
+          .setStorageMetadataService(storageMetadataService)
+          .setReadOnlyStoreRepository(readOnlyStoreRepository)
+          .setStorageEngineRepository(storageEngineRepository)
+          .setAggVersionedBlobTransferStats(blobTransferStats)
+          .build();
       Assert.assertNull(blobTransferManager2);
     } catch (IllegalArgumentException e) {
       Assert.assertTrue(
