@@ -711,16 +711,18 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           topicSuffix,
           pubSubTopicPartition.getPartitionNumber());
     }
-    if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
-      // TODO: In view topics, we need to know the partition of the upstream RT
-      // how we transmit this information has yet to be determined, so once we finalize
-      // that, we'll need to tweak this. For now, we'll just pass in the same partition number
-      return handleVersionSwapControlMessage(
-          controlMessage,
-          pubSubTopicPartition,
-          topicSuffix,
-          pubSubTopicPartition.getPartitionNumber());
-    }
+
+    // VERSION_SWAP is now being emitted to VT, but this client is unable to handle it. Commenting it out.
+    // if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
+    // // TODO: In view topics, we need to know the partition of the upstream RT
+    // // how we transmit this information has yet to be determined, so once we finalize
+    // // that, we'll need to tweak this. For now, we'll just pass in the same partition number
+    // return handleVersionSwapControlMessage(
+    // controlMessage,
+    // pubSubTopicPartition,
+    // topicSuffix,
+    // pubSubTopicPartition.getPartitionNumber());
+    // }
     if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()
         && Arrays.equals(key, KafkaKey.HEART_BEAT.getKey())) {
       currentVersionLastHeartbeat.put(pubSubTopicPartition.getPartitionNumber(), timestamp);
@@ -789,8 +791,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       }
 
       partitionToDeleteMessageCount.computeIfAbsent(message.getPartition(), x -> new AtomicLong(0)).incrementAndGet();
-    }
-    if (messageType.equals(MessageType.PUT)) {
+    } else if (messageType.equals(MessageType.PUT)) {
       Put put = (Put) message.getValue().payloadUnion;
       // Select appropriate deserializers and compressors
       Lazy deserializerProvider;
