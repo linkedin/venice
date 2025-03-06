@@ -451,8 +451,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     this.storeBufferService = builder.getStoreBufferService();
     this.isCurrentVersion = isCurrentVersion;
-    this.hybridStoreConfig = Optional.ofNullable(
-        version.isUseVersionLevelHybridConfig() ? version.getHybridStoreConfig() : store.getHybridStoreConfig());
 
     this.divErrorMetricCallback = e -> versionedDIVStats.recordException(storeName, versionNumber, e);
 
