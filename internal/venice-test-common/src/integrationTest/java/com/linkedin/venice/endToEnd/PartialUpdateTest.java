@@ -447,7 +447,7 @@ public class PartialUpdateTest {
     record.put("id", "101");
     record.put("name", "U.S. 101");
     sendStreamingRecord(veniceProducer, storeName, key, record);
-    // Send first value with new schema;
+    // Send second value with new schema; Without default schema carry fix, it will fail SIT ingestion.
     GenericRecord recordV2 = new GenericData.Record(schemaV2);
     recordV2.put("id", "280");
     recordV2.put("name", "Interstate 280");

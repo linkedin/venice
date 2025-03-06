@@ -15,7 +15,6 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.commons.lang.StringUtils;
-import org.apache.logging.log4j.LogManager;
 
 
 public class AvroSupersetSchemaUtils {
@@ -142,9 +141,10 @@ public class AvroSupersetSchemaUtils {
   }
 
   /**
-   * Merge field schema from two schema object. The rule is: If a field exist in both new schema and old schema, we should
-   * generate the superset schema of these two versions of the same field, with new schema's information taking higher
-   * priority.
+   * Merge field schema from two schema object.
+   * The rule is: If a field exist in both new schema and old schema, we should generate the superset schema of these
+   * two versions of the same field, with new schema's information taking higher priority.
+   * For default value, if new schema does not have default value, we will still preserve the old default value.
    * @param newSchema new schema
    * @param existingSchema old schema
    * @return merged schema field
@@ -163,14 +163,8 @@ public class AvroSupersetSchemaUtils {
           fieldBuilder.setDefault(getFieldDefault(fieldInExistingSchema));
         }
       }
-      Schema.Field geneartedField = fieldBuilder.build();
-      LogManager.getLogger(AvroSupersetSchemaUtils.class)
-          .info(
-              "generated: {} {} {}",
-              fieldInNewSchema.hasDefaultValue(),
-              geneartedField.hasDefaultValue(),
-              fieldInExistingSchema == null ? null : fieldInExistingSchema.hasDefaultValue());
-      fields.add(geneartedField);
+      Schema.Field generatedField = fieldBuilder.build();
+      fields.add(generatedField);
     }
 
     for (Schema.Field fieldInExistingSchema: existingSchema.getFields()) {

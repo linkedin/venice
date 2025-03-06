@@ -8,6 +8,8 @@ import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V5_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V6_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.USER_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.USER_WITH_DEFAULT_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.USER_WITH_NESTED_RECORD_AND_DEFAULT_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.USER_WITH_NESTED_RECORD_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsString;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
@@ -508,6 +510,16 @@ public class TestAvroSupersetSchemaUtils {
     Assert.assertEquals(
         AvroSupersetSchemaUtils.generateSupersetSchema(USER_SCHEMA, USER_WITH_DEFAULT_SCHEMA),
         USER_WITH_DEFAULT_SCHEMA);
+
+    // Test nested record default value carry in both direction.
+    Assert.assertEquals(
+        AvroSupersetSchemaUtils
+            .generateSupersetSchema(USER_WITH_NESTED_RECORD_AND_DEFAULT_SCHEMA, USER_WITH_NESTED_RECORD_SCHEMA),
+        USER_WITH_NESTED_RECORD_AND_DEFAULT_SCHEMA);
+    Assert.assertEquals(
+        AvroSupersetSchemaUtils
+            .generateSupersetSchema(USER_WITH_NESTED_RECORD_SCHEMA, USER_WITH_NESTED_RECORD_AND_DEFAULT_SCHEMA),
+        USER_WITH_NESTED_RECORD_AND_DEFAULT_SCHEMA);
   }
 
   @Test

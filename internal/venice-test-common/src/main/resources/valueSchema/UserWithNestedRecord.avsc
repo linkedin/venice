@@ -1,0 +1,28 @@
+{
+  "type": "record",
+  "name": "ManyFloats",
+  "namespace": "example.avro",
+  "fields": [
+    {
+      "name": "key",
+      "type": "string"
+    },
+    {
+      "name": "value",
+      "type": {
+        "type": "record",
+        "name": "ValueRecord",
+        "fields": [
+          {
+            "name": "model",
+            "type": "float"
+          }
+        ]
+      }
+    },
+    {
+      "name": "age",
+      "type": "int"
+    }
+  ]
+}
