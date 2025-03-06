@@ -335,10 +335,8 @@ public class SslInitializer extends ChannelInitializer<Channel> {
               .append(succeed ? "succeeded" : "failed")
               .append(" in ")
               .append((Time.nanoTime() - ctx.channel().attr(SSL_HANDSHAKE_START_TS).getAndSet(null)) / 1000000)
-              .append(" ms.");
-          if (!succeed) {
-            logMessage.append(" Failed cause: ").append(failedCause);
-          }
+              .append(" ms.")
+              .append(succeed ? "" : " Failed cause: " + failedCause);
           LOG.log(succeed ? Level.INFO : Level.WARN, logMessage.toString());
         }
       }
