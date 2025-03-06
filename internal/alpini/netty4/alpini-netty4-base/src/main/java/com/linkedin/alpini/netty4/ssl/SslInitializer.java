@@ -339,7 +339,7 @@ public class SslInitializer extends ChannelInitializer<Channel> {
           if (!succeed) {
             logMessage.append(" Failed cause: ").append(failedCause);
           }
-          LOG.log(succeed ? Level.INFO : Level.ERROR, logMessage.toString());
+          LOG.log(succeed ? Level.INFO : Level.WARN, logMessage.toString());
         }
       }
 
