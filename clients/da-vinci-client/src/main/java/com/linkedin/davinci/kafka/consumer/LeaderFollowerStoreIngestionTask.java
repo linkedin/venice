@@ -2649,6 +2649,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 beforeProcessingPerRecordTimestampNs);
 
             break;
+          // return DelegateConsumerRecordResult.QUEUED_TO_DRAINER;
           default:
             // do nothing
             break;

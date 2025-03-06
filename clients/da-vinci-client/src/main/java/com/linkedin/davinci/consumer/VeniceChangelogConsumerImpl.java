@@ -712,17 +712,19 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           pubSubTopicPartition.getPartitionNumber());
     }
 
-    // VERSION_SWAP is now being emitted to VT, but this client is unable to handle it. Commenting it out.
-    // if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
-    // // TODO: In view topics, we need to know the partition of the upstream RT
-    // // how we transmit this information has yet to be determined, so once we finalize
-    // // that, we'll need to tweak this. For now, we'll just pass in the same partition number
-    // return handleVersionSwapControlMessage(
-    // controlMessage,
-    // pubSubTopicPartition,
-    // topicSuffix,
-    // pubSubTopicPartition.getPartitionNumber());
-    // }
+    // VERSION_SWAP is now being emitted to VT by the Leader. Make sure to only process VERSION_SWAP messages from CC
+    // topic
+    if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)
+        && !Version.isVersionTopic(pubSubTopicPartition.getTopicName())) {
+      // TODO: In view topics, we need to know the partition of the upstream RT
+      // how we transmit this information has yet to be determined, so once we finalize
+      // that, we'll need to tweak this. For now, we'll just pass in the same partition number
+      return handleVersionSwapControlMessage(
+          controlMessage,
+          pubSubTopicPartition,
+          topicSuffix,
+          pubSubTopicPartition.getPartitionNumber());
+    }
     if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()
         && Arrays.equals(key, KafkaKey.HEART_BEAT.getKey())) {
       currentVersionLastHeartbeat.put(pubSubTopicPartition.getPartitionNumber(), timestamp);
