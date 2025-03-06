@@ -8,6 +8,7 @@ import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.stream.ChunkedWriteHandler;
 import io.netty.handler.timeout.IdleStateHandler;
+import io.netty.handler.traffic.GlobalChannelTrafficShapingHandler;
 
 
 public class BlobTransferNettyChannelInitializer extends ChannelInitializer<SocketChannel> {
@@ -15,20 +16,24 @@ public class BlobTransferNettyChannelInitializer extends ChannelInitializer<Sock
   private final int blobTransferMaxTimeoutInMin;
   private BlobSnapshotManager blobSnapshotManager;
 
+  private final GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler;
+
   public BlobTransferNettyChannelInitializer(
       String baseDir,
       int blobTransferMaxTimeoutInMin,
-      BlobSnapshotManager blobSnapshotManager) {
+      BlobSnapshotManager blobSnapshotManager,
+      GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler) {
     this.baseDir = baseDir;
     this.blobTransferMaxTimeoutInMin = blobTransferMaxTimeoutInMin;
     this.blobSnapshotManager = blobSnapshotManager;
+    this.globalChannelTrafficShapingHandler = globalChannelTrafficShapingHandler;
   }
 
   @Override
   protected void initChannel(SocketChannel ch) throws Exception {
     ChannelPipeline pipeline = ch.pipeline();
 
-    pipeline
+    pipeline.addLast("globalTrafficShaper", globalChannelTrafficShapingHandler)
         // for http encoding/decoding.
         .addLast("codec", new HttpServerCodec())
         .addLast("aggregator", new HttpObjectAggregator(65536))
