@@ -297,12 +297,12 @@ public class SslInitializer extends ChannelInitializer<Channel> {
       if (evt instanceof SslHandshakeCompletionEvent) {
         ctx.pipeline().remove(this);
         boolean succeed = ((SslHandshakeCompletionEvent) evt).isSuccess();
-        String failedCause = "";
+        Throwable failedCause = null;
         if (succeed) {
           _handshakesSuccessful.increment();
         } else {
           _handshakesFailed.increment();
-          failedCause = ((SslHandshakeCompletionEvent) evt).cause().toString();
+          failedCause = ((SslHandshakeCompletionEvent) evt).cause();
         }
         if (ctx.channel().hasAttr(SSL_HANDSHAKE_START_TS)) {
           SslHandler handler = ctx.pipeline().get(SslHandler.class);
@@ -337,7 +337,7 @@ public class SslInitializer extends ChannelInitializer<Channel> {
               .append((Time.nanoTime() - ctx.channel().attr(SSL_HANDSHAKE_START_TS).getAndSet(null)) / 1000000)
               .append(" ms.")
               .append(succeed ? "" : " Failed cause: " + failedCause);
-          LOG.log(succeed ? Level.INFO : Level.WARN, logMessage.toString());
+          LOG.log(succeed ? Level.INFO : Level.WARN, logMessage.toString(), failedCause);
         }
       }
 
