@@ -7,11 +7,10 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.kafka.protocol.serializer.SchemaDiffTraverser;
 import com.linkedin.venice.utils.Pair;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.BiConsumer;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiFunction;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -54,22 +53,20 @@ public class SchemaDiffTraverserTest {
     Schema targetSchema = adminOperationSerializer.getSchema(74);
     Schema currentSchema = adminOperationSerializer.getSchema(84);
     SchemaDiffTraverser schemaDiffTraverser = new SchemaDiffTraverser();
-    AtomicBoolean flag = new AtomicBoolean(false);
-    ArrayList<String> fieldName = new ArrayList<>();
 
-    BiConsumer<Object, Pair<Schema.Field, Schema.Field>> filter =
-        schemaDiffTraverser.usingNewSemanticCheck(flag, fieldName);
+    AtomicReference<String> errorMessage = new AtomicReference<>();
 
-    schemaDiffTraverser.traverse(adminMessage, currentSchema, targetSchema, "", filter);
+    BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> filter =
+        schemaDiffTraverser.createSemanticCheck(errorMessage);
 
-    // Check if the flag is set to true
-    assertTrue(flag.get(), "The flag should be set to true");
-    // Check if the field name is as expected
-    ArrayList<String> expectedFieldName = new ArrayList<>();
-    expectedFieldName.add("payloadUnion_UpdateStore_hybridStoreConfig_HybridStoreConfigRecord_realTimeTopicName");
-    expectedFieldName.add("payloadUnion_UpdateStore_separateRealTimeTopicEnabled");
-    expectedFieldName.add("payloadUnion_UpdateStore_targetSwapRegionWaitTime");
-    assertEquals(fieldName, expectedFieldName, "The field name should be as expected");
+    // Traverse the admin message
+    boolean isNewSemanticUsage = schemaDiffTraverser.traverse(adminMessage, currentSchema, targetSchema, "", filter);
+
+    assertTrue(isNewSemanticUsage, "The flag should be set to true");
+    assertTrue(
+        errorMessage.get()
+            .contains("payloadUnion_UpdateStore_hybridStoreConfig_HybridStoreConfigRecord_realTimeTopicName"),
+        "The error message should contain the field name");
   }
 
   @Test
@@ -104,20 +101,19 @@ public class SchemaDiffTraverserTest {
 
     // Traverse the array
     SchemaDiffTraverser schemaDiffTraverser = new SchemaDiffTraverser();
-    AtomicBoolean flag = new AtomicBoolean(false);
-    ArrayList<String> fieldName = new ArrayList<>();
-    BiConsumer<Object, Pair<Schema.Field, Schema.Field>> filter =
-        schemaDiffTraverser.usingNewSemanticCheck(flag, fieldName);
+    AtomicReference<String> errorMessage = new AtomicReference<>();
 
-    schemaDiffTraverser.traverse(array, schema, targetSchema, "", filter);
+    BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> filter =
+        schemaDiffTraverser.createSemanticCheck(errorMessage);
+
+    boolean isUsingNewSemantic = schemaDiffTraverser.traverse(array, schema, targetSchema, "", filter);
 
     // Check if the flag is set to true
-    assertTrue(flag.get(), "The flag should be set to true");
     // Check if the field name is as expected
-    ArrayList<String> expectedFieldName = new ArrayList<>();
-    expectedFieldName.add("array_ExampleRecord_0_field2");
-
-    assertEquals(fieldName, expectedFieldName, "The field name should be as expected");
+    assertTrue(isUsingNewSemantic, "The flag should be set to true");
+    assertTrue(
+        errorMessage.get().contains("array_ExampleRecord_0_field2"),
+        "The error message should contain the field name");
   }
 
   @Test
@@ -152,18 +148,18 @@ public class SchemaDiffTraverserTest {
     SchemaDiffTraverser schemaDiffTraverser = new SchemaDiffTraverser();
 
     // collect the pair fields
-    AtomicBoolean flag = new AtomicBoolean(false);
-    ArrayList<String> fieldName = new ArrayList<>();
-    BiConsumer<Object, Pair<Schema.Field, Schema.Field>> filter =
-        schemaDiffTraverser.usingNewSemanticCheck(flag, fieldName);
+    AtomicReference<String> errorMessage = new AtomicReference<>();
 
-    schemaDiffTraverser.traverse(map, schema, targetSchema, "", filter);
+    BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> filter =
+        schemaDiffTraverser.createSemanticCheck(errorMessage);
+
+    boolean isUsingNewSemantic = schemaDiffTraverser.traverse(map, schema, targetSchema, "", filter);
 
     // Check if the flag is set to true
-    assertTrue(flag.get(), "The flag should be set to true");
+    assertTrue(isUsingNewSemantic, "The traverse should return true");
     // Check if the field name is as expected
-    ArrayList<String> expectedFieldName = new ArrayList<>();
-    expectedFieldName.add("map_ExampleRecord_key0_field2");
-    assertEquals(fieldName, expectedFieldName, "The field name should be as expected");
+    assertTrue(
+        errorMessage.get().contains("map_ExampleRecord_key0_field2"),
+        "The error message should contain the field name");
   }
 }
