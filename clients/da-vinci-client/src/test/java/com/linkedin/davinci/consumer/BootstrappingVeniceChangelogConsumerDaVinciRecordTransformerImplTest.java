@@ -23,6 +23,8 @@ import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
 import java.lang.reflect.Field;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -95,10 +97,17 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     when(mockDaVinciClient.getPartitionCount()).thenReturn(PARTITION_COUNT);
     when(mockDaVinciClient.subscribe(any())).thenReturn(mock(CompletableFuture.class));
 
-    Field daVinciClientField =
-        BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("daVinciClient");
-    daVinciClientField.setAccessible(true);
-    daVinciClientField.set(bootstrappingVeniceChangelogConsumer, mockDaVinciClient);
+    AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+      try {
+        Field daVinciClientField =
+            BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("daVinciClient");
+        daVinciClientField.setAccessible(true);
+        daVinciClientField.set(bootstrappingVeniceChangelogConsumer, mockDaVinciClient);
+      } catch (NoSuchFieldException | IllegalAccessException e) {
+        throw new RuntimeException(e);
+      }
+      return null;
+    });
   }
 
   @Test
