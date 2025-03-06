@@ -896,7 +896,7 @@ public class StoreInfo {
   }
 
   public void setReasonsStoreIsDead(List<String> reasons) {
-    this.reasonsStoreIsDead = reasons == null ? List.of() : List.copyOf(reasons);
+    this.reasonsStoreIsDead = reasons == null ? Collections.emptyList() : new ArrayList<>(reasons);
   }
 
   public List<String> getReasonsStoreIsDead() {
