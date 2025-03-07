@@ -33,6 +33,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -163,6 +164,19 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
 
     List<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> drainedPubSubMessages = new ArrayList<>();
     pubSubMessages.drainTo(drainedPubSubMessages);
+
+    if (changelogClientConfig.shouldCompactMessages()) {
+      Map<K, PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> tempMap = new LinkedHashMap<>();
+      // The behavior of LinkedHashMap is such that it maintains the order of insertion, but for values which are
+      // replaced, it's put in at the position of the first insertion. This isn't quite what we want, we want to keep
+      // only a single key (just as a map would), but we want to keep the position of the last insertion as well. So in
+      // order to do that, we remove the entry before inserting it.
+      for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> message: drainedPubSubMessages) {
+        tempMap.remove(message.getKey());
+        tempMap.put(message.getKey(), message);
+      }
+      return tempMap.values();
+    }
     return drainedPubSubMessages;
   }
 
@@ -211,7 +225,8 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
     public void onStartVersionIngestion(boolean isCurrentVersion) {
       for (int partitionId: subscribedPartitions) {
         if (isCurrentVersion) {
-          partitionToVersionToServe.put(partitionId, getStoreVersion());
+          // ToDo: Explain why we can't immediately serve
+          partitionToVersionToServe.computeIfAbsent(partitionId, v -> getStoreVersion());
         }
 
         pubSubTopicPartitionMap
@@ -238,6 +253,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
                   0,
                   0,
                   false));
+
           startLatch.countDown();
         } catch (InterruptedException e) {
           LOGGER.error("Thread was interrupted while putting a message into pubSubMessages", e);
@@ -259,12 +275,20 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
 
     @Override
     public void onVersionSwap(int currentVersion, int futureVersion, int partitionId) {
-      partitionToVersionToServe.put(partitionId, futureVersion);
-      LOGGER.info(
-          "Swapped from version: {} to version: {} for partitionId: {}",
-          currentVersion,
-          futureVersion,
-          partitionId);
+      /*
+       * Only the futureVersion should act on the VSM.
+       * The previousVersion will consume the VSM earlier than the futureVersion, leading to an early version swap.
+       * This early swap causes the buffer to fill with records before the EOP, which is undesirable.
+       * By only allowing the futureVersion to perform the version swap, we ensure that only nearline events are served.
+       */
+      if (futureVersion == getStoreVersion()) {
+        partitionToVersionToServe.put(partitionId, futureVersion);
+        LOGGER.info(
+            "Swapped from version: {} to version: {} for partitionId: {}",
+            currentVersion,
+            futureVersion,
+            partitionId);
+      }
     }
 
     @Override
