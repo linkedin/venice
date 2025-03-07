@@ -93,7 +93,7 @@ public class ApacheKafkaOffsetPositionTest {
   @Test
   public void testToString() {
     ApacheKafkaOffsetPosition position1 = ApacheKafkaOffsetPosition.of(1);
-    assertEquals(position1.toString(), "KafkaOffset: 1");
+    assertEquals(position1.toString(), "1");
   }
 
   @Test

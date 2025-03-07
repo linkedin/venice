@@ -85,7 +85,7 @@ public class ApacheKafkaOffsetPosition implements PubSubPosition {
 
   @Override
   public String toString() {
-    return String.format("KafkaOffset: %s", offset);
+    return offset + "";
   }
 
   @Override
