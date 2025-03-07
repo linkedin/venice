@@ -65,8 +65,9 @@ public class IngestionThrottler implements Closeable {
     EventThrottler globalRecordThrottler;
     EventThrottler globalBandwidthThrottler;
     VeniceAdaptiveIngestionThrottler globalBandwidthAdaptiveIngestionThrottler;
+    boolean isAdaptiveThrottlerEnabled = serverConfig.isAdaptiveThrottlerEnabled();
 
-    if (serverConfig.isAdaptiveThrottlerEnabled()) {
+    if (isAdaptiveThrottlerEnabled) {
       globalRecordThrottler = null;
       globalRecordAdaptiveIngestionThrottler = new VeniceAdaptiveIngestionThrottler(
           serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
@@ -106,12 +107,19 @@ public class IngestionThrottler implements Closeable {
     this.poolTypeRecordThrottlerMap = new VeniceConcurrentHashMap<>();
     this.poolTypeRecordThrottlerMap.put(
         ConsumerPoolType.AA_WC_LEADER_POOL,
-        new EventThrottler(
-            serverConfig.getAaWCLeaderQuotaRecordsPerSecond(),
-            serverConfig.getKafkaFetchQuotaTimeWindow(),
-            "aa_wc_leader_records_count",
-            false,
-            EventThrottler.BLOCK_STRATEGY));
+        isAdaptiveThrottlerEnabled
+            ? new VeniceAdaptiveIngestionThrottler(
+                serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
+                serverConfig.getAaWCLeaderQuotaRecordsPerSecond(),
+                serverConfig.getThrottlerFactorsForAAWCLeader(),
+                serverConfig.getKafkaFetchQuotaTimeWindow(),
+                "aa_wc_leader_records_count")
+            : new EventThrottler(
+                serverConfig.getAaWCLeaderQuotaRecordsPerSecond(),
+                serverConfig.getKafkaFetchQuotaTimeWindow(),
+                "aa_wc_leader_records_count",
+                false,
+                EventThrottler.BLOCK_STRATEGY));
     this.poolTypeRecordThrottlerMap.put(
         ConsumerPoolType.SEP_RT_LEADER_POOL,
         new EventThrottler(
@@ -122,12 +130,19 @@ public class IngestionThrottler implements Closeable {
             EventThrottler.BLOCK_STRATEGY));
     this.poolTypeRecordThrottlerMap.put(
         ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL,
-        new EventThrottler(
-            serverConfig.getCurrentVersionAAWCLeaderQuotaRecordsPerSecond(),
-            serverConfig.getKafkaFetchQuotaTimeWindow(),
-            "current_version_aa_wc_leader_records_count",
-            false,
-            EventThrottler.BLOCK_STRATEGY));
+        isAdaptiveThrottlerEnabled
+            ? new VeniceAdaptiveIngestionThrottler(
+                serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
+                serverConfig.getCurrentVersionAAWCLeaderQuotaRecordsPerSecond(),
+                serverConfig.getThrottlerFactorsForCurrentVersionAAWCLeader(),
+                serverConfig.getKafkaFetchQuotaTimeWindow(),
+                "current_version_aa_wc_leader_records_count")
+            : new EventThrottler(
+                serverConfig.getCurrentVersionAAWCLeaderQuotaRecordsPerSecond(),
+                serverConfig.getKafkaFetchQuotaTimeWindow(),
+                "current_version_aa_wc_leader_records_count",
+                false,
+                EventThrottler.BLOCK_STRATEGY));
     this.poolTypeRecordThrottlerMap.put(
         ConsumerPoolType.CURRENT_VERSION_SEP_RT_LEADER_POOL,
         new EventThrottler(
@@ -146,12 +161,19 @@ public class IngestionThrottler implements Closeable {
             EventThrottler.BLOCK_STRATEGY));
     this.poolTypeRecordThrottlerMap.put(
         ConsumerPoolType.NON_CURRENT_VERSION_AA_WC_LEADER_POOL,
-        new EventThrottler(
-            serverConfig.getNonCurrentVersionAAWCLeaderQuotaRecordsPerSecond(),
-            serverConfig.getKafkaFetchQuotaTimeWindow(),
-            "non_current_version_aa_wc_leader_records_count",
-            false,
-            EventThrottler.BLOCK_STRATEGY));
+        isAdaptiveThrottlerEnabled
+            ? new VeniceAdaptiveIngestionThrottler(
+                serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
+                serverConfig.getNonCurrentVersionAAWCLeaderQuotaRecordsPerSecond(),
+                serverConfig.getThrottlerFactorsForNonCurrentVersionAAWCLeader(),
+                serverConfig.getKafkaFetchQuotaTimeWindow(),
+                "non_current_version_aa_wc_leader_records_count")
+            : new EventThrottler(
+                serverConfig.getNonCurrentVersionAAWCLeaderQuotaRecordsPerSecond(),
+                serverConfig.getKafkaFetchQuotaTimeWindow(),
+                "non_current_version_aa_wc_leader_records_count",
+                false,
+                EventThrottler.BLOCK_STRATEGY));
     this.poolTypeRecordThrottlerMap.put(
         ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
         new EventThrottler(
@@ -211,10 +233,9 @@ public class IngestionThrottler implements Closeable {
     }
 
     this.finalRecordThrottler =
-        serverConfig.isAdaptiveThrottlerEnabled() ? globalRecordAdaptiveIngestionThrottler : globalRecordThrottler;
-    this.finalBandwidthThrottler = serverConfig.isAdaptiveThrottlerEnabled()
-        ? globalBandwidthAdaptiveIngestionThrottler
-        : globalBandwidthThrottler;
+        isAdaptiveThrottlerEnabled ? globalRecordAdaptiveIngestionThrottler : globalRecordThrottler;
+    this.finalBandwidthThrottler =
+        isAdaptiveThrottlerEnabled ? globalBandwidthAdaptiveIngestionThrottler : globalBandwidthThrottler;
   }
 
   public void maybeThrottleRecordRate(ConsumerPoolType poolType, int count) {
