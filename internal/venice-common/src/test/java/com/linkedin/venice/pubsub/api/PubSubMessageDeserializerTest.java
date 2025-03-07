@@ -86,7 +86,7 @@ public class PubSubMessageDeserializerTest {
     assertEquals(actualKey.getKeyHeaderByte(), key.getKeyHeaderByte());
     assertEquals(actualKey.getKey(), key.getKey());
     assertEquals(message.getValue(), value);
-    assertEquals(message.getOffset(), position);
+    assertEquals(message.getPosition(), position);
   }
 
   @Test
@@ -108,7 +108,7 @@ public class PubSubMessageDeserializerTest {
     assertEquals(actualKey.getKeyHeaderByte(), key.getKeyHeaderByte());
     assertEquals(actualKey.getKey(), key.getKey());
     assertEquals(message.getValue(), value);
-    assertEquals(message.getOffset(), position);
+    assertEquals(message.getPosition(), position);
   }
 
   @Test
@@ -129,7 +129,7 @@ public class PubSubMessageDeserializerTest {
     assertEquals(actualKey.getKeyHeaderByte(), key.getKeyHeaderByte());
     assertEquals(actualKey.getKey(), key.getKey());
     assertEquals(message.getValue(), value);
-    assertEquals(message.getOffset(), position);
+    assertEquals(message.getPosition(), position);
   }
 
   private KafkaMessageEnvelope getDummyValue() {

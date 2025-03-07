@@ -111,14 +111,14 @@ public class TopicMessageFinder {
       }
       long lastRecordTimestamp = 0;
       for (DefaultPubSubMessage record: messages.get(assignedPubSubTopicPartition)) {
-        if (record.getOffset().getNumericOffset() >= endOffset) {
+        if (record.getPosition().getNumericOffset() >= endOffset) {
           done = true;
           break;
         }
         KafkaKey kafkaKey = record.getKey();
         if (Arrays.equals(kafkaKey.getKey(), serializedKey)) {
           KafkaMessageEnvelope value = record.getValue();
-          LOGGER.info("Offset: {}, Value: {}", record.getOffset(), value.toString());
+          LOGGER.info("Offset: {}, Value: {}", record.getPosition(), value.toString());
         }
         lastRecordTimestamp = record.getPubSubMessageTime();
         recordCnt++;

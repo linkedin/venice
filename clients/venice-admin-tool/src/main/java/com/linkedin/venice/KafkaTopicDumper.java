@@ -381,7 +381,7 @@ public class KafkaTopicDumper implements AutoCloseable {
         while (recordIterator.hasNext() && processedMessageCount < messageCount) {
           DefaultPubSubMessage record = recordIterator.next();
           // Exit early if endOffset is reached
-          if (record.getOffset().getNumericOffset() > endOffset) {
+          if (record.getPosition().getNumericOffset() > endOffset) {
             LOGGER.info("Reached endOffset: {}. Total messages processed: {}", endOffset, processedMessageCount);
             return processedMessageCount;
           }
@@ -396,7 +396,7 @@ public class KafkaTopicDumper implements AutoCloseable {
           LOGGER.info(
               "Consumed {} messages; last consumed message offset: {}",
               processedMessageCount,
-              lastProcessedRecord.getOffset());
+              lastProcessedRecord.getPosition());
           lastReportedCount = processedMessageCount;
         }
 
@@ -476,7 +476,7 @@ public class KafkaTopicDumper implements AutoCloseable {
 
       LOGGER.info(
           "Offset:{}; {}; {}; ProducerMd=(guid:{},seg:{},seq:{},mts:{},lts:{}); LeaderMd=(host:{},uo:{},ukcId:{}){}",
-          record.getOffset(),
+          record.getPosition(),
           kafkaKey.isControlMessage() ? CONTROL_REC : REGULAR_REC,
           msgType,
           GuidUtils.getHexFromGuid(producerMetadata.producerGUID),
@@ -489,7 +489,7 @@ public class KafkaTopicDumper implements AutoCloseable {
           leaderMetadata == null ? "-" : leaderMetadata.upstreamKafkaClusterId,
           chunkMetadata);
     } catch (Exception e) {
-      LOGGER.error("Encounter exception when processing record for offset {}", record.getOffset(), e);
+      LOGGER.error("Encounter exception when processing record for offset {}", record.getPosition(), e);
     }
   }
 
@@ -502,7 +502,7 @@ public class KafkaTopicDumper implements AutoCloseable {
     MessageType msgType = MessageType.valueOf(kafkaMessageEnvelope);
     LOGGER.info(
         "[Record Data] Offset:{}; {}; {}",
-        record.getOffset(),
+        record.getPosition(),
         msgType.toString(),
         buildDataRecordLog(record, logReplicationMetadata));
 
@@ -568,7 +568,7 @@ public class KafkaTopicDumper implements AutoCloseable {
           throw new VeniceException("Unknown data type.");
       }
     } catch (Exception e) {
-      LOGGER.error("Encounter exception when processing record for offset: {}", record.getOffset(), e);
+      LOGGER.error("Encounter exception when processing record for offset: {}", record.getPosition(), e);
     }
     return logReplicationMetadata
         ? String
@@ -621,7 +621,7 @@ public class KafkaTopicDumper implements AutoCloseable {
     return String.format(
         "Offset:%s; %s; SourceKafkaServers: %s; SourceTopicName: %s; RewindStartTimestamp: %s; "
             + "ProducerMd=(guid:%s,seg:%s,seq:%s,mts:%s,lts:%s); LeaderMd=(host:%s,uo:%s,ukcId:%s)",
-        record.getOffset(),
+        record.getPosition(),
         ControlMessageType.TOPIC_SWITCH.name(),
         topicSwitch.sourceKafkaServers,
         topicSwitch.sourceTopicName,
@@ -646,7 +646,7 @@ public class KafkaTopicDumper implements AutoCloseable {
       }
       // build the record
       GenericRecord convertedRecord = new GenericData.Record(outputSchema);
-      convertedRecord.put(VENICE_ETL_OFFSET_FIELD, record.getOffset());
+      convertedRecord.put(VENICE_ETL_OFFSET_FIELD, record.getPosition());
 
       byte[] keyBytes = kafkaKey.getKey();
       Decoder keyDecoder = decoderFactory.binaryDecoder(keyBytes, null);
@@ -673,7 +673,7 @@ public class KafkaTopicDumper implements AutoCloseable {
           convertedRecord.put(VENICE_ETL_VALUE_FIELD, valueRecord);
           break;
         case DELETE:
-          convertedRecord.put(VENICE_ETL_DELETED_TS_FIELD, record.getOffset());
+          convertedRecord.put(VENICE_ETL_DELETED_TS_FIELD, record.getPosition());
           break;
         case UPDATE:
           LOGGER.info("Found update message! continue");
@@ -683,7 +683,7 @@ public class KafkaTopicDumper implements AutoCloseable {
       }
       dataFileWriter.append(convertedRecord);
     } catch (Exception e) {
-      LOGGER.error("Failed when building record for offset {}", record.getOffset(), e);
+      LOGGER.error("Failed when building record for offset {}", record.getPosition(), e);
     }
   }
 

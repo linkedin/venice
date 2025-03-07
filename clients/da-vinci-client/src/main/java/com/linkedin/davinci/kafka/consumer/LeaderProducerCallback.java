@@ -210,7 +210,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
             ingestionTask.ingestionTaskName,
             endOfPushReceived,
             sourceConsumerRecord.getTopicPartition(),
-            sourceConsumerRecord.getOffset(),
+            sourceConsumerRecord.getPosition(),
             oe);
         // If EOP is not received yet, set the ingestion task exception so that ingestion will fail eventually.
         if (!endOfPushReceived) {

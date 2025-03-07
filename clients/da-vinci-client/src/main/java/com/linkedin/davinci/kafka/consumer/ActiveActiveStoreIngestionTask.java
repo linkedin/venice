@@ -479,7 +479,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         : Collections.singletonList(0L);
 
     // get the source offset and the id
-    long sourceOffset = consumerRecord.getOffset().getNumericOffset();
+    long sourceOffset = consumerRecord.getPosition().getNumericOffset();
     final MergeConflictResult mergeConflictResult;
 
     aggVersionedIngestionStats.recordTotalDCR(storeName, versionNumber);
@@ -571,7 +571,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         aggVersionedIngestionStats.recordTombStoneCreationDCR(storeName, versionNumber);
         partitionConsumptionState.setTransientRecord(
             kafkaClusterId,
-            consumerRecord.getOffset().getNumericOffset(),
+            consumerRecord.getPosition().getNumericOffset(),
             keyBytes,
             valueSchemaId,
             rmdRecord);
@@ -579,7 +579,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         int valueLen = updatedValueBytes.remaining();
         partitionConsumptionState.setTransientRecord(
             kafkaClusterId,
-            consumerRecord.getOffset().getNumericOffset(),
+            consumerRecord.getPosition().getNumericOffset(),
             keyBytes,
             updatedValueBytes.array(),
             updatedValueBytes.position(),
@@ -868,7 +868,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                   oldValueManifest,
                   oldRmdManifest);
       LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext
-          .newDeleteRecord(kafkaClusterId, consumerRecord.getOffset().getNumericOffset(), key, deletePayload);
+          .newDeleteRecord(kafkaClusterId, consumerRecord.getPosition().getNumericOffset(), key, deletePayload);
       produceToLocalKafka(
           consumerRecord,
           partitionConsumptionState,
@@ -899,7 +899,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           consumerRecord,
           partitionConsumptionState,
           LeaderProducedRecordContext
-              .newPutRecord(kafkaClusterId, consumerRecord.getOffset().getNumericOffset(), key, updatedPut),
+              .newPutRecord(kafkaClusterId, consumerRecord.getPosition().getNumericOffset(), key, updatedPut),
           produceToTopicFunction,
           partition,
           kafkaUrl,
@@ -932,7 +932,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     if (partitionConsumptionState.getLeaderFollowerState() == LEADER && partitionConsumptionState.isHybrid()
         && consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
       partitionConsumptionState
-          .updateLatestRTOffsetTriedToProduceToVTMap(kafkaUrl, consumerRecord.getOffset().getNumericOffset());
+          .updateLatestRTOffsetTriedToProduceToVTMap(kafkaUrl, consumerRecord.getPosition().getNumericOffset());
     }
   }
 
@@ -1280,7 +1280,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               kafkaClusterIdToUrlMap,
               recordSourceKafkaUrl,
               consumerRecord.getTopicPartition(),
-              consumerRecord.getOffset().getNumericOffset(),
+              consumerRecord.getPosition().getNumericOffset(),
               type.toString() + (type == MessageType.CONTROL_MESSAGE
                   ? "/" + ControlMessageType.valueOf((ControlMessage) kafkaValue.getPayloadUnion())
                   : ""),

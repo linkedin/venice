@@ -452,7 +452,7 @@ public class TestKafkaTopicDumper {
       DefaultPubSubMessage message = mock(DefaultPubSubMessage.class);
       PubSubPosition pubSubPosition = mock(PubSubPosition.class);
       when(pubSubPosition.getNumericOffset()).thenReturn(startOffset + i);
-      when(message.getOffset()).thenReturn(pubSubPosition);
+      when(message.getPosition()).thenReturn(pubSubPosition);
       messages.add(message);
     }
     return messages;

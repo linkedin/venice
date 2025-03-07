@@ -6,7 +6,8 @@ import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import java.nio.ByteBuffer;
@@ -47,19 +48,19 @@ public class PubSubHelper {
     return value;
   }
 
-  public static MutablePubSubMessage getDummyPubSubMessage(boolean isControlMessage) {
-    return new MutablePubSubMessage().setKey(getDummyKey(isControlMessage)).setValue(getDummyValue());
+  public static MutableDefaultPubSubMessage getDummyPubSubMessage(boolean isControlMessage) {
+    return new MutableDefaultPubSubMessage().setKey(getDummyKey(isControlMessage)).setValue(getDummyValue());
   }
 
-  public static List<MutablePubSubMessage> produceMessages(
+  public static List<MutableDefaultPubSubMessage> produceMessages(
       PubSubProducerAdapter pubSubProducerAdapter,
       PubSubTopicPartition topicPartition,
       int messageCount,
       long delayBetweenMessagesInMs,
       boolean controlMessages) throws InterruptedException, ExecutionException, TimeoutException {
-    List<MutablePubSubMessage> messages = new ArrayList<>(messageCount);
+    List<MutableDefaultPubSubMessage> messages = new ArrayList<>(messageCount);
     for (int i = 0; i < messageCount; i++) {
-      MutablePubSubMessage message = PubSubHelper.getDummyPubSubMessage(controlMessages);
+      MutableDefaultPubSubMessage message = PubSubHelper.getDummyPubSubMessage(controlMessages);
       message.getValue().getProducerMetadata().setMessageTimestamp(i); // logical ts
       message.setTimestampBeforeProduce(System.currentTimeMillis());
       messages.add(message);
@@ -80,7 +81,7 @@ public class PubSubHelper {
                 throw new RuntimeException(e);
               } finally {
                 // update the offset and timestamp after produce (and delay) so that each message has a unique timestamp
-                message.setOffset(result.getOffset());
+                message.setOffset(result.getPubSubPosition());
                 message.setTimestampAfterProduce(System.currentTimeMillis());
               }
             }
@@ -92,11 +93,11 @@ public class PubSubHelper {
   }
 
   // mutable publish-sub message
-  public static class MutablePubSubMessage implements PubSubMessage {
+  public static class MutableDefaultPubSubMessage implements DefaultPubSubMessage {
     private KafkaKey key;
     private KafkaMessageEnvelope value;
     private PubSubTopicPartition topicPartition;
-    private long offset;
+    private PubSubPosition position;
     private long timestampBeforeProduce;
     private long timestampAfterProduce;
 
@@ -112,8 +113,8 @@ public class PubSubHelper {
       return topicPartition;
     }
 
-    public Long getOffset() {
-      return offset;
+    public PubSubPosition getPosition() {
+      return position;
     }
 
     @Override
@@ -131,32 +132,32 @@ public class PubSubHelper {
       return false;
     }
 
-    public MutablePubSubMessage setKey(KafkaKey key) {
+    public MutableDefaultPubSubMessage setKey(KafkaKey key) {
       this.key = key;
       return this;
     }
 
-    public MutablePubSubMessage setValue(KafkaMessageEnvelope value) {
+    public MutableDefaultPubSubMessage setValue(KafkaMessageEnvelope value) {
       this.value = value;
       return this;
     }
 
-    public MutablePubSubMessage setTopicPartition(PubSubTopicPartition topicPartition) {
+    public MutableDefaultPubSubMessage setTopicPartition(PubSubTopicPartition topicPartition) {
       this.topicPartition = topicPartition;
       return this;
     }
 
-    public MutablePubSubMessage setOffset(long offset) {
-      this.offset = offset;
+    public MutableDefaultPubSubMessage setOffset(PubSubPosition position) {
+      this.position = position;
       return this;
     }
 
-    public MutablePubSubMessage setTimestampBeforeProduce(long timestampBeforeProduce) {
+    public MutableDefaultPubSubMessage setTimestampBeforeProduce(long timestampBeforeProduce) {
       this.timestampBeforeProduce = timestampBeforeProduce;
       return this;
     }
 
-    public MutablePubSubMessage setTimestampAfterProduce(long timestampAfterProduce) {
+    public MutableDefaultPubSubMessage setTimestampAfterProduce(long timestampAfterProduce) {
       this.timestampAfterProduce = timestampAfterProduce;
       return this;
     }

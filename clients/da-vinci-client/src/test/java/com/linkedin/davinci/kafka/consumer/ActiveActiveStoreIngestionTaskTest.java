@@ -141,7 +141,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(consumerRecord.getKey()).thenReturn(kafkaKey);
     KafkaMessageEnvelope kafkaValue = new KafkaMessageEnvelope();
     when(consumerRecord.getValue()).thenReturn(kafkaValue);
-    when(consumerRecord.getOffset()).thenReturn(ApacheKafkaOffsetPosition.of(1));
+    when(consumerRecord.getPosition()).thenReturn(ApacheKafkaOffsetPosition.of(1));
     kafkaValue.messageType = MessageType.DELETE.getValue();
     Delete deletePayload = new Delete();
     kafkaValue.payloadUnion = deletePayload;
@@ -384,7 +384,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     ByteBuffer updatedValueBytes = ByteUtils.prependIntHeaderToByteBuffer(valueBytes, 1);
     ByteBuffer updatedRmdBytes = ByteBuffer.wrap(new byte[] { 0xa, 0xb });
     DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
-    when(consumerRecord.getOffset()).thenReturn(ApacheKafkaOffsetPosition.of(100L));
+    when(consumerRecord.getPosition()).thenReturn(ApacheKafkaOffsetPosition.of(100L));
 
     Put updatedPut = new Put();
     updatedPut.putValue = ByteUtils.prependIntHeaderToByteBuffer(updatedValueBytes, valueSchemaId, resultReuseInput);
@@ -392,7 +392,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     updatedPut.replicationMetadataVersionId = rmdProtocolVersionID;
     updatedPut.replicationMetadataPayload = updatedRmdBytes;
     LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext
-        .newPutRecord(kafkaClusterId, consumerRecord.getOffset().getNumericOffset(), updatedKeyBytes, updatedPut);
+        .newPutRecord(kafkaClusterId, consumerRecord.getPosition().getNumericOffset(), updatedKeyBytes, updatedPut);
 
     PartitionConsumptionState.TransientRecord transientRecord =
         new PartitionConsumptionState.TransientRecord(new byte[] { 0xa }, 0, 0, 0, 0, 0);

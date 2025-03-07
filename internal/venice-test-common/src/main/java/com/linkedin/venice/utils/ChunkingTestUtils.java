@@ -105,7 +105,7 @@ public final class ChunkingTestUtils {
       DefaultPubSubMessage firstMessage,
       int numberOfChunks,
       PubSubTopicPartition pubSubTopicPartition) {
-    long newOffset = firstMessage.getOffset().getNumericOffset() + numberOfChunks;
+    long newOffset = firstMessage.getPosition().getNumericOffset() + numberOfChunks;
     byte[] chunkKeyWithSuffix = KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(serializedKey);
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, chunkKeyWithSuffix);
     KafkaMessageEnvelope messageEnvelope = createKafkaMessageEnvelope(

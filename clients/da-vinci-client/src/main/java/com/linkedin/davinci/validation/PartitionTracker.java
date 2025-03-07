@@ -252,7 +252,7 @@ public class PartitionTracker {
     trackSequenceNumber(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs, hasPreviousSegment);
     // This is the last step, because we want failures in the previous steps to short-circuit execution.
     trackCheckSum(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs);
-    segment.setLastSuccessfulOffset(consumerRecord.getOffset().getNumericOffset());
+    segment.setLastSuccessfulOffset(consumerRecord.getPosition().getNumericOffset());
     segment.setNewSegment(false);
   }
 
@@ -783,7 +783,7 @@ public class PartitionTracker {
         sb.append("; previous successful offset (in same segment): ").append(segment.getLastSuccessfulOffset());
       }
       sb.append("; incoming offset: ")
-          .append(consumerRecord.getOffset())
+          .append(consumerRecord.getPosition())
           .append("; previous segment: ")
           .append(previousSegment)
           .append("; incoming segment: ")

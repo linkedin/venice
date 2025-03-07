@@ -361,7 +361,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             recordsIterator = Utils.iterateOnMapOfLists(messages);
             while (recordsIterator.hasNext()) {
               DefaultPubSubMessage newRecord = recordsIterator.next();
-              lastConsumedOffset = newRecord.getOffset().getNumericOffset();
+              lastConsumedOffset = newRecord.getPosition().getNumericOffset();
               undelegatedRecords.add(newRecord);
             }
           }
@@ -380,22 +380,22 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           try {
             long executionId = delegateMessage(record);
             if (executionId == lastDelegatedExecutionId) {
-              updateLastOffset(record.getOffset().getNumericOffset());
+              updateLastOffset(record.getPosition().getNumericOffset());
             }
             undelegatedRecords.remove();
           } catch (DataValidationException dve) {
             // Very unlikely but DataValidationException could be thrown here.
             LOGGER.error(
                 "Admin consumption task is blocked due to DataValidationException with offset {}",
-                record.getOffset(),
+                record.getPosition(),
                 dve);
-            failingOffset = record.getOffset().getNumericOffset();
+            failingOffset = record.getPosition().getNumericOffset();
             stats.recordFailedAdminConsumption();
             stats.recordAdminTopicDIVErrorReportCount();
             break;
           } catch (Exception e) {
-            LOGGER.error("Admin consumption task is blocked due to Exception with offset {}", record.getOffset(), e);
-            failingOffset = record.getOffset().getNumericOffset();
+            LOGGER.error("Admin consumption task is blocked due to Exception with offset {}", record.getPosition(), e);
+            failingOffset = record.getPosition().getNumericOffset();
             stats.recordFailedAdminConsumption();
             break;
           }
@@ -700,7 +700,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * @return corresponding executionId if applicable.
    */
   private long delegateMessage(DefaultPubSubMessage record) {
-    if (checkOffsetToSkip(record.getOffset().getNumericOffset(), true) || !shouldProcessRecord(record)) {
+    if (checkOffsetToSkip(record.getPosition().getNumericOffset(), true) || !shouldProcessRecord(record)) {
       // Return lastDelegatedExecutionId to update the offset without changing the execution id. Skip DIV should/can be
       // used if the skip requires executionId to be reset because this skip here is skipping the message without doing
       // any processing. This may be the case when a message cannot be deserialized properly therefore we don't know
@@ -723,7 +723,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     long executionId = adminOperation.executionId;
     try {
       checkAndValidateMessage(adminOperation, record);
-      LOGGER.info("Received admin message: {} offset: {}", adminOperation, record.getOffset());
+      LOGGER.info("Received admin message: {} offset: {}", adminOperation, record.getPosition());
       consecutiveDuplicateMessageCount = 0;
     } catch (DuplicateDataException e) {
       // Previously processed message, safe to skip
@@ -749,7 +749,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             storeAdminOperationsMapWithOffset.computeIfAbsent(storeName, n -> new LinkedList<>());
         AdminOperationWrapper adminOperationWrapper = new AdminOperationWrapper(
             adminOperation,
-            record.getOffset().getNumericOffset(),
+            record.getPosition().getNumericOffset(),
             producerTimestamp,
             brokerTimestamp,
             System.currentTimeMillis());
@@ -768,7 +768,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       long brokerTimestamp = record.getPubSubMessageTime();
       AdminOperationWrapper adminOperationWrapper = new AdminOperationWrapper(
           adminOperation,
-          record.getOffset().getNumericOffset(),
+          record.getPosition().getNumericOffset(),
           producerTimestamp,
           brokerTimestamp,
           System.currentTimeMillis());
@@ -786,7 +786,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   private void checkAndValidateMessage(AdminOperation message, DefaultPubSubMessage record) {
     long incomingExecutionId = message.executionId;
-    if (checkOffsetToSkipDIV(record.getOffset().getNumericOffset()) || lastDelegatedExecutionId == UNASSIGNED_VALUE) {
+    if (checkOffsetToSkipDIV(record.getPosition().getNumericOffset()) || lastDelegatedExecutionId == UNASSIGNED_VALUE) {
       lastDelegatedExecutionId = incomingExecutionId;
       LOGGER.info(
           "Updated lastDelegatedExecutionId to {} because lastDelegatedExecutionId is currently UNASSIGNED",
@@ -998,7 +998,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           consumerTaskId + " received message from different partition: " + recordPartition + ", expected: "
               + AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
     }
-    long recordOffset = record.getOffset().getNumericOffset();
+    long recordOffset = record.getPosition().getNumericOffset();
     // check offset
     if (lastOffset >= recordOffset) {
       LOGGER.error(

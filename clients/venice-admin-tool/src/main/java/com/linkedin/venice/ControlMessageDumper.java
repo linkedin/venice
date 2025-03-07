@@ -92,7 +92,7 @@ public class ControlMessageDumper {
           ControlMessage msg = (ControlMessage) envelope.payloadUnion;
           ControlMessageType msgType = ControlMessageType.valueOf(msg);
           System.out.println();
-          System.out.println("offset: " + record.getOffset());
+          System.out.println("offset: " + record.getPosition());
           System.out.println("segment: " + metadata.segmentNumber);
           System.out.println("sequence number: " + metadata.messageSequenceNumber);
           System.out.println("timestamp1: " + metadata.messageTimestamp);

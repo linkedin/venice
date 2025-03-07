@@ -167,7 +167,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
       }
       pubSubMessage = recordIterator.hasNext() ? recordIterator.next() : null;
       if (pubSubMessage != null) {
-        currentOffset = pubSubMessage.getOffset().getNumericOffset();
+        currentOffset = pubSubMessage.getPosition().getNumericOffset();
 
         KafkaKey kafkaKey = pubSubMessage.getKey();
         KafkaMessageEnvelope kafkaMessageEnvelope = pubSubMessage.getValue();
@@ -179,7 +179,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
 
         MessageType messageType = MessageType.valueOf(kafkaMessageEnvelope);
 
-        key.offset = pubSubMessage.getOffset().getNumericOffset();
+        key.offset = pubSubMessage.getPosition().getNumericOffset();
         if (isSourceVersionChunkingEnabled) {
           RawKeyBytesAndChunkedKeySuffix rawKeyAndChunkedKeySuffix =
               splitCompositeKey(kafkaKey.getKey(), messageType, getSchemaIdFromValue(kafkaMessageEnvelope));
@@ -189,7 +189,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
         } else {
           key.key = ByteBuffer.wrap(kafkaKey.getKey(), 0, kafkaKey.getKeyLength());
         }
-        value.offset = pubSubMessage.getOffset().getNumericOffset();
+        value.offset = pubSubMessage.getPosition().getNumericOffset();
         switch (messageType) {
           case PUT:
             Put put = (Put) kafkaMessageEnvelope.payloadUnion;
@@ -210,7 +210,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
           default:
             throw new IOException(
                 "Unexpected '" + messageType + "' message from Kafka topic partition: " + topicPartition
-                    + " with offset: " + pubSubMessage.getOffset());
+                    + " with offset: " + pubSubMessage.getPosition());
         }
         if (taskTracker != null) {
           taskTracker.trackPutOrDeleteRecord();

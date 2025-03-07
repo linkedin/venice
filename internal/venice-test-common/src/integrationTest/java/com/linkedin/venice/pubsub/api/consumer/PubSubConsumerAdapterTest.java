@@ -835,7 +835,7 @@ public class PubSubConsumerAdapterTest {
       if (partitionMessages != null && !partitionMessages.isEmpty()) {
         minRecordsToConsume -= partitionMessages.size();
         offsetOfLastConsumedMessage =
-            partitionMessages.get(partitionMessages.size() - 1).getOffset().getNumericOffset();
+            partitionMessages.get(partitionMessages.size() - 1).getPosition().getNumericOffset();
       }
     }
     assertTrue(offsetOfLastConsumedMessage > 0, "Offset of last consumed message should be greater than 0");
@@ -854,7 +854,7 @@ public class PubSubConsumerAdapterTest {
       Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages = pubSubConsumerAdapter.poll(15);
       List<DefaultPubSubMessage> partitionMessages = messages.get(partition);
       if (partitionMessages != null && !partitionMessages.isEmpty()) {
-        offsetOfFirstConsumedMessage = partitionMessages.get(0).getOffset().getNumericOffset();
+        offsetOfFirstConsumedMessage = partitionMessages.get(0).getPosition().getNumericOffset();
         minRecordsToConsume--;
       }
     }
@@ -987,7 +987,7 @@ public class PubSubConsumerAdapterTest {
         }
         // update first consumed offset
         Long oldVal =
-            firstConsumedOffsetMap.putIfAbsent(partition, partitionMessages.get(0).getOffset().getNumericOffset());
+            firstConsumedOffsetMap.putIfAbsent(partition, partitionMessages.get(0).getPosition().getNumericOffset());
         if (oldVal == null) {
           // assert offset is zero since this is the first time we are consuming from this topic-partition and
           // and we started consuming from the beginning (-1 last consumed offset)
@@ -995,7 +995,7 @@ public class PubSubConsumerAdapterTest {
         }
         // update last consumed offset
         lastConsumedOffsetMap
-            .put(partition, partitionMessages.get(partitionMessages.size() - 1).getOffset().getNumericOffset());
+            .put(partition, partitionMessages.get(partitionMessages.size() - 1).getPosition().getNumericOffset());
         // update number of messages consumed so far
         numMessagesConsumedMap
             .compute(partition, (k, v) -> v == null ? partitionMessages.size() : v + partitionMessages.size());
@@ -1053,7 +1053,7 @@ public class PubSubConsumerAdapterTest {
         }
         // update last consumed offset
         lastConsumedOffsetMap
-            .put(partition, partitionMessages.get(partitionMessages.size() - 1).getOffset().getNumericOffset());
+            .put(partition, partitionMessages.get(partitionMessages.size() - 1).getPosition().getNumericOffset());
         int consumedCountSoFar = numMessagesConsumedMap.getOrDefault(partition, 0) + partitionMessages.size();
         // verify lastConsumedOffset matches records consumed so far
         assertEquals(
@@ -1105,7 +1105,7 @@ public class PubSubConsumerAdapterTest {
         }
         // check A1 starts from 0
         Long oldVal =
-            firstConsumedOffsetMap.putIfAbsent(partition, partitionMessages.get(0).getOffset().getNumericOffset());
+            firstConsumedOffsetMap.putIfAbsent(partition, partitionMessages.get(0).getPosition().getNumericOffset());
         if (oldVal == null) {
           // we reset the offset for A1 to beginning; so the first consumed offset should be 0
           assertEquals(firstConsumedOffsetMap.get(partition), Long.valueOf(0), "First consumed offset should be 0");
@@ -1113,7 +1113,7 @@ public class PubSubConsumerAdapterTest {
 
         // update last consumed offset
         lastConsumedOffsetMap
-            .put(partition, partitionMessages.get(partitionMessages.size() - 1).getOffset().getNumericOffset());
+            .put(partition, partitionMessages.get(partitionMessages.size() - 1).getPosition().getNumericOffset());
         int consumedCountSoFar = numMessagesConsumedMap.getOrDefault(partition, 0) + partitionMessages.size();
         // verify lastConsumedOffset matches records consumed so far
         assertEquals(
@@ -1184,7 +1184,7 @@ public class PubSubConsumerAdapterTest {
         }
         // update last consumed offset
         lastConsumedOffsetMap
-            .put(partition, partitionMessages.get(partitionMessages.size() - 1).getOffset().getNumericOffset());
+            .put(partition, partitionMessages.get(partitionMessages.size() - 1).getPosition().getNumericOffset());
         int consumedCountSoFar = numMessagesConsumedMap.getOrDefault(partition, 0) + partitionMessages.size();
         // verify lastConsumedOffset matches records consumed so far
         assertEquals(
@@ -1236,7 +1236,7 @@ public class PubSubConsumerAdapterTest {
     assertTrue(messages.get(partitionA0).size() > 0, "Should have messages for A0");
     // offset should be at the first message
     assertEquals(
-        messages.get(partitionA0).get(0).getOffset().getNumericOffset(),
+        messages.get(partitionA0).get(0).getPosition().getNumericOffset(),
         0,
         "Poll should start from the beginning");
   }
@@ -1330,7 +1330,7 @@ public class PubSubConsumerAdapterTest {
         }
         // check offset of the last consumed message and see if it is one less than the end offset; if yes bar is met
         if (partitionMessages.get(partitionMessages.size() - 1)
-            .getOffset()
+            .getPosition()
             .getNumericOffset() == endOffsets.get(partition) - 1) {
           consumptionBarMet.add(partition);
         }
@@ -1374,7 +1374,7 @@ public class PubSubConsumerAdapterTest {
         }
         // check offset of the last consumed message and see if it is one less than the end offset; if yes bar is met
         if (partitionMessages.get(partitionMessages.size() - 1)
-            .getOffset()
+            .getPosition()
             .getNumericOffset() == endOffsets.get(partition) - 1) {
           consumptionBarMet.add(partition);
         }
@@ -1434,7 +1434,7 @@ public class PubSubConsumerAdapterTest {
         }
         // check offset of the last consumed message and see if it is one less than the end offset; if yes bar is met
         if (partitionMessages.get(partitionMessages.size() - 1)
-            .getOffset()
+            .getPosition()
             .getNumericOffset() == endOffsets.get(partition) - 1) {
           consumptionBarMet.add(partition);
         }

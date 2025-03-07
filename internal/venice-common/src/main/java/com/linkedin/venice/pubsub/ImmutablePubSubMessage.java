@@ -65,7 +65,7 @@ public class ImmutablePubSubMessage implements DefaultPubSubMessage {
   }
 
   @Override
-  public PubSubPosition getOffset() {
+  public PubSubPosition getPosition() {
     return pubSubPosition;
   }
 
