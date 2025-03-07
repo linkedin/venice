@@ -35,6 +35,7 @@ import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.view.ChangeCaptureViewWriter;
 import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
+import com.linkedin.davinci.validation.DivSnapshot;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
 import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.davinci.validation.PartitionTracker.TopicType;
@@ -54,6 +55,8 @@ import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.Update;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
+import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.DataReplicationPolicy;
@@ -63,6 +66,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -75,6 +79,8 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
@@ -333,7 +339,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       this.veniceWriterForRealTime = this.veniceWriter;
     }
 
-    this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
+    this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap(); // ?
     this.kafkaDataIntegrityValidatorForLeaders = new KafkaDataIntegrityValidator(kafkaVersionTopic);
     if (builder.getVeniceViewWriterFactory() != null && !store.getViewConfigs().isEmpty()) {
       viewWriters = builder.getVeniceViewWriterFactory()
@@ -2283,7 +2289,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         /**
          * TODO: An improvement can be made to fail all future versions for fatal DIV exceptions after EOP.
          */
-        final TopicType topicType = (isGlobalRtDivEnabled)
+        final TopicType topicType = (isGlobalRtDivEnabled())
             ? TopicType.of(isRealTimeTopic ? REALTIME_TOPIC_TYPE : VERSION_TOPIC_TYPE, kafkaUrl)
             : PartitionTracker.VERSION_TOPIC;
         validateMessage(topicType, kafkaDataIntegrityValidatorForLeaders, record, isEndOfPushReceived, pcs);
@@ -2354,7 +2360,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * {@link StoreIngestionTask.waitForAllMessageToBeProcessedFromTopicPartition} only ensure the buffer queue is
        * drained before unsubscribe. Records being processed by shared consumer may see invalid partitionConsumptionState.
        */
-      PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
+      PartitionConsumptionState partitionConsumptionState = getPartitionConsumptionState(partition);
       if (partitionConsumptionState == null) {
         // The partition is likely unsubscribed, will skip these messages.
         return DelegateConsumerRecordResult.SKIPPED_MESSAGE;
@@ -2396,6 +2402,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           partitionConsumptionState.getVeniceWriterLazyRef().ifPresent(vw -> vw.flush());
           partitionConsumptionState.setVeniceWriterLazyRef(veniceWriterForRealTime);
         }
+
+        if (isGlobalRtDivEnabled() && !consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()
+            && msgType != MessageType.GLOBAL_RT_DIV) {
+          final long offset = consumerRecord.getOffset();
+          getKafkaDataIntegrityValidatorForLeaders().updateLatestConsumedVtOffset(partition, offset);
+        }
+
         /**
          * Materialized view need to produce to the corresponding view topic for the batch portion of the data. This is
          * achieved in the following ways:
@@ -3444,6 +3457,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                         newPut.schemaId,
                         callback,
                         leaderMetadataWrapper);
+
+                if (shouldSendGlobalRtDiv(consumerRecord, partitionConsumptionState, kafkaUrl)) {
+                  sendGlobalRtDivMessage(
+                      consumerRecord,
+                      partitionConsumptionState,
+                      partition,
+                      kafkaUrl,
+                      beforeProcessingRecordTimestampNs,
+                      leaderMetadataWrapper,
+                      leaderProducedRecordContext);
+                }
               }
             },
             partition,
@@ -3516,6 +3540,82 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         throw new VeniceMessageException(
             ingestionTaskName + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
+  }
+
+  /**
+   * The Global RT DIV is produced on a per-broker basis, so the name includes the broker URL for differentiation.
+   */
+  public static String getGlobalRtDivKeyName(String brokerUrl) {
+    return "GLOBAL_RT_DIV_KEY." + brokerUrl;
+  }
+
+  /**
+   * The leader produces GlobalRtDivState (RT DIV + latestOffset) to local kafka for the followers to consume.
+   * Upon completion, the LeaderProducerCallback will enqueue the RT + VT DIV to the drainer.
+   * Note: This method is called per-broker. The broker url is included in the key.
+   * @param previousMessage the last message validated and produced to kafka before this GlobalRtDiv will be produced
+   */
+  void sendGlobalRtDivMessage(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> previousMessage,
+      PartitionConsumptionState partitionConsumptionState,
+      int partition,
+      String brokerUrl,
+      long beforeProcessingRecordTimestampNs,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      LeaderProducedRecordContext leaderProducedRecordContext) {
+    final InternalAvroSpecificSerializer<GlobalRtDivState> serializer =
+        AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer(); // TODO: can't be static because of state?
+    final byte[] keyBytes = getGlobalRtDivKeyName(brokerUrl).getBytes();
+    TopicType realTimeTopicType = TopicType.of(TopicType.REALTIME_TOPIC_TYPE, brokerUrl);
+
+    // Snapshot the VT DIV + RT DIV (single broker URL) in preparation to be produced
+    PartitionTracker divClone = kafkaDataIntegrityValidatorForLeaders.cloneProducerStates(partition, brokerUrl);
+    Map<CharSequence, ProducerPartitionState> rtDiv = divClone.getPartitionStates(realTimeTopicType);
+
+    // Create GlobalRtDivState (RT DIV + latestOffset) which will be serialized into a byte array
+    GlobalRtDivState globalRtDiv = new GlobalRtDivState(brokerUrl, rtDiv, previousMessage.getOffset());
+
+    // Create PubSubMessage for the LeaderProducerCallback to enqueue the RT + VT DIV to the drainer
+    KafkaKey divKey = new KafkaKey(MessageType.GLOBAL_RT_DIV, keyBytes);
+    // TODO: incrementSequenceNumber? are the pubsubmessage fields correct?
+    KafkaMessageEnvelope divEnvelope = getVeniceWriter(partitionConsumptionState).get()
+        .getKafkaMessageEnvelope(
+            MessageType.PUT,
+            false,
+            partition,
+            true,
+            leaderMetadataWrapper,
+            APP_DEFAULT_LOGICAL_TS);
+    divEnvelope.payloadUnion = new DivSnapshot(divClone, previousMessage.getOffset()); // contains both VT + RT DIV
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> divMessage = new ImmutablePubSubMessage<>(
+        divKey,
+        divEnvelope,
+        previousMessage.getTopicPartition(),
+        previousMessage.getOffset(), // TODO: are these reused fields correct?
+        previousMessage.getPubSubMessageTime(),
+        divKey.getHeapSize()); // TODO: should the envelope size also be estimated?
+    LeaderProducerCallback divCallback = createProducerCallback(
+        divMessage,
+        partitionConsumptionState,
+        leaderProducedRecordContext,
+        partition,
+        brokerUrl,
+        beforeProcessingRecordTimestampNs);
+
+    // Produce to local kafka for the Global RT DIV + latestOffset (GlobalRtDivState)
+    getVeniceWriter(partitionConsumptionState).get()
+        .put(
+            keyBytes,
+            ByteUtils.extractByteArray(serializer.serialize(globalRtDiv)),
+            partition,
+            1, // dummy value schema id which shouldn't be used for MessageType.GLOBAL_RT_DIV
+            divCallback,
+            leaderMetadataWrapper,
+            APP_DEFAULT_LOGICAL_TS,
+            null,
+            null, // TODO: do oldValueManifest and rmd need to be populated?
+            null,
+            false);
   }
 
   /**
@@ -4054,5 +4154,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     } else {
       return supplier.get();
     }
+  }
+
+  KafkaDataIntegrityValidator getKafkaDataIntegrityValidatorForLeaders() {
+    return kafkaDataIntegrityValidatorForLeaders; // mainly for testing
   }
 }
