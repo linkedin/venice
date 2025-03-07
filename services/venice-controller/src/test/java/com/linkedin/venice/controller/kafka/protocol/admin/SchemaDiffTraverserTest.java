@@ -215,9 +215,9 @@ public class SchemaDiffTraverserTest {
     assertTrue(
         errorMessage.get().contains("map.ExampleRecord.key1.owners"),
         "The error message should contain the field name");
-    System.out.println(errorMessage.get());
     assertTrue(
-        errorMessage.get().contains("non-default value"),
+        errorMessage.get()
+            .contains("contains non-default value. Actual value: [owner]. Default value: [venice] or null"),
         "The error message should contain the reason for the failure");
   }
 

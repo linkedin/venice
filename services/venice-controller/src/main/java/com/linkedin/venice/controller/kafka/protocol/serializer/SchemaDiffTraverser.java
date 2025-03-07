@@ -336,7 +336,7 @@ public class SchemaDiffTraverser {
       if (!fieldDefaultValue.equals(object)) {
         errorMessage.set(
             "Field: " + formatFieldName(currentField) + " contains non-default value. Actual value: " + object
-                + ". Default value: [" + fieldDefaultValue + ", " + null + "]");
+                + ". Default value: " + fieldDefaultValue + " or " + null);
         return true;
       }
       return false;
@@ -413,7 +413,7 @@ public class SchemaDiffTraverser {
     if (!value.equals(defaultValue) && !value.equals(fieldDefaultValue)) {
       errorMessage.set(
           "Field: " + field.name().replace("_", ".") + " contains non-default value. Actual value: " + value
-              + ". Default value: [" + fieldDefaultValue + ", " + defaultValue + "]");
+              + ". Default value: " + fieldDefaultValue + " or " + defaultValue);
       return true;
     }
     return false;
