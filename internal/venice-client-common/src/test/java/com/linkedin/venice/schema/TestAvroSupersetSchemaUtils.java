@@ -505,21 +505,23 @@ public class TestAvroSupersetSchemaUtils {
   @Test
   public void testSupersetSchemaKeepDefault() {
     Assert.assertEquals(
-        AvroSupersetSchemaUtils.generateSupersetSchema(USER_WITH_DEFAULT_SCHEMA, USER_SCHEMA),
-        USER_WITH_DEFAULT_SCHEMA);
+        AvroSupersetSchemaUtils.generateSupersetSchema(USER_WITH_DEFAULT_SCHEMA, USER_SCHEMA).toString(),
+        USER_WITH_DEFAULT_SCHEMA.toString());
     Assert.assertEquals(
-        AvroSupersetSchemaUtils.generateSupersetSchema(USER_SCHEMA, USER_WITH_DEFAULT_SCHEMA),
-        USER_WITH_DEFAULT_SCHEMA);
+        AvroSupersetSchemaUtils.generateSupersetSchema(USER_SCHEMA, USER_WITH_DEFAULT_SCHEMA).toString(),
+        USER_WITH_DEFAULT_SCHEMA.toString());
 
     // Test nested record default value carry in both direction.
     Assert.assertEquals(
         AvroSupersetSchemaUtils
-            .generateSupersetSchema(USER_WITH_NESTED_RECORD_AND_DEFAULT_SCHEMA, USER_WITH_NESTED_RECORD_SCHEMA),
-        USER_WITH_NESTED_RECORD_AND_DEFAULT_SCHEMA);
+            .generateSupersetSchema(USER_WITH_NESTED_RECORD_AND_DEFAULT_SCHEMA, USER_WITH_NESTED_RECORD_SCHEMA)
+            .toString(),
+        USER_WITH_NESTED_RECORD_AND_DEFAULT_SCHEMA.toString());
     Assert.assertEquals(
         AvroSupersetSchemaUtils
-            .generateSupersetSchema(USER_WITH_NESTED_RECORD_SCHEMA, USER_WITH_NESTED_RECORD_AND_DEFAULT_SCHEMA),
-        USER_WITH_NESTED_RECORD_AND_DEFAULT_SCHEMA);
+            .generateSupersetSchema(USER_WITH_NESTED_RECORD_SCHEMA, USER_WITH_NESTED_RECORD_AND_DEFAULT_SCHEMA)
+            .toString(),
+        USER_WITH_NESTED_RECORD_AND_DEFAULT_SCHEMA.toString());
   }
 
   @Test

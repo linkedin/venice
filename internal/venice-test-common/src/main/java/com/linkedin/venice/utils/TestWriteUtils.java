@@ -97,7 +97,7 @@ public class TestWriteUtils {
       AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/UserWithNestedRecord.avsc"));
 
   public static final Schema USER_WITH_NESTED_RECORD_AND_DEFAULT_SCHEMA =
-      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/UserWithNestedRecord.avsc"));
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/UserWithNestedRecordAndDefault.avsc"));
 
   public static final Schema USER_WITH_STRING_MAP_SCHEMA =
       AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/UserWithStringMap.avsc"));
