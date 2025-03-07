@@ -8109,8 +8109,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @see Admin#getDeadStores(String)
    */
   @Override
-  public List<StoreInfo> getDeadStores(String clusterName) {
-    return new DeadStoreStats().getDeadStores(getAllStores(clusterName))
+  public List<StoreInfo> getDeadStores(String clusterName, String storeName) {
+    if (storeName == null) {
+      return new DeadStoreStats().getDeadStores(getAllStores(clusterName));
+    } else {
+      StoreInfo store = StoreInfo.fromStore(getStore(clusterName, storeName));
+      if (store == null) {
+        throw new VeniceNoStoreException(storeName, clusterName);
+      }
+      return new DeadStoreStats().getDeadStores(Collections.singletonList(store));
+    }
   }
 
   /**
