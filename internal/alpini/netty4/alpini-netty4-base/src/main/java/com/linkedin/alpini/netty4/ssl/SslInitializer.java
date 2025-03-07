@@ -544,6 +544,7 @@ public class SslInitializer extends ChannelInitializer<Channel> {
             sslHandler = new FusedSslHandler(engine);
           }
 
+          LOG.debug("SSL Handshake starting for client: {}", pipeline.channel().remoteAddress());
           if (_postHandshakeHandler != null) {
             pipeline.addAfter(
                 NettyUtils.executorGroup(pipeline),
@@ -557,11 +558,12 @@ public class SslInitializer extends ChannelInitializer<Channel> {
 
         @Override
         public void operationComplete(Future<String> future) {
+          long dnsStartTime = Time.nanoTime();
+
           // This is executed on the resolveExecutor thread
           assert inResolveExecutorEventLoop() : "Not in resolveExecutor event executor";
 
           if (future.isSuccess()) {
-            LOG.debug("Resolve successful: {}", future.getNow());
             _resolvePromise.setSuccess();
           } else if (_remainingAttempts-- > 0 && isActive()) {
             LOG.info("Check failure, remaining attempts {}", _remainingAttempts + 1, future.cause());
@@ -574,6 +576,13 @@ public class SslInitializer extends ChannelInitializer<Channel> {
           } else {
             _resolvePromise.setFailure(future.cause());
           }
+
+          long dnsLatencyMs = TimeUnit.NANOSECONDS.toMillis(Time.nanoTime() - dnsStartTime);
+          LOG.log(
+              dnsLatencyMs > 5000 ? Level.WARN : Level.DEBUG,
+              "DNS resolution for {} took {} ms",
+              _channelHandlerContext.channel().remoteAddress(),
+              dnsLatencyMs);
         }
 
         private void resolved(Future<? super Void> future) {
