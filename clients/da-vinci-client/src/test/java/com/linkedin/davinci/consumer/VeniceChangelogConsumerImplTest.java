@@ -37,8 +37,10 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
@@ -83,12 +85,14 @@ public class VeniceChangelogConsumerImplTest {
   private RecordSerializer<String> valueSerializer;
   private Schema rmdSchema;
   private SchemaReader schemaReader;
+  private PubSubPosition mockPubSubPosition;
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   private final Schema valueSchema = AvroCompatibilityHelper.parse("\"string\"");
 
   @BeforeMethod
   public void setUp() {
     storeName = Utils.getUniqueString();
+    mockPubSubPosition = mock(PubSubPosition.class);
     schemaReader = mock(SchemaReader.class);
     Schema keySchema = AvroCompatibilityHelper.parse("\"string\"");
     doReturn(keySchema).when(schemaReader).getKeySchema();
@@ -267,8 +271,13 @@ public class VeniceChangelogConsumerImplTest {
     kafkaMessageEnvelope.producerMetadata = new ProducerMetadata();
     kafkaMessageEnvelope.producerMetadata.messageTimestamp = currentTimestamp - TimeUnit.MINUTES.toMillis(2);
     kafkaMessageEnvelope.payloadUnion = controlMessage;
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message =
-        new ImmutablePubSubMessage<>(KafkaKey.HEART_BEAT, kafkaMessageEnvelope, pubSubTopicPartition, 0, 0, 0);
+    DefaultPubSubMessage message = new ImmutablePubSubMessage(
+        KafkaKey.HEART_BEAT,
+        kafkaMessageEnvelope,
+        pubSubTopicPartition,
+        mockPubSubPosition,
+        0,
+        0);
     doReturn(currentTimestamp).when(veniceChangelogConsumer).getSubscribeTime();
     veniceChangelogConsumer.maybeUpdatePartitionToBootstrapMap(message, pubSubTopicPartition);
     Assert.assertFalse(bootstrapStateMap.get(0));
@@ -514,15 +523,14 @@ public class VeniceChangelogConsumerImplTest {
       PubSubTopic newVersionTopic,
       boolean addEndOfPushMessage,
       boolean repeatMessages) {
-    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> pubSubMessageList = new ArrayList<>();
+    List<DefaultPubSubMessage> pubSubMessageList = new ArrayList<>();
 
     // Add a start of push message
     pubSubMessageList.add(constructStartOfPushMessage(oldVersionTopic, partition));
 
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> pubSubMessagesMap =
-        new HashMap<>();
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> pubSubMessagesMap = new HashMap<>();
     for (long i = startIdx; i < endIdx; i++) {
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = constructChangeCaptureConsumerRecord(
+      DefaultPubSubMessage pubSubMessage = constructChangeCaptureConsumerRecord(
           changeCaptureTopic,
           partition,
           "oldValue" + i,
@@ -534,7 +542,7 @@ public class VeniceChangelogConsumerImplTest {
 
     if (repeatMessages) {
       for (long i = startIdx; i < endIdx; i++) {
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = constructChangeCaptureConsumerRecord(
+        DefaultPubSubMessage pubSubMessage = constructChangeCaptureConsumerRecord(
             changeCaptureTopic,
             partition,
             "oldValue" + i,
@@ -570,11 +578,10 @@ public class VeniceChangelogConsumerImplTest {
       PubSubTopic versionTopic,
       int partition,
       boolean prepareEndOfPush) {
-    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> consumerRecordList = new ArrayList<>();
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumerRecordsMap =
-        new HashMap<>();
+    List<DefaultPubSubMessage> consumerRecordList = new ArrayList<>();
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> consumerRecordsMap = new HashMap<>();
     for (long i = startIdx; i < endIdx; i++) {
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage =
+      DefaultPubSubMessage pubSubMessage =
           constructConsumerRecord(versionTopic, partition, "newValue" + i, "key" + i, Arrays.asList(i, i));
       consumerRecordList.add(pubSubMessage);
     }
@@ -586,7 +593,7 @@ public class VeniceChangelogConsumerImplTest {
     doReturn(consumerRecordsMap).when(pubSubConsumerAdapter).poll(100);
   }
 
-  private PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> constructVersionSwapMessage(
+  private DefaultPubSubMessage constructVersionSwapMessage(
       PubSubTopic versionTopic,
       PubSubTopic oldTopic,
       PubSubTopic newTopic,
@@ -607,10 +614,10 @@ public class VeniceChangelogConsumerImplTest {
     controlMessage.controlMessageType = ControlMessageType.VERSION_SWAP.getValue();
     kafkaMessageEnvelope.payloadUnion = controlMessage;
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
-    return new ImmutablePubSubMessage<>(kafkaKey, kafkaMessageEnvelope, pubSubTopicPartition, 0, 0, 0);
+    return new ImmutablePubSubMessage(kafkaKey, kafkaMessageEnvelope, pubSubTopicPartition, mockPubSubPosition, 0, 0);
   }
 
-  private PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> constructChangeCaptureConsumerRecord(
+  private DefaultPubSubMessage constructChangeCaptureConsumerRecord(
       PubSubTopic changeCaptureVersionTopic,
       int partition,
       String oldValue,
@@ -641,10 +648,10 @@ public class VeniceChangelogConsumerImplTest {
     kafkaMessageEnvelope.setProducerMetadata(producerMetadata);
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, keySerializer.serialize(key));
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(changeCaptureVersionTopic, partition);
-    return new ImmutablePubSubMessage<>(kafkaKey, kafkaMessageEnvelope, pubSubTopicPartition, 0, 0, 0);
+    return new ImmutablePubSubMessage(kafkaKey, kafkaMessageEnvelope, pubSubTopicPartition, mockPubSubPosition, 0, 0);
   }
 
-  private PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> constructConsumerRecord(
+  private DefaultPubSubMessage constructConsumerRecord(
       PubSubTopic changeCaptureVersionTopic,
       int partition,
       String newValue,
@@ -664,13 +671,10 @@ public class VeniceChangelogConsumerImplTest {
         null);
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, keySerializer.serialize(key));
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(changeCaptureVersionTopic, partition);
-    return new ImmutablePubSubMessage<>(kafkaKey, kafkaMessageEnvelope, pubSubTopicPartition, 0, 0, 0);
+    return new ImmutablePubSubMessage(kafkaKey, kafkaMessageEnvelope, pubSubTopicPartition, mockPubSubPosition, 0, 0);
   }
 
-  private PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> constructEndOfPushMessage(
-      PubSubTopic versionTopic,
-      int partition,
-      Long offset) {
+  private DefaultPubSubMessage constructEndOfPushMessage(PubSubTopic versionTopic, int partition, Long offset) {
     KafkaKey kafkaKey = new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[0]);
     EndOfPush endOfPush = new EndOfPush();
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
@@ -682,12 +686,12 @@ public class VeniceChangelogConsumerImplTest {
     controlMessage.controlMessageType = ControlMessageType.END_OF_PUSH.getValue();
     kafkaMessageEnvelope.payloadUnion = controlMessage;
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
-    return new ImmutablePubSubMessage<>(kafkaKey, kafkaMessageEnvelope, pubSubTopicPartition, offset, 0, 0);
+    PubSubPosition mockPubSubPosition = mock(PubSubPosition.class);
+    doReturn(offset).when(mockPubSubPosition).getNumericOffset();
+    return new ImmutablePubSubMessage(kafkaKey, kafkaMessageEnvelope, pubSubTopicPartition, mockPubSubPosition, 0, 0);
   }
 
-  private PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> constructStartOfPushMessage(
-      PubSubTopic versionTopic,
-      int partition) {
+  private DefaultPubSubMessage constructStartOfPushMessage(PubSubTopic versionTopic, int partition) {
     KafkaKey kafkaKey = new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[0]);
     StartOfPush startOfPush = new StartOfPush();
     startOfPush.compressionStrategy = CompressionStrategy.NO_OP.getValue();
@@ -700,7 +704,7 @@ public class VeniceChangelogConsumerImplTest {
     controlMessage.controlMessageType = ControlMessageType.START_OF_PUSH.getValue();
     kafkaMessageEnvelope.payloadUnion = controlMessage;
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
-    return new ImmutablePubSubMessage<>(kafkaKey, kafkaMessageEnvelope, pubSubTopicPartition, 0, 0, 0);
+    return new ImmutablePubSubMessage(kafkaKey, kafkaMessageEnvelope, pubSubTopicPartition, mockPubSubPosition, 0, 0);
   }
 
   private ChangelogClientConfig getChangelogClientConfig(D2ControllerClient d2ControllerClient) {

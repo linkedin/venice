@@ -24,6 +24,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -166,7 +167,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * that has the details about the exception and the offset of the problematic admin message.
    */
   private final ConcurrentHashMap<String, AdminErrorInfo> problematicStores;
-  private final Queue<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> undelegatedRecords;
+  private final Queue<DefaultPubSubMessage> undelegatedRecords;
 
   private final ExecutionIdAccessor executionIdAccessor;
   private ExecutorService executorService;
@@ -348,11 +349,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           }
           subscribe();
         }
-        Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> recordsIterator;
+        Iterator<DefaultPubSubMessage> recordsIterator;
         // Only poll the kafka channel if there are no more undelegated records due to exceptions.
         if (undelegatedRecords.isEmpty()) {
-          Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
-              consumer.poll(READ_CYCLE_DELAY_MS);
+          Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages = consumer.poll(READ_CYCLE_DELAY_MS);
           if (messages == null || messages.isEmpty()) {
             LOGGER.debug("Received null or no messages");
           } else {
@@ -360,8 +360,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             LOGGER.info("Consumed {} admin messages from kafka. Will queue them up for processing", polledMessageCount);
             recordsIterator = Utils.iterateOnMapOfLists(messages);
             while (recordsIterator.hasNext()) {
-              PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> newRecord = recordsIterator.next();
-              lastConsumedOffset = newRecord.getOffset();
+              DefaultPubSubMessage newRecord = recordsIterator.next();
+              lastConsumedOffset = newRecord.getOffset().getNumericOffset();
               undelegatedRecords.add(newRecord);
             }
           }
@@ -373,14 +373,14 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         }
 
         while (!undelegatedRecords.isEmpty()) {
-          PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = undelegatedRecords.peek();
+          DefaultPubSubMessage record = undelegatedRecords.peek();
           if (record == null) {
             break;
           }
           try {
             long executionId = delegateMessage(record);
             if (executionId == lastDelegatedExecutionId) {
-              updateLastOffset(record.getOffset());
+              updateLastOffset(record.getOffset().getNumericOffset());
             }
             undelegatedRecords.remove();
           } catch (DataValidationException dve) {
@@ -389,13 +389,13 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                 "Admin consumption task is blocked due to DataValidationException with offset {}",
                 record.getOffset(),
                 dve);
-            failingOffset = record.getOffset();
+            failingOffset = record.getOffset().getNumericOffset();
             stats.recordFailedAdminConsumption();
             stats.recordAdminTopicDIVErrorReportCount();
             break;
           } catch (Exception e) {
             LOGGER.error("Admin consumption task is blocked due to Exception with offset {}", record.getOffset(), e);
-            failingOffset = record.getOffset();
+            failingOffset = record.getOffset().getNumericOffset();
             stats.recordFailedAdminConsumption();
             break;
           }
@@ -699,8 +699,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * @param record The {@link PubSubMessage} containing the {@link AdminOperation}.
    * @return corresponding executionId if applicable.
    */
-  private long delegateMessage(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
-    if (checkOffsetToSkip(record.getOffset(), true) || !shouldProcessRecord(record)) {
+  private long delegateMessage(DefaultPubSubMessage record) {
+    if (checkOffsetToSkip(record.getOffset().getNumericOffset(), true) || !shouldProcessRecord(record)) {
       // Return lastDelegatedExecutionId to update the offset without changing the execution id. Skip DIV should/can be
       // used if the skip requires executionId to be reset because this skip here is skipping the message without doing
       // any processing. This may be the case when a message cannot be deserialized properly therefore we don't know
@@ -749,7 +749,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             storeAdminOperationsMapWithOffset.computeIfAbsent(storeName, n -> new LinkedList<>());
         AdminOperationWrapper adminOperationWrapper = new AdminOperationWrapper(
             adminOperation,
-            record.getOffset(),
+            record.getOffset().getNumericOffset(),
             producerTimestamp,
             brokerTimestamp,
             System.currentTimeMillis());
@@ -768,7 +768,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       long brokerTimestamp = record.getPubSubMessageTime();
       AdminOperationWrapper adminOperationWrapper = new AdminOperationWrapper(
           adminOperation,
-          record.getOffset(),
+          record.getOffset().getNumericOffset(),
           producerTimestamp,
           brokerTimestamp,
           System.currentTimeMillis());
@@ -784,11 +784,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     return executionId;
   }
 
-  private void checkAndValidateMessage(
-      AdminOperation message,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
+  private void checkAndValidateMessage(AdminOperation message, DefaultPubSubMessage record) {
     long incomingExecutionId = message.executionId;
-    if (checkOffsetToSkipDIV(record.getOffset()) || lastDelegatedExecutionId == UNASSIGNED_VALUE) {
+    if (checkOffsetToSkipDIV(record.getOffset().getNumericOffset()) || lastDelegatedExecutionId == UNASSIGNED_VALUE) {
       lastDelegatedExecutionId = incomingExecutionId;
       LOGGER.info(
           "Updated lastDelegatedExecutionId to {} because lastDelegatedExecutionId is currently UNASSIGNED",
@@ -986,7 +984,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     return failingOffset;
   }
 
-  private boolean shouldProcessRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
+  private boolean shouldProcessRecord(DefaultPubSubMessage record) {
     // check topic
     PubSubTopic recordTopic = record.getTopicPartition().getPubSubTopic();
     if (!pubSubTopic.equals(recordTopic)) {
@@ -1000,7 +998,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           consumerTaskId + " received message from different partition: " + recordPartition + ", expected: "
               + AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
     }
-    long recordOffset = record.getOffset();
+    long recordOffset = record.getOffset().getNumericOffset();
     // check offset
     if (lastOffset >= recordOffset) {
       LOGGER.error(

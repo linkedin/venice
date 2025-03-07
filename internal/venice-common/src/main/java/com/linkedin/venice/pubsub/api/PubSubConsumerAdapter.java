@@ -1,8 +1,6 @@
 package com.linkedin.venice.pubsub.api;
 
 import com.linkedin.venice.annotation.UnderDevelopment;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
@@ -100,7 +98,7 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * @throws PubSubClientException If there is an error during message retrieval from Kafka.
    * @throws PubSubClientRetriableException If a retriable exception occurs during polling attempts, with retries as configured.
    */
-  Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> poll(long timeoutMs);
+  Map<PubSubTopicPartition, List<DefaultPubSubMessage>> poll(long timeoutMs);
 
   /**
    * Checks if the consumer has any active topic-partition subscriptions.
