@@ -374,9 +374,9 @@ public class TopicMetadataFetcherTest {
     List<DefaultPubSubMessage> allConsumedRecords =
         topicMetadataFetcher.consumeLatestRecords(topicPartition, numRecordsToRead);
     assertTrue(allConsumedRecords.size() >= numRecordsToRead);
-    long firstOffset = allConsumedRecords.get(0).getOffset().getNumericOffset();
+    long firstOffset = allConsumedRecords.get(0).getPosition().getNumericOffset();
     assertEquals(firstOffset, 5);
-    long lastOffset = allConsumedRecords.get(allConsumedRecords.size() - 1).getOffset().getNumericOffset();
+    long lastOffset = allConsumedRecords.get(allConsumedRecords.size() - 1).getPosition().getNumericOffset();
     assertEquals(lastOffset, 11);
     verify(consumerMock, times(2)).subscribe(topicPartition, consumePastOffset);
     verify(consumerMock, times(6)).poll(anyLong()); // 3 from prev test and 3 from this test

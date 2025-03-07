@@ -638,7 +638,8 @@ class TopicMetadataFetcher implements Closeable {
           throw new VeniceException(message);
         }
         allConsumedRecords.addAll(consumedBatch);
-      } while (allConsumedRecords.get(allConsumedRecords.size() - 1).getOffset().getNumericOffset() + 1 < latestOffset);
+      } while (allConsumedRecords.get(allConsumedRecords.size() - 1).getPosition().getNumericOffset()
+          + 1 < latestOffset);
 
       return allConsumedRecords;
     } finally {

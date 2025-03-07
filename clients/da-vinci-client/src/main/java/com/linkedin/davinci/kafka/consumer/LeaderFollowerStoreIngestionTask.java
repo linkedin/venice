@@ -1400,7 +1400,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * metadata after successfully produce a corresponding message.
        */
       KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
-      updateVersionTopicOffsetFunction.apply(consumerRecord.getOffset().getNumericOffset());
+      updateVersionTopicOffsetFunction.apply(consumerRecord.getPosition().getNumericOffset());
 
       OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
       // DaVinci clients don't need to maintain leader production states
@@ -1575,7 +1575,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               + " Received message producer host: %s; Recorded producer host: %s."
               + " Multiple leaders are producing. ",
           partitionConsumptionState.getReplicaId(),
-          consumerRecord.getOffset(),
+          consumerRecord.getPosition(),
           newUpstreamOffset,
           previousUpstreamOffset,
           kafkaValue.producerMetadata.producerGUID == null
@@ -1688,7 +1688,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         partition,
         kafkaUrl,
         beforeProcessingRecordTimestampNs);
-    long sourceTopicOffset = consumerRecord.getOffset().getNumericOffset();
+    long sourceTopicOffset = consumerRecord.getPosition().getNumericOffset();
     LeaderMetadataWrapper leaderMetadataWrapper = new LeaderMetadataWrapper(sourceTopicOffset, kafkaClusterId);
     partitionConsumptionState.setLastLeaderPersistFuture(leaderProducedRecordContext.getPersistedToDBFuture());
     long beforeProduceTimestampNS = System.nanoTime();
@@ -1920,11 +1920,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         }
 
         long lastOffset = partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset();
-        if (lastOffset >= record.getOffset().getNumericOffset()) {
+        if (lastOffset >= record.getPosition().getNumericOffset()) {
           String message = partitionConsumptionState.getLeaderFollowerState() + " replica: "
               + partitionConsumptionState.getReplicaId() + " had already processed the record";
           if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
-            LOGGER.info("{}; LastKnownOffset: {}; OffsetOfIncomingRecord: {}", message, lastOffset, record.getOffset());
+            LOGGER
+                .info("{}; LastKnownOffset: {}; OffsetOfIncomingRecord: {}", message, lastOffset, record.getPosition());
           }
           return false;
         }
@@ -2201,7 +2202,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         kafkaUrl,
         beforeProcessingRecordTimestampNs);
     LeaderMetadataWrapper leaderMetadataWrapper =
-        new LeaderMetadataWrapper(consumerRecord.getOffset().getNumericOffset(), kafkaClusterId);
+        new LeaderMetadataWrapper(consumerRecord.getPosition().getNumericOffset(), kafkaClusterId);
     LeaderCompleteState leaderCompleteState =
         LeaderCompleteState.getLeaderCompleteState(partitionConsumptionState.isCompletionReported());
     /**
@@ -2304,7 +2305,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         LOGGER.debug(
             "Skipping a duplicate record from: {} offset: {} for replica: {}",
             record.getTopicPartition(),
-            record.getOffset(),
+            record.getPosition(),
             pcs.getReplicaId());
         iter.remove();
       }
@@ -2367,7 +2368,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       if (msgType == UPDATE && !produceToLocalKafka) {
         throw new VeniceMessageException(
             ingestionTaskName + " hasProducedToKafka: Received UPDATE message in non-leader for: "
-                + consumerRecord.getTopicPartition() + " Offset " + consumerRecord.getOffset().getNumericOffset());
+                + consumerRecord.getTopicPartition() + " Offset " + consumerRecord.getPosition().getNumericOffset());
       } else if (msgType == MessageType.CONTROL_MESSAGE) {
         ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
         getAndUpdateLeaderCompletedState(
@@ -2419,12 +2420,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         recordRegionHybridConsumptionStats(
             kafkaClusterId,
             consumerRecord.getPayloadSize(),
-            consumerRecord.getOffset().getNumericOffset(),
+            consumerRecord.getPosition().getNumericOffset(),
             beforeProcessingBatchRecordsTimestampMs);
         updateLatestInMemoryLeaderConsumedRTOffset(
             partitionConsumptionState,
             kafkaUrl,
-            consumerRecord.getOffset().getNumericOffset());
+            consumerRecord.getPosition().getNumericOffset());
       }
 
       // heavy leader processing starts here
@@ -2440,7 +2441,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
         leaderProducedRecordContext = LeaderProducedRecordContext.newControlMessageRecord(
             kafkaClusterId,
-            consumerRecord.getOffset().getNumericOffset(),
+            consumerRecord.getPosition().getNumericOffset(),
             kafkaKey.getKey(),
             controlMessage);
         switch (controlMessageType) {
@@ -2651,13 +2652,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               producedFinally,
               controlMessageType.name(),
               consumerRecord.getTopicPartition(),
-              consumerRecord.getOffset());
+              consumerRecord.getPosition());
         }
       } else if (kafkaValue == null) {
         throw new VeniceMessageException(
             partitionConsumptionState.getReplicaId()
                 + " hasProducedToKafka: Given null Venice Message. TopicPartition: "
-                + consumerRecord.getTopicPartition() + " Offset " + consumerRecord.getOffset());
+                + consumerRecord.getTopicPartition() + " Offset " + consumerRecord.getPosition());
       } else {
         // This function may modify the original record in KME and it is unsafe to use the payload from KME directly
         // after this call.
@@ -2674,7 +2675,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     } catch (Exception e) {
       throw new VeniceException(
           ingestionTaskName + " hasProducedToKafka: exception for message received from: "
-              + consumerRecord.getTopicPartition() + ", Offset: " + consumerRecord.getOffset() + ". Bubbling up.",
+              + consumerRecord.getTopicPartition() + ", Offset: " + consumerRecord.getPosition() + ". Bubbling up.",
           e);
     }
   }
@@ -3196,7 +3197,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         if (isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived()) {
           partitionConsumptionState.setTransientRecord(
               kafkaClusterId,
-              consumerRecord.getOffset().getNumericOffset(),
+              consumerRecord.getPosition().getNumericOffset(),
               keyBytes,
               putValue.array(),
               putValue.position(),
@@ -3286,7 +3287,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         } else {
           partitionConsumptionState.setTransientRecord(
               kafkaClusterId,
-              consumerRecord.getOffset().getNumericOffset(),
+              consumerRecord.getPosition().getNumericOffset(),
               keyBytes,
               updatedValueBytes,
               0,
@@ -3330,7 +3331,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          */
         if (isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived()) {
           partitionConsumptionState
-              .setTransientRecord(kafkaClusterId, consumerRecord.getOffset().getNumericOffset(), keyBytes, -1, null);
+              .setTransientRecord(kafkaClusterId, consumerRecord.getPosition().getNumericOffset(), keyBytes, -1, null);
         }
         return new PubSubMessageProcessedResult(new WriteComputeResultWrapper(null, null, false, oldValueProvider));
 
@@ -3412,7 +3413,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     switch (msgType) {
       case PUT:
         leaderProducedRecordContext = LeaderProducedRecordContext
-            .newPutRecord(kafkaClusterId, consumerRecord.getOffset().getNumericOffset(), keyBytes, newPut);
+            .newPutRecord(kafkaClusterId, consumerRecord.getPosition().getNumericOffset(), keyBytes, newPut);
         produceToLocalKafka(
             consumerRecord,
             partitionConsumptionState,
@@ -3463,7 +3464,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
       case UPDATE:
         leaderProducedRecordContext = LeaderProducedRecordContext
-            .newPutRecord(kafkaClusterId, consumerRecord.getOffset().getNumericOffset(), keyBytes, newPut);
+            .newPutRecord(kafkaClusterId, consumerRecord.getPosition().getNumericOffset(), keyBytes, newPut);
         BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction =
             (callback, leaderMetadataWrapper) -> partitionConsumptionState.getVeniceWriterLazyRef()
                 .get()
@@ -3492,7 +3493,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       case DELETE:
         leaderProducedRecordContext = LeaderProducedRecordContext.newDeleteRecord(
             kafkaClusterId,
-            consumerRecord.getOffset().getNumericOffset(),
+            consumerRecord.getPosition().getNumericOffset(),
             keyBytes,
             (Delete) kafkaValue.payloadUnion);
         produceToLocalKafka(

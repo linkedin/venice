@@ -376,7 +376,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     ControlMessage controlMessage = mock(ControlMessage.class);
     doReturn(controlMessage).when(kafkaValue).getPayloadUnion();
     doReturn(ControlMessageType.START_OF_SEGMENT.getValue()).when(controlMessage).getControlMessageType();
-    doReturn(ApacheKafkaOffsetPosition.of(seqNumber)).when(pubSubMessage).getOffset();
+    doReturn(ApacheKafkaOffsetPosition.of(seqNumber)).when(pubSubMessage).getPosition();
     return pubSubMessageProcessedResultWrapper;
   }
 }

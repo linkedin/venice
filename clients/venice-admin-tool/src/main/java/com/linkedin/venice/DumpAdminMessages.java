@@ -83,7 +83,7 @@ public class DumpAdminMessages {
           Put put = (Put) messageEnvelope.payloadUnion;
           AdminOperation adminMessage = deserializer.deserialize(put.putValue, put.schemaId);
           AdminOperationInfo adminOperationInfo = new AdminOperationInfo();
-          adminOperationInfo.offset = record.getOffset().getNumericOffset();
+          adminOperationInfo.offset = record.getPosition().getNumericOffset();
           adminOperationInfo.schemaId = put.schemaId;
           adminOperationInfo.adminOperation = adminMessage.toString();
           adminOperationInfo.operationType = AdminMessageType.valueOf(adminMessage).name();

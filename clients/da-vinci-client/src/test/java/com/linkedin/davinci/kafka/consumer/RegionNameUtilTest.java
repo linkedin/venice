@@ -17,7 +17,7 @@ public class RegionNameUtilTest {
     regionIdToNameMap.put(1, "region1");
     regionIdToNameMap.put(2, "region2");
 
-    PubSubHelper.MutablePubSubMessage message = PubSubHelper.getDummyPubSubMessage(false);
+    PubSubHelper.MutableDefaultPubSubMessage message = PubSubHelper.getDummyPubSubMessage(false);
     message.getValue().leaderMetadataFooter = new LeaderMetadata();
 
     message.getValue().leaderMetadataFooter.upstreamKafkaClusterId = 0;

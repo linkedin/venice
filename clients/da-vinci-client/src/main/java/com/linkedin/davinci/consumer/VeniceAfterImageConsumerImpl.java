@@ -152,7 +152,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
                       endOfPushConsumedPerPartitionMap.put(pubSubTopicPartition.getPartitionNumber(), true);
                       VeniceChangeCoordinate coordinate = new VeniceChangeCoordinate(
                           pubSubTopicPartition.getPubSubTopic().getName(),
-                          message.getOffset(),
+                          message.getPosition(),
                           pubSubTopicPartition.getPartitionNumber());
                       checkpoints.add(coordinate);
                       Set<Integer> unsubSet = new HashSet<>();

@@ -783,7 +783,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
 
     @Override
-    public PubSubPosition getOffset() {
+    public PubSubPosition getPosition() {
       return null;
     }
 

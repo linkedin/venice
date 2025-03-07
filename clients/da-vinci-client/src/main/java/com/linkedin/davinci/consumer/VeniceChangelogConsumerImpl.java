@@ -637,7 +637,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                     null,
                     null,
                     message.getTopicPartition(),
-                    message.getOffset(),
+                    message.getPosition(),
                     0,
                     0,
                     false));
@@ -761,7 +761,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
               keyDeserializer.deserialize(keyBytes),
               changeEvent,
               pubSubTopicPartition,
-              message.getOffset(),
+              message.getPosition(),
               message.getPubSubMessageTime(),
               message.getPayloadSize(),
               false));
@@ -775,7 +775,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         LOGGER.info(
             "Encounter RMD extraction exception for delete OP. partition={}, offset={}, key={}, rmd={}, rmd_id={}",
             message.getPartition(),
-            message.getOffset(),
+            message.getPosition(),
             keyDeserializer.deserialize(keyBytes),
             delete.getReplicationMetadataPayload(),
             delete.getReplicationMetadataVersionId(),
@@ -809,7 +809,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           put.getSchemaId(),
           keyBytes,
           put.getPutValue(),
-          message.getOffset().getNumericOffset(),
+          message.getPosition().getNumericOffset(),
           deserializerProvider,
           readerSchemaId,
           compressor);
@@ -826,7 +826,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             put.getPutValue(),
             pubSubTopicPartition,
             readerSchemaId,
-            message.getOffset().getNumericOffset());
+            message.getPosition().getNumericOffset());
       } catch (Exception ex) {
         throw new VeniceException(ex);
       }
@@ -843,7 +843,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           LOGGER.info(
               "Encounter RMD extraction exception for PUT OP. partition={}, offset={}, key={}, value={}, rmd={}, rmd_id={}",
               message.getPartition(),
-              message.getOffset(),
+              message.getPosition(),
               keyDeserializer.deserialize(keyBytes),
               assembledObject,
               put.getReplicationMetadataPayload(),
@@ -867,7 +867,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                 recordChangeEvent,
                 keyDeserializer.deserialize(keyBytes),
                 pubSubTopicPartition,
-                message.getOffset(),
+                message.getPosition(),
                 message.getPubSubMessageTime(),
                 payloadSize));
       } else {
@@ -877,7 +877,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                 keyDeserializer.deserialize(keyBytes),
                 changeEvent,
                 pubSubTopicPartition,
-                message.getOffset(),
+                message.getPosition(),
                 message.getPubSubMessageTime(),
                 payloadSize,
                 false));
