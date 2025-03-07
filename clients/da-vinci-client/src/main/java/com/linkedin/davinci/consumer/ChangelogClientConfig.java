@@ -37,7 +37,6 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    * the internal bootstrapping change log consumer and chunk assembler's RocksDB usage.
    */
   private long rocksDBBlockCacheSizeInBytes = 1024 * 1024L;
-  private String rocksDBChunkAssemblerStoragePath;
 
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
@@ -223,8 +222,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setConsumerName(config.consumerName)
         .setDatabaseSyncBytesInterval(config.getDatabaseSyncBytesInterval())
         .setShouldCompactMessages(config.shouldCompactMessages())
-        .setIsBeforeImageView(config.isBeforeImageView())
-        .setRocksDBChunkAssemblerStoragePath(config.getRocksDBChunkAssemblerStoragePath());
+        .setIsBeforeImageView(config.isBeforeImageView());
     return newConfig;
   }
 
@@ -235,14 +233,5 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   public ChangelogClientConfig setIsBeforeImageView(Boolean beforeImageView) {
     isBeforeImageView = beforeImageView;
     return this;
-  }
-
-  public ChangelogClientConfig setRocksDBChunkAssemblerStoragePath(String path) {
-    this.rocksDBChunkAssemblerStoragePath = path;
-    return this;
-  }
-
-  public String getRocksDBChunkAssemblerStoragePath() {
-    return rocksDBChunkAssemblerStoragePath;
   }
 }

@@ -434,7 +434,7 @@ public class TestMaterializedViewEndToEnd {
         .setLocalD2ZkHosts(multiRegionMultiClusterWrapper.getChildRegions().get(1).getZkServerWrapper().getAddress())
         .setVersionSwapDetectionIntervalTimeInSeconds(3L)
         .setControllerRequestRetryCount(3)
-        .setRocksDBChunkAssemblerStoragePath(getTempDataDirectory().getAbsolutePath());
+        .setBootstrapFileSystemPath(getTempDataDirectory().getAbsolutePath());
     MetricsRepository metricsRepository = new MetricsRepository();
     VeniceChangelogConsumerClientFactory veniceViewChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(viewChangeLogClientConfig, metricsRepository);

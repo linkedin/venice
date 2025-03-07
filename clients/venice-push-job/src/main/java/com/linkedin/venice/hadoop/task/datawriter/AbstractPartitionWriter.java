@@ -406,6 +406,12 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     }
   }
 
+  /**
+   * Create {@link CompositeVeniceWriter} for writing to materialized views. If a
+   * {@link com.linkedin.venice.partitioner.ComplexVenicePartitioner} is involved we will also initialize schema, deser,
+   * and compressor in order to provide the appropriate value extractor. Calling compressor.get() eagerly to force out
+   * any potential issues early and protect against property/config changes later.
+   */
   private AbstractVeniceWriter<byte[], byte[], byte[]> createCompositeVeniceWriter(
       VeniceWriterFactory factory,
       VeniceWriter<byte[], byte[], byte[]> mainWriter,

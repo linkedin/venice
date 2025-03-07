@@ -101,7 +101,10 @@ public class ComplexVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
   /**
    * Used during NR pass-through in remote region to forward records or chunks of records to corresponding view
    * partition based on provided view partition map. This way the producing leader don't need to worry about large
-   * record assembly or chunking for view topic(s) when ingesting from source VT during NR pass-through.
+   * record assembly or chunking for view topic(s) when ingesting from source VT during NR pass-through. It's also
+   * expected to receive an empty partition set and in which case it's a no-op and we simply return a completed future.
+   * This is a valid use case since certain complex partitioner implementation could filter out records based on value
+   * fields and return an empty partition.
    */
   public CompletableFuture<Void> forwardPut(K key, V value, int valueSchemaId, Set<Integer> partitions) {
     if (partitions.isEmpty()) {

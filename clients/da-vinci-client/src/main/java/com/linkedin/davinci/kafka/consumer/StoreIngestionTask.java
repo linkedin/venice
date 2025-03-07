@@ -485,10 +485,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.ingestionNotificationDispatcher =
         new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion);
     this.missingSOPCheckExecutor.execute(() -> waitForStateVersion(kafkaVersionTopic));
-    this.chunkAssembler = new InMemoryChunkAssembler(new InMemoryStorageEngine(storeName));
     this.cacheBackend = cacheBackend;
 
     if (recordTransformerConfig != null && recordTransformerConfig.getRecordTransformerFunction() != null) {
+      this.chunkAssembler = new InMemoryChunkAssembler(new InMemoryStorageEngine(storeName));
       Schema keySchema = schemaRepository.getKeySchema(storeName).getSchema();
       this.recordTransformerKeyDeserializer = new AvroGenericDeserializer(keySchema, keySchema);
       this.recordTransformerInputValueSchema = schemaRepository.getSupersetOrLatestValueSchema(storeName).getSchema();
@@ -530,6 +530,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       this.recordTransformerKeyDeserializer = null;
       this.recordTransformerInputValueSchema = null;
       this.recordTransformerDeserializersByPutSchemaId = null;
+      this.chunkAssembler = null;
     }
 
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
@@ -3801,14 +3802,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
           ByteBuffer assembledObject = assembledRecord.value();
           writerSchemaId = assembledRecord.writerSchemaId();
-          final int deserSchemaId = writerSchemaId;
+          final int readerSchemaId = writerSchemaId;
           Lazy<Object> lazyKey = Lazy.of(() -> this.recordTransformerKeyDeserializer.deserialize(keyBytes));
           Lazy<Object> lazyValue = Lazy.of(() -> {
             try {
               ByteBuffer decompressedAssembledObject = compressor.get().decompress(assembledObject);
               RecordDeserializer recordDeserializer =
-                  this.recordTransformerDeserializersByPutSchemaId.computeIfAbsent(deserSchemaId, i -> {
-                    Schema valueSchema = schemaRepository.getValueSchema(storeName, deserSchemaId).getSchema();
+                  this.recordTransformerDeserializersByPutSchemaId.computeIfAbsent(readerSchemaId, i -> {
+                    Schema valueSchema = schemaRepository.getValueSchema(storeName, readerSchemaId).getSchema();
                     if (this.recordTransformer.useUniformInputValueSchema()) {
                       return new AvroGenericDeserializer<>(valueSchema, this.recordTransformerInputValueSchema);
                     } else {
