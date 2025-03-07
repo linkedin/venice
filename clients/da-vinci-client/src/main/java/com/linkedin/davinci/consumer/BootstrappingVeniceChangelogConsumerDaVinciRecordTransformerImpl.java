@@ -17,6 +17,7 @@ import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
+import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
@@ -47,6 +48,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
+@Experimental
 public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     extends VeniceAfterImageConsumerImpl<K, V> implements BootstrappingVeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER =
@@ -182,7 +184,6 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
 
   private void internalStart() {
     if (isStarted) {
-      // throw new VeniceException("Bootstrapping Changelog client is already started!");
       return;
     }
 
@@ -225,7 +226,14 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
     public void onStartVersionIngestion(boolean isCurrentVersion) {
       for (int partitionId: subscribedPartitions) {
         if (isCurrentVersion) {
-          // ToDo: Explain why we can't immediately serve
+          /*
+           * This condition can occur when the application is starting up (due to a restart/deployment) or when the
+           * next current version begins ingestion while the previous version is still serving.
+           * In the first case, it is acceptable to immediately serve the current version.
+           * In the second case, we should not immediately serve the next current version. Doing so would result in
+           * sending all messages from SOP to nearline events that the user has already received.
+           * To avoid this, we should only serve the current version if no other version is currently being served.
+           */
           partitionToVersionToServe.computeIfAbsent(partitionId, v -> getStoreVersion());
         }
 

@@ -1,8 +1,11 @@
 package com.linkedin.davinci.transformer;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -178,41 +181,53 @@ public class RecordTransformerTest {
   public void testBlockingRecordTransformer() {
     Schema keySchema = Schema.create(Schema.Type.INT);
     Schema valueSchema = Schema.create(Schema.Type.STRING);
+    int currentVersion = 1;
+    int futureVersion = 2;
 
     DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
             .build();
 
-    DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(
-        storeVersion,
-        keySchema,
-        valueSchema,
-        valueSchema,
-        dummyRecordTransformerConfig);
-    assertEquals(recordTransformer.getStoreVersion(), storeVersion);
+    DaVinciRecordTransformer<Integer, String, String> clientRecordTransformer = spy(
+        new TestStringRecordTransformer(
+            storeVersion,
+            keySchema,
+            valueSchema,
+            valueSchema,
+            dummyRecordTransformerConfig));
+    assertEquals(clientRecordTransformer.getStoreVersion(), storeVersion);
 
-    recordTransformer = new BlockingDaVinciRecordTransformer<>(
-        recordTransformer,
-        keySchema,
-        valueSchema,
-        valueSchema,
-        dummyRecordTransformerConfig);
-    recordTransformer.onStartVersionIngestion(true);
+    DaVinciRecordTransformer<Integer, String, String> blockingRecordTransformer =
+        new BlockingDaVinciRecordTransformer<>(
+            clientRecordTransformer,
+            keySchema,
+            valueSchema,
+            valueSchema,
+            dummyRecordTransformerConfig);
+    blockingRecordTransformer.onStartVersionIngestion(true);
+    verify(clientRecordTransformer).onStartVersionIngestion(true);
 
-    assertTrue(recordTransformer.getStoreRecordsInDaVinci());
+    assertTrue(blockingRecordTransformer.getStoreRecordsInDaVinci());
 
-    assertEquals(recordTransformer.getKeySchema().getType(), Schema.Type.INT);
+    assertEquals(blockingRecordTransformer.getKeySchema().getType(), Schema.Type.INT);
 
-    assertEquals(recordTransformer.getOutputValueSchema().getType(), Schema.Type.STRING);
+    assertEquals(blockingRecordTransformer.getOutputValueSchema().getType(), Schema.Type.STRING);
 
     Lazy<Integer> lazyKey = Lazy.of(() -> 42);
     Lazy<String> lazyValue = Lazy.of(() -> "SampleValue");
     DaVinciRecordTransformerResult<String> recordTransformerResult =
-        recordTransformer.transformAndProcessPut(lazyKey, lazyValue, partitionId);
+        blockingRecordTransformer.transformAndProcessPut(lazyKey, lazyValue, partitionId);
+    verify(clientRecordTransformer).transform(lazyKey, lazyValue, partitionId);
+    verify(clientRecordTransformer).processPut(eq(lazyKey), any(), eq(partitionId));
     assertEquals(recordTransformerResult.getValue(), "SampleValueTransformed");
 
-    recordTransformer.processDelete(lazyKey, partitionId);
+    blockingRecordTransformer.processDelete(lazyKey, partitionId);
+    verify(clientRecordTransformer).processDelete(lazyKey, partitionId);
 
-    recordTransformer.onEndVersionIngestion(2);
+    blockingRecordTransformer.onVersionSwap(currentVersion, futureVersion, partitionId);
+    verify(clientRecordTransformer).onVersionSwap(currentVersion, futureVersion, partitionId);
+
+    blockingRecordTransformer.onEndVersionIngestion(futureVersion);
+    verify(clientRecordTransformer).onEndVersionIngestion(futureVersion);
   }
 }

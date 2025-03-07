@@ -25,9 +25,11 @@ import io.tehuti.metrics.MetricsRepository;
 import java.lang.reflect.Field;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -54,6 +56,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
   private BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer recordTransformer;
   private DaVinciRecordTransformerConfig mockDaVinciRecordTransformerConfig;
   private DaVinciClient mockDaVinciClient;
+  private List<Lazy<Integer>> keys;
 
   @BeforeMethod
   public void setUp() throws NoSuchFieldException, IllegalAccessException {
@@ -80,6 +83,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
             .setDatabaseSyncBytesInterval(TEST_DB_SYNC_BYTES_INTERVAL)
             .setIsBeforeImageView(true)
             .setD2Client(mock(D2Client.class))
+            .setShouldCompactMessages(true)
             .setIsBlobTransferClientEnabled(true);
     changelogClientConfig.getInnerClientConfig().setMetricsRepository(new MetricsRepository());
 
@@ -108,6 +112,12 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
       }
       return null;
     });
+
+    keys = new ArrayList<>();
+    for (int i = 0; i < PARTITION_COUNT; i++) {
+      int tempI = i;
+      keys.add(Lazy.of(() -> tempI));
+    }
   }
 
   @Test
@@ -178,21 +188,19 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     bootstrappingVeniceChangelogConsumer.start();
     recordTransformer.onStartVersionIngestion(true);
 
-    int key = 1;
     int value = 2;
-    Lazy<Integer> lazyKey = Lazy.of(() -> key);
     Lazy<Integer> lazyValue = Lazy.of(() -> value);
 
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-      recordTransformer.processPut(lazyKey, lazyValue, partitionId);
+      recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId);
     }
-    verifyPuts(key, value);
+    verifyPuts(value);
 
     // Verify deletes
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-      recordTransformer.processDelete(lazyKey, partitionId);
+      recordTransformer.processDelete(keys.get(partitionId), partitionId);
     }
-    verifyDeletes(key);
+    verifyDeletes();
   }
 
   @Test
@@ -203,53 +211,78 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
 
     bootstrappingVeniceChangelogConsumer.start();
     recordTransformer.onStartVersionIngestion(true);
-    futureRecordTransformer.onStartVersionIngestion(false);
+    // Setting this to true to verify that the next current version doesn't start serving immediately.
+    // It should only serve when it processes the VSM.
+    futureRecordTransformer.onStartVersionIngestion(true);
 
-    int key = 1;
+    List<Lazy<Integer>> keys = new ArrayList<>();
+    for (int i = 0; i < PARTITION_COUNT; i++) {
+      int tempI = i;
+      keys.add(Lazy.of(() -> tempI));
+    }
+
     int currentVersionValue = 2;
     int futureVersionValue = 3;
-    Lazy<Integer> lazyKey = Lazy.of(() -> key);
     Lazy<Integer> lazyCurrentVersionValueValue = Lazy.of(() -> currentVersionValue);
     Lazy<Integer> lazyFutureVersionValueValue = Lazy.of(() -> futureVersionValue);
 
     // Verify it only contains current version values
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-      recordTransformer.processPut(lazyKey, lazyCurrentVersionValueValue, partitionId);
-      futureRecordTransformer.processPut(lazyKey, lazyFutureVersionValueValue, partitionId);
+      recordTransformer.processPut(keys.get(partitionId), lazyCurrentVersionValueValue, partitionId);
+      futureRecordTransformer.processPut(keys.get(partitionId), lazyFutureVersionValueValue, partitionId);
     }
-    verifyPuts(key, currentVersionValue);
+    verifyPuts(currentVersionValue);
 
-    // Perform a version swap and verify the buffer only contains FUTURE_STORE_VERSION's values
+    // Verify compaction
+    for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+      recordTransformer.processPut(keys.get(partitionId), lazyCurrentVersionValueValue, partitionId);
+      recordTransformer.processPut(keys.get(partitionId), lazyCurrentVersionValueValue, partitionId);
+    }
+    verifyPuts(currentVersionValue);
+
+    // Verify only the future version is allowed to perform the version swap
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
       recordTransformer.onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, partitionId);
-      recordTransformer.processPut(lazyKey, lazyCurrentVersionValueValue, partitionId);
-      futureRecordTransformer.processPut(lazyKey, lazyFutureVersionValueValue, partitionId);
+      recordTransformer.processPut(keys.get(partitionId), lazyCurrentVersionValueValue, partitionId);
+      futureRecordTransformer.processPut(keys.get(partitionId), lazyFutureVersionValueValue, partitionId);
     }
-    verifyPuts(key, futureVersionValue);
+    verifyPuts(currentVersionValue);
+
+    // Perform a version swap from the future version and verify the buffer only contains FUTURE_STORE_VERSION's values
+    for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+      futureRecordTransformer.onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, partitionId);
+      recordTransformer.processPut(keys.get(partitionId), lazyCurrentVersionValueValue, partitionId);
+      futureRecordTransformer.processPut(keys.get(partitionId), lazyFutureVersionValueValue, partitionId);
+    }
+    verifyPuts(futureVersionValue);
   }
 
-  private void verifyPuts(int key, int value) {
+  private void verifyPuts(int value) {
     Collection<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> pubSubMessages =
         bootstrappingVeniceChangelogConsumer.poll(POLL_TIMEOUT);
     assertEquals(pubSubMessages.size(), PARTITION_COUNT);
+    int i = 0;
     for (PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate> message: pubSubMessages) {
-      assertEquals((int) message.getKey(), key);
+      assertEquals((int) message.getKey(), i);
       ChangeEvent<Integer> changeEvent = message.getValue();
       assertNull(changeEvent.getPreviousValue());
       assertEquals((int) changeEvent.getCurrentValue(), value);
+      i++;
     }
     assertEquals(bootstrappingVeniceChangelogConsumer.poll(POLL_TIMEOUT).size(), 0, "Buffer should be empty");
   }
 
-  private void verifyDeletes(int key) {
+  private void verifyDeletes() {
     Collection<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> pubSubMessages =
         bootstrappingVeniceChangelogConsumer.poll(POLL_TIMEOUT);
     assertEquals(pubSubMessages.size(), PARTITION_COUNT);
+    int i = 0;
     for (PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate> message: pubSubMessages) {
-      assertEquals((int) message.getKey(), key);
+      assertEquals((int) message.getKey(), i);
       ChangeEvent<Integer> changeEvent = message.getValue();
       assertNull(changeEvent.getPreviousValue());
       assertNull(changeEvent.getCurrentValue());
+      i++;
     }
     assertEquals(bootstrappingVeniceChangelogConsumer.poll(POLL_TIMEOUT).size(), 0, "Buffer should be empty");
   }
