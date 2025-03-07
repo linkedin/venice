@@ -142,7 +142,7 @@ public class VeniceChangelogConsumerClientFactory {
               ? consumer
               : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName);
 
-          if (globalChangelogClientConfig.isBlobTransferClientEnabled()) {
+          if (globalChangelogClientConfig.isExperimentalClientEnabled()) {
             return new BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>(
                 newStoreChangelogClientConfig,
                 tempConsumer,

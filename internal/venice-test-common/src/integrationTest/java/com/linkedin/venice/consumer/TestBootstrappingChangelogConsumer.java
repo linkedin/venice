@@ -286,7 +286,7 @@ public class TestBootstrappingChangelogConsumer {
               .setLocalD2ZkHosts(localZkServer.getAddress())
               .setControllerRequestRetryCount(3)
               .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath))
-              .setIsBlobTransferClientEnabled(true)
+              .setIsExperimentalClientEnabled(true)
               .setD2Client(d2Client);
       VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
           new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
