@@ -1925,6 +1925,7 @@ public class ConfigKeys {
   /**
    * Config to control the number of threads used for DNS resolution.
    * If the value is positive, DNS resolution would be done before SSL handshake between clients and a router.
+   * 0 will disable the dns resolution but does not affect the SSL handshake.
    */
   public static final String ROUTER_RESOLVE_THREADS = "router.resolve.threads";
 
