@@ -81,7 +81,7 @@ public class PubSubHelper {
                 throw new RuntimeException(e);
               } finally {
                 // update the offset and timestamp after produce (and delay) so that each message has a unique timestamp
-                message.setOffset(result.getPubSubPosition());
+                message.setPosition(result.getPubSubPosition());
                 message.setTimestampAfterProduce(System.currentTimeMillis());
               }
             }
@@ -147,7 +147,7 @@ public class PubSubHelper {
       return this;
     }
 
-    public MutableDefaultPubSubMessage setOffset(PubSubPosition position) {
+    public MutableDefaultPubSubMessage setPosition(PubSubPosition position) {
       this.position = position;
       return this;
     }
