@@ -12,13 +12,16 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.StatTrackingStoreClient;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.stream.Collectors;
@@ -200,12 +203,18 @@ public class ProducerTool {
   private static Object getValueObject(String valueString, RouterBasedStoreSchemaFetcher schemaFetcher) {
     Object value = null;
     Map<Integer, Exception> exceptionMap = new HashMap<>();
-    for (Map.Entry<Integer, Schema> valueSchemaEntry: schemaFetcher.getAllValueSchemasWithId().entrySet()) {
+    List<SchemaEntry> reversedSchemaEntryList = schemaFetcher.getAllValueSchemasWithId()
+        .entrySet()
+        .stream()
+        .map(entry -> new SchemaEntry(entry.getKey(), entry.getValue()))
+        .sorted(Comparator.comparingInt(SchemaEntry::getId).reversed())
+        .collect(Collectors.toList());
+    for (SchemaEntry valueSchemaEntry: reversedSchemaEntryList) {
       try {
-        value = adaptDataToSchema(valueString, valueSchemaEntry.getValue());
+        value = adaptDataToSchema(valueString, valueSchemaEntry.getSchema());
         break;
       } catch (Exception e) {
-        exceptionMap.put(valueSchemaEntry.getKey(), e);
+        exceptionMap.put(valueSchemaEntry.getId(), e);
         // Try the next schema
       }
     }
