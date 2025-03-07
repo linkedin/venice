@@ -82,7 +82,7 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_PER_NODE_CLIENT_THREAD_COUNT
 import static com.linkedin.venice.ConfigKeys.ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER;
 import static com.linkedin.venice.ConfigKeys.ROUTER_QUOTA_CHECK_WINDOW;
 import static com.linkedin.venice.ConfigKeys.ROUTER_READ_QUOTA_THROTTLING_LEASE_TIMEOUT_MS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_RESOLVE_BEFORE_SSL;
+import static com.linkedin.venice.ConfigKeys.ROUTER_RESOLVE_THREADS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_RETRY_MANAGER_CORE_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SINGLEGET_TARDY_LATENCY_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SINGLE_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL;
@@ -198,7 +198,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
   private final HelixGroupSelectionStrategyEnum helixGroupSelectionStrategy;
   private final String systemSchemaClusterName;
   private final int clientSslHandshakeThreads;
-  private final boolean resolveBeforeSSL;
+  private final int resolveThreads;
   private final int maxConcurrentResolutions;
   private final int clientResolutionRetryAttempts;
   private final long clientResolutionRetryBackoffMs;
@@ -336,7 +336,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
           props.getInt(ROUTER_HTTPASYNCCLIENT_CLIENT_POOL_THREAD_COUNT, Runtime.getRuntime().availableProcessors());
 
       clientSslHandshakeThreads = props.getInt(ROUTER_CLIENT_SSL_HANDSHAKE_THREADS, 0);
-      resolveBeforeSSL = props.getBoolean(ROUTER_RESOLVE_BEFORE_SSL, false);
+      resolveThreads = props.getInt(ROUTER_RESOLVE_THREADS, 0);
       maxConcurrentResolutions = props.getInt(ROUTER_MAX_CONCURRENT_RESOLUTIONS, 100);
       clientResolutionRetryAttempts = props.getInt(ROUTER_CLIENT_RESOLUTION_RETRY_ATTEMPTS, 3);
       clientResolutionRetryBackoffMs = props.getLong(ROUTER_CLIENT_RESOLUTION_RETRY_BACKOFF_MS, 5 * Time.MS_PER_SECOND);
@@ -788,8 +788,8 @@ public class VeniceRouterConfig implements RouterRetryConfig {
     return clientSslHandshakeThreads;
   }
 
-  public boolean isResolveBeforeSSL() {
-    return resolveBeforeSSL;
+  public int getResolveThreads() {
+    return resolveThreads;
   }
 
   public int getMaxConcurrentResolutions() {
