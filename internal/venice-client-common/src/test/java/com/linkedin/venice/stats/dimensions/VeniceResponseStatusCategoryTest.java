@@ -11,10 +11,10 @@ public class VeniceResponseStatusCategoryTest {
     for (VeniceResponseStatusCategory responseStatusCategory: VeniceResponseStatusCategory.values()) {
       switch (responseStatusCategory) {
         case SUCCESS:
-          assertEquals(responseStatusCategory.getCategory(), "success");
+          assertEquals(responseStatusCategory.getDimensionValue(), "success");
           break;
         case FAIL:
-          assertEquals(responseStatusCategory.getCategory(), "fail");
+          assertEquals(responseStatusCategory.getDimensionValue(), "fail");
           break;
         default:
           throw new IllegalArgumentException("Unknown response status category: " + responseStatusCategory);
