@@ -855,7 +855,7 @@ public class VenicePushJob implements AutoCloseable {
             pushJobSetting,
             pushJobSetting.targetedRegions,
             pushJobSetting.isTargetedRegionPushEnabled,
-            pushJobSetting.isTargetRegionPushWithDeferredSwapEnabled);
+            false);
       }
 
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);

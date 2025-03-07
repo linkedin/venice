@@ -3732,6 +3732,7 @@ public class VeniceParentHelixAdmin implements Admin {
           // 1. Its a hybrid store or regular push. (Hybrid store target push uses repush where isTargetRegionPush is
           // false)
           // 2. If target region push is enabled and job to push data only to target region completed (status == PUSHED)
+          // 3. If it is a target region push with deferred swap and a majority of regions have reached terminal status
           if (!isTargetRegionPush // regular push
               || isVersionPushed // target region push
               || isHybridStore || isTargetRegionPushWithDeferredSwapForCurrentVersion) {
@@ -3848,6 +3849,7 @@ public class VeniceParentHelixAdmin implements Admin {
        * 1. the store is not incremental push enabled and the push completed (no ERROR)
        * 2. this is a failed batch push
        * 3. the store is incremental push enabled and same incPushToRT and batch push finished
+       * 4. it is a target region push with deferred swap (targetRegions != null and deferVersionSwap == true)
        */
       Store store = getVeniceHelixAdmin().getStore(clusterName, Version.parseStoreFromKafkaTopicName(kafkaTopic));
       boolean failedBatchPush = !incrementalPushVersion.isPresent() && currentReturnStatus.isError();

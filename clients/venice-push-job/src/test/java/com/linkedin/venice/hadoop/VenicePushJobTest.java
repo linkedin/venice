@@ -276,7 +276,7 @@ public class VenicePushJobTest {
     ControllerClient client = mock(ControllerClient.class);
     JobStatusQueryResponse response = mock(JobStatusQueryResponse.class);
     doReturn("UNKNOWN").when(response).getStatus();
-    doReturn(response).when(client).queryOverallJobStatus(anyString(), eq(Optional.empty()), eq(null));
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), eq(Optional.empty()), eq(null), anyBoolean());
     try (VenicePushJob pushJob = getSpyVenicePushJob(vpjProps, client)) {
       PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
       pushJobSetting.jobStatusInUnknownStateTimeoutMs = 10;
@@ -308,7 +308,7 @@ public class VenicePushJobTest {
     doReturn(unknownResponse).doReturn(unknownResponse)
         .doReturn(completedResponse)
         .when(client)
-        .queryOverallJobStatus(anyString(), eq(Optional.empty()), eq(null));
+        .queryOverallJobStatus(anyString(), eq(Optional.empty()), eq(null), anyBoolean());
     try (VenicePushJob pushJob = getSpyVenicePushJob(vpjProps, client)) {
       PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
       pushJobSetting.jobStatusInUnknownStateTimeoutMs = 100_000_000;
@@ -654,7 +654,7 @@ public class VenicePushJobTest {
     JobStatusQueryResponse response = mockJobStatusQuery();
 
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
-      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString());
+      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString(), anyBoolean());
       skipVPJValidation(pushJob);
       try {
         pushJob.run();
@@ -670,7 +670,7 @@ public class VenicePushJobTest {
     props.put(TARGETED_REGION_PUSH_LIST, "dc-0, dc-1");
     client = getClient();
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
-      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString());
+      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString(), anyBoolean());
       skipVPJValidation(pushJob);
       pushJob.run();
       Assert.assertEquals(pushJob.getPushJobSetting().targetedRegions, "dc-0, dc-1");
@@ -692,7 +692,7 @@ public class VenicePushJobTest {
       Map<String, String> extraInfo = response.getExtraInfo();
       // one of the regions failed, so should fail
       extraInfo.put("dc-0", ExecutionStatus.NOT_STARTED.toString());
-      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString());
+      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString(), anyBoolean());
       try {
         pushJob.run();
         fail("Test should fail, but doesn't.");
@@ -718,7 +718,7 @@ public class VenicePushJobTest {
       skipVPJValidation(pushJob);
 
       JobStatusQueryResponse response = mockJobStatusQuery();
-      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString());
+      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString(), anyBoolean());
 
       VersionCreationResponse mockVersionCreationResponse = mockVersionCreationResponse(client);
       mockVersionCreationResponse.setKafkaSourceRegion(null);
@@ -767,7 +767,7 @@ public class VenicePushJobTest {
       skipVPJValidation(pushJob);
 
       JobStatusQueryResponse response = mockJobStatusQuery();
-      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString());
+      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString(), anyBoolean());
       // skip the mocking for repush
       doCallRealMethod().doNothing().when(pushJob).run();
       pushJob.run();
@@ -788,7 +788,7 @@ public class VenicePushJobTest {
       skipVPJValidation(pushJob);
 
       JobStatusQueryResponse response = mockJobStatusQuery();
-      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString());
+      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString(), anyBoolean());
       mockVersionCreationResponse(client);
 
       doThrow(new VeniceValidationException("error")).when(pushJob).postPushValidation();
@@ -973,7 +973,7 @@ public class VenicePushJobTest {
     properties.put(VALUE_FIELD_PROP, "name");
     JobStatusQueryResponse response = mockJobStatusQuery();
     ControllerClient client = getClient();
-    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), eq(null));
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), eq(null), anyBoolean());
     try (final VenicePushJob vpj = getSpyVenicePushJob(properties, client)) {
       skipVPJValidation(vpj);
       vpj.run();
@@ -993,7 +993,7 @@ public class VenicePushJobTest {
       storeInfo.setViewConfigs(viewConfigs);
       storeInfo.setVersions(Collections.singletonList(version));
     }, true);
-    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), eq(null));
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), eq(null), anyBoolean());
     MultiSchemaResponse valueSchemaResponse = getMultiSchemaResponse();
     MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[1];
     schemas[0] = getBasicSchema();
