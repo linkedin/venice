@@ -1057,11 +1057,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       schemaRepo.initKeySchema(storeName, keySchema);
       schemaRepo.addValueSchema(storeName, valueSchema, HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
       LOGGER.info(
-          "Completed creating Store {} in cluster {} with owner {} and largestUsedVersionNumber {}",
+          "Completed creating store: {} in cluster: {} with owner: {} and largestUsedVersionNumber: {} and partitionCount: {}",
           storeName,
           clusterName,
           owner,
-          newStore.getLargestUsedVersionNumber());
+          newStore.getLargestUsedVersionNumber(),
+          newStore.getPartitionCount());
     }
   }
 

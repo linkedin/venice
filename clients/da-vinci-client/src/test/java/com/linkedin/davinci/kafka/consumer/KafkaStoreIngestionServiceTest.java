@@ -15,6 +15,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
@@ -27,6 +29,7 @@ import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -52,6 +55,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -73,7 +77,7 @@ import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.mockito.Mockito;
 import org.testng.Assert;
-import org.testng.annotations.BeforeClass;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -94,7 +98,7 @@ public abstract class KafkaStoreIngestionServiceTest {
 
   private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
-  @BeforeClass
+  @BeforeMethod(alwaysRun = true)
   public void setUp() {
     mockStorageService = mock(StorageService.class);
     mockStorageEngineRepository = mock(StorageEngineRepository.class);
@@ -389,7 +393,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     StoreIngestionTask storeIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
     kafkaStoreIngestionService.shutdownStoreIngestionTask(topicName);
     StoreIngestionTask closedStoreIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
-    Assert.assertNull(closedStoreIngestionTask);
+    assertNull(closedStoreIngestionTask);
 
     AbstractStorageEngine storageEngine2 = mock(AbstractStorageEngine.class);
     Mockito.when(mockStorageEngineRepository.getLocalStorageEngine(topicName)).thenReturn(storageEngine2);
@@ -463,7 +467,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     if (isIsolatedIngestion) {
       Assert.assertNotNull(storeIngestionTask);
     } else {
-      Assert.assertNull(storeIngestionTask);
+      assertNull(storeIngestionTask);
     }
     kafkaStoreIngestionService.startConsumption(config, 0);
     storeIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
@@ -573,5 +577,51 @@ public abstract class KafkaStoreIngestionServiceTest {
     when(storeIngestionTask.isRunning()).thenReturn(false);
     kafkaStoreIngestionService.dropStoragePartitionGracefully(config, partitionId);
     verify(storageService).dropStorePartition(config, partitionId, true);
+  }
+
+  @Test
+  public void testInitParticipantConsumptionTask() {
+    VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
+    mockVeniceConfigLoader = mock(VeniceConfigLoader.class);
+    mockClusterInfoProvider = mock(ClusterInfoProvider.class);
+    ICProvider mockIcProvider = mock(ICProvider.class);
+    ClientConfig mockClientConfig = mock(ClientConfig.class);
+
+    when(mockServerConfig.isParticipantMessageStoreEnabled()).thenReturn(true);
+    when(mockServerConfig.getClusterName()).thenReturn("testCluster");
+    KafkaStoreIngestionService mockService = mock(KafkaStoreIngestionService.class);
+    doCallRealMethod().when(mockService).initializeParticipantStoreConsumptionTask(any(), any(), any(), any(), any());
+
+    ParticipantStoreConsumptionTask pct = mockService.initializeParticipantStoreConsumptionTask(
+        mockServerConfig,
+        Optional.of(mockClientConfig),
+        mockClusterInfoProvider,
+        new MetricsRepository(),
+        mockIcProvider);
+    assertNotNull(
+        pct,
+        "Participant consumption task should be initialized when participant message store is enabled and client config is present");
+
+    // Case 2: Participant consumption task should not be initialized when participant message store is disabled
+    when(mockServerConfig.isParticipantMessageStoreEnabled()).thenReturn(false);
+    pct = mockService.initializeParticipantStoreConsumptionTask(
+        mockServerConfig,
+        Optional.of(mockClientConfig),
+        mockClusterInfoProvider,
+        new MetricsRepository(),
+        mockIcProvider);
+    assertNull(
+        pct,
+        "Participant consumption task should not be initialized when participant message store is disabled");
+
+    // Case 3: Participant consumption task should not be initialized when client config is not present
+    when(mockServerConfig.isParticipantMessageStoreEnabled()).thenReturn(true);
+    pct = mockService.initializeParticipantStoreConsumptionTask(
+        mockServerConfig,
+        Optional.empty(),
+        mockClusterInfoProvider,
+        new MetricsRepository(),
+        mockIcProvider);
+    assertNull(pct, "Participant consumption task should not be initialized when client config is not present");
   }
 }

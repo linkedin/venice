@@ -35,6 +35,7 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
 import com.linkedin.venice.SSLConfig;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -344,20 +345,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     }
     this.kafkaMessageEnvelopeSchemaReader = kafkaMessageEnvelopeSchemaReader;
 
-    if (clientConfig.isPresent()) {
-      String clusterName = veniceConfigLoader.getVeniceClusterConfig().getClusterName();
-      participantStoreConsumptionTask = new ParticipantStoreConsumptionTask(
-          this,
-          clusterInfoProvider,
-          new ParticipantStoreConsumptionStats(metricsRepository, clusterName),
-          ClientConfig.cloneConfig(clientConfig.get()).setMetricsRepository(metricsRepository),
-          serverConfig.getParticipantMessageConsumptionDelayMs(),
-          icProvider);
-    } else {
-      LOGGER.info(
-          "Unable to start participant store consumption task because client config is not provided, jobs "
-              + "may not be killed if admin helix messaging channel is disabled");
-    }
+    this.participantStoreConsumptionTask = initializeParticipantStoreConsumptionTask(
+        serverConfig,
+        clientConfig,
+        clusterInfoProvider,
+        metricsRepository,
+        icProvider);
 
     /**
      * Register a callback function to handle the case when a new KME value schema is encountered when the server
@@ -499,6 +492,31 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setAAWCWorkLoadProcessingThreadPool(aaWCWorkLoadProcessingThreadPool)
         .setAAWCIngestionStorageLookupThreadPool(aaWCIngestionStorageLookupThreadPool)
         .build();
+  }
+
+  @VisibleForTesting
+  ParticipantStoreConsumptionTask initializeParticipantStoreConsumptionTask(
+      VeniceServerConfig serverConfig,
+      Optional<ClientConfig> clientConfig,
+      ClusterInfoProvider clusterInfoProvider,
+      MetricsRepository metricsRepository,
+      ICProvider icProvider) {
+
+    if (!serverConfig.isParticipantMessageStoreEnabled() || !clientConfig.isPresent()) {
+      LOGGER.warn(
+          "Unable to start participant store consumption task because {}. Jobs may not be killed if the "
+              + "admin Helix messaging channel is disabled.",
+          clientConfig.isPresent() ? "participant message store is disabled" : "client config is missing");
+      return null;
+    }
+
+    return new ParticipantStoreConsumptionTask(
+        this,
+        clusterInfoProvider,
+        new ParticipantStoreConsumptionStats(metricsRepository, serverConfig.getClusterName()),
+        ClientConfig.cloneConfig(clientConfig.get()).setMetricsRepository(metricsRepository),
+        serverConfig.getParticipantMessageConsumptionDelayMs(),
+        icProvider);
   }
 
   /**

@@ -52,6 +52,7 @@ import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.MIN_CONSUMER_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS;
+import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PRINCIPAL_NAME;
@@ -607,6 +608,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final List<Double> defaultConsumerPoolLimitFactorsList =
       Arrays.asList(0.4D, 0.6D, 0.8D, 1.0D, 1.2D, 1.4D, 1.6D);
 
+  private final boolean isParticipantMessageStoreEnabled;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
   }
@@ -1034,6 +1037,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     aclInMemoryCacheTTLMs = serverProperties.getInt(ACL_IN_MEMORY_CACHE_TTL_MS, -1); // acl caching is disabled by
     aaWCIngestionStorageLookupThreadPoolSize =
         serverProperties.getInt(SERVER_AA_WC_INGESTION_STORAGE_LOOKUP_THREAD_POOL_SIZE, 4);
+    this.isParticipantMessageStoreEnabled = serverProperties.getBoolean(PARTICIPANT_MESSAGE_STORE_ENABLED, false);
   }
 
   List<Double> extractThrottleLimitFactorsFor(VeniceProperties serverProperties, String configKey) {
@@ -1898,5 +1902,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   List<Double> getDefaultConsumerPoolLimitFactorsList() {
     return defaultConsumerPoolLimitFactorsList;
+  }
+
+  public boolean isParticipantMessageStoreEnabled() {
+    return isParticipantMessageStoreEnabled;
   }
 }
