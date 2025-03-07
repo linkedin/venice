@@ -23,6 +23,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -68,6 +69,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   private final CountDownLatch startLatch = new CountDownLatch(1);
 
   private Set<Integer> subscribedPartitions = new HashSet<>();
+  private final ApacheKafkaOffsetPosition placeHolderOffset = ApacheKafkaOffsetPosition.of(0);
 
   public BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl(
       ChangelogClientConfig changelogClientConfig,
@@ -257,7 +259,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
                   key,
                   changeEvent,
                   pubSubTopicPartitionMap.get(partitionId),
-                  0,
+                  placeHolderOffset,
                   0,
                   0,
                   false));
