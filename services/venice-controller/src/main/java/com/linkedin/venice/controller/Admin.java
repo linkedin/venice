@@ -961,12 +961,8 @@ public interface Admin extends AutoCloseable, Closeable {
   /**
    * @return list of stores infos that are considered dead. A store is considered dead if it exists but has no
    * user traffic in it's read or write path.
-   *
-   * Linkedin deduces a store is dead if the acls associated with the store's
-   * current, future, and backup versions have no activity by non Venice services (excluding venice services to avoid
-   * venice ingestion traffic which doesn't reflect user traffic).
    */
-  List<StoreInfo> getDeadStores(String clusterName);
+  List<StoreInfo> getDeadStores(String clusterName, String storeName);
 
   Map<String, RegionPushDetails> listStorePushInfo(
       String clusterName,

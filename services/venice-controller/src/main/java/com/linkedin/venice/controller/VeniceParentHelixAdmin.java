@@ -4978,6 +4978,11 @@ public class VeniceParentHelixAdmin implements Admin {
     throw new UnsupportedOperationException("This function is implemented in VeniceHelixAdmin.");
   }
 
+  @Override
+  public List<StoreInfo> getDeadStores(String clusterName, String storeName) {
+    throw new UnsupportedOperationException("This function is implemented in VeniceHelixAdmin.");
+  }
+
   /**
    * @return the largest used version number for the given store from the store graveyard.
    */

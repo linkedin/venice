@@ -583,6 +583,13 @@ public class VeniceControllerClusterConfig {
   private final long logCompactionIntervalMS;
   private final long timeSinceLastLogCompactionThresholdMS;
 
+  /**
+   * Configs for Dead Store Endpoint
+   */
+  private final boolean isdeadStoreEndpointEnabled;
+  private final String deadStoreStatsClassName;
+  private final VeniceProperties deadStoreStatsConfigs;
+
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
     this.clusterName = props.getString(CLUSTER_NAME);
@@ -1048,6 +1055,10 @@ public class VeniceControllerClusterConfig {
     this.logCompactionIntervalMS = props.getLong(LOG_COMPACTION_INTERVAL_MS, TimeUnit.HOURS.toMillis(1));
     this.timeSinceLastLogCompactionThresholdMS =
         props.getLong(TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS, TimeUnit.HOURS.toMillis(24));
+
+    this.isdeadStoreEndpointEnabled = props.getBoolean(ConfigKeys.CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED, false);
+    this.deadStoreStatsClassName = props.getString(ConfigKeys.CONTROLLER_DEAD_STORE_STATS_CLASS_NAME, "");
+    this.deadStoreStatsConfigs = props.clipAndFilterNamespace(ConfigKeys.CONTROLLER_DEAD_STORE_STATS_PREFIX);
 
     this.isHybridStorePartitionCountUpdateEnabled =
         props.getBoolean(ConfigKeys.CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE, false);
@@ -1978,6 +1989,18 @@ public class VeniceControllerClusterConfig {
 
   public long getTimeSinceLastLogCompactionThresholdMS() {
     return timeSinceLastLogCompactionThresholdMS;
+  }
+
+  public boolean isDeadStoreEndpointEnabled() {
+    return isdeadStoreEndpointEnabled;
+  }
+
+  public String getDeadStoreStatsClassName() {
+    return deadStoreStatsClassName;
+  }
+
+  public VeniceProperties getDeadStoreStatsConfigs() {
+    return deadStoreStatsConfigs;
   }
 
   public Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> getHelixGlobalRebalancePreference() {
