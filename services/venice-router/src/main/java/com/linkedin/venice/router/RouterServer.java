@@ -709,7 +709,7 @@ public class RouterServer extends AbstractVeniceService {
             LINKED_BLOCKING_QUEUE);
         new ThreadPoolStats(metricsRepository, dnsResolveExecutor, "dns_resolution_thread_pool");
         int clientSslHandshakeThreads = config.getClientSslHandshakeThreads();
-        int maxConcurrentResolution = config.getMaxConcurrentResolutions();
+        int maxConcurrentSslHandshakes = config.getMaxConcurrentSslHandshakes();
         int clientResolutionRetryAttempts = config.getClientResolutionRetryAttempts();
         long clientResolutionRetryBackoffMs = config.getClientResolutionRetryBackoffMs();
         if (useEpoll) {
@@ -721,7 +721,7 @@ public class RouterServer extends AbstractVeniceService {
             sslResolverEventLoopGroup,
             clientResolutionRetryAttempts,
             clientResolutionRetryBackoffMs,
-            maxConcurrentResolution);
+            maxConcurrentSslHandshakes);
       }
       sslInitializer.setIdentityParser(identityParser::parseIdentityFromCert);
       securityStats.registerSslHandshakeSensors(sslInitializer);

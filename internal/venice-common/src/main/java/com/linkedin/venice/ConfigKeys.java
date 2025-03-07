@@ -1930,9 +1930,14 @@ public class ConfigKeys {
   public static final String ROUTER_RESOLVE_THREADS = "router.resolve.threads";
 
   /**
+   * Config to control the queue capacity for the thread pool executor used for DNS resolution.
+   */
+  public static final String ROUTER_RESOLVE_QUEUE_CAPACITY = "router.resolve.queue.capacity";
+
+  /**
    * Config to control the maximum number of concurrent DNS resolutions that can be done by the router.
    */
-  public static final String ROUTER_MAX_CONCURRENT_RESOLUTIONS = "router.max.concurrent.resolutions";
+  public static final String ROUTER_MAX_CONCURRENT_SSL_HANDSHAKES = "router.max.concurrent.ssl.handshakes";
 
   /**
    * Config to control the maximum number of attempts to resolve a client host name before giving up.
