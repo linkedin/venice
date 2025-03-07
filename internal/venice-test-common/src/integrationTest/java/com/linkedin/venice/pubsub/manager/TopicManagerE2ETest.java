@@ -26,7 +26,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.utils.PubSubHelper;
-import com.linkedin.venice.utils.PubSubHelper.MutablePubSubMessage;
+import com.linkedin.venice.utils.PubSubHelper.MutableDefaultPubSubMessage;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -152,7 +152,7 @@ public class TopicManagerE2ETest {
     int numMessages = 250;
     PubSubProducerAdapter pubSubProducerAdapter = pubSubProducerAdapterLazy.get();
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(testTopic, 0);
-    List<MutablePubSubMessage> messages =
+    List<MutableDefaultPubSubMessage> messages =
         PubSubHelper.produceMessages(pubSubProducerAdapter, topicPartition, numMessages, 2, false);
     long timeBeforeProduce = messages.get(0).getTimestampBeforeProduce() - 10;
     long tsOfLastDataMessage = messages.get(messages.size() - 1).getValue().getProducerMetadata().getMessageTimestamp();
@@ -312,9 +312,12 @@ public class TopicManagerE2ETest {
 
     // produce messages to the topic-partitions: p0, p1, p2
     PubSubProducerAdapter pubSubProducerAdapter = pubSubProducerAdapterLazy.get();
-    List<MutablePubSubMessage> p0Messages = PubSubHelper.produceMessages(pubSubProducerAdapter, p0, 10, 10, false);
-    List<MutablePubSubMessage> p1Messages = PubSubHelper.produceMessages(pubSubProducerAdapter, p1, 14, 10, false);
-    List<MutablePubSubMessage> p2Messages = PubSubHelper.produceMessages(pubSubProducerAdapter, p2, 19, 10, false);
+    List<MutableDefaultPubSubMessage> p0Messages =
+        PubSubHelper.produceMessages(pubSubProducerAdapter, p0, 10, 10, false);
+    List<MutableDefaultPubSubMessage> p1Messages =
+        PubSubHelper.produceMessages(pubSubProducerAdapter, p1, 14, 10, false);
+    List<MutableDefaultPubSubMessage> p2Messages =
+        PubSubHelper.produceMessages(pubSubProducerAdapter, p2, 19, 10, false);
 
     // get the latest offsets
     latestOffsets = topicManager.getTopicLatestOffsets(existingTopic);

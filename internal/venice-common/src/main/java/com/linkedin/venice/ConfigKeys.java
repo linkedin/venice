@@ -1863,6 +1863,14 @@ public class ConfigKeys {
   // if the connectivity is not fresh, then retry the connection.
   public static final String BLOB_TRANSFER_PEERS_CONNECTIVITY_FRESHNESS_IN_SECONDS =
       "blob.transfer.peers.connectivity.freshness.in.seconds";
+  // This is the maximum allowed read speed (in bytes per sec) for the Netty client when receiving data from the remote
+  // peer.
+  public static final String BLOB_TRANSFER_CLIENT_READ_LIMIT_BYTES_PER_SEC =
+      "blob.transfer.client.read.limit.bytes.per.sec";
+  // This is the maximum allowed write speed (in bytes per sec) for the file transfer service when sending out data to
+  // the remote peer.
+  public static final String BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC =
+      "blob.transfer.service.write.limit.bytes.per.sec";
 
   // Port used by peer-to-peer transfer service. It should be used by both server and client
   public static final String DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT = "davinci.p2p.blob.transfer.server.port";

@@ -11,8 +11,8 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -105,21 +105,20 @@ public class TopicMessageFinder {
     consumer.subscribe(assignedPubSubTopicPartition, startOffset);
     boolean done = false;
     while (!done) {
-      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
-          consumer.poll(10000);
+      Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages = consumer.poll(10000);
       if (messages.isEmpty()) {
         break;
       }
       long lastRecordTimestamp = 0;
-      for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record: messages.get(assignedPubSubTopicPartition)) {
-        if (record.getOffset() >= endOffset) {
+      for (DefaultPubSubMessage record: messages.get(assignedPubSubTopicPartition)) {
+        if (record.getPosition().getNumericOffset() >= endOffset) {
           done = true;
           break;
         }
         KafkaKey kafkaKey = record.getKey();
         if (Arrays.equals(kafkaKey.getKey(), serializedKey)) {
           KafkaMessageEnvelope value = record.getValue();
-          LOGGER.info("Offset: {}, Value: {}", record.getOffset(), value.toString());
+          LOGGER.info("Offset: {}, Value: {}", record.getPosition(), value.toString());
         }
         lastRecordTimestamp = record.getPubSubMessageTime();
         recordCnt++;

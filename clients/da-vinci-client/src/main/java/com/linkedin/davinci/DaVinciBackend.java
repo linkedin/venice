@@ -9,8 +9,9 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERRO
 import static java.lang.Thread.currentThread;
 
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
-import com.linkedin.davinci.blobtransfer.BlobTransferUtil;
+import com.linkedin.davinci.blobtransfer.BlobTransferManagerBuilder;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
+import com.linkedin.davinci.blobtransfer.P2PBlobTransferConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.StoreBackendConfig;
@@ -306,22 +307,27 @@ public class DaVinciBackend implements Closeable {
         aggVersionedBlobTransferStats =
             new AggVersionedBlobTransferStats(metricsRepository, storeRepository, configLoader.getVeniceServerConfig());
 
-        blobTransferManager = BlobTransferUtil.getP2PBlobTransferManagerForDVCAndStart(
+        P2PBlobTransferConfig p2PBlobTransferConfig = new P2PBlobTransferConfig(
             configLoader.getVeniceServerConfig().getDvcP2pBlobTransferServerPort(),
             configLoader.getVeniceServerConfig().getDvcP2pBlobTransferClientPort(),
             configLoader.getVeniceServerConfig().getRocksDBPath(),
-            clientConfig,
-            storageMetadataService,
-            readOnlyStoreRepository,
-            storageService.getStorageEngineRepository(),
             backendConfig.getMaxConcurrentSnapshotUser(),
             backendConfig.getSnapshotRetentionTimeInMin(),
             backendConfig.getBlobTransferMaxTimeoutInMin(),
-            aggVersionedBlobTransferStats,
             backendConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
                 ? BlobTransferTableFormat.PLAIN_TABLE
                 : BlobTransferTableFormat.BLOCK_BASED_TABLE,
-            backendConfig.getBlobTransferPeersConnectivityFreshnessInSeconds());
+            backendConfig.getBlobTransferPeersConnectivityFreshnessInSeconds(),
+            backendConfig.getBlobTransferClientReadLimitBytesPerSec(),
+            backendConfig.getBlobTransferServiceWriteLimitBytesPerSec());
+
+        blobTransferManager = new BlobTransferManagerBuilder().setBlobTransferConfig(p2PBlobTransferConfig)
+            .setClientConfig(clientConfig)
+            .setStorageMetadataService(storageMetadataService)
+            .setReadOnlyStoreRepository(readOnlyStoreRepository)
+            .setStorageEngineRepository(storageService.getStorageEngineRepository())
+            .setAggVersionedBlobTransferStats(aggVersionedBlobTransferStats)
+            .build();
       } else {
         aggVersionedBlobTransferStats = null;
         blobTransferManager = null;

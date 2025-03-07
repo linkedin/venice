@@ -22,7 +22,6 @@ import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
@@ -34,8 +33,10 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
@@ -425,7 +426,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         PubSubTopic topic = pubSubTopicRepository.getTopic(coordinate.getTopic());
         PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(topic, coordinate.getPartition());
         internalSeek(Collections.singleton(coordinate.getPartition()), topic, foo -> {
-          Long topicOffset = ((ApacheKafkaOffsetPosition) coordinate.getPosition()).getOffset();
+          Long topicOffset = coordinate.getPosition().getNumericOffset();
           pubSubConsumerSeek(pubSubTopicPartition, topicOffset);
         }).join();
       }
@@ -611,15 +612,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       String topicSuffix,
       boolean includeControlMessage) {
     List<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messagesMap;
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messagesMap;
     synchronized (pubSubConsumer) {
       messagesMap = pubSubConsumer.poll(timeoutInMs);
     }
-    for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: messagesMap
-        .entrySet()) {
+    for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: messagesMap.entrySet()) {
       PubSubTopicPartition pubSubTopicPartition = entry.getKey();
-      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> messageList = entry.getValue();
-      for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messageList) {
+      List<DefaultPubSubMessage> messageList = entry.getValue();
+      for (DefaultPubSubMessage message: messageList) {
         maybeUpdatePartitionToBootstrapMap(message, pubSubTopicPartition);
         if (message.getKey().isControlMessage()) {
           ControlMessage controlMessage = (ControlMessage) message.getValue().getPayloadUnion();
@@ -637,7 +637,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                     null,
                     null,
                     message.getTopicPartition(),
-                    message.getOffset(),
+                    message.getPosition(),
                     0,
                     0,
                     false));
@@ -671,9 +671,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return pubSubMessages;
   }
 
-  void maybeUpdatePartitionToBootstrapMap(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message,
-      PubSubTopicPartition pubSubTopicPartition) {
+  void maybeUpdatePartitionToBootstrapMap(DefaultPubSubMessage message, PubSubTopicPartition pubSubTopicPartition) {
     if (getSubscribeTime() - message.getValue().producerMetadata.messageTimestamp <= TimeUnit.MINUTES.toMillis(1)) {
       getPartitionToBootstrapState().put(pubSubTopicPartition.getPartitionNumber(), true);
     }
@@ -749,7 +747,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   protected Optional<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> convertPubSubMessageToPubSubChangeEventMessage(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message,
+      DefaultPubSubMessage message,
       PubSubTopicPartition pubSubTopicPartition) {
     Optional<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubChangeEventMessage = Optional.empty();
     byte[] keyBytes = message.getKey().getKey();
@@ -767,7 +765,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
               keyDeserializer.deserialize(keyBytes),
               changeEvent,
               pubSubTopicPartition,
-              message.getOffset(),
+              message.getPosition(),
               message.getPubSubMessageTime(),
               message.getPayloadSize(),
               false));
@@ -781,7 +779,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         LOGGER.info(
             "Encounter RMD extraction exception for delete OP. partition={}, offset={}, key={}, rmd={}, rmd_id={}",
             message.getPartition(),
-            message.getOffset(),
+            message.getPosition(),
             keyDeserializer.deserialize(keyBytes),
             delete.getReplicationMetadataPayload(),
             delete.getReplicationMetadataVersionId(),
@@ -814,7 +812,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           put.getSchemaId(),
           keyBytes,
           put.getPutValue(),
-          message.getOffset(),
+          message.getPosition().getNumericOffset(),
           deserializerProvider,
           readerSchemaId,
           compressor);
@@ -831,7 +829,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             put.getPutValue(),
             pubSubTopicPartition,
             readerSchemaId,
-            message.getOffset());
+            message.getPosition().getNumericOffset());
       } catch (Exception ex) {
         throw new VeniceException(ex);
       }
@@ -848,7 +846,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           LOGGER.info(
               "Encounter RMD extraction exception for PUT OP. partition={}, offset={}, key={}, value={}, rmd={}, rmd_id={}",
               message.getPartition(),
-              message.getOffset(),
+              message.getPosition(),
               keyDeserializer.deserialize(keyBytes),
               assembledObject,
               put.getReplicationMetadataPayload(),
@@ -872,7 +870,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                 recordChangeEvent,
                 keyDeserializer.deserialize(keyBytes),
                 pubSubTopicPartition,
-                message.getOffset(),
+                message.getPosition(),
                 message.getPubSubMessageTime(),
                 payloadSize));
       } else {
@@ -882,7 +880,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                 keyDeserializer.deserialize(keyBytes),
                 changeEvent,
                 pubSubTopicPartition,
-                message.getOffset(),
+                message.getPosition(),
                 message.getPubSubMessageTime(),
                 payloadSize,
                 false));
@@ -963,7 +961,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       RecordChangeEvent recordChangeEvent,
       K currentKey,
       PubSubTopicPartition pubSubTopicPartition,
-      Long offset,
+      PubSubPosition pubSubPosition,
       Long timestamp,
       int payloadSize) {
     V currentValue = null;
@@ -983,7 +981,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         currentKey,
         changeEvent,
         pubSubTopicPartition,
-        offset,
+        pubSubPosition,
         timestamp,
         payloadSize,
         false);

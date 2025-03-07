@@ -42,16 +42,16 @@ public class PubSubMessageDeserializer {
    * @param keyBytes the key bytes of the message
    * @param valueBytes the value bytes of the message
    * @param headers the headers of the message
-   * @param position the position of the message in the topic partition
+   * @param pubSubPosition the position of the message in the topic partition
    * @param timestamp the timestamp of the message
    * @return the deserialized PubSubMessage
    */
-  public PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> deserialize(
+  public DefaultPubSubMessage deserialize(
       PubSubTopicPartition topicPartition,
       byte[] keyBytes,
       byte[] valueBytes,
       PubSubMessageHeaders headers,
-      Long position,
+      PubSubPosition pubSubPosition,
       Long timestamp) {
     // TODO: Put the key in an object pool as well
     KafkaKey key = keySerializer.deserialize(null, keyBytes);
@@ -80,11 +80,11 @@ public class PubSubMessageDeserializer {
       value = valueSerializer.deserialize(valueBytes, getEnvelope(key.getKeyHeaderByte()));
     }
     // TODO: Put the message container in an object pool as well
-    return new ImmutablePubSubMessage<>(
+    return new ImmutablePubSubMessage(
         key,
         value,
         topicPartition,
-        position,
+        pubSubPosition,
         timestamp,
         keyBytes.length + valueBytes.length,
         headers);
