@@ -372,6 +372,11 @@ public class SslInitializer extends ChannelInitializer<Channel> {
       if (!ctx.isRemoved()) {
         next(ctx);
       }
+      if (ctx.channel().hasAttr(SSL_HANDSHAKE_START_TS)) {
+        // If SSL_HANDSHAKE_START_TS is set, then the handshake was started.
+        // If the connection closes mid-handshake, userEventTriggered might never fire.
+        _handshakesFailed.increment();
+      }
       super.channelInactive(ctx);
     }
 
