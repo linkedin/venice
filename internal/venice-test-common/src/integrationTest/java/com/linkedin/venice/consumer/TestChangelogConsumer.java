@@ -393,7 +393,7 @@ public class TestChangelogConsumer {
         .setLocalD2ZkHosts(localZkServer.getAddress())
         .setVersionSwapDetectionIntervalTimeInSeconds(3L)
         .setControllerRequestRetryCount(3)
-        .setRocksDBChunkAssemblerStoragePath(getTempDataDirectory().getAbsolutePath());
+        .setBootstrapFileSystemPath(getTempDataDirectory().getAbsolutePath());
     VeniceChangelogConsumerClientFactory veniceViewChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(viewChangeLogClientConfig, metricsRepository);
 

@@ -8,6 +8,7 @@ import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
@@ -16,16 +17,22 @@ import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriterOptions;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class TestMaterializedView {
+public class MaterializedViewTest {
   @Test
   public void testValidateConfigs() {
     Properties properties = new Properties();
@@ -168,6 +175,26 @@ public class TestMaterializedView {
     assertTrue(options.getPartitioner() instanceof DefaultVenicePartitioner);
     assertTrue(options.isChunkingEnabled());
     assertTrue(options.isRmdChunkingEnabled());
+  }
+
+  @Test
+  public void testViewPartitionUtils() {
+    // Verify the utility methods we use to generate and parse PubSubMessageHeader
+    Map<String, Set<Integer>> viewPartitionMap = new HashMap<>();
+    String view1 = "testView1";
+    String view2 = "testView2";
+    Set<Integer> viewPartitionSet1 = new HashSet<>(Arrays.asList(1, 3));
+    viewPartitionMap.put(view1, viewPartitionSet1);
+    Set<Integer> viewPartitionSet2 = new HashSet<>(Arrays.asList(2));
+    viewPartitionMap.put(view2, viewPartitionSet2);
+    PubSubMessageHeader messageHeader = ViewUtils.getViewDestinationPartitionHeader(viewPartitionMap);
+    PubSubMessageHeaders pubSubMessageHeaders = new PubSubMessageHeaders();
+    pubSubMessageHeaders.add(messageHeader);
+    Map<String, Set<Integer>> extractedViewPartitionMap = ViewUtils.extractViewPartitionMap(pubSubMessageHeaders);
+    Assert.assertEquals(extractedViewPartitionMap, viewPartitionMap);
+    // Verify edge cases or failure behaviors
+    Assert.assertNull(ViewUtils.getViewDestinationPartitionHeader(null));
+    Assert.assertThrows(VeniceException.class, () -> ViewUtils.extractViewPartitionMap(new PubSubMessageHeaders()));
   }
 
   private Store getMockStore(String storeName, int partitionCount) {

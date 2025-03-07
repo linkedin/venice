@@ -30,6 +30,7 @@ import org.testng.annotations.Test;
 public class ComplexVeniceWriterTest {
   private static final String PARTITION_FIELD_NAME = "partition";
   private static final byte[] IGNORED_BYTES = new byte[0];
+  private static final String DEFAULT_VIEW_TOPIC_NAME = "testStore_v1_MaterializedViewTest_mv";
 
   private static class ValuePartitionerForUT extends ComplexVenicePartitioner {
     public ValuePartitionerForUT() {
@@ -172,7 +173,7 @@ public class ComplexVeniceWriterTest {
   }
 
   private VeniceWriterOptions getVeniceWriterOptions(VenicePartitioner partitioner, int partitionCount) {
-    VeniceWriterOptions.Builder configBuilder = new VeniceWriterOptions.Builder("ignored-topic");
+    VeniceWriterOptions.Builder configBuilder = new VeniceWriterOptions.Builder(DEFAULT_VIEW_TOPIC_NAME);
     configBuilder.setPartitionCount(partitionCount).setPartitioner(partitioner);
     return configBuilder.build();
   }

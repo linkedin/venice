@@ -62,6 +62,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.AvroSpecificStoreDeserializerCache;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -99,6 +100,7 @@ import org.apache.logging.log4j.Logger;
 public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceChangelogConsumerImpl.class);
   private static final int MAX_SUBSCRIBE_RETRIES = 5;
+  private static final String ROCKSDB_BUFFER_FOLDER = "rocksdb-chunk-buffer";
   protected long subscribeTime = Long.MAX_VALUE;
 
   protected static final VeniceCompressor NO_OP_COMPRESSOR = new NoopCompressor();
@@ -176,12 +178,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       this.storeName =
           VeniceView.getViewStoreName(changelogClientConfig.getStoreName(), changelogClientConfig.getViewName());
       Properties rocksDBBufferProperties = new Properties();
-      String rocksDBBufferPath = changelogClientConfig.getRocksDBChunkAssemblerStoragePath();
+      String rocksDBBufferPath = changelogClientConfig.getBootstrapFileSystemPath();
       if (rocksDBBufferPath == null || rocksDBBufferPath.isEmpty()) {
-        throw new VeniceException(
-            "rocksDBChunkAssemblerStoragePath must be configured for consuming view store: " + storeName);
+        throw new VeniceException("bootstrapFileSystemPath must be configured for consuming view store: " + storeName);
       }
-      rocksDBBufferProperties.put(DATA_BASE_PATH, rocksDBBufferPath);
+      // Create a new folder in user provided path so if the path contains other important files we don't drop it.
+      rocksDBBufferProperties
+          .put(DATA_BASE_PATH, RocksDBUtils.composeStoreDbDir(rocksDBBufferPath, ROCKSDB_BUFFER_FOLDER));
       // These properties are required to build a VeniceServerConfig but is never used by RocksDBStorageEngineFactory.
       // Instead of setting these configs, we could refactor RocksDBStorageEngineFactory to take a more generic config.
       rocksDBBufferProperties.put(CLUSTER_NAME, "");

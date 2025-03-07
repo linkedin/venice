@@ -92,7 +92,8 @@ public class MaterializedViewWriter extends VeniceViewWriter {
       return veniceWriter.get().forwardPut(key, newValueBytes, newValueSchemaId, viewPartitionSet);
     }
     if (newValue == null) {
-      // this is a delete operation
+      // This is a delete operation. newValueProvider will contain the old value in a best effort manner. The old value
+      // might not be available if we are deleting a non-existing key.
       return veniceWriter.get().complexDelete(key, newValueProvider);
     }
     return veniceWriter.get().complexPut(key, newValueBytes, newValueSchemaId, newValueProvider);

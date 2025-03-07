@@ -3801,14 +3801,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
           ByteBuffer assembledObject = assembledRecord.value();
           writerSchemaId = assembledRecord.writerSchemaId();
-          final int deserSchemaId = writerSchemaId;
+          final int readerSchemaId = writerSchemaId;
           Lazy<Object> lazyKey = Lazy.of(() -> this.recordTransformerKeyDeserializer.deserialize(keyBytes));
           Lazy<Object> lazyValue = Lazy.of(() -> {
             try {
               ByteBuffer decompressedAssembledObject = compressor.get().decompress(assembledObject);
               RecordDeserializer recordDeserializer =
-                  this.recordTransformerDeserializersByPutSchemaId.computeIfAbsent(deserSchemaId, i -> {
-                    Schema valueSchema = schemaRepository.getValueSchema(storeName, deserSchemaId).getSchema();
+                  this.recordTransformerDeserializersByPutSchemaId.computeIfAbsent(readerSchemaId, i -> {
+                    Schema valueSchema = schemaRepository.getValueSchema(storeName, readerSchemaId).getSchema();
                     if (this.recordTransformer.useUniformInputValueSchema()) {
                       return new AvroGenericDeserializer<>(valueSchema, this.recordTransformerInputValueSchema);
                     } else {
