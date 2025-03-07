@@ -221,8 +221,7 @@ public class RealTimeTopicSwitcher {
     Version previousStoreVersion = store.getVersionOrThrow(previousVersion);
     Version nextStoreVersion = store.getVersionOrThrow(nextVersion);
 
-    // If there exists an RT, then broadcast the VersionSwapMessage to it,
-    // otherwise broadcast it to the VT of the previous version
+    // If there exists an RT, then broadcast the VersionSwapMessage to it, otherwise broadcast it to the VT
     String storeName = store.getName();
     if (!topicManager.containsTopic(pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName)))) {
       LOGGER.info("RT topic doesn't exist for store: {}. Broadcasting VersionSwapMessage directly to VT.", storeName);

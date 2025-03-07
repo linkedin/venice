@@ -2656,9 +2656,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 kafkaUrl,
                 kafkaClusterId,
                 beforeProcessingPerRecordTimestampNs);
-
-            break;
-          // return DelegateConsumerRecordResult.QUEUED_TO_DRAINER;
+            return DelegateConsumerRecordResult.PRODUCED_TO_KAFKA;
           default:
             // do nothing
             break;
