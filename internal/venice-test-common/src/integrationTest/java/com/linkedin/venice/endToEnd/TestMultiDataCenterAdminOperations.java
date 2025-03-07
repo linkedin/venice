@@ -103,7 +103,7 @@ public class TestMultiDataCenterAdminOperations {
     multiRegionMultiClusterWrapper.close();
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT, invocationCount = 100)
   public void testHybridConfigPartitionerConfigConflict() {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("test_conflict_store");
