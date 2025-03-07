@@ -1,9 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import org.apache.logging.log4j.LogManager;
@@ -61,22 +58,14 @@ public class PartitionReplicaIngestionContext {
     return workloadType;
   }
 
-  public static WorkloadType getWorkloadType(PubSubTopic versionTopic, Store store) {
-    checkVersionTopicStoreOrThrow(versionTopic, store);
-    int versionNumber = Version.parseVersionFromKafkaTopicName(versionTopic.getName());
-    Version version = store.getVersion(versionNumber);
-    if (version == null) {
-      return WorkloadType.NON_AA_OR_WRITE_COMPUTE;
-    }
-    if (store.isWriteComputationEnabled() || version.isActiveActiveReplicationEnabled()) {
+  public static WorkloadType getWorkloadType(boolean isActiveActiveReplicationEnabled, Store store) {
+    if (store.isWriteComputationEnabled() || isActiveActiveReplicationEnabled) {
       return WorkloadType.AA_OR_WRITE_COMPUTE;
     }
     return WorkloadType.NON_AA_OR_WRITE_COMPUTE;
   }
 
-  public static VersionRole getStoreVersionRole(PubSubTopic versionTopic, Store store) {
-    checkVersionTopicStoreOrThrow(versionTopic, store);
-    int versionNumber = Version.parseVersionFromKafkaTopicName(versionTopic.getName());
+  public static VersionRole getStoreVersionRole(int versionNumber, Store store) {
     int currentVersionNumber = store.getCurrentVersion();
     if (currentVersionNumber < versionNumber) {
       return VersionRole.FUTURE;
@@ -86,17 +75,4 @@ public class PartitionReplicaIngestionContext {
       return VersionRole.CURRENT;
     }
   }
-
-  private static void checkVersionTopicStoreOrThrow(PubSubTopic versionTopic, Store store) {
-    if (store == null) {
-      LOGGER.error("Invalid store meta-data for {}", versionTopic);
-      throw new VeniceNoStoreException(versionTopic.getStoreName());
-    }
-
-    if (!store.getName().equals(versionTopic.getStoreName())) {
-      throw new VeniceException(
-          "Store name mismatch for store " + store.getName() + " and version topic " + versionTopic);
-    }
-  }
-
 }

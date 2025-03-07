@@ -552,8 +552,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         this::pauseConsumption,
         this::resumeConsumption);
     this.storeRepository.registerStoreDataChangedListener(this.storageUtilizationManager);
-    this.versionRole = PartitionReplicaIngestionContext.getStoreVersionRole(versionTopic, store);
-    this.workloadType = PartitionReplicaIngestionContext.getWorkloadType(versionTopic, store);
+    this.versionRole = PartitionReplicaIngestionContext.getStoreVersionRole(versionNumber, store);
+    this.workloadType = PartitionReplicaIngestionContext.getWorkloadType(isActiveActiveReplicationEnabled, store);
     this.kafkaClusterUrlResolver = serverConfig.getKafkaClusterUrlResolver();
     Object2IntMap<String> kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
     this.localKafkaClusterId = kafkaClusterUrlToIdMap.getOrDefault(localKafkaServer, Integer.MIN_VALUE);
@@ -1582,12 +1582,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void updateIngestionRoleIfStoreChanged(Store store) throws InterruptedException {
-    PartitionReplicaIngestionContext.VersionRole newVersionRole =
-        PartitionReplicaIngestionContext.getStoreVersionRole(versionTopic, store);
-    PartitionReplicaIngestionContext.WorkloadType newWorkloadType =
-        PartitionReplicaIngestionContext.getWorkloadType(versionTopic, store);
     if (serverConfig.isResubscriptionTriggeredByVersionIngestionContextChangeEnabled() && isHybridMode()) {
+      PartitionReplicaIngestionContext.VersionRole newVersionRole =
+          PartitionReplicaIngestionContext.getStoreVersionRole(versionNumber, store);
+      PartitionReplicaIngestionContext.WorkloadType newWorkloadType =
+          PartitionReplicaIngestionContext.getWorkloadType(isActiveActiveReplicationEnabled, store);
       if (!newVersionRole.equals(versionRole) || !newWorkloadType.equals(workloadType)) {
+        // If the store having no current version, we do not need to do resubscribe.
+        if (store.getCurrentVersion() == Store.NON_EXISTING_VERSION) {
+          return;
+        }
         LOGGER.info(
             "Trigger for version topic: {} due to  Previous: version role: {}, workload type: {} "
                 + "changed to New: version role: {}, workload type: {}",
