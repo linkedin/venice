@@ -20,12 +20,12 @@ public class TestUnchangedResultRecordTransformer extends DaVinciRecordTransform
   }
 
   @Override
-  public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<String> value) {
+  public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<String> value, int partitionId) {
     return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.UNCHANGED);
   }
 
   @Override
-  public void processPut(Lazy<Integer> key, Lazy<String> value) {
+  public void processPut(Lazy<Integer> key, Lazy<String> value, int partitionId) {
     return;
   }
 

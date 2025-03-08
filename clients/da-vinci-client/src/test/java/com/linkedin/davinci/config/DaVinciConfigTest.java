@@ -28,12 +28,12 @@ public class DaVinciConfigTest {
     }
 
     @Override
-    public DaVinciRecordTransformerResult<Integer> transform(Lazy<Integer> key, Lazy<Integer> value) {
+    public DaVinciRecordTransformerResult<Integer> transform(Lazy<Integer> key, Lazy<Integer> value, int partitionId) {
       return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.TRANSFORMED, value.get() + 1);
     }
 
     @Override
-    public void processPut(Lazy<Integer> key, Lazy<Integer> value) {
+    public void processPut(Lazy<Integer> key, Lazy<Integer> value, int partitionId) {
       return;
     }
 

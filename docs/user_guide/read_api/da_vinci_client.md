@@ -45,7 +45,7 @@ public class StringRecordTransformer extends DaVinciRecordTransformer<Integer, S
   }
 
   @Override
-  public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<String> value) {
+  public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<String> value, int partitionId) {
     Object valueObj = value.get();
     String valueStr;
 
@@ -66,7 +66,7 @@ public class StringRecordTransformer extends DaVinciRecordTransformer<Integer, S
   }
 
   @Override
-  public void processPut(Lazy<Integer> key, Lazy<String> value) {
+  public void processPut(Lazy<Integer> key, Lazy<String> value, int partitionId) {
     return;
   }
 }
@@ -108,14 +108,14 @@ public class IntToStringRecordTransformer extends DaVinciRecordTransformer<Integ
   }
 
   @Override
-  public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<Integer> value) {
+  public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<Integer> value, int partitionId) {
     String valueStr = value.get().toString();
     String transformedValue = valueStr + "Transformed";
     return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.TRANSFORMED, transformedValue);
   }
 
   @Override
-  public void processPut(Lazy<Integer> key, Lazy<String> value) {
+  public void processPut(Lazy<Integer> key, Lazy<String> value, int partitionId) {
     return;
   }
 

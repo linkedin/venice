@@ -141,7 +141,7 @@ public class DaVinciRecordTransformerUtility<K, O> {
           return outputValueDeserializer.deserialize(decompressedValueBytes);
         });
 
-        recordTransformer.processPut(lazyKey, lazyValue);
+        recordTransformer.processPut(lazyKey, lazyValue, partitionId);
       }
     }
   }

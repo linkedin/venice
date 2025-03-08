@@ -37,6 +37,9 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    */
   private long rocksDBBlockCacheSizeInBytes = 1024 * 1024L;
 
+  private Boolean isBlobTransferEnabled = false;
+  private Boolean isExperimentalClientEnabled = false;
+
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
   }
@@ -221,7 +224,9 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setConsumerName(config.consumerName)
         .setDatabaseSyncBytesInterval(config.getDatabaseSyncBytesInterval())
         .setShouldCompactMessages(config.shouldCompactMessages())
-        .setIsBeforeImageView(config.isBeforeImageView());
+        .setIsBeforeImageView(config.isBeforeImageView())
+        .setIsBlobTransferEnabled(config.isBlobTransferEnabled())
+        .setIsExperimentalClientEnabled(config.isExperimentalClientEnabled());
     return newConfig;
   }
 
@@ -231,6 +236,33 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
 
   public ChangelogClientConfig setIsBeforeImageView(Boolean beforeImageView) {
     isBeforeImageView = beforeImageView;
+    return this;
+  }
+
+  protected Boolean isExperimentalClientEnabled() {
+    return isExperimentalClientEnabled;
+  }
+
+  /**
+   * This uses a highly experimental client.
+   * It is currently only supported for {@link BootstrappingVeniceChangelogConsumer}.
+   */
+  public ChangelogClientConfig setIsExperimentalClientEnabled(Boolean experimentalClientEnabled) {
+    isExperimentalClientEnabled = experimentalClientEnabled;
+    return this;
+  }
+
+  protected Boolean isBlobTransferEnabled() {
+    return isBlobTransferEnabled;
+  }
+
+  /**
+   * This is used by the experimental client to speed up bootstrapping times through blob transfer.
+   * In order for this feature to be used, {@link #setIsExperimentalClientEnabled(Boolean)} must be enabled.
+   * It is currently only supported for {@link BootstrappingVeniceChangelogConsumer}.
+   */
+  public ChangelogClientConfig setIsBlobTransferEnabled(Boolean blobTransferEnabled) {
+    isBlobTransferEnabled = blobTransferEnabled;
     return this;
   }
 }

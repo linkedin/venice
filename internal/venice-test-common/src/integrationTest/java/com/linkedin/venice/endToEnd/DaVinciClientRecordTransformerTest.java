@@ -762,7 +762,6 @@ public class DaVinciClientRecordTransformerTest {
         .setCompressionStrategy(compressionStrategy)
         .setHybridOffsetLagThreshold(10)
         .setHybridRewindSeconds(1);
-    ;
 
     paramsConsumer.accept(params);
 
