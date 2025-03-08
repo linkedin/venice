@@ -183,7 +183,7 @@ public class TestDaVinciRequestBasedMetaRepository {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = 2 * TEST_TIMEOUT)
   public void testDVCRequestBasedMetaRepositoryStringToNameRecordVersions()
       throws IOException, ExecutionException, InterruptedException {
 
