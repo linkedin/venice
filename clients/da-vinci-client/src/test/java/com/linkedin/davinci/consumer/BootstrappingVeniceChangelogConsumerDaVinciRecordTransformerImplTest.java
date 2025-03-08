@@ -84,7 +84,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
             .setIsBeforeImageView(true)
             .setD2Client(mock(D2Client.class))
             .setShouldCompactMessages(true)
-            .setIsBlobTransferClientEnabled(true);
+            .setIsExperimentalClientEnabled(true);
     changelogClientConfig.getInnerClientConfig().setMetricsRepository(new MetricsRepository());
 
     bootstrappingVeniceChangelogConsumer = new BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<>(
