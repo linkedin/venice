@@ -7,6 +7,7 @@ import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
 
@@ -24,8 +25,15 @@ public class StorePropertiesResponse {
     this.responseRecord = new StorePropertiesResponseRecord();
   }
 
+  public void setStoreMetaValueSchemaVersion(int schemaVersion) {
+    responseRecord.setStoreMetaValueSchemaVersion(schemaVersion);
+  }
+
   public void setStoreMetaValue(StoreMetaValue storeMetaValue) {
-    responseRecord.setStoreMetaValue(storeMetaValue);
+    RecordSerializer<StoreMetaValue> serializer =
+        SerializerDeserializerFactory.getAvroGenericSerializer(StoreMetaValue.SCHEMA$);
+    byte[] serialized = serializer.serialize(storeMetaValue);
+    responseRecord.setStoreMetaValue(ByteBuffer.wrap(serialized));
   }
 
   public void setHelixGroupInfo(Map<CharSequence, Integer> helixGroupInfo) {

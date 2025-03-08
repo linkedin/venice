@@ -31,12 +31,18 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import org.apache.avro.Schema;
+import org.apache.avro.util.Utf8;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -173,17 +179,18 @@ public class ServerReadMetadataRepositoryTest {
     // Request
     StorePropertiesResponse storePropertiesResponse =
         serverReadMetadataRepository.getStoreProperties(storeName, Optional.empty());
-
-    // Assert response
+    StoreMetaValue storeMetaValue =
+        deserializeStoreMetaValue(storePropertiesResponse.getResponseRecord().getStoreMetaValue().array());
     Assert.assertNotNull(storePropertiesResponse);
     Assert.assertNotNull(storePropertiesResponse.getResponseRecord());
     Assert.assertNotNull(storePropertiesResponse.getResponseRecord().getStoreMetaValue());
-    Assert.assertEquals(
-        storePropertiesResponse.getResponseRecord().getStoreMetaValue().getStoreKeySchemas().getKeySchemaMap().get("0"),
-        "\"string\"");
-    Assert.assertEquals(
-        storePropertiesResponse.getResponseRecord().getStoreMetaValue().getStoreProperties().getVersions().size(),
-        2);
+
+    // Assert response
+    Assert
+        .assertEquals(storeMetaValue.getStoreKeySchemas().getKeySchemaMap().get(new Utf8("0")), new Utf8("\"string\""));
+    Assert.assertEquals(storeMetaValue.getStoreProperties().getVersions().size(), 2);
+    Assert.assertNotNull(storePropertiesResponse.getResponseRecord().getRoutingInfo());
+    Assert.assertNotNull(storePropertiesResponse.getResponseRecord().getRoutingInfo().get("0"));
     Assert.assertEquals(storePropertiesResponse.getResponseRecord().getRoutingInfo().get("0").size(), 1);
     ServerCurrentVersionResponse currentVersionResponse =
         serverReadMetadataRepository.getCurrentVersionResponse(storeName);
@@ -198,30 +205,20 @@ public class ServerReadMetadataRepositoryTest {
 
     // Test largestKnownSchemaID param
     for (int i = 0; i <= schemaCount; i++) {
-      storePropertiesResponse = serverReadMetadataRepository.getStoreProperties(storeName, Optional.of(i));
-      Assert.assertEquals(
-          storePropertiesResponse.getResponseRecord()
-              .getStoreMetaValue()
-              .getStoreValueSchemas()
-              .getValueSchemaMap()
-              .size(),
-          schemaCount - i);
+      StorePropertiesResponse storePropertiesResponseLKSID =
+          serverReadMetadataRepository.getStoreProperties(storeName, Optional.of(i));
+      StoreMetaValue storeMetaValueLKSID =
+          deserializeStoreMetaValue(storePropertiesResponseLKSID.getResponseRecord().getStoreMetaValue().array());
+      Assert.assertEquals(storeMetaValueLKSID.getStoreValueSchemas().getValueSchemaMap().size(), schemaCount - i);
     }
-    storePropertiesResponse = serverReadMetadataRepository.getStoreProperties(storeName, Optional.empty());
-    Assert.assertEquals(
-        storePropertiesResponse.getResponseRecord()
-            .getStoreMetaValue()
-            .getStoreValueSchemas()
-            .getValueSchemaMap()
-            .size(),
-        schemaCount);
 
     // Value update test
     mockStore.setBatchGetLimit(300);
-    storePropertiesResponse = serverReadMetadataRepository.getStoreProperties(storeName, Optional.empty());
-    Assert.assertEquals(
-        storePropertiesResponse.getResponseRecord().getStoreMetaValue().getStoreProperties().getBatchGetLimit(),
-        300);
+    StorePropertiesResponse storePropertiesResponseValueUpdate =
+        serverReadMetadataRepository.getStoreProperties(storeName, Optional.empty());
+    StoreMetaValue storeMetaValueUpdate =
+        deserializeStoreMetaValue(storePropertiesResponseValueUpdate.getResponseRecord().getStoreMetaValue().array());
+    Assert.assertEquals(storeMetaValueUpdate.getStoreProperties().getBatchGetLimit(), 300);
   }
 
   @Test
@@ -289,5 +286,12 @@ public class ServerReadMetadataRepositoryTest {
     MetadataResponse response = serverReadMetadataRepository.getMetadata(TEST_STORE);
     Assert.assertTrue(response.isError());
     Assert.assertTrue(response.getMessage().contains(TEST_STORE + " does not exist"));
+  }
+
+  private StoreMetaValue deserializeStoreMetaValue(byte[] bytes) {
+    Schema schema = AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema();
+    RecordDeserializer<StoreMetaValue> storeMetaValueRecordDeserializer =
+        FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(schema, StoreMetaValue.class);
+    return storeMetaValueRecordDeserializer.deserialize(bytes);
   }
 }

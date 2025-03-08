@@ -5,13 +5,16 @@
   "doc": "This record will store store properties",
   "fields": [
     {
+      "name": "storeMetaValueSchemaVersion",
+      "doc": "Store metadata schema version",
+      "type": "int",
+      "default": 1
+    },
+    {
       "name": "storeMetaValue",
-      "doc": "Store metadata",
-      "type": [
-        "null",
-        "com.linkedin.venice.systemstore.schemas.StoreMetaValue"
-      ],
-      "default": null
+      "doc": "Store metadata, serilization of com.linkedin.venice.systemstore.schemas.StoreMetaValue",
+      "type": "bytes",
+      "default": ""
     },
     {
       "name": "helixGroupInfo",

@@ -387,7 +387,8 @@ public class Utils {
    * @return the {@link org.apache.avro.Schema} instance corresponding to the file at {@param resourcePath}
    * @throws IOException if the resourcePath does not exist
    */
-  public static Schema getSchemaFromResource(String resourcePath) throws IOException {
+  public static Schema getSchemaFromResource(String resourcePath) throws IOException { // TODO PRANAV make a test for
+                                                                                       // this
     ClassLoader classLoader = Utils.class.getClassLoader();
     try (InputStream inputStream = classLoader.getResourceAsStream(resourcePath)) {
       if (inputStream == null) {
