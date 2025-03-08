@@ -65,6 +65,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CON
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_SIZE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGETED_REGIONS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_REGION_PUSH_WITH_DEFERRED_SWAP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TO_BE_STOPPED_INSTANCES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPSTREAM_OFFSET;
@@ -780,8 +781,21 @@ public class ControllerClient implements Closeable {
   public JobStatusQueryResponse queryOverallJobStatus(
       String kafkaTopic,
       Optional<String> incrementalPushVersion,
+      String targetedRegions,
+      boolean isTargetRegionPushWithDeferredSwap) {
+    return queryJobStatus(
+        kafkaTopic,
+        incrementalPushVersion,
+        5 * QUERY_JOB_STATUS_TIMEOUT,
+        targetedRegions,
+        isTargetRegionPushWithDeferredSwap);
+  }
+
+  public JobStatusQueryResponse queryOverallJobStatus(
+      String kafkaTopic,
+      Optional<String> incrementalPushVersion,
       String targetedRegions) {
-    return queryJobStatus(kafkaTopic, incrementalPushVersion, 5 * QUERY_JOB_STATUS_TIMEOUT, targetedRegions);
+    return queryOverallJobStatus(kafkaTopic, incrementalPushVersion, null, false);
   }
 
   public JobStatusQueryResponse queryOverallJobStatus(String kafkaTopic, Optional<String> incrementalPushVersion) {
@@ -789,7 +803,7 @@ public class ControllerClient implements Closeable {
   }
 
   public JobStatusQueryResponse queryJobStatus(String kafkaTopic) {
-    return queryJobStatus(kafkaTopic, Optional.empty(), QUERY_JOB_STATUS_TIMEOUT, null);
+    return queryJobStatus(kafkaTopic, Optional.empty(), QUERY_JOB_STATUS_TIMEOUT, null, false);
   }
 
   /**
@@ -798,25 +812,28 @@ public class ControllerClient implements Closeable {
    * target is a parent controller.
    */
   public JobStatusQueryResponse queryJobStatus(String kafkaTopic, Optional<String> incrementalPushVersion) {
-    return queryJobStatus(kafkaTopic, incrementalPushVersion, QUERY_JOB_STATUS_TIMEOUT, null);
+    return queryJobStatus(kafkaTopic, incrementalPushVersion, QUERY_JOB_STATUS_TIMEOUT, null, false);
   }
 
   public JobStatusQueryResponse queryJobStatus(
       String kafkaTopic,
       Optional<String> incrementalPushVersion,
       String targetedRegions) {
-    return queryJobStatus(kafkaTopic, incrementalPushVersion, QUERY_JOB_STATUS_TIMEOUT, targetedRegions);
+    return queryJobStatus(kafkaTopic, incrementalPushVersion, QUERY_JOB_STATUS_TIMEOUT, targetedRegions, false);
   }
 
   public JobStatusQueryResponse queryJobStatus(
       String kafkaTopic,
       Optional<String> incrementalPushVersion,
       int timeoutMs,
-      String targetedRegions) {
+      String targetedRegions,
+      boolean isTargetRegionPushWithDeferredSwap) {
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-    QueryParams params =
-        newParams().add(NAME, storeName).add(VERSION, version).add(INCREMENTAL_PUSH_VERSION, incrementalPushVersion);
+    QueryParams params = newParams().add(NAME, storeName)
+        .add(VERSION, version)
+        .add(INCREMENTAL_PUSH_VERSION, incrementalPushVersion)
+        .add(TARGET_REGION_PUSH_WITH_DEFERRED_SWAP, isTargetRegionPushWithDeferredSwap);
 
     if (StringUtils.isNotEmpty(targetedRegions)) {
       params.add(TARGETED_REGIONS, targetedRegions);

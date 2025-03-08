@@ -921,7 +921,8 @@ public class TestVenicePushJobCheckpoints {
             anyInt(),
             anyBoolean())).thenReturn(versionCreationResponse);
     JobStatusQueryResponse jobStatusQueryResponse = createJobStatusQueryResponseMock(executionStatus);
-    when(controllerClient.queryOverallJobStatus(anyString(), any(), any())).thenReturn(jobStatusQueryResponse);
+    when(controllerClient.queryOverallJobStatus(anyString(), any(), any(), anyBoolean()))
+        .thenReturn(jobStatusQueryResponse);
 
     doAnswer(invocation -> {
       return null;

@@ -497,7 +497,8 @@ public interface Admin extends AutoCloseable, Closeable {
       String kafkaTopic,
       Optional<String> incrementalPushVersion,
       String region,
-      String targetedRegions);
+      String targetedRegions,
+      boolean isTargetRegionPushWithDeferredSwap);
 
   /**
    * Return the ssl or non-ssl bootstrap servers based on the given flag.

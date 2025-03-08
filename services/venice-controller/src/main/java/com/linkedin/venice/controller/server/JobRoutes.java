@@ -5,6 +5,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGETED_REGIONS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_REGION_PUSH_WITH_DEFERRED_SWAP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ONGOING_INCREMENTAL_PUSH_VERSIONS;
@@ -58,6 +59,8 @@ public class JobRoutes extends AbstractRoute {
         int versionNumber = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
         String incrementalPushVersion = AdminSparkServer.getOptionalParameterValue(request, INCREMENTAL_PUSH_VERSION);
         String targetedRegions = request.queryParams(TARGETED_REGIONS);
+        boolean isTargetRegionPushWithDeferredSwap =
+            Boolean.parseBoolean(request.queryParams(TARGET_REGION_PUSH_WITH_DEFERRED_SWAP));
         String region = AdminSparkServer.getOptionalParameterValue(request, FABRIC);
         responseObject = populateJobStatus(
             cluster,
@@ -66,7 +69,8 @@ public class JobRoutes extends AbstractRoute {
             admin,
             Optional.ofNullable(incrementalPushVersion),
             region,
-            targetedRegions);
+            targetedRegions,
+            isTargetRegionPushWithDeferredSwap);
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
@@ -82,13 +86,19 @@ public class JobRoutes extends AbstractRoute {
       Admin admin,
       Optional<String> incrementalPushVersion,
       String region,
-      String targetedRegions) {
+      String targetedRegions,
+      boolean isTargetRegionPushWithDeferredSwap) {
     JobStatusQueryResponse responseObject = new JobStatusQueryResponse();
 
     String kafkaTopicName = Version.composeKafkaTopic(store, versionNumber);
 
-    Admin.OfflinePushStatusInfo offlineJobStatus =
-        admin.getOffLinePushStatus(cluster, kafkaTopicName, incrementalPushVersion, region, targetedRegions);
+    Admin.OfflinePushStatusInfo offlineJobStatus = admin.getOffLinePushStatus(
+        cluster,
+        kafkaTopicName,
+        incrementalPushVersion,
+        region,
+        targetedRegions,
+        isTargetRegionPushWithDeferredSwap);
     responseObject.setStatus(offlineJobStatus.getExecutionStatus().toString());
     responseObject.setStatusUpdateTimestamp(offlineJobStatus.getStatusUpdateTimestamp());
     responseObject.setStatusDetails(offlineJobStatus.getStatusDetails());
