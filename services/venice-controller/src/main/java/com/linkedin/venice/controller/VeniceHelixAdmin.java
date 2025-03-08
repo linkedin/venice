@@ -1176,6 +1176,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           }
         }
 
+        // Set current version to NON_VERSION_AVAILABLE. Otherwise after this store is enabled again, as all of
+        // version were deleted, router will get a current version which does not exist actually.
+        store.setEnableWrites(true);
+        store.setCurrentVersion(Store.NON_EXISTING_VERSION);
+        store.setEnableWrites(false);
+        resources.getStoreMetadataRepository().updateStore(store);
+
         // Cleanup system stores if applicable
         UserSystemStoreLifeCycleHelper.maybeDeleteSystemStoresForUserStore(
             this,
@@ -3775,12 +3782,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Store store = repository.getStore(storeName);
       checkPreConditionForDeletion(clusterName, storeName, store);
       LOGGER.info("Deleting all versions in store: {} in cluster: {}", storeName, clusterName);
-      // Set current version to NON_VERSION_AVAILABLE. Otherwise after this store is enabled again, as all of
-      // version were deleted, router will get a current version which does not exist actually.
-      store.setEnableWrites(true);
-      store.setCurrentVersion(Store.NON_EXISTING_VERSION);
-      store.setEnableWrites(false);
-      repository.updateStore(store);
       List<Version> deletingVersionSnapshot = new ArrayList<>(store.getVersions());
 
       for (Version version: deletingVersionSnapshot) {
