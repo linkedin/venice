@@ -20,6 +20,7 @@ import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
 import java.lang.reflect.Field;
@@ -33,6 +34,7 @@ import java.util.List;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -255,6 +257,37 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
       futureRecordTransformer.processPut(keys.get(partitionId), lazyFutureVersionValueValue, partitionId);
     }
     verifyPuts(futureVersionValue);
+  }
+
+  @Test
+  public void testCompletableFutureFromStart() {
+    DaVinciRecordTransformer futureRecordTransformer =
+        bootstrappingVeniceChangelogConsumer.new DaVinciRecordTransformerBootstrappingChangelogConsumer(
+            FUTURE_STORE_VERSION, keySchema, valueSchema, valueSchema, mockDaVinciRecordTransformerConfig);
+
+    CompletableFuture startCompletableFuture = bootstrappingVeniceChangelogConsumer.start();
+    recordTransformer.onStartVersionIngestion(true);
+    futureRecordTransformer.onStartVersionIngestion(false);
+
+    // CompletableFuture should not be finished until a record has been pushed to the buffer by the current version
+    assertFalse(startCompletableFuture.isDone());
+
+    int value = 2;
+    Lazy<Integer> lazyValue = Lazy.of(() -> value);
+
+    // Future version should not cause the CompletableFuture to complete
+    for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+      futureRecordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId);
+    }
+    assertFalse(startCompletableFuture.isDone());
+
+    // CompletableFuture should be finished when the current version produces to the buffer
+    for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+      recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId);
+    }
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      assertTrue(startCompletableFuture.isDone());
+    });
   }
 
   private void verifyPuts(int value) {
