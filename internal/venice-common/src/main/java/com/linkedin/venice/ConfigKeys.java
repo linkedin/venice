@@ -1918,11 +1918,11 @@ public class ConfigKeys {
   public static final String ROUTER_CLIENT_SSL_HANDSHAKE_THREADS = "router.client.ssl.handshake.threads";
 
   /**
-   * Config to control if DNS resolution should be done before SSL handshake between clients and a router.
-   * If this is enabled, the above SSL handshake thread pool will be used to perform DNS resolution, because
-   * DNS resolution before SSL and separate SSL handshake thread pool are mutually exclusive features.
+   * Config to control the number of threads used for DNS resolution.
+   * If the value is positive, DNS resolution would be done before SSL handshake between clients and a router.
+   * 0 will disable the dns resolution but does not affect the SSL handshake.
    */
-  public static final String ROUTER_RESOLVE_BEFORE_SSL = "router.resolve.before.ssl";
+  public static final String ROUTER_RESOLVE_THREADS = "router.resolve.threads";
 
   /**
    * Config to control the maximum number of concurrent DNS resolutions that can be done by the router.

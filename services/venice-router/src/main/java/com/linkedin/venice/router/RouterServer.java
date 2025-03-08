@@ -693,34 +693,35 @@ public class RouterServer extends AbstractVeniceService {
     if (sslFactory.isPresent()) {
       sslInitializer = new SslInitializer(SslUtils.toAlpiniSSLFactory(sslFactory.get()), false);
       if (config.getClientSslHandshakeThreads() > 0) {
-        if (config.isResolveBeforeSSL()) {
-          ExecutorService sslHandshakeExecutor = registry.factory(ShutdownableExecutors.class)
-              .newFixedThreadPool(
-                  config.getClientSslHandshakeThreads(),
-                  new DefaultThreadFactory("RouterDNSBeforeSSLThread", true, Thread.NORM_PRIORITY));
-          int clientSslHandshakeThreads = config.getClientSslHandshakeThreads();
-          int maxConcurrentResolution = config.getMaxConcurrentResolutions();
-          int clientResolutionRetryAttempts = config.getClientResolutionRetryAttempts();
-          long clientResolutionRetryBackoffMs = config.getClientResolutionRetryBackoffMs();
-          if (useEpoll) {
-            sslResolverEventLoopGroup = new EpollEventLoopGroup(clientSslHandshakeThreads, sslHandshakeExecutor);
-          } else {
-            sslResolverEventLoopGroup = new NioEventLoopGroup(clientSslHandshakeThreads, sslHandshakeExecutor);
-          }
-          sslInitializer.enableResolveBeforeSSL(
-              sslResolverEventLoopGroup,
-              clientResolutionRetryAttempts,
-              clientResolutionRetryBackoffMs,
-              maxConcurrentResolution);
+        ThreadPoolExecutor sslHandshakeExecutor = ThreadPoolFactory.createThreadPool(
+            config.getClientSslHandshakeThreads(),
+            "SSLHandShakeThread",
+            config.getClientSslHandshakeQueueCapacity(),
+            LINKED_BLOCKING_QUEUE);
+        new ThreadPoolStats(metricsRepository, sslHandshakeExecutor, "ssl_handshake_thread_pool");
+        sslInitializer.enableSslTaskExecutor(sslHandshakeExecutor);
+      }
+      if (config.getResolveThreads() > 0) {
+        ThreadPoolExecutor dnsResolveExecutor = ThreadPoolFactory.createThreadPool(
+            config.getResolveThreads(),
+            "DNSResolveThread",
+            config.getResolveThreads(),
+            LINKED_BLOCKING_QUEUE);
+        new ThreadPoolStats(metricsRepository, dnsResolveExecutor, "dns_resolution_thread_pool");
+        int clientSslHandshakeThreads = config.getClientSslHandshakeThreads();
+        int maxConcurrentResolution = config.getMaxConcurrentResolutions();
+        int clientResolutionRetryAttempts = config.getClientResolutionRetryAttempts();
+        long clientResolutionRetryBackoffMs = config.getClientResolutionRetryBackoffMs();
+        if (useEpoll) {
+          sslResolverEventLoopGroup = new EpollEventLoopGroup(clientSslHandshakeThreads, dnsResolveExecutor);
         } else {
-          ThreadPoolExecutor sslHandshakeExecutor = ThreadPoolFactory.createThreadPool(
-              config.getClientSslHandshakeThreads(),
-              "SSLHandShakeThread",
-              config.getClientSslHandshakeQueueCapacity(),
-              LINKED_BLOCKING_QUEUE);
-          new ThreadPoolStats(metricsRepository, sslHandshakeExecutor, "ssl_handshake_thread_pool");
-          sslInitializer.enableSslTaskExecutor(sslHandshakeExecutor);
+          sslResolverEventLoopGroup = new NioEventLoopGroup(clientSslHandshakeThreads, dnsResolveExecutor);
         }
+        sslInitializer.enableResolveBeforeSSL(
+            sslResolverEventLoopGroup,
+            clientResolutionRetryAttempts,
+            clientResolutionRetryBackoffMs,
+            maxConcurrentResolution);
       }
       sslInitializer.setIdentityParser(identityParser::parseIdentityFromCert);
       securityStats.registerSslHandshakeSensors(sslInitializer);
