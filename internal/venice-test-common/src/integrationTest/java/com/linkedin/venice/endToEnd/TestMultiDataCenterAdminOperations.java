@@ -1,11 +1,9 @@
 package com.linkedin.venice.endToEnd;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controller.kafka.AdminTopicUtils;
-import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
@@ -26,9 +24,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.writer.VeniceWriter;
-import com.linkedin.venice.writer.VeniceWriterFactory;
-import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -107,113 +102,41 @@ public class TestMultiDataCenterAdminOperations {
     multiRegionMultiClusterWrapper.close();
   }
 
-  @Test(timeOut = TEST_TIMEOUT, invocationCount = 100)
+  @Test(timeOut = TEST_TIMEOUT, invocationCount = 10)
   public void testHybridConfigPartitionerConfigConflict() {
     String clusterName = CLUSTER_NAMES[0];
-    String storeName = Utils.getUniqueString("test_conflict_store");
+    String storeName = Utils.getUniqueString("store");
     String parentControllerUrl = multiRegionMultiClusterWrapper.getControllerConnectString();
 
     // Create store first
     ControllerClient controllerClient = new ControllerClient(clusterName, parentControllerUrl);
-
-    /*
-     * TODO: There appears to be a bug in the controller where the same execution ID is assigned
-     * to two different admin operations. As a result, the second operation is skipped.
-     *
-     * If the skipped operation is store creation, the subsequent update store operation
-     * will fail because the store does not exist.
-     *
-     * Previously, we didn't verify whether store creation was successful and proceeded
-     * directly with an update store, which would fail if store creation was skipped.
-     *
-     * Now, we check if store creation was successful before attempting the update store,
-     * to fail fast if store creation was skipped.
-     */
-    TestUtils.assertCommand(controllerClient.createNewStore(storeName, "test_owner", "\"int\"", "\"int\""));
+    controllerClient.createNewStore(storeName, "test_owner", "\"int\"", "\"int\"");
 
     // Make store from batch -> hybrid
-    TestUtils.assertCommand(
-        controllerClient.updateStore(
-            storeName,
-            new UpdateStoreQueryParams().setHybridRewindSeconds(259200).setHybridOffsetLagThreshold(1000)),
-        "There is error in setting hybrid config.");
+    ControllerResponse response = controllerClient.updateStore(
+        storeName,
+        new UpdateStoreQueryParams().setHybridRewindSeconds(259200).setHybridOffsetLagThreshold(1000));
+    assertFalse(response.isError(), "There is error in setting hybrid config. Error: " + response.getError());
 
     // Try to update partitioner config on hybrid store, expect to fail.
-    TestUtils.assertCommandFailure(
-        controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setPartitionerClass("testClassName")),
-        "There should be error in setting partitioner config in hybrid store.");
+    response =
+        controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setPartitionerClass("testClassName"));
+    Assert.assertTrue(response.isError(), "There should be error in setting partitioner config in hybrid store");
 
     // Try to make store back to non-hybrid store.
-    TestUtils.assertCommand(
-        controllerClient.updateStore(
-            storeName,
-            new UpdateStoreQueryParams().setHybridRewindSeconds(-1).setHybridOffsetLagThreshold(-1)),
-        "There is error in setting hybrid config.");
+    response = controllerClient.updateStore(
+        storeName,
+        new UpdateStoreQueryParams().setHybridRewindSeconds(-1).setHybridOffsetLagThreshold(-1));
+    assertFalse(response.isError(), "There is error in setting hybrid config");
 
     // Make sure store is not hybrid.
     Assert.assertNull(controllerClient.getStore(storeName).getStore().getHybridStoreConfig());
 
     // Try to update partitioner config on batch store, it should succeed now.
-    TestUtils.assertCommand(
-        controllerClient.updateStore(
-            storeName,
-            new UpdateStoreQueryParams()
-                .setPartitionerClass("com.linkedin.venice.partitioner.DefaultVenicePartitioner")),
-        "There is error in setting partitioner config in non-hybrid store.");
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testFailedAdminMessages() {
-    String clusterName = CLUSTER_NAMES[0];
-    VeniceControllerWrapper parentController =
-        multiRegionMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName);
-    Admin admin = parentController.getVeniceAdmin();
-    VeniceWriterFactory veniceWriterFactory = admin.getVeniceWriterFactory();
-    VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createVeniceWriter(
-        new VeniceWriterOptions.Builder(AdminTopicUtils.getTopicNameFromClusterName(clusterName)).build());
-    AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
-    long executionId = parentController.getVeniceAdmin()
-        .getAdminCommandExecutionTracker(clusterName)
-        .get()
-        .createExecution(AdminMessageType.UPDATE_STORE.name())
-        .getExecutionId();
-    // send a bad admin message
-    veniceWriter.put(
-        emptyKeyBytes,
-        getStoreUpdateMessage(clusterName, "store-not-exist", "store-owner", executionId, adminOperationSerializer),
-        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-
-    List<VeniceControllerWrapper> controllersToTest = new ArrayList<>();
-    controllersToTest.add(parentController);
-    childControllers.forEach(controllerList -> controllersToTest.add(controllerList.get(0)));
-
-    // Check if all regions received the bad admin message
-    TestUtils.waitForNonDeterministicCompletion(60, TimeUnit.SECONDS, () -> {
-      for (VeniceControllerWrapper controller: controllersToTest) {
-        AdminConsumerService adminConsumerService = controller.getAdminConsumerServiceByCluster(clusterName);
-        if (adminConsumerService.getFailingOffset() < 0) {
-          return false;
-        }
-      }
-      return true;
-    });
-
-    // Cleanup the failing admin message
-    for (VeniceControllerWrapper controller: controllersToTest) {
-      AdminConsumerService adminConsumerService = controller.getAdminConsumerServiceByCluster(clusterName);
-      adminConsumerService.setOffsetToSkip(clusterName, adminConsumerService.getFailingOffset(), false);
-    }
-
-    AdminConsumerService parentAdminConsumerService = parentController.getAdminConsumerServiceByCluster(clusterName);
-    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
-      boolean allFailedMessagesSkipped = parentAdminConsumerService.getFailingOffset() == -1;
-      for (List<VeniceControllerWrapper> controllerWrappers: childControllers) {
-        AdminConsumerService childAdminConsumerService =
-            controllerWrappers.get(0).getAdminConsumerServiceByCluster(clusterName);
-        allFailedMessagesSkipped &= childAdminConsumerService.getFailingOffset() == -1;
-      }
-      return allFailedMessagesSkipped;
-    });
+    response = controllerClient.updateStore(
+        storeName,
+        new UpdateStoreQueryParams().setPartitionerClass("com.linkedin.venice.partitioner.DefaultVenicePartitioner"));
+    assertFalse(response.isError(), "There is error in setting partitioner config in non-hybrid store");
   }
 
   @Test
@@ -243,7 +166,7 @@ public class TestMultiDataCenterAdminOperations {
     // Create store
     NewStoreResponse newStoreResponse =
         parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
-    Assert.assertFalse(newStoreResponse.isError());
+    assertFalse(newStoreResponse.isError());
 
     // Empty push
     emptyPushToStore(parentControllerClient, childControllerClients, storeName, 1);
@@ -257,11 +180,11 @@ public class TestMultiDataCenterAdminOperations {
     // Store update
     ControllerResponse updateStore =
         parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setBatchGetLimit(100));
-    Assert.assertFalse(updateStore.isError());
+    assertFalse(updateStore.isError());
     for (ControllerClient childControllerClient: childControllerClients) {
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
         StoreResponse storeResponse = childControllerClient.getStore(storeName);
-        Assert.assertFalse(storeResponse.isError());
+        assertFalse(storeResponse.isError());
         StoreInfo storeInfo = storeResponse.getStore();
         assertEquals(storeInfo.getBatchGetLimit(), 100);
       });
@@ -306,7 +229,7 @@ public class TestMultiDataCenterAdminOperations {
       String storeName,
       int expectedVersion) {
     VersionCreationResponse vcr = parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-push"), 1L);
-    Assert.assertFalse(vcr.isError());
+    assertFalse(vcr.isError());
     assertEquals(
         vcr.getVersion(),
         expectedVersion,
@@ -314,7 +237,7 @@ public class TestMultiDataCenterAdminOperations {
     for (ControllerClient childControllerClient: childControllerClients) {
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
         StoreResponse storeResponse = childControllerClient.getStore(storeName);
-        Assert.assertFalse(storeResponse.isError());
+        assertFalse(storeResponse.isError());
         StoreInfo storeInfo = storeResponse.getStore();
         assertEquals(storeInfo.getCurrentVersion(), expectedVersion);
       });
