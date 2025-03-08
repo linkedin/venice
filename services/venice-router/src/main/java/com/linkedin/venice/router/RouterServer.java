@@ -705,7 +705,7 @@ public class RouterServer extends AbstractVeniceService {
         ThreadPoolExecutor dnsResolveExecutor = ThreadPoolFactory.createThreadPool(
             config.getResolveThreads(),
             "DNSResolveThread",
-            config.getResolveThreads(),
+            config.getResolveQueueCapacity(),
             LINKED_BLOCKING_QUEUE);
         new ThreadPoolStats(metricsRepository, dnsResolveExecutor, "dns_resolution_thread_pool");
         int clientSslHandshakeThreads = config.getClientSslHandshakeThreads();

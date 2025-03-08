@@ -795,6 +795,10 @@ public class VeniceRouterConfig implements RouterRetryConfig {
     return resolveThreads;
   }
 
+  public int getResolveQueueCapacity() {
+    return resolveQueueCapacity;
+  }
+
   public int getMaxConcurrentSslHandshakes() {
     return maxConcurrentSslHandshakes;
   }
