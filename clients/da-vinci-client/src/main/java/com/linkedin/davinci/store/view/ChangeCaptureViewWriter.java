@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -88,10 +89,15 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
       ByteBuffer newValue,
       byte[] key,
       int newValueSchemaId,
-      boolean isChunkedKey,
+      Set<Integer> viewPartitionSet,
       Lazy<GenericRecord> newValueProvider) {
     // No op
     return CompletableFuture.completedFuture(null);
+  }
+
+  @Override
+  public ViewWriterType getViewWriterType() {
+    return ViewWriterType.CHANGE_CAPTURE_VIEW;
   }
 
   @Override

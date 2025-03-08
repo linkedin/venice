@@ -19,6 +19,7 @@ import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.utils.UnitTestComplexPartitioner;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
@@ -31,7 +32,6 @@ import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
-import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -42,20 +42,20 @@ import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
-import org.mockito.Mockito;
+import org.apache.avro.generic.GenericRecord;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class MaterializedViewWriterTest {
   private static final Schema SCHEMA = AvroCompatibilityHelper.parse("\"string\"");
-  private static final Random RANDOM = new Random(123);
 
   @Test
   public void testViewParametersBuilder() throws JsonProcessingException {
@@ -97,7 +97,7 @@ public class MaterializedViewWriterTest {
     VeniceConfigLoader props = getMockProps();
     VeniceViewWriterFactory viewWriterFactory = new VeniceViewWriterFactory(props);
     VeniceViewWriter viewWriter = viewWriterFactory.buildStoreViewWriters(store, 1, SCHEMA).get(viewName);
-    Assert.assertTrue(viewWriter instanceof MaterializedViewWriter);
+    Assert.assertEquals(viewWriter.getViewWriterType(), VeniceViewWriter.ViewWriterType.MATERIALIZED_VIEW);
     MaterializedViewWriter materializedViewWriter = (MaterializedViewWriter) viewWriter;
     VeniceWriterOptions writerOptions = materializedViewWriter.buildWriterOptions();
     Assert.assertEquals(
@@ -142,7 +142,7 @@ public class MaterializedViewWriterTest {
   }
 
   @Test
-  public void testViewWriterCanForwardChunkedKeysCorrectly() {
+  public void testViewWriterCanForwardCorrectly() {
     String storeName = "testStoreWithChunkedKeys";
     String viewName = "testMaterializedViewWithChunkedKeys";
     Version version = mock(Version.class);
@@ -156,24 +156,22 @@ public class MaterializedViewWriterTest {
     VeniceConfigLoader props = getMockProps();
     MaterializedViewWriter materializedViewWriter = new MaterializedViewWriter(props, version, SCHEMA, viewParamsMap);
     ComplexVeniceWriter veniceWriter = mock(ComplexVeniceWriter.class);
-    doReturn(CompletableFuture.completedFuture(null)).when(veniceWriter).complexPut(any(), any(), anyInt(), any());
+    doReturn(CompletableFuture.completedFuture(null)).when(veniceWriter).forwardPut(any(), any(), anyInt(), any());
     materializedViewWriter.setVeniceWriter(veniceWriter);
-    KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
-    ByteBuffer dummyValue = mock(ByteBuffer.class);
-    // Deterministic random bytes
-    int keySize = 5;
-    for (int i = 0; i < 100; i++) {
-      byte[] key = new byte[keySize];
-      RANDOM.nextBytes(key);
-      materializedViewWriter.processRecord(
-          dummyValue,
-          keyWithChunkingSuffixSerializer.serializeNonChunkedKey(key),
-          1,
-          true,
-          Lazy.of(() -> null));
-      verify(veniceWriter, times(1)).complexPut(eq(key), any(), eq(1), any());
-      Mockito.clearInvocations(veniceWriter);
-    }
+    byte[] keyBytes = new byte[5];
+    byte[] valueBytes = new byte[10];
+    ByteBuffer value = ByteBuffer.wrap(valueBytes);
+    Set<Integer> viewPartitionSet = new HashSet<>();
+    viewPartitionSet.add(1);
+    viewPartitionSet.add(4);
+    Lazy<GenericRecord> valueProvider = mock(Lazy.class);
+    Assert.assertThrows(
+        VeniceException.class,
+        () -> materializedViewWriter.processRecord(null, keyBytes, 1, viewPartitionSet, valueProvider));
+    materializedViewWriter.processRecord(value, keyBytes, 1, viewPartitionSet, valueProvider);
+    verify(veniceWriter, times(1)).forwardPut(eq(keyBytes), eq(valueBytes), eq(1), eq(viewPartitionSet));
+    verify(veniceWriter, never()).complexPut(any(), any(), anyInt(), any());
+    verify(veniceWriter, never()).complexDelete(any(), any());
   }
 
   @Test

@@ -1,41 +1,63 @@
 package com.linkedin.venice.hadoop.task.datawriter;
 
+import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
+import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID;
+import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_UPSTREAM_OFFSET;
+
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
+import com.linkedin.venice.writer.ComplexVeniceWriter;
 import com.linkedin.venice.writer.DeleteMetadata;
+import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.function.BiFunction;
+import java.util.stream.Collectors;
+import org.apache.avro.generic.GenericRecord;
 
 
 /**
  * The composite writer contains a main writer and multiple child writers. The main writer will only perform the write
- * once all of its child writers are complete.
- * TODO The child writers are view writers. Ideally to avoid code duplication we should be using an array of
- * VeniceViewWriter here. However, the current implementation of VeniceViewWriter involves PCS which is something
- * specific to the ingestion path that we don't want to leak into venice-common.
+ * once all of its child writers are complete. Child writers are {@link com.linkedin.venice.writer.ComplexVeniceWriter}.
+ * This is to provide chunking support during NR pass-through. All records produced by the {@link ComplexVeniceWriter}'s
+ * main writer is expected to carry the
+ * {@link com.linkedin.venice.pubsub.api.PubSubMessageHeaders#VENICE_VIEW_PARTITIONS_MAP_HEADER}.
  */
 @NotThreadsafe
 public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private final VeniceWriter<K, V, U> mainWriter;
-  private final AbstractVeniceWriter<K, V, U>[] childWriters;
+  private final ComplexVeniceWriter<K, V, U>[] childWriters;
   private final PubSubProducerCallback childCallback;
+
+  // the extractor should be capable of extracting the value from bytes even if it's compressed.
+  private final BiFunction<V, Integer, GenericRecord> valueExtractor;
 
   public CompositeVeniceWriter(
       String topicName,
       VeniceWriter<K, V, U> mainWriter,
-      AbstractVeniceWriter<K, V, U>[] childWriters,
-      PubSubProducerCallback childCallback) {
+      ComplexVeniceWriter<K, V, U>[] childWriters,
+      PubSubProducerCallback childCallback,
+      BiFunction<V, Integer, GenericRecord> valueExtractor) {
     super(topicName);
+    if (childWriters.length < 1) {
+      throw new IllegalArgumentException("A composite writer is not needed if there are no child writers");
+    }
     this.mainWriter = mainWriter;
     this.childWriters = childWriters;
     this.childCallback = childCallback;
+    this.valueExtractor = valueExtractor;
   }
 
   @Override
@@ -49,10 +71,7 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
       V value,
       int valueSchemaId,
       PubSubProducerCallback callback) {
-    return compositeOperation(
-        (writer, writeCallback) -> writer.put(key, value, valueSchemaId, writeCallback),
-        childCallback,
-        callback);
+    return compositePut(key, value, valueSchemaId, callback, null);
   }
 
   @Override
@@ -62,26 +81,24 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
       int valueSchemaId,
       PubSubProducerCallback callback,
       PutMetadata putMetadata) {
-    return compositeOperation(
-        (writer, writeCallback) -> writer.put(key, value, valueSchemaId, writeCallback, putMetadata),
-        childCallback,
-        callback);
+    return compositePut(key, value, valueSchemaId, callback, putMetadata);
   }
 
+  /**
+   * In VPJ, only re-push can trigger this function. During re-push the deletion to view topics are useless and should
+   * be ignored.
+   */
   @Override
   public CompletableFuture<PubSubProduceResult> delete(
       K key,
       PubSubProducerCallback callback,
       DeleteMetadata deleteMetadata) {
-    return compositeOperation(
-        (writer, writeCallback) -> writer.delete(key, writeCallback, deleteMetadata),
-        childCallback,
-        callback);
+    return mainWriter.delete(key, callback, deleteMetadata);
   }
 
   /**
-   * The main use of the {@link com.linkedin.venice.writer.CompositeVeniceWriter} for now is to write batch portion of a store version to VT and
-   * materialized view topic in the NR fabric. Updates should never go through the {@link com.linkedin.venice.writer.CompositeVeniceWriter} because
+   * The main use of the {@link CompositeVeniceWriter} for now is to write batch portion of a store version to VT and
+   * materialized view topic in the NR fabric. Updates should never go through the {@link CompositeVeniceWriter} because
    * it should be written to RT (hybrid writes or incremental push) and handled by view writers in L/F or A/A SIT.
    */
   @Override
@@ -108,29 +125,45 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
   }
 
   /**
-   * Helper function to perform a composite operation where the childWriterOp is first executed for all childWriters
-   * and then mainWriterOp is executed for mainWriter. The returned completable future is completed when the mainWriter
-   * completes the mainWriterOp.
+   * Helper function to perform a composite put where put is first executed for all childWriters and then put is
+   * executed for mainWriter. The returned completable future is completed when the mainWriter completes the put.
    */
-  private CompletableFuture<PubSubProduceResult> compositeOperation(
-      BiFunction<AbstractVeniceWriter<K, V, U>, PubSubProducerCallback, CompletableFuture<PubSubProduceResult>> writerOperation,
-      PubSubProducerCallback childWriterCallback,
-      PubSubProducerCallback mainWriterCallback) {
+  private CompletableFuture<PubSubProduceResult> compositePut(
+      K key,
+      V value,
+      int valueSchemaId,
+      PubSubProducerCallback mainWriterCallback,
+      PutMetadata putMetadata) {
     CompletableFuture<PubSubProduceResult> finalFuture = new CompletableFuture<>();
-    CompletableFuture<PubSubProduceResult>[] writeFutures = new CompletableFuture[childWriters.length + 1];
+    CompletableFuture<Void>[] childFutures = new CompletableFuture[childWriters.length];
+    Lazy<GenericRecord> valueProvider = Lazy.of(() -> valueExtractor.apply(value, valueSchemaId));
+    Map<String, Set<Integer>> viewPartitionMap = new HashMap<>();
     int index = 0;
-    writeFutures[index++] = writerOperation.apply(mainWriter, mainWriterCallback);
-    for (AbstractVeniceWriter<K, V, U> writer: childWriters) {
-      writeFutures[index++] = writerOperation.apply(writer, childWriterCallback);
+    for (ComplexVeniceWriter<K, V, U> writer: childWriters) {
+      // There should be an entry for every materialized view, even if the partition set is empty. This way we can
+      // differentiate between skipped view write and missing view partition info unexpectedly.
+      childFutures[index++] = writer.complexPut(
+          key,
+          value,
+          valueSchemaId,
+          valueProvider,
+          (partitionArray) -> viewPartitionMap.put(
+              writer.getViewName(),
+              Arrays.stream(partitionArray).boxed().collect(Collectors.toCollection(HashSet::new))),
+          childCallback,
+          putMetadata);
     }
-    CompletableFuture.allOf(writeFutures).whenCompleteAsync((ignored, writeException) -> {
+    LeaderMetadataWrapper leaderMetadataWrapper =
+        new LeaderMetadataWrapper(DEFAULT_UPSTREAM_OFFSET, DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID, viewPartitionMap);
+    CompletableFuture<PubSubProduceResult> mainFuture = mainWriter
+        .put(key, value, valueSchemaId, mainWriterCallback, leaderMetadataWrapper, APP_DEFAULT_LOGICAL_TS, putMetadata);
+    CompletableFuture.allOf(childFutures).whenCompleteAsync((ignored, writeException) -> {
       if (writeException == null) {
         try {
-          finalFuture.complete(writeFutures[0].get());
+          finalFuture.complete(mainFuture.get());
         } catch (Exception e) {
-          // This shouldn't be possible since we already checked for exception earlier
           finalFuture.completeExceptionally(
-              new IllegalStateException("CompletableFuture get() throwing exception unexpectedly"));
+              new VeniceException("compositePut's main writer throwing exception unexpectedly", e));
         }
       } else {
         finalFuture.completeExceptionally(new VeniceException(writeException));

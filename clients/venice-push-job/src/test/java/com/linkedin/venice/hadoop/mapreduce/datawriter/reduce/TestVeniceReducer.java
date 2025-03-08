@@ -13,6 +13,7 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -45,6 +46,7 @@ import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
+import com.linkedin.venice.writer.ComplexVeniceWriter;
 import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -636,7 +638,7 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
   public void testCreateAndCloseCompositeVeniceWriter() throws IOException {
     VeniceReducer reducer = new VeniceReducer();
     VeniceWriter mainWriter = mock(VeniceWriter.class);
-    VeniceWriter childWriter = mock(VeniceWriter.class);
+    ComplexVeniceWriter childWriter = mock(ComplexVeniceWriter.class);
     Map<String, ViewConfig> viewConfigMap = new HashMap<>();
     String view1Name = "view1";
     MaterializedViewParameters.Builder builder = new MaterializedViewParameters.Builder(view1Name);
@@ -656,10 +658,12 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     reducer.configure(new JobConf(configuration));
     VeniceWriterFactory writerFactory = mock(VeniceWriterFactory.class);
     reducer.setVeniceWriterFactory(writerFactory);
-    when(writerFactory.createVeniceWriter(any())).thenReturn(mainWriter).thenReturn(childWriter);
+    doReturn(mainWriter).when(writerFactory).createVeniceWriter(any());
+    doReturn(childWriter).when(writerFactory).createComplexVeniceWriter(any());
     reducer.setVeniceWriter(reducer.createBasicVeniceWriter());
     ArgumentCaptor<VeniceWriterOptions> vwOptionsCaptor = ArgumentCaptor.forClass(VeniceWriterOptions.class);
-    verify(writerFactory, times(3)).createVeniceWriter(vwOptionsCaptor.capture());
+    verify(writerFactory, times(1)).createVeniceWriter(vwOptionsCaptor.capture());
+    verify(writerFactory, times(2)).createComplexVeniceWriter(vwOptionsCaptor.capture());
     Map<Integer, VeniceView> verifyPartitionToViewsMap = new HashMap<>();
     String storeName = Version.parseStoreFromKafkaTopicName(TOPIC_NAME);
     verifyPartitionToViewsMap.put(
