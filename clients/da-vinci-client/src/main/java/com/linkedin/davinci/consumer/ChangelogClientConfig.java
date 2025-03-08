@@ -225,7 +225,8 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setDatabaseSyncBytesInterval(config.getDatabaseSyncBytesInterval())
         .setShouldCompactMessages(config.shouldCompactMessages())
         .setIsBeforeImageView(config.isBeforeImageView())
-        .setIsBlobTransferEnabled(config.isBlobTransferEnabled());
+        .setIsBlobTransferEnabled(config.isBlobTransferEnabled())
+        .setIsExperimentalClientEnabled(config.isExperimentalClientEnabled());
     return newConfig;
   }
 

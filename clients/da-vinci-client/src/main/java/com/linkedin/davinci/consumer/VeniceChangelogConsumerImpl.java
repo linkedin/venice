@@ -710,8 +710,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           pubSubTopicPartition.getPartitionNumber());
     }
 
-    // VERSION_SWAP is now being emitted to VT by the Leader. Make sure to only process VERSION_SWAP messages from CC
-    // topic
+    // VERSION_SWAP is now being emitted to VT by the Leader. Make sure to only process VERSION_SWAP messages from
+    // the change capture topic
     if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)
         && !Version.isVersionTopic(pubSubTopicPartition.getTopicName())) {
       // TODO: In view topics, we need to know the partition of the upstream RT
