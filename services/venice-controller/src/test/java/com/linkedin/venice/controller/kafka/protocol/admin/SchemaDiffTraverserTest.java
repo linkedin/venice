@@ -6,12 +6,12 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
+import com.linkedin.venice.controller.kafka.protocol.serializer.NewSemanticUsageValidator;
 import com.linkedin.venice.controller.kafka.protocol.serializer.SchemaDiffTraverser;
 import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -53,24 +53,22 @@ public class SchemaDiffTraverserTest {
 
     Schema targetSchema = adminOperationSerializer.getSchema(74);
     Schema currentSchema = currentLatestSchema;
-    SchemaDiffTraverser schemaDiffTraverser = new SchemaDiffTraverser();
 
-    AtomicReference<String> errorMessage = new AtomicReference<>();
-
-    BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> filter =
-        schemaDiffTraverser.createSemanticCheck(errorMessage);
+    NewSemanticUsageValidator newSemanticUsageValidator = new NewSemanticUsageValidator();
+    BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> validator =
+        newSemanticUsageValidator.getSemanticValidator();
 
     // Traverse the admin message
     boolean isNewSemanticUsage =
-        schemaDiffTraverser.traverse(adminMessage, null, currentSchema, targetSchema, "", filter);
+        SchemaDiffTraverser.traverse(adminMessage, null, currentSchema, targetSchema, "", validator);
 
     assertTrue(isNewSemanticUsage, "The flag should be set to true");
+    String errorMessage = newSemanticUsageValidator.getErrorMessage();
     assertTrue(
-        errorMessage.get()
-            .contains("payloadUnion.UpdateStore.hybridStoreConfig.HybridStoreConfigRecord.realTimeTopicName"),
+        errorMessage.contains("payloadUnion.UpdateStore.hybridStoreConfig.HybridStoreConfigRecord.realTimeTopicName"),
         "The error message should contain the field name");
     assertTrue(
-        errorMessage.get().contains("non-default value"),
+        errorMessage.contains("non-default value"),
         "The error message should contain the reason for the failure");
   }
 
@@ -103,22 +101,21 @@ public class SchemaDiffTraverserTest {
     array.add(record2);
 
     // Traverse the array
-    SchemaDiffTraverser schemaDiffTraverser = new SchemaDiffTraverser();
-    AtomicReference<String> errorMessage = new AtomicReference<>();
+    NewSemanticUsageValidator newSemanticUsageValidator = new NewSemanticUsageValidator();
+    BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> validator =
+        newSemanticUsageValidator.getSemanticValidator();
 
-    BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> filter =
-        schemaDiffTraverser.createSemanticCheck(errorMessage);
-
-    boolean isUsingNewSemantic = schemaDiffTraverser.traverse(array, null, schema, targetSchema, "", filter);
-
+    boolean isUsingNewSemantic = SchemaDiffTraverser.traverse(array, null, schema, targetSchema, "", validator);
+    newSemanticUsageValidator.getErrorMessage();
     // Check if the flag is set to true
     // Check if the field name is as expected
     assertTrue(isUsingNewSemantic, "The flag should be set to true");
+    String errorMessage = newSemanticUsageValidator.getErrorMessage();
     assertTrue(
-        errorMessage.get().contains("array.ExampleRecord.0.field2"),
+        errorMessage.contains("array.ExampleRecord.0.field2"),
         "The error message should contain the field name");
     assertTrue(
-        errorMessage.get().contains("non-default value"),
+        errorMessage.contains("non-default value"),
         "The error message should contain the reason for the failure");
   }
 
@@ -150,25 +147,22 @@ public class SchemaDiffTraverserTest {
     map.put("key0", record1);
     map.put("key1", record2);
 
-    // Traverse the map
-    SchemaDiffTraverser schemaDiffTraverser = new SchemaDiffTraverser();
-
     // collect the pair fields
-    AtomicReference<String> errorMessage = new AtomicReference<>();
+    NewSemanticUsageValidator newSemanticUsageValidator = new NewSemanticUsageValidator();
+    BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> validator =
+        newSemanticUsageValidator.getSemanticValidator();
 
-    BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> filter =
-        schemaDiffTraverser.createSemanticCheck(errorMessage);
-
-    boolean isUsingNewSemantic = schemaDiffTraverser.traverse(map, null, schema, targetSchema, "", filter);
+    boolean isUsingNewSemantic = SchemaDiffTraverser.traverse(map, null, schema, targetSchema, "", validator);
 
     // Check if the flag is set to true
     assertTrue(isUsingNewSemantic, "The traverse should return true");
+    String errorMessage = newSemanticUsageValidator.getErrorMessage();
     // Check if the field name is as expected
     assertTrue(
-        errorMessage.get().contains("map.ExampleRecord.key0.field2"),
+        errorMessage.contains("map.ExampleRecord.key0.field2"),
         "The error message should contain the field name");
     assertTrue(
-        errorMessage.get().contains("non-default value"),
+        errorMessage.contains("non-default value"),
         "The error message should contain the reason for the failure");
   }
 
@@ -203,21 +197,19 @@ public class SchemaDiffTraverserTest {
     map.put("key0", record1);
     map.put("key1", record2);
 
-    SchemaDiffTraverser schemaDiffTraverser = new SchemaDiffTraverser();
-    AtomicReference<String> errorMessage = new AtomicReference<>();
+    NewSemanticUsageValidator newSemanticUsageValidator = new NewSemanticUsageValidator();
+    BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> validator =
+        newSemanticUsageValidator.getSemanticValidator();
 
-    BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> filter =
-        schemaDiffTraverser.createSemanticCheck(errorMessage);
-
-    boolean isUsingNewSemantic = schemaDiffTraverser.traverse(map, null, currentSchema, targetSchema, "", filter);
+    boolean isUsingNewSemantic = SchemaDiffTraverser.traverse(map, null, currentSchema, targetSchema, "", validator);
 
     assertTrue(isUsingNewSemantic, "The traverse should return true");
+    String errorMessage = newSemanticUsageValidator.getErrorMessage();
     assertTrue(
-        errorMessage.get().contains("map.ExampleRecord.key1.owners"),
+        errorMessage.contains("map.ExampleRecord.key1.owners"),
         "The error message should contain the field name");
     assertTrue(
-        errorMessage.get()
-            .contains("contains non-default value. Actual value: [owner]. Default value: [venice] or null"),
+        errorMessage.contains("contains non-default value. Actual value: [owner]. Default value: [venice] or null"),
         "The error message should contain the reason for the failure");
   }
 
@@ -236,21 +228,20 @@ public class SchemaDiffTraverserTest {
     Schema targetSchema = adminOperationSerializer.getSchema(74);
     Schema currentSchema = currentLatestSchema;
 
-    SchemaDiffTraverser schemaDiffTraverser = new SchemaDiffTraverser();
-    AtomicReference<String> errorMessage = new AtomicReference<>();
-
-    BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> filter =
-        schemaDiffTraverser.createSemanticCheck(errorMessage);
+    NewSemanticUsageValidator newSemanticUsageValidator = new NewSemanticUsageValidator();
+    BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> validator =
+        newSemanticUsageValidator.getSemanticValidator();
 
     boolean isUsingNewSemantic =
-        schemaDiffTraverser.traverse(adminMessage, null, currentSchema, targetSchema, "", filter);
+        SchemaDiffTraverser.traverse(adminMessage, null, currentSchema, targetSchema, "", validator);
 
     assertTrue(isUsingNewSemantic, "The traverse should return true");
+    String errorMessage = newSemanticUsageValidator.getErrorMessage();
     assertTrue(
-        errorMessage.get().contains("payloadUnion.DeleteUnusedValueSchemas"),
+        errorMessage.contains("payloadUnion.DeleteUnusedValueSchemas"),
         "The error message should contain the field name");
     assertTrue(
-        errorMessage.get().contains("is not in the target schema, and object is non-null"),
+        errorMessage.contains("contains non-default value"),
         "The error message should contain the reason for the failure");
   }
 
@@ -282,21 +273,18 @@ public class SchemaDiffTraverserTest {
     array.add(record1);
     array.add(record2);
 
-    SchemaDiffTraverser schemaDiffTraverser = new SchemaDiffTraverser();
-    AtomicReference<String> errorMessage = new AtomicReference<>();
+    NewSemanticUsageValidator newSemanticUsageValidator = new NewSemanticUsageValidator();
+    BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> validator =
+        newSemanticUsageValidator.getSemanticValidator();
 
-    BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> filter =
-        schemaDiffTraverser.createSemanticCheck(errorMessage);
-
-    boolean isUsingNewSemantic = schemaDiffTraverser.traverse(array, null, currentSchema, targetSchema, "", filter);
+    boolean isUsingNewSemantic = SchemaDiffTraverser.traverse(array, null, currentSchema, targetSchema, "", validator);
 
     assertTrue(isUsingNewSemantic, "The traverse should return true");
+    String errorMessage = newSemanticUsageValidator.getErrorMessage();
     assertTrue(
-        errorMessage.get().contains("array.ExampleRecord.0.field2"),
+        errorMessage.contains("array.ExampleRecord.0.field2"),
         "The error message should contain the field name");
-    assertTrue(
-        errorMessage.get().contains("different types"),
-        "The error message should contain the reason for the failure");
+    assertTrue(errorMessage.contains("Type mismatch"), "The error message should contain the reason for the failure");
   }
 
   @Test
@@ -322,29 +310,29 @@ public class SchemaDiffTraverserTest {
     adminMessage.executionId = 1;
     Schema targetSchema = adminOperationSerializer.getSchema(83);
     Schema currentSchema = currentLatestSchema;
-    SchemaDiffTraverser schemaDiffTraverser = new SchemaDiffTraverser();
+    SchemaDiffTraverser SchemaDiffTraverser = new SchemaDiffTraverser();
 
-    AtomicReference<String> errorMessage = new AtomicReference<>();
-
-    BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> filter =
-        schemaDiffTraverser.createSemanticCheck(errorMessage);
+    NewSemanticUsageValidator newSemanticUsageValidator = new NewSemanticUsageValidator();
+    BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> validator =
+        newSemanticUsageValidator.getSemanticValidator();
 
     // Traverse the admin message
     boolean isNewSemanticUsage =
-        schemaDiffTraverser.traverse(adminMessage, null, currentSchema, targetSchema, "", filter);
+        SchemaDiffTraverser.traverse(adminMessage, null, currentSchema, targetSchema, "", validator);
 
     assertTrue(isNewSemanticUsage, "The flag should be set to true");
+    String errorMessage = newSemanticUsageValidator.getErrorMessage();
     assertTrue(
-        errorMessage.get().contains("payloadUnion.UpdateStore.targetSwapRegionWaitTime"),
+        errorMessage.contains("payloadUnion.UpdateStore.targetSwapRegionWaitTime"),
         "The error message should contain the field name");
     assertTrue(
-        errorMessage.get().contains("non-default value"),
+        errorMessage.contains("non-default value"),
         "The error message should contain the reason for the failure");
 
     // Test the case where the field is set as default value
     updateStore.targetSwapRegionWaitTime = 60;
     adminMessage.payloadUnion = updateStore;
-    isNewSemanticUsage = schemaDiffTraverser.traverse(adminMessage, null, currentSchema, targetSchema, "", filter);
+    isNewSemanticUsage = SchemaDiffTraverser.traverse(adminMessage, null, currentSchema, targetSchema, "", validator);
     assertFalse(isNewSemanticUsage, "The value is equal to the default value, should return false");
   }
 
@@ -382,20 +370,17 @@ public class SchemaDiffTraverserTest {
     array.add(record1);
     array.add(record2);
 
-    SchemaDiffTraverser schemaDiffTraverser = new SchemaDiffTraverser();
-    AtomicReference<String> errorMessage = new AtomicReference<>();
+    NewSemanticUsageValidator newSemanticUsageValidator = new NewSemanticUsageValidator();
+    BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> validator =
+        newSemanticUsageValidator.getSemanticValidator();
 
-    BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> filter =
-        schemaDiffTraverser.createSemanticCheck(errorMessage);
-
-    boolean isUsingNewSemantic = schemaDiffTraverser.traverse(array, null, currentSchema, targetSchema, "", filter);
+    boolean isUsingNewSemantic = SchemaDiffTraverser.traverse(array, null, currentSchema, targetSchema, "", validator);
 
     assertTrue(isUsingNewSemantic, "The traverse should return true");
+    String errorMessage = newSemanticUsageValidator.getErrorMessage();
     assertTrue(
-        errorMessage.get().contains("array.ExampleRecord.1.executionType"),
+        errorMessage.contains("array.ExampleRecord.1.executionType"),
         "The error message should contain the field name");
-    assertTrue(
-        errorMessage.get().contains("new enum value"),
-        "The error message should contain the reason for the failure");
+    assertTrue(errorMessage.contains("new enum value"), "The error message should contain the reason for the failure");
   }
 }
