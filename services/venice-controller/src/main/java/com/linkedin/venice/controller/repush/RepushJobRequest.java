@@ -46,8 +46,9 @@ public class RepushJobRequest {
     return params;
   }
 
+  @Override
   public String toString() {
-    return "RepushJobRequest{" + "storeName='" + storeName + '\'' + ", sourceRegion='" + sourceRegion + '\''
-        + ", triggerSource='" + triggerSource + '\'' + '}';
+    return "RepushJobRequest{" + "storeName='" + this.storeName + '\'' + ", sourceRegion='" + this.sourceRegion + '\''
+        + ", triggerSource='" + this.triggerSource + '\'' + '}';
   }
 }
