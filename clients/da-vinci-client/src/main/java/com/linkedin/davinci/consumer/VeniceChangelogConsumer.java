@@ -195,7 +195,7 @@ public interface VeniceChangelogConsumer<K, V> {
    * @param timeoutInMs The maximum time to block/wait in between two polling requests (must not be greater than
    *        {@link Long#MAX_VALUE} milliseconds)
    * @return a collection of messages since the last fetch for the subscribed list of topic partitions
-   * @throws a VeniceException if polling operation fails
+   * @throws VeniceException if polling operation fails
    */
   Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(long timeoutInMs);
 

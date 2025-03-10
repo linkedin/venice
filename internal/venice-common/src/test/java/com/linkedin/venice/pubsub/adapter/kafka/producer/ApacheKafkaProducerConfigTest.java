@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
@@ -20,6 +21,7 @@ import java.util.function.BiConsumer;
 import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -56,7 +58,7 @@ public class ApacheKafkaProducerConfigTest {
     ApacheKafkaProducerConfig producerConfig = new ApacheKafkaProducerConfig(context);
     assertNotNull(producerConfig);
     assertEquals(producerConfig.getBrokerAddress(), KAFKA_BROKER_ADDR);
-    assertFalse(producerConfig.getProducerProperties().containsKey(ProducerConfig.CLIENT_ID_CONFIG));
+    assertTrue(producerConfig.getProducerProperties().containsKey(ProducerConfig.CLIENT_ID_CONFIG));
 
     String overriddenBrokerAddress = "target.broker.com:8181";
     context = mock(PubSubProducerAdapterContext.class);
@@ -67,7 +69,8 @@ public class ApacheKafkaProducerConfigTest {
     ApacheKafkaProducerConfig producerConfig1 = new ApacheKafkaProducerConfig(context);
     // broker address from props should be used
     assertEquals(producerConfig1.getBrokerAddress(), overriddenBrokerAddress);
-    assertEquals(producerConfig1.getProducerProperties().getProperty(ProducerConfig.CLIENT_ID_CONFIG), PRODUCER_NAME);
+    assertTrue(
+        producerConfig1.getProducerProperties().getProperty(ProducerConfig.CLIENT_ID_CONFIG).contains(PRODUCER_NAME));
   }
 
   @Test
@@ -208,5 +211,38 @@ public class ApacheKafkaProducerConfigTest {
     assertEquals(validProps.size(), 2);
     assertEquals(validProps.get(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG), "localhost:9092");
     assertEquals(validProps.get(ProducerConfig.MAX_BLOCK_MS_CONFIG), "1000");
+  }
+
+  /**
+   * Ensures that the Kafka producer's key and value serializer configurations remain unchanged.
+   * This test helps catch unintended modifications that could lead to serialization issues in
+   * certain environments. A failure here indicates that the serializer configurations may work
+   * in the test environment but could cause issues in other runtime environments.
+   */
+  @Test
+  public void testKeyAndValueSerializerConfigConsistency() {
+    PubSubProducerAdapterContext context =
+        new PubSubProducerAdapterContext.Builder().setVeniceProperties(VeniceProperties.empty())
+            .setBrokerAddress(KAFKA_BROKER_ADDR)
+            .setShouldValidateProducerConfigStrictly(false)
+            .setProducerName(PRODUCER_NAME)
+            .build();
+
+    ApacheKafkaProducerConfig producerConfig = new ApacheKafkaProducerConfig(context);
+    Properties actualProps = producerConfig.getProducerProperties();
+
+    // Ensure the serializer is not incorrectly set as a String
+    assertNotEquals(actualProps.get(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG), ByteArraySerializer.class.getName());
+    assertFalse(
+        actualProps.get(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG) instanceof String,
+        "Key serializer should not be a string class name");
+    assertNotEquals(actualProps.get(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG), ByteArraySerializer.class.getName());
+    assertFalse(
+        actualProps.get(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG) instanceof String,
+        "Value serializer should not be a string class name");
+
+    // Ensure the serializer is correctly set as a Class
+    assertEquals(actualProps.get(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG), ByteArraySerializer.class);
+    assertEquals(actualProps.get(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG), ByteArraySerializer.class);
   }
 }

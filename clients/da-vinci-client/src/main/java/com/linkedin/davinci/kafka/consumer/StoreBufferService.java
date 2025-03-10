@@ -13,7 +13,9 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.memory.ClassSizeEstimator;
 import com.linkedin.venice.memory.Measurable;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.collections.MemoryBoundBlockingQueue;
@@ -124,15 +126,13 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   protected MemoryBoundBlockingQueue<QueueNode> getDrainerForConsumerRecord(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       int partition) {
     int drainerIndex = getDrainerIndexForConsumerRecord(consumerRecord, partition);
     return blockingQueueArr.get(drainerIndex);
   }
 
-  protected int getDrainerIndexForConsumerRecord(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-      int partition) {
+  protected int getDrainerIndexForConsumerRecord(DefaultPubSubMessage consumerRecord, int partition) {
     /**
      * This will guarantee that 'topicHash' will be a positive integer, whose maximum value is
      * {@link Integer.MAX_VALUE} / 2 + 1, which could make sure 'topicHash + consumerRecord.partition()' should be
@@ -144,7 +144,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
   @Override
   public void putConsumerRecord(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       StoreIngestionTask ingestionTask,
       LeaderProducedRecordContext leaderProducedRecordContext,
       int partition,
@@ -184,7 +184,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
   private interface RecordHandler {
     void handle(
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+        DefaultPubSubMessage consumerRecord,
         StoreIngestionTask ingestionTask,
         LeaderProducedRecordContext leaderProducedRecordContext,
         int partition,
@@ -193,7 +193,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   private void queueLeaderRecord(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       StoreIngestionTask ingestionTask,
       LeaderProducedRecordContext leaderProducedRecordContext,
       int partition,
@@ -209,7 +209,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   private static void processRecord(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       StoreIngestionTask ingestionTask,
       LeaderProducedRecordContext leaderProducedRecordContext,
       int partition,
@@ -257,7 +257,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
       PubSubTopicPartition topicPartition,
       int retryNum,
       int sleepIntervalInMS) throws InterruptedException {
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> fakeRecord = new FakePubSubMessage(topicPartition);
+    DefaultPubSubMessage fakeRecord = new FakePubSubMessage(topicPartition);
     int workerIndex = getDrainerIndexForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber());
     BlockingQueue<QueueNode> blockingQueue = blockingQueueArr.get(workerIndex);
     if (!drainerList.get(workerIndex).isRunning.get()) {
@@ -290,7 +290,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   public CompletableFuture<Void> execSyncOffsetCommandAsync(
       PubSubTopicPartition topicPartition,
       StoreIngestionTask ingestionTask) throws InterruptedException {
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> fakeRecord = new FakePubSubMessage(topicPartition);
+    DefaultPubSubMessage fakeRecord = new FakePubSubMessage(topicPartition);
     CommandQueueNode syncOffsetCmd =
         new CommandQueueNode(CommandQueueNode.CommandType.SYNC_OFFSET, fakeRecord, ingestionTask);
     getDrainerForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber()).put(syncOffsetCmd);
@@ -400,13 +400,13 @@ public class StoreBufferService extends AbstractStoreBufferService {
    */
   static class QueueNode implements Measurable {
     private static final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(QueueNode.class);
-    private final PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord;
+    private final DefaultPubSubMessage consumerRecord;
     private final StoreIngestionTask ingestionTask;
     private final String kafkaUrl;
     private final long beforeProcessingRecordTimestampNs;
 
     public QueueNode(
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+        DefaultPubSubMessage consumerRecord,
         StoreIngestionTask ingestionTask,
         String kafkaUrl,
         long beforeProcessingRecordTimestampNs) {
@@ -416,7 +416,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
       this.beforeProcessingRecordTimestampNs = beforeProcessingRecordTimestampNs;
     }
 
-    public PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> getConsumerRecord() {
+    public DefaultPubSubMessage getConsumerRecord() {
       return this.consumerRecord;
     }
 
@@ -491,7 +491,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     private final CompletableFuture<Void> queuedRecordPersistedFuture;
 
     public FollowerQueueNode(
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+        DefaultPubSubMessage consumerRecord,
         StoreIngestionTask ingestionTask,
         String kafkaUrl,
         long beforeProcessingRecordTimestampNs,
@@ -527,7 +527,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     private final LeaderProducedRecordContext leaderProducedRecordContext;
 
     public LeaderQueueNode(
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+        DefaultPubSubMessage consumerRecord,
         StoreIngestionTask ingestionTask,
         String kafkaUrl,
         long beforeProcessingRecordTimestampNs,
@@ -576,7 +576,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
     public CommandQueueNode(
         CommandType commandType,
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+        DefaultPubSubMessage consumerRecord,
         StoreIngestionTask ingestionTask) {
       super(consumerRecord, ingestionTask, StringUtils.EMPTY, 0);
       this.commandType = commandType;
@@ -663,7 +663,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     public void run() {
       LOGGER.info("Starting StoreBufferDrainer Thread for drainer: {}....", drainerIndex);
       QueueNode node = null;
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord = null;
+      DefaultPubSubMessage consumerRecord = null;
       LeaderProducedRecordContext leaderProducedRecordContext = null;
       StoreIngestionTask ingestionTask = null;
       CompletableFuture<Void> recordPersistedFuture = null;
@@ -759,7 +759,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
   }
 
-  private static class FakePubSubMessage implements PubSubMessage {
+  private static class FakePubSubMessage implements DefaultPubSubMessage {
     private static final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(FakePubSubMessage.class);
     private final PubSubTopicPartition topicPartition;
 
@@ -768,12 +768,12 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
 
     @Override
-    public Object getKey() {
+    public KafkaKey getKey() {
       return null;
     }
 
     @Override
-    public Object getValue() {
+    public KafkaMessageEnvelope getValue() {
       return null;
     }
 
@@ -783,7 +783,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
 
     @Override
-    public Object getOffset() {
+    public PubSubPosition getPosition() {
       return null;
     }
 
