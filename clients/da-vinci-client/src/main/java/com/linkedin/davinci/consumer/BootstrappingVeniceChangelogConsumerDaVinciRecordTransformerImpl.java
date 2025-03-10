@@ -63,7 +63,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   private final BlockingQueue<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessages;
   // Determines what version per partition is currently serving
   private final ConcurrentHashMap<Integer, Integer> partitionToVersionToServe;
-  private final DaVinciConfig daVinciConfig;
+  private final DaVinciRecordTransformerConfig recordTransformerConfig;
   private final CachingDaVinciClientFactory daVinciClientFactory;
   private final DaVinciClient<Object, Object> daVinciClient;
   private boolean isStarted = false;
@@ -74,22 +74,25 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
 
   public BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl(
       ChangelogClientConfig changelogClientConfig,
-      PubSubConsumerAdapter pubSubConsumer,
-      String consumerId) {
+      PubSubConsumerAdapter pubSubConsumer) {
     super(changelogClientConfig, pubSubConsumer);
     this.changelogClientConfig = changelogClientConfig;
     this.storeName = changelogClientConfig.getStoreName();
-    this.daVinciConfig = new DaVinciConfig();
+    DaVinciConfig daVinciConfig = new DaVinciConfig();
     ClientConfig innerClientConfig = changelogClientConfig.getInnerClientConfig();
 
     // ToDo: Determine default capacity and make configurable by the user
     this.pubSubMessages = new ArrayBlockingQueue<>(1000);
     this.partitionToVersionToServe = new ConcurrentHashMap<>();
 
-    DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
+    recordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
         .setRecordTransformerFunction(DaVinciRecordTransformerBootstrappingChangelogConsumer::new)
+        // Setting this to true since we're not transforming records and frequent changes can be made to the
+        // DVRT implmentation. This is to prevent the local state from being wiped everytime a change is
+        // deployed.
+        .setSkipCompatibilityChecks(true)
         .build();
-    this.daVinciConfig.setRecordTransformerConfig(recordTransformerConfig);
+    daVinciConfig.setRecordTransformerConfig(recordTransformerConfig);
 
     this.daVinciClientFactory = new CachingDaVinciClientFactory(
         changelogClientConfig.getD2Client(),
@@ -99,9 +102,9 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
 
     if (innerClientConfig.isSpecificClient()) {
       this.daVinciClient = this.daVinciClientFactory
-          .getSpecificAvroClient(this.storeName, this.daVinciConfig, innerClientConfig.getSpecificValueClass());
+          .getSpecificAvroClient(this.storeName, daVinciConfig, innerClientConfig.getSpecificValueClass());
     } else {
-      this.daVinciClient = this.daVinciClientFactory.getGenericAvroClient(this.storeName, this.daVinciConfig);
+      this.daVinciClient = this.daVinciClientFactory.getGenericAvroClient(this.storeName, daVinciConfig);
     }
   }
 
@@ -210,6 +213,11 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
         .put(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, false)
         .put(BLOB_TRANSFER_MANAGER_ENABLED, changelogClientConfig.isBlobTransferEnabled())
         .build();
+  }
+
+  // Visible for testing
+  public DaVinciRecordTransformerConfig getRecordTransformerConfig() {
+    return recordTransformerConfig;
   }
 
   public class DaVinciRecordTransformerBootstrappingChangelogConsumer extends DaVinciRecordTransformer<K, V, V> {

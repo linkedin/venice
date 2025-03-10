@@ -37,16 +37,18 @@ public class RecordTransformerTest {
   static final int partitionId = 0;
   static final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
       AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+  static final Schema keySchema = Schema.create(Schema.Type.INT);
+  static final Schema valueSchema = Schema.create(Schema.Type.STRING);
 
   @Test
   public void testRecordTransformer() {
-    Schema keySchema = Schema.create(Schema.Type.INT);
-    Schema valueSchema = Schema.create(Schema.Type.STRING);
-
     DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
             .setStoreRecordsInDaVinci(false)
             .build();
+    assertFalse(
+        dummyRecordTransformerConfig.getSkipCompatibilityChecks(),
+        "Default for skipCompatibilityChecks should be false");
 
     DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(
         storeVersion,
@@ -86,10 +88,31 @@ public class RecordTransformerTest {
   }
 
   @Test
-  public void testOnRecovery() {
-    Schema keySchema = Schema.create(Schema.Type.INT);
-    Schema valueSchema = Schema.create(Schema.Type.STRING);
+  public void testCompatabilityChecks() {
+    DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .setSkipCompatibilityChecks(true)
+            .build();
+    assertTrue(dummyRecordTransformerConfig.getSkipCompatibilityChecks());
 
+    DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(
+        storeVersion,
+        keySchema,
+        valueSchema,
+        valueSchema,
+        dummyRecordTransformerConfig);
+    DaVinciRecordTransformerUtility<Integer, String> recordTransformerUtility =
+        recordTransformer.getRecordTransformerUtility();
+    int classHash = recordTransformer.getClassHash();
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+
+    assertFalse(
+        recordTransformerUtility.hasTransformerLogicChanged(classHash, offsetRecord),
+        "When skipCompatibilityChecks is set to true, hasTransformerLogicChanged should return false");
+  }
+
+  @Test
+  public void testOnRecovery() {
     DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
             .build();
@@ -138,9 +161,6 @@ public class RecordTransformerTest {
 
   @Test
   public void testOnRecoveryAlwaysBootstrapFromVersionTopic() {
-    Schema keySchema = Schema.create(Schema.Type.INT);
-    Schema valueSchema = Schema.create(Schema.Type.STRING);
-
     DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
             .setAlwaysBootstrapFromVersionTopic(true)
@@ -179,8 +199,6 @@ public class RecordTransformerTest {
 
   @Test
   public void testBlockingRecordTransformer() {
-    Schema keySchema = Schema.create(Schema.Type.INT);
-    Schema valueSchema = Schema.create(Schema.Type.STRING);
     int currentVersion = 1;
     int futureVersion = 2;
 

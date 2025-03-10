@@ -145,8 +145,7 @@ public class VeniceChangelogConsumerClientFactory {
           if (globalChangelogClientConfig.isExperimentalClientEnabled()) {
             return new BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>(
                 newStoreChangelogClientConfig,
-                tempConsumer,
-                consumerId);
+                tempConsumer);
           } else {
             return new LocalBootstrappingVeniceChangelogConsumer(
                 newStoreChangelogClientConfig,

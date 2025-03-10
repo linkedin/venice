@@ -85,7 +85,7 @@ public abstract class DaVinciRecordTransformer<K, V, O> implements Closeable {
     // ToDo: Make use of inputValueSchema to support reader/writer schemas
     this.inputValueSchema = inputValueSchema;
     this.outputValueSchema = outputValueSchema;
-    this.recordTransformerUtility = new DaVinciRecordTransformerUtility<>(this);
+    this.recordTransformerUtility = new DaVinciRecordTransformerUtility<>(this, recordTransformerConfig);
   }
 
   /**
