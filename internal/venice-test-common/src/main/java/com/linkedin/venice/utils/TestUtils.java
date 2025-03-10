@@ -743,6 +743,11 @@ public class TestUtils {
     return response;
   }
 
+  public static <T extends ControllerResponse> T assertCommandFailure(T response, String assertionErrorMessage) {
+    Assert.assertTrue(response.isError(), assertionErrorMessage + ": " + response.getError());
+    return response;
+  }
+
   public static void preventSystemExit() {
     System.setSecurityManager(new SecurityManager() {
       @Override

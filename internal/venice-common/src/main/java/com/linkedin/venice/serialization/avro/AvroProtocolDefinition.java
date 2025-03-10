@@ -175,7 +175,7 @@ public enum AvroProtocolDefinition {
   /**
    * Response record for metadata by client fetch request.
    */
-  SERVER_STORE_PROPERTIES_RESPONSE(1, StorePropertiesResponseRecord.class),
+  SERVER_STORE_PROPERTIES_RESPONSE(2, StorePropertiesResponseRecord.class),
 
   /**
    * Value schema for change capture event.

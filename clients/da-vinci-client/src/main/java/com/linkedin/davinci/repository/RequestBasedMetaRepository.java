@@ -132,7 +132,7 @@ public class RequestBasedMetaRepository extends NativeMetadataRepository {
         storeMetaValueResponseSchemaReader.getValueSchema(record.storeMetaValueSchemaVersion);
     RecordDeserializer<StoreMetaValue> storeMetaValueRecordDeserializer = FastSerializerDeserializerFactory
         .getFastAvroSpecificDeserializer(writerSchemaStoreMetaValue, StoreMetaValue.class);
-    StoreMetaValue storeMetaValue = storeMetaValueRecordDeserializer.deserialize(record.storeMetaValue);
+    StoreMetaValue storeMetaValue = storeMetaValueRecordDeserializer.deserialize(record.getStoreMetaValueAvro());
 
     // Cache
     cacheStoreSchema(storeName, storeMetaValue);

@@ -234,7 +234,7 @@ public class TopicCleanupService extends AbstractVeniceService {
         clusterDiscovered = admin.discoverCluster(storeName).getFirst();
       } catch (VeniceNoStoreException e) {
         LOGGER.warn(
-            "Store {} not found. Exception when trying to delete topic: {} - {}",
+            "Expected store: {} not found corresponding to topic: {} in Venice. Will delete the topic without running any safety checks. Error: {}",
             storeName,
             topic.getName(),
             e.toString());

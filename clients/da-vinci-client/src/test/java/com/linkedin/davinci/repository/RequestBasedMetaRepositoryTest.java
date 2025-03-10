@@ -251,7 +251,7 @@ public class RequestBasedMetaRepositoryTest {
     RecordSerializer<StoreMetaValue> serializer =
         SerializerDeserializerFactory.getAvroGenericSerializer(StoreMetaValue.SCHEMA$);
     byte[] serialized = serializer.serialize(storeMetaValue);
-    record.setStoreMetaValue(ByteBuffer.wrap(serialized));
+    record.setStoreMetaValueAvro(ByteBuffer.wrap(serialized));
 
     MOCK_STORE_META_VALUE = storeMetaValue;
     MOCK_STORE_PROPERTIES_RESPONSE_RECORD = record;

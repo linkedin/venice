@@ -180,10 +180,10 @@ public class ServerReadMetadataRepositoryTest {
     StorePropertiesResponse storePropertiesResponse =
         serverReadMetadataRepository.getStoreProperties(storeName, Optional.empty());
     StoreMetaValue storeMetaValue =
-        deserializeStoreMetaValue(storePropertiesResponse.getResponseRecord().getStoreMetaValue().array());
+        deserializeStoreMetaValue(storePropertiesResponse.getResponseRecord().getStoreMetaValueAvro().array());
     Assert.assertNotNull(storePropertiesResponse);
     Assert.assertNotNull(storePropertiesResponse.getResponseRecord());
-    Assert.assertNotNull(storePropertiesResponse.getResponseRecord().getStoreMetaValue());
+    Assert.assertNotNull(storePropertiesResponse.getResponseRecord().getStoreMetaValueAvro());
 
     // Assert response
     Assert
@@ -208,7 +208,7 @@ public class ServerReadMetadataRepositoryTest {
       StorePropertiesResponse storePropertiesResponseLKSID =
           serverReadMetadataRepository.getStoreProperties(storeName, Optional.of(i));
       StoreMetaValue storeMetaValueLKSID =
-          deserializeStoreMetaValue(storePropertiesResponseLKSID.getResponseRecord().getStoreMetaValue().array());
+          deserializeStoreMetaValue(storePropertiesResponseLKSID.getResponseRecord().getStoreMetaValueAvro().array());
       Assert.assertEquals(storeMetaValueLKSID.getStoreValueSchemas().getValueSchemaMap().size(), schemaCount - i);
     }
 
@@ -216,8 +216,8 @@ public class ServerReadMetadataRepositoryTest {
     mockStore.setBatchGetLimit(300);
     StorePropertiesResponse storePropertiesResponseValueUpdate =
         serverReadMetadataRepository.getStoreProperties(storeName, Optional.empty());
-    StoreMetaValue storeMetaValueUpdate =
-        deserializeStoreMetaValue(storePropertiesResponseValueUpdate.getResponseRecord().getStoreMetaValue().array());
+    StoreMetaValue storeMetaValueUpdate = deserializeStoreMetaValue(
+        storePropertiesResponseValueUpdate.getResponseRecord().getStoreMetaValueAvro().array());
     Assert.assertEquals(storeMetaValueUpdate.getStoreProperties().getBatchGetLimit(), 300);
   }
 

@@ -11,8 +11,8 @@
       "default": 1
     },
     {
-      "name": "storeMetaValue",
-      "doc": "Store metadata, serilization of com.linkedin.venice.systemstore.schemas.StoreMetaValue",
+      "name": "storeMetaValueAvro",
+      "doc": "Store metadata, serialization of com.linkedin.venice.systemstore.schemas.StoreMetaValue",
       "type": "bytes",
       "default": ""
     },

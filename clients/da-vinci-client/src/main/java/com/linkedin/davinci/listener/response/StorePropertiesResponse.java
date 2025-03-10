@@ -33,7 +33,7 @@ public class StorePropertiesResponse {
     RecordSerializer<StoreMetaValue> serializer =
         SerializerDeserializerFactory.getAvroGenericSerializer(StoreMetaValue.SCHEMA$);
     byte[] serialized = serializer.serialize(storeMetaValue);
-    responseRecord.setStoreMetaValue(ByteBuffer.wrap(serialized));
+    responseRecord.setStoreMetaValueAvro(ByteBuffer.wrap(serialized));
   }
 
   public void setHelixGroupInfo(Map<CharSequence, Integer> helixGroupInfo) {

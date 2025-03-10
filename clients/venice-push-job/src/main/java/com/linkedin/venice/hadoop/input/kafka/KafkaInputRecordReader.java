@@ -18,8 +18,8 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
@@ -78,7 +78,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
   /**
    * Iterator pointing to the current messages fetched from the Kafka topic partition.
    */
-  private Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> recordIterator;
+  private Iterator<DefaultPubSubMessage> recordIterator;
 
   private final DataWriterTaskTracker taskTracker;
   /**
@@ -156,7 +156,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
    */
   @Override
   public boolean next(KafkaInputMapperKey key, KafkaInputMapperValue value) throws IOException {
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage;
+    DefaultPubSubMessage pubSubMessage;
     while (hasPendingData()) {
       try {
         loadRecords();
@@ -167,7 +167,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
       }
       pubSubMessage = recordIterator.hasNext() ? recordIterator.next() : null;
       if (pubSubMessage != null) {
-        currentOffset = pubSubMessage.getOffset();
+        currentOffset = pubSubMessage.getPosition().getNumericOffset();
 
         KafkaKey kafkaKey = pubSubMessage.getKey();
         KafkaMessageEnvelope kafkaMessageEnvelope = pubSubMessage.getValue();
@@ -179,7 +179,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
 
         MessageType messageType = MessageType.valueOf(kafkaMessageEnvelope);
 
-        key.offset = pubSubMessage.getOffset();
+        key.offset = pubSubMessage.getPosition().getNumericOffset();
         if (isSourceVersionChunkingEnabled) {
           RawKeyBytesAndChunkedKeySuffix rawKeyAndChunkedKeySuffix =
               splitCompositeKey(kafkaKey.getKey(), messageType, getSchemaIdFromValue(kafkaMessageEnvelope));
@@ -189,7 +189,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
         } else {
           key.key = ByteBuffer.wrap(kafkaKey.getKey(), 0, kafkaKey.getKeyLength());
         }
-        value.offset = pubSubMessage.getOffset();
+        value.offset = pubSubMessage.getPosition().getNumericOffset();
         switch (messageType) {
           case PUT:
             Put put = (Put) kafkaMessageEnvelope.payloadUnion;
@@ -210,7 +210,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
           default:
             throw new IOException(
                 "Unexpected '" + messageType + "' message from Kafka topic partition: " + topicPartition
-                    + " with offset: " + pubSubMessage.getOffset());
+                    + " with offset: " + pubSubMessage.getPosition());
         }
         if (taskTracker != null) {
           taskTracker.trackPutOrDeleteRecord();
@@ -303,7 +303,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
    */
   private void loadRecords() throws InterruptedException {
     if ((recordIterator == null) || !recordIterator.hasNext()) {
-      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages = new HashMap<>();
+      Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages = new HashMap<>();
       int retry = 0;
       while (retry++ < CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES) {
         messages = consumer.poll(CONSUMER_POLL_TIMEOUT);

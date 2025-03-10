@@ -41,6 +41,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
@@ -355,6 +356,7 @@ public class PushJobDetailsTest {
               .setPartitionCount(2)
               .setHybridOffsetLagThreshold(10)
               .setHybridRewindSeconds(10)
+              .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setActiveActiveReplicationEnabled(true)
               .setIncrementalPushEnabled(true));
       Properties pushJobProps = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathForFullPush, testStoreName);

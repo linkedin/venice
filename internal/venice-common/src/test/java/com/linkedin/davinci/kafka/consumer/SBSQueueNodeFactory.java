@@ -1,8 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 
 
 /**
@@ -11,7 +9,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
  */
 public class SBSQueueNodeFactory {
   public static StoreBufferService.QueueNode queueNode(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       StoreIngestionTask ingestionTask,
       String kafkaUrl,
       long beforeProcessingRecordTimestampNs) {
@@ -19,7 +17,7 @@ public class SBSQueueNodeFactory {
   }
 
   public static StoreBufferService.LeaderQueueNode leaderQueueNode(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       StoreIngestionTask ingestionTask,
       String kafkaUrl,
       long beforeProcessingRecordTimestampNs,
