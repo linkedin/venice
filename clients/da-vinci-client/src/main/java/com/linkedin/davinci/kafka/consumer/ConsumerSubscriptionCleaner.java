@@ -2,6 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Time;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
@@ -44,7 +45,7 @@ public class ConsumerSubscriptionCleaner {
    * 2. The non-existing period lasts longer than {@link #nonExistingTopicCleanupDelayMS}, and the corresponding task
    *    will fail.
    */
-  private final Object2LongMap<String> nonExistingTopicDiscoverTimestampMap = new Object2LongOpenHashMap<>();
+  private final Object2LongMap<PubSubTopic> nonExistingTopicDiscoverTimestampMap = new Object2LongOpenHashMap<>();
 
   private final TopicExistenceChecker topicExistenceChecker;
 
@@ -107,66 +108,14 @@ public class ConsumerSubscriptionCleaner {
     if (currentAssignment.isEmpty()) {
       return returnSetOfTopicPartitionsToUnsub;
     }
-    Set<String> nonExistingTopics = new HashSet<>();
-    long currentTimestamp = time.getMilliseconds();
-    for (PubSubTopicPartition pubSubTopicPartition: currentAssignment) {
-      String topic = pubSubTopicPartition.getPubSubTopic().getName();
-      boolean isExistingTopic = topicExistenceChecker.checkTopicExists(topic);
-      if (!isExistingTopic) {
-        nonExistingTopics.add(topic);
-      } else {
-        /**
-         * Check whether we should remove any topic from {@link #nonExistingTopicDiscoverTimestampMap} detected previously.
-         * Since this logic will be executed before comparing the diff with the delay threshold, so it is possible that
-         * even the delay is exhausted here, we will still resume the ingestion.
-         */
-        long previousDiscoveryTimestamp = nonExistingTopicDiscoverTimestampMap.removeLong(topic);
-        if (previousDiscoveryTimestamp != nonExistingTopicDiscoverTimestampMap.defaultReturnValue()) {
-          long diff = currentTimestamp - previousDiscoveryTimestamp;
-          LOGGER.info(
-              "The non-existing topic detected previously: {} show up after {} ms and it will be removed from nonExistingTopicDiscoverTimestampMap",
-              topic,
-              diff);
-        }
-      }
-    }
-    Set<String> topicsToUnsubscribe = new HashSet<>(nonExistingTopics);
-    if (!nonExistingTopics.isEmpty()) {
-      LOGGER.warn("Detected the following non-existing topics: {}", nonExistingTopics);
-      for (String topic: nonExistingTopics) {
-        long firstDetectedTimestamp = nonExistingTopicDiscoverTimestampMap.getLong(topic);
-        if (firstDetectedTimestamp == nonExistingTopicDiscoverTimestampMap.defaultReturnValue()) {
-          // The first time to detect this non-existing topic.
-          nonExistingTopicDiscoverTimestampMap.put(topic, currentTimestamp);
-          firstDetectedTimestamp = currentTimestamp;
-        }
-        /**
-         * Calculate the delay, and compare it with {@link nonExistingTopicCleanupDelayMS},
-         * if the delay is over the threshold, will fail the attached ingestion task
-         */
-        long diff = currentTimestamp - firstDetectedTimestamp;
-        if (diff >= nonExistingTopicCleanupDelayMS) {
-          LOGGER.error(
-              "The non-existing topic hasn't showed up after {} ms, so we will fail the attached ingestion task",
-              diff);
-          nonExistingTopicDiscoverTimestampMap.removeLong(topic);
-        } else {
-          /**
-           * We shouldn't unsubscribe the non-existing topic now since currently the delay hasn't been exhausted yet.
-           */
-          topicsToUnsubscribe.remove(topic);
-        }
-      }
-    }
-
-    recordNumberOfTopicsToUnsub.accept(topicsToUnsubscribe.size());
-
+    Set<PubSubTopic> topicsToUnsubscribe = getNonExistingTopicsFromAssignment(currentAssignment);
     Set<PubSubTopicPartition> topicPartitionsForNonAliveDataReceiver =
         getTopicPartitionsForNonAliveDataReceiver(dataReceiverMap);
-    // Get the current subscription for this topic and unsubscribe them
+
+    // Get all topic partition from assignments with non-exiting topics and non-alive data receivers to unsubscribe
     Set<PubSubTopicPartition> newAssignment = new HashSet<>();
     for (PubSubTopicPartition pubSubTopicPartition: currentAssignment) {
-      if (topicsToUnsubscribe.contains(pubSubTopicPartition.getPubSubTopic().getName())
+      if (topicsToUnsubscribe.contains(pubSubTopicPartition.getPubSubTopic())
           || topicPartitionsForNonAliveDataReceiver.contains(pubSubTopicPartition)) {
         returnSetOfTopicPartitionsToUnsub.add(pubSubTopicPartition);
       } else {
@@ -197,6 +146,67 @@ public class ConsumerSubscriptionCleaner {
       }
     }
     return returnSetOfTopicPartitionsToUnsub;
+  }
+
+  /**
+   * This function is used to detect whether there is any subscription to the non-existing topics lasting for a specific
+   * time. If yes, this function will record the these long-lasting non-existing topics and return to be subscribed.
+   */
+  private Set<PubSubTopic> getNonExistingTopicsFromAssignment(Set<PubSubTopicPartition> currentAssignment) {
+    Set<PubSubTopic> nonExistingTopics = new HashSet<>();
+    long currentTimestamp = time.getMilliseconds();
+    for (PubSubTopicPartition pubSubTopicPartition: currentAssignment) {
+      PubSubTopic topic = pubSubTopicPartition.getPubSubTopic();
+      boolean isExistingTopic = topicExistenceChecker.checkTopicExists(topic.getName());
+      if (!isExistingTopic) {
+        nonExistingTopics.add(pubSubTopicPartition.getPubSubTopic());
+      } else {
+        /**
+         * Check whether we should remove any topic from {@link #nonExistingTopicDiscoverTimestampMap} detected previously.
+         * Since this logic will be executed before comparing the diff with the delay threshold, so it is possible that
+         * even the delay is exhausted here, we will still resume the ingestion.
+         */
+        long previousDiscoveryTimestamp = nonExistingTopicDiscoverTimestampMap.removeLong(topic);
+        if (previousDiscoveryTimestamp != nonExistingTopicDiscoverTimestampMap.defaultReturnValue()) {
+          long diff = currentTimestamp - previousDiscoveryTimestamp;
+          LOGGER.info(
+              "The non-existing topic detected previously: {} show up after {} ms and it will be removed from nonExistingTopicDiscoverTimestampMap",
+              topic,
+              diff);
+        }
+      }
+    }
+
+    Set<PubSubTopic> topicsToUnsubscribe = new HashSet<>(nonExistingTopics);
+    if (!nonExistingTopics.isEmpty()) {
+      LOGGER.warn("Detected the following non-existing topics: {}", nonExistingTopics);
+      for (PubSubTopic topic: nonExistingTopics) {
+        long firstDetectedTimestamp = nonExistingTopicDiscoverTimestampMap.getLong(topic);
+        if (firstDetectedTimestamp == nonExistingTopicDiscoverTimestampMap.defaultReturnValue()) {
+          // The first time to detect this non-existing topic.
+          nonExistingTopicDiscoverTimestampMap.put(topic, currentTimestamp);
+          firstDetectedTimestamp = currentTimestamp;
+        }
+        /**
+         * Calculate the delay, and compare it with {@link nonExistingTopicCleanupDelayMS},
+         * if the delay is over the threshold, will fail the attached ingestion task
+         */
+        long diff = currentTimestamp - firstDetectedTimestamp;
+        if (diff >= nonExistingTopicCleanupDelayMS) {
+          LOGGER.error(
+              "The non-existing topic hasn't showed up after {} ms, so we will fail the attached ingestion task",
+              diff);
+          nonExistingTopicDiscoverTimestampMap.removeLong(topic);
+        } else {
+          /**
+           * We shouldn't unsubscribe the non-existing topic now since currently the delay hasn't been exhausted yet.
+           */
+          topicsToUnsubscribe.remove(topic);
+        }
+      }
+    }
+    recordNumberOfTopicsToUnsub.accept(topicsToUnsubscribe.size());
+    return topicsToUnsubscribe;
   }
 
   void unsubscribe(Set<PubSubTopicPartition> toRemove) {
