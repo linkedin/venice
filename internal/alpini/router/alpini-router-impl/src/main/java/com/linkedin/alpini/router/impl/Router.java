@@ -107,6 +107,8 @@ public interface Router extends ShutdownableResource {
 
     Builder connectionLimit(@Nonnull IntSupplier connectionLimit);
 
+    Builder connectionCountRecorder(@Nonnull Consumer<Integer> recorder);
+
     Builder serverSocketOptions(Map<String, Object> serverSocketOptions);
 
     Builder serverSocketOptions(@Nonnull String key, Object value);
