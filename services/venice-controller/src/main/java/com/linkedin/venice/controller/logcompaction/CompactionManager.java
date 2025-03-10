@@ -1,10 +1,12 @@
 package com.linkedin.venice.controller.logcompaction;
 
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.StoreInfo;
 import java.util.ArrayList;
 import java.util.List;
@@ -55,7 +57,8 @@ public class CompactionManager {
   }
 
   // public for testing
-  List<StoreInfo> filterStoresForCompaction(ArrayList<StoreInfo> storeInfoList) {
+  @VisibleForTesting
+  public List<StoreInfo> filterStoresForCompaction(List<StoreInfo> storeInfoList) {
     ArrayList<StoreInfo> compactionReadyStores = new ArrayList<>();
     for (StoreInfo storeInfo: storeInfoList) {
       if (isCompactionReady(storeInfo)) {
@@ -113,6 +116,12 @@ public class CompactionManager {
   public RepushJobResponse compactStore(RepushJobRequest repushJobRequest) throws Exception {
     try {
       RepushJobResponse response = repushOrchestrator.repush(repushJobRequest);
+
+      if (response == null) {
+        String nullResponseMessage = "Repush job response is null for store: " + repushJobRequest.getStoreName();
+        LOGGER.error(nullResponseMessage);
+        throw new VeniceException(nullResponseMessage);
+      }
       LOGGER.info(
           "Repush job triggered for store: {} | exec id: {} | trigger source: {}",
           response.getName(),
