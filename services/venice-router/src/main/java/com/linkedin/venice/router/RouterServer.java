@@ -696,8 +696,10 @@ public class RouterServer extends AbstractVeniceService {
             "SSLHandShakeThread",
             config.getClientSslHandshakeQueueCapacity(),
             LINKED_BLOCKING_QUEUE);
-        new ThreadPoolStats(metricsRepository, sslHandshakeExecutor, "ssl_handshake_thread_pool");
-        sslInitializer.enableSslTaskExecutor(sslHandshakeExecutor);
+        ThreadPoolStats sslHandshakeThreadPoolStats =
+            new ThreadPoolStats(metricsRepository, sslHandshakeExecutor, "ssl_handshake_thread_pool");
+        sslInitializer
+            .enableSslTaskExecutor(sslHandshakeExecutor, sslHandshakeThreadPoolStats::recordQueuedTasksNumber);
       }
       if (config.getResolveThreads() > 0) {
         ThreadPoolExecutor dnsResolveExecutor = ThreadPoolFactory.createThreadPool(

@@ -1,6 +1,5 @@
 package com.linkedin.alpini.netty4.ssl;
 
-import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.alpini.base.misc.ExceptionUtil;
 import com.linkedin.alpini.base.misc.Time;
 import com.linkedin.venice.utils.TestUtils;
@@ -49,12 +48,13 @@ import java.security.Security;
 import java.security.cert.CertificateException;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -691,7 +691,8 @@ public class TestSslInitializer {
 
     int concurrency = 10;
 
-    ExecutorService sslExecutor = Executors.newSingleThreadExecutor();
+    ThreadPoolExecutor sslExecutor =
+        new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(10));
     try {
       concurrentLocalGoodCertificates(
           concurrency,
@@ -947,7 +948,8 @@ public class TestSslInitializer {
 
     SslInitializer serverSslInitializer = serverOp.apply(new SslInitializer(sslEngineFactory, true, null));
     SslClientInitializer clientSslInitializer = new SslClientInitializer(sslEngineFactory);
-    ExecutorService sslExecutor = Executors.newSingleThreadExecutor();
+    ThreadPoolExecutor sslExecutor =
+        new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(10));
     try {
       socketGoodCertificates(
           serverSslInitializer.enableSslTaskExecutor(sslExecutor),

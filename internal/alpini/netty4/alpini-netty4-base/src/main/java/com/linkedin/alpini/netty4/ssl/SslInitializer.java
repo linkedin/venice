@@ -36,12 +36,13 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
@@ -90,7 +91,8 @@ public class SslInitializer extends ChannelInitializer<Channel> {
   private final ChannelHandler _postHandshakeHandler;
   private boolean _resolveClient;
   private EventExecutorGroup _resolveExecutor;
-  private Executor _sslExecutor;
+  private ThreadPoolExecutor _sslExecutor;
+  private Consumer<Integer> _queuedTaskNumberRecorder;
   private int _resolveAttempts;
   private long _resolveBackOffMillis;
   private final Queue<ChannelPromise> _pendingHandshake = new ConcurrentLinkedQueue<>();
@@ -243,8 +245,13 @@ public class SslInitializer extends ChannelInitializer<Channel> {
    * @param executor Executor to perform SslHandler tasks
    * @return this
    */
-  public SslInitializer enableSslTaskExecutor(Executor executor) {
+  public SslInitializer enableSslTaskExecutor(ThreadPoolExecutor executor) {
+    return enableSslTaskExecutor(executor, (ignored) -> {});
+  }
+
+  public SslInitializer enableSslTaskExecutor(ThreadPoolExecutor executor, Consumer<Integer> queuedTaskNumberRecorder) {
     _sslExecutor = Objects.requireNonNull(executor);
+    _queuedTaskNumberRecorder = queuedTaskNumberRecorder;
     return this;
   }
 
@@ -399,6 +406,12 @@ public class SslInitializer extends ChannelInitializer<Channel> {
   @Override
   protected void initChannel(Channel ch) throws Exception {
     if (_sslEnabled) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("SSL enabled for channel: {}", ch.remoteAddress());
+      }
+      // Noticed that SSL handshake task is not submitted yet, but here is the beginning of SSL initialization for each
+      // request
+      _queuedTaskNumberRecorder.accept(_sslExecutor.getQueue().size());
       class SslDetect extends ByteToMessageDecoder implements Callable<String>, FutureListener<String> {
         private ChannelHandlerContext _channelHandlerContext;
         private ChannelPromise _resolvePromise;
