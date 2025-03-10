@@ -635,10 +635,7 @@ public class RouterServer extends AbstractVeniceService {
         .enableRetryRequestAlwaysUseADifferentHost(true)
         .build();
 
-    SecurityStats securityStats = new SecurityStats(
-        this.metricsRepository,
-        "security",
-        secureRouter != null ? () -> secureRouter.getConnectedCount() : () -> 0);
+    SecurityStats securityStats = new SecurityStats(this.metricsRepository, "security");
     RouterThrottleStats routerThrottleStats = new RouterThrottleStats(this.metricsRepository, "router_throttler_stats");
     routerEarlyThrottler = new EventThrottler(
         config.getMaxRouterReadCapacityCu(),
@@ -664,6 +661,7 @@ public class RouterServer extends AbstractVeniceService {
               .bossPoolBuilder(EventLoopGroup.class, ignored -> serverEventLoopGroup)
               .ioWorkerPoolBuilder(EventLoopGroup.class, ignored -> workerEventLoopGroup)
               .connectionLimit(config.getConnectionLimit())
+              .connectionCountRecorder(securityStats::recordLiveConnectionCount)
               .timeoutProcessor(timeoutProcessor)
               .beforeHttpRequestHandler(ChannelPipeline.class, (pipeline) -> {
                 pipeline.addLast(
@@ -763,6 +761,7 @@ public class RouterServer extends AbstractVeniceService {
         .bossPoolBuilder(EventLoopGroup.class, ignored -> serverEventLoopGroup)
         .ioWorkerPoolBuilder(EventLoopGroup.class, ignored -> workerEventLoopGroup)
         .connectionLimit(config.getConnectionLimit())
+        .connectionCountRecorder(securityStats::recordLiveConnectionCount)
         .timeoutProcessor(timeoutProcessor)
         .beforeHttpServerCodec(ChannelPipeline.class, sslFactory.isPresent() ? addSslInitializer : noop) // Compare once
                                                                                                          // per router.

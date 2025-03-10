@@ -15,8 +15,8 @@ import io.netty.handler.codec.http.HttpVersion;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.function.Consumer;
 import java.util.function.IntSupplier;
-import javax.annotation.Nonnegative;
 import javax.annotation.Nonnull;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -50,17 +50,16 @@ public class ConnectionControlHandler extends ConnectionLimitHandler {
   private final Semaphore _activeSemaphore = new Semaphore(1);
   private final Semaphore _inactiveSemaphore = new Semaphore(1);
 
-  public ConnectionControlHandler(@Nonnegative int connectionLimit) {
-    this(() -> connectionLimit);
-  }
-
-  public ConnectionControlHandler(@Nonnull IntSupplier connectionLimit) {
-    super(connectionLimit);
+  public ConnectionControlHandler(
+      @Nonnull IntSupplier connectionLimit,
+      @Nonnull Consumer<Integer> connectionCountRecorder) {
+    super(connectionLimit, connectionCountRecorder);
   }
 
   @Override
   public void channelActive(ChannelHandlerContext ctx) throws Exception {
     _activeCount.increment();
+    _connectionCountRecorder.accept(getConnectedCount());
 
     Channel parent = ctx.channel().parent();
     if (parent != null && _activeSemaphore.tryAcquire()) {
@@ -91,6 +90,7 @@ public class ConnectionControlHandler extends ConnectionLimitHandler {
   @Override
   public void channelInactive(ChannelHandlerContext ctx) throws Exception {
     _inactiveCount.increment();
+    _connectionCountRecorder.accept(getConnectedCount());
 
     Channel parent = ctx.channel().parent();
     if (parent != null && _inactiveSemaphore.tryAcquire()) {
