@@ -203,23 +203,23 @@ public class TestDeferredVersionSwap {
   @Test(timeOut = TEST_TIMEOUT)
   public void testDeferredVersionSwapWithHybridStore() throws IOException {
     File inputDir = getTempDataDirectory();
-    TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100, 100);
+    TestWriteUtils.writeSimpleAvroFileWithIntToIntSchema(inputDir, 10);
     // Setup job properties
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("testDeferredVersionSwapWithHybridStore");
     Properties props =
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
-    String keySchemaStr = "\"string\"";
+    String keySchemaStr = "\"int\"";
+    String valueSchemaStr = "\"int\"";
     UpdateStoreQueryParams storeParams = new UpdateStoreQueryParams().setUnusedSchemaDeletionEnabled(true)
         .setHybridOffsetLagThreshold(TEST_TIMEOUT)
         .setHybridRewindSeconds(2L)
         .setActiveActiveReplicationEnabled(true)
-        .setIncrementalPushEnabled(true)
         .setTargetRegionSwapWaitTime(1);
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
-      createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, NAME_RECORD_V3_SCHEMA.toString(), props, storeParams).close();
+      createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, valueSchemaStr, props, storeParams).close();
 
       // Start push job with target region push enabled
       props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);

@@ -1015,6 +1015,26 @@ public class VenicePushJobTest {
     }
   }
 
+  @Test
+  public void testTargetedRegionPushWithDeferredSwapConfigValidation() throws Exception {
+    Properties props = getVpjRequiredProperties();
+    props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, false);
+    props.put(TARGETED_REGION_PUSH_LIST, "dc-0");
+    try (VenicePushJob pushJob = new VenicePushJob(PUSH_JOB_ID, props)) {
+      fail("Test should fail, but doesn't.");
+    } catch (VeniceException e) {
+      assertEquals(e.getMessage(), "Targeted region push list is only supported when targeted region push is enabled");
+    }
+
+    props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+    props.put(INCREMENTAL_PUSH, true);
+    try (VenicePushJob pushJob = new VenicePushJob(PUSH_JOB_ID, props)) {
+      fail("Test should fail, but doesn't.");
+    } catch (VeniceException e) {
+      assertEquals(e.getMessage(), "Incremental push is not supported while using targeted region push mode");
+    }
+  }
+
   private SchemaResponse getKeySchemaResponse() {
     SchemaResponse response = new SchemaResponse();
     response.setId(1);
