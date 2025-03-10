@@ -1,6 +1,5 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import org.apache.logging.log4j.LogManager;
@@ -58,15 +57,16 @@ public class PartitionReplicaIngestionContext {
     return workloadType;
   }
 
-  public static WorkloadType getWorkloadType(boolean isActiveActiveReplicationEnabled, Store store) {
-    if (store.isWriteComputationEnabled() || isActiveActiveReplicationEnabled) {
+  public static WorkloadType determineWorkloadType(
+      boolean isActiveActiveReplicationEnabled,
+      boolean isWriteComputationEnabled) {
+    if (isWriteComputationEnabled || isActiveActiveReplicationEnabled) {
       return WorkloadType.AA_OR_WRITE_COMPUTE;
     }
     return WorkloadType.NON_AA_OR_WRITE_COMPUTE;
   }
 
-  public static VersionRole getStoreVersionRole(int versionNumber, Store store) {
-    int currentVersionNumber = store.getCurrentVersion();
+  public static VersionRole determineStoreVersionRole(int versionNumber, int currentVersionNumber) {
     if (currentVersionNumber < versionNumber) {
       return VersionRole.FUTURE;
     }

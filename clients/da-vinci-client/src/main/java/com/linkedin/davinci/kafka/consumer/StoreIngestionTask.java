@@ -218,7 +218,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final PubSubTopic realTimeTopic;
   protected final PubSubTopic separateRealTimeTopic;
   protected final String storeName;
+  protected final boolean isSystemStore;
   private final boolean isUserSystemStore;
+
   protected final int versionNumber;
   protected final ReadOnlySchemaRepository schemaRepository;
   protected final ReadOnlyStoreRepository storeRepository;
@@ -404,6 +406,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.versionTopic = pubSubTopicRepository.getTopic(kafkaVersionTopic);
     this.storeName = versionTopic.getStoreName();
     this.isUserSystemStore = VeniceSystemStoreUtils.isUserSystemStore(storeName);
+    this.isSystemStore = VeniceSystemStoreUtils.isSystemStore(storeName);
     this.realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(version));
     this.separateRealTimeTopic = version.isSeparateRealTimeTopicEnabled()
         ? pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(storeName))
@@ -552,8 +555,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         this::pauseConsumption,
         this::resumeConsumption);
     this.storeRepository.registerStoreDataChangedListener(this.storageUtilizationManager);
-    this.versionRole = PartitionReplicaIngestionContext.getStoreVersionRole(versionNumber, store);
-    this.workloadType = PartitionReplicaIngestionContext.getWorkloadType(isActiveActiveReplicationEnabled, store);
+    this.versionRole =
+        PartitionReplicaIngestionContext.determineStoreVersionRole(versionNumber, store.getCurrentVersion());
+    this.workloadType = PartitionReplicaIngestionContext
+        .determineWorkloadType(isActiveActiveReplicationEnabled, isWriteComputationEnabled);
     this.kafkaClusterUrlResolver = serverConfig.getKafkaClusterUrlResolver();
     Object2IntMap<String> kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
     this.localKafkaClusterId = kafkaClusterUrlToIdMap.getOrDefault(localKafkaServer, Integer.MIN_VALUE);
@@ -1581,35 +1586,41 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void refreshIngestionContextIfChanged(Store store) throws InterruptedException {
-    if (serverConfig.isResubscriptionTriggeredByVersionIngestionContextChangeEnabled() && isHybridMode()
-        && !isUserSystemStore) {
-      PartitionReplicaIngestionContext.VersionRole newVersionRole =
-          PartitionReplicaIngestionContext.getStoreVersionRole(versionNumber, store);
-      PartitionReplicaIngestionContext.WorkloadType newWorkloadType =
-          PartitionReplicaIngestionContext.getWorkloadType(isActiveActiveReplicationEnabled, store);
-      if (!newVersionRole.equals(versionRole) || !newWorkloadType.equals(workloadType)) {
-        // If the store having no current version, we do not need to do resubscribe.
-        if (store.getCurrentVersion() == Store.NON_EXISTING_VERSION) {
-          return;
-        }
-        LOGGER.info(
-            "Trigger for version topic: {} due to  Previous: version role: {}, workload type: {} "
-                + "changed to New: version role: {}, workload type: {}",
-            versionTopic,
-            versionRole,
-            workloadType,
-            newVersionRole,
-            newWorkloadType);
-        versionRole = newVersionRole;
-        workloadType = newWorkloadType;
-        try {
-          resubscribeForAllPartitions();
-        } catch (Exception e) {
-          LOGGER.error("Error happened during resubscription when store version ingestion role changed.", e);
-          hostLevelIngestionStats.recordResubscriptionFailure();
-          throw e;
-        }
-      }
+    if (!serverConfig.isResubscriptionTriggeredByVersionIngestionContextChangeEnabled() || !isHybridMode()
+        || isSystemStore) {
+      return;
+    }
+    int currentVersionNumber = store.getCurrentVersion();
+    // If the store having no current version, we do not need to resubscribe.
+    if (currentVersionNumber == Store.NON_EXISTING_VERSION) {
+      return;
+    }
+
+    boolean isWriteComputeEnabled = store.isWriteComputationEnabled();
+    PartitionReplicaIngestionContext.VersionRole newVersionRole =
+        PartitionReplicaIngestionContext.determineStoreVersionRole(versionNumber, currentVersionNumber);
+    PartitionReplicaIngestionContext.WorkloadType newWorkloadType =
+        PartitionReplicaIngestionContext.determineWorkloadType(isActiveActiveReplicationEnabled, isWriteComputeEnabled);
+    if (newVersionRole.equals(versionRole) && newWorkloadType.equals(workloadType)) {
+      return;
+    }
+
+    LOGGER.info(
+        "Trigger for version topic: {} due to Previous: version role: {}, workload type: {} "
+            + "changed to New: version role: {}, workload type: {}",
+        versionTopic,
+        versionRole,
+        workloadType,
+        newVersionRole,
+        newWorkloadType);
+    versionRole = newVersionRole;
+    workloadType = newWorkloadType;
+    try {
+      resubscribeForAllPartitions();
+    } catch (Exception e) {
+      LOGGER.error("Error happened during resubscription when store version ingestion role changed.", e);
+      hostLevelIngestionStats.recordResubscriptionFailure();
+      throw e;
     }
   }
 
