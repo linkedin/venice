@@ -201,7 +201,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           Version.composeKafkaTopic(storeName, 0),
           rocksDBBufferVeniceProperties,
           PersistenceType.ROCKS_DB);
-      this.chunkAssembler = new RocksDBChunkAssembler(rocksDBStorageEngineFactory.getStorageEngine(storeVersionConfig));
+      this.chunkAssembler = new RocksDBChunkAssembler(
+          rocksDBStorageEngineFactory.getStorageEngine(storeVersionConfig),
+          changelogClientConfig.shouldSkipFailedToAssembleRecords());
     }
 
     this.d2ControllerClient = changelogClientConfig.getD2ControllerClient();

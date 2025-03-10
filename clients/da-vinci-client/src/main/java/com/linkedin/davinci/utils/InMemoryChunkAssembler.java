@@ -17,7 +17,7 @@ public class InMemoryChunkAssembler extends ChunkAssembler {
   // to assemble them. So we rely on the simpler and concrete implementation as opposed to the abstraction in order
   // to control and guarantee the behavior we're expecting.
   public InMemoryChunkAssembler(AbstractStorageEngine bufferStorageEngine) {
-    super(bufferStorageEngine);
+    super(bufferStorageEngine, true);
   }
 
   /**

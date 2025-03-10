@@ -6,6 +6,7 @@ import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -18,11 +19,13 @@ import org.apache.logging.log4j.Logger;
 public abstract class ChunkAssembler {
   private static final Logger LOGGER = LogManager.getLogger(ChunkAssembler.class);
   protected final AbstractStorageEngine bufferStorageEngine;
+  private final boolean skipFailedToAssembleRecords;
 
-  public ChunkAssembler(AbstractStorageEngine bufferStorageEngine) {
+  public ChunkAssembler(AbstractStorageEngine bufferStorageEngine, boolean skipFailedToAssembleRecords) {
     this.bufferStorageEngine = bufferStorageEngine;
     // disable noisy logs
     this.bufferStorageEngine.suppressLogs(true);
+    this.skipFailedToAssembleRecords = skipFailedToAssembleRecords;
   }
 
   /**
@@ -75,10 +78,17 @@ public abstract class ChunkAssembler {
         // can actually happen if the client seeks to the middle of a chunked record either by
         // only tailing the records or through direct offset management. This is ok, we just won't
         // return this record since this is a course grained approach we can drop it.
-        LOGGER.warn(
-            "Encountered error assembling chunked record, this can happen when seeking between chunked records. Skipping offset {} on topic {}",
-            recordOffset,
-            pubSubTopicPartition.getPubSubTopic().getName());
+        if (skipFailedToAssembleRecords) {
+          LOGGER.warn(
+              "Encountered error assembling chunked record, this can happen when seeking between chunked records. Skipping offset {} on topic {}",
+              recordOffset,
+              pubSubTopicPartition.getPubSubTopic().getName());
+        } else {
+          throw new VeniceException(
+              "Failed to assemble record with offset: " + recordOffset + " on topic: "
+                  + pubSubTopicPartition.getPubSubTopic().getName(),
+              ex);
+        }
       }
     } else {
       // this is a fully specified record, no need to buffer and assemble it, just return the valueBytes

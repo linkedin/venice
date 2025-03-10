@@ -16,8 +16,8 @@ import java.nio.ByteBuffer;
  * partition (VT partition) could be adopted as an improvement to clean up any leaked chunks due to producer failures.
  */
 public class RocksDBChunkAssembler extends ChunkAssembler {
-  public RocksDBChunkAssembler(AbstractStorageEngine bufferStorageEngine) {
-    super(bufferStorageEngine);
+  public RocksDBChunkAssembler(AbstractStorageEngine bufferStorageEngine, boolean skipFailedToAssembleRecords) {
+    super(bufferStorageEngine, skipFailedToAssembleRecords);
   }
 
   /**
