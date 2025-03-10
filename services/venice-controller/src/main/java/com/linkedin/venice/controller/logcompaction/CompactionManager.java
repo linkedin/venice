@@ -118,7 +118,7 @@ public class CompactionManager {
       RepushJobResponse response = repushOrchestrator.repush(repushJobRequest);
 
       if (response == null) {
-        String nullResponseMessage = "Repush job response is null for store: " + repushJobRequest.getStoreName();
+        String nullResponseMessage = "Repush job response is null for repush request: " + repushJobRequest.toString();
         LOGGER.error(nullResponseMessage);
         throw new VeniceException(nullResponseMessage);
       }

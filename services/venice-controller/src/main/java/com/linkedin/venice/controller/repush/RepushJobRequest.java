@@ -45,4 +45,9 @@ public class RepushJobRequest {
     params.put(SOURCE_REGION, sourceRegion);
     return params;
   }
+
+  public String toString() {
+    return "RepushJobRequest{" + "storeName='" + storeName + '\'' + ", sourceRegion='" + sourceRegion + '\''
+        + ", triggerSource='" + triggerSource + '\'' + '}';
+  }
 }
