@@ -1,11 +1,15 @@
 package com.linkedin.venice.controller.kafka.protocol.admin;
 
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.controller.kafka.protocol.serializer.NewSemanticUsageValidator;
+import com.linkedin.venice.utils.Pair;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.function.BiFunction;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -46,7 +50,22 @@ public class NewSemanticUsageValidatorTest {
     Schema targetSchema = AvroCompatibilityHelper.parse(targetSchemaJson);
     Schema.Field targetField = AvroCompatibilityHelper.createSchemaField("targetField", targetSchema, "", null);
 
-    assertTrue(new NewSemanticUsageValidator().hasSchemaTypeMismatch(currentField, targetField));
+    NewSemanticUsageValidator newSemanticUsageValidator = new NewSemanticUsageValidator();
+    BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> validator =
+        newSemanticUsageValidator.getSemanticValidator();
+    assertTrue(validator.apply(1, new Pair<>(currentField, targetField)));
+    assertTrue(newSemanticUsageValidator.getErrorMessage().contains("Type mismatch INT vs LONG"));
+
+    // nested type - nullable union
+    Schema nullSchema = Schema.create(Schema.Type.NULL);
+    Schema unionSchema = Schema.createUnion(Arrays.asList(currentSchema, nullSchema));
+
+    Schema.Field nullableField = AvroCompatibilityHelper.createSchemaField("nullableField", unionSchema, "", null);
+    Schema.Field intField = AvroCompatibilityHelper.createSchemaField("intField", currentSchema, "", 10);
+
+    newSemanticUsageValidator = new NewSemanticUsageValidator();
+    validator = newSemanticUsageValidator.getSemanticValidator();
+    assertFalse(validator.apply(0, new Pair<>(nullableField, intField)));
   }
 
   @Test
@@ -103,5 +122,54 @@ public class NewSemanticUsageValidatorTest {
     Schema.Field targetField2 = AvroCompatibilityHelper.createSchemaField("targetField2", unionSchema2, "", null);
 
     assertFalse(new NewSemanticUsageValidator().isNonDefaultValueUnion(0, currentField, targetField2));
+  }
+
+  @Test
+  public void testCastValueToSchema() {
+    Schema stringSchema = Schema.create(Schema.Type.STRING);
+    Schema intSchema = Schema.create(Schema.Type.INT);
+    Schema longSchema = Schema.create(Schema.Type.LONG);
+    Schema floatSchema = Schema.create(Schema.Type.FLOAT);
+    Schema doubleSchema = Schema.create(Schema.Type.DOUBLE);
+    Schema booleanSchema = Schema.create(Schema.Type.BOOLEAN);
+    Schema bytesSchema = Schema.create(Schema.Type.BYTES);
+    Schema arraySchema = Schema.createArray(Schema.create(Schema.Type.INT));
+    Schema mapSchema = Schema.createMap(Schema.create(Schema.Type.INT));
+    String schemaJson =
+        "{\"type\": \"record\", \"name\": \"nestedRecord\", \"fields\": [{\"name\": \"nestedField\", \"type\": \"int\"}]}";
+    Schema recordSchema = AvroCompatibilityHelper.parse(schemaJson);
+
+    // Cast to string
+    assertEquals(NewSemanticUsageValidator.castValueToSchema("10", stringSchema), "10");
+    // Cast to int
+    assertEquals(NewSemanticUsageValidator.castValueToSchema(10, intSchema), 10);
+    // Cast to long
+    assertEquals(NewSemanticUsageValidator.castValueToSchema(10L, longSchema), 10L);
+    // Cast to float
+    assertEquals(NewSemanticUsageValidator.castValueToSchema(10.0f, floatSchema), 10.0f);
+    // Cast to double
+    assertEquals(NewSemanticUsageValidator.castValueToSchema(10.0, doubleSchema), 10.0);
+    // Cast to boolean
+    assertEquals(NewSemanticUsageValidator.castValueToSchema(true, booleanSchema), true);
+    // Cast to bytes
+    assertEquals(NewSemanticUsageValidator.castValueToSchema("bytes".getBytes(), bytesSchema), "bytes".getBytes());
+    // Cast to array
+    assertEquals(
+        NewSemanticUsageValidator.castValueToSchema(Arrays.asList(1, 2, 3), arraySchema),
+        Arrays.asList(1, 2, 3));
+    // Cast to map
+    HashMap<String, Integer> map = new HashMap<String, Integer>();
+    map.put("key", 1);
+    assertEquals(NewSemanticUsageValidator.castValueToSchema(map, mapSchema), map);
+    // Cast to record
+    GenericRecord record = new GenericData.Record(recordSchema);
+    record.put("nestedField", 0);
+    assertEquals(NewSemanticUsageValidator.castValueToSchema(record, recordSchema), record);
+    // Wrong types
+    try {
+      NewSemanticUsageValidator.castValueToSchema(10, stringSchema);
+    } catch (IllegalArgumentException e) {
+      assertEquals(e.getMessage(), "Value 10 does not match schema type STRING");
+    }
   }
 }

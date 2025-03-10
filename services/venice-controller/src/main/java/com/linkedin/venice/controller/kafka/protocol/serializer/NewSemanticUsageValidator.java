@@ -34,8 +34,18 @@ public class NewSemanticUsageValidator {
         }
 
         if (targetField != null) {
-          if (hasSchemaTypeMismatch(currentField, targetField)) {
-            return true;
+          if (currentField.schema().getType() == Schema.Type.UNION
+              && targetField.schema().getType() != Schema.Type.UNION) {
+            return isNonDefaultValueUnion(object, currentField, targetField);
+          }
+
+          if (currentField.schema().getType() != targetField.schema().getType()) {
+            return returnTrueAndLogError(
+                String.format(
+                    "Field %s: Type mismatch %s vs %s",
+                    formatFieldName(currentField.name()),
+                    currentField.schema().getType(),
+                    targetField.schema().getType()));
           }
 
           if (AvroSchemaUtils.compareSchemaIgnoreFieldOrder(currentField.schema(), targetField.schema())) {
@@ -49,18 +59,6 @@ public class NewSemanticUsageValidator {
     return SEMANTIC_VALIDATOR;
   }
 
-  public boolean hasSchemaTypeMismatch(Schema.Field currentField, Schema.Field targetField) {
-    if (currentField.schema().getType() != targetField.schema().getType()) {
-      return returnTrueAndLogError(
-          String.format(
-              "Field %s: Type mismatch %s vs %s",
-              formatFieldName(currentField.name()),
-              currentField.schema().getType(),
-              targetField.schema().getType()));
-    }
-    return false;
-  }
-
   /**
    * General method to check if the value is non-default for the given field.
    * @param object the value to check
@@ -68,7 +66,7 @@ public class NewSemanticUsageValidator {
    * @param targetField the target field to check
    * @return true if the value is non-default, false otherwise
    */
-  private boolean isNonDefaultValue(Object object, Schema.Field currentField, Schema.Field targetField) {
+  public boolean isNonDefaultValue(Object object, Schema.Field currentField, Schema.Field targetField) {
     switch (currentField.schema().getType()) {
       case UNION:
         return isNonDefaultValueUnion(object, currentField, targetField);
@@ -83,10 +81,6 @@ public class NewSemanticUsageValidator {
       default:
         return isNonDefaultValueField(object, currentField);
     }
-  }
-
-  private static String formatFieldName(String fieldName) {
-    return fieldName.replace("_", ".");
   }
 
   /**
@@ -125,26 +119,10 @@ public class NewSemanticUsageValidator {
       return isNonDefaultValueField(object, currentField);
     }
 
-    List<Schema> subSchemas = currentField.schema().getTypes();
-
     // If the target field is not a union, check if the current field is a nullable union pair
     if (targetField.schema().getType() != Schema.Type.UNION) {
       if (AvroSchemaUtils.isNullableUnionPair(currentField.schema())) {
-        Schema nonNullSchema = subSchemas.get(0).getType() == Schema.Type.NULL ? subSchemas.get(1) : subSchemas.get(0);
-        // If the nested schema is not the same, fail the validation
-        if (nonNullSchema.getType() != targetField.schema().getType()) {
-          return returnTrueAndLogError(
-              String.format(
-                  "Field %s: Type mismatch %s vs %s",
-                  formatFieldName(currentField.name()),
-                  nonNullSchema.getType(),
-                  targetField.schema().getType()));
-        }
-        // If the nested schema is the same, check the value
-        return isNonDefaultValue(
-            object,
-            AvroCompatibilityHelper.createSchemaField(currentField.name(), nonNullSchema, "", null),
-            targetField);
+        return handleNullableUnion(object, currentField, targetField);
       }
 
       // Fail the validation since the target field is not a union and the current field is not a nullable union pair
@@ -186,6 +164,25 @@ public class NewSemanticUsageValidator {
             object));
   }
 
+  private boolean handleNullableUnion(Object object, Schema.Field currentField, Schema.Field targetField) {
+    List<Schema> subSchemas = currentField.schema().getTypes();
+    Schema nonNullSchema = subSchemas.get(0).getType() == Schema.Type.NULL ? subSchemas.get(1) : subSchemas.get(0);
+    // If the nested schema is not the same, fail the validation
+    if (nonNullSchema.getType() != targetField.schema().getType()) {
+      return returnTrueAndLogError(
+          String.format(
+              "Field %s: Type mismatch %s vs %s",
+              formatFieldName(currentField.name()),
+              nonNullSchema.getType(),
+              targetField.schema().getType()));
+    }
+    // If the nested schema is the same, check the value
+    return isNonDefaultValue(
+        object,
+        AvroCompatibilityHelper.createSchemaField(currentField.name(), nonNullSchema, "", null),
+        targetField);
+  }
+
   /**
    * Check if the value is non-default for the given field.
    * If the value is null, it is considered default.
@@ -225,6 +222,14 @@ public class NewSemanticUsageValidator {
   }
 
   /**
+   * Format the field name to replace "_" with ".". Reason is that we use "_" as a delimiter in the field name since "." is
+   * invalid character in field name.
+   */
+  private static String formatFieldName(String fieldName) {
+    return fieldName.replace("_", ".");
+  }
+
+  /**
    * Get the default value for the given type.
    * @param type the type
    * @return the default value if it is primitive type, else null for nested fields.
@@ -250,7 +255,13 @@ public class NewSemanticUsageValidator {
     }
   }
 
-  private static Object castValueToSchema(Object value, Schema schema) {
+  /**
+   * Cast the value to the given schema.
+   * @param value the value
+   * @param schema the schema
+   * @return the casted value
+   */
+  public static Object castValueToSchema(Object value, Schema schema) {
     if (value == null)
       return null;
 
@@ -286,10 +297,19 @@ public class NewSemanticUsageValidator {
     }
   }
 
+  /***
+   * Throw an exception for type mismatch.
+   * @param value the value
+   * @param schema the schema
+   * @return the exception
+   */
   private static Object throwTypeException(Object value, Schema schema) {
     throw new IllegalArgumentException("Value " + value + " does not match schema type: " + schema.getType());
   }
 
+  /**
+   * Get the error message.
+   */
   public String getErrorMessage() {
     return errorMessage.get();
   }
