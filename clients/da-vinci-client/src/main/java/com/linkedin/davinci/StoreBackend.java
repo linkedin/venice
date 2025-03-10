@@ -90,6 +90,7 @@ public class StoreBackend {
       version.delete();
     }
 
+    backend.getStoreRepository().unsubscribe(storeName);
   }
 
   public boolean isManaged() {
