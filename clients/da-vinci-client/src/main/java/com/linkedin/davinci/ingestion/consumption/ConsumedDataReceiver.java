@@ -31,6 +31,4 @@ public interface ConsumedDataReceiver<MESSAGE> {
   PubSubTopic destinationIdentifier();
 
   void notifyOfTopicDeletion(String topicName);
-
-  boolean isDataReceiverAlive();
 }

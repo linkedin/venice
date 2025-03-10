@@ -125,7 +125,7 @@ class ConsumptionTask implements Runnable {
           }
           beforePollingTimeStamp = System.currentTimeMillis();
           // N.B. cheap call
-          topicPartitionsToUnsub = cleaner.getTopicPartitionsToUnsubscribe(topicPartitionsToUnsub, dataReceiverMap);
+          topicPartitionsToUnsub = cleaner.getTopicPartitionsToUnsubscribe(topicPartitionsToUnsub);
           for (PubSubTopicPartition topicPartitionToUnSub: topicPartitionsToUnsub) {
             ConsumedDataReceiver<List<DefaultPubSubMessage>> dataReceiver =
                 dataReceiverMap.remove(topicPartitionToUnSub);

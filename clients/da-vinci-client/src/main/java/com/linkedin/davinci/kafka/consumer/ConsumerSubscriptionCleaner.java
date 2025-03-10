@@ -1,15 +1,10 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
-import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Time;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.IntConsumer;
@@ -45,7 +40,7 @@ public class ConsumerSubscriptionCleaner {
    * 2. The non-existing period lasts longer than {@link #nonExistingTopicCleanupDelayMS}, and the corresponding task
    *    will fail.
    */
-  private final Object2LongMap<PubSubTopic> nonExistingTopicDiscoverTimestampMap = new Object2LongOpenHashMap<>();
+  private final Object2LongMap<String> nonExistingTopicDiscoverTimestampMap = new Object2LongOpenHashMap<>();
 
   private final TopicExistenceChecker topicExistenceChecker;
 
@@ -88,8 +83,7 @@ public class ConsumerSubscriptionCleaner {
    * If yes, this function will remove the topic partition subscriptions to these non-existing topics.
    */
   Set<PubSubTopicPartition> getTopicPartitionsToUnsubscribe(
-      Set<PubSubTopicPartition> returnSetOfTopicPartitionsToUnsub,
-      Map<PubSubTopicPartition, ConsumedDataReceiver<List<DefaultPubSubMessage>>> dataReceiverMap) {
+      Set<PubSubTopicPartition> returnSetOfTopicPartitionsToUnsub) {
     returnSetOfTopicPartitionsToUnsub.clear();
     if (++pollTimesSinceLastSanitization < sanitizeTopicSubscriptionAfterPollTimes) {
       /**
@@ -108,58 +102,13 @@ public class ConsumerSubscriptionCleaner {
     if (currentAssignment.isEmpty()) {
       return returnSetOfTopicPartitionsToUnsub;
     }
-    Set<PubSubTopic> topicsToUnsubscribe = getNonExistingTopicsFromAssignment(currentAssignment);
-    Set<PubSubTopicPartition> topicPartitionsForNonAliveDataReceiver =
-        getTopicPartitionsForNonAliveDataReceiver(dataReceiverMap);
-
-    // Get all topic partition from assignments with non-exiting topics and non-alive data receivers to unsubscribe
-    Set<PubSubTopicPartition> newAssignment = new HashSet<>();
-    for (PubSubTopicPartition pubSubTopicPartition: currentAssignment) {
-      if (topicsToUnsubscribe.contains(pubSubTopicPartition.getPubSubTopic())
-          || topicPartitionsForNonAliveDataReceiver.contains(pubSubTopicPartition)) {
-        returnSetOfTopicPartitionsToUnsub.add(pubSubTopicPartition);
-      } else {
-        newAssignment.add(pubSubTopicPartition);
-      }
-    }
-    if (newAssignment.size() != currentAssignment.size()) {
-      batchUnsubscribeFunction.accept(returnSetOfTopicPartitionsToUnsub);
-    }
-    return returnSetOfTopicPartitionsToUnsub;
-  }
-
-  /**
-   * This function is used to find whether there is any subscription to the non-alive data receivers. As non-alive
-   * data receivers could not process polled records properly.
-   */
-  private Set<PubSubTopicPartition> getTopicPartitionsForNonAliveDataReceiver(
-      Map<PubSubTopicPartition, ConsumedDataReceiver<List<DefaultPubSubMessage>>> dataReceiverMap) {
-    Set<PubSubTopicPartition> returnSetOfTopicPartitionsToUnsub = new HashSet<>();
-    for (Map.Entry<PubSubTopicPartition, ConsumedDataReceiver<List<DefaultPubSubMessage>>> entry: dataReceiverMap
-        .entrySet()) {
-      if (!entry.getValue().isDataReceiverAlive()) {
-        returnSetOfTopicPartitionsToUnsub.add(entry.getKey());
-        LOGGER.warn(
-            "Detected the non-alive data receiver for data receiver of: {} for: {}",
-            entry.getValue().destinationIdentifier(),
-            entry.getKey());
-      }
-    }
-    return returnSetOfTopicPartitionsToUnsub;
-  }
-
-  /**
-   * This function is used to detect whether there is any subscription to the non-existing topics lasting for a specific
-   * time. If yes, this function will record the these long-lasting non-existing topics and return to be subscribed.
-   */
-  private Set<PubSubTopic> getNonExistingTopicsFromAssignment(Set<PubSubTopicPartition> currentAssignment) {
-    Set<PubSubTopic> nonExistingTopics = new HashSet<>();
+    Set<String> nonExistingTopics = new HashSet<>();
     long currentTimestamp = time.getMilliseconds();
     for (PubSubTopicPartition pubSubTopicPartition: currentAssignment) {
-      PubSubTopic topic = pubSubTopicPartition.getPubSubTopic();
-      boolean isExistingTopic = topicExistenceChecker.checkTopicExists(topic.getName());
+      String topic = pubSubTopicPartition.getPubSubTopic().getName();
+      boolean isExistingTopic = topicExistenceChecker.checkTopicExists(topic);
       if (!isExistingTopic) {
-        nonExistingTopics.add(pubSubTopicPartition.getPubSubTopic());
+        nonExistingTopics.add(topic);
       } else {
         /**
          * Check whether we should remove any topic from {@link #nonExistingTopicDiscoverTimestampMap} detected previously.
@@ -176,11 +125,10 @@ public class ConsumerSubscriptionCleaner {
         }
       }
     }
-
-    Set<PubSubTopic> topicsToUnsubscribe = new HashSet<>(nonExistingTopics);
+    Set<String> topicsToUnsubscribe = new HashSet<>(nonExistingTopics);
     if (!nonExistingTopics.isEmpty()) {
       LOGGER.warn("Detected the following non-existing topics: {}", nonExistingTopics);
-      for (PubSubTopic topic: nonExistingTopics) {
+      for (String topic: nonExistingTopics) {
         long firstDetectedTimestamp = nonExistingTopicDiscoverTimestampMap.getLong(topic);
         if (firstDetectedTimestamp == nonExistingTopicDiscoverTimestampMap.defaultReturnValue()) {
           // The first time to detect this non-existing topic.
@@ -205,8 +153,23 @@ public class ConsumerSubscriptionCleaner {
         }
       }
     }
+
     recordNumberOfTopicsToUnsub.accept(topicsToUnsubscribe.size());
-    return topicsToUnsubscribe;
+
+    // Get the current subscription for this topic and unsubscribe them
+    Set<PubSubTopicPartition> newAssignment = new HashSet<>();
+    for (PubSubTopicPartition pubSubTopicPartition: currentAssignment) {
+      if (topicsToUnsubscribe.contains(pubSubTopicPartition.getPubSubTopic().getName())) {
+        returnSetOfTopicPartitionsToUnsub.add(pubSubTopicPartition);
+      } else {
+        newAssignment.add(pubSubTopicPartition);
+      }
+    }
+    if (newAssignment.size() != currentAssignment.size()) {
+      batchUnsubscribeFunction.accept(returnSetOfTopicPartitionsToUnsub);
+    }
+
+    return returnSetOfTopicPartitionsToUnsub;
   }
 
   void unsubscribe(Set<PubSubTopicPartition> toRemove) {
