@@ -487,7 +487,10 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
     Metric maxThreadNumber = reporter.query(".Venice_L/F_ST_thread_pool--max_thread_number.LambdaStat");
     Assert.assertNotNull(maxThreadNumber);
     Assert.assertTrue(maxThreadNumber.value() > 0);
-    Metric queuedTaskNumber = reporter.query(".Venice_L/F_ST_thread_pool--queued_task_number.LambdaStat");
+    Metric queuedTaskNumberGauge = reporter.query(".Venice_L/F_ST_thread_pool--queued_task_number_gauge.LambdaStat");
+    Assert.assertNotNull(queuedTaskNumberGauge);
+    Assert.assertTrue(queuedTaskNumberGauge.value() >= 0);
+    Metric queuedTaskNumber = reporter.query(".Venice_L/F_ST_thread_pool--queued_task_number.Avg");
     Assert.assertNotNull(queuedTaskNumber);
     Assert.assertTrue(queuedTaskNumber.value() >= 0);
   }
