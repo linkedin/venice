@@ -1,13 +1,14 @@
 package com.linkedin.venice.controller.kafka.protocol.serializer;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.Pair;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.BiFunction;
+import java.util.stream.Collectors;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -23,7 +24,7 @@ import org.apache.avro.generic.GenericRecord;
 public class NewSemanticUsageValidator {
   private static final ThreadLocal<String> errorMessage = ThreadLocal.withInitial(() -> "");
 
-  private static final BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> SEMANTIC_VALIDATOR =
+  private final BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> SEMANTIC_VALIDATOR =
       (object, schemasPair) -> {
         Schema.Field currentField = schemasPair.getFirst();
         Schema.Field targetField = schemasPair.getSecond();
@@ -41,52 +42,46 @@ public class NewSemanticUsageValidator {
             return false;
           }
         }
-        return checkSchemaSpecificCases(object, currentField, targetField);
+        return isNonDefaultValue(object, currentField, targetField);
       };
 
   public BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> getSemanticValidator() {
     return SEMANTIC_VALIDATOR;
   }
 
-  private static boolean hasSchemaTypeMismatch(Schema.Field currentField, Schema.Field targetField) {
+  public boolean hasSchemaTypeMismatch(Schema.Field currentField, Schema.Field targetField) {
     if (currentField.schema().getType() != targetField.schema().getType()) {
-      errorMessage.set(
+      return returnTrueAndLogError(
           String.format(
-              "Field " + formatFieldName(currentField.name()) + ": Type mismatch %s vs %s",
+              "Field %s: Type mismatch %s vs %s",
+              formatFieldName(currentField.name()),
               currentField.schema().getType(),
               targetField.schema().getType()));
-      return true;
     }
     return false;
   }
 
-  private static boolean checkSchemaSpecificCases(Object object, Schema.Field currentField, Schema.Field targetField) {
+  /**
+   * General method to check if the value is non-default for the given field.
+   * @param object the value to check
+   * @param currentField the field to check
+   * @param targetField the target field to check
+   * @return true if the value is non-default, false otherwise
+   */
+  private boolean isNonDefaultValue(Object object, Schema.Field currentField, Schema.Field targetField) {
     switch (currentField.schema().getType()) {
       case UNION:
-        for (Schema subSchema: currentField.schema().getTypes()) {
-          if (subSchema.getType() == Schema.Type.NULL) {
-            continue;
-          }
-
-          try {
-            object = castValueToSchema(object, subSchema);
-            return isNonDefaultValue(object, new Schema.Field(currentField.name(), subSchema, "", null));
-          } catch (IllegalArgumentException e) {
-            // Ignore and continue checking other subtypes
-          }
-        }
-        errorMessage.set("Field: " + formatFieldName(currentField.name()) + " has an incompatible union type");
-        return true;
+        return isNonDefaultValueUnion(object, currentField, targetField);
       case ENUM:
         return isNewEnumValue(object, currentField, targetField);
       case FIXED:
         if (currentField.schema().getFixedSize() != targetField.schema().getFixedSize()) {
-          errorMessage.set("Field: " + formatFieldName(currentField.name()) + " has different fixed size");
-          return true;
+          return returnTrueAndLogError(
+              String.format("Field %s: has different fixed size", formatFieldName(currentField.name())));
         }
         return false;
       default:
-        return isNonDefaultValue(object, currentField);
+        return isNonDefaultValueField(object, currentField);
     }
   }
 
@@ -94,26 +89,146 @@ public class NewSemanticUsageValidator {
     return fieldName.replace("_", ".");
   }
 
-  private static boolean isNewEnumValue(Object object, Schema.Field currentField, Schema.Field targetField) {
+  /**
+   * Check if the value is a new enum value.
+   * @param object the value to check
+   * @param currentField the field to check with enum type and its current symbols
+   * @param targetField the field to check with enum type and its target symbols
+   * @return true if the value is a new enum value, false otherwise
+   */
+  public boolean isNewEnumValue(Object object, Schema.Field currentField, Schema.Field targetField) {
     List<String> currentSymbols = currentField.schema().getEnumSymbols();
     List<String> targetSymbols = targetField.schema().getEnumSymbols();
     if (targetSymbols.stream().anyMatch(symbol -> !currentSymbols.contains(symbol) && symbol.equals(object))) {
-      errorMessage.set("Field: " + formatFieldName(currentField.name()) + " contains new enum value: " + object);
-      return true;
+      return returnTrueAndLogError(
+          String.format("Field %s contains new enum value: %s", formatFieldName(currentField.name()), object));
     }
     return false;
   }
 
-  private static boolean isNonDefaultValue(Object value, Schema.Field field) {
-    if (value == null)
+  /**
+   * Check if the value is non-default for the given union field.
+   * If the value is null, it is considered default.
+   * If targetField is not union, we expect the currentField to be a nullable union pair.
+   * If targetField is union, we expect to find the right schema for object in both union.
+   * @param object the value to check
+   * @param currentField the field to check with union type
+   * @param targetField the target field to check
+   * @return true if the value is non-default, false otherwise
+   */
+  public boolean isNonDefaultValueUnion(Object object, Schema.Field currentField, Schema.Field targetField) {
+    if (object == null) {
+      return false;
+    }
+
+    if (targetField == null) {
+      return isNonDefaultValueField(object, currentField);
+    }
+
+    List<Schema> subSchemas = currentField.schema().getTypes();
+
+    // If the target field is not a union, check if the current field is a nullable union pair
+    if (targetField.schema().getType() != Schema.Type.UNION) {
+      if (AvroSchemaUtils.isNullableUnionPair(currentField.schema())) {
+        Schema nonNullSchema = subSchemas.get(0).getType() == Schema.Type.NULL ? subSchemas.get(1) : subSchemas.get(0);
+        // If the nested schema is not the same, fail the validation
+        if (nonNullSchema.getType() != targetField.schema().getType()) {
+          return returnTrueAndLogError(
+              String.format(
+                  "Field %s: Type mismatch %s vs %s",
+                  formatFieldName(currentField.name()),
+                  nonNullSchema.getType(),
+                  targetField.schema().getType()));
+        }
+        // If the nested schema is the same, check the value
+        return isNonDefaultValue(
+            object,
+            AvroCompatibilityHelper.createSchemaField(currentField.name(), nonNullSchema, "", null),
+            targetField);
+      }
+
+      // Fail the validation since the target field is not a union and the current field is not a nullable union pair
+      return returnTrueAndLogError(
+          String.format(
+              "Field %s: Type mismatch %s vs %s",
+              formatFieldName(currentField.name()),
+              currentField.schema().getType(),
+              targetField.schema().getType()));
+    }
+
+    // Expect the target field to be a union
+    Map<String, Schema> targetSchemaMap =
+        targetField.schema().getTypes().stream().collect(Collectors.toMap(s -> s.getName(), s -> s));
+    for (Schema subSchema: currentField.schema().getTypes()) {
+      try {
+        object = castValueToSchema(object, subSchema);
+
+        if (targetSchemaMap.containsKey(subSchema.getName())) {
+          return isNonDefaultValue(
+              object,
+              AvroCompatibilityHelper.createSchemaField(currentField.name(), subSchema, "", null),
+              AvroCompatibilityHelper
+                  .createSchemaField(currentField.name(), targetSchemaMap.get(subSchema.getName()), "", null));
+        }
+
+        return isNonDefaultValue(
+            object,
+            AvroCompatibilityHelper.createSchemaField(currentField.name(), subSchema, "", null),
+            null);
+      } catch (IllegalArgumentException e) {
+        // Ignore and continue checking other subtypes
+      }
+    }
+    return returnTrueAndLogError(
+        String.format(
+            "Field %s: Cannot find the match schema for value %s from schema union",
+            formatFieldName(currentField.name()),
+            object));
+  }
+
+  /**
+   * Check if the value is non-default for the given field.
+   * If the value is null, it is considered default.
+   * Default value of each type are only applicable for non-nested fields.
+   * If the field is nested-field, the default value is always null.
+   *
+   * @param object: the value to check
+   * @param field: the field to check
+   * @return true if the value is non-default, false otherwise
+   */
+  public boolean isNonDefaultValueField(Object object, Schema.Field field) {
+    if (object == null)
       return false;
 
     Object fieldDefaultValue = AvroSchemaUtils.getFieldDefault(field);
-    Object defaultValue = getDefaultForType(field.schema().getType());
+    Object typeDefaultValue = getDefaultForType(field.schema().getType());
 
-    return compareObjectToDefaultValue(value, defaultValue, fieldDefaultValue, field.name());
+    if (!Objects.equals(object, typeDefaultValue) && !Objects.equals(object, fieldDefaultValue)) {
+      return returnTrueAndLogError(
+          String.format(
+              "Field: %s contains non-default value. Actual value: %s. Default value: %s or %s",
+              formatFieldName(field.name()),
+              object,
+              fieldDefaultValue,
+              typeDefaultValue));
+    }
+    return false;
   }
 
+  /**
+   * Return true and log the error message.
+   * @param message the error message
+   */
+  private boolean returnTrueAndLogError(String message) {
+    errorMessage.set(message);
+    return true;
+  }
+
+  /**
+   * Get the default value for the given type.
+   * @param type the type
+   * @return the default value if it is primitive type, else null for nested fields.
+   */
   private static Object getDefaultForType(Schema.Type type) {
     switch (type) {
       case STRING:
@@ -133,20 +248,6 @@ public class NewSemanticUsageValidator {
       default:
         return null;
     }
-  }
-
-  private static boolean compareObjectToDefaultValue(
-      Object object,
-      Object defaultValue,
-      Object fieldDefaultValue,
-      String fieldName) {
-    if (!Objects.equals(object, defaultValue) && !Objects.equals(object, fieldDefaultValue)) {
-      errorMessage.set(
-          "Field: " + formatFieldName(fieldName) + " contains non-default value. Actual value: " + object
-              + ". Default value: " + fieldDefaultValue + " or " + defaultValue);
-      return true;
-    }
-    return false;
   }
 
   private static Object castValueToSchema(Object value, Schema schema) {
@@ -170,7 +271,7 @@ public class NewSemanticUsageValidator {
         return schema.hasEnumSymbol(value.toString()) ? value.toString() : throwTypeException(value, schema);
       case FIXED:
         return (value instanceof byte[])
-            ? new GenericData.Fixed(schema, (byte[]) value)
+            ? AvroCompatibilityHelper.newFixed(schema, (byte[]) value)
             : throwTypeException(value, schema);
       case BYTES:
         return (value instanceof byte[]) ? value : throwTypeException(value, schema);

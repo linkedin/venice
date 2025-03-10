@@ -7,6 +7,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
+import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
@@ -212,15 +213,29 @@ public class SchemaDiffTraverser {
       String parentName,
       BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> validator) {
 
+    if (currentSchema.getType() != Schema.Type.UNION || targetSchema.getType() != Schema.Type.UNION) {
+      throw new IllegalArgumentException(
+          "The schema is not a union schema. Current schema type: " + currentSchema.getType() + ". Target schema type: "
+              + targetSchema.getType());
+    }
+
     String objectName = ((GenericRecord) object).getSchema().getName();
     String fieldPath = buildFieldPath(parentName, objectName);
 
-    Schema subCurrentSchema = getObjectSchemaFromUnion(objectName, currentSchema);
-    if (subCurrentSchema == null) {
-      throw new IllegalArgumentException("The object schema is not found in the union schema");
+    Map<String, Schema> currentSchemaMap =
+        currentSchema.getTypes().stream().collect(Collectors.toMap(s -> s.getName(), s -> s));
+    Map<String, Schema> targetSchemaMap =
+        targetSchema.getTypes().stream().collect(Collectors.toMap(s -> s.getName(), s -> s));
+
+    if (!currentSchemaMap.containsKey(objectName)) {
+      throw new IllegalArgumentException(
+          "The object schema is not found in the union schema. Available schemas: " + currentSchemaMap.keySet()
+              + ". Object name: " + objectName);
     }
 
-    Schema subTargetSchema = getObjectSchemaFromUnion(subCurrentSchema.getName(), targetSchema);
+    Schema subCurrentSchema = currentSchemaMap.get(objectName);
+    Schema subTargetSchema = targetSchemaMap.get(objectName);
+
     if (subTargetSchema == null) {
       return validate(validator, object, fieldPath, defaultValue, subCurrentSchema, null);
     } else {
@@ -248,8 +263,10 @@ public class SchemaDiffTraverser {
     return validator.apply(
         object,
         new Pair<>(
-            generateField(fieldName, currentSchema, fieldDefaultValue),
-            targetSchema == null ? null : generateField(fieldName, targetSchema, fieldDefaultValue)));
+            AvroCompatibilityHelper.createSchemaField(fieldName, currentSchema, "", fieldDefaultValue),
+            targetSchema == null
+                ? null
+                : AvroCompatibilityHelper.createSchemaField(fieldName, targetSchema, "", fieldDefaultValue)));
   }
 
   /**
@@ -262,26 +279,7 @@ public class SchemaDiffTraverser {
         .contains(schema.getType());
   }
 
-  /**
-   * Generate a field with the given name and schema
-   * @param name the name of the field
-   * @param schema the schema of the field
-   * @return the generated field
-   */
-  private static Schema.Field generateField(String name, Schema schema, Object defaultValue) {
-    return AvroCompatibilityHelper.createSchemaField(name, schema, "", defaultValue);
-  }
-
   private static String buildFieldPath(String parent, String field) {
     return parent.isEmpty() ? field : parent + "_" + field;
-  }
-
-  public static Schema getObjectSchemaFromUnion(String objectSchemaName, Schema unionSchema) {
-    for (Schema subSchema: unionSchema.getTypes()) {
-      if (subSchema.getName().equals(objectSchemaName)) {
-        return subSchema;
-      }
-    }
-    return null;
   }
 }
