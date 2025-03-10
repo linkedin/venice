@@ -11,6 +11,8 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLA
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY;
+import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
@@ -209,6 +211,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
         .put(changelogClientConfig.getConsumerProperties())
         .put(DATA_BASE_PATH, changelogClientConfig.getBootstrapFileSystemPath())
         .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false)
+        .put(PERSISTENCE_TYPE, ROCKS_DB)
         // Turning this off, so users don't subscribe to unwanted partitions automatically
         .put(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, false)
         .put(BLOB_TRANSFER_MANAGER_ENABLED, changelogClientConfig.isBlobTransferEnabled())
