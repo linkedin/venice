@@ -192,9 +192,12 @@ public class Router4<C extends Channel> implements Router.Builder, Router.Pipeli
     return this;
   }
 
+  /**
+   * Allow 0 limit to reject all connections as well as testing.
+   */
   @Override
   public Router.Builder connectionLimit(int connectionLimit) {
-    Preconditions.notLessThan(connectionLimit, 1, "connectionLimit");
+    Preconditions.notLessThan(connectionLimit, 0, "connectionLimit");
     return connectionLimit(() -> connectionLimit);
   }
 
