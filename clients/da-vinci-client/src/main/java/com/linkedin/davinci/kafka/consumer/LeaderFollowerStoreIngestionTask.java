@@ -212,6 +212,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriter;
   protected final Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriterForRealTime;
   protected final Int2ObjectMap<String> kafkaClusterIdToUrlMap;
+  protected final Map<String, byte[]> globalRtDivKeyBytesCache;
   private long dataRecoveryCompletionTimeLagThresholdInMs = 0;
 
   protected final Map<String, VeniceViewWriter> viewWriters;
@@ -389,6 +390,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           getHostLevelIngestionStats());
     });
     this.aaWCIngestionStorageLookupThreadPool = builder.getAaWCIngestionStorageLookupThreadPool();
+    this.globalRtDivKeyBytesCache = new VeniceConcurrentHashMap<>();
   }
 
   public static VeniceWriter<byte[], byte[], byte[]> constructVeniceWriter(
@@ -3568,6 +3570,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return GLOBAL_RT_DIV_KEY_PREFIX + brokerUrl;
   }
 
+  public byte[] getGlobalRtDivKeyBytes(String brokerUrl) {
+    return globalRtDivKeyBytesCache.computeIfAbsent(brokerUrl, url -> getGlobalRtDivKeyName(url).getBytes());
+  }
+
   /**
    * The leader produces GlobalRtDivState (RT DIV + latestOffset) to local kafka for the followers to consume.
    * Upon completion, the LeaderProducerCallback will enqueue the RT + VT DIV to the drainer.
@@ -3584,7 +3590,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       LeaderProducedRecordContext leaderProducedRecordContext) {
     final InternalAvroSpecificSerializer<GlobalRtDivState> serializer =
         AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer(); // TODO: can't be static because of state?
-    final byte[] keyBytes = getGlobalRtDivKeyName(brokerUrl).getBytes();
+    final byte[] keyBytes = getGlobalRtDivKeyBytes(brokerUrl);
     TopicType realTimeTopicType = TopicType.of(TopicType.REALTIME_TOPIC_TYPE, brokerUrl);
 
     // Snapshot the VT DIV + RT DIV (single broker URL) in preparation to be produced
@@ -3604,7 +3610,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             false,
             partition,
             true,
-            leaderMetadataWrapper,
+            DEFAULT_LEADER_METADATA_WRAPPER,
             APP_DEFAULT_LOGICAL_TS);
     divEnvelope.payloadUnion = new DivSnapshot(divClone, previousMessage.getOffset()); // contains both VT + RT DIV
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> divMessage = new ImmutablePubSubMessage<>(
