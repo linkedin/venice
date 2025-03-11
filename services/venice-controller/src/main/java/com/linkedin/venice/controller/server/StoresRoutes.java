@@ -38,6 +38,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_KAFKA_TOP
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ENABLE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.FUTURE_VERSION;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DEAD_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DELETABLE_STORE_TOPICS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_HEARTBEAT_TIMESTAMP_FROM_SYSTEM_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_INUSE_SCHEMA_IDS;
@@ -46,7 +47,6 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REPUSH_INFO;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STALE_STORES_IN_CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STORES_FOR_COMPACTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STORES_IN_CLUSTER;
-import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DEAD_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_STORE_PUSH_INFO;
 import static com.linkedin.venice.controllerapi.ControllerRoute.MIGRATE_STORE;
