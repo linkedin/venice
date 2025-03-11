@@ -335,6 +335,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private static final Logger LOGGER = LogManager.getLogger(VeniceHelixAdmin.class);
   private static final int RECORD_COUNT = 10;
+  public static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES = Collections.singletonList(Exception.class);
 
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final String controllerClusterName;
@@ -1751,7 +1752,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Duration.ofMillis(100),
         Duration.ofMillis(200),
         Duration.ofSeconds(10),
-        Collections.singletonList(Exception.class));
+        RETRY_FAILURE_TYPES);
     if (value == null) {
       return;
     }
@@ -1770,7 +1771,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Duration.ofMillis(100),
         Duration.ofMillis(200),
         Duration.ofSeconds(10),
-        Collections.singletonList(Exception.class));
+        RETRY_FAILURE_TYPES);
 
     // wait for kill message to be removed
     RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
@@ -1779,12 +1780,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             "Kill message still exists in participant store for store-version: " + versionTopicName + " in cluster: "
                 + clusterName);
       }
-    },
-        5,
-        Duration.ofMillis(100),
-        Duration.ofMillis(200),
-        Duration.ofSeconds(10),
-        Collections.singletonList(Exception.class));
+    }, 5, Duration.ofMillis(100), Duration.ofMillis(200), Duration.ofSeconds(10), RETRY_FAILURE_TYPES);
     LOGGER.info(
         "Spent: {}ms for kill message removal from participant store for store-version: {} in cluster: {}",
         System.currentTimeMillis() - startTs,
@@ -8677,7 +8673,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String destinationFabric,
       boolean copyAllVersionConfigs,
       Optional<Version> sourceFabricVersion) {
-    checkControllerLeadershipFor(clusterName);
+    RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
+        () -> checkControllerLeadershipFor(clusterName),
+        1,
+        Duration.ofMillis(100),
+        Duration.ofMillis(200),
+        Duration.ofSeconds(10),
+        RETRY_FAILURE_TYPES);
     checkCurrentFabricMatchesExpectedFabric(destinationFabric);
     if (!sourceFabricVersion.isPresent()) {
       throw new VeniceException("Source fabric version object is required for data recovery");
