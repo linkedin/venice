@@ -164,7 +164,14 @@ public class NewSemanticUsageValidator {
             object));
   }
 
-  private boolean handleNullableUnion(Object object, Schema.Field currentField, Schema.Field targetField) {
+  /**
+   * Check if the value is non-default for the given nullable union field.
+   * @param object the value to check
+   * @param currentField the field to check with nullable union type
+   * @param targetField the target field to check
+   * @return true if the value is non-default, false otherwise
+   */
+  public boolean handleNullableUnion(Object object, Schema.Field currentField, Schema.Field targetField) {
     List<Schema> subSchemas = currentField.schema().getTypes();
     Schema nonNullSchema = subSchemas.get(0).getType() == Schema.Type.NULL ? subSchemas.get(1) : subSchemas.get(0);
     // If the nested schema is not the same, fail the validation
@@ -304,7 +311,7 @@ public class NewSemanticUsageValidator {
    * @return the exception
    */
   private static Object throwTypeException(Object value, Schema schema) {
-    throw new IllegalArgumentException("Value " + value + " does not match schema type: " + schema.getType());
+    throw new IllegalArgumentException("Value " + value + " does not match schema type " + schema.getType());
   }
 
   /**

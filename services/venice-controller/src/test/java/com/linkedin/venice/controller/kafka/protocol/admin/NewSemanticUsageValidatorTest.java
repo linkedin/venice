@@ -102,29 +102,44 @@ public class NewSemanticUsageValidatorTest {
   @Test
   public void testIsNonDefaultValueUnion() {
     // Case 1: When current field is union, target field is not union
-    String schemaJson = "{\"name\": \"fieldName\", \"type\": \"int\", \"default\": 10}";
-    Schema IntSchema = AvroCompatibilityHelper.parse(schemaJson);
+    String intSchemaJson = "{\"name\": \"fieldName\", \"type\": \"int\", \"default\": 10}";
+    Schema IntSchema = AvroCompatibilityHelper.parse(intSchemaJson);
 
-    Schema nullSchema = Schema.create(Schema.Type.NULL);
-    Schema unionSchema = Schema.createUnion(Arrays.asList(IntSchema, nullSchema));
-
-    Schema.Field currentField = AvroCompatibilityHelper.createSchemaField("currentField", unionSchema, "", null);
-    Schema.Field targetField1 = AvroCompatibilityHelper.createSchemaField("targetField1", IntSchema, "", 10);
-    // Even though the value is the same as the default value of target field, it is still considered as non-default
-    // value
-    // for current field
-    assertTrue(new NewSemanticUsageValidator().isNonDefaultValueUnion(10, currentField, targetField1));
-
-    // Case 2: when current field is union, target field is union
     String longSchemaJson = "{\"name\": \"fieldName\", \"type\": \"long\"}";
     Schema LongSchema = AvroCompatibilityHelper.parse(longSchemaJson);
-    Schema unionSchema2 = Schema.createUnion(Arrays.asList(IntSchema, LongSchema));
-    Schema.Field targetField2 = AvroCompatibilityHelper.createSchemaField("targetField2", unionSchema2, "", null);
+
+    Schema nullSchema = Schema.create(Schema.Type.NULL);
+    Schema nullableUnionSchema = Schema.createUnion(Arrays.asList(IntSchema, nullSchema));
+
+    Schema.Field currentField =
+        AvroCompatibilityHelper.createSchemaField("currentField", nullableUnionSchema, "", null);
+    Schema.Field targetField1 = AvroCompatibilityHelper.createSchemaField("targetField1", IntSchema, "", 10);
+    // Even though the value is the same as the default value of target field, it is still considered as non-default
+    // value for current field
+    assertTrue(new NewSemanticUsageValidator().isNonDefaultValueUnion(10, currentField, targetField1));
+
+    NewSemanticUsageValidator newSemanticUsageValidator = new NewSemanticUsageValidator();
+    Schema.Field targetLongField = AvroCompatibilityHelper.createSchemaField("targetLongField", LongSchema, "", null);
+    assertTrue(newSemanticUsageValidator.isNonDefaultValueUnion(10, currentField, targetLongField));
+    assertTrue(newSemanticUsageValidator.getErrorMessage().contains("Type mismatch INT vs LONG"));
+
+    // Case 2: when current field is union, target field is union
+    Schema unionSchema = Schema.createUnion(Arrays.asList(IntSchema, LongSchema));
+    Schema.Field targetField2 = AvroCompatibilityHelper.createSchemaField("targetField2", unionSchema, "", null);
 
     assertFalse(new NewSemanticUsageValidator().isNonDefaultValueUnion(0, currentField, targetField2));
+
+    // Case 3: current field is union, target field is union, but value doesnt match any of the current field types
+    Schema.Field currentField3 = AvroCompatibilityHelper.createSchemaField("currentField3", unionSchema, "", null);
+    newSemanticUsageValidator = new NewSemanticUsageValidator();
+    assertTrue(newSemanticUsageValidator.isNonDefaultValueUnion("123", currentField3, targetField2));
+    assertTrue(
+        newSemanticUsageValidator.getErrorMessage()
+            .contains("Field currentField3: Cannot find the match schema for value 123 from schema union"));
   }
 
   @Test
+
   public void testCastValueToSchema() {
     Schema stringSchema = Schema.create(Schema.Type.STRING);
     Schema intSchema = Schema.create(Schema.Type.INT);
@@ -138,6 +153,8 @@ public class NewSemanticUsageValidatorTest {
     String schemaJson =
         "{\"type\": \"record\", \"name\": \"nestedRecord\", \"fields\": [{\"name\": \"nestedField\", \"type\": \"int\"}]}";
     Schema recordSchema = AvroCompatibilityHelper.parse(schemaJson);
+    Schema enumSchema = AvroCompatibilityHelper
+        .newEnumSchema("enum", "", "NewSemanticUsageValidatorTest", Arrays.asList("value1", "value2", "value3"), null);
 
     // Cast to string
     assertEquals(NewSemanticUsageValidator.castValueToSchema("10", stringSchema), "10");
@@ -165,11 +182,45 @@ public class NewSemanticUsageValidatorTest {
     GenericRecord record = new GenericData.Record(recordSchema);
     record.put("nestedField", 0);
     assertEquals(NewSemanticUsageValidator.castValueToSchema(record, recordSchema), record);
+    // Cast to enum
+    assertEquals(NewSemanticUsageValidator.castValueToSchema("value1", enumSchema), "value1");
+
+    try {
+      NewSemanticUsageValidator.castValueToSchema("10", enumSchema);
+    } catch (IllegalArgumentException e) {
+      assertEquals(e.getMessage(), "Value 10 does not match schema type ENUM");
+    }
+
     // Wrong types
     try {
       NewSemanticUsageValidator.castValueToSchema(10, stringSchema);
     } catch (IllegalArgumentException e) {
       assertEquals(e.getMessage(), "Value 10 does not match schema type STRING");
     }
+  }
+
+  @Test
+  public void testHandleNullableUnion() {
+    Schema nullSchema = Schema.create(Schema.Type.NULL);
+    Schema intSchema = Schema.create(Schema.Type.INT);
+    Schema unionSchema = Schema.createUnion(Arrays.asList(intSchema, nullSchema));
+    Schema.Field currentField = AvroCompatibilityHelper.createSchemaField("currentField", unionSchema, "", null);
+    Schema.Field targetField = AvroCompatibilityHelper.createSchemaField("targetField", intSchema, "", 10);
+
+    NewSemanticUsageValidator newSemanticUsageValidator = new NewSemanticUsageValidator();
+    BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> validator =
+        newSemanticUsageValidator.getSemanticValidator();
+    // Non default value
+    assertTrue(validator.apply(10, new Pair<>(currentField, targetField)));
+    assertTrue(newSemanticUsageValidator.getErrorMessage().contains("non-default value"));
+
+    // Default value
+    assertFalse(validator.apply(null, new Pair<>(currentField, targetField)));
+
+    // Different types
+    Schema longSchema = Schema.create(Schema.Type.LONG);
+    Schema.Field longField = AvroCompatibilityHelper.createSchemaField("longField", longSchema, "", null);
+    assertTrue(validator.apply(10, new Pair<>(currentField, longField)));
+    assertTrue(newSemanticUsageValidator.getErrorMessage().contains("Type mismatch INT vs LONG"));
   }
 }
