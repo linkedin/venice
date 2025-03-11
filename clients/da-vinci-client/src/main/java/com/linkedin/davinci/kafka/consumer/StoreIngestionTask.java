@@ -42,9 +42,11 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
+import com.linkedin.davinci.store.memory.InMemoryStorageEngine;
+import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.utils.ByteArrayKey;
-import com.linkedin.davinci.utils.ChunkAssembler;
+import com.linkedin.davinci.utils.InMemoryChunkAssembler;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
 import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.common.VeniceSystemStoreType;
@@ -219,7 +221,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final PubSubTopic realTimeTopic;
   protected final PubSubTopic separateRealTimeTopic;
   protected final String storeName;
+  protected final boolean isSystemStore;
   private final boolean isUserSystemStore;
+
   protected final int versionNumber;
   protected final ReadOnlySchemaRepository schemaRepository;
   protected final ReadOnlyStoreRepository storeRepository;
@@ -328,7 +332,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected final IngestionNotificationDispatcher ingestionNotificationDispatcher;
 
-  protected final ChunkAssembler chunkAssembler;
+  protected final InMemoryChunkAssembler chunkAssembler;
   private final Optional<ObjectCacheBackend> cacheBackend;
   private final Schema recordTransformerInputValueSchema;
   private final AvroGenericDeserializer recordTransformerKeyDeserializer;
@@ -405,6 +409,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.versionTopic = pubSubTopicRepository.getTopic(kafkaVersionTopic);
     this.storeName = versionTopic.getStoreName();
     this.isUserSystemStore = VeniceSystemStoreUtils.isUserSystemStore(storeName);
+    this.isSystemStore = VeniceSystemStoreUtils.isSystemStore(storeName);
     this.realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(version));
     this.separateRealTimeTopic = version.isSeparateRealTimeTopicEnabled()
         ? pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(storeName))
@@ -484,10 +489,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.ingestionNotificationDispatcher =
         new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion);
     this.missingSOPCheckExecutor.execute(() -> waitForStateVersion(kafkaVersionTopic));
-    this.chunkAssembler = new ChunkAssembler(storeName);
     this.cacheBackend = cacheBackend;
 
     if (recordTransformerConfig != null && recordTransformerConfig.getRecordTransformerFunction() != null) {
+      this.chunkAssembler = new InMemoryChunkAssembler(new InMemoryStorageEngine(storeName));
       Schema keySchema = schemaRepository.getKeySchema(storeName).getSchema();
       this.recordTransformerKeyDeserializer = new AvroGenericDeserializer(keySchema, keySchema);
       this.recordTransformerInputValueSchema = schemaRepository.getSupersetOrLatestValueSchema(storeName).getSchema();
@@ -529,6 +534,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       this.recordTransformerKeyDeserializer = null;
       this.recordTransformerInputValueSchema = null;
       this.recordTransformerDeserializersByPutSchemaId = null;
+      this.chunkAssembler = null;
     }
 
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
@@ -553,8 +559,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         this::pauseConsumption,
         this::resumeConsumption);
     this.storeRepository.registerStoreDataChangedListener(this.storageUtilizationManager);
-    this.versionRole = PartitionReplicaIngestionContext.getStoreVersionRole(versionTopic, store);
-    this.workloadType = PartitionReplicaIngestionContext.getWorkloadType(versionTopic, store);
+    this.versionRole =
+        PartitionReplicaIngestionContext.determineStoreVersionRole(versionNumber, store.getCurrentVersion());
+    this.workloadType = PartitionReplicaIngestionContext
+        .determineWorkloadType(isActiveActiveReplicationEnabled, isWriteComputationEnabled);
     this.kafkaClusterUrlResolver = serverConfig.getKafkaClusterUrlResolver();
     Object2IntMap<String> kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
     this.localKafkaClusterId = kafkaClusterUrlToIdMap.getOrDefault(localKafkaServer, Integer.MIN_VALUE);
@@ -1582,31 +1590,42 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     Thread.sleep(readCycleDelayMs);
   }
 
-  protected void updateIngestionRoleIfStoreChanged(Store store) throws InterruptedException {
+  protected void refreshIngestionContextIfChanged(Store store) throws InterruptedException {
+    if (!serverConfig.isResubscriptionTriggeredByVersionIngestionContextChangeEnabled() || !isHybridMode()
+        || isSystemStore) {
+      return;
+    }
+    int currentVersionNumber = store.getCurrentVersion();
+    // If the store having no current version, we do not need to resubscribe.
+    if (currentVersionNumber == Store.NON_EXISTING_VERSION) {
+      return;
+    }
+
+    boolean isWriteComputeEnabled = store.isWriteComputationEnabled();
     PartitionReplicaIngestionContext.VersionRole newVersionRole =
-        PartitionReplicaIngestionContext.getStoreVersionRole(versionTopic, store);
+        PartitionReplicaIngestionContext.determineStoreVersionRole(versionNumber, currentVersionNumber);
     PartitionReplicaIngestionContext.WorkloadType newWorkloadType =
-        PartitionReplicaIngestionContext.getWorkloadType(versionTopic, store);
-    if (serverConfig.isResubscriptionTriggeredByVersionIngestionContextChangeEnabled() && isHybridMode()) {
-      if (!newVersionRole.equals(versionRole) || !newWorkloadType.equals(workloadType)) {
-        LOGGER.info(
-            "Trigger for version topic: {} due to  Previous: version role: {}, workload type: {} "
-                + "changed to New: version role: {}, workload type: {}",
-            versionTopic,
-            versionRole,
-            workloadType,
-            newVersionRole,
-            newWorkloadType);
-        versionRole = newVersionRole;
-        workloadType = newWorkloadType;
-        try {
-          resubscribeForAllPartitions();
-        } catch (Exception e) {
-          LOGGER.error("Error happened during resubscription when store version ingestion role changed.", e);
-          hostLevelIngestionStats.recordResubscriptionFailure();
-          throw e;
-        }
-      }
+        PartitionReplicaIngestionContext.determineWorkloadType(isActiveActiveReplicationEnabled, isWriteComputeEnabled);
+    if (newVersionRole.equals(versionRole) && newWorkloadType.equals(workloadType)) {
+      return;
+    }
+
+    LOGGER.info(
+        "Trigger for version topic: {} due to Previous: version role: {}, workload type: {} "
+            + "changed to New: version role: {}, workload type: {}",
+        versionTopic,
+        versionRole,
+        workloadType,
+        newVersionRole,
+        newWorkloadType);
+    versionRole = newVersionRole;
+    workloadType = newWorkloadType;
+    try {
+      resubscribeForAllPartitions();
+    } catch (Exception e) {
+      LOGGER.error("Error happened during resubscription when store version ingestion role changed.", e);
+      hostLevelIngestionStats.recordResubscriptionFailure();
+      throw e;
     }
   }
 
@@ -1671,7 +1690,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       while (isRunning()) {
         Store store = storeRepository.getStoreOrThrow(storeName);
-        updateIngestionRoleIfStoreChanged(store);
+        refreshIngestionContextIfChanged(store);
         processConsumerActions(store);
         checkLongRunningTaskState();
         checkIngestionProgress(store);
@@ -3788,35 +3807,33 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           recordAssembledRecordSize(keyLen, put.getPutValue(), put.getReplicationMetadataPayload(), currentTimeMs);
         }
 
-        // Check if put.getSchemaId is positive, if not default to 1
-        // TODO: Write a test for chunked records... it does not seem right to transform negative schemas IDs into 1
-        int putSchemaId = put.getSchemaId() > 0 ? put.getSchemaId() : 1;
+        int writerSchemaId = put.getSchemaId();
 
         if (recordTransformer != null) {
           long recordTransformerStartTime = System.nanoTime();
-          ByteBuffer valueBytes = put.getPutValue();
-          ByteBuffer assembledObject = chunkAssembler.bufferAndAssembleRecord(
+          ByteBufferValueRecord<ByteBuffer> assembledRecord = chunkAssembler.bufferAndAssembleRecord(
               consumerRecord.getTopicPartition(),
-              putSchemaId,
+              put.getSchemaId(),
               keyBytes,
-              valueBytes,
+              put.getPutValue(),
               consumerRecord.getPosition().getNumericOffset(),
-              putSchemaId,
               compressor.get());
 
           // Current record is a chunk. We only write to the storage engine for fully assembled records
-          if (assembledObject == null) {
+          if (assembledRecord == null) {
             return 0;
           }
 
+          ByteBuffer assembledObject = assembledRecord.value();
+          writerSchemaId = assembledRecord.writerSchemaId();
+          final int readerSchemaId = writerSchemaId;
           Lazy<Object> lazyKey = Lazy.of(() -> this.recordTransformerKeyDeserializer.deserialize(keyBytes));
           Lazy<Object> lazyValue = Lazy.of(() -> {
             try {
               ByteBuffer decompressedAssembledObject = compressor.get().decompress(assembledObject);
-
               RecordDeserializer recordDeserializer =
-                  this.recordTransformerDeserializersByPutSchemaId.computeIfAbsent(putSchemaId, i -> {
-                    Schema valueSchema = schemaRepository.getValueSchema(storeName, putSchemaId).getSchema();
+                  this.recordTransformerDeserializersByPutSchemaId.computeIfAbsent(readerSchemaId, i -> {
+                    Schema valueSchema = schemaRepository.getValueSchema(storeName, readerSchemaId).getSchema();
                     if (this.recordTransformer.useUniformInputValueSchema()) {
                       return new AvroGenericDeserializer<>(valueSchema, this.recordTransformerInputValueSchema);
                     } else {
@@ -3850,11 +3867,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           ByteBuffer transformedBytes;
           if (transformerResult.getResult() == DaVinciRecordTransformerResult.Result.UNCHANGED) {
             // Use original value if the record wasn't transformed
-            transformedBytes = recordTransformer.prependSchemaIdToHeader(assembledObject, putSchemaId);
+            transformedBytes = recordTransformer.prependSchemaIdToHeader(assembledObject, writerSchemaId);
           } else {
             // Serialize and compress the new record if it was transformed
-            transformedBytes =
-                recordTransformer.prependSchemaIdToHeader(transformerResult.getValue(), putSchemaId, compressor.get());
+            transformedBytes = recordTransformer
+                .prependSchemaIdToHeader(transformerResult.getValue(), writerSchemaId, compressor.get());
           }
 
           put.putValue = transformedBytes;
@@ -3875,8 +3892,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
         // grab the positive schema id (actual value schema id) to be used in schema warm-up value schema id.
         // for hybrid use case in read compute store in future we need revisit this as we can have multiple schemas.
-        if (putSchemaId > 0) {
-          valueSchemaId = putSchemaId;
+        if (writerSchemaId > 0) {
+          valueSchemaId = writerSchemaId;
         }
         if (metricsEnabled && recordLevelMetricEnabled.get()) {
           hostLevelIngestionStats

@@ -1,17 +1,29 @@
 package com.linkedin.davinci.consumer;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
+import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_POS;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
 import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
 import com.linkedin.davinci.repository.ThinClientMetaStoreBasedRepository;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.SpecificRecordChunkingAdapter;
+import com.linkedin.davinci.store.memory.InMemoryStorageEngine;
+import com.linkedin.davinci.store.record.ByteBufferValueRecord;
+import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngineFactory;
 import com.linkedin.davinci.utils.ChunkAssembler;
+import com.linkedin.davinci.utils.InMemoryChunkAssembler;
+import com.linkedin.davinci.utils.RocksDBChunkAssembler;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
@@ -27,6 +39,7 @@ import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -49,10 +62,10 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.AvroSpecificStoreDeserializerCache;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.views.VeniceView;
 import java.io.IOException;
@@ -87,6 +100,7 @@ import org.apache.logging.log4j.Logger;
 public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceChangelogConsumerImpl.class);
   private static final int MAX_SUBSCRIBE_RETRIES = 5;
+  private static final String ROCKSDB_BUFFER_FOLDER = "rocksdb-chunk-buffer";
   protected long subscribeTime = Long.MAX_VALUE;
 
   protected static final VeniceCompressor NO_OP_COMPRESSOR = new NoopCompressor();
@@ -137,6 +151,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected final BasicConsumerStats changeCaptureStats;
   protected final HeartbeatReporterThread heartbeatReporterThread;
+  private final RocksDBStorageEngineFactory rocksDBStorageEngineFactory;
 
   public VeniceChangelogConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
@@ -153,9 +168,42 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     if (changelogClientConfig.getViewName() == null || changelogClientConfig.getViewName().isEmpty()
         || changelogClientConfig.isBeforeImageView()) {
       this.storeName = changelogClientConfig.getStoreName();
+      rocksDBStorageEngineFactory = null;
+      // The in memory storage engine only relies on the name of store and nothing else. We use an unversioned store
+      // name
+      // here in order to reduce confusion (as this storage engine can be used across version topics).
+      InMemoryStorageEngine inMemoryStorageEngine = new InMemoryStorageEngine(storeName);
+      this.chunkAssembler = new InMemoryChunkAssembler(inMemoryStorageEngine);
     } else {
       this.storeName =
           VeniceView.getViewStoreName(changelogClientConfig.getStoreName(), changelogClientConfig.getViewName());
+      Properties rocksDBBufferProperties = new Properties();
+      String rocksDBBufferPath = changelogClientConfig.getBootstrapFileSystemPath();
+      if (rocksDBBufferPath == null || rocksDBBufferPath.isEmpty()) {
+        throw new VeniceException("bootstrapFileSystemPath must be configured for consuming view store: " + storeName);
+      }
+      // Create a new folder in user provided path so if the path contains other important files we don't drop it.
+      rocksDBBufferProperties
+          .put(DATA_BASE_PATH, RocksDBUtils.composeStoreDbDir(rocksDBBufferPath, ROCKSDB_BUFFER_FOLDER));
+      // These properties are required to build a VeniceServerConfig but is never used by RocksDBStorageEngineFactory.
+      // Instead of setting these configs, we could refactor RocksDBStorageEngineFactory to take a more generic config.
+      rocksDBBufferProperties.put(CLUSTER_NAME, "");
+      rocksDBBufferProperties.put(ZOOKEEPER_ADDRESS, "");
+      rocksDBBufferProperties
+          .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, changelogClientConfig.getRocksDBBlockCacheSizeInBytes());
+      rocksDBBufferProperties
+          .put(KAFKA_BOOTSTRAP_SERVERS, changelogClientConfig.getConsumerProperties().get(KAFKA_BOOTSTRAP_SERVERS));
+      VeniceProperties rocksDBBufferVeniceProperties = new VeniceProperties(rocksDBBufferProperties);
+      VeniceServerConfig serverConfig = new VeniceServerConfig(rocksDBBufferVeniceProperties);
+      rocksDBStorageEngineFactory = new RocksDBStorageEngineFactory(serverConfig);
+      // Compose a view store version 0 for the RocksDBStorageEngine used for the RocksDBChunkAssembler.
+      VeniceStoreVersionConfig storeVersionConfig = new VeniceStoreVersionConfig(
+          Version.composeKafkaTopic(storeName, 0),
+          rocksDBBufferVeniceProperties,
+          PersistenceType.ROCKS_DB);
+      this.chunkAssembler = new RocksDBChunkAssembler(
+          rocksDBStorageEngineFactory.getStorageEngine(storeVersionConfig),
+          changelogClientConfig.shouldSkipFailedToAssembleRecords());
     }
 
     this.d2ControllerClient = changelogClientConfig.getD2ControllerClient();
@@ -172,7 +220,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     this.schemaReader = changelogClientConfig.getSchemaReader();
     Schema keySchema = schemaReader.getKeySchema();
     this.keyDeserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(keySchema, keySchema);
-    this.chunkAssembler = new ChunkAssembler(storeName);
     this.startTimestamp = System.currentTimeMillis();
     LOGGER.info("VeniceChangelogConsumer created at timestamp: {}", startTimestamp);
 
@@ -793,33 +840,47 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       partitionToDeleteMessageCount.computeIfAbsent(message.getPartition(), x -> new AtomicLong(0)).incrementAndGet();
     } else if (messageType.equals(MessageType.PUT)) {
       Put put = (Put) message.getValue().payloadUnion;
-      // Select appropriate deserializers and compressors
-      Lazy deserializerProvider;
+      // Select appropriate reader schema and compressors
+      RecordDeserializer deserializer = null;
       int readerSchemaId;
       VeniceCompressor compressor;
       if (pubSubTopicPartition.getPubSubTopic().isViewTopic() && changelogClientConfig.isBeforeImageView()) {
-        deserializerProvider = Lazy.of(() -> recordChangeDeserializer);
+        deserializer = recordChangeDeserializer;
         readerSchemaId = this.schemaReader.getLatestValueSchemaId();
         compressor = NO_OP_COMPRESSOR;
       } else {
-        deserializerProvider = Lazy.of(() -> storeDeserializerCache.getDeserializer(put.schemaId, put.schemaId));
+        // Use writer schema as the reader schema
         readerSchemaId = put.schemaId;
         compressor = compressorMap.get(pubSubTopicPartition.getPartitionNumber());
       }
 
-      assembledObject = chunkAssembler.bufferAndAssembleRecord(
+      ByteBufferValueRecord<ByteBuffer> assembledRecord = chunkAssembler.bufferAndAssembleRecord(
           pubSubTopicPartition,
           put.getSchemaId(),
           keyBytes,
           put.getPutValue(),
           message.getPosition().getNumericOffset(),
-          deserializerProvider,
-          readerSchemaId,
           compressor);
-      if (assembledObject == null) {
+      if (assembledRecord == null) {
         // bufferAndAssembleRecord may have only buffered records and not returned anything yet because
         // it's waiting for more input. In this case, just return an empty optional for now.
         return Optional.empty();
+      }
+      if (readerSchemaId < 0) {
+        // This was a chunk manifest and the actual writer schema needs to be retrieved
+        readerSchemaId = assembledRecord.writerSchemaId();
+      }
+      if (deserializer == null) {
+        // This is not before image view consumer, and we need to set the proper deserializer
+        deserializer = storeDeserializerCache.getDeserializer(readerSchemaId, readerSchemaId);
+      }
+      try {
+        assembledObject = deserializer.deserialize(compressor.decompress(assembledRecord.value()));
+      } catch (IOException e) {
+        throw new VeniceException(
+            "Failed to deserialize or decompress record consumed from topic: "
+                + pubSubTopicPartition.getPubSubTopic().getName(),
+            e);
       }
       try {
         assembledObject = processRecordBytes(
@@ -951,7 +1012,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             .put(upstreamPartition, versionSwap.getLocalHighWatermarks());
       }
       switchToNewTopic(newServingVersionTopic, topicSuffix, pubSubTopicPartition.getPartitionNumber());
-      chunkAssembler.clearInMemoryDB();
+      chunkAssembler.clearBuffer();
       return true;
     }
     return false;

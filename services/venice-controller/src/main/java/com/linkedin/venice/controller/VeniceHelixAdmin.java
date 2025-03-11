@@ -1164,9 +1164,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           // for RT topic block on deletion so that next create store does not see the lingering RT topic which could
           // have different partition count
           PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
-          truncateKafkaTopic(rtTopic.getName());
-          if (waitOnRTTopicDeletion && getTopicManager().containsTopic(rtTopic)) {
-            throw new VeniceRetriableException("Waiting for RT topic deletion for store: " + storeName);
+          // Some implementations of PubSubAdminAdapter may retry multiple times to get/update topic's config in order
+          // to truncate it. Because of this, `truncateKafkaTopic` may take long enough time to make `delete store`
+          // operation time out. Therefore, we check for the existence of RT topic before trying to truncate it.
+          // No known implementation of PubSubAdminAdapter does retries for `containsTopic`.
+          if (getTopicManager().containsTopic(rtTopic)) {
+            truncateKafkaTopic(rtTopic.getName());
+            if (waitOnRTTopicDeletion && getTopicManager().containsTopic(rtTopic)) {
+              throw new VeniceRetriableException("Waiting for RT topic deletion for store: " + storeName);
+            }
           }
         }
 

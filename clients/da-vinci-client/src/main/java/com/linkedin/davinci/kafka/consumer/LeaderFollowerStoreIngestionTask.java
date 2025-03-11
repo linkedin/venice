@@ -85,6 +85,7 @@ import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
@@ -117,8 +118,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
-import java.util.function.Function;
 import java.util.function.LongPredicate;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -347,7 +348,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       for (Map.Entry<String, VeniceViewWriter> viewWriter: viewWriters.entrySet()) {
         if (viewWriter.getValue() instanceof ChangeCaptureViewWriter) {
           tmpValueForHasChangeCaptureViewWriter = true;
-        } else if (viewWriter.getValue() instanceof MaterializedViewWriter) {
+        } else if (viewWriter.getValue().getViewWriterType() == VeniceViewWriter.ViewWriterType.MATERIALIZED_VIEW) {
           if (((MaterializedViewWriter) viewWriter.getValue()).isComplexVenicePartitioner()) {
             tmpValueForHasComplexVenicePartitioner = true;
           }
@@ -3399,13 +3400,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     // Write to views
     if (hasViewWriters()) {
       Put newPut = writeComputeResultWrapper.getNewPut();
-      // keys will be serialized with chunk suffix during pass-through mode in L/F NR if chunking is enabled
-      boolean isChunkedKey = isChunked() && !partitionConsumptionState.isEndOfPushReceived();
+      Map<String, Set<Integer>> viewPartitionMap = null;
+      if (!partitionConsumptionState.isEndOfPushReceived()) {
+        // NR pass-through records are expected to carry view partition map in the message header
+        viewPartitionMap = ViewUtils.extractViewPartitionMap(consumerRecord.getPubSubMessageHeaders());
+      }
       Lazy<GenericRecord> newValueProvider = writeComputeResultWrapper.getValueProvider();
       queueUpVersionTopicWritesWithViewWriters(
           partitionConsumptionState,
-          (viewWriter) -> viewWriter
-              .processRecord(newPut.putValue, keyBytes, newPut.schemaId, isChunkedKey, newValueProvider),
+          (viewWriter, viewPartitionSet) -> viewWriter
+              .processRecord(newPut.putValue, keyBytes, newPut.schemaId, viewPartitionSet, newValueProvider),
+          viewPartitionMap,
           produceToVersionTopic);
     } else {
       produceToVersionTopic.run();
@@ -3990,7 +3995,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected void queueUpVersionTopicWritesWithViewWriters(
       PartitionConsumptionState partitionConsumptionState,
-      Function<VeniceViewWriter, CompletableFuture<Void>> viewWriterRecordProcessor,
+      BiFunction<VeniceViewWriter, Set<Integer>, CompletableFuture<Void>> viewWriterRecordProcessor,
+      Map<String, Set<Integer>> viewPartitionMap,
       Runnable versionTopicWrite) {
     long preprocessingTime = System.currentTimeMillis();
     CompletableFuture<Void> currentVersionTopicWrite = new CompletableFuture<>();
@@ -3999,7 +4005,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     // The first future is for the previous write to VT
     viewWriterFutures[index++] = partitionConsumptionState.getLastVTProduceCallFuture();
     for (VeniceViewWriter writer: viewWriters.values()) {
-      viewWriterFutures[index++] = viewWriterRecordProcessor.apply(writer);
+      Set<Integer> viewPartitionSet = null;
+      if (viewPartitionMap != null && writer.getViewWriterType() == VeniceViewWriter.ViewWriterType.MATERIALIZED_VIEW) {
+        MaterializedViewWriter mvWriter = (MaterializedViewWriter) writer;
+        viewPartitionSet = viewPartitionMap.get(mvWriter.getViewName());
+        if (viewPartitionSet == null) {
+          throw new VeniceException("Unable to find view partition set for view: " + mvWriter.getViewName());
+        }
+      }
+      viewWriterFutures[index++] = viewWriterRecordProcessor.apply(writer, viewPartitionSet);
     }
     hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
     CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
