@@ -2723,10 +2723,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // No Op
   }
 
-  protected boolean shouldSendGlobalRtDiv(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record,
-      PartitionConsumptionState pcs,
-      String kafkaUrl) {
+  protected boolean shouldSendGlobalRtDiv(DefaultPubSubMessage record, PartitionConsumptionState pcs, String kafkaUrl) {
     if (!isGlobalRtDivEnabled()) {
       return false;
     }

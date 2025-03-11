@@ -1,6 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -48,6 +49,7 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -397,10 +399,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
     int partition = 1;
     long offset = 3L;
     long messageTime = 5;
-    PubSubMessage mockMessage = mock(PubSubMessage.class);
+    DefaultPubSubMessage mockMessage = mock(DefaultPubSubMessage.class);
     PubSubTopicPartition mockTopicPartition = mock(PubSubTopicPartition.class);
+    PubSubPosition position = mock(PubSubPosition.class);
     doReturn(partition).when(mockTopicPartition).getPartitionNumber();
-    doReturn(offset).when(mockMessage).getOffset();
+    doReturn(offset).when(position).getNumericOffset();
+    doReturn(position).when(mockMessage).getOffset();
     doReturn(mockTopicPartition).when(mockMessage).getTopicPartition();
     doReturn(messageTime).when(mockMessage).getPubSubMessageTime();
     VeniceWriter mockWriter = mock(VeniceWriter.class);
@@ -440,7 +444,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     // Verify the callback has DivSnapshot (VT + RT DIV)
     LeaderProducerCallback callback = callbackArgumentCaptor.getValue();
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> callbackPayload = callback.getSourceConsumerRecord();
+    DefaultPubSubMessage callbackPayload = callback.getSourceConsumerRecord();
     assertEquals(callbackPayload.getKey().getKey(), keyBytes);
     assertEquals(callbackPayload.getKey().getKeyHeaderByte(), MessageType.GLOBAL_RT_DIV.getKeyHeaderByte());
     assertEquals(callbackPayload.getValue().getMessageType(), MessageType.PUT.getValue());

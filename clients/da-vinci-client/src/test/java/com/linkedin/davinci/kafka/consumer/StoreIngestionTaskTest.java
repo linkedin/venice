@@ -5600,7 +5600,7 @@ public abstract class StoreIngestionTaskTest {
     doCallRealMethod().when(storeIngestionTask).shouldSendGlobalRtDiv(any(), any(), any());
     doReturn(isGlobalRtDivEnabled).when(storeIngestionTask).isGlobalRtDivEnabled();
     doReturn(1L).when(storeIngestionTask).getSyncBytesInterval(any()); // just needs to be greater than 0
-    PubSubMessage message = mock(PubSubMessage.class);
+    DefaultPubSubMessage message = mock(DefaultPubSubMessage.class);
     KafkaKey key = mock(KafkaKey.class);
     doReturn(false).when(key).isControlMessage();
     doReturn(key).when(message).getKey();

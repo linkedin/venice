@@ -2412,7 +2412,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
         if (isGlobalRtDivEnabled() && !consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()
             && msgType != MessageType.GLOBAL_RT_DIV) {
-          final long offset = consumerRecord.getOffset();
+          final long offset = consumerRecord.getPosition().getNumericOffset();
           getKafkaDataIntegrityValidatorForLeaders().updateLatestConsumedVtOffset(partition, offset);
         }
 
@@ -3581,7 +3581,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * @param previousMessage the last message validated and produced to kafka before this GlobalRtDiv will be produced
    */
   void sendGlobalRtDivMessage(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> previousMessage,
+      DefaultPubSubMessage previousMessage,
       PartitionConsumptionState partitionConsumptionState,
       int partition,
       String brokerUrl,
@@ -3599,7 +3599,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     // Create GlobalRtDivState (RT DIV + latestOffset) which will be serialized into a byte array
     ByteBuffer emptyBuffer = ByteBuffer.allocate(0);
-    GlobalRtDivState globalRtDiv = new GlobalRtDivState(brokerUrl, rtDiv, previousMessage.getOffset(), emptyBuffer);
+    final long offset = previousMessage.getPosition().getNumericOffset();
+    GlobalRtDivState globalRtDiv = new GlobalRtDivState(brokerUrl, rtDiv, offset, emptyBuffer);
 
     // Create PubSubMessage for the LeaderProducerCallback to enqueue the RT + VT DIV to the drainer
     KafkaKey divKey = new KafkaKey(MessageType.GLOBAL_RT_DIV, keyBytes);
@@ -3612,12 +3613,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             true,
             DEFAULT_LEADER_METADATA_WRAPPER,
             APP_DEFAULT_LOGICAL_TS);
-    divEnvelope.payloadUnion = new DivSnapshot(divClone, previousMessage.getOffset()); // contains both VT + RT DIV
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> divMessage = new ImmutablePubSubMessage<>(
+    divEnvelope.payloadUnion = new DivSnapshot(divClone, offset); // contains both VT + RT DIV
+    DefaultPubSubMessage divMessage = new ImmutablePubSubMessage(
         divKey,
         divEnvelope,
         previousMessage.getTopicPartition(),
-        previousMessage.getOffset(), // TODO: are these reused fields correct?
+        previousMessage.getPosition(), // TODO: are these reused fields correct?
         previousMessage.getPubSubMessageTime(),
         divKey.getHeapSize()); // TODO: should the envelope size also be estimated?
     LeaderProducerCallback divCallback = createProducerCallback(
