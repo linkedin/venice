@@ -174,9 +174,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private static final Logger LOGGER = LogManager.getLogger(StoreIngestionTask.class);
 
   private static final String CONSUMER_TASK_ID_FORMAT = "SIT-%s";
-  public static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES =
+  private static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES =
       Collections.singletonList(VeniceException.class);
-  public static final long POST_UNSUB_SLEEP_MS = 600L;
+  private static final long POST_UNSUB_SLEEP_MS = 600L;
   public static long SCHEMA_POLLING_DELAY_MS = SECONDS.toMillis(5);
   public static long STORE_VERSION_POLLING_DELAY_MS = MINUTES.toMillis(1);
 
