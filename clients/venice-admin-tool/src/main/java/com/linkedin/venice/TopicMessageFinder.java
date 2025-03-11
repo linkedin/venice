@@ -204,13 +204,12 @@ public class TopicMessageFinder {
 
     byte[] keyBytes = TopicMessageFinder.serializeKey(key, keySchemaStr);
     int partitionId = partitioner.getPartitionId(keyBytes, partitionCount);
-    System.out.println("Partition ID for key: " + key + " in store: " + storeName + " is: " + partitionId);
     LOGGER.info("Partition ID for key: {} in store: {} is: {}", key, storeName, partitionId);
 
     return new KeyPartitionInfo(storeInfo, keyBytes, partitionId, partitionCount);
   }
 
-  static class KeyPartitionInfo {
+  protected static class KeyPartitionInfo {
     private final StoreInfo storeInfo;
     private final byte[] serializedKey;
     private final int partitionId;
