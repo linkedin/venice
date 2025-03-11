@@ -95,9 +95,6 @@ public class DaVinciClientRecordTransformerTest {
         .numberOfServers(2)
         .numberOfRouters(1)
         .replicationFactor(2)
-        .partitionSize(100)
-        .sslToStorageNodes(false)
-        .sslToKafka(false)
         .extraProperties(clusterConfig)
         .build();
     cluster = ServiceFactory.getVeniceCluster(options);
@@ -653,7 +650,7 @@ public class DaVinciClientRecordTransformerTest {
         Assert.assertTrue(Files.exists(Paths.get(snapshotPath)));
       }
 
-      // All of the records should have already been transformed due to blob transfer
+      // All the records should have already been transformed due to blob transfer
       assertEquals(recordTransformer.getTransformInvocationCount(), 0);
 
       // Test single-get access

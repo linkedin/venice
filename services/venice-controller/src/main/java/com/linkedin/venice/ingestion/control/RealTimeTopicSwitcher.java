@@ -213,7 +213,8 @@ public class RealTimeTopicSwitcher {
   }
 
   public void transmitVersionSwapMessage(Store store, int previousVersion, int nextVersion) {
-    if (previousVersion == Store.NON_EXISTING_VERSION || nextVersion == Store.NON_EXISTING_VERSION) {
+    if (previousVersion == Store.NON_EXISTING_VERSION || nextVersion == Store.NON_EXISTING_VERSION
+        || store.isSystemStore()) {
       // NoOp
       return;
     }
