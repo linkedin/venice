@@ -3369,59 +3369,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         long brokerConsumerLatencyMs = Math.max(currentTimeMs - consumerRecord.getPubSubMessageTime(), 0);
         recordWriterStats(currentTimeMs, producerBrokerLatencyMs, brokerConsumerLatencyMs, partitionConsumptionState);
       }
-      boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
-      /**
-       * DIV check will happen for every single message in drainer queues.
-       * Leader replicas will run DIV check twice for every single message (one in leader consumption thread before
-       * producing to local version topic; the other one is here); the extra overhead is mandatory for a few reasons:
-       * 1. We need DIV check in consumption phase in order to filter out unneeded data from Kafka topic
-       * 2. Consumption states are always ahead of drainer states, because there are buffering in between: kafka producing,
-       *    drainer buffers; so we cannot persist the DIV check results from consumption phases
-       * 3. The DIV info checkpoint on disk must match the actual data persistence which is done inside drainer threads.
-       */
-      try {
-        if (leaderProducedRecordContext == null || leaderProducedRecordContext.hasCorrespondingUpstreamMessage()) {
-          /**
-           * N.B.: If a leader server is processing a chunk, then the {@link consumerRecord} is going to be the same for
-           * every chunk, and we don't want to treat them as dupes, hence we skip DIV. The DIV state will get updated on
-           * the last message of the sequence, which is not a chunk but rather the manifest.
-           *
-           * TODO:
-           * This function is called by drainer threads and we need to transfer its full responsibility to the
-           * consumer DIV which resides in the consumer thread and then gradually retire the use of drainer DIV.
-           * However, given that DIV heartbeat is yet implemented, so keep drainer DIV the way as is today and let the
-           * VERSION_TOPIC to contain both rt and vt messages.
-           */
-          validateMessage(
-              PartitionTracker.VERSION_TOPIC,
-              this.kafkaDataIntegrityValidator,
-              consumerRecord,
-              endOfPushReceived,
-              partitionConsumptionState,
-              /**
-               * N.B.: For A/A enabled stores, the drainer DIV is useless, since upstream of here we may have filtered
-               * out any message due to DCR. So we'll still try to perform the DIV on a best-effort basis, but we pass
-               * {@link #isActiveActiveReplicationEnabled} in the extraTolerateMissingMessageCondition param to indicate
-               * that if the store is A/A, then we can't trust the DIV results.
-               */
-              this.isActiveActiveReplicationEnabled);
-        }
-        if (recordLevelMetricEnabled.get()) {
-          versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
-        }
-      } catch (FatalDataValidationException fatalException) {
-        if (!endOfPushReceived) {
-          throw fatalException;
-        } else {
-          LOGGER.warn(
-              "Encountered errors during updating metadata for 2nd round DIV validation "
-                  + "after EOP consuming from: {} offset: {} replica: {} ExMsg: {}",
-              consumerRecord.getTopicPartition(),
-              consumerRecord.getPosition(),
-              partitionConsumptionState.getReplicaId(),
-              fatalException.getMessage());
-        }
+
+      // Validation is only on the ConsumptionTask side if Global RT DIV is enabled, so we don't need to validate here
+      if (!isGlobalRtDivEnabled()) {
+        drainerValidateMessage(consumerRecord, partitionConsumptionState, leaderProducedRecordContext);
       }
+
       if (batchReportIncPushStatusEnabled) {
         maybeReportBatchEndOfIncPushStatus(partitionConsumptionState);
       }
@@ -3541,6 +3494,65 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
     }
     return sizeOfPersistedData;
+  }
+
+  /**
+   * DIV check will happen for every single message in drainer queues.
+   * Leader replicas will run DIV check twice for every single message (one in leader consumption thread before
+   * producing to local version topic; the other one is here); the extra overhead is mandatory for a few reasons:
+   * 1. We need DIV check in consumption phase in order to filter out unneeded data from Kafka topic
+   * 2. Consumption states are always ahead of drainer states, because there are buffering in between: kafka producing,
+   *    drainer buffers; so we cannot persist the DIV check results from consumption phases
+   * 3. The DIV info checkpoint on disk must match the actual data persistence which is done inside drainer threads.
+   */
+  private void drainerValidateMessage(
+      DefaultPubSubMessage consumerRecord,
+      PartitionConsumptionState partitionConsumptionState,
+      LeaderProducedRecordContext leaderProducedRecordContext) {
+    boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
+    try {
+      if (leaderProducedRecordContext == null || leaderProducedRecordContext.hasCorrespondingUpstreamMessage()) {
+        /**
+         * N.B.: If a leader server is processing a chunk, then the {@link consumerRecord} is going to be the same for
+         * every chunk, and we don't want to treat them as dupes, hence we skip DIV. The DIV state will get updated on
+         * the last message of the sequence, which is not a chunk but rather the manifest.
+         *
+         * TODO:
+         * This function is called by drainer threads and we need to transfer its full responsibility to the
+         * consumer DIV which resides in the consumer thread and then gradually retire the use of drainer DIV.
+         * However, given that DIV heartbeat is yet implemented, so keep drainer DIV the way as is today and let the
+         * VERSION_TOPIC to contain both rt and vt messages.
+         */
+        validateMessage(
+            PartitionTracker.VERSION_TOPIC,
+            this.kafkaDataIntegrityValidator,
+            consumerRecord,
+            endOfPushReceived,
+            partitionConsumptionState,
+            /**
+             * N.B.: For A/A enabled stores, the drainer DIV is useless, since upstream of here we may have filtered
+             * out any message due to DCR. So we'll still try to perform the DIV on a best-effort basis, but we pass
+             * {@link #isActiveActiveReplicationEnabled} in the extraTolerateMissingMessageCondition param to indicate
+             * that if the store is A/A, then we can't trust the DIV results.
+             */
+            this.isActiveActiveReplicationEnabled);
+      }
+      if (recordLevelMetricEnabled.get()) {
+        versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
+      }
+    } catch (FatalDataValidationException fatalException) {
+      if (!endOfPushReceived) {
+        throw fatalException;
+      } else {
+        LOGGER.warn(
+            "Encountered errors during updating metadata for 2nd round DIV validation "
+                + "after EOP consuming from: {} offset: {} replica: {} ExMsg: {}",
+            consumerRecord.getTopicPartition(),
+            consumerRecord.getPosition(),
+            partitionConsumptionState.getReplicaId(),
+            fatalException.getMessage());
+      }
+    }
   }
 
   protected abstract void recordWriterStats(
