@@ -36,7 +36,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ViewConfig;
-import com.linkedin.venice.partitioner.ComplexVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
@@ -56,6 +55,7 @@ import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
+import com.linkedin.venice.writer.ComplexVeniceWriter;
 import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -72,6 +72,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -164,7 +165,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   private Lazy<VeniceWriterFactory> veniceWriterFactory;
   private AbstractVeniceWriter<byte[], byte[], byte[]> veniceWriter = null;
   private VeniceWriter<byte[], byte[], byte[]> mainWriter = null;
-  private AbstractVeniceWriter[] childWriters = null;
+  private ComplexVeniceWriter[] childWriters = null;
   private int valueSchemaId = -1;
   private int derivedValueSchemaId = -1;
   private boolean enableWriteCompute = false;
@@ -201,7 +202,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   private Map<Integer, Schema> valueSchemaMap;
   private Map<Integer, RecordDeserializer<GenericRecord>> valueDeserializerCache;
   private final Lazy<CompressorFactory> compressorFactory = Lazy.of(CompressorFactory::new);
-  private VeniceCompressor compressor;
+  private Lazy<VeniceCompressor> compressor;
 
   /**
    * Compute engines will kill a task if it's inactive for a configured time. This time might be is too short for the
@@ -405,6 +406,12 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     }
   }
 
+  /**
+   * Create {@link CompositeVeniceWriter} for writing to materialized views. If a
+   * {@link com.linkedin.venice.partitioner.ComplexVenicePartitioner} is involved we will also initialize schema, deser,
+   * and compressor in order to provide the appropriate value extractor. Calling compressor.get() eagerly to force out
+   * any potential issues early and protect against property/config changes later.
+   */
   private AbstractVeniceWriter<byte[], byte[], byte[]> createCompositeVeniceWriter(
       VeniceWriterFactory factory,
       VeniceWriter<byte[], byte[], byte[]> mainWriter,
@@ -414,7 +421,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       boolean rmdChunkingEnabled) {
     try {
       Map<String, ViewConfig> viewConfigMap = ViewUtils.parseViewConfigMapString(flatViewConfigMapString);
-      childWriters = new AbstractVeniceWriter[viewConfigMap.size()];
+      childWriters = new ComplexVeniceWriter[viewConfigMap.size()];
       String storeName = Version.parseStoreFromKafkaTopicName(topicName);
       int versionNumber = Version.parseVersionFromKafkaTopicName(topicName);
       // TODO using a dummy Version to get venice writer options could be error prone. Alternatively we could change
@@ -422,6 +429,9 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       Version version = new VersionImpl(storeName, versionNumber, "ignored");
       version.setChunkingEnabled(chunkingEnabled);
       version.setRmdChunkingEnabled(rmdChunkingEnabled);
+      // Default deser and decompress function for simple partitioner where value provider is never going to be used.
+      BiFunction<byte[], Integer, GenericRecord> valueExtractor = (valueBytes, valueSchemaId) -> null;
+      boolean complexPartitionerConfigured = false;
       int index = 0;
       for (ViewConfig viewConfig: viewConfigMap.values()) {
         VeniceView view = ViewUtils
@@ -429,62 +439,46 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         String viewTopic = view.getTopicNamesAndConfigsForVersion(versionNumber).keySet().stream().findAny().get();
         if (view instanceof MaterializedView) {
           MaterializedView materializedView = (MaterializedView) view;
-          if (materializedView.getViewPartitioner() instanceof ComplexVenicePartitioner) {
-            // We need to build a ComplexPartitionerWriterAdapter to handle writes with complex partitioner.
+          if (materializedView.getViewPartitioner()
+              .getPartitionerType() == VenicePartitioner.VenicePartitionerType.COMPLEX
+              && !complexPartitionerConfigured) {
+            // Initialize value schemas, deser cache and other variables needed by ComplexVenicePartitioner
             initializeSchemaSourceAndDeserCache();
-            compressor = getCompressor();
-            childWriters[index++] = new ComplexVeniceWriterAdapter<byte[], byte[], byte[]>(
-                viewTopic,
-                factory.createComplexVeniceWriter(view.getWriterOptionsBuilder(viewTopic, version).build()),
-                (valueBytes, valueSchemaId) -> valueDeserializerCache
-                    .computeIfAbsent(valueSchemaId, this::getValueDeserializer)
-                    .deserialize(valueBytes),
-                (valueBytes) -> {
-                  if (compressor == null) {
-                    return valueBytes;
-                  }
-                  try {
-                    return ByteUtils.extractByteArray(compressor.decompress(valueBytes, 0, valueBytes.length));
-                  } catch (IOException e) {
-                    throw new VeniceException("Unable to decompress value bytes", e);
-                  }
-                });
-            continue;
+            compressor.get();
+            valueExtractor = (valueBytes, valueSchemaId) -> {
+              byte[] decompressedBytes;
+              if (compressor.get() == null) {
+                decompressedBytes = valueBytes;
+              } else {
+                try {
+                  decompressedBytes =
+                      ByteUtils.extractByteArray(compressor.get().decompress(valueBytes, 0, valueBytes.length));
+                } catch (IOException e) {
+                  throw new VeniceException("Unable to decompress value bytes", e);
+                }
+              }
+              return valueDeserializerCache.computeIfAbsent(valueSchemaId, this::getValueDeserializer)
+                  .deserialize(decompressedBytes);
+            };
+            // We only need to configure these variables once per CompositeVeniceWriter
+            complexPartitionerConfigured = true;
           }
+          childWriters[index++] =
+              factory.createComplexVeniceWriter(view.getWriterOptionsBuilder(viewTopic, version).build());
+        } else {
+          throw new UnsupportedOperationException("Only materialized view is supported in VPJ");
         }
-        childWriters[index++] = factory.createVeniceWriter(view.getWriterOptionsBuilder(viewTopic, version).build());
       }
       return new CompositeVeniceWriter<byte[], byte[], byte[]>(
           topicName,
           mainWriter,
           childWriters,
-          new ChildWriterProducerCallback());
+          new ChildWriterProducerCallback(),
+          valueExtractor);
     } catch (Exception e) {
       String errorMessage = String.format("Failed to create composite writer for push to store version: %s", topicName);
       LOGGER.error(errorMessage, e);
       throw new VeniceException(errorMessage);
-    }
-  }
-
-  private VeniceCompressor getCompressor() {
-    if (props.containsKey(KAFKA_INPUT_TOPIC)) {
-      // Configure compressor using kafka input configs
-      String sourceVersion = props.getString(KAFKA_INPUT_TOPIC);
-      String kafkaInputBrokerUrl = props.getString(KAFKA_INPUT_BROKER_URL);
-      CompressionStrategy strategy =
-          CompressionStrategy.valueOf(props.getString(KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY));
-      return KafkaInputUtils
-          .getCompressor(compressorFactory.get(), strategy, kafkaInputBrokerUrl, sourceVersion, props);
-    } else {
-      CompressionStrategy strategy = CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY));
-      if (strategy == CompressionStrategy.ZSTD_WITH_DICT) {
-        String topicName = props.getString(TOPIC_PROP);
-        ByteBuffer dict = DictionaryUtils.readDictionaryFromKafka(topicName, props);
-        return compressorFactory.get()
-            .createVersionSpecificCompressorIfNotExist(strategy, topicName, ByteUtils.extractByteArray(dict));
-      } else {
-        return compressorFactory.get().getCompressor(strategy);
-      }
     }
   }
 
@@ -619,6 +613,28 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       writerProps.put(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, jobProps.getProperty(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS));
       writerProps.put(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, jobProps.getProperty(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS));
       return new VeniceWriterFactory(writerProps);
+    });
+
+    compressor = Lazy.of(() -> {
+      if (props.containsKey(KAFKA_INPUT_TOPIC)) {
+        // Configure compressor using kafka input configs
+        String sourceVersion = props.getString(KAFKA_INPUT_TOPIC);
+        String kafkaInputBrokerUrl = props.getString(KAFKA_INPUT_BROKER_URL);
+        CompressionStrategy strategy =
+            CompressionStrategy.valueOf(props.getString(KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY));
+        return KafkaInputUtils
+            .getCompressor(compressorFactory.get(), strategy, kafkaInputBrokerUrl, sourceVersion, props);
+      } else {
+        CompressionStrategy strategy = CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY));
+        if (strategy == CompressionStrategy.ZSTD_WITH_DICT) {
+          String topicName = props.getString(TOPIC_PROP);
+          ByteBuffer dict = DictionaryUtils.readDictionaryFromKafka(topicName, props);
+          return compressorFactory.get()
+              .createVersionSpecificCompressorIfNotExist(strategy, topicName, ByteUtils.extractByteArray(dict));
+        } else {
+          return compressorFactory.get().getCompressor(strategy);
+        }
+      }
     });
   }
 
