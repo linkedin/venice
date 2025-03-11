@@ -20,7 +20,7 @@
       "default": 1
     },
     {
-      "name": "storeMetaValAvroo",
+      "name": "storeMetaValAvro",
       "doc": "Store metadata, serilization of com.linkedin.venice.systemstore.schemas.StoreMetaValue",
       "type": "bytes",
       "default": ""
