@@ -98,12 +98,27 @@ public class SchemaDiffTraverser {
       Schema fieldSchema = field.schema();
 
       if (targetField == null) {
+        // If the target field is null, we need to apply the validator
         if (validate(validator, value, fieldName, fieldDefaultValue, fieldSchema, null))
           return true;
-      } else if (isNestedType(field.schema())) {
+        else {
+          // Continue checking different fields in the record
+          continue;
+        }
+      }
+
+      // If the field schema is the same as the target field schema, we don't need to traverse it
+      if (AvroSchemaUtils.compareSchemaIgnoreFieldOrder(field.schema(), targetField.schema())) {
+        continue;
+      }
+
+      // Validate when two fields are not the same and both non-null
+      if (isNestedType(field.schema())) {
+        // If the field schema is a nested type, we need to traverse it
         if (traverse(value, fieldDefaultValue, fieldSchema, targetField.schema(), fieldName, validator))
           return true;
       } else {
+        // If the field schema is not a nested type, we need to apply the validator
         if (validate(validator, value, fieldName, fieldDefaultValue, fieldSchema, targetField.schema()))
           return true;
       }

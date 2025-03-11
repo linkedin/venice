@@ -35,14 +35,8 @@ public class NewSemanticUsageValidator {
         Schema.Field currentField = schemasPair.getFirst();
         Schema.Field targetField = schemasPair.getSecond();
 
-        // If current field is null or object is null, return false, no need to validate more
-        if (currentField == null || object == null) {
-          return false;
-        }
-
-        // If the schemas are the same, we don't need to validate further
-        if (targetField != null
-            && AvroSchemaUtils.compareSchemaIgnoreFieldOrder(currentField.schema(), targetField.schema())) {
+        // If object is null, return false, no need to validate more
+        if (object == null) {
           return false;
         }
 
