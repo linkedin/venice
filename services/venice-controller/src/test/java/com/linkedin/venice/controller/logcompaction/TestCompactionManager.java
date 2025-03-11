@@ -68,9 +68,9 @@ public class TestCompactionManager {
     Version version3 = new VersionImpl(Utils.getUniqueString("store"), store3VersionNumber);
 
     // Return Version mocks when getVersion() is called
-    store1.setVersions(new ArrayList<>(Collections.singletonList(version1)));
-    store2.setVersions(new ArrayList<>(Collections.singletonList(version2)));
-    store3.setVersions(new ArrayList<>(Collections.singletonList(version3)));
+    store1.setVersions(Collections.singletonList(version1));
+    store2.setVersions(Collections.singletonList(version2));
+    store3.setVersions(Collections.singletonList(version3));
 
     // Set createTime for Version mocks
     version1.setAge(Duration.ofDays(TimeUnit.HOURS.toMillis(TEST_HOURS_SINCE_LAST_LOG_COMPACTION_THRESHOLD + 1))); // 25
