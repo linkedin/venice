@@ -378,7 +378,7 @@ public class CreateVersion extends AbstractRoute {
     }
     response.setPartitions(referenceHybridVersion.getPartitionCount());
     response.setCompressionStrategy(CompressionStrategy.NO_OP);
-    response.setKafkaTopic(Utils.getRealTimeTopicName(store));
+    response.setKafkaTopic(Utils.getRealTimeTopicName(referenceHybridVersion));
   }
 
   /**

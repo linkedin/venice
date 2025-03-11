@@ -601,13 +601,13 @@ public class Utils {
         storeInfo.getHybridStoreConfig());
   }
 
-  public static boolean isFollowingRTVersioning(String storeName) {
+  public static boolean isRTVersioningApplicable(String storeName) {
     return !(VeniceSystemStoreUtils.isSystemStore(storeName) || VeniceSystemStoreUtils.isUserSystemStore(storeName)
         || VeniceSystemStoreUtils.isParticipantStore(storeName));
   }
 
   public static String getRealTimeTopicName(Version version) {
-    if (!isFollowingRTVersioning(version.getStoreName())) {
+    if (!isRTVersioningApplicable(version.getStoreName())) {
       return composeRealTimeTopic(version.getStoreName());
     }
 
@@ -626,7 +626,7 @@ public class Utils {
       List<Version> versions,
       int currentVersionNumber,
       HybridStoreConfig hybridStoreConfig) {
-    if (!isFollowingRTVersioning(storeName)) {
+    if (!isRTVersioningApplicable(storeName)) {
       return composeRealTimeTopic(storeName);
     }
 
@@ -682,10 +682,6 @@ public class Utils {
 
   public static String getSeparateRealTimeTopicName(String realTimeTopicName) {
     return realTimeTopicName + Utils.SEPARATE_TOPIC_SUFFIX;
-  }
-
-  public static String getSeparateRealTimeTopicName(Store store) {
-    return getSeparateRealTimeTopicName(Utils.getRealTimeTopicName(store));
   }
 
   public static String getSeparateRealTimeTopicName(Version version) {

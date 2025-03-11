@@ -409,6 +409,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.versionTopic = pubSubTopicRepository.getTopic(kafkaVersionTopic);
     this.storeName = versionTopic.getStoreName();
     this.isUserSystemStore = VeniceSystemStoreUtils.isUserSystemStore(storeName);
+    this.isSystemStore = VeniceSystemStoreUtils.isSystemStore(storeName);
     // if version is not hybrid, it is not possible to create pub sub realTimeTopic, users of this field should do a
     // nullability check
     this.realTimeTopic = version.getHybridStoreConfig() != null

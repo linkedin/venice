@@ -1920,7 +1920,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 3);
 
     store = Objects.requireNonNull(veniceAdmin.getStore(clusterName, storeName), "Store should not be null");
-    rtTopic = Utils.getRealTimeTopicName(store);
+    rtTopic = Utils.getRealTimeTopicName(store.getVersions().get(0));
 
     Assert.assertTrue(veniceAdmin.isTopicTruncated(rtTopic));
     Assert.assertTrue(veniceAdmin.isTopicTruncated(incrementalPushRealTimeTopic));

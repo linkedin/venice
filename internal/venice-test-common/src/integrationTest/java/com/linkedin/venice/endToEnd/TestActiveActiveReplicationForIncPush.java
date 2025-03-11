@@ -57,7 +57,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
@@ -171,7 +170,6 @@ public class TestActiveActiveReplicationForIncPush {
     File inputDirBatch = getTempDataDirectory();
     String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
     String inputDirPathBatch = "file:" + inputDirBatch.getAbsolutePath();
-    AtomicReference<Optional<Version>> version = new AtomicReference<>();
 
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
       String storeName = Utils.getUniqueString("store");
@@ -199,10 +197,10 @@ public class TestActiveActiveReplicationForIncPush {
         assertNotNull(storeInfo, "Store info is null.");
         assertNull(storeInfo.getHybridStoreConfig(), "Hybrid store config is not null.");
         assertNotNull(storeInfo.getVersion(1), "Version 1 is not present.");
-        version.set(storeInfo.getVersion(1));
-        assertTrue(version.get().isPresent(), "Version 1 is not present.");
-        assertNull(version.get().get().getHybridStoreConfig(), "Version level hybrid store config is not null.");
-        assertEquals(version.get().get().getPartitionCount(), 1, "Partition count is not 1.");
+        Optional<Version> version = storeInfo.getVersion(1);
+        assertTrue(version.isPresent(), "Version 1 is not present.");
+        assertNull(version.get().getHybridStoreConfig(), "Version level hybrid store config is not null.");
+        assertEquals(version.get().getPartitionCount(), 1, "Partition count is not 1.");
       });
 
       // Update the store to have 3 partitions and convert it into a hybrid store
@@ -220,10 +218,10 @@ public class TestActiveActiveReplicationForIncPush {
         assertNotNull(storeInfo.getHybridStoreConfig(), "Hybrid store config is null.");
         // verify that there is just one version and it is batch version
         assertEquals(storeInfo.getVersions().size(), 1, "Version count is not 1.");
-        version.set(storeInfo.getVersion(1));
-        assertTrue(version.get().isPresent(), "Version 1 is not present.");
-        assertNull(version.get().get().getHybridStoreConfig(), "Version level hybrid store config is not null.");
-        assertEquals(version.get().get().getPartitionCount(), 1, "Partition count is not 1.");
+        Optional<Version> version = storeInfo.getVersion(1);
+        assertTrue(version.isPresent(), "Version 1 is not present.");
+        assertNull(version.get().getHybridStoreConfig(), "Version level hybrid store config is not null.");
+        assertEquals(version.get().getPartitionCount(), 1, "Partition count is not 1.");
       });
 
       // Push job step was disabled to reproduce the issue
@@ -239,10 +237,10 @@ public class TestActiveActiveReplicationForIncPush {
         assertNotNull(storeInfo, "Store info is null.");
         assertNotNull(storeInfo.getHybridStoreConfig(), "Hybrid store config is null.");
         assertNotNull(storeInfo.getVersion(2), "Version 2 is not present.");
-        version.set(storeInfo.getVersion(2));
-        assertTrue(version.get().isPresent(), "Version 2 is not present.");
-        assertNotNull(version.get().get().getHybridStoreConfig(), "Version level hybrid store config is null.");
-        assertEquals(version.get().get().getPartitionCount(), 3, "Partition count is not 3.");
+        Optional<Version> version = storeInfo.getVersion(2);
+        assertTrue(version.isPresent(), "Version 2 is not present.");
+        assertNotNull(version.get().getHybridStoreConfig(), "Version level hybrid store config is null.");
+        assertEquals(version.get().getPartitionCount(), 3, "Partition count is not 3.");
       });
 
       VeniceSystemFactory factory = new VeniceSystemFactory();
@@ -250,9 +248,10 @@ public class TestActiveActiveReplicationForIncPush {
       VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null);
       veniceProducer.start();
 
+      Optional<Version> version = parentControllerClient.getStore(storeName).getStore().getVersion(2);
       PubSubTopicRepository pubSubTopicRepository =
           childDatacenters.get(1).getClusters().get(clusterName).getPubSubTopicRepository();
-      PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(version.get().get()));
+      PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(version.get()));
 
       // wait for 120 secs and check producer getTopicName
       waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {

@@ -376,7 +376,7 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
     }
     int lastIndexOfVersionSeparator = kafkaTopic.lastIndexOf(VERSION_SEPARATOR);
     // we only care about the prefix, so providing topic in place of store should work
-    if (Utils.isFollowingRTVersioning(kafkaTopic) && lastIndexOfVersionSeparator != -1) {
+    if (lastIndexOfVersionSeparator != -1 && Utils.isRTVersioningApplicable(kafkaTopic)) {
       return kafkaTopic.substring(0, lastIndexOfVersionSeparator);
     } else {
       return kafkaTopic.substring(0, kafkaTopic.length() - REAL_TIME_TOPIC_SUFFIX.length());

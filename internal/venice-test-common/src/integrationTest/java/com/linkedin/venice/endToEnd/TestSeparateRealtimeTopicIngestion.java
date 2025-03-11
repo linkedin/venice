@@ -136,7 +136,7 @@ public class TestSeparateRealtimeTopicIngestion {
 
   @Test(timeOut = TEST_TIMEOUT_MS * 2)
   public void testIncrementalPushPartialUpdate() throws IOException {
-    final String storeName = Utils.getUniqueString("spRT_ingestion");
+    final String storeName = Utils.getUniqueString("sepRT_ingestion");
     String parentControllerUrl = parentController.getControllerUrl();
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema(inputDir);
