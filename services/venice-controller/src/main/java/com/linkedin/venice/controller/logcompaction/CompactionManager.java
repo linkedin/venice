@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -59,13 +60,7 @@ public class CompactionManager {
   // public for testing
   @VisibleForTesting
   List<StoreInfo> filterStoresForCompaction(List<StoreInfo> storeInfoList) {
-    List<StoreInfo> compactionReadyStores = new ArrayList<>();
-    for (StoreInfo storeInfo: storeInfoList) {
-      if (isCompactionReady(storeInfo)) {
-        compactionReadyStores.add(storeInfo);
-      }
-    }
-    return compactionReadyStores;
+    return storeInfoList.stream().filter(this::isCompactionReady).collect(Collectors.toList());
   }
 
   /**
