@@ -210,32 +210,32 @@ public class TopicMessageFinder {
     return new KeyPartitionInfo(storeInfo, keyBytes, partitionId, partitionCount);
   }
 
-  protected static class KeyPartitionInfo {
+  static class KeyPartitionInfo {
     private final StoreInfo storeInfo;
     private final byte[] serializedKey;
     private final int partitionId;
     private final int partitionCount;
 
-    public KeyPartitionInfo(StoreInfo storeInfo, byte[] serializedKey, int partitionId, int partitionCount) {
+    KeyPartitionInfo(StoreInfo storeInfo, byte[] serializedKey, int partitionId, int partitionCount) {
       this.storeInfo = storeInfo;
       this.serializedKey = serializedKey;
       this.partitionId = partitionId;
       this.partitionCount = partitionCount;
     }
 
-    public int getPartitionId() {
+    int getPartitionId() {
       return partitionId;
     }
 
-    public byte[] getSerializedKey() {
+    byte[] getSerializedKey() {
       return serializedKey;
     }
 
-    public int getPartitionCount() {
+    int getPartitionCount() {
       return partitionCount;
     }
 
-    public StoreInfo getStoreInfo() {
+    StoreInfo getStoreInfo() {
       return storeInfo;
     }
   }

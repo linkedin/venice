@@ -18,7 +18,6 @@ import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
-import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -38,15 +37,12 @@ public class TopicMessageFinderTest {
   private StoreResponse mockStoreResponse;
   private Version mockVersion;
   private PartitionerConfig mockPartitionerConfig;
-  private VenicePartitioner mockPartitioner;
   private PubSubConsumerAdapter mockConsumer;
   private DefaultPubSubMessage mockMessage;
 
   private static final String STORE_NAME = "test_store";
-  private static final String TOPIC = "test_store_v1";
   private static final String KEY = "test_key-4";
   private static final int VERSION_NUMBER = 1;
-  private static final int PARTITION_ID = 2;
   private static final int PARTITION_COUNT = 3;
   private static final String KEY_SCHEMA_STR = "\"string\"";
 
