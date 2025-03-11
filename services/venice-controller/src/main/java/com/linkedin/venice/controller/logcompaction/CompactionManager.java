@@ -58,7 +58,7 @@ public class CompactionManager {
 
   // public for testing
   @VisibleForTesting
-  public List<StoreInfo> filterStoresForCompaction(List<StoreInfo> storeInfoList) {
+  List<StoreInfo> filterStoresForCompaction(List<StoreInfo> storeInfoList) {
     List<StoreInfo> compactionReadyStores = new ArrayList<>();
     for (StoreInfo storeInfo: storeInfoList) {
       if (isCompactionReady(storeInfo)) {
