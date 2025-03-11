@@ -127,7 +127,10 @@ public class NewSemanticUsageValidatorTest {
     Schema unionSchema = Schema.createUnion(Arrays.asList(IntSchema, LongSchema));
     Schema.Field targetField2 = AvroCompatibilityHelper.createSchemaField("targetField2", unionSchema, "", null);
 
-    assertFalse(new NewSemanticUsageValidator().isNonDefaultValueUnion(0, currentField, targetField2));
+    newSemanticUsageValidator = new NewSemanticUsageValidator();
+    assertTrue(newSemanticUsageValidator.isNonDefaultValueUnion(0, currentField, targetField2));
+    System.out.println(newSemanticUsageValidator.getErrorMessage());
+    assertTrue(newSemanticUsageValidator.getErrorMessage().contains("Type mismatch INT vs UNION"));
 
     // Case 3: current field is union, target field is union, but value doesnt match any of the current field types
     Schema.Field currentField3 = AvroCompatibilityHelper.createSchemaField("currentField3", unionSchema, "", null);
@@ -222,5 +225,12 @@ public class NewSemanticUsageValidatorTest {
     Schema.Field longField = AvroCompatibilityHelper.createSchemaField("longField", longSchema, "", null);
     assertTrue(validator.apply(10, new Pair<>(currentField, longField)));
     assertTrue(newSemanticUsageValidator.getErrorMessage().contains("Type mismatch INT vs LONG"));
+
+    // nullable union with null targetField
+    newSemanticUsageValidator = new NewSemanticUsageValidator();
+    assertTrue(newSemanticUsageValidator.isNonDefaultValueUnion(123, currentField, null));
+    assertTrue(
+        newSemanticUsageValidator.getErrorMessage()
+            .contains("Field: currentField contains non-default value. Actual value: 123. Default value: null or 0"));
   }
 }

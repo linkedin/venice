@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.BiFunction;
-import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
@@ -121,10 +120,10 @@ public class NewSemanticUsageValidator {
    * Check if the value is non-default for the given union field.
    * If the value is null, it is considered default.
    * If targetField is not union, we expect the currentField to be a nullable union pair.
-   * If targetField is union, we expect to find the right schema for object in both union.
    * @param object the value to check
    * @param currentField the field to check with union type
    * @param targetField the target field to check
+   *                    this field should not be union type since the traverser should loop through two unions before sending to validator.
    * @return true if the value is non-default, false otherwise
    */
   public boolean isNonDefaultValueUnion(Object object, Schema.Field currentField, Schema.Field targetField) {
@@ -132,67 +131,56 @@ public class NewSemanticUsageValidator {
       return false;
     }
 
-    if (targetField == null) {
-      return isNonDefaultValueField(object, currentField);
+    Schema currentSchema = currentField.schema();
+
+    if (AvroSchemaUtils.isNullableUnionPair(currentSchema)) {
+      return handleNullableUnion(object, currentField, targetField);
     }
 
-    // If the target field is not a union, check if the current field is a nullable union pair
-    if (targetField.schema().getType() != Schema.Type.UNION) {
-      if (AvroSchemaUtils.isNullableUnionPair(currentField.schema())) {
-        return handleNullableUnion(object, currentField, targetField);
-      }
-
-      // Fail the validation since the target field is not a union and the current field is not a nullable union pair
+    Schema subSchema = findObjectSchemaInsideUnion(currentField, object);
+    if (subSchema == null) {
       return returnTrueAndLogError(
           String.format(
-              "Field %s: Type mismatch %s vs %s",
+              "Field %s: Cannot find the match schema for value %s from schema union",
               formatFieldName(currentField.name()),
-              currentField.schema().getType(),
-              targetField.schema().getType()));
+              object));
     }
 
-    // Expect the target field to be a union
-    Map<String, Schema> targetSchemaMap =
-        targetField.schema().getTypes().stream().collect(Collectors.toMap(s -> s.getName(), s -> s));
+    Schema.Field newCurrentField = AvroCompatibilityHelper.createSchemaField(currentField.name(), subSchema, "", null);
+    return isNonDefaultValueField(object, newCurrentField);
+  }
+
+  /**
+   * Find the schema for the object inside the union.
+   * @param currentField the field with union type
+   * @param object the object to find the schema
+   * @return the schema for the object if found, null otherwise
+   */
+  private Schema findObjectSchemaInsideUnion(Schema.Field currentField, Object object) {
     for (Schema subSchema: currentField.schema().getTypes()) {
       try {
         object = castValueToSchema(object, subSchema);
-
-        if (targetSchemaMap.containsKey(subSchema.getName())) {
-          return isNonDefaultValue(
-              object,
-              AvroCompatibilityHelper.createSchemaField(currentField.name(), subSchema, "", null),
-              AvroCompatibilityHelper
-                  .createSchemaField(currentField.name(), targetSchemaMap.get(subSchema.getName()), "", null));
-        }
-
-        return isNonDefaultValue(
-            object,
-            AvroCompatibilityHelper.createSchemaField(currentField.name(), subSchema, "", null),
-            null);
+        return subSchema;
       } catch (IllegalArgumentException e) {
         // Ignore and continue checking other subtypes
       }
     }
-    return returnTrueAndLogError(
-        String.format(
-            "Field %s: Cannot find the match schema for value %s from schema union",
-            formatFieldName(currentField.name()),
-            object));
+    return null;
   }
 
   /**
    * Check if the value is non-default for the given nullable union field.
+   *
    * @param object the value to check
    * @param currentField the field to check with nullable union type
-   * @param targetField the target field to check
+   * @param targetField the target field to check (targetField can either null or non-union type)
    * @return true if the value is non-default, false otherwise
    */
   public boolean handleNullableUnion(Object object, Schema.Field currentField, Schema.Field targetField) {
     List<Schema> subSchemas = currentField.schema().getTypes();
     Schema nonNullSchema = subSchemas.get(0).getType() == Schema.Type.NULL ? subSchemas.get(1) : subSchemas.get(0);
     // If the nested schema is not the same, fail the validation
-    if (nonNullSchema.getType() != targetField.schema().getType()) {
+    if (targetField != null && nonNullSchema.getType() != targetField.schema().getType()) {
       return returnTrueAndLogError(
           String.format(
               "Field %s: Type mismatch %s vs %s",
