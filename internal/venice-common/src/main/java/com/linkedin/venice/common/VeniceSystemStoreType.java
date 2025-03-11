@@ -218,8 +218,13 @@ public enum VeniceSystemStoreType {
    * @return The corresponding VeniceSystemStoreType if found; otherwise, null.
    */
   public static VeniceSystemStoreType getSystemStoreType(String storeName) {
-    if (storeName == null || !storeName.startsWith(Store.SYSTEM_STORE_NAME_PREFIX)) {
+    if (storeName == null || storeName.isEmpty()) {
       return null;
+    }
+    // perform lookup before prefix check to avoid prefix check for cached entries
+    VeniceSystemStoreType cachedStoreType = STORE_TYPE_CACHE.get(storeName);
+    if (cachedStoreType != null || !storeName.startsWith(Store.SYSTEM_STORE_NAME_PREFIX)) {
+      return cachedStoreType;
     }
 
     return STORE_TYPE_CACHE.computeIfAbsent(storeName, key -> {
