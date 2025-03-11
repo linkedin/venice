@@ -2768,15 +2768,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Hence, we want to avoid the database sync for the following cases:
    * 1. Every ControlMessage
    * 2. Record count based strategy, which doesn't work well for stores with very small key/value pairs.
+   *
+   * When the Global RT DIV feature is enabled, the size-based sync is no longer triggered by the drainer. The
+   * condition is on the ConsumptionTask and bytes consumed rather than bytes processed. The VT DIV is still synced
+   * by the drainer whenever a non-SOS/EOS control message is processed.
    */
   boolean shouldSyncOffset(
       PartitionConsumptionState pcs,
       DefaultPubSubMessage record,
       LeaderProducedRecordContext leaderProducedRecordContext) {
-    if (isGlobalRtDivEnabled()) {
-      return false; // If Global RT DIV is enabled, OffsetRecord is synced by ConsumptionTask rather than the Drainer
-    }
-
     final long syncBytesInterval = getSyncBytesInterval(pcs);
     boolean syncOffset = false;
     if (record.getKey().isControlMessage()) {
@@ -2801,6 +2801,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         syncOffset = true;
       }
     } else {
+      if (isGlobalRtDivEnabled()) {
+        return false; // for the Global RT DIV feature, size-based sync is by ConsumptionTask rather than Drainer
+      }
+
       syncOffset = (syncBytesInterval > 0 && (pcs.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval));
     }
     return syncOffset;
