@@ -20,25 +20,36 @@ import org.apache.avro.generic.GenericRecord;
  *   <li>It is a nested type and equals its schema's default value.</li>
  *   <li>It is a non-nested field and matches either the schema's default value or its type's default.</li>
  * </ol>
+ *
+ * If the object is not using new semantic, we return True. Otherwise, we return False along with the message
+ * in errorMessage.
  */
 public class NewSemanticUsageValidator {
   private static final ThreadLocal<String> errorMessage = ThreadLocal.withInitial(() -> "");
 
+  /**
+   * This is the validator function that we will pass into SchemaDiffTraverser to validate the two nodes
+   * with different schemas.
+   */
   private final BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> SEMANTIC_VALIDATOR =
       (object, schemasPair) -> {
         Schema.Field currentField = schemasPair.getFirst();
         Schema.Field targetField = schemasPair.getSecond();
 
+        // If current field is null or object is null, return false, no need to validate more
         if (currentField == null || object == null) {
           return false;
         }
 
+        // If target field is null, we only need to check if the current field is non-default
         if (targetField != null) {
+          // If the current field is a union and the target field is not, check for nullable union pair
           if (currentField.schema().getType() == Schema.Type.UNION
               && targetField.schema().getType() != Schema.Type.UNION) {
             return isNonDefaultValueUnion(object, currentField, targetField);
           }
 
+          // In general, if the types are different, we fail the validation
           if (currentField.schema().getType() != targetField.schema().getType()) {
             return returnTrueAndLogError(
                 String.format(
@@ -48,13 +59,19 @@ public class NewSemanticUsageValidator {
                     targetField.schema().getType()));
           }
 
+          // If the schemas are the same, we don't need to validate further
           if (AvroSchemaUtils.compareSchemaIgnoreFieldOrder(currentField.schema(), targetField.schema())) {
             return false;
           }
         }
+
+        // Default behavior, check if the value is non-default
         return isNonDefaultValue(object, currentField, targetField);
       };
 
+  /**
+   * Get the semantic validator function.
+   */
   public BiFunction<Object, Pair<Schema.Field, Schema.Field>, Boolean> getSemanticValidator() {
     return SEMANTIC_VALIDATOR;
   }
