@@ -3591,6 +3591,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     final InternalAvroSpecificSerializer<GlobalRtDivState> serializer =
         AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer(); // TODO: can't be static because of state?
     final byte[] keyBytes = getGlobalRtDivKeyBytes(brokerUrl);
+    final PubSubTopicPartition topicPartition = previousMessage.getTopicPartition();
     TopicType realTimeTopicType = TopicType.of(TopicType.REALTIME_TOPIC_TYPE, brokerUrl);
 
     // Snapshot the VT DIV + RT DIV (single broker URL) in preparation to be produced
@@ -3617,7 +3618,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     DefaultPubSubMessage divMessage = new ImmutablePubSubMessage(
         divKey,
         divEnvelope,
-        previousMessage.getTopicPartition(),
+        topicPartition,
         previousMessage.getPosition(), // TODO: are these reused fields correct?
         previousMessage.getPubSubMessageTime(),
         divKey.getHeapSize()); // TODO: should the envelope size also be estimated?
@@ -3628,6 +3629,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         partition,
         brokerUrl,
         beforeProcessingRecordTimestampNs);
+
+    // Get the old value manifest which contains the list of old chunks, so they can be deleted
+    ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
+    final int schemaId = AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
+    readStoredValueRecord(partitionConsumptionState, keyBytes, schemaId, topicPartition, valueManifestContainer);
 
     // Produce to local kafka for the Global RT DIV + latestOffset (GlobalRtDivState)
     getVeniceWriter(partitionConsumptionState).get()
@@ -3640,7 +3646,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             leaderMetadataWrapper,
             APP_DEFAULT_LOGICAL_TS,
             null,
-            null, // TODO: do oldValueManifest and rmd need to be populated?
+            valueManifestContainer.getManifest(), // TODO: do oldValueManifest and rmd need to be populated?
             null,
             false);
 
