@@ -284,7 +284,10 @@ public class SchemaDiffTraverserTest {
     assertTrue(
         errorMessage.contains("array.ExampleRecord.0.field2"),
         "The error message should contain the field name");
-    assertTrue(errorMessage.contains("Type mismatch"), "The error message should contain the reason for the failure");
+    assertTrue(
+        errorMessage.contains(
+            "array.ExampleRecord.0.field2 contains non-default value. Actual value: 123. Default value: null or 0"),
+        "Field2 of record1 has non-default value");
   }
 
   @Test
@@ -326,8 +329,8 @@ public class SchemaDiffTraverserTest {
         errorMessage.contains("payloadUnion.UpdateStore.targetSwapRegionWaitTime"),
         "The error message should contain the field name");
     assertTrue(
-        errorMessage.contains("non-default value"),
-        "The error message should contain the reason for the failure");
+        errorMessage.contains("non-default value. Actual value: 10. Default value: 60 or 0"),
+        "targetSwapRegionWaitTime contains non-default value");
 
     // Test the case where the field is set as default value
     updateStore.targetSwapRegionWaitTime = 60;

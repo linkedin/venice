@@ -45,17 +45,7 @@ public class NewSemanticUsageValidator {
           // If the current field is a union and the target field is not, check for nullable union pair
           if (currentField.schema().getType() == Schema.Type.UNION
               && targetField.schema().getType() != Schema.Type.UNION) {
-            return isNonDefaultValueUnion(object, currentField, targetField);
-          }
-
-          // In general, if the types are different, we fail the validation
-          if (currentField.schema().getType() != targetField.schema().getType()) {
-            return returnTrueAndLogError(
-                String.format(
-                    "Field %s: Type mismatch %s vs %s",
-                    formatFieldName(currentField.name()),
-                    currentField.schema().getType(),
-                    targetField.schema().getType()));
+            return isNonDefaultValueUnion(object, currentField);
           }
 
           // If the schemas are the same, we don't need to validate further
@@ -85,7 +75,7 @@ public class NewSemanticUsageValidator {
   public boolean isNonDefaultValue(Object object, Schema.Field currentField, Schema.Field targetField) {
     switch (currentField.schema().getType()) {
       case UNION:
-        return isNonDefaultValueUnion(object, currentField, targetField);
+        return isNonDefaultValueUnion(object, currentField);
       case ENUM:
         return isNewEnumValue(object, currentField, targetField);
       case FIXED:
@@ -119,25 +109,17 @@ public class NewSemanticUsageValidator {
   /**
    * Check if the value is non-default for the given union field.
    * If the value is null, it is considered default.
-   * If targetField is not union, we expect the currentField to be a nullable union pair.
+   * If object is non-null, we need to find the schema for the object inside the union and check the default value.
    * @param object the value to check
    * @param currentField the field to check with union type
-   * @param targetField the target field to check
-   *                    this field should not be union type since the traverser should loop through two unions before sending to validator.
    * @return true if the value is non-default, false otherwise
    */
-  public boolean isNonDefaultValueUnion(Object object, Schema.Field currentField, Schema.Field targetField) {
+  public boolean isNonDefaultValueUnion(Object object, Schema.Field currentField) {
     if (object == null) {
       return false;
     }
 
-    Schema currentSchema = currentField.schema();
-
-    // if (AvroSchemaUtils.isNullableUnionPair(currentSchema)) {
-    // return handleNullableUnion(object, currentField, targetField);
-    // }
-
-    Schema subSchema = findObjectSchemaInsideUnion(currentField, object);
+    Schema subSchema = findObjectSchemaInsideUnion(object, currentField);
     if (subSchema == null) {
       return returnTrueAndLogError(
           String.format(
@@ -156,33 +138,13 @@ public class NewSemanticUsageValidator {
    * @param object the object to find the schema
    * @return the schema for the object if found, null otherwise
    */
-  private Schema findObjectSchemaInsideUnion(Schema.Field currentField, Object object) {
+  public static Schema findObjectSchemaInsideUnion(Object object, Schema.Field currentField) {
     for (Schema subSchema: currentField.schema().getTypes()) {
-      try {
-        object = castValueToSchema(object, subSchema);
+      if (isCorrectSchema(object, subSchema)) {
         return subSchema;
-      } catch (IllegalArgumentException e) {
-        // Ignore and continue checking other subtypes
       }
     }
     return null;
-  }
-
-  /**
-   * Check if the value is non-default for the given nullable union field.
-   *
-   * @param object the value to check
-   * @param currentField the field to check with nullable union type
-   * @param targetField the target field to check (targetField can either null or non-union type)
-   * @return true if the value is non-default, false otherwise
-   */
-  public boolean handleNullableUnion(Object object, Schema.Field currentField, Schema.Field targetField) {
-    List<Schema> subSchemas = currentField.schema().getTypes();
-    Schema nonNullSchema = subSchemas.get(0).getType() == Schema.Type.NULL ? subSchemas.get(1) : subSchemas.get(0);
-    return isNonDefaultValue(
-        object,
-        AvroCompatibilityHelper.createSchemaField(currentField.name(), nonNullSchema, "", null),
-        targetField);
   }
 
   /**
@@ -258,57 +220,42 @@ public class NewSemanticUsageValidator {
   }
 
   /**
-   * Cast the value to the given schema.
-   * @param value the value
-   * @param schema the schema
-   * @return the casted value
+   * Check if the value matches correct schema type.
    */
-  public static Object castValueToSchema(Object value, Schema schema) {
+  private static boolean isCorrectSchema(Object value, Schema schema) {
     if (value == null)
-      return null;
+      return true;
 
     switch (schema.getType()) {
       case STRING:
-        return value.toString();
+        return value instanceof String;
       case INT:
-        return (value instanceof Number) ? ((Number) value).intValue() : throwTypeException(value, schema);
+        return value instanceof Integer;
       case LONG:
-        return (value instanceof Number) ? ((Number) value).longValue() : throwTypeException(value, schema);
+        return value instanceof Long;
       case FLOAT:
-        return (value instanceof Number) ? ((Number) value).floatValue() : throwTypeException(value, schema);
+        return value instanceof Float;
       case DOUBLE:
-        return (value instanceof Number) ? ((Number) value).doubleValue() : throwTypeException(value, schema);
+        return value instanceof Double;
       case BOOLEAN:
-        return (value instanceof Boolean) ? value : throwTypeException(value, schema);
+        return value instanceof Boolean;
       case ENUM:
-        return schema.hasEnumSymbol(value.toString()) ? value.toString() : throwTypeException(value, schema);
+        return schema.hasEnumSymbol(value.toString());
       case FIXED:
-        return (value instanceof byte[])
-            ? AvroCompatibilityHelper.newFixed(schema, (byte[]) value)
-            : throwTypeException(value, schema);
+        return (value instanceof byte[]) && ((byte[]) value).length == schema.getFixedSize();
       case BYTES:
-        return (value instanceof byte[]) ? value : throwTypeException(value, schema);
+        return value instanceof byte[];
       case RECORD:
-        return (value instanceof GenericRecord) ? value : throwTypeException(value, schema);
+        return value instanceof GenericRecord;
       case ARRAY:
-        return (value instanceof List) ? value : throwTypeException(value, schema);
+        return value instanceof List;
       case MAP:
-        return (value instanceof Map) ? value : throwTypeException(value, schema);
+        return value instanceof Map;
       case NULL:
-        return throwTypeException(value, schema);
+        return false; // since object != null
       default:
         throw new IllegalArgumentException("Unsupported schema type: " + schema.getType());
     }
-  }
-
-  /***
-   * Throw an exception for type mismatch.
-   * @param value the value
-   * @param schema the schema
-   * @return the exception
-   */
-  private static Object throwTypeException(Object value, Schema schema) {
-    throw new IllegalArgumentException("Value " + value + " does not match schema type " + schema.getType());
   }
 
   /**
