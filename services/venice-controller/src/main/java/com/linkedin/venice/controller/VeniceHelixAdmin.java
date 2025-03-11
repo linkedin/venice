@@ -646,7 +646,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             this));
     initRoutines.add(
         new SystemSchemaInitializationRoutine(
-            AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE,
+            AvroProtocolDefinition.SERVER_STORE_PROPERTIES_PAYLOAD,
             multiClusterConfigs,
             this));
 

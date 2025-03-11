@@ -12,7 +12,7 @@ import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.ZKStore;
-import com.linkedin.venice.metadata.response.StorePropertiesResponseRecord;
+import com.linkedin.venice.metadata.payload.StorePropertiesPayloadRecord;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -42,7 +42,7 @@ public class RequestBasedMetaRepositoryTest {
 
   private Store store;
   private static final String D2_SERVICE_NAME = "D2_SERVICE_NAME";
-  private StorePropertiesResponseRecord MOCK_STORE_PROPERTIES_RESPONSE_RECORD;
+  private StorePropertiesPayloadRecord MOCK_STORE_PROPERTIES_PAYLOAD_RECORD;
   private StoreMetaValue MOCK_STORE_META_VALUE;
 
   // Mock schemas
@@ -66,8 +66,8 @@ public class RequestBasedMetaRepositoryTest {
     // Store
     setupTestStore();
 
-    // StorePropertiesResponseRecord
-    setupTestStorePropertiesResponse();
+    // StorePropertiesPayloadRecord
+    setupTestStorePropertiesPayload();
   }
 
   @Test
@@ -103,7 +103,7 @@ public class RequestBasedMetaRepositoryTest {
   }
 
   @Test
-  public void testRequestBasedMetaRepositoryFetchAndCacheStorePropertiesResponseRecord() {
+  public void testRequestBasedMetaRepositoryFetchAndCacheStorePropertiesPayloadRecord() {
 
     // Mock RequestBasedMetaRepository
     RequestBasedMetaRepository requestBasedMetaRepository = getMockRequestBasedMetaRepository();
@@ -169,7 +169,7 @@ public class RequestBasedMetaRepositoryTest {
     requestBasedMetaRepository.storeMetaValueSchemaReader =
         getMockRouterBackedSchemaReader(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE);
     requestBasedMetaRepository.storePropertiesSchemaReader =
-        getMockRouterBackedSchemaReader(AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE);
+        getMockRouterBackedSchemaReader(AvroProtocolDefinition.SERVER_STORE_PROPERTIES_PAYLOAD);
     requestBasedMetaRepository.storeMetaValueDeserializers = new VeniceConcurrentHashMap<>();
     requestBasedMetaRepository.storePropertiesDeserializers = new VeniceConcurrentHashMap<>();
 
@@ -198,12 +198,12 @@ public class RequestBasedMetaRepositoryTest {
     String mockURL = QueryAction.STORE_PROPERTIES.toString().toLowerCase() + "/" + store.getName();
     TransportClientResponse mockResponse = mock(TransportClientResponse.class);
     CompletableFuture<TransportClientResponse> completableFuture = mock(CompletableFuture.class);
-    RecordSerializer<StorePropertiesResponseRecord> recordSerializer =
-        new FastAvroSerializer<>(StorePropertiesResponseRecord.SCHEMA$, null);
+    RecordSerializer<StorePropertiesPayloadRecord> recordSerializer =
+        new FastAvroSerializer<>(StorePropertiesPayloadRecord.SCHEMA$, null);
     when(completableFuture.get()).thenReturn(mockResponse);
-    when(mockResponse.getBody()).thenReturn(recordSerializer.serialize(MOCK_STORE_PROPERTIES_RESPONSE_RECORD));
+    when(mockResponse.getBody()).thenReturn(recordSerializer.serialize(MOCK_STORE_PROPERTIES_PAYLOAD_RECORD));
     when(mockResponse.getSchemaId())
-        .thenReturn(AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE.getCurrentProtocolVersion());
+        .thenReturn(AvroProtocolDefinition.SERVER_STORE_PROPERTIES_PAYLOAD.getCurrentProtocolVersion());
     when(d2TransportClient.get(mockURL)).thenReturn(completableFuture);
 
     return d2TransportClient;
@@ -230,8 +230,8 @@ public class RequestBasedMetaRepositoryTest {
         RANDOM);
   }
 
-  private void setupTestStorePropertiesResponse() {
-    StorePropertiesResponseRecord record = new StorePropertiesResponseRecord();
+  private void setupTestStorePropertiesPayload() {
+    StorePropertiesPayloadRecord record = new StorePropertiesPayloadRecord();
 
     // StoreMetaValueSchemaVersion
     record.storeMetaValueSchemaVersion =
@@ -259,6 +259,6 @@ public class RequestBasedMetaRepositoryTest {
     record.setStoreMetaValueAvro(ByteBuffer.wrap(serialized));
 
     MOCK_STORE_META_VALUE = storeMetaValue;
-    MOCK_STORE_PROPERTIES_RESPONSE_RECORD = record;
+    MOCK_STORE_PROPERTIES_PAYLOAD_RECORD = record;
   }
 }

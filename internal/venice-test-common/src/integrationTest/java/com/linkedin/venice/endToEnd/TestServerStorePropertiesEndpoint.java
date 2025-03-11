@@ -13,7 +13,7 @@ import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.metadata.response.StorePropertiesResponseRecord;
+import com.linkedin.venice.metadata.payload.StorePropertiesPayloadRecord;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
@@ -63,14 +63,14 @@ public class TestServerStorePropertiesEndpoint extends AbstractClientEndToEndSet
     Admin admin = veniceCluster.getLeaderVeniceController().getVeniceAdmin();
     Optional<Integer> largestKnownSchemaId = Optional.empty();
 
-    StorePropertiesResponseRecord record = getStorePropertiesResponseRecord(storeName, largestKnownSchemaId);
+    StorePropertiesPayloadRecord record = getStorePropertiesPayloadRecord(storeName, largestKnownSchemaId);
 
     assertNotNull(record);
     assertNotNull(record.helixGroupInfo);
     assertNotNull(record.routingInfo);
 
     StoreMetaValue storeMetaValue = deserializeStoreMetaValue(record);
-    assertStorePropertiesResponseRecord(storeMetaValue, admin, storeName, largestKnownSchemaId);
+    assertStorePropertiesPayloadRecord(storeMetaValue, admin, storeName, largestKnownSchemaId);
   }
 
   @Test(timeOut = TIME_OUT)
@@ -88,7 +88,7 @@ public class TestServerStorePropertiesEndpoint extends AbstractClientEndToEndSet
     Optional<Integer> largestKnownSchemaId = Optional.empty();
 
     TestUtils.waitForNonDeterministicAssertion(TIME_OUT, TimeUnit.SECONDS, () -> {
-      StorePropertiesResponseRecord record = getStorePropertiesResponseRecord(storeName, largestKnownSchemaId);
+      StorePropertiesPayloadRecord record = getStorePropertiesPayloadRecord(storeName, largestKnownSchemaId);
       assertNotNull(record);
       assertNotNull(record.helixGroupInfo);
       assertNotNull(record.routingInfo);
@@ -99,7 +99,7 @@ public class TestServerStorePropertiesEndpoint extends AbstractClientEndToEndSet
       assertEquals(storeMetaValue.storeProperties.largestUsedVersionNumber, largestUsedVersion);
 
       Admin admin = veniceCluster.getLeaderVeniceController().getVeniceAdmin();
-      assertStorePropertiesResponseRecord(storeMetaValue, admin, storeName, largestKnownSchemaId);
+      assertStorePropertiesPayloadRecord(storeMetaValue, admin, storeName, largestKnownSchemaId);
     });
 
   }
@@ -119,7 +119,7 @@ public class TestServerStorePropertiesEndpoint extends AbstractClientEndToEndSet
     Optional<Integer> largestKnownSchemaId = Optional.of(1);
 
     TestUtils.waitForNonDeterministicAssertion(TIME_OUT, TimeUnit.SECONDS, () -> {
-      StorePropertiesResponseRecord record = getStorePropertiesResponseRecord(storeName, largestKnownSchemaId);
+      StorePropertiesPayloadRecord record = getStorePropertiesPayloadRecord(storeName, largestKnownSchemaId);
       assertNotNull(record);
       assertNotNull(record.helixGroupInfo);
       assertNotNull(record.routingInfo);
@@ -130,14 +130,14 @@ public class TestServerStorePropertiesEndpoint extends AbstractClientEndToEndSet
       assertEquals(storeMetaValue.storeProperties.largestUsedVersionNumber, largestUsedVersion);
 
       Admin admin = veniceCluster.getLeaderVeniceController().getVeniceAdmin();
-      assertStorePropertiesResponseRecord(storeMetaValue, admin, storeName, largestKnownSchemaId);
+      assertStorePropertiesPayloadRecord(storeMetaValue, admin, storeName, largestKnownSchemaId);
     });
   }
 
-  private StorePropertiesResponseRecord getStorePropertiesResponseRecord(
+  private StorePropertiesPayloadRecord getStorePropertiesPayloadRecord(
       String _storeName,
       Optional<Integer> largestKnownSchemaId) throws Exception {
-    StorePropertiesResponseRecord record;
+    StorePropertiesPayloadRecord record;
 
     // Request
     ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(_storeName).setVeniceURL(serverUrl);
@@ -150,16 +150,16 @@ public class TestServerStorePropertiesEndpoint extends AbstractClientEndToEndSet
       TransportClientResponse response = transportClient.get(requestUrl).get();
 
       // Deserialize
-      Schema writerSchema = StorePropertiesResponseRecord.SCHEMA$;
-      RecordDeserializer<StorePropertiesResponseRecord> recordDeserializer = FastSerializerDeserializerFactory
-          .getFastAvroSpecificDeserializer(writerSchema, StorePropertiesResponseRecord.class);
+      Schema writerSchema = StorePropertiesPayloadRecord.SCHEMA$;
+      RecordDeserializer<StorePropertiesPayloadRecord> recordDeserializer = FastSerializerDeserializerFactory
+          .getFastAvroSpecificDeserializer(writerSchema, StorePropertiesPayloadRecord.class);
       record = recordDeserializer.deserialize(response.getBody());
 
       return record;
     }
   }
 
-  private void assertStorePropertiesResponseRecord(
+  private void assertStorePropertiesPayloadRecord(
       StoreMetaValue storeMetaValue,
       Admin admin,
       String _storeName,
@@ -218,7 +218,7 @@ public class TestServerStorePropertiesEndpoint extends AbstractClientEndToEndSet
 
   }
 
-  private StoreMetaValue deserializeStoreMetaValue(StorePropertiesResponseRecord record) {
+  private StoreMetaValue deserializeStoreMetaValue(StorePropertiesPayloadRecord record) {
     Schema writerSchema = StoreMetaValue.SCHEMA$;
     RecordDeserializer<StoreMetaValue> recordDeserializer =
         FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(writerSchema, StoreMetaValue.class);

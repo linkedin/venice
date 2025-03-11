@@ -8,7 +8,7 @@ import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
-import com.linkedin.davinci.listener.response.StorePropertiesResponse;
+import com.linkedin.davinci.listener.response.StorePropertiesPayload;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -177,21 +177,21 @@ public class ServerReadMetadataRepositoryTest {
     mockStore.setStorageNodeReadQuotaEnabled(true);
 
     // Request
-    StorePropertiesResponse storePropertiesResponse =
+    StorePropertiesPayload storePropertiesPayload =
         serverReadMetadataRepository.getStoreProperties(storeName, Optional.empty());
     StoreMetaValue storeMetaValue =
-        deserializeStoreMetaValue(storePropertiesResponse.getResponseRecord().getStoreMetaValueAvro().array());
-    Assert.assertNotNull(storePropertiesResponse);
-    Assert.assertNotNull(storePropertiesResponse.getResponseRecord());
-    Assert.assertNotNull(storePropertiesResponse.getResponseRecord().getStoreMetaValueAvro());
+        deserializeStoreMetaValue(storePropertiesPayload.getPayloadRecord().getStoreMetaValueAvro().array());
+    Assert.assertNotNull(storePropertiesPayload);
+    Assert.assertNotNull(storePropertiesPayload.getPayloadRecord());
+    Assert.assertNotNull(storePropertiesPayload.getPayloadRecord().getStoreMetaValueAvro());
 
     // Assert response
     Assert
         .assertEquals(storeMetaValue.getStoreKeySchemas().getKeySchemaMap().get(new Utf8("0")), new Utf8("\"string\""));
     Assert.assertEquals(storeMetaValue.getStoreProperties().getVersions().size(), 2);
-    Assert.assertNotNull(storePropertiesResponse.getResponseRecord().getRoutingInfo());
-    Assert.assertNotNull(storePropertiesResponse.getResponseRecord().getRoutingInfo().get("0"));
-    Assert.assertEquals(storePropertiesResponse.getResponseRecord().getRoutingInfo().get("0").size(), 1);
+    Assert.assertNotNull(storePropertiesPayload.getPayloadRecord().getRoutingInfo());
+    Assert.assertNotNull(storePropertiesPayload.getPayloadRecord().getRoutingInfo().get("0"));
+    Assert.assertEquals(storePropertiesPayload.getPayloadRecord().getRoutingInfo().get("0").size(), 1);
     ServerCurrentVersionResponse currentVersionResponse =
         serverReadMetadataRepository.getCurrentVersionResponse(storeName);
     Assert.assertNotNull(currentVersionResponse);
@@ -205,19 +205,19 @@ public class ServerReadMetadataRepositoryTest {
 
     // Test largestKnownSchemaID param
     for (int i = 0; i <= schemaCount; i++) {
-      StorePropertiesResponse storePropertiesResponseLKSID =
+      StorePropertiesPayload storePropertiesPayloadLKSID =
           serverReadMetadataRepository.getStoreProperties(storeName, Optional.of(i));
       StoreMetaValue storeMetaValueLKSID =
-          deserializeStoreMetaValue(storePropertiesResponseLKSID.getResponseRecord().getStoreMetaValueAvro().array());
+          deserializeStoreMetaValue(storePropertiesPayloadLKSID.getPayloadRecord().getStoreMetaValueAvro().array());
       Assert.assertEquals(storeMetaValueLKSID.getStoreValueSchemas().getValueSchemaMap().size(), schemaCount - i);
     }
 
     // Value update test
     mockStore.setBatchGetLimit(300);
-    StorePropertiesResponse storePropertiesResponseValueUpdate =
+    StorePropertiesPayload storePropertiesPayloadValueUpdate =
         serverReadMetadataRepository.getStoreProperties(storeName, Optional.empty());
-    StoreMetaValue storeMetaValueUpdate = deserializeStoreMetaValue(
-        storePropertiesResponseValueUpdate.getResponseRecord().getStoreMetaValueAvro().array());
+    StoreMetaValue storeMetaValueUpdate =
+        deserializeStoreMetaValue(storePropertiesPayloadValueUpdate.getPayloadRecord().getStoreMetaValueAvro().array());
     Assert.assertEquals(storeMetaValueUpdate.getStoreProperties().getBatchGetLimit(), 300);
   }
 

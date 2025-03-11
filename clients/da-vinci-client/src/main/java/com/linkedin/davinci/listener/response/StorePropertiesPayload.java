@@ -1,6 +1,6 @@
 package com.linkedin.davinci.listener.response;
 
-import com.linkedin.venice.metadata.response.StorePropertiesResponseRecord;
+import com.linkedin.venice.metadata.payload.StorePropertiesPayloadRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
@@ -15,33 +15,35 @@ import java.util.Map;
 /**
  * This class stores all the information required for answering a server metadata fetch request.
  */
-public class StorePropertiesResponse {
+public class StorePropertiesPayload {
   private boolean isError;
   private String message;
 
-  private final StorePropertiesResponseRecord responseRecord;
+  private final StorePropertiesPayloadRecord payloadRecord;
 
-  public StorePropertiesResponse() {
-    this.responseRecord = new StorePropertiesResponseRecord();
-  }
-
-  public void setStoreMetaValueSchemaVersion(int schemaVersion) {
-    responseRecord.setStoreMetaValueSchemaVersion(schemaVersion);
+  public StorePropertiesPayload() {
+    this.payloadRecord = new StorePropertiesPayloadRecord();
   }
 
   public void setStoreMetaValue(StoreMetaValue storeMetaValue) {
+
+    // StoreMetaValueAvro
     RecordSerializer<StoreMetaValue> serializer =
         SerializerDeserializerFactory.getAvroGenericSerializer(StoreMetaValue.SCHEMA$);
     byte[] serialized = serializer.serialize(storeMetaValue);
-    responseRecord.setStoreMetaValueAvro(ByteBuffer.wrap(serialized));
+    payloadRecord.setStoreMetaValueAvro(ByteBuffer.wrap(serialized));
+
+    // StoreMetaValueSchemaVersion
+    payloadRecord.setStoreMetaValueSchemaVersion(
+        AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion());
   }
 
   public void setHelixGroupInfo(Map<CharSequence, Integer> helixGroupInfo) {
-    responseRecord.setHelixGroupInfo(helixGroupInfo);
+    payloadRecord.setHelixGroupInfo(helixGroupInfo);
   }
 
   public void setRoutingInfo(Map<CharSequence, List<CharSequence>> routingInfo) {
-    responseRecord.setRoutingInfo(routingInfo);
+    payloadRecord.setRoutingInfo(routingInfo);
   }
 
   public ByteBuf getResponseBody() {
@@ -49,13 +51,13 @@ public class StorePropertiesResponse {
   }
 
   private byte[] serializedResponse() {
-    RecordSerializer<StorePropertiesResponseRecord> serializer =
-        SerializerDeserializerFactory.getAvroGenericSerializer(StorePropertiesResponseRecord.SCHEMA$);
-    return serializer.serialize(responseRecord);
+    RecordSerializer<StorePropertiesPayloadRecord> serializer =
+        SerializerDeserializerFactory.getAvroGenericSerializer(StorePropertiesPayloadRecord.SCHEMA$);
+    return serializer.serialize(payloadRecord);
   }
 
   public int getResponseSchemaIdHeader() {
-    return AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE.getCurrentProtocolVersion();
+    return AvroProtocolDefinition.SERVER_STORE_PROPERTIES_PAYLOAD.getCurrentProtocolVersion();
   }
 
   public void setError(boolean error) {
@@ -74,7 +76,7 @@ public class StorePropertiesResponse {
     return this.message;
   }
 
-  public StorePropertiesResponseRecord getResponseRecord() {
-    return responseRecord;
+  public StorePropertiesPayloadRecord getPayloadRecord() {
+    return payloadRecord;
   }
 }

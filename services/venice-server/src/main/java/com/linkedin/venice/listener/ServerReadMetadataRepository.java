@@ -2,7 +2,7 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
-import com.linkedin.davinci.listener.response.StorePropertiesResponse;
+import com.linkedin.davinci.listener.response.StorePropertiesPayload;
 import com.linkedin.davinci.stats.ServerMetadataServiceStats;
 import com.linkedin.davinci.storage.ReadMetadataRetriever;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -19,7 +19,6 @@ import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.systemstore.schemas.StoreKeySchemas;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
@@ -151,13 +150,13 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
    * Return the store properties for the given store. The data is retrieved from its respective repositories which
    * originate from the VeniceServer.
    * @param storeName
-   * @return {@link StorePropertiesResponse} object that holds all the information required for answering a server metadata
+   * @return {@link StorePropertiesPayload} object that holds all the information required for answering a server metadata
    * fetch request.
    */
   @Override
-  public StorePropertiesResponse getStoreProperties(String storeName, Optional<Integer> largestKnownSchemaId) {
+  public StorePropertiesPayload getStoreProperties(String storeName, Optional<Integer> largestKnownSchemaId) {
     serverMetadataServiceStats.recordRequestBasedMetadataInvokeCount();
-    StorePropertiesResponse response = new StorePropertiesResponse();
+    StorePropertiesPayload response = new StorePropertiesPayload();
 
     try {
       Store store = storeRepository.getStoreOrThrow(storeName);
@@ -211,8 +210,6 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       int currentVersionNumber = getCurrentVersionNumberOrThrow(storeName, store);
       Map<CharSequence, List<CharSequence>> routingInfo = getRoutingInfo(storeName, currentVersionNumber);
 
-      response.setStoreMetaValueSchemaVersion(
-          AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion());
       response.setStoreMetaValue(storeMetaValue);
       response.setHelixGroupInfo(helixGroupInfo);
       response.setRoutingInfo(routingInfo);

@@ -13,7 +13,7 @@ import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.ZKStore;
-import com.linkedin.venice.metadata.response.StorePropertiesResponseRecord;
+import com.linkedin.venice.metadata.payload.StorePropertiesPayloadRecord;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -32,22 +32,23 @@ import org.apache.avro.Schema;
 public class RequestBasedMetaRepository extends NativeMetadataRepository {
 
   // cluster -> client
-  private final Map<String, D2TransportClient> d2TransportClientMap = new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<String, D2TransportClient> d2TransportClientMap =
+      new VeniceConcurrentHashMap<>();
 
   // storeName -> T
-  protected Map<String, SchemaData> storeSchemaMap = new VeniceConcurrentHashMap<>();
+  VeniceConcurrentHashMap<String, SchemaData> storeSchemaMap = new VeniceConcurrentHashMap<>();
 
   private final D2TransportClient d2DiscoveryTransportClient;
   private D2ServiceDiscovery d2ServiceDiscovery;
 
   // Schema Readers
-  protected RouterBackedSchemaReader storePropertiesSchemaReader;
-  protected RouterBackedSchemaReader storeMetaValueSchemaReader;
+  RouterBackedSchemaReader storePropertiesSchemaReader;
+  RouterBackedSchemaReader storeMetaValueSchemaReader;
 
   // Deserializers
-  protected Map<Integer, RecordDeserializer<StorePropertiesResponseRecord>> storePropertiesDeserializers =
+  VeniceConcurrentHashMap<Integer, RecordDeserializer<StorePropertiesPayloadRecord>> storePropertiesDeserializers =
       new VeniceConcurrentHashMap<>();
-  protected Map<Integer, RecordDeserializer<StoreMetaValue>> storeMetaValueDeserializers =
+  VeniceConcurrentHashMap<Integer, RecordDeserializer<StoreMetaValue>> storeMetaValueDeserializers =
       new VeniceConcurrentHashMap<>();
 
   public RequestBasedMetaRepository(ClientConfig clientConfig, VeniceProperties backendConfig) {
@@ -60,7 +61,7 @@ public class RequestBasedMetaRepository extends NativeMetadataRepository {
 
     // Schema readers
     this.storePropertiesSchemaReader =
-        getRouterBackedSchemaReader(AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE.getSystemStoreName());
+        getRouterBackedSchemaReader(AvroProtocolDefinition.SERVER_STORE_PROPERTIES_PAYLOAD.getSystemStoreName());
     this.storeMetaValueSchemaReader =
         getRouterBackedSchemaReader(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName());
   }
@@ -123,8 +124,8 @@ public class RequestBasedMetaRepository extends NativeMetadataRepository {
               + ": " + e);
     }
 
-    // Deserialize StorePropertiesResponseRecord
-    StorePropertiesResponseRecord record =
+    // Deserialize StorePropertiesPayloadRecord
+    StorePropertiesPayloadRecord record =
         getStorePropertiesDeserializer(response.getSchemaId()).deserialize(response.getBody());
 
     // Deserialize StoreMetaValue
@@ -190,31 +191,20 @@ public class RequestBasedMetaRepository extends NativeMetadataRepository {
     return new RouterBackedSchemaReader(() -> responseSchemaStoreClient, Optional.empty(), Optional.empty());
   }
 
-  private RecordDeserializer<StorePropertiesResponseRecord> getStorePropertiesDeserializer(int schemaVersion) {
+  private RecordDeserializer<StorePropertiesPayloadRecord> getStorePropertiesDeserializer(int schemaVersion) {
 
-    if (storePropertiesDeserializers.containsKey(schemaVersion)) {
-      return storePropertiesDeserializers.get(schemaVersion);
-    }
-
-    Schema schema = storePropertiesSchemaReader.getValueSchema(schemaVersion);
-    RecordDeserializer<StorePropertiesResponseRecord> deserializer =
-        FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(schema, StorePropertiesResponseRecord.class);
-    storePropertiesDeserializers.put(schemaVersion, deserializer);
-
-    return deserializer;
+    return storePropertiesDeserializers.computeIfAbsent(schemaVersion, key -> {
+      Schema schema = storePropertiesSchemaReader.getValueSchema(key);
+      return FastSerializerDeserializerFactory
+          .getFastAvroSpecificDeserializer(schema, StorePropertiesPayloadRecord.class);
+    });
   }
 
   private RecordDeserializer<StoreMetaValue> getStoreMetaValueDeserializer(int schemaVersion) {
 
-    if (storeMetaValueDeserializers.containsKey(schemaVersion)) {
-      return storeMetaValueDeserializers.get(schemaVersion);
-    }
-
-    Schema schema = storeMetaValueSchemaReader.getValueSchema(schemaVersion);
-    RecordDeserializer<StoreMetaValue> deserializer =
-        FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(schema, StoreMetaValue.class);
-    storeMetaValueDeserializers.put(schemaVersion, deserializer);
-
-    return deserializer;
+    return storeMetaValueDeserializers.computeIfAbsent(schemaVersion, key -> {
+      Schema schema = storeMetaValueSchemaReader.getValueSchema(key);
+      return FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(schema, StoreMetaValue.class);
+    });
   }
 }
