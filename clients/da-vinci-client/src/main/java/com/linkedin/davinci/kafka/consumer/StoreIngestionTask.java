@@ -176,7 +176,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private static final String CONSUMER_TASK_ID_FORMAT = "SIT-%s";
   public static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES =
       Collections.singletonList(VeniceException.class);
-  public static final int UNSUB_SLEEP_MS = 600;
+  public static final long POST_UNSUB_SLEEP_MS = 600L;
   public static long SCHEMA_POLLING_DELAY_MS = SECONDS.toMillis(5);
   public static long STORE_VERSION_POLLING_DELAY_MS = MINUTES.toMillis(1);
 
@@ -1557,7 +1557,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             LOGGER.info(msg);
           }
           // long sleep here in case there are more consumer action to perform like KILL/subscription etc.
-          Thread.sleep(UNSUB_SLEEP_MS);
+          Thread.sleep(POST_UNSUB_SLEEP_MS);
           idleCounter = 0;
         } else {
           maybeCloseInactiveIngestionTask();
