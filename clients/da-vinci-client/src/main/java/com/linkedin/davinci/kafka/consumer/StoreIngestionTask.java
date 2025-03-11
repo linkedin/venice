@@ -1555,7 +1555,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
             LOGGER.info(msg);
           }
-          Thread.sleep(readCycleDelayMs * 20);
+          // long sleep here in case there are more consumer action to perform like KILL/subscription etc.
+          Thread.sleep(readCycleDelayMs * 600);
           idleCounter = 0;
         } else {
           maybeCloseInactiveIngestionTask();
