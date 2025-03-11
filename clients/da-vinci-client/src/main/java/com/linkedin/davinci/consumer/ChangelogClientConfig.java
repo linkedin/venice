@@ -243,7 +243,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setShouldCompactMessages(config.shouldCompactMessages())
         .setIsBeforeImageView(config.isBeforeImageView())
         .setIsBlobTransferEnabled(config.isBlobTransferEnabled())
-        .setIsExperimentalClientEnabled(config.isExperimentalClientEnabled());
+        .setIsExperimentalClientEnabled(config.isExperimentalClientEnabled())
         .setShouldSkipFailedToAssembleRecords(config.shouldSkipFailedToAssembleRecords());
     return newConfig;
   }
