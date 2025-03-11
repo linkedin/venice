@@ -121,16 +121,15 @@ public class NewSemanticUsageValidatorTest {
     NewSemanticUsageValidator newSemanticUsageValidator = new NewSemanticUsageValidator();
     Schema.Field targetLongField = AvroCompatibilityHelper.createSchemaField("targetLongField", LongSchema, "", null);
     assertTrue(newSemanticUsageValidator.isNonDefaultValueUnion(10, currentField, targetLongField));
-    assertTrue(newSemanticUsageValidator.getErrorMessage().contains("Type mismatch INT vs LONG"));
+    assertTrue(
+        newSemanticUsageValidator.getErrorMessage()
+            .contains("contains non-default value. Actual value: 10. Default value: null or 0"));
 
-    // Case 2: when current field is union, target field is union
+    // Case 2: when current field is union,
     Schema unionSchema = Schema.createUnion(Arrays.asList(IntSchema, LongSchema));
     Schema.Field targetField2 = AvroCompatibilityHelper.createSchemaField("targetField2", unionSchema, "", null);
-
     newSemanticUsageValidator = new NewSemanticUsageValidator();
-    assertTrue(newSemanticUsageValidator.isNonDefaultValueUnion(0, currentField, targetField2));
-    System.out.println(newSemanticUsageValidator.getErrorMessage());
-    assertTrue(newSemanticUsageValidator.getErrorMessage().contains("Type mismatch INT vs UNION"));
+    assertFalse(newSemanticUsageValidator.isNonDefaultValueUnion(0, currentField, targetField2));
 
     // Case 3: current field is union, target field is union, but value doesnt match any of the current field types
     Schema.Field currentField3 = AvroCompatibilityHelper.createSchemaField("currentField3", unionSchema, "", null);
@@ -220,11 +219,11 @@ public class NewSemanticUsageValidatorTest {
     // Default value
     assertFalse(validator.apply(null, new Pair<>(currentField, targetField)));
 
-    // Different types
+    // Different types, we only compare the value with the current field
     Schema longSchema = Schema.create(Schema.Type.LONG);
     Schema.Field longField = AvroCompatibilityHelper.createSchemaField("longField", longSchema, "", null);
     assertTrue(validator.apply(10, new Pair<>(currentField, longField)));
-    assertTrue(newSemanticUsageValidator.getErrorMessage().contains("Type mismatch INT vs LONG"));
+    assertTrue(newSemanticUsageValidator.getErrorMessage().contains("non-default value"));
 
     // nullable union with null targetField
     newSemanticUsageValidator = new NewSemanticUsageValidator();

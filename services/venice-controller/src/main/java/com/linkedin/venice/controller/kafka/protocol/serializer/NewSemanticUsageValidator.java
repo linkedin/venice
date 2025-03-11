@@ -133,9 +133,9 @@ public class NewSemanticUsageValidator {
 
     Schema currentSchema = currentField.schema();
 
-    if (AvroSchemaUtils.isNullableUnionPair(currentSchema)) {
-      return handleNullableUnion(object, currentField, targetField);
-    }
+    // if (AvroSchemaUtils.isNullableUnionPair(currentSchema)) {
+    // return handleNullableUnion(object, currentField, targetField);
+    // }
 
     Schema subSchema = findObjectSchemaInsideUnion(currentField, object);
     if (subSchema == null) {
@@ -179,16 +179,6 @@ public class NewSemanticUsageValidator {
   public boolean handleNullableUnion(Object object, Schema.Field currentField, Schema.Field targetField) {
     List<Schema> subSchemas = currentField.schema().getTypes();
     Schema nonNullSchema = subSchemas.get(0).getType() == Schema.Type.NULL ? subSchemas.get(1) : subSchemas.get(0);
-    // If the nested schema is not the same, fail the validation
-    if (targetField != null && nonNullSchema.getType() != targetField.schema().getType()) {
-      return returnTrueAndLogError(
-          String.format(
-              "Field %s: Type mismatch %s vs %s",
-              formatFieldName(currentField.name()),
-              nonNullSchema.getType(),
-              targetField.schema().getType()));
-    }
-    // If the nested schema is the same, check the value
     return isNonDefaultValue(
         object,
         AvroCompatibilityHelper.createSchemaField(currentField.name(), nonNullSchema, "", null),
@@ -304,6 +294,8 @@ public class NewSemanticUsageValidator {
         return (value instanceof List) ? value : throwTypeException(value, schema);
       case MAP:
         return (value instanceof Map) ? value : throwTypeException(value, schema);
+      case NULL:
+        return throwTypeException(value, schema);
       default:
         throw new IllegalArgumentException("Unsupported schema type: " + schema.getType());
     }
