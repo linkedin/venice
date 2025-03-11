@@ -586,8 +586,8 @@ public class UtilsTest {
     AvroProtocolDefinition[] avroProtocolDefinitions = new AvroProtocolDefinition[] {
         AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE, AvroProtocolDefinition.PARTITION_STATE,
         AvroProtocolDefinition.STORE_VERSION_STATE, AvroProtocolDefinition.SERVER_METADATA_RESPONSE,
-        // AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE,
-        AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE, AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE };
+        AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE, AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
+        AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE };
 
     for (AvroProtocolDefinition avroProtocolDefinition: avroProtocolDefinitions) {
       Map<Integer, Schema> schemaMap = Utils.getAllSchemasFromResources(avroProtocolDefinition);

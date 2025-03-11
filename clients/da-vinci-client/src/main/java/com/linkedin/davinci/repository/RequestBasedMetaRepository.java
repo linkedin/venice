@@ -39,7 +39,16 @@ public class RequestBasedMetaRepository extends NativeMetadataRepository {
 
   private final D2TransportClient d2DiscoveryTransportClient;
   private D2ServiceDiscovery d2ServiceDiscovery;
-  protected RouterBackedSchemaReader storeMetaValueResponseSchemaReader;
+
+  // Schema Readers
+  protected RouterBackedSchemaReader storePropertiesSchemaReader;
+  protected RouterBackedSchemaReader storeMetaValueSchemaReader;
+
+  // Deserializers
+  protected Map<Integer, RecordDeserializer<StorePropertiesResponseRecord>> storePropertiesDeserializers =
+      new VeniceConcurrentHashMap<>();
+  protected Map<Integer, RecordDeserializer<StoreMetaValue>> storeMetaValueDeserializers =
+      new VeniceConcurrentHashMap<>();
 
   public RequestBasedMetaRepository(ClientConfig clientConfig, VeniceProperties backendConfig) {
     super(clientConfig, backendConfig);
@@ -49,16 +58,11 @@ public class RequestBasedMetaRepository extends NativeMetadataRepository {
     this.d2DiscoveryTransportClient =
         new D2TransportClient(clientConfig.getD2ServiceName(), clientConfig.getD2Client());
 
-    // Store Meta Value schema client
-    InternalAvroStoreClient responseSchemaStoreClient = new AvroGenericStoreClientImpl(
-        // Create a new D2TransportClient since the other one will be set to point to server d2 after cluster discovery
-        new D2TransportClient(
-            this.d2DiscoveryTransportClient.getServiceName(),
-            this.d2DiscoveryTransportClient.getD2Client()),
-        false,
-        defaultGenericClientConfig(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName()));
-    this.storeMetaValueResponseSchemaReader =
-        new RouterBackedSchemaReader(() -> responseSchemaStoreClient, Optional.empty(), Optional.empty());
+    // Schema readers
+    this.storePropertiesSchemaReader =
+        getRouterBackedSchemaReader(AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE.getSystemStoreName());
+    this.storeMetaValueSchemaReader =
+        getRouterBackedSchemaReader(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName());
   }
 
   @Override
@@ -120,19 +124,12 @@ public class RequestBasedMetaRepository extends NativeMetadataRepository {
     }
 
     // Deserialize StorePropertiesResponseRecord
-    Schema writerSchemaStoreProperties = StorePropertiesResponseRecord.SCHEMA$;
-    RecordDeserializer<StorePropertiesResponseRecord> storePropertiesResponseRecordRecordDeserializer =
-        FastSerializerDeserializerFactory
-            .getFastAvroSpecificDeserializer(writerSchemaStoreProperties, StorePropertiesResponseRecord.class);
     StorePropertiesResponseRecord record =
-        storePropertiesResponseRecordRecordDeserializer.deserialize(response.getBody());
+        getStorePropertiesDeserializer(response.getSchemaId()).deserialize(response.getBody());
 
     // Deserialize StoreMetaValue
-    Schema writerSchemaStoreMetaValue =
-        storeMetaValueResponseSchemaReader.getValueSchema(record.storeMetaValueSchemaVersion);
-    RecordDeserializer<StoreMetaValue> storeMetaValueRecordDeserializer = FastSerializerDeserializerFactory
-        .getFastAvroSpecificDeserializer(writerSchemaStoreMetaValue, StoreMetaValue.class);
-    StoreMetaValue storeMetaValue = storeMetaValueRecordDeserializer.deserialize(record.getStoreMetaValueAvro());
+    StoreMetaValue storeMetaValue =
+        getStoreMetaValueDeserializer(record.storeMetaValueSchemaVersion).deserialize(record.getStoreMetaValueAvro());
 
     // Cache
     cacheStoreSchema(storeName, storeMetaValue);
@@ -178,5 +175,46 @@ public class RequestBasedMetaRepository extends NativeMetadataRepository {
       storeSchemaMap.get(storeName)
           .addValueSchema(new SchemaEntry(Integer.parseInt(entry.getKey().toString()), entry.getValue().toString()));
     }
+  }
+
+  private RouterBackedSchemaReader getRouterBackedSchemaReader(String systemStoreName) {
+
+    InternalAvroStoreClient responseSchemaStoreClient = new AvroGenericStoreClientImpl(
+        // Create a new D2TransportClient since the other one will be set to point to server d2 after cluster discovery
+        new D2TransportClient(
+            this.d2DiscoveryTransportClient.getServiceName(),
+            this.d2DiscoveryTransportClient.getD2Client()),
+        false,
+        defaultGenericClientConfig(systemStoreName));
+
+    return new RouterBackedSchemaReader(() -> responseSchemaStoreClient, Optional.empty(), Optional.empty());
+  }
+
+  private RecordDeserializer<StorePropertiesResponseRecord> getStorePropertiesDeserializer(int schemaVersion) {
+
+    if (storePropertiesDeserializers.containsKey(schemaVersion)) {
+      return storePropertiesDeserializers.get(schemaVersion);
+    }
+
+    Schema schema = storePropertiesSchemaReader.getValueSchema(schemaVersion);
+    RecordDeserializer<StorePropertiesResponseRecord> deserializer =
+        FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(schema, StorePropertiesResponseRecord.class);
+    storePropertiesDeserializers.put(schemaVersion, deserializer);
+
+    return deserializer;
+  }
+
+  private RecordDeserializer<StoreMetaValue> getStoreMetaValueDeserializer(int schemaVersion) {
+
+    if (storeMetaValueDeserializers.containsKey(schemaVersion)) {
+      return storeMetaValueDeserializers.get(schemaVersion);
+    }
+
+    Schema schema = storeMetaValueSchemaReader.getValueSchema(schemaVersion);
+    RecordDeserializer<StoreMetaValue> deserializer =
+        FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(schema, StoreMetaValue.class);
+    storeMetaValueDeserializers.put(schemaVersion, deserializer);
+
+    return deserializer;
   }
 }

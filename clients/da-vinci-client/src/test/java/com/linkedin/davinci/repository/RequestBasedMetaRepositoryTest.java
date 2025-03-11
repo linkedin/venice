@@ -163,10 +163,15 @@ public class RequestBasedMetaRepositoryTest {
   private RequestBasedMetaRepository getMockRequestBasedMetaRepository() {
     RequestBasedMetaRepository requestBasedMetaRepository = mock(RequestBasedMetaRepository.class);
 
-    // Schema Map
+    // Initialize class variables
     requestBasedMetaRepository.storeSchemaMap = new VeniceConcurrentHashMap<>();
     requestBasedMetaRepository.schemaMap = new VeniceConcurrentHashMap<>();
-    requestBasedMetaRepository.storeMetaValueResponseSchemaReader = getMockRouterBackedSchemaReader();
+    requestBasedMetaRepository.storeMetaValueSchemaReader =
+        getMockRouterBackedSchemaReader(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE);
+    requestBasedMetaRepository.storePropertiesSchemaReader =
+        getMockRouterBackedSchemaReader(AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE);
+    requestBasedMetaRepository.storeMetaValueDeserializers = new VeniceConcurrentHashMap<>();
+    requestBasedMetaRepository.storePropertiesDeserializers = new VeniceConcurrentHashMap<>();
 
     // Mock D2TransportClient
     try {
@@ -197,21 +202,21 @@ public class RequestBasedMetaRepositoryTest {
         new FastAvroSerializer<>(StorePropertiesResponseRecord.SCHEMA$, null);
     when(completableFuture.get()).thenReturn(mockResponse);
     when(mockResponse.getBody()).thenReturn(recordSerializer.serialize(MOCK_STORE_PROPERTIES_RESPONSE_RECORD));
+    when(mockResponse.getSchemaId())
+        .thenReturn(AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE.getCurrentProtocolVersion());
     when(d2TransportClient.get(mockURL)).thenReturn(completableFuture);
 
     return d2TransportClient;
   }
 
-  private RouterBackedSchemaReader getMockRouterBackedSchemaReader() {
+  private RouterBackedSchemaReader getMockRouterBackedSchemaReader(AvroProtocolDefinition avroProtocolDefinition) {
 
     // Mock schema reader
     RouterBackedSchemaReader routerBackedSchemaReader = mock(RouterBackedSchemaReader.class);
 
     // Mock METADATA_SYSTEM_SCHEMA_STORE schema
-    when(
-        routerBackedSchemaReader
-            .getValueSchema(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion()))
-                .thenReturn(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema());
+    when(routerBackedSchemaReader.getValueSchema(avroProtocolDefinition.getCurrentProtocolVersion()))
+        .thenReturn(avroProtocolDefinition.getCurrentProtocolVersionSchema());
 
     return routerBackedSchemaReader;
   }
