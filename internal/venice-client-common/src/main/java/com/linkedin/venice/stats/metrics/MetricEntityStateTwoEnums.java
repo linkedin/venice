@@ -22,6 +22,7 @@ public class MetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensionInte
   private final EnumMap<E1, EnumMap<E2, Attributes>> attributesEnumMap;
   private final Class<E1> enumTypeClass1;
   private final Class<E2> enumTypeClass2;
+  private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
   /** should not be called directly, call {@link #create} instead */
   private MetricEntityStateTwoEnums(
@@ -55,6 +56,7 @@ public class MetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensionInte
     validateRequiredDimensions(metricEntity, null, baseDimensionsMap, enumTypeClass1, enumTypeClass2);
     this.enumTypeClass1 = enumTypeClass1;
     this.enumTypeClass2 = enumTypeClass2;
+    this.baseDimensionsMap = baseDimensionsMap;
     this.attributesEnumMap = createAttributesEnumMap(metricEntity, otelRepository, baseDimensionsMap);
   }
 
@@ -94,6 +96,18 @@ public class MetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensionInte
         enumTypeClass2);
   }
 
+  private Map<VeniceMetricsDimensions, String> createAdditionalDimensionsMap(E1 key1, E2 key2) {
+    Map<VeniceMetricsDimensions, String> additionalDimensionsMap = new HashMap<>();
+    additionalDimensionsMap.put(key1.getDimensionName(), key1.getDimensionValue());
+    additionalDimensionsMap.put(key2.getDimensionName(), key2.getDimensionValue());
+    return additionalDimensionsMap;
+  }
+
+  private Attributes createAttributes(E1 key1, E2 key2) {
+    Map<VeniceMetricsDimensions, String> additionalDimensionsMap = createAdditionalDimensionsMap(key1, key2);
+    return getOtelRepository().createAttributes(getMetricEntity(), baseDimensionsMap, additionalDimensionsMap);
+  }
+
   /**
     * Creates an EnumMap of {@link Attributes} for each possible value of the dynamic dimensions
    * {@link #enumTypeClass1} and {@link #enumTypeClass2}
@@ -107,15 +121,11 @@ public class MetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensionInte
     }
 
     EnumMap<E1, EnumMap<E2, Attributes>> attributesEnumMap = new EnumMap<>(enumTypeClass1);
-    Map<VeniceMetricsDimensions, String> additionalDimensionsMap = new HashMap<>();
     for (E1 enumConst1: enumTypeClass1.getEnumConstants()) {
-      additionalDimensionsMap.put(enumConst1.getDimensionName(), enumConst1.getDimensionValue());
       EnumMap<E2, Attributes> mapE2 = new EnumMap<>(enumTypeClass2);
       attributesEnumMap.put(enumConst1, mapE2);
       for (E2 enumConst2: enumTypeClass2.getEnumConstants()) {
-        additionalDimensionsMap.put(enumConst2.getDimensionName(), enumConst2.getDimensionValue());
-        mapE2
-            .put(enumConst2, otelRepository.createAttributes(metricEntity, baseDimensionsMap, additionalDimensionsMap));
+        mapE2.put(enumConst2, createAttributes(enumConst1, enumConst2));
       }
     }
     return attributesEnumMap;

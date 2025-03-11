@@ -5,6 +5,7 @@ import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.ge
 import static com.linkedin.venice.stats.dimensions.RequestRetryAbortReason.SLOW_ROUTE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_ABORT_REASON;
+import static com.linkedin.venice.stats.metrics.MetricEntityStateTest.DimensionEnum1.DIMENSION_ONE;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
@@ -50,6 +51,8 @@ public class MetricEntityStateOneEnumTest {
     Set<VeniceMetricsDimensions> dimensionsSet = new HashSet<>();
     dimensionsSet.add(VENICE_REQUEST_METHOD);
     dimensionsSet.add(MetricEntityStateTest.DimensionEnum1.DIMENSION_ONE.getDimensionName());
+    // Duplicate: ignored
+    dimensionsSet.add(MetricEntityStateTest.DimensionEnum1Duplicate.DIMENSION_ONE.getDimensionName());
     doReturn(dimensionsSet).when(mockMetricEntity).getDimensionsList();
     baseDimensionsMap = new HashMap<>();
     baseDimensionsMap.put(VENICE_REQUEST_METHOD, MULTI_GET_STREAMING.getDimensionValue());
@@ -120,6 +123,15 @@ public class MetricEntityStateOneEnumTest {
     MetricEntityStateOneEnum metricEntityState = MetricEntityStateOneEnum
         .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
     metricEntityState.getAttributes(MULTI_GET_STREAMING);
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*doesn't match with the required dimensions.*")
+  public void testConstructorWithDuplicateBaseDimension() {
+    Map<VeniceMetricsDimensions, String> baseDimensionsMap = new HashMap<>();
+    baseDimensionsMap.put(VENICE_REQUEST_METHOD, MULTI_GET_STREAMING.getDimensionValue());
+    baseDimensionsMap.put(DIMENSION_ONE.getDimensionName(), DIMENSION_ONE.getDimensionValue()); // duplicate
+    MetricEntityStateOneEnum
+        .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
   }
 
   @Test

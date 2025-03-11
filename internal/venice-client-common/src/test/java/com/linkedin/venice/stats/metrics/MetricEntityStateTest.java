@@ -316,6 +316,26 @@ public class MetricEntityStateTest {
     }
   }
 
+  enum DimensionEnum1Duplicate implements VeniceDimensionInterface {
+    DIMENSION_ONE(), DIMENSION_TWO();
+
+    private final String dimensionValue;
+
+    DimensionEnum1Duplicate() {
+      this.dimensionValue = "value_" + name().toLowerCase();
+    }
+
+    @Override
+    public VeniceMetricsDimensions getDimensionName() {
+      return VENICE_STORE_NAME; // Dummy dimension
+    }
+
+    @Override
+    public String getDimensionValue() {
+      return dimensionValue;
+    }
+  }
+
   enum DimensionEnum2 implements VeniceDimensionInterface {
     DIMENSION_ONE(), DIMENSION_TWO();
 

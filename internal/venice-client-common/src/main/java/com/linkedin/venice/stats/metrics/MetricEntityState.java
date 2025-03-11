@@ -9,6 +9,7 @@ import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.Sensor;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -155,10 +156,22 @@ public abstract class MetricEntityState {
       }
     }
 
-    // validate the input dimensions and compare against the required dimensions
+    // Check 1:
+    // If currentDimensions size and enumTypes are the same. If not, it could mean:
+    // 1. there is a duplicate class passed in, or
+    // 2. 2 different classes have the same VeniceMetricsDimensions
+    if (enumTypes.length != currentDimensions.size()) {
+      throw new IllegalArgumentException(
+          "The enumTypes: " + Arrays.toString(enumTypes) + " has duplicate dimensions for MetricEntity: "
+              + metricEntity.getMetricName());
+    }
+
+    // validate the input dimensions and compare against the required dimensions: baseDimensionsMaps might be
+    // populated only if emitOpenTelemetryMetrics is true, so checking only when OTel is enabled
     if (emitOpenTelemetryMetrics()) {
       if (baseAttributes != null) {
-        // check if baseAttributes has all the dimensions in baseDimensionsMap
+        // check 2:
+        // If baseAttributes has all the dimensions in baseDimensionsMap
         if (baseAttributes.size() != baseDimensionsMap.size()) {
           throw new IllegalArgumentException(
               "baseAttributes: " + baseAttributes.asMap().keySet() + " and baseDimensionsMap: "
@@ -176,8 +189,20 @@ public abstract class MetricEntityState {
         }
       }
 
-      // check if the required dimensions match with the base+current dimensions
-      // copy all baseDimensionsMap into currentDimensions
+      // check 3:
+      // If the baseDimensionsMap.size() + currentDimensions.size() is equal to the required
+      // dimensions. If check 4 passes and this fails, that means there is some duplicate dimensions.
+      if (baseDimensionsMap != null) {
+        if (baseDimensionsMap.size() + currentDimensions.size() != metricEntity.getDimensionsList().size()) {
+          throw new IllegalArgumentException(
+              "baseDimensionsMap " + baseDimensionsMap.keySet() + " and currentDimensions " + currentDimensions
+                  + " doesn't match with the required dimensions " + metricEntity.getDimensionsList() + " for metric: "
+                  + metricEntity.getMetricName());
+        }
+      }
+
+      // check 4:
+      // If the required dimensions match with the base+current dimensions
       if (baseDimensionsMap != null) {
         currentDimensions.addAll(baseDimensionsMap.keySet());
       }
@@ -197,6 +222,10 @@ public abstract class MetricEntityState {
 
   public MetricEntity getMetricEntity() {
     return metricEntity;
+  }
+
+  VeniceOpenTelemetryMetricsRepository getOtelRepository() {
+    return otelRepository;
   }
 
   /** used only for testing */
