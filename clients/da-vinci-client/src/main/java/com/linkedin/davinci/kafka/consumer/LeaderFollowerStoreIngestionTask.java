@@ -3589,10 +3589,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       LeaderMetadataWrapper leaderMetadataWrapper,
       LeaderProducedRecordContext leaderProducedRecordContext) {
     final InternalAvroSpecificSerializer<GlobalRtDivState> serializer =
-        AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer(); // TODO: can't be static because of state?
+        AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer(); // unfortunately, serializer is not thread-safe
     final byte[] keyBytes = getGlobalRtDivKeyBytes(brokerUrl);
     final PubSubTopicPartition topicPartition = previousMessage.getTopicPartition();
-    TopicType realTimeTopicType = TopicType.of(TopicType.REALTIME_TOPIC_TYPE, brokerUrl);
+    TopicType realTimeTopicType = TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
 
     // Snapshot the VT DIV + RT DIV (single broker URL) in preparation to be produced
     PartitionTracker divClone = kafkaDataIntegrityValidatorForLeaders.cloneProducerStates(partition, brokerUrl);
@@ -3602,10 +3602,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     ByteBuffer emptyBuffer = ByteBuffer.allocate(0);
     final long offset = previousMessage.getPosition().getNumericOffset();
     GlobalRtDivState globalRtDiv = new GlobalRtDivState(brokerUrl, rtDiv, offset, emptyBuffer);
+    byte[] valueBytes = ByteUtils.extractByteArray(serializer.serialize(globalRtDiv));
 
     // Create PubSubMessage for the LeaderProducerCallback to enqueue the RT + VT DIV to the drainer
     KafkaKey divKey = new KafkaKey(MessageType.GLOBAL_RT_DIV, keyBytes);
-    // TODO: incrementSequenceNumber? are the pubsubmessage fields correct?
     KafkaMessageEnvelope divEnvelope = getVeniceWriter(partitionConsumptionState).get()
         .getKafkaMessageEnvelope(
             MessageType.PUT,
@@ -3619,9 +3619,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         divKey,
         divEnvelope,
         topicPartition,
-        previousMessage.getPosition(), // TODO: are these reused fields correct?
+        previousMessage.getPosition(),
         previousMessage.getPubSubMessageTime(),
-        divKey.getHeapSize()); // TODO: should the envelope size also be estimated?
+        divKey.getHeapSize() + valueBytes.length);
     LeaderProducerCallback divCallback = createProducerCallback(
         divMessage,
         partitionConsumptionState,
@@ -3639,7 +3639,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     getVeniceWriter(partitionConsumptionState).get()
         .put(
             keyBytes,
-            ByteUtils.extractByteArray(serializer.serialize(globalRtDiv)),
+            valueBytes,
             partition,
             1, // dummy value schema id which shouldn't be used for MessageType.GLOBAL_RT_DIV
             divCallback,

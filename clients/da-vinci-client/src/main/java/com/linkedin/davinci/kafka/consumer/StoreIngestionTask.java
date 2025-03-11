@@ -2731,7 +2731,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // The Global RT DIV is sent on a per-broker basis, so divide the size limit by the number of brokers
     final long syncBytesInterval = getSyncBytesInterval(pcs) / getConsumedBytesSinceLastSync().size();
     boolean shouldSync = false;
-    if (!record.getKey().isControlMessage()) { // TODO: should the control message logic remain?
+    if (!record.getKey().isControlMessage()) {
       shouldSync = (syncBytesInterval > 0 && (getConsumedBytesSinceLastSync().get(kafkaUrl) >= syncBytesInterval));
     }
     return shouldSync;
