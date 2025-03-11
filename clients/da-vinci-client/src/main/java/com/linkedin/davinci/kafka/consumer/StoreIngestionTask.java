@@ -1847,20 +1847,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void updateOffsetMetadataAndSyncOffset(PartitionConsumptionState pcs) {
+    updateOffsetMetadataAndSyncOffset(this.kafkaDataIntegrityValidator, pcs);
+  }
+
+  protected void updateOffsetMetadataAndSyncOffset(KafkaDataIntegrityValidator div, PartitionConsumptionState pcs) {
     /**
      * Offset metadata and producer states must be updated at the same time in OffsetRecord; otherwise, one checkpoint
      * could be ahead of the other.
      *
      * The reason to transform the internal state only during checkpointing is that the intermediate checksum
      * generation is an expensive operation.
-     *
-     * TODO:
-     * 'kafkaDataIntegrityValidator' is used by drainer threads and we need to transfer its full responsibility to the
-     * consumer DIV which resides in the consumer thread and then gradually retire the use of drainer DIV.
-     * Keep drainer DIV the way as is today (containing both rt and vt messages).
      */
-    this.kafkaDataIntegrityValidator
-        .updateOffsetRecordForPartition(PartitionTracker.VERSION_TOPIC, pcs.getPartition(), pcs.getOffsetRecord());
+    div.updateOffsetRecordForPartition(PartitionTracker.VERSION_TOPIC, pcs.getPartition(), pcs.getOffsetRecord());
     // update the offset metadata in the OffsetRecord.
     updateOffsetMetadataInOffsetRecord(pcs);
     syncOffset(kafkaVersionTopic, pcs);
@@ -2723,7 +2721,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (shouldSyncOffset(partitionConsumptionState, record, leaderProducedRecordContext)) {
       updateOffsetMetadataAndSyncOffset(partitionConsumptionState);
     }
+
+    if (record.getKey().isGlobalRtDiv()) {
+      processGlobalRtDiv(record, partitionConsumptionState, kafkaUrl);
+    }
   }
+
+  protected abstract void processGlobalRtDiv(
+      DefaultPubSubMessage record,
+      PartitionConsumptionState partitionConsumptionState,
+      String kafkaUrl);
 
   long getSyncBytesInterval(PartitionConsumptionState pcs) {
     return pcs.isDeferredWrite()
