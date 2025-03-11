@@ -30,8 +30,10 @@ import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
+import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
+import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.view.ChangeCaptureViewWriter;
 import com.linkedin.davinci.store.view.MaterializedViewWriter;
@@ -81,6 +83,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
+import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -708,6 +711,22 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              * to the real-time topic, so `isReadyToServe()` check will never be invoked.
              */
             maybeApplyReadyToServeCheck(partitionConsumptionState);
+
+            kafkaClusterIdToUrlMap.forEach((clusterId, kafkaUrl) -> {
+              byte[] key = getGlobalRtDivKeyName(kafkaUrl).getBytes();
+              final ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
+              ByteBufferValueRecord<ByteBuffer> originalValue = RawBytesChunkingAdapter.INSTANCE.getWithSchemaId(
+                  storageEngine,
+                  partition,
+                  ByteBuffer.wrap(key),
+                  isChunked,
+                  null,
+                  null,
+                  RawBytesStoreDeserializerCache.getInstance(),
+                  compressor.get(),
+                  valueManifestContainer);
+            });
+
           }
           break;
 
@@ -1470,20 +1489,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     offsetRecord
         .setCheckpointLocalVersionTopicOffset(partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset());
     // DaVinci clients don't need to maintain leader production states
-    if (!isDaVinciClient) {
-      PubSubTopic upstreamTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
-      if (upstreamTopic == null) {
-        upstreamTopic = versionTopic;
-      }
-      if (upstreamTopic.isRealTime()) {
-        offsetRecord.updateUpstreamOffsets(partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap());
-      } else {
-        offsetRecord.setCheckpointUpstreamVersionTopicOffset(
-            partitionConsumptionState.getLatestProcessedUpstreamVersionTopicOffset());
-      }
-      offsetRecord.setLeaderGUID(partitionConsumptionState.getLeaderGUID());
-      offsetRecord.setLeaderHostId(partitionConsumptionState.getLeaderHostId());
+    if (isDaVinciClient) {
+      return;
     }
+    PubSubTopic upstreamTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
+    if (upstreamTopic == null) {
+      upstreamTopic = versionTopic;
+    }
+    if (upstreamTopic.isRealTime()) {
+      offsetRecord.updateUpstreamOffsets(partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap());
+    } else {
+      offsetRecord.setCheckpointUpstreamVersionTopicOffset(
+          partitionConsumptionState.getLatestProcessedUpstreamVersionTopicOffset());
+    }
+    offsetRecord.setLeaderGUID(partitionConsumptionState.getLeaderGUID());
+    offsetRecord.setLeaderHostId(partitionConsumptionState.getLeaderHostId());
   }
 
   private void updateOffsetsAsRemoteConsumeLeader(

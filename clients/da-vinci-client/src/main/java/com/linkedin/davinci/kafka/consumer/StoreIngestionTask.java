@@ -263,6 +263,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   private final KafkaDataIntegrityValidator kafkaDataIntegrityValidator;
   /** Map of broker URL to the total bytes consumed by ConsumptionTask since the last Global RT DIV sync */
+  // TODO: clear it out when the sync is done
   protected final VeniceConcurrentHashMap<String, Long> consumedBytesSinceLastSync;
   protected final HostLevelIngestionStats hostLevelIngestionStats;
   protected final AggVersionedDIVStats versionedDIVStats;
