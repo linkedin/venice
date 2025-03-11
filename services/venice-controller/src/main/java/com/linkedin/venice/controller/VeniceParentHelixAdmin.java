@@ -3727,7 +3727,8 @@ public class VeniceParentHelixAdmin implements Admin {
           Version storeVersion = parentStore.getVersion(versionNum);
           boolean isVersionPushed = storeVersion != null && storeVersion.getStatus().equals(PUSHED);
           boolean isHybridStore = storeVersion != null && storeVersion.getHybridStoreConfig() != null;
-          boolean isTargetRegionPushWithDeferredSwapForCurrentVersion = isTargetRegionPush && !isVersionPushed;
+          boolean isTargetRegionPushWithDeferredSwapForCurrentVersion =
+              isTargetRegionPush && version.isVersionSwapDeferred();
           // Truncate topic after push is in terminal state if
           // 1. Its a hybrid store or regular push. (Hybrid store target push uses repush where isTargetRegionPush is
           // false)
