@@ -20,8 +20,8 @@ import org.apache.avro.generic.GenericRecord;
  *   <li>It is a non-nested field and matches either the schema's default value or its type's default.</li>
  * </ol>
  *
- * If the object is not using new semantic, we return True. Otherwise, we return False along with the message
- * in errorMessage.
+ * If the object is not using new semantic, we return False. Otherwise, we return True along with the message
+ * in errorMessage. The traverser should stop traversing the object if the return value is True.
  */
 public class NewSemanticUsageValidator {
   private static final ThreadLocal<String> errorMessage = ThreadLocal.withInitial(() -> "");
@@ -40,18 +40,10 @@ public class NewSemanticUsageValidator {
           return false;
         }
 
-        // If target field is null, we only need to check if the current field is non-default
-        if (targetField != null) {
-          // If the current field is a union and the target field is not, check for nullable union pair
-          if (currentField.schema().getType() == Schema.Type.UNION
-              && targetField.schema().getType() != Schema.Type.UNION) {
-            return isNonDefaultValueUnion(object, currentField);
-          }
-
-          // If the schemas are the same, we don't need to validate further
-          if (AvroSchemaUtils.compareSchemaIgnoreFieldOrder(currentField.schema(), targetField.schema())) {
-            return false;
-          }
+        // If the schemas are the same, we don't need to validate further
+        if (targetField != null
+            && AvroSchemaUtils.compareSchemaIgnoreFieldOrder(currentField.schema(), targetField.schema())) {
+          return false;
         }
 
         // Default behavior, check if the value is non-default
