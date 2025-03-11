@@ -3,7 +3,9 @@ package com.linkedin.venice.schema.rmd;
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_POS;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
-import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.*;
+import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.ACTIVE_ELEM_TS_FIELD_NAME;
+import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.DELETED_ELEM_TS_FIELD_NAME;
+import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -153,21 +155,16 @@ public class RmdUtils {
     for (Schema.Field field: ((GenericRecord) timestampRecord).getSchema().getFields()) {
       // if the field is a record, then we need to iterate through the fields of the record
       if (field.schema().getType().equals(Schema.Type.RECORD)) {
-        for (Schema.Field recordField: field.schema().getFields()) {
-          // if the field is a long, then we have the timestamp
-          if (recordField.schema().getType().equals(Schema.Type.LONG)
-              && recordField.schema().getName().equals(TOP_LEVEL_TS_FIELD_NAME)) {
-            return (Long) ((GenericRecord) timestampRecord).get(recordField.name());
-          }
-          // if the field is an array of longs
-          if (recordField.schema().getType().equals(Schema.Type.ARRAY)
-              && recordField.schema().getElementType().getType().equals(Schema.Type.LONG)
-              && (recordField.schema().getName().equals(ACTIVE_ELEM_TS_FIELD_NAME)
-                  || recordField.schema().getName().equals(DELETED_ELEM_TS_FIELD_NAME))) {
-            for (Long timestamp: (List<Long>) ((GenericRecord) timestampRecord).get(recordField.name())) {
-              lastUpdatedTimestamp = Math.max(lastUpdatedTimestamp, timestamp);
-            }
-          }
+        lastUpdatedTimestamp = Math.max(
+            lastUpdatedTimestamp,
+            (Long) ((GenericRecord) ((GenericRecord) timestampRecord).get(field.name())).get(TOP_LEVEL_TS_FIELD_NAME));
+        for (long timestamp: (long[]) ((GenericRecord) ((GenericRecord) timestampRecord).get(field.name()))
+            .get(DELETED_ELEM_TS_FIELD_NAME)) {
+          lastUpdatedTimestamp = Math.max(lastUpdatedTimestamp, timestamp);
+        }
+        for (long timestamp: (long[]) ((GenericRecord) ((GenericRecord) timestampRecord).get(field.name()))
+            .get(ACTIVE_ELEM_TS_FIELD_NAME)) {
+          lastUpdatedTimestamp = Math.max(lastUpdatedTimestamp, timestamp);
         }
       } else if (field.schema().getType().equals(Schema.Type.LONG)) {
         lastUpdatedTimestamp =

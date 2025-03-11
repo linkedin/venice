@@ -2,8 +2,11 @@ package com.linkedin.venice.schema.rmd;
 
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
+import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.*;
 
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
+import com.linkedin.venice.schema.rmd.v1.RmdSchemaGeneratorV1;
+import com.linkedin.venice.utils.TestWriteUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -25,79 +28,17 @@ public class TestRmdUtils {
           + "    \"type\" : \"string\",\n" + "    \"default\" : \"default_name\"\n" + "  }, {\n"
           + "    \"name\" : \"age\",\n" + "    \"type\" : \"int\",\n" + "    \"default\" : -1\n" + "  } ]\n" + "}";
 
-  private static final String RMD_COLLECTION_RECORD = "        {\n" + "            \"name\": \"creatives\",\n"
-      + "            \"type\": {\n" + "                \"type\": \"record\",\n"
-      + "                \"name\": \"map_CollectionMetadata_0\",\n"
-      + "                \"doc\": \"structure that maintains all of the necessary metadata to perform deterministic conflict resolution on collection fields.\",\n"
-      + "                \"fields\": [\n" + "                    {\n"
-      + "                        \"name\": \"topLevelFieldTimestamp\",\n"
-      + "                        \"type\": \"long\",\n"
-      + "                        \"doc\": \"Timestamp of the last partial update attempting to set every element of this collection.\",\n"
-      + "                        \"default\": 0\n" + "                    },\n" + "                    {\n"
-      + "                        \"name\": \"topLevelColoID\",\n" + "                        \"type\": \"int\",\n"
-      + "                        \"doc\": \"ID of the colo from which the last successfully applied partial update was sent.\",\n"
-      + "                        \"default\": -1\n" + "                    },\n" + "                    {\n"
-      + "                        \"name\": \"putOnlyPartLength\",\n" + "                        \"type\": \"int\",\n"
-      + "                        \"doc\": \"Length of the put-only part of the collection which starts from index 0.\",\n"
-      + "                        \"default\": 0\n" + "                    },\n" + "                    {\n"
-      + "                        \"name\": \"activeElementsTimestamps\",\n" + "                        \"type\": {\n"
-      + "                            \"type\": \"array\",\n" + "                            \"items\": \"long\"\n"
-      + "                        },\n"
-      + "                        \"doc\": \"Timestamps of each active element in the user's collection. This is a parallel array with the user's collection.\",\n"
-      + "                        \"default\": []\n" + "                    },\n" + "                    {\n"
-      + "                        \"name\": \"deletedElementsIdentities\",\n" + "                        \"type\": {\n"
-      + "                            \"type\": \"array\",\n" + "                            \"items\": \"string\"\n"
-      + "                        },\n"
-      + "                        \"doc\": \"The tombstone array of deleted elements. This is a parallel array with deletedElementsTimestamps\",\n"
-      + "                        \"default\": []\n" + "                    },\n" + "                    {\n"
-      + "                        \"name\": \"deletedElementsTimestamps\",\n" + "                        \"type\": {\n"
-      + "                            \"type\": \"array\",\n" + "                            \"items\": \"long\"\n"
-      + "                        },\n"
-      + "                        \"doc\": \"Timestamps of each deleted element. This is a parallel array with deletedElementsIdentity.\",\n"
-      + "                        \"default\": []\n" + "                    }\n" + "                ]\n"
-      + "            },\n" + "            \"doc\": \"timestamp when creatives of the record was last updated\",\n"
-      + "            \"default\": {\n" + "                \"deletedElementsTimestamps\": [],\n"
-      + "                \"deletedElementsIdentities\": [],\n" + "                \"topLevelColoID\": -1,\n"
-      + "                \"putOnlyPartLength\": 0,\n" + "                \"activeElementsTimestamps\": [],\n"
-      + "                \"topLevelFieldTimestamp\": 0\n" + "            }\n" + "        }";
-
-  private static final String RMD_TIMESTAMP_RECORD =
-      "{\n" + "    \"type\": \"record\",\n" + "    \"name\": \"ValueTest\",\n" + "    \"fields\": [\n" + "        {\n"
-          + "            \"name\": \"account\",\n" + "            \"type\": \"long\",\n"
-          + "            \"doc\": \"timestamp when account of the record was last updated\",\n"
-          + "            \"default\": 0\n" + "        },\n" + "        {\n"
-          + "            \"name\": \"campaignGroup\",\n" + "            \"type\": \"long\",\n"
-          + "            \"doc\": \"timestamp when campaignGroup of the record was last updated\",\n"
-          + "            \"default\": 0\n" + "        },\n" + "        {\n" + "            \"name\": \"campaign\",\n"
-          + "            \"type\": \"long\",\n"
-          + "            \"doc\": \"timestamp when campaign of the record was last updated\",\n"
-          + "            \"default\": 0\n" + "        },\n" + RMD_COLLECTION_RECORD + "    ]\n" + "}";
-
-  private static final String RMD_RECORD_SCHEMA_STR = "{\n" + "    \"type\": \"record\",\n"
-      + "    \"name\": \"ValueTest_MetadataRecord\",\n" + "    \"fields\": [\n" + "        {\n"
-      + "            \"name\": \"timestamp\",\n" + "            \"type\": [\n" + "                \"long\",\n"
-      + RMD_TIMESTAMP_RECORD + "                \n" + "            ]\n" + "        },\n" + "        {\n"
-      + "            \"name\": \"replication_checkpoint_vector\",\n" + "            \"type\": {\n"
-      + "                \"type\": \"array\",\n" + "                \"items\": \"long\"\n" + "            },\n"
-      + "            \"doc\": \"high watermark remote checkpoints which touched this record\",\n"
-      + "            \"default\": []\n" + "        }\n" + "    ]\n" + "}";
-
   private Schema valueSchema;
   private Schema rmdSchema;
-  private Schema rmdSchemaWithPerFieldTimestamp;
-  private Schema timestampRecordSchema;
   private GenericRecord rmdRecordWithValueLevelTimeStamp;
   private GenericRecord rmdRecordWithPerFieldLevelTimeStamp;
   private GenericRecord rmdRecordWithValidPerFieldLevelTimestamp;
   private GenericRecord rmdRecordWithOnlyRootLevelTimestamp;
-  private GenericRecord timestampRecord;
 
   @BeforeClass
   public void setUp() {
     valueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(VALUE_RECORD_SCHEMA_STR);
     rmdSchema = RmdSchemaGenerator.generateMetadataSchema(valueSchema, 1);
-    rmdSchemaWithPerFieldTimestamp = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(RMD_RECORD_SCHEMA_STR);
-    timestampRecordSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(RMD_TIMESTAMP_RECORD);
   }
 
   @BeforeMethod
@@ -113,12 +54,25 @@ public class TestRmdUtils {
     rmdRecordWithPerFieldLevelTimeStamp.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, vectors);
 
     // This one is actually valid (TODO, refactor the rest of the tests to use this)
-    rmdRecordWithValidPerFieldLevelTimestamp = new GenericData.Record(rmdSchemaWithPerFieldTimestamp);
-    rmdRecordWithOnlyRootLevelTimestamp = new GenericData.Record(rmdSchemaWithPerFieldTimestamp);
-    timestampRecord = new GenericData.Record(timestampRecordSchema);
-    timestampRecord.put("account", 10L);
-    timestampRecord.put("campaignGroup", 20L);
-    timestampRecord.put("campaign", 30L);
+    RmdSchemaGeneratorV1 rmdSchemaGeneratorV1 = new RmdSchemaGeneratorV1();
+    Schema timestampSchema = rmdSchemaGeneratorV1.generateMetadataSchema(TestWriteUtils.USER_WITH_STRING_MAP_SCHEMA);
+    Schema mapFieldSchema = timestampSchema.getField("timestamp").schema().getTypes().get(1).getField("value").schema();
+
+    GenericRecord mapFieldRecord = new GenericData.Record(mapFieldSchema);
+    long[] activeElemTs = { 10L, 20L };
+    long[] deletedElemTs = { 5L };
+    mapFieldRecord.put(ACTIVE_ELEM_TS_FIELD_NAME, activeElemTs);
+    mapFieldRecord.put(TOP_LEVEL_TS_FIELD_NAME, 1L);
+    mapFieldRecord.put(DELETED_ELEM_TS_FIELD_NAME, deletedElemTs);
+
+    GenericRecord timestampRecord =
+        new GenericData.Record(timestampSchema.getField("timestamp").schema().getTypes().get(1));
+    timestampRecord.put("key", 10L);
+    timestampRecord.put("age", 30L);
+    timestampRecord.put("value", mapFieldRecord);
+
+    rmdRecordWithValidPerFieldLevelTimestamp = new GenericData.Record(timestampSchema);
+    rmdRecordWithOnlyRootLevelTimestamp = new GenericData.Record(timestampSchema);
     rmdRecordWithValidPerFieldLevelTimestamp.put(TIMESTAMP_FIELD_NAME, timestampRecord);
     rmdRecordWithOnlyRootLevelTimestamp.put(TIMESTAMP_FIELD_NAME, 0L);
   }
