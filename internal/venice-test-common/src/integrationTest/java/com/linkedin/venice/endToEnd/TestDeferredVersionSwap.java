@@ -3,12 +3,15 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.TestUtils.*;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V3_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
+import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
@@ -16,6 +19,7 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClust
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -23,6 +27,7 @@ import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.io.IOException;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
@@ -196,6 +201,50 @@ public class TestDeferredVersionSwap {
         coloVersions.forEach((colo, version) -> {
           Assert.assertEquals((int) version, 2);
         });
+      });
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT * 2)
+  public void testDeferredVersionSwapWithFailedPush() throws IOException {
+    // Always mark the status as ERROR for dc-1 to mimic a push failing
+    multiRegionMultiClusterWrapper.useLeaderErrorNotifier("dc-1");
+
+    // Setup job properties
+    File inputDir = getTempDataDirectory();
+    TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100, 100);
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("testDeferredVersionSwapMultiplePushes");
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    String keySchemaStr = "\"string\"";
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setUnusedSchemaDeletionEnabled(true);
+    storeParms.setTargetRegionSwapWaitTime(1);
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
+      createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, NAME_RECORD_V3_SCHEMA.toString(), props, storeParms).close();
+
+      // Start push job with target region push enabled
+      props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+      props.put(TARGETED_REGION_PUSH_LIST, TARGET_REGION);
+      TestWriteUtils.runPushJob("Test push job", props);
+
+      // Wait for job to fail
+      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, true, () -> {
+        JobStatusQueryResponse jobStatusQueryResponse = assertCommand(
+            parentControllerClient.queryOverallJobStatus(Version.composeKafkaTopic(storeName, 1), Optional.empty()));
+        ExecutionStatus executionStatus = ExecutionStatus.valueOf(jobStatusQueryResponse.getStatus());
+        assertEquals(executionStatus, ExecutionStatus.ERROR);
+      });
+
+      // Verify that we can run another push
+      TestWriteUtils.runPushJob("Test push job 2", props);
+      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, true, () -> {
+        JobStatusQueryResponse jobStatusQueryResponse = assertCommand(
+            parentControllerClient.queryOverallJobStatus(Version.composeKafkaTopic(storeName, 1), Optional.empty()));
+        ExecutionStatus executionStatus = ExecutionStatus.valueOf(jobStatusQueryResponse.getStatus());
+        assertEquals(executionStatus, ExecutionStatus.ERROR);
       });
     }
   }
