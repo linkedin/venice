@@ -3,12 +3,15 @@ package com.linkedin.venice;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.store.QueryTool;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
@@ -17,10 +20,14 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -48,18 +55,18 @@ public class TopicMessageFinder {
     } else {
       storeName = Version.parseStoreFromRealTimeTopic(topic);
     }
-    // fetch key schema
-    String keySchemaStr = controllerClient.getKeySchema(storeName).getSchemaStr();
-    LOGGER.info("The key schema for store: {} : {}", storeName, keySchemaStr);
-    StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
-    int partitionCount = storeInfo.getPartitionCount();
-    // Parse key string and figure out the right partition
-    byte[] serializedKey = serializeKey(keyString, keySchemaStr);
-
+    KeyPartitionInfo keyPartitionInfo = findPartitionIdForKey(
+        controllerClient,
+        storeName,
+        version,
+        keyString,
+        controllerClient.getKeySchema(storeName).getSchemaStr());
+    int partitionCount = keyPartitionInfo.getPartitionCount();
+    byte[] serializedKey = keyPartitionInfo.getSerializedKey();
     // Partition assignment is always based on the non-chunked key.
-    int assignedPartition = new DefaultVenicePartitioner().getPartitionId(serializedKey, partitionCount);
+    int assignedPartition = keyPartitionInfo.getPartitionId();
     LOGGER.info("Assigned partition: {} for key: {}", assignedPartition, keyString);
-
+    StoreInfo storeInfo = keyPartitionInfo.getStoreInfo();
     if (version != -1) {
       if (storeInfo.getVersion(version).isPresent()) {
         if (storeInfo.getVersion(version).get().isChunkingEnabled()) {
@@ -142,5 +149,94 @@ public class TopicMessageFinder {
     RecordSerializer keySerializer = SerializerDeserializerFactory.getAvroGenericSerializer(keySchema);
 
     return keySerializer.serialize(key);
+  }
+
+  protected static KeyPartitionInfo findPartitionIdForKey(
+      ControllerClient controllerClient,
+      String storeName,
+      int versionNumber,
+      String key,
+      String keySchemaStr) {
+    StoreResponse storeResponse = controllerClient.getStore(storeName);
+    if (storeResponse == null) {
+      throw new VeniceNoStoreException("Store " + storeName + " does not exist.");
+    }
+    StoreInfo storeInfo = storeResponse.getStore();
+    if (storeInfo == null) {
+      throw new VeniceNoStoreException("Store " + storeName + " does not exist.");
+    }
+
+    Optional<Version> versionInfo = storeInfo.getVersion(versionNumber);
+
+    int partitionCount;
+    PartitionerConfig partitionerConfig;
+    if (versionInfo.isPresent()) {
+      Version version = versionInfo.get();
+      LOGGER.info(
+          "Found store: {} version: {}. Will use partitioner config: {} and partition count: {} from this version",
+          storeName,
+          versionNumber,
+          version.getPartitionerConfig(),
+          version.getPartitionCount());
+      partitionerConfig = version.getPartitionerConfig();
+      partitionCount = version.getPartitionCount();
+    } else {
+      LOGGER.info(
+          "Store: {} version: {} not found. Will use partitioner config: {} from store level config",
+          storeName,
+          versionNumber,
+          storeInfo.getPartitionerConfig());
+      partitionerConfig = storeInfo.getPartitionerConfig();
+      partitionCount = storeInfo.getPartitionCount();
+    }
+
+    if (partitionCount <= 0) {
+      LOGGER.error("Partition count for store: {} is not set.", storeName);
+      throw new VeniceException("Partition count for store: " + storeName + " is not set.");
+    }
+
+    Properties params = new Properties();
+    params.putAll(partitionerConfig.getPartitionerParams());
+    VeniceProperties partitionerProperties = new VeniceProperties(params);
+    VenicePartitioner partitioner =
+        PartitionUtils.getVenicePartitioner(partitionerConfig.getPartitionerClass(), partitionerProperties);
+    LOGGER.info("The key schema for store: {} : {}", storeName, keySchemaStr);
+
+    byte[] keyBytes = TopicMessageFinder.serializeKey(key, keySchemaStr);
+    int partitionId = partitioner.getPartitionId(keyBytes, partitionCount);
+    System.out.println("Partition ID for key: " + key + " in store: " + storeName + " is: " + partitionId);
+    LOGGER.info("Partition ID for key: {} in store: {} is: {}", key, storeName, partitionId);
+
+    return new KeyPartitionInfo(storeInfo, keyBytes, partitionId, partitionCount);
+  }
+
+  protected static class KeyPartitionInfo {
+    private final StoreInfo storeInfo;
+    private final byte[] serializedKey;
+    private final int partitionId;
+    private final int partitionCount;
+
+    public KeyPartitionInfo(StoreInfo storeInfo, byte[] serializedKey, int partitionId, int partitionCount) {
+      this.storeInfo = storeInfo;
+      this.serializedKey = serializedKey;
+      this.partitionId = partitionId;
+      this.partitionCount = partitionCount;
+    }
+
+    public int getPartitionId() {
+      return partitionId;
+    }
+
+    public byte[] getSerializedKey() {
+      return serializedKey;
+    }
+
+    public int getPartitionCount() {
+      return partitionCount;
+    }
+
+    public StoreInfo getStoreInfo() {
+      return storeInfo;
+    }
   }
 }
