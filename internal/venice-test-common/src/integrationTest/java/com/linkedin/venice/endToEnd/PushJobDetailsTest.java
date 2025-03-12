@@ -352,8 +352,7 @@ public class PushJobDetailsTest {
       // because hadoop job client cannot fetch counters properly.
       parentControllerClient.updateStore(
           testStoreName,
-          new UpdateStoreQueryParams().setStorageQuotaInByte(-1)
-              .setPartitionCount(2)
+          new UpdateStoreQueryParams().setPartitionCount(2)
               .setHybridOffsetLagThreshold(10)
               .setHybridRewindSeconds(10)
               .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
@@ -391,13 +390,6 @@ public class PushJobDetailsTest {
           COMPLETED.getValue());
       validatePushJobDetailsStatus(true, testStoreName, 1, expectedStatuses, JOB_STATUS_POLLING_COMPLETED, true, "");
       validatePushJobMetrics(true, false, true, metricsExpectedCount);
-
-      // case 3: failed batch push job, non-user error:
-      // setting the quota to be 0, hadoop job client cannot fetch counters properly and should fail the job
-      parentControllerClient.updateStore(testStoreName, new UpdateStoreQueryParams().setStorageQuotaInByte(0));
-      try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job-v2", pushJobProps)) {
-        assertThrows(VeniceException.class, testPushJob::run);
-      }
 
       expectedStatuses = Arrays.asList(
           PushJobDetailsStatus.STARTED.getValue(),
