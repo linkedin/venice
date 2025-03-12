@@ -1952,14 +1952,6 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * Unsupported operation in the parent controller.
-   */
-  @Override
-  public Version peekNextVersion(String clusterName, String storeName) {
-    throw new VeniceUnsupportedOperationException("peekNextVersion");
-  }
-
-  /**
    * @see Admin#deleteAllVersionsInStore(String, String)
    */
   @Override
@@ -4066,7 +4058,7 @@ public class VeniceParentHelixAdmin implements Admin {
       try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
         ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
         Store parentStore = repository.getStore(storeName);
-        int newVersion = parentStore.peekNextVersion().getNumber();
+        int newVersion = parentStore.peekNextVersionNumber();
         parentStore.setLargestUsedVersionNumber(newVersion);
         repository.updateStore(parentStore);
         LOGGER.info(

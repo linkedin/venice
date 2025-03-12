@@ -314,8 +314,6 @@ public interface Admin extends AutoCloseable, Closeable {
 
   RepushInfo getRepushInfo(String clusterNae, String storeName, Optional<String> fabricName);
 
-  Version peekNextVersion(String clusterName, String storeName);
-
   /**
    * Delete all of venice versions in given store(including venice resource, kafka topic, offline pushs and all related
    * resources).

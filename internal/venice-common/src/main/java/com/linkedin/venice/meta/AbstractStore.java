@@ -220,8 +220,10 @@ public abstract class AbstractStore implements Store {
   }
 
   @Override
-  public Version peekNextVersion() {
-    return increaseVersion(Version.guidBasedDummyPushId(), false);
+  public int peekNextVersionNumber() {
+    int nextVersionNumber = getLargestUsedVersionNumber() + 1;
+    checkDisableStoreWrite("increase", nextVersionNumber);
+    return nextVersionNumber;
   }
 
   @Override
@@ -255,18 +257,6 @@ public abstract class AbstractStore implements Store {
     }
 
     return version.getStatus();
-  }
-
-  private Version increaseVersion(String pushJobId, boolean createNewVersion) {
-    int versionNumber = getLargestUsedVersionNumber() + 1;
-    checkDisableStoreWrite("increase", versionNumber);
-    Version version = new VersionImpl(getName(), versionNumber, pushJobId);
-    if (createNewVersion) {
-      addVersion(version);
-      return version.cloneVersion();
-    } else {
-      return version;
-    }
   }
 
   @Override
