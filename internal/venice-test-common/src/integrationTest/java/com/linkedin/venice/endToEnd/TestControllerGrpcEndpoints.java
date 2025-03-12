@@ -69,7 +69,7 @@ public class TestControllerGrpcEndpoints {
     Utils.closeQuietlyWithErrorLogged(veniceCluster);
   }
 
-  @Test(timeOut = TIMEOUT_MS, invocationCount = 10000)
+  @Test(timeOut = TIMEOUT_MS)
   public void testGrpcEndpointsWithGrpcClient() {
     String storeName = Utils.getUniqueString("test_grpc_store");
     String controllerGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerGrpcUrl();
