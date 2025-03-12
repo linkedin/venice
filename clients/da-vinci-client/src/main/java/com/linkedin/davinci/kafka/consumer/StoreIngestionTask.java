@@ -377,6 +377,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected Lazy<CountDownLatch> gracefulShutdownLatch = Lazy.of(() -> new CountDownLatch(1));
   protected Lazy<ZKHelixAdmin> zkHelixAdmin;
   protected final String hostName;
+  private boolean skipAfterBatchPushUnsubEnabled = false;
 
   public StoreIngestionTask(
       StorageService storageService,
@@ -1573,6 +1574,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           // long sleep here in case there are more consumer action to perform like KILL/subscription etc.
           Thread.sleep(POST_UNSUB_SLEEP_MS);
           idleCounter = 0;
+          // if (serverConfig.isAdaptiveThrottlerEnabled()) {
+          skipAfterBatchPushUnsubEnabled = true;
+          // }
         } else {
           maybeCloseInactiveIngestionTask();
         }
@@ -1694,14 +1698,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.info("Running {}", ingestionTaskName);
       versionedIngestionStats.resetIngestionTaskPushTimeoutGauge(storeName, versionNumber);
 
+      Store store = null;
       while (isRunning()) {
-        Store store = storeRepository.getStoreOrThrow(storeName);
-        refreshIngestionContextIfChanged(store);
-        processConsumerActions(store);
-        checkLongRunningTaskState();
-        checkIngestionProgress(store);
-        maybeSendIngestionHeartbeat();
-        mayResumeRecordLevelMetricsForCurrentVersion();
+        if (!skipAfterBatchPushUnsubEnabled) {
+          store = storeRepository.getStoreOrThrow(storeName);
+          refreshIngestionContextIfChanged(store);
+          processConsumerActions(store);
+          checkLongRunningTaskState();
+          checkIngestionProgress(store);
+          maybeSendIngestionHeartbeat();
+          mayResumeRecordLevelMetricsForCurrentVersion();
+        } else {
+          processConsumerActions(store);
+          checkIngestionProgress(store);
+        }
       }
 
       List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>(partitionConsumptionStateMap.size());
