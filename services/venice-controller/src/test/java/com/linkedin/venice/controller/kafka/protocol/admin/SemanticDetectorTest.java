@@ -404,7 +404,7 @@ public class SemanticDetectorTest {
     assertEquals(semanticDetector.getObjectSchema("bytes".getBytes(), unionSchema), bytesSchema);
     assertEquals(semanticDetector.getObjectSchema(Arrays.asList(1, 2, 3), unionSchema), arraySchema);
     // Wrong element type
-    assertEquals(semanticDetector.getObjectSchema(Arrays.asList("1", "2", "3"), unionSchema), null);
+    assertNull(semanticDetector.getObjectSchema(Arrays.asList("1", "2", "3"), unionSchema));
     // Map
     HashMap<String, Integer> map = new HashMap<String, Integer>();
     map.put("key", 1);
@@ -412,7 +412,7 @@ public class SemanticDetectorTest {
     // Map with wrong value type
     HashMap<String, String> mapString = new HashMap<String, String>();
     mapString.put("key", "value");
-    assertEquals(semanticDetector.getObjectSchema(mapString, unionSchema), null);
+    assertNull(semanticDetector.getObjectSchema(mapString, unionSchema));
 
     // Record
     GenericRecord record = new GenericData.Record(recordSchema);
@@ -427,7 +427,7 @@ public class SemanticDetectorTest {
     assertEquals(semanticDetector.getObjectSchema("value1", unionEnumSchema), enumSchema);
 
     // Invalid enum value
-    assertNull(semanticDetector.getObjectSchema("10", unionEnumSchema), null);
+    assertNull(semanticDetector.getObjectSchema("10", unionEnumSchema));
 
     // Wrong types
     assertNull(semanticDetector.getObjectSchema(10L, unionEnumSchema));
