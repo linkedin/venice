@@ -29,6 +29,10 @@ public enum HttpResponseStatusCodeCategory implements VeniceDimensionInterface {
     }
   }
 
+  /**
+   * All the instances of this Enum should have the same dimension name.
+   * Refer {@link VeniceDimensionInterface#getDimensionName()} for more details.
+   */
   @Override
   public VeniceMetricsDimensions getDimensionName() {
     return VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;

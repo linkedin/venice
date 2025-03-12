@@ -4,6 +4,7 @@ import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.tr
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.validateMetricName;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricType;
@@ -257,17 +258,22 @@ public class VeniceOpenTelemetryMetricsRepository {
 
   public Attributes createAttributes(
       MetricEntity metricEntity,
-      Map<VeniceMetricsDimensions, String> commonDimensionsMap,
-      Map<VeniceMetricsDimensions, String> additionalDimensionsMap) {
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap,
+      VeniceDimensionInterface... additionalDimensionEnums) {
     AttributesBuilder attributesBuilder = Attributes.builder();
 
     // add common dimensions
-    commonDimensionsMap.forEach(
+    baseDimensionsMap.forEach(
         (key, value) -> validateDimensionValuesAndBuildAttributes(metricEntity, key, value, attributesBuilder));
 
     // add additional dimensions
-    additionalDimensionsMap.forEach(
-        (key, value) -> validateDimensionValuesAndBuildAttributes(metricEntity, key, value, attributesBuilder));
+    for (VeniceDimensionInterface additionalDimensionEnum: additionalDimensionEnums) {
+      validateDimensionValuesAndBuildAttributes(
+          metricEntity,
+          additionalDimensionEnum.getDimensionName(),
+          additionalDimensionEnum.getDimensionValue(),
+          attributesBuilder);
+    }
 
     // add custom dimensions passed in by the user
     getMetricsConfig().getOtelCustomDimensionsMap().forEach(attributesBuilder::put);

@@ -9,7 +9,6 @@ import io.opentelemetry.api.common.Attributes;
 import io.tehuti.metrics.MeasurableStat;
 import java.util.Collections;
 import java.util.EnumMap;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -96,18 +95,6 @@ public class MetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensionInte
         enumTypeClass2);
   }
 
-  private Map<VeniceMetricsDimensions, String> createAdditionalDimensionsMap(E1 key1, E2 key2) {
-    Map<VeniceMetricsDimensions, String> additionalDimensionsMap = new HashMap<>();
-    additionalDimensionsMap.put(key1.getDimensionName(), key1.getDimensionValue());
-    additionalDimensionsMap.put(key2.getDimensionName(), key2.getDimensionValue());
-    return additionalDimensionsMap;
-  }
-
-  private Attributes createAttributes(E1 key1, E2 key2) {
-    Map<VeniceMetricsDimensions, String> additionalDimensionsMap = createAdditionalDimensionsMap(key1, key2);
-    return getOtelRepository().createAttributes(getMetricEntity(), baseDimensionsMap, additionalDimensionsMap);
-  }
-
   /**
     * Creates an EnumMap of {@link Attributes} for each possible value of the dynamic dimensions
    * {@link #enumTypeClass1} and {@link #enumTypeClass2}
@@ -125,7 +112,7 @@ public class MetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensionInte
       EnumMap<E2, Attributes> mapE2 = new EnumMap<>(enumTypeClass2);
       attributesEnumMap.put(enumConst1, mapE2);
       for (E2 enumConst2: enumTypeClass2.getEnumConstants()) {
-        mapE2.put(enumConst2, createAttributes(enumConst1, enumConst2));
+        mapE2.put(enumConst2, otelRepository.createAttributes(metricEntity, baseDimensionsMap, enumConst1, enumConst2));
       }
     }
     return attributesEnumMap;

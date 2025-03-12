@@ -220,12 +220,8 @@ public abstract class MetricEntityState {
     return emitOpenTelemetryMetrics;
   }
 
-  public MetricEntity getMetricEntity() {
+  MetricEntity getMetricEntity() {
     return metricEntity;
-  }
-
-  VeniceOpenTelemetryMetricsRepository getOtelRepository() {
-    return otelRepository;
   }
 
   /** used only for testing */

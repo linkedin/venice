@@ -9,7 +9,6 @@ import io.opentelemetry.api.common.Attributes;
 import io.tehuti.metrics.MeasurableStat;
 import java.util.Collections;
 import java.util.EnumMap;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -49,7 +48,7 @@ public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterfa
     validateRequiredDimensions(metricEntity, null, baseDimensionsMap, enumTypeClass);
     this.enumTypeClass = enumTypeClass;
     this.baseDimensionsMap = baseDimensionsMap;
-    this.attributesEnumMap = createAttributesEnumMap();
+    this.attributesEnumMap = createAttributesEnumMap(metricEntity, otelRepository, baseDimensionsMap);
   }
 
   /** Factory method with named parameters to ensure the passed in enumTypeClass are in the same order as E */
@@ -80,27 +79,19 @@ public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterfa
         enumTypeClass);
   }
 
-  private Map<VeniceMetricsDimensions, String> createAdditionalDimensionsMap(E key) {
-    Map<VeniceMetricsDimensions, String> additionalDimensionsMap = new HashMap<>();
-    additionalDimensionsMap.put(key.getDimensionName(), key.getDimensionValue());
-    return additionalDimensionsMap;
-  }
-
-  private Attributes createAttributes(E key) {
-    Map<VeniceMetricsDimensions, String> additionalDimensionsMap = createAdditionalDimensionsMap(key);
-    return getOtelRepository().createAttributes(getMetricEntity(), baseDimensionsMap, additionalDimensionsMap);
-  }
-
   /**
    * Creates an EnumMap of {@link Attributes} for each possible value of the dynamic dimension {@link #enumTypeClass}
    */
-  private EnumMap<E, Attributes> createAttributesEnumMap() {
+  private EnumMap<E, Attributes> createAttributesEnumMap(
+      MetricEntity metricEntity,
+      VeniceOpenTelemetryMetricsRepository otelRepository,
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap) {
     if (!emitOpenTelemetryMetrics()) {
       return null;
     }
     EnumMap<E, Attributes> attributesEnumMap = new EnumMap<>(enumTypeClass);
     for (E enumValue: enumTypeClass.getEnumConstants()) {
-      attributesEnumMap.put(enumValue, createAttributes(enumValue));
+      attributesEnumMap.put(enumValue, otelRepository.createAttributes(metricEntity, baseDimensionsMap, enumValue));
     }
     return attributesEnumMap;
   }

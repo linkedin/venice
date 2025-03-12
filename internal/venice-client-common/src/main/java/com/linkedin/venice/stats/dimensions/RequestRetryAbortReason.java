@@ -9,6 +9,10 @@ public enum RequestRetryAbortReason implements VeniceDimensionInterface {
     this.abortReason = name().toLowerCase();
   }
 
+  /**
+   * All the instances of this Enum should have the same dimension name.
+   * Refer {@link VeniceDimensionInterface#getDimensionName()} for more details.
+   */
   @Override
   public VeniceMetricsDimensions getDimensionName() {
     return VeniceMetricsDimensions.VENICE_REQUEST_RETRY_ABORT_REASON;

@@ -15,6 +15,10 @@ public enum VeniceResponseStatusCategory implements VeniceDimensionInterface {
     this.category = name().toLowerCase();
   }
 
+  /**
+   * All the instances of this Enum should have the same dimension name.
+   * Refer {@link VeniceDimensionInterface#getDimensionName()} for more details.
+   */
   @Override
   public VeniceMetricsDimensions getDimensionName() {
     return VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;

@@ -9,7 +9,6 @@ import io.opentelemetry.api.common.Attributes;
 import io.tehuti.metrics.MeasurableStat;
 import java.util.Collections;
 import java.util.EnumMap;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -63,7 +62,7 @@ public class MetricEntityStateThreeEnums<E1 extends Enum<E1> & VeniceDimensionIn
     this.enumTypeClass2 = enumTypeClass2;
     this.enumTypeClass3 = enumTypeClass3;
     this.baseDimensionsMap = baseDimensionsMap;
-    this.attributesEnumMap = createAttributesEnumMap();
+    this.attributesEnumMap = createAttributesEnumMap(metricEntity, otelRepository, baseDimensionsMap);
   }
 
   /** Factory method with named parameters to ensure the passed in enumTypeClass are in the same order as E */
@@ -106,24 +105,14 @@ public class MetricEntityStateThreeEnums<E1 extends Enum<E1> & VeniceDimensionIn
         enumTypeClass3);
   }
 
-  private Map<VeniceMetricsDimensions, String> createAdditionalDimensionsMap(E1 key1, E2 key2, E3 key3) {
-    Map<VeniceMetricsDimensions, String> additionalDimensionsMap = new HashMap<>();
-    additionalDimensionsMap.put(key1.getDimensionName(), key1.getDimensionValue());
-    additionalDimensionsMap.put(key2.getDimensionName(), key2.getDimensionValue());
-    additionalDimensionsMap.put(key3.getDimensionName(), key3.getDimensionValue());
-    return additionalDimensionsMap;
-  }
-
-  private Attributes createAttributes(E1 key1, E2 key2, E3 key3) {
-    Map<VeniceMetricsDimensions, String> additionalDimensionsMap = createAdditionalDimensionsMap(key1, key2, key3);
-    return getOtelRepository().createAttributes(getMetricEntity(), baseDimensionsMap, additionalDimensionsMap);
-  }
-
   /**
    * Creates an EnumMap of {@link Attributes} for each possible value of the dynamic dimensions {@link #enumTypeClass1},
    * {@link #enumTypeClass2} and {@link #enumTypeClass3}
    */
-  private EnumMap<E1, EnumMap<E2, EnumMap<E3, Attributes>>> createAttributesEnumMap() {
+  private EnumMap<E1, EnumMap<E2, EnumMap<E3, Attributes>>> createAttributesEnumMap(
+      MetricEntity metricEntity,
+      VeniceOpenTelemetryMetricsRepository otelRepository,
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap) {
     if (!emitOpenTelemetryMetrics()) {
       return null;
     }
@@ -136,7 +125,9 @@ public class MetricEntityStateThreeEnums<E1 extends Enum<E1> & VeniceDimensionIn
         EnumMap<E3, Attributes> mapE3 = new EnumMap<>(enumTypeClass3);
         mapE2.put(enumConst2, mapE3);
         for (E3 enumConst3: enumTypeClass3.getEnumConstants()) {
-          mapE3.put(enumConst3, createAttributes(enumConst1, enumConst2, enumConst3));
+          mapE3.put(
+              enumConst3,
+              otelRepository.createAttributes(metricEntity, baseDimensionsMap, enumConst1, enumConst2, enumConst3));
         }
       }
     }

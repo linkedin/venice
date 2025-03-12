@@ -9,11 +9,34 @@ import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategor
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
 import static org.testng.Assert.assertEquals;
 
+import com.linkedin.venice.utils.CollectionUtils;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import java.util.Map;
 import org.testng.annotations.Test;
 
 
-public class HttpResponseStatusCodeCategoryTest {
+public class HttpResponseStatusCodeCategoryTest extends VeniceDimensionInterfaceTest<HttpResponseStatusCodeCategory> {
+  protected HttpResponseStatusCodeCategoryTest() {
+    super(HttpResponseStatusCodeCategory.class);
+  }
+
+  @Override
+  protected VeniceMetricsDimensions expectedDimensionName() {
+    return VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
+  }
+
+  @Override
+  protected Map<HttpResponseStatusCodeCategory, String> expectedDimensionValueMapping() {
+    return CollectionUtils.<HttpResponseStatusCodeCategory, String>mapBuilder()
+        .put(INFORMATIONAL, "1xx")
+        .put(SUCCESS, "2xx")
+        .put(REDIRECTION, "3xx")
+        .put(CLIENT_ERROR, "4xx")
+        .put(SERVER_ERROR, "5xx")
+        .put(UNKNOWN, "unknown")
+        .build();
+  }
+
   @Test()
   public void testValues() {
     assertEquals(getVeniceHttpResponseStatusCodeCategory(HttpResponseStatus.PROCESSING), INFORMATIONAL);
