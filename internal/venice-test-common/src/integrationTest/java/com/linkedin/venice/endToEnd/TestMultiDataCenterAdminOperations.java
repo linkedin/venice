@@ -49,7 +49,9 @@ public class TestMultiDataCenterAdminOperations {
   private static final Logger LOGGER = LogManager.getLogger(TestMultiDataCenterAdminOperations.class);
   private static final int TEST_TIMEOUT = 360 * Time.MS_PER_SECOND;
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
-  private static final int NUMBER_OF_CLUSTERS = 1;
+  private static final int NUMBER_OF_CLUSTERS = 2;
+
+  // Do not use venice-cluster1 as it is used for testing failed admin messages
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new); // ["venice-cluster0",
                                                                                                          // "venice-cluster1",
@@ -62,7 +64,7 @@ public class TestMultiDataCenterAdminOperations {
 
   private final byte[] emptyKeyBytes = new byte[] { 'a' };
 
-  @BeforeClass
+  @BeforeClass(alwaysRun = true)
   public void setUp() {
     Properties serverProperties = new Properties();
     serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
@@ -102,7 +104,7 @@ public class TestMultiDataCenterAdminOperations {
     }
   }
 
-  @AfterClass
+  @AfterClass(alwaysRun = true)
   public void cleanUp() {
     multiRegionMultiClusterWrapper.close();
   }
@@ -116,19 +118,6 @@ public class TestMultiDataCenterAdminOperations {
     // Create store first
     ControllerClient controllerClient = new ControllerClient(clusterName, parentControllerUrl);
 
-    /*
-     * TODO: There appears to be a bug in the controller where the same execution ID is assigned
-     * to two different admin operations. As a result, the second operation is skipped.
-     *
-     * If the skipped operation is store creation, the subsequent update store operation
-     * will fail because the store does not exist.
-     *
-     * Previously, we didn't verify whether store creation was successful and proceeded
-     * directly with an update store, which would fail if store creation was skipped.
-     *
-     * Now, we check if store creation was successful before attempting the update store,
-     * to fail fast if store creation was skipped.
-     */
     TestUtils.assertCommand(controllerClient.createNewStore(storeName, "test_owner", "\"int\"", "\"int\""));
 
     // Make store from batch -> hybrid
@@ -164,7 +153,7 @@ public class TestMultiDataCenterAdminOperations {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testFailedAdminMessages() {
-    String clusterName = CLUSTER_NAMES[0];
+    String clusterName = CLUSTER_NAMES[1];
     VeniceControllerWrapper parentController =
         multiRegionMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName);
     Admin admin = parentController.getVeniceAdmin();
@@ -212,7 +201,7 @@ public class TestMultiDataCenterAdminOperations {
     });
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testAdminOperationMessageWithSpecificSchemaId() {
     String storeName = Utils.getUniqueString("test-store");
 
