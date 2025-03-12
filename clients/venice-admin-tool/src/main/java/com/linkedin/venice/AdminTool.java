@@ -177,9 +177,6 @@ public class AdminTool {
   private static final String STATUS = "status";
   private static final String ERROR = "error";
   private static final String SUCCESS = "success";
-
-  private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
-
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
   private static ControllerClient controllerClient;
@@ -197,6 +194,8 @@ public class AdminTool {
       "zookeeper.ssl.trustStore.type");
   private static final String DEFAULT_DATE_FORMAT = "yyyy-MM-dd hh:mm:ss";
   private static final String PST_TIME_ZONE = "America/Los_Angeles";
+
+  static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
 
   public static void main(String[] args) throws Exception {
     // Generate PubSubClientsFactory from java system properties, apache kafka adapter is the default one.
@@ -341,6 +340,9 @@ public class AdminTool {
           break;
         case SET_OWNER:
           setStoreOwner(cmd);
+          break;
+        case GET_PARTITION_ID:
+          getPartitionIdForKey(cmd);
           break;
         case SET_PARTITION_COUNT:
           setStorePartition(cmd);
@@ -1147,6 +1149,14 @@ public class AdminTool {
     String partitionNum = getRequiredArgument(cmd, Arg.PARTITION_COUNT, Command.SET_PARTITION_COUNT);
     PartitionResponse response = controllerClient.setStorePartitionCount(storeName, partitionNum);
     printSuccess(response);
+  }
+
+  private static void getPartitionIdForKey(CommandLine cmd) {
+    String storeName = getRequiredArgument(cmd, Arg.STORE, Command.GET_PARTITION_ID);
+    String key = getRequiredArgument(cmd, Arg.KEY, Command.GET_PARTITION_ID);
+    int version = Integer.parseInt(getOptionalArgument(cmd, Arg.VERSION, "-1"));
+    String keySchemaStr = controllerClient.getKeySchema(storeName).getSchemaStr();
+    TopicMessageFinder.findPartitionIdForKey(controllerClient, storeName, version, key, keySchemaStr);
   }
 
   private static void integerParam(CommandLine cmd, Arg param, Consumer<Integer> setter, Set<Arg> argSet) {
