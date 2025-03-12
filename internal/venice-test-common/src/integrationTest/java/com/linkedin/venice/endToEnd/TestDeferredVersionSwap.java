@@ -3,7 +3,7 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestUtils.*;
+import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V3_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
@@ -208,7 +208,7 @@ public class TestDeferredVersionSwap {
   @Test(timeOut = TEST_TIMEOUT * 2)
   public void testDeferredVersionSwapWithFailedPush() throws IOException {
     // Always mark the status as ERROR for dc-1 to mimic a push failing
-    multiRegionMultiClusterWrapper.useLeaderErrorNotifier("dc-1");
+    multiRegionMultiClusterWrapper.failPushInRegion("dc-1");
 
     // Setup job properties
     File inputDir = getTempDataDirectory();
