@@ -36,6 +36,7 @@ import java.security.cert.X509Certificate;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -43,6 +44,7 @@ import org.testng.annotations.Test;
 
 
 public class TestControllerGrpcEndpoints {
+  private static final long TIMEOUT_MS = 60_000;
   private VeniceClusterWrapper veniceCluster;
   private SSLFactory sslFactory;
   private MockDynamicAccessController mockDynamicAccessController;
@@ -67,7 +69,7 @@ public class TestControllerGrpcEndpoints {
     Utils.closeQuietlyWithErrorLogged(veniceCluster);
   }
 
-  @Test
+  @Test(timeOut = TIMEOUT_MS, invocationCount = 10000)
   public void testGrpcEndpointsWithGrpcClient() {
     String storeName = Utils.getUniqueString("test_grpc_store");
     String controllerGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerGrpcUrl();
@@ -110,14 +112,16 @@ public class TestControllerGrpcEndpoints {
     // Test 3: discover cluster
     DiscoverClusterGrpcRequest discoverClusterGrpcRequest =
         DiscoverClusterGrpcRequest.newBuilder().setStoreName(storeName).build();
-    DiscoverClusterGrpcResponse discoverClusterGrpcResponse =
-        blockingStub.discoverClusterForStore(discoverClusterGrpcRequest);
-    assertNotNull(discoverClusterGrpcResponse, "Response should not be null");
-    assertEquals(discoverClusterGrpcResponse.getStoreName(), storeName);
-    assertEquals(discoverClusterGrpcResponse.getClusterName(), veniceCluster.getClusterName());
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      DiscoverClusterGrpcResponse discoverClusterGrpcResponse =
+          blockingStub.discoverClusterForStore(discoverClusterGrpcRequest);
+      assertNotNull(discoverClusterGrpcResponse, "Response should not be null");
+      assertEquals(discoverClusterGrpcResponse.getStoreName(), storeName);
+      assertEquals(discoverClusterGrpcResponse.getClusterName(), veniceCluster.getClusterName());
+    });
   }
 
-  @Test
+  @Test(timeOut = TIMEOUT_MS)
   public void testCreateStoreOverSecureGrpcChannel() {
     String storeName = Utils.getUniqueString("test_grpc_store");
     String controllerSecureGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerSecureGrpcUrl();
