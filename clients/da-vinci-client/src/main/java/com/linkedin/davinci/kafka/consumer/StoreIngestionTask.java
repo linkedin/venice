@@ -1574,9 +1574,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           // long sleep here in case there are more consumer action to perform like KILL/subscription etc.
           Thread.sleep(POST_UNSUB_SLEEP_MS);
           idleCounter = 0;
-          // if (serverConfig.isAdaptiveThrottlerEnabled()) {
-          skipAfterBatchPushUnsubEnabled = true;
-          // }
+          if (serverConfig.isSkipChecksAfterUnSubEnabled()) {
+            skipAfterBatchPushUnsubEnabled = true;
+          }
         } else {
           maybeCloseInactiveIngestionTask();
         }
