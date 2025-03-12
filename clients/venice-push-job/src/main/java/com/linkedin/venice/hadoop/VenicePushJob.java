@@ -706,13 +706,6 @@ public class VenicePushJob implements AutoCloseable {
       validateStoreSettingAndPopulate(controllerClient, pushJobSetting);
       inputStorageQuotaTracker = new InputStorageQuotaTracker(pushJobSetting.storeStorageQuota);
 
-      Set<String> nonTargetRegionsList = getNonTargetRegions();
-      if (nonTargetRegionsList.isEmpty()) {
-        throw new VeniceException(
-            "Target region list cannot contain all regions:" + pushJobSetting.targetedRegions
-                + ". Please remove one or more of the regions from the target region push list.");
-      }
-
       if (pushJobSetting.isSourceETL) {
         MultiSchemaResponse allValueSchemaResponses = controllerClient.getAllValueSchema(pushJobSetting.storeName);
         MultiSchemaResponse.Schema[] allValueSchemas = allValueSchemaResponses.getSchemas();
@@ -2160,6 +2153,13 @@ public class VenicePushJob implements AutoCloseable {
         throw new VeniceException(
             "The store either does not have native replication mode enabled or set up default source fabric.");
       }
+    }
+
+    Set<String> nonTargetRegionsList = getNonTargetRegions();
+    if (nonTargetRegionsList.isEmpty()) {
+      throw new VeniceException(
+          "Target region list cannot contain all regions:" + pushJobSetting.targetedRegions
+              + ". Please remove one or more of the regions from the target region push list.");
     }
 
     HybridStoreConfig hybridStoreConfig = storeResponse.getStore().getHybridStoreConfig();
