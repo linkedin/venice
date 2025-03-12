@@ -1035,6 +1035,26 @@ public class VenicePushJobTest {
     }
   }
 
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Target region list cannot contain all regions.*")
+  public void testTargetRegionPushWithAllRegions() {
+    Properties props = getVpjRequiredProperties();
+    props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+    props.put(TARGETED_REGION_PUSH_LIST, "dc-0, dc-1");
+
+    ControllerClient client = getClient(storeInfo -> {
+      storeInfo.setColoToCurrentVersions(new HashMap<String, Integer>() {
+        {
+          put("dc-0", 1);
+          put("dc-1", 1);
+        }
+      });
+    });
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      pushJob.run();
+    }
+  }
+
   private SchemaResponse getKeySchemaResponse() {
     SchemaResponse response = new SchemaResponse();
     response.setId(1);

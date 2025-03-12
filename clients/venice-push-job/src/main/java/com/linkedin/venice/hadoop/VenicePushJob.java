@@ -706,6 +706,13 @@ public class VenicePushJob implements AutoCloseable {
       validateStoreSettingAndPopulate(controllerClient, pushJobSetting);
       inputStorageQuotaTracker = new InputStorageQuotaTracker(pushJobSetting.storeStorageQuota);
 
+      Set<String> nonTargetRegionsList = getNonTargetRegions();
+      if (nonTargetRegionsList.isEmpty()) {
+        throw new VeniceException(
+            "Target region list cannot contain all regions:" + pushJobSetting.targetedRegions
+                + ". Please remove one or more of the regions from the target region push list.");
+      }
+
       if (pushJobSetting.isSourceETL) {
         MultiSchemaResponse allValueSchemaResponses = controllerClient.getAllValueSchema(pushJobSetting.storeName);
         MultiSchemaResponse.Schema[] allValueSchemas = allValueSchemaResponses.getSchemas();
@@ -875,7 +882,7 @@ public class VenicePushJob implements AutoCloseable {
       /**
        * Post validation + consumption
        */
-      Set<String> candidateRegions = getRegionsForPostValidationConsumption();
+      Set<String> candidateRegions = getNonTargetRegions();
       if (candidateRegions.isEmpty()) {
         LOGGER.info("No region that needs post-validation consumption identified. Finish the job now.");
         return;
@@ -936,10 +943,10 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   /**
-   * Get the set of regions that haven't been pushed yet after targeted region push.
-   * @return a set of regions that haven't been pushed yet.
+   * Get the set of non target regions for a target region push
+   * @return a set of regions that are the non target regions.
    */
-  private Set<String> getRegionsForPostValidationConsumption() {
+  private Set<String> getNonTargetRegions() {
     Set<String> targetedRegions = RegionUtils.parseRegionsFilterList(pushJobSetting.targetedRegions);
     Set<String> candidateRegions =
         new HashSet<>(pushJobSetting.storeResponse.getStore().getColoToCurrentVersions().keySet());

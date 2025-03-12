@@ -453,7 +453,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
     }
   }
 
-  public void useLeaderErrorNotifier(String regions) {
+  public void failPushInRegion(String regions) {
     Set<String> regionsList = RegionUtils.parseRegionsFilterList(regions);
     for (VeniceMultiClusterWrapper childRegion: getChildRegions()) {
       for (Map.Entry<String, VeniceClusterWrapper> cluster: childRegion.getClusters().entrySet()) {
