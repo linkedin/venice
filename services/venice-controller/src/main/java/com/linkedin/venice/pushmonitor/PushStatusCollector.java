@@ -194,9 +194,8 @@ public class PushStatusCollector {
       }
 
       LOGGER.info(
-          "Received DaVinci status: {} with details: {} for topic: {}. Server status: {}",
-          daVinciStatus.getStatus(),
-          daVinciStatus.getDetails(),
+          "Received DaVinci status: {} for topic: {} and server status: {}",
+          daVinciStatus,
           pushStatus.topicName,
           pushStatus.getServerStatus());
       ExecutionStatusWithDetails serverStatus = pushStatus.getServerStatus();
