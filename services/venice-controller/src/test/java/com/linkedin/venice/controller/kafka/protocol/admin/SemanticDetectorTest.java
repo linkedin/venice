@@ -6,6 +6,8 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.kafka.protocol.serializer.SemanticDetector;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceProtocolException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -62,14 +64,14 @@ public class SemanticDetectorTest {
     Schema currentSchema = currentLatestSchema;
 
     // Traverse the admin message
-    SemanticDetector semanticDetector = new SemanticDetector();
-    boolean isNewSemanticUsage = semanticDetector.traverse(adminMessage, currentSchema, targetSchema, "", null);
-
-    assertTrue(isNewSemanticUsage, "The flag should be set to true");
-    String errorMessage = semanticDetector.getErrorMessage();
-    assertEquals(
-        errorMessage,
-        "Field payloadUnion.UpdateStore.hybridStoreConfig.HybridStoreConfigRecord.realTimeTopicName: String value AAAA is not the default value \"\" or ");
+    try {
+      SemanticDetector.traverseAndValidate(adminMessage, currentSchema, targetSchema, "", null);
+      fail(); // Should not reach here
+    } catch (VeniceProtocolException e) {
+      assertEquals(
+          e.getMessage(),
+          "Field payloadUnion.UpdateStore.hybridStoreConfig.HybridStoreConfigRecord.realTimeTopicName: String value AAAA is not the default value \"\" or ");
+    }
   }
 
   @Test
@@ -101,14 +103,14 @@ public class SemanticDetectorTest {
     array.add(record2);
 
     // Traverse the array
-    SemanticDetector semanticDetector = new SemanticDetector();
-    boolean isNewSemanticUsage = semanticDetector.traverse(array, schema, targetSchema, "", null);
-
-    assertTrue(isNewSemanticUsage, "The flag should be set to true");
-    String errorMessage = semanticDetector.getErrorMessage();
-    assertEquals(
-        errorMessage,
-        "Field array.ExampleRecord.0.field2: Integer value 123 is not the default value 0 or null");
+    try {
+      SemanticDetector.traverseAndValidate(array, schema, targetSchema, "", null);
+      fail(); // Should not reach here
+    } catch (VeniceProtocolException e) {
+      assertEquals(
+          e.getMessage(),
+          "Field array.ExampleRecord.0.field2: Integer value 123 is not the default value 0 or null");
+    }
   }
 
   @Test
@@ -140,14 +142,16 @@ public class SemanticDetectorTest {
     map.put("key1", record2);
 
     // collect the pair fields
-    SemanticDetector semanticDetector = new SemanticDetector();
-    boolean isNewSemanticUsage = semanticDetector.traverse(map, schema, targetSchema, "", null);
-
-    assertTrue(isNewSemanticUsage, "The flag should be set to true");
-    String errorMessage = semanticDetector.getErrorMessage();
-    assertEquals(
-        errorMessage,
-        "Field map.ExampleRecord.key0.field2: Integer value 123 is not the default value 0 or null");
+    try {
+      SemanticDetector.traverseAndValidate(map, schema, targetSchema, "", null);
+      fail(); // Should not reach here
+    } catch (VeniceProtocolException e) {
+      assertEquals(
+          e.getMessage(),
+          "Field map.ExampleRecord.key0.field2: Integer value 123 is not the default value 0 or null");
+    } catch (Exception e) {
+      throw e; // Rethrow the exception, should not reach here
+    }
   }
 
   @Test
@@ -181,14 +185,14 @@ public class SemanticDetectorTest {
     map.put("key0", record1);
     map.put("key1", record2);
 
-    SemanticDetector semanticDetector = new SemanticDetector();
-    boolean isNewSemanticUsage = semanticDetector.traverse(map, currentSchema, targetSchema, "", null);
-
-    assertTrue(isNewSemanticUsage, "The flag should be set to true");
-    String errorMessage = semanticDetector.getErrorMessage();
-    assertEquals(
-        errorMessage,
-        "Field map.ExampleRecord.key1.owners: Value [owner] doesn't match default value [venice]");
+    try {
+      SemanticDetector.traverseAndValidate(map, currentSchema, targetSchema, "", null);
+      fail(); // Should not reach here
+    } catch (VeniceProtocolException e) {
+      assertEquals(
+          e.getMessage(),
+          "Field map.ExampleRecord.key1.owners: Value [owner] doesn't match default value [venice]");
+    }
   }
 
   @Test()
@@ -206,17 +210,14 @@ public class SemanticDetectorTest {
     Schema targetSchema = adminOperationSerializer.getSchema(74);
     Schema currentSchema = currentLatestSchema;
 
-    SemanticDetector semanticDetector = new SemanticDetector();
-    boolean isNewSemanticUsage = semanticDetector.traverse(adminMessage, currentSchema, targetSchema, "", null);
-
-    assertTrue(isNewSemanticUsage, "The flag should be set to true");
-    String errorMessage = semanticDetector.getErrorMessage();
-    assertTrue(
-        errorMessage.contains("Field payloadUnion.DeleteUnusedValueSchemas"),
-        "The error message should contain the field name");
-    assertTrue(
-        errorMessage.contains("doesn't match default value null"),
-        "New semantic is detected at RECORD level, expecting null");
+    try {
+      SemanticDetector.traverseAndValidate(adminMessage, currentSchema, targetSchema, "", null);
+      fail(); // Should not reach here
+    } catch (VeniceProtocolException e) {
+      assertEquals(
+          e.getMessage(),
+          "Field payloadUnion.DeleteUnusedValueSchemas: Value {\"clusterName\": \"clusterName\", \"storeName\": \"storeName\", \"schemaIds\": []} doesn't match default value null");
+    }
   }
 
   @Test
@@ -247,12 +248,12 @@ public class SemanticDetectorTest {
     array.add(record1);
     array.add(record2);
 
-    SemanticDetector semanticDetector = new SemanticDetector();
-    boolean isNewSemanticUsage = semanticDetector.traverse(array, currentSchema, targetSchema, "", null);
-
-    assertTrue(isNewSemanticUsage, "The flag should be set to true");
-    String errorMessage = semanticDetector.getErrorMessage();
-    assertEquals(errorMessage, "Field array.ExampleRecord.0.field2: Type LONG is not the same as INT");
+    try {
+      SemanticDetector.traverseAndValidate(array, currentSchema, targetSchema, "", null);
+      fail(); // Should not reach here
+    } catch (VeniceProtocolException e) {
+      assertEquals(e.getMessage(), "Field array.ExampleRecord.0.field2: Type LONG is not the same as INT");
+    }
   }
 
   @Test
@@ -279,20 +280,19 @@ public class SemanticDetectorTest {
     Schema targetSchema = adminOperationSerializer.getSchema(83);
     Schema currentSchema = currentLatestSchema;
 
-    SemanticDetector semanticDetector = new SemanticDetector();
-    boolean isNewSemanticUsage = semanticDetector.traverse(adminMessage, currentSchema, targetSchema, "", null);
-
-    assertTrue(isNewSemanticUsage, "The flag should be set to true");
-    String errorMessage = semanticDetector.getErrorMessage();
-    assertEquals(
-        errorMessage,
-        "Field payloadUnion.UpdateStore.targetSwapRegionWaitTime: Integer value 10 is not the default value 0 or 60");
+    try {
+      SemanticDetector.traverseAndValidate(adminMessage, currentSchema, targetSchema, "", null);
+      fail(); // Should not reach here
+    } catch (VeniceException e) {
+      assertEquals(
+          e.getMessage(),
+          "Field payloadUnion.UpdateStore.targetSwapRegionWaitTime: Integer value 10 is not the default value 0 or 60");
+    }
 
     // Test the case where the field is set as default value
     updateStore.targetSwapRegionWaitTime = 60;
     adminMessage.payloadUnion = updateStore;
-    isNewSemanticUsage = semanticDetector.traverse(adminMessage, currentSchema, targetSchema, "", null);
-    assertFalse(isNewSemanticUsage, "The flag should be set to false");
+    SemanticDetector.traverseAndValidate(adminMessage, currentSchema, targetSchema, "", null);
   }
 
   @Test
@@ -329,14 +329,14 @@ public class SemanticDetectorTest {
     array.add(record1);
     array.add(record2);
 
-    SemanticDetector semanticDetector = new SemanticDetector();
-    boolean isNewSemanticUsage = semanticDetector.traverse(array, currentSchema, targetSchema, "", null);
-
-    assertTrue(isNewSemanticUsage, "The flag should be set to true");
-    String errorMessage = semanticDetector.getErrorMessage();
-    assertEquals(
-        errorMessage,
-        "Field array.ExampleRecord.1.executionType: Enum value COMPLETED is not in the previous enum symbols but in the target enum symbols");
+    try {
+      SemanticDetector.traverseAndValidate(array, currentSchema, targetSchema, "", null);
+      fail(); // Should not reach here
+    } catch (VeniceProtocolException e) {
+      assertEquals(
+          e.getMessage(),
+          "Field array.ExampleRecord.1.executionType: Enum value COMPLETED is not in the previous enum symbols but in the target enum symbols");
+    }
   }
 
   @Test
@@ -355,19 +355,23 @@ public class SemanticDetectorTest {
         Arrays.asList("value1", "value2", "value3", "value4"),
         null);
 
-    SemanticDetector semanticDetector = new SemanticDetector();
-    boolean isNewSemanticUsage = semanticDetector.validateEnum("value4", currentSchema, targetSchema, "fieldA");
-    assertTrue(isNewSemanticUsage, "The flag should be set to true");
-    assertEquals(
-        semanticDetector.getErrorMessage(),
-        "Field fieldA: Enum value value4 is not in the previous enum symbols but in the target enum symbols");
+    SemanticDetector.validateEnum("value1", currentSchema, targetSchema, "fieldA");
 
-    isNewSemanticUsage = semanticDetector.validateEnum("value1", currentSchema, targetSchema, "fieldB");
-    assertFalse(isNewSemanticUsage, "The flag should be set to false since value1 appears in both schemas");
+    try {
+      SemanticDetector.validateEnum("value4", currentSchema, targetSchema, "fieldA");
+      fail(); // Should not reach here
+    } catch (VeniceProtocolException e) {
+      assertEquals(
+          e.getMessage(),
+          "Field fieldA: Enum value value4 is not in the previous enum symbols but in the target enum symbols");
+    }
 
-    isNewSemanticUsage = semanticDetector.validateEnum(1, currentSchema, targetSchema, "fieldC");
-    assertTrue(isNewSemanticUsage, "The flag should be set to true");
-    assertEquals(semanticDetector.getErrorMessage(), "Field fieldC: Enum value 1 is not a string");
+    try {
+      SemanticDetector.validateEnum(1, currentSchema, targetSchema, "fieldB");
+      fail(); // Should not reach here
+    } catch (VeniceProtocolException e) {
+      assertEquals(e.getMessage(), "Field fieldB: Enum value 1 is not a string"); // Should not reach here
+    }
   }
 
   @Test
@@ -393,88 +397,83 @@ public class SemanticDetectorTest {
             nullSchema,
             enumSchema));
 
-    SemanticDetector semanticDetector = new SemanticDetector();
-
-    assertEquals(semanticDetector.getObjectSchema("10", unionSchema), stringSchema);
-    assertEquals(semanticDetector.getObjectSchema(10, unionSchema), intSchema);
-    assertEquals(semanticDetector.getObjectSchema(10L, unionSchema), longSchema);
-    assertEquals(semanticDetector.getObjectSchema(10.0f, unionSchema), floatSchema);
-    assertEquals(semanticDetector.getObjectSchema(10.0, unionSchema), doubleSchema);
-    assertEquals(semanticDetector.getObjectSchema(true, unionSchema), booleanSchema);
-    assertEquals(semanticDetector.getObjectSchema("bytes".getBytes(), unionSchema), bytesSchema);
-    assertEquals(semanticDetector.getObjectSchema(Arrays.asList(1, 2, 3), unionSchema), arraySchema);
+    assertEquals(SemanticDetector.getObjectSchema("10", unionSchema), stringSchema);
+    assertEquals(SemanticDetector.getObjectSchema(10, unionSchema), intSchema);
+    assertEquals(SemanticDetector.getObjectSchema(10L, unionSchema), longSchema);
+    assertEquals(SemanticDetector.getObjectSchema(10.0f, unionSchema), floatSchema);
+    assertEquals(SemanticDetector.getObjectSchema(10.0, unionSchema), doubleSchema);
+    assertEquals(SemanticDetector.getObjectSchema(true, unionSchema), booleanSchema);
+    assertEquals(SemanticDetector.getObjectSchema("bytes".getBytes(), unionSchema), bytesSchema);
+    assertEquals(SemanticDetector.getObjectSchema(Arrays.asList(1, 2, 3), unionSchema), arraySchema);
     // Wrong element type
-    assertNull(semanticDetector.getObjectSchema(Arrays.asList("1", "2", "3"), unionSchema));
+    assertNull(SemanticDetector.getObjectSchema(Arrays.asList("1", "2", "3"), unionSchema));
     // Map
     HashMap<String, Integer> map = new HashMap<String, Integer>();
     map.put("key", 1);
-    assertEquals(semanticDetector.getObjectSchema(map, unionSchema), mapSchema);
+    assertEquals(SemanticDetector.getObjectSchema(map, unionSchema), mapSchema);
     // Map with wrong value type
     HashMap<String, String> mapString = new HashMap<String, String>();
     mapString.put("key", "value");
-    assertNull(semanticDetector.getObjectSchema(mapString, unionSchema));
+    assertNull(SemanticDetector.getObjectSchema(mapString, unionSchema));
 
     // Record
     GenericRecord record = new GenericData.Record(recordSchema);
     record.put("nestedField", 0);
-    assertEquals(semanticDetector.getObjectSchema(record, unionSchema), recordSchema);
+    assertEquals(SemanticDetector.getObjectSchema(record, unionSchema), recordSchema);
 
     // Null
-    assertEquals(semanticDetector.getObjectSchema(null, unionSchema), nullSchema);
+    assertEquals(SemanticDetector.getObjectSchema(null, unionSchema), nullSchema);
 
     // Enum
     Schema unionEnumSchema = Schema.createUnion(Arrays.asList(intSchema, enumSchema));
-    assertEquals(semanticDetector.getObjectSchema("value1", unionEnumSchema), enumSchema);
+    assertEquals(SemanticDetector.getObjectSchema("value1", unionEnumSchema), enumSchema);
 
     // Invalid enum value
-    assertNull(semanticDetector.getObjectSchema("10", unionEnumSchema));
+    assertNull(SemanticDetector.getObjectSchema("10", unionEnumSchema));
 
     // Wrong types
-    assertNull(semanticDetector.getObjectSchema(10L, unionEnumSchema));
+    assertNull(SemanticDetector.getObjectSchema(10L, unionEnumSchema));
   }
 
   @Test
   public void testValidateDefaultValue() {
-    SemanticDetector semanticDetector = new SemanticDetector();
-    String fieldName = "testFieldName";
-
     // Integer
-    assertTrue(semanticDetector.validate(10, intSchema, fieldName, null));
-    assertFalse(semanticDetector.validate(0, intSchema, fieldName, null));
+    testCompareObjectToDefaultValue(10, intSchema, 10, false);
+    testCompareObjectToDefaultValue(0, intSchema, 10, false);
 
     // Cast error
-    assertTrue(semanticDetector.validate(10L, intSchema, fieldName, null));
+    testCompareObjectToDefaultValue(10, intSchema, "10", true);
 
     // Long
-    assertTrue(semanticDetector.validate(10L, longSchema, fieldName, null));
-    assertFalse(semanticDetector.validate(10L, longSchema, fieldName, 10L));
+    testCompareObjectToDefaultValue(10L, longSchema, 10L, false);
+    testCompareObjectToDefaultValue(8L, longSchema, 10L, true);
 
     // Float
-    assertTrue(semanticDetector.validate(10.0f, floatSchema, fieldName, null));
-    assertFalse(semanticDetector.validate(10.0f, floatSchema, fieldName, 10.0f));
+    testCompareObjectToDefaultValue(10.0f, floatSchema, 10.0f, false);
+    testCompareObjectToDefaultValue(8.0f, floatSchema, 10.0f, true);
 
     // Double
-    assertTrue(semanticDetector.validate(10.0, doubleSchema, fieldName, null));
-    assertFalse(semanticDetector.validate(10.0, doubleSchema, fieldName, 10.0));
+    testCompareObjectToDefaultValue(10.0, doubleSchema, 10.0, false);
+    testCompareObjectToDefaultValue(8, doubleSchema, 10.0, true);
 
     // Boolean
-    assertTrue(semanticDetector.validate(true, booleanSchema, fieldName, null));
-    assertFalse(semanticDetector.validate(false, booleanSchema, fieldName, null));
+    testCompareObjectToDefaultValue(true, booleanSchema, null, true);
+    testCompareObjectToDefaultValue(false, booleanSchema, null, false);
 
     // String
-    assertTrue(semanticDetector.validate("test", stringSchema, fieldName, null));
-    assertFalse(semanticDetector.validate("test", stringSchema, fieldName, "test"));
+    testCompareObjectToDefaultValue("test", stringSchema, "test", false);
+    testCompareObjectToDefaultValue(1, stringSchema, "test", true);
 
     // Bytes
-    assertTrue(semanticDetector.validate("test".getBytes(), bytesSchema, fieldName, null));
+    testCompareObjectToDefaultValue("test".getBytes(), bytesSchema, null, true);
 
     // Array
-    assertTrue(semanticDetector.validate(Arrays.asList(1, 2, 3), arraySchema, fieldName, null));
+    testCompareObjectToDefaultValue(Arrays.asList(1, 2, 3), arraySchema, null, true);
 
     // Map
     HashMap<String, Integer> map = new HashMap<String, Integer>();
     map.put("key", 1);
-    assertTrue(semanticDetector.validate(map, mapSchema, fieldName, null));
+    testCompareObjectToDefaultValue(map, mapSchema, null, true);
 
     // Record
     String schemaJson =
@@ -482,21 +481,37 @@ public class SemanticDetectorTest {
     Schema recordSchema = AvroCompatibilityHelper.parse(schemaJson);
     GenericRecord record = new GenericData.Record(recordSchema);
     record.put("nestedField", 0);
-    assertTrue(semanticDetector.validate(record, recordSchema, fieldName, null));
+    testCompareObjectToDefaultValue(record, recordSchema, null, true);
   }
 
   @Test
   public void testFixedType() {
     Schema currentFixedSchema = Schema.createFixed("testFixed", null, null, 10);
     Schema targetFixedSchema = Schema.createFixed("testFixed", null, null, 8);
-
     Object fixedValue = new byte[10];
-
-    SemanticDetector semanticDetector = new SemanticDetector();
     String fieldName = "fixedFieldName";
 
     // Fixed
-    assertTrue(semanticDetector.traverse(fixedValue, currentFixedSchema, targetFixedSchema, fieldName, null));
-    assertEquals(semanticDetector.getErrorMessage(), "Field fixedFieldName: Changing fixed size is not allowed.");
+    try {
+      SemanticDetector.traverseAndValidate(fixedValue, currentFixedSchema, targetFixedSchema, fieldName, null);
+    } catch (VeniceProtocolException e) {
+      assertEquals(e.getMessage(), "Field fixedFieldName: Changing fixed size is not allowed.");
+    }
+  }
+
+  private void testCompareObjectToDefaultValue(
+      Object object,
+      Schema schema,
+      Object defaultValue,
+      boolean shouldThrowException) {
+    String fieldName = "testFieldName";
+    if (shouldThrowException) {
+      assertThrows(
+          VeniceException.class,
+          () -> SemanticDetector.compareObjectToDefaultValue(object, schema, fieldName, defaultValue));
+    } else {
+      SemanticDetector.compareObjectToDefaultValue(object, schema, fieldName, defaultValue);
+    }
+    ;
   }
 }

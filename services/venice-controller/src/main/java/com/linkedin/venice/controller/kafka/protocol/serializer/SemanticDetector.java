@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.kafka.protocol.serializer;
 
+import com.linkedin.venice.exceptions.VeniceProtocolException;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import java.util.List;
 import java.util.Map;
@@ -11,8 +12,8 @@ import org.apache.avro.generic.GenericRecord;
 /**
  * SemanticDetector is used to detect the semantic changes between two schemas.
  * It traverses the object based on the current schema and target schema.
- * It returns true if there is a semantic change between the two schemas & value from @code{@param object} is non-default value.
- * It returns false if there is no semantic change between the two schemas OR value from @code{@param object} is default value.
+ * When we detect new semantic change, we compare object with default value.
+ * If the object is NOT default value, we throw @code{VeniceProtocolException}.
  *
  * Semantic changes include:
  * 1. Changing the type of a field
@@ -21,27 +22,33 @@ import org.apache.avro.generic.GenericRecord;
  * 4. Adding a new enum value
  */
 public class SemanticDetector {
-  private static final ThreadLocal<String> errorMessage = ThreadLocal.withInitial(() -> "");
-
   /**
-   * Traverse the object based on the current schema and target schema. Stop traversing if found a semantic change & using not default value.
-   * @param object the object containing values
+   * Traverse the object based on the current schema and target schema. Stop traversing if found a semantic change &
+   * using not default value.
+   *
+   * @param object        the object containing values
    * @param currentSchema the object schema
-   * @param targetSchema the target schema we want to compare with
-   * @param name The name of the object from the parent object
-   * @param defaultValue The default value of the object
-   * @return true if there is a semantic change between the two schemas & value from @code{@param object} is non-default value.
-   *        false if there is no semantic change between the two schemas OR value from @code{@param object} is default value.
+   * @param targetSchema  the target schema we want to compare with
+   * @param name          The name of the object from the parent object
+   * @param defaultValue  The default value of the object
+   * @throws VeniceProtocolException if there is a semantic change between the two schemas & value from
+   *                                 @code{@param object} is non-default value.
    */
-  public boolean traverse(Object object, Schema currentSchema, Schema targetSchema, String name, Object defaultValue) {
+  public static void traverseAndValidate(
+      Object object,
+      Schema currentSchema,
+      Schema targetSchema,
+      String name,
+      Object defaultValue) {
     // If target schema is null, this is a new field and we need to validate the object against the current schema.
     if (targetSchema == null) {
-      return validate(object, currentSchema, name, defaultValue);
+      compareObjectToDefaultValue(object, currentSchema, name, defaultValue);
+      return;
     }
 
     // If the current schema and target schema do not have the same type, we return true. This is a semantic change.
     if (currentSchema.getType() != targetSchema.getType()) {
-      return returnTrueAndLogError(
+      throw new VeniceProtocolException(
           String.format(
               "Field %s: Type %s is not the same as %s",
               formatFieldName(name),
@@ -53,29 +60,34 @@ public class SemanticDetector {
     // @code{compareSchemaIgnoreFieldOrder} method is used to compare the two schemas (but cannot take FIXED type)
     if (currentSchema.getType() != Schema.Type.FIXED
         && AvroSchemaUtils.compareSchemaIgnoreFieldOrder(currentSchema, targetSchema))
-      return false;
+      return;
 
     switch (currentSchema.getType()) {
       case RECORD:
-        return traverseFields((GenericRecord) object, currentSchema, targetSchema, name, defaultValue);
+        traverseFields((GenericRecord) object, currentSchema, targetSchema, name, defaultValue);
+        break;
       case ARRAY:
-        return traverseCollections((List<Object>) object, currentSchema, targetSchema, name, defaultValue);
+        traverseCollections((List<Object>) object, currentSchema, targetSchema, name, defaultValue);
+        break;
       case MAP:
-        return traverseMap((Map<String, Object>) object, currentSchema, targetSchema, name, defaultValue);
+        traverseMap((Map<String, Object>) object, currentSchema, targetSchema, name, defaultValue);
+        break;
       case UNION:
-        return traverseUnion(object, currentSchema, targetSchema, name, defaultValue);
+        traverseUnion(object, currentSchema, targetSchema, name, defaultValue);
+        break;
       case ENUM:
         // If object is using new enum value, return true. This object is using new semantic.
-        return validateEnum(object, currentSchema, targetSchema, name);
+        validateEnum(object, currentSchema, targetSchema, name);
+        break;
       case FIXED:
         // If the fixed size is different, return true. This is a semantic change.
         if (currentSchema.getFixedSize() != targetSchema.getFixedSize()) {
-          return returnTrueAndLogError(
+          throw new VeniceProtocolException(
               String.format("Field %s: Changing fixed size is not allowed.", formatFieldName(name)));
         }
-        return false;
+        break;
       default:
-        return false;
+        break;
     }
   }
 
@@ -97,10 +109,9 @@ public class SemanticDetector {
    * @param targetSchema the target schema we want to compare with
    * @param recordName The name of the record from the parent object
    * @param defaultValue The default value of the record
-   * @return true if there is a semantic change between the two schemas & value from @code{@param record} is non-default value.
-   *       false if there is no semantic change between the two schemas OR value from @code{@param record} is default value.
+   * @throws VeniceProtocolException if there is a semantic change between the two schemas & field value from @code{@param record} is non-default value.
    */
-  public boolean traverseFields(
+  public static void traverseFields(
       GenericRecord record,
       Schema currentSchema,
       Schema targetSchema,
@@ -110,21 +121,13 @@ public class SemanticDetector {
       String fieldName = buildFieldPath(recordName, field.name());
       Schema.Field targetField = targetSchema.getField(field.name());
       Object value = record.get(field.name());
-      Object fieldDefaultValue = AvroSchemaUtils.getFieldDefault(field);
-      Schema fieldSchema = field.schema();
-
-      if (targetField == null) {
-        if (traverse(value, fieldSchema, null, fieldName, fieldDefaultValue)) {
-          return true;
-        }
-        continue;
-      }
-
-      if (traverse(value, fieldSchema, targetField.schema(), fieldName, fieldDefaultValue)) {
-        return true;
-      }
+      traverseAndValidate(
+          value,
+          field.schema(),
+          targetField == null ? null : targetField.schema(),
+          fieldName,
+          AvroSchemaUtils.getFieldDefault(field));
     }
-    return false;
   }
 
   /**
@@ -143,9 +146,9 @@ public class SemanticDetector {
    * @param targetSchema the target schema we want to compare with
    * @param name The name of the array from the parent object
    * @param defaultArrayEntry The default value of the array
-   * @return true if there is a semantic change between the two schemas & value from @code{@param array} is non-default value.
+   * @throws VeniceProtocolException if there is a semantic change between the two schemas & element from @code{@param array} is non-default value.
    */
-  public boolean traverseCollections(
+  public static void traverseCollections(
       List<Object> array,
       Schema currentSchema,
       Schema targetSchema,
@@ -159,11 +162,8 @@ public class SemanticDetector {
 
     for (int i = 0; i < array.size(); i++) {
       String indexArrayName = buildFieldPath(nestedSchemaName, String.valueOf(i));
-      if (traverse(array.get(i), currentElementSchema, targetElementSchema, indexArrayName, defaultArrayEntry)) {
-        return true;
-      }
+      traverseAndValidate(array.get(i), currentElementSchema, targetElementSchema, indexArrayName, defaultArrayEntry);
     }
-    return false;
   }
 
   /**
@@ -183,9 +183,9 @@ public class SemanticDetector {
    * @param targetSchema the target schema we want to compare with
    * @param name The name of the map from the parent object
    * @param defaultValueEntry The default value of the map
-   * @return true if there is a semantic change between the two schemas & value from @code{@param map} is non-default value.
+   * @throws VeniceProtocolException if there is a semantic change between the two schemas & value from @code{@param map} is non-default value.
    */
-  public boolean traverseMap(
+  public static void traverseMap(
       Map<String, Object> map,
       Schema currentSchema,
       Schema targetSchema,
@@ -197,16 +197,13 @@ public class SemanticDetector {
     String nestedMapName = buildFieldPath(mapName, currentSchema.getValueType().getName());
 
     for (Map.Entry<String, Object> entry: map.entrySet()) {
-      if (traverse(
+      traverseAndValidate(
           entry.getValue(),
           currentValueSchema,
           targetValueSchema,
           buildFieldPath(nestedMapName, entry.getKey()),
-          defaultValueEntry)) {
-        return true;
-      }
+          defaultValueEntry);
     }
-    return false;
   }
 
   /**
@@ -227,9 +224,10 @@ public class SemanticDetector {
    * @param targetSchema the target schema we want to compare with
    * @param name The name of the object from the parent object
    * @param defaultValue The default value of the object
-   * @return true if there is a semantic change between the two schemas & value from @code{@param object} is non-default value.
+   * @throws VeniceProtocolException if there is a semantic change between the two schemas & value from @code{@param object} is non-default value
+   * OR if the object does not match any schema within the union schemas.
    */
-  public boolean traverseUnion(
+  public static void traverseUnion(
       Object object,
       Schema currentSchema,
       Schema targetSchema,
@@ -239,7 +237,7 @@ public class SemanticDetector {
     Schema objectSchema = getObjectSchema(object, currentSchema);
 
     if (objectSchema == null) {
-      return returnTrueAndLogError(
+      throw new VeniceProtocolException(
           String.format(
               "Field %s: Object %s does not match any schema within union schemas %s",
               formatFieldName(name),
@@ -248,14 +246,14 @@ public class SemanticDetector {
     }
 
     Map<String, Schema> targetSchemaMap =
-        targetSchema.getTypes().stream().collect(Collectors.toMap(s -> s.getName(), s -> s));
+        targetSchema.getTypes().stream().collect(Collectors.toMap(Schema::getName, s -> s));
 
     Schema subTargetSchema = targetSchemaMap.get(objectSchema.getName());
     String objectName = buildFieldPath(name, objectSchema.getName());
-    return traverse(object, objectSchema, subTargetSchema, objectName, defaultValue);
+    traverseAndValidate(object, objectSchema, subTargetSchema, objectName, defaultValue);
   }
 
-  public Schema getObjectSchema(Object object, Schema unionSchema) {
+  public static Schema getObjectSchema(Object object, Schema unionSchema) {
     for (Schema schema: unionSchema.getTypes()) {
       if (isCorrectSchema(object, schema)) {
         return schema;
@@ -317,97 +315,89 @@ public class SemanticDetector {
    * @param currentSchema the schema of the object
    * @param name the name of the object
    * @param defaultValue the default value of the object
-   * @return true if the object is not the default value, false otherwise
    */
-  public boolean validate(Object object, Schema currentSchema, String name, Object defaultValue) {
-    if (object == null) {
-      return false;
-    }
-
-    if (object.equals(defaultValue)) {
-      return false;
+  public static void compareObjectToDefaultValue(
+      Object object,
+      Schema currentSchema,
+      String name,
+      Object defaultValue) {
+    if (object == null || object.equals(defaultValue)) {
+      return;
     }
 
     switch (currentSchema.getType()) {
       case INT:
-        if ((object instanceof Integer) && (int) object == 0) {
-          return false;
-        } else {
-          return returnTrueAndLogError(
+        if (!((object instanceof Integer) && (int) object == 0)) {
+          throw new VeniceProtocolException(
               String.format(
                   "Field %s: Integer value %s is not the default value 0 or %s",
                   formatFieldName(name),
                   object,
                   defaultValue));
         }
+        break;
       case LONG:
-        if ((object instanceof Long) && (long) object == 0L) {
-          return false;
-        } else {
-          return returnTrueAndLogError(
+        if (!((object instanceof Long) && (long) object == 0L)) {
+          throw new VeniceProtocolException(
               String.format(
                   "Field %s: Long value %s is not the default value 0 or %s",
                   formatFieldName(name),
                   object,
                   defaultValue));
         }
+        break;
       case FLOAT:
-        if ((object instanceof Float) && (float) object == 0.0f) {
-          return false;
-        } else {
-          return returnTrueAndLogError(
+        if (!((object instanceof Float) && (float) object == 0.0f)) {
+          throw new VeniceProtocolException(
               String.format(
                   "Field %s: Float value %s is not the default value 0.0 or %s",
                   formatFieldName(name),
                   object,
                   defaultValue));
         }
+        break;
       case DOUBLE:
-        if ((object instanceof Double) && (double) object == 0.0) {
-          return false;
-        } else {
-          return returnTrueAndLogError(
+        if (!((object instanceof Double) && (double) object == 0.0)) {
+          throw new VeniceProtocolException(
               String.format(
                   "Field %s: Double value %s is not the default value 0.0 or %s",
                   formatFieldName(name),
                   object,
                   defaultValue));
         }
+        break;
       case BOOLEAN:
-        if ((object instanceof Boolean) && !(boolean) object) {
-          return false;
-        } else {
-          return returnTrueAndLogError(
+        if (!((object instanceof Boolean) && !(boolean) object)) {
+          throw new VeniceProtocolException(
               String.format(
                   "Field %s: Boolean value %s is not the default value false or %s",
                   formatFieldName(name),
                   object,
                   defaultValue));
         }
+        break;
       case STRING:
-        if ((object instanceof String) && ((String) object).isEmpty()) {
-          return false;
-        } else {
-          return returnTrueAndLogError(
+        if (!((object instanceof String) && ((String) object).isEmpty())) {
+          throw new VeniceProtocolException(
               String.format(
                   "Field %s: String value %s is not the default value \"\" or %s",
                   formatFieldName(name),
                   object,
                   defaultValue));
         }
+        break;
       case BYTES:
-        if ((object instanceof byte[]) && ((byte[]) object).length == 0) {
-          return false;
-        } else {
-          return returnTrueAndLogError(
+        if (!((object instanceof byte[]) && ((byte[]) object).length == 0)) {
+          throw new VeniceProtocolException(
               String.format(
                   "Field %s: Bytes value %s is not the default value [] or %s",
                   formatFieldName(name),
                   object,
                   defaultValue));
         }
+        break;
       default:
-        return returnTrueAndLogError(
+        throw new VeniceProtocolException(
             String.format(
                 "Field %s: Value %s doesn't match default value %s",
                 formatFieldName(name),
@@ -416,9 +406,9 @@ public class SemanticDetector {
     }
   }
 
-  public boolean validateEnum(Object enumValue, Schema currentSchema, Schema targetSchema, String name) {
+  public static void validateEnum(Object enumValue, Schema currentSchema, Schema targetSchema, String name) {
     if (!(enumValue instanceof String)) {
-      return returnTrueAndLogError(
+      throw new VeniceProtocolException(
           String.format("Field %s: Enum value %s is not a string", formatFieldName(name), enumValue));
     }
 
@@ -426,13 +416,12 @@ public class SemanticDetector {
     List<String> targetEnumSymbols = targetSchema.getEnumSymbols();
     // If the value is not in the previous enum symbols but in the target enum symbols, it is a new enum value
     if (!prevEnumSymbols.contains(enumValue) && targetEnumSymbols.contains(enumValue)) {
-      return returnTrueAndLogError(
+      throw new VeniceProtocolException(
           String.format(
               "Field %s: Enum value %s is not in the previous enum symbols but in the target enum symbols",
               formatFieldName(name),
               enumValue));
     }
-    return false;
   }
 
   private static String buildFieldPath(String parent, String field) {
@@ -445,21 +434,5 @@ public class SemanticDetector {
    */
   private static String formatFieldName(String fieldName) {
     return fieldName.replace("_", ".");
-  }
-
-  /**
-   * Return true and log the error message.
-   * @param message the error message
-   */
-  private boolean returnTrueAndLogError(String message) {
-    errorMessage.set(message);
-    return true;
-  }
-
-  /**
-   * Get the error message.
-   */
-  public String getErrorMessage() {
-    return errorMessage.get();
   }
 }
