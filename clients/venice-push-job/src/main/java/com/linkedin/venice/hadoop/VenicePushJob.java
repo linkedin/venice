@@ -2155,11 +2155,13 @@ public class VenicePushJob implements AutoCloseable {
       }
     }
 
-    Set<String> nonTargetRegionsList = getNonTargetRegions();
-    if (nonTargetRegionsList.isEmpty()) {
-      throw new VeniceException(
-          "Target region list cannot contain all regions:" + pushJobSetting.targetedRegions
-              + ". Please remove one or more of the regions from the target region push list.");
+    if (jobSetting.isTargetedRegionPushEnabled || jobSetting.isTargetRegionPushWithDeferredSwapEnabled) {
+      Set<String> nonTargetRegionsList = getNonTargetRegions();
+      if (nonTargetRegionsList.isEmpty()) {
+        throw new VeniceException(
+            "Target region list cannot contain all regions:" + pushJobSetting.targetedRegions
+                + ". Please remove one or more of the regions from the target region push list.");
+      }
     }
 
     HybridStoreConfig hybridStoreConfig = storeResponse.getStore().getHybridStoreConfig();
