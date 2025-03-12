@@ -51,13 +51,14 @@ public class SemanticDetector {
       throw new VeniceProtocolException(
           String.format(
               "Field %s: Type %s is not the same as %s",
-              formatFieldName(name),
+              name,
               currentSchema.getType(),
               targetSchema.getType()));
     }
 
     // If the current schema and target schema are the same, we do not need to traverse the object.
     // @code{compareSchemaIgnoreFieldOrder} method is used to compare the two schemas (but cannot take FIXED type)
+    // If two schemas are FIXED, we need to check the fixed size to make sure they are the same.
     if (currentSchema.getType() != Schema.Type.FIXED
         && AvroSchemaUtils.compareSchemaIgnoreFieldOrder(currentSchema, targetSchema))
       return;
@@ -76,17 +77,19 @@ public class SemanticDetector {
         traverseUnion(object, currentSchema, targetSchema, name, defaultValue);
         break;
       case ENUM:
-        // If object is using new enum value, return true. This object is using new semantic.
+        // If object is using new enum value, throw exception.
         validateEnum(object, currentSchema, targetSchema, name);
         break;
       case FIXED:
-        // If the fixed size is different, return true. This is a semantic change.
+        // If the fixed size is different, throw exception. Fixed size change is a new semantic change, and should not
+        // be allowed.
         if (currentSchema.getFixedSize() != targetSchema.getFixedSize()) {
-          throw new VeniceProtocolException(
-              String.format("Field %s: Changing fixed size is not allowed.", formatFieldName(name)));
+          throw new VeniceProtocolException(String.format("Field %s: Changing fixed size is not allowed.", name));
         }
         break;
       default:
+        // For primitive types, the only diff in schemas is converting field to optional (adding default)
+        // In this case, we still can serve the value in target schema. Consider it as no semantic change.
         break;
     }
   }
@@ -240,7 +243,7 @@ public class SemanticDetector {
       throw new VeniceProtocolException(
           String.format(
               "Field %s: Object %s does not match any schema within union schemas %s",
-              formatFieldName(name),
+              name,
               object,
               schemasInUnion));
     }
@@ -292,11 +295,11 @@ public class SemanticDetector {
         return value instanceof GenericRecord && ((GenericRecord) value).getSchema().equals(schema);
       case ARRAY:
         return value instanceof List
-            && ((List<?>) value).stream().allMatch(element -> isCorrectSchema(element, schema.getElementType()));
+            && ((List<?>) value).stream().anyMatch(element -> isCorrectSchema(element, schema.getElementType()));
       case MAP:
         return value instanceof Map && ((Map<?, ?>) value).values()
             .stream()
-            .allMatch(element -> isCorrectSchema(element, schema.getValueType()));
+            .anyMatch(element -> isCorrectSchema(element, schema.getValueType()));
       case NULL:
         return value == null;
       default:
@@ -329,41 +332,26 @@ public class SemanticDetector {
       case INT:
         if (!((object instanceof Integer) && (int) object == 0)) {
           throw new VeniceProtocolException(
-              String.format(
-                  "Field %s: Integer value %s is not the default value 0 or %s",
-                  formatFieldName(name),
-                  object,
-                  defaultValue));
+              String.format("Field %s: Integer value %s is not the default value 0 or %s", name, object, defaultValue));
         }
         break;
       case LONG:
         if (!((object instanceof Long) && (long) object == 0L)) {
           throw new VeniceProtocolException(
-              String.format(
-                  "Field %s: Long value %s is not the default value 0 or %s",
-                  formatFieldName(name),
-                  object,
-                  defaultValue));
+              String.format("Field %s: Long value %s is not the default value 0 or %s", name, object, defaultValue));
         }
         break;
       case FLOAT:
-        if (!((object instanceof Float) && (float) object == 0.0f)) {
+        if (!((object instanceof Float) && Math.abs(((float) object) - 0.0f) < 0.00001)) {
           throw new VeniceProtocolException(
-              String.format(
-                  "Field %s: Float value %s is not the default value 0.0 or %s",
-                  formatFieldName(name),
-                  object,
-                  defaultValue));
+              String.format("Field %s: Float value %s is not the default value 0.0 or %s", name, object, defaultValue));
         }
         break;
       case DOUBLE:
-        if (!((object instanceof Double) && (double) object == 0.0)) {
+        if (!((object instanceof Double) && Math.abs(((double) object) - 0.0) < 0.00001)) {
           throw new VeniceProtocolException(
-              String.format(
-                  "Field %s: Double value %s is not the default value 0.0 or %s",
-                  formatFieldName(name),
-                  object,
-                  defaultValue));
+              String
+                  .format("Field %s: Double value %s is not the default value 0.0 or %s", name, object, defaultValue));
         }
         break;
       case BOOLEAN:
@@ -371,7 +359,7 @@ public class SemanticDetector {
           throw new VeniceProtocolException(
               String.format(
                   "Field %s: Boolean value %s is not the default value false or %s",
-                  formatFieldName(name),
+                  name,
                   object,
                   defaultValue));
         }
@@ -379,60 +367,65 @@ public class SemanticDetector {
       case STRING:
         if (!((object instanceof String) && ((String) object).isEmpty())) {
           throw new VeniceProtocolException(
-              String.format(
-                  "Field %s: String value %s is not the default value \"\" or %s",
-                  formatFieldName(name),
-                  object,
-                  defaultValue));
+              String
+                  .format("Field %s: String value %s is not the default value \"\" or %s", name, object, defaultValue));
         }
         break;
       case BYTES:
         if (!((object instanceof byte[]) && ((byte[]) object).length == 0)) {
           throw new VeniceProtocolException(
-              String.format(
-                  "Field %s: Bytes value %s is not the default value [] or %s",
-                  formatFieldName(name),
-                  object,
-                  defaultValue));
+              String.format("Field %s: Bytes value %s is not the default value [] or %s", name, object, defaultValue));
         }
         break;
       default:
         throw new VeniceProtocolException(
-            String.format(
-                "Field %s: Value %s doesn't match default value %s",
-                formatFieldName(name),
-                object,
-                defaultValue));
+            String.format("Field %s: Value %s doesn't match default value %s", name, object, defaultValue));
     }
   }
 
+  /**
+   * Validate the enum value.
+   * If the enum value is in current schema but NOT in target schema, it is a new enum value.
+   * @param enumValue the enum value to validate
+   * @param currentSchema the current schema
+   * @param targetSchema the target schema
+   * @param name the name of the enum value
+   * @throws VeniceProtocolException if the enum value is not in the target schema OR if the enum value is not a string
+   */
   public static void validateEnum(Object enumValue, Schema currentSchema, Schema targetSchema, String name) {
     if (!(enumValue instanceof String)) {
-      throw new VeniceProtocolException(
-          String.format("Field %s: Enum value %s is not a string", formatFieldName(name), enumValue));
+      throw new VeniceProtocolException(String.format("Field %s: Enum value %s is not a string", name, enumValue));
     }
 
     List<String> prevEnumSymbols = currentSchema.getEnumSymbols();
     List<String> targetEnumSymbols = targetSchema.getEnumSymbols();
-    // If the value is not in the previous enum symbols but in the target enum symbols, it is a new enum value
-    if (!prevEnumSymbols.contains(enumValue) && targetEnumSymbols.contains(enumValue)) {
+    if (!prevEnumSymbols.contains(enumValue)) {
       throw new VeniceProtocolException(
           String.format(
-              "Field %s: Enum value %s is not in the previous enum symbols but in the target enum symbols",
-              formatFieldName(name),
-              enumValue));
+              "Field %s: Invalid enum value %s is not accepted in the current schema %s",
+              name,
+              enumValue,
+              prevEnumSymbols));
+    }
+
+    // If the value is in the previous enum symbols but NOT in the target enum symbols, it is a new enum value
+    if (!targetEnumSymbols.contains(enumValue)) {
+      throw new VeniceProtocolException(
+          String.format(
+              "Field %s: Enum value %s is not accepted in the target schema %s",
+              name,
+              enumValue,
+              targetEnumSymbols));
     }
   }
 
-  private static String buildFieldPath(String parent, String field) {
-    return parent.isEmpty() ? field : parent + "_" + field;
-  }
-
   /**
-   * Format the field name to replace "_" with ".". Reason is that we use "_" as a delimiter in the field name since "." is
-   * invalid character in field name.
+   * Format the field name.
+   * @param parent the parent field name
+   * @param field the field name
+   * @return the formatted field name
    */
-  private static String formatFieldName(String fieldName) {
-    return fieldName.replace("_", ".");
+  private static String buildFieldPath(String parent, String field) {
+    return parent.isEmpty() ? field : parent + "." + field;
   }
 }

@@ -64,14 +64,12 @@ public class SemanticDetectorTest {
     Schema currentSchema = currentLatestSchema;
 
     // Traverse the admin message
-    try {
-      SemanticDetector.traverseAndValidate(adminMessage, currentSchema, targetSchema, "", null);
-      fail(); // Should not reach here
-    } catch (VeniceProtocolException e) {
-      assertEquals(
-          e.getMessage(),
-          "Field payloadUnion.UpdateStore.hybridStoreConfig.HybridStoreConfigRecord.realTimeTopicName: String value AAAA is not the default value \"\" or ");
-    }
+    testBadSemanticUsage(
+        adminMessage,
+        currentSchema,
+        "",
+        targetSchema,
+        "Field payloadUnion.UpdateStore.hybridStoreConfig.HybridStoreConfigRecord.realTimeTopicName: String value AAAA is not the default value \"\" or ");
   }
 
   @Test
@@ -103,14 +101,12 @@ public class SemanticDetectorTest {
     array.add(record2);
 
     // Traverse the array
-    try {
-      SemanticDetector.traverseAndValidate(array, schema, targetSchema, "", null);
-      fail(); // Should not reach here
-    } catch (VeniceProtocolException e) {
-      assertEquals(
-          e.getMessage(),
-          "Field array.ExampleRecord.0.field2: Integer value 123 is not the default value 0 or null");
-    }
+    testBadSemanticUsage(
+        array,
+        schema,
+        "",
+        targetSchema,
+        "Field array.ExampleRecord.0.field2: Integer value 123 is not the default value 0 or null");
   }
 
   @Test
@@ -142,16 +138,12 @@ public class SemanticDetectorTest {
     map.put("key1", record2);
 
     // collect the pair fields
-    try {
-      SemanticDetector.traverseAndValidate(map, schema, targetSchema, "", null);
-      fail(); // Should not reach here
-    } catch (VeniceProtocolException e) {
-      assertEquals(
-          e.getMessage(),
-          "Field map.ExampleRecord.key0.field2: Integer value 123 is not the default value 0 or null");
-    } catch (Exception e) {
-      throw e; // Rethrow the exception, should not reach here
-    }
+    testBadSemanticUsage(
+        map,
+        schema,
+        "",
+        targetSchema,
+        "Field map.ExampleRecord.key0.field2: Integer value 123 is not the default value 0 or null");
   }
 
   @Test
@@ -185,14 +177,12 @@ public class SemanticDetectorTest {
     map.put("key0", record1);
     map.put("key1", record2);
 
-    try {
-      SemanticDetector.traverseAndValidate(map, currentSchema, targetSchema, "", null);
-      fail(); // Should not reach here
-    } catch (VeniceProtocolException e) {
-      assertEquals(
-          e.getMessage(),
-          "Field map.ExampleRecord.key1.owners: Value [owner] doesn't match default value [venice]");
-    }
+    testBadSemanticUsage(
+        map,
+        currentSchema,
+        "",
+        targetSchema,
+        "Field map.ExampleRecord.key1.owners: Value [owner] doesn't match default value [venice]");
   }
 
   @Test()
@@ -210,14 +200,12 @@ public class SemanticDetectorTest {
     Schema targetSchema = adminOperationSerializer.getSchema(74);
     Schema currentSchema = currentLatestSchema;
 
-    try {
-      SemanticDetector.traverseAndValidate(adminMessage, currentSchema, targetSchema, "", null);
-      fail(); // Should not reach here
-    } catch (VeniceProtocolException e) {
-      assertEquals(
-          e.getMessage(),
-          "Field payloadUnion.DeleteUnusedValueSchemas: Value {\"clusterName\": \"clusterName\", \"storeName\": \"storeName\", \"schemaIds\": []} doesn't match default value null");
-    }
+    testBadSemanticUsage(
+        adminMessage,
+        currentSchema,
+        "",
+        targetSchema,
+        "Field payloadUnion.DeleteUnusedValueSchemas: Value {\"clusterName\": \"clusterName\", \"storeName\": \"storeName\", \"schemaIds\": []} doesn't match default value null");
   }
 
   @Test
@@ -248,12 +236,12 @@ public class SemanticDetectorTest {
     array.add(record1);
     array.add(record2);
 
-    try {
-      SemanticDetector.traverseAndValidate(array, currentSchema, targetSchema, "", null);
-      fail(); // Should not reach here
-    } catch (VeniceProtocolException e) {
-      assertEquals(e.getMessage(), "Field array.ExampleRecord.0.field2: Type LONG is not the same as INT");
-    }
+    testBadSemanticUsage(
+        array,
+        currentSchema,
+        "",
+        targetSchema,
+        "Field array.ExampleRecord.0.field2: Type LONG is not the same as INT");
   }
 
   @Test
@@ -280,14 +268,12 @@ public class SemanticDetectorTest {
     Schema targetSchema = adminOperationSerializer.getSchema(83);
     Schema currentSchema = currentLatestSchema;
 
-    try {
-      SemanticDetector.traverseAndValidate(adminMessage, currentSchema, targetSchema, "", null);
-      fail(); // Should not reach here
-    } catch (VeniceException e) {
-      assertEquals(
-          e.getMessage(),
-          "Field payloadUnion.UpdateStore.targetSwapRegionWaitTime: Integer value 10 is not the default value 0 or 60");
-    }
+    testBadSemanticUsage(
+        adminMessage,
+        currentSchema,
+        "",
+        targetSchema,
+        "Field payloadUnion.UpdateStore.targetSwapRegionWaitTime: Integer value 10 is not the default value 0 or 60");
 
     // Test the case where the field is set as default value
     updateStore.targetSwapRegionWaitTime = 60;
@@ -322,21 +308,35 @@ public class SemanticDetectorTest {
     GenericRecord record2 = new GenericData.Record(recordSchema);
     record2.put("field1", "");
     record2.put("field2", 0);
-    record2.put("executionType", "COMPLETED");
+    record2.put("executionType", "STOP");
+
+    GenericRecord record3 = new GenericData.Record(recordSchema);
+    record3.put("field1", "");
+    record3.put("field2", 0);
+    record3.put("executionType", "COMPLETED");
 
     // Create an array and add the record to it
-    GenericData.Array<GenericRecord> array = new GenericData.Array<>(2, currentSchema);
-    array.add(record1);
-    array.add(record2);
+    GenericData.Array<GenericRecord> array1 = new GenericData.Array<>(2, currentSchema);
+    array1.add(record1);
+    array1.add(record2);
 
-    try {
-      SemanticDetector.traverseAndValidate(array, currentSchema, targetSchema, "", null);
-      fail(); // Should not reach here
-    } catch (VeniceProtocolException e) {
-      assertEquals(
-          e.getMessage(),
-          "Field array.ExampleRecord.1.executionType: Enum value COMPLETED is not in the previous enum symbols but in the target enum symbols");
-    }
+    testBadSemanticUsage(
+        array1,
+        currentSchema,
+        "",
+        targetSchema,
+        "Field array.ExampleRecord.1.executionType: Enum value STOP is not accepted in the target schema [START, COMPLETED]");
+
+    GenericData.Array<GenericRecord> array2 = new GenericData.Array<>(2, currentSchema);
+    array2.add(record1);
+    array2.add(record3);
+
+    testBadSemanticUsage(
+        array2,
+        currentSchema,
+        "",
+        targetSchema,
+        "Field array.ExampleRecord.1.executionType: Invalid enum value COMPLETED is not accepted in the current schema [START, STOP, PAUSE]");
   }
 
   @Test
@@ -345,33 +345,33 @@ public class SemanticDetectorTest {
         "currentEnum",
         "",
         "NewSemanticUsageValidatorTest",
-        Arrays.asList("value1", "value2", "value3"),
+        Arrays.asList("value1", "value2", "value3", "value4"),
         null);
 
     Schema targetSchema = AvroCompatibilityHelper.newEnumSchema(
         "targetEnum",
         "",
         "NewSemanticUsageValidatorTest",
-        Arrays.asList("value1", "value2", "value3", "value4"),
+        Arrays.asList("value1", "value2", "value3"),
         null);
 
     SemanticDetector.validateEnum("value1", currentSchema, targetSchema, "fieldA");
 
-    try {
-      SemanticDetector.validateEnum("value4", currentSchema, targetSchema, "fieldA");
-      fail(); // Should not reach here
-    } catch (VeniceProtocolException e) {
-      assertEquals(
-          e.getMessage(),
-          "Field fieldA: Enum value value4 is not in the previous enum symbols but in the target enum symbols");
-    }
+    testBadSemanticUsage(
+        "value4",
+        currentSchema,
+        "fieldA",
+        targetSchema,
+        "Field fieldA: Enum value value4 is not accepted in the target schema [value1, value2, value3]");
 
-    try {
-      SemanticDetector.validateEnum(1, currentSchema, targetSchema, "fieldB");
-      fail(); // Should not reach here
-    } catch (VeniceProtocolException e) {
-      assertEquals(e.getMessage(), "Field fieldB: Enum value 1 is not a string"); // Should not reach here
-    }
+    testBadSemanticUsage(
+        "value5",
+        currentSchema,
+        "fieldA",
+        targetSchema,
+        "Field fieldA: Invalid enum value value5 is not accepted in the current schema [value1, value2, value3, value4]");
+
+    testBadSemanticUsage(1, currentSchema, "fieldB", targetSchema, "Field fieldB: Enum value 1 is not a string");
   }
 
   @Test
@@ -512,6 +512,19 @@ public class SemanticDetectorTest {
     } else {
       SemanticDetector.compareObjectToDefaultValue(object, schema, fieldName, defaultValue);
     }
-    ;
+  }
+
+  private void testBadSemanticUsage(
+      Object object,
+      Schema schema,
+      String fieldName,
+      Schema targetSchema,
+      String expectedMessage) {
+    try {
+      SemanticDetector.traverseAndValidate(object, schema, targetSchema, fieldName, null);
+      fail(); // Should not reach here
+    } catch (VeniceProtocolException e) {
+      assertEquals(e.getMessage(), expectedMessage);
+    }
   }
 }
