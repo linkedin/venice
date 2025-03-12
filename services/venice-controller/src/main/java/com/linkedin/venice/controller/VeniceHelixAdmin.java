@@ -4744,9 +4744,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private void generateAndUpdateRealTimeTopicName(Store store) {
-    String newRealTimeTopicName = VeniceSystemStoreUtils.isSystemStore(store.getName())
-        ? DEFAULT_REAL_TIME_TOPIC_NAME
-        : store.getName() + "_v" + (store.getLargestUsedRTVersionNumber() + 1) + Version.REAL_TIME_TOPIC_SUFFIX;
+    String newRealTimeTopicName = Utils.isRTVersioningApplicable(store.getName())
+        ? store.getName() + "_v" + (store.getLargestUsedRTVersionNumber() + 1) + Version.REAL_TIME_TOPIC_SUFFIX
+        : DEFAULT_REAL_TIME_TOPIC_NAME;
 
     store.getHybridStoreConfig().setRealTimeTopicName(newRealTimeTopicName);
     // after partition count update, new VT, if is hybrid, has to use a new RT with the same partition count, so we
