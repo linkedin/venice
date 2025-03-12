@@ -1,19 +1,51 @@
 package com.linkedin.davinci.blobtransfer;
 
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ALLOWED_PRINCIPAL_NAME;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_KEYSTORE_LOCATION;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_KEYSTORE_PASSWORD;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_KEYSTORE_TYPE;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_KEY_PASSWORD;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_TRUSTSTORE_LOCATION;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_TRUSTSTORE_PASSWORD;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_TRUSTSTORE_TYPE;
+import static com.linkedin.venice.ConfigKeys.IDENTITY_PARSER_CLASS;
 import static com.linkedin.venice.store.rocksdb.RocksDBUtils.composePartitionDbDir;
 import static org.apache.commons.codec.digest.DigestUtils.md5Hex;
 
+import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.venice.authorization.DefaultIdentityParser;
+import com.linkedin.venice.authorization.IdentityParser;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.security.DefaultSSLFactory;
+import com.linkedin.venice.security.SSLConfig;
+import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.ReflectUtils;
+import com.linkedin.venice.utils.SslUtils;
 import io.netty.handler.codec.http.HttpResponse;
+import io.netty.handler.ssl.SslHandler;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.KeyStore;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
+import java.util.Optional;
+import java.util.Properties;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class BlobTransferUtils {
+  private static final Logger LOGGER = LogManager.getLogger(BlobTransferUtils.class);
   public static final String BLOB_TRANSFER_STATUS = "X-Blob-Transfer-Status";
   public static final String BLOB_TRANSFER_COMPLETED = "Completed";
   public static final String BLOB_TRANSFER_TYPE = "X-Blob-Transfer-Type";
@@ -104,5 +136,125 @@ public class BlobTransferUtils {
     } catch (Exception e) {
       return 0;
     }
+  }
+
+  /**
+   * Create an SSLFactory from the Venice config loader
+   *
+   * @param configLoader The Venice config loader containing SSL configuration
+   * @return Optional SSLFactory, which will be empty if SSL is not enabled
+   */
+  public static Optional<SSLFactory> createSSLFactoryForBlobTransferInDVC(VeniceConfigLoader configLoader) {
+    // Check if SSL is enabled
+    if (!isBlobTransferDVCSslEnabled(configLoader)) {
+      LOGGER.warn("SSL is not enabled in configuration");
+      return Optional.empty();
+    }
+
+    try {
+      // Get SSL configuration from server config
+      Properties sslProperties = configLoader.getCombinedProperties().toProperties();
+      SSLConfig sslFactoryConfig = new SSLConfig();
+      sslFactoryConfig.setSslEnabled(Boolean.valueOf(sslProperties.getProperty(BLOB_TRANSFER_SSL_ENABLED)));
+      sslFactoryConfig.setKeyStoreType(sslProperties.getProperty(BLOB_TRANSFER_SSL_KEYSTORE_TYPE));
+      sslFactoryConfig.setKeyStoreFilePath(sslProperties.getProperty(BLOB_TRANSFER_SSL_KEYSTORE_LOCATION));
+      sslFactoryConfig.setTrustStoreType(sslProperties.getProperty(BLOB_TRANSFER_SSL_TRUSTSTORE_TYPE));
+      sslFactoryConfig.setTrustStoreFilePath(sslProperties.getProperty(BLOB_TRANSFER_SSL_TRUSTSTORE_LOCATION));
+      sslFactoryConfig.setKeyStorePassword(sslProperties.getProperty(BLOB_TRANSFER_SSL_KEYSTORE_PASSWORD));
+      sslFactoryConfig.setTrustStoreFilePassword(sslProperties.getProperty(BLOB_TRANSFER_SSL_TRUSTSTORE_PASSWORD));
+
+      // Create SSL factory
+      SSLFactory sslFactory = new DefaultSSLFactory(sslFactoryConfig);
+      return Optional.of(sslFactory);
+    } catch (Exception e) {
+      String errorMessage = "Failed to create SSLFactory for blob transfer between DaVinci Client";
+      LOGGER.error(errorMessage, e);
+      return Optional.empty();
+    }
+  }
+
+  public static SslHandler createBlobTransferClientSslHandler(Optional<SSLFactory> sslFactory) {
+    javax.net.ssl.SSLEngine engine = sslFactory.get().getSSLContext().createSSLEngine();
+    engine.setUseClientMode(true);
+
+    SslHandler sslHandler = new SslHandler(engine);
+    sslHandler.setHandshakeTimeoutMillis(10000); // 10 seconds for handshake timeout
+
+    return sslHandler;
+  }
+
+  /**
+   * Create the acl handler for blob transfer, for both DVC peers and server peers
+   */
+  public static Optional<BlobTransferAclHandler> createAclHandler(VeniceConfigLoader configLoader) {
+    if (!isBlobTransferDVCSslEnabled(configLoader) || !isBlobTransferAclValidationEnabled(configLoader)) {
+      LOGGER.error(
+          "Blob transfer SSL or ACL validation is not enabled. sslEnabled: {}, aclEnabled: {}, skip create ACL handler.",
+          isBlobTransferDVCSslEnabled(configLoader),
+          isBlobTransferAclValidationEnabled(configLoader));
+      return Optional.empty();
+    }
+    try {
+      String allowedPrincipalName = getBlobTransferAllowedPrincipalName(configLoader);
+      if (allowedPrincipalName.isEmpty()) {
+        allowedPrincipalName = extractPrincipalFromKeyStoreFile(configLoader, getIdentityParser(configLoader));
+      }
+      IdentityParser identityParser = getIdentityParser(configLoader);
+
+      LOGGER.info(
+          "Blob transfer request ACL validation is enabled. Creating ACL handler with allowed principal name: {}",
+          allowedPrincipalName);
+
+      return Optional.of(new BlobTransferAclHandler(identityParser, allowedPrincipalName));
+    } catch (Exception e) {
+      LOGGER.error("Failed to create ACL handler for blob transfer", e);
+      return Optional.empty();
+    }
+  }
+
+  private static IdentityParser getIdentityParser(VeniceConfigLoader configLoader) {
+    final String identityParserClassName =
+        configLoader.getCombinedProperties().getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
+    Class<IdentityParser> identityParserClass = ReflectUtils.loadClass(identityParserClassName);
+    return ReflectUtils.callConstructor(identityParserClass, new Class[0], new Object[0]);
+  }
+
+  /**
+   * Extract principal from the file
+   * @param configLoader
+   * @param identityParser
+   * @return
+   */
+  private static String extractPrincipalFromKeyStoreFile(
+      VeniceConfigLoader configLoader,
+      IdentityParser identityParser) {
+    try (FileInputStream is =
+        new FileInputStream(configLoader.getCombinedProperties().getString(BLOB_TRANSFER_SSL_KEYSTORE_LOCATION))) {
+      KeyStore keystore =
+          KeyStore.getInstance(configLoader.getCombinedProperties().getString(BLOB_TRANSFER_SSL_KEYSTORE_TYPE));
+      keystore.load(is, configLoader.getCombinedProperties().getString(BLOB_TRANSFER_SSL_KEY_PASSWORD).toCharArray());
+      String keyStoreAlias = keystore.aliases().nextElement();
+      X509Certificate cert = SslUtils.getX509Certificate(keystore.getCertificate(keyStoreAlias));
+      String principal = identityParser.parseIdentityFromCert(cert);
+      LOGGER.info(
+          "Extracted principal {} from keystore file: {}",
+          principal,
+          configLoader.getCombinedProperties().getString(BLOB_TRANSFER_SSL_KEYSTORE_LOCATION));
+      return principal;
+    } catch (KeyStoreException | CertificateException | IOException | NoSuchAlgorithmException e) {
+      throw new VeniceException(e);
+    }
+  }
+
+  private static boolean isBlobTransferDVCSslEnabled(VeniceConfigLoader configLoader) {
+    return configLoader.getCombinedProperties().getBoolean(BLOB_TRANSFER_SSL_ENABLED, false);
+  }
+
+  private static boolean isBlobTransferAclValidationEnabled(VeniceConfigLoader configLoader) {
+    return configLoader.getCombinedProperties().getBoolean(BLOB_TRANSFER_ACL_ENABLED, false);
+  }
+
+  private static String getBlobTransferAllowedPrincipalName(VeniceConfigLoader configLoader) {
+    return configLoader.getCombinedProperties().getString(BLOB_TRANSFER_ALLOWED_PRINCIPAL_NAME, "");
   }
 }

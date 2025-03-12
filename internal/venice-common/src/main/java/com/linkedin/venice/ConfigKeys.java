@@ -1872,6 +1872,25 @@ public class ConfigKeys {
   public static final String BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC =
       "blob.transfer.service.write.limit.bytes.per.sec";
 
+  // Enable ssl for the blob transfer
+  public static final String BLOB_TRANSFER_SSL_ENABLED = "blob.transfer.ssl.enabled";
+  public static final String BLOB_TRANSFER_SSL_KEYSTORE_TYPE = "blob.transfer.keystore.type";
+  public static final String BLOB_TRANSFER_SSL_KEYSTORE_LOCATION = "blob.transfer.keystore.location";
+  public static final String BLOB_TRANSFER_SSL_TRUSTSTORE_TYPE = "blob.transfer.truststore.type";
+  public static final String BLOB_TRANSFER_SSL_TRUSTSTORE_LOCATION = "blob.transfer.truststore.location";
+  public static final String BLOB_TRANSFER_SSL_KEYSTORE_PASSWORD = "blob.transfer.keystore.password";
+  public static final String BLOB_TRANSFER_SSL_TRUSTSTORE_PASSWORD = "blob.transfer.truststore.password";
+  public static final String BLOB_TRANSFER_SSL_KEY_PASSWORD = "blob.transfer.key.password";
+  public static final String BLOB_TRANSFER_SSL_KEYMANAGER_ALGORITHM = "blob.transfer.ssl.keymanager.algorithm";
+  public static final String BLOB_TRANSFER_SSL_TRUSTMANAGER_ALGORITHM = "blob.transfer.ssl.trustmanager.algorithm";
+  public static final String BLOB_TRANSFER_SSL_SECURE_RANDOM_IMPLEMENTATION =
+      "blob.transfer.ssl.secure.random.implementation";
+
+  // Enable acl for the blob transfer between Da Vinci peers, or server peers
+  public static final String BLOB_TRANSFER_ACL_ENABLED = "blob.transfer.acl.enabled";
+  // Allowed principal name for the blob transfer in acl handler
+  public static final String BLOB_TRANSFER_ALLOWED_PRINCIPAL_NAME = "blob.transfer.davinci.allowed.principal.name";
+
   // Port used by peer-to-peer transfer service. It should be used by both server and client
   public static final String DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT = "davinci.p2p.blob.transfer.server.port";
   // Ideally this config should NOT be used but for testing purpose on a single host, we need to separate the ports.

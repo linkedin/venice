@@ -21,6 +21,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
@@ -37,6 +38,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -70,6 +72,9 @@ public class TestNettyP2PBlobTransferManager {
   Path destFile2;
   Path destFile3;
 
+  Optional<SSLFactory> sslFactory;
+  Optional<BlobTransferAclHandler> aclHandler;
+
   @BeforeMethod
   public void setUp() throws Exception {
     int port = TestUtils.getFreePort();
@@ -85,6 +90,9 @@ public class TestNettyP2PBlobTransferManager {
     GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler =
         getGlobalChannelTrafficShapingHandlerInstance(2000000, 2000000);
 
+    sslFactory = Optional.ofNullable(Mockito.mock(SSLFactory.class));
+    aclHandler = Optional.ofNullable(Mockito.mock(BlobTransferAclHandler.class));
+
     blobSnapshotManager =
         Mockito.spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
 
@@ -93,14 +101,18 @@ public class TestNettyP2PBlobTransferManager {
         tmpSnapshotDir.toString(),
         blobTransferMaxTimeoutInMin,
         blobSnapshotManager,
-        globalChannelTrafficShapingHandler);
+        globalChannelTrafficShapingHandler,
+        sslFactory,
+        aclHandler);
     client = Mockito.spy(
         new NettyFileTransferClient(
             port,
             tmpPartitionDir.toString(),
             storageMetadataService,
             30,
-            globalChannelTrafficShapingHandler));
+            globalChannelTrafficShapingHandler,
+            sslFactory,
+            aclHandler));
     finder = mock(BlobFinder.class);
 
     manager = new NettyP2PBlobTransferManager(server, client, finder, tmpPartitionDir.toString(), blobTransferStats);
