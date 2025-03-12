@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.kafka.protocol.serializer;
 
 import com.linkedin.venice.exceptions.VeniceProtocolException;
 import com.linkedin.venice.utils.AvroSchemaUtils;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -158,13 +159,13 @@ public class SemanticDetector {
       String name,
       Object defaultArrayEntry) {
     String arrayName = buildFieldPath(name, currentSchema.getName());
-    String nestedSchemaName = buildFieldPath(arrayName, currentSchema.getElementType().getName());
+    String elementName = currentSchema.getElementType().getName();
 
     Schema currentElementSchema = currentSchema.getElementType();
     Schema targetElementSchema = targetSchema.getElementType();
 
     for (int i = 0; i < array.size(); i++) {
-      String indexArrayName = buildFieldPath(nestedSchemaName, String.valueOf(i));
+      String indexArrayName = buildFieldPath(arrayName, String.valueOf(i), elementName);
       traverseAndValidate(array.get(i), currentElementSchema, targetElementSchema, indexArrayName, defaultArrayEntry);
     }
   }
@@ -197,14 +198,14 @@ public class SemanticDetector {
     Schema currentValueSchema = currentSchema.getValueType();
     Schema targetValueSchema = targetSchema.getValueType();
     String mapName = buildFieldPath(name, currentSchema.getName());
-    String nestedMapName = buildFieldPath(mapName, currentSchema.getValueType().getName());
+    String valueObjectName = currentSchema.getValueType().getName();
 
     for (Map.Entry<String, Object> entry: map.entrySet()) {
       traverseAndValidate(
           entry.getValue(),
           currentValueSchema,
           targetValueSchema,
-          buildFieldPath(nestedMapName, entry.getKey()),
+          buildFieldPath(mapName, entry.getKey(), valueObjectName),
           defaultValueEntry);
     }
   }
@@ -421,11 +422,14 @@ public class SemanticDetector {
 
   /**
    * Format the field name.
-   * @param parent the parent field name
-   * @param field the field name
+   * @param parts the parts of the field name
    * @return the formatted field name
    */
-  private static String buildFieldPath(String parent, String field) {
-    return parent.isEmpty() ? field : parent + "." + field;
+  private static String buildFieldPath(String... parts) {
+    return String.join(
+        ".",
+        Arrays.stream(parts)
+            .filter(part -> part != null && !part.isEmpty()) // Skip empty or null parts
+            .toArray(String[]::new));
   }
 }

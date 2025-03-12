@@ -106,7 +106,7 @@ public class SemanticDetectorTest {
         schema,
         "",
         targetSchema,
-        "Field array.ExampleRecord.0.field2: Integer value 123 is not the default value 0 or null");
+        "Field array.0.ExampleRecord.field2: Integer value 123 is not the default value 0 or null");
   }
 
   @Test
@@ -143,7 +143,7 @@ public class SemanticDetectorTest {
         schema,
         "",
         targetSchema,
-        "Field map.ExampleRecord.key0.field2: Integer value 123 is not the default value 0 or null");
+        "Field map.key0.ExampleRecord.field2: Integer value 123 is not the default value 0 or null");
   }
 
   @Test
@@ -182,7 +182,7 @@ public class SemanticDetectorTest {
         currentSchema,
         "",
         targetSchema,
-        "Field map.ExampleRecord.key1.owners: Value [owner] doesn't match default value [venice]");
+        "Field map.key1.ExampleRecord.owners: Value [owner] doesn't match default value [venice]");
   }
 
   @Test()
@@ -241,7 +241,7 @@ public class SemanticDetectorTest {
         currentSchema,
         "",
         targetSchema,
-        "Field array.ExampleRecord.0.field2: Type LONG is not the same as INT");
+        "Field array.0.ExampleRecord.field2: Type LONG is not the same as INT");
   }
 
   @Test
@@ -325,7 +325,7 @@ public class SemanticDetectorTest {
         currentSchema,
         "",
         targetSchema,
-        "Field array.ExampleRecord.1.executionType: Enum value STOP is not accepted in the target schema [START, COMPLETED]");
+        "Field array.1.ExampleRecord.executionType: Enum value STOP is not accepted in the target schema [START, COMPLETED]");
 
     GenericData.Array<GenericRecord> array2 = new GenericData.Array<>(2, currentSchema);
     array2.add(record1);
@@ -336,7 +336,7 @@ public class SemanticDetectorTest {
         currentSchema,
         "",
         targetSchema,
-        "Field array.ExampleRecord.1.executionType: Invalid enum value COMPLETED is not accepted in the current schema [START, STOP, PAUSE]");
+        "Field array.1.ExampleRecord.executionType: Invalid enum value COMPLETED is not accepted in the current schema [START, STOP, PAUSE]");
   }
 
   @Test
