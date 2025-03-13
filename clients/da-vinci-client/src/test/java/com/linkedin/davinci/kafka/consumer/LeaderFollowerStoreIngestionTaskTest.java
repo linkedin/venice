@@ -20,11 +20,13 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
+import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
@@ -199,10 +201,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
     hostLevelIngestionStats = mock(HostLevelIngestionStats.class);
     AggHostLevelIngestionStats aggHostLevelIngestionStats = mock(AggHostLevelIngestionStats.class);
     doReturn(hostLevelIngestionStats).when(aggHostLevelIngestionStats).getStoreStats(storeName);
+    StorageMetadataService mockStorageMetadataService = mock(StorageMetadataService.class);
     StoreIngestionTaskFactory.Builder builder = TestUtils.getStoreIngestionTaskBuilder(storeName)
         .setServerConfig(mockVeniceServerConfig)
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setVeniceViewWriterFactory(mockVeniceViewWriterFactory)
+        .setCompressorFactory(new StorageEngineBackedCompressorFactory(mockStorageMetadataService))
         .setHostLevelIngestionStats(aggHostLevelIngestionStats);
     when(builder.getSchemaRepo().getKeySchema(storeName)).thenReturn(new SchemaEntry(1, "\"string\""));
     mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
@@ -404,7 +408,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     PubSubPosition position = mock(PubSubPosition.class);
     doReturn(partition).when(mockTopicPartition).getPartitionNumber();
     doReturn(offset).when(position).getNumericOffset();
-    doReturn(position).when(mockMessage).getOffset();
+    doReturn(position).when(mockMessage).getPosition();
     doReturn(mockTopicPartition).when(mockMessage).getTopicPartition();
     doReturn(messageTime).when(mockMessage).getPubSubMessageTime();
     VeniceWriter mockWriter = mock(VeniceWriter.class);
