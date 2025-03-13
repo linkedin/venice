@@ -3608,7 +3608,8 @@ public class VeniceParentHelixAdmin implements Admin {
       String kafkaTopic,
       Optional<String> incrementalPushVersion,
       String region,
-      String targetedRegions) {
+      String targetedRegions,
+      boolean isTargetRegionPushWithDeferredSwap) {
     Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
     if (region != null) {
       if (!controllerClients.containsKey(region)) {
@@ -3626,14 +3627,20 @@ public class VeniceParentHelixAdmin implements Admin {
       offlinePushStatusInfo.setUncompletedPartitions(response.getUncompletedPartitions());
       return offlinePushStatusInfo;
     }
-    return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients, incrementalPushVersion, targetedRegions);
+    return getOffLineJobStatus(
+        clusterName,
+        kafkaTopic,
+        controllerClients,
+        incrementalPushVersion,
+        targetedRegions,
+        isTargetRegionPushWithDeferredSwap);
   }
 
   OfflinePushStatusInfo getOffLineJobStatus(
       String clusterName,
       String kafkaTopic,
       Map<String, ControllerClient> controllerClients) {
-    return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients, Optional.empty(), null);
+    return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients, Optional.empty(), null, false);
   }
 
   /**
@@ -3650,7 +3657,8 @@ public class VeniceParentHelixAdmin implements Admin {
       String kafkaTopic,
       Map<String, ControllerClient> controllerClients,
       Optional<String> incrementalPushVersion,
-      String targetedRegions) {
+      String targetedRegions,
+      boolean isTargetRegionPushWithDeferredSwap) {
     Set<String> childRegions = controllerClients.keySet();
     Map<String, ExecutionStatus> statuses = new HashMap<>();
     Map<String, String> extraInfo = new HashMap<>();
@@ -3661,8 +3669,10 @@ public class VeniceParentHelixAdmin implements Admin {
 
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
       String region = entry.getKey();
-      // if targetedRegions is present, only query the targeted regions
-      if (!targetedRegionSet.isEmpty() && !targetedRegionSet.contains(region)) {
+      // if targetedRegions is present, and it is not a target region push with deferred swap, only query the targeted
+      // regions
+      // otherwise, query all regions
+      if (!targetedRegionSet.isEmpty() && !targetedRegionSet.contains(region) && !isTargetRegionPushWithDeferredSwap) {
         continue;
       }
       ControllerClient controllerClient = entry.getValue();
@@ -3717,13 +3727,16 @@ public class VeniceParentHelixAdmin implements Admin {
           Version storeVersion = parentStore.getVersion(versionNum);
           boolean isVersionPushed = storeVersion != null && storeVersion.getStatus().equals(PUSHED);
           boolean isHybridStore = storeVersion != null && storeVersion.getHybridStoreConfig() != null;
+          boolean isTargetRegionPushWithDeferredSwapForCurrentVersion =
+              isTargetRegionPush && version.isVersionSwapDeferred();
           // Truncate topic after push is in terminal state if
           // 1. Its a hybrid store or regular push. (Hybrid store target push uses repush where isTargetRegionPush is
           // false)
           // 2. If target region push is enabled and job to push data only to target region completed (status == PUSHED)
+          // 3. If it is a target region push with deferred swap and a majority of regions have reached terminal status
           if (!isTargetRegionPush // regular push
               || isVersionPushed // target region push
-              || isHybridStore) {
+              || isHybridStore || isTargetRegionPushWithDeferredSwapForCurrentVersion) {
             LOGGER
                 .info("Truncating parent VT {} after push status {}", kafkaTopic, currentReturnStatus.getRootStatus());
             truncateTopicsOptionally(
@@ -3837,6 +3850,7 @@ public class VeniceParentHelixAdmin implements Admin {
        * 1. the store is not incremental push enabled and the push completed (no ERROR)
        * 2. this is a failed batch push
        * 3. the store is incremental push enabled and same incPushToRT and batch push finished
+       * 4. it is a target region push with deferred swap (targetRegions != null and deferVersionSwap == true)
        */
       Store store = getVeniceHelixAdmin().getStore(clusterName, Version.parseStoreFromKafkaTopicName(kafkaTopic));
       boolean failedBatchPush = !incrementalPushVersion.isPresent() && currentReturnStatus.isError();
@@ -3845,8 +3859,11 @@ public class VeniceParentHelixAdmin implements Admin {
       boolean incPushEnabledBatchPushSuccess = !incrementalPushVersion.isPresent() && store.isIncrementalPushEnabled();
       boolean nonIncPushBatchSuccess = !store.isIncrementalPushEnabled() && !currentReturnStatus.isError();
       boolean isDeferredVersionSwap = version != null && version.isVersionSwapDeferred();
+      boolean isTargetRegionPushWithDeferredSwap =
+          isDeferredVersionSwap && !StringUtils.isEmpty(version.getTargetSwapRegion());
 
-      if ((failedBatchPush || nonIncPushBatchSuccess && !isDeferredVersionSwap || incPushEnabledBatchPushSuccess)
+      if ((failedBatchPush || nonIncPushBatchSuccess && !isDeferredVersionSwap || incPushEnabledBatchPushSuccess
+          || isTargetRegionPushWithDeferredSwap)
           && !getMultiClusterConfigs().getCommonConfig().disableParentTopicTruncationUponCompletion()) {
         LOGGER.info("Truncating kafka topic: {} with job status: {}", kafkaTopic, currentReturnStatus);
         truncateKafkaTopic(kafkaTopic);

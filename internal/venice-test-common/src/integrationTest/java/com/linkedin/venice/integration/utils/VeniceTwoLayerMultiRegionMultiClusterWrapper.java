@@ -17,8 +17,11 @@ import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.CHILD_REGION_NAME_PREFIX;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 
+import com.linkedin.davinci.helix.HelixParticipationService;
+import com.linkedin.davinci.notifier.LeaderErrorNotifier;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
@@ -30,6 +33,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
@@ -449,6 +453,30 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
         }
         for (VeniceRouterWrapper router: clusterWrapper.getVeniceRouters()) {
           LOGGER.info("--> Router: {}", router.getAddressForLogging());
+        }
+      }
+    }
+  }
+
+  public void failPushInRegion(String regions) {
+    Set<String> regionsList = RegionUtils.parseRegionsFilterList(regions);
+    for (VeniceMultiClusterWrapper childRegion: getChildRegions()) {
+      for (Map.Entry<String, VeniceClusterWrapper> cluster: childRegion.getClusters().entrySet()) {
+        if (regionsList.contains(childRegion.getRegionName())) {
+          LeaderErrorNotifier leaderErrorNotifier = null;
+          List<VeniceServerWrapper> veniceServerWrapperList = cluster.getValue().getVeniceServers();
+          for (VeniceServerWrapper veniceServerWrapper: veniceServerWrapperList) {
+            // Add error notifier which will report leader to be in ERROR instead of COMPLETE
+            HelixParticipationService participationService =
+                veniceServerWrapper.getVeniceServer().getHelixParticipationService();
+            leaderErrorNotifier = new LeaderErrorNotifier(
+                participationService.getVeniceOfflinePushMonitorAccessor(),
+                null,
+                participationService.getStatusStoreWriter(),
+                participationService.getHelixReadOnlyStoreRepository(),
+                participationService.getInstance().getNodeId());
+            participationService.replaceAndAddTestIngestionNotifier(leaderErrorNotifier);
+          }
         }
       }
     }
