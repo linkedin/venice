@@ -33,12 +33,20 @@ public class VeniceOpenTelemetryAttributesPerfTest {
   // Marking this as flaky as we don't want to run this test in every build.
   @Test(groups = "flaky")
   public void testGeneratingAttributes() {
+    // config
+    boolean createAttributes = true;
     int numStores = 500;
+    int iterations = 1000000000;
+    boolean preCreateAttributes = true;
+    boolean lazyInitializeAttributes = true;
+
     List<MetricEntityStateThreeEnums<HttpResponseStatusCode, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory>> metricList =
         new ArrayList<>();
     VeniceMetricsConfig mockMetricsConfig = Mockito.mock(VeniceMetricsConfig.class);
     when(mockMetricsConfig.emitOtelMetrics()).thenReturn(true);
     when(mockMetricsConfig.getMetricNamingFormat()).thenReturn(VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE);
+    when(mockMetricsConfig.preCreateAttributes()).thenReturn(preCreateAttributes);
+    when(mockMetricsConfig.lazyInitializeAttributes()).thenReturn(lazyInitializeAttributes);
     VeniceOpenTelemetryMetricsRepository otelRepository = new VeniceOpenTelemetryMetricsRepository(mockMetricsConfig);
     Map<VeniceMetricsDimensions, String> baseMetricDimensionsMap = new HashMap<>();
     baseMetricDimensionsMap.put(VeniceMetricsDimensions.VENICE_CLUSTER_NAME, "test_cluster");
@@ -55,21 +63,6 @@ public class VeniceOpenTelemetryAttributesPerfTest {
             VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE,
             VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY,
             VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY));
-
-    for (int i = 0; i < numStores; i++) {
-      baseMetricDimensionsMap.put(VeniceMetricsDimensions.VENICE_STORE_NAME, "test_store_medium_sized_name" + i);
-      metricList.add(
-          MetricEntityStateThreeEnums.create(
-              metricEntity,
-              otelRepository,
-              baseMetricDimensionsMap,
-              HttpResponseStatusCode.class,
-              HttpResponseStatusCodeCategory.class,
-              VeniceResponseStatusCategory.class));
-    }
-
-    // Configuration
-    int iterations = 100000000;
     HttpResponseStatus[] possibleStatuses = { HttpResponseStatus.OK, HttpResponseStatus.BAD_REQUEST,
         HttpResponseStatus.INTERNAL_SERVER_ERROR, HttpResponseStatus.NOT_FOUND, HttpResponseStatus.NO_CONTENT,
         HttpResponseStatus.CREATED, HttpResponseStatus.ACCEPTED, HttpResponseStatus.MOVED_PERMANENTLY,
@@ -85,9 +78,21 @@ public class VeniceOpenTelemetryAttributesPerfTest {
     // Print JVM/JDK information
     System.out.println(
         "JVM/JDK: " + System.getProperty("java.runtime.name") + " " + System.getProperty("java.runtime.version"));
+    long startTimeInit = System.currentTimeMillis();
+    for (int i = 0; i < numStores; i++) {
+      baseMetricDimensionsMap.put(VeniceMetricsDimensions.VENICE_STORE_NAME, "test_store_medium_sized_name" + i);
+      metricList.add(
+          MetricEntityStateThreeEnums.create(
+              metricEntity,
+              otelRepository,
+              baseMetricDimensionsMap,
+              HttpResponseStatusCode.class,
+              HttpResponseStatusCodeCategory.class,
+              VeniceResponseStatusCategory.class));
+    }
+    long endTimeInit = System.currentTimeMillis();
 
     // Start test
-    long startTime = System.currentTimeMillis();
     for (int i = 0; i < iterations; i++) {
       int j = RandomGenUtils.getRandomIntWithin(metricList.size());
       MetricEntityStateThreeEnums<HttpResponseStatusCode, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> metricEntityState =
@@ -100,15 +105,25 @@ public class VeniceOpenTelemetryAttributesPerfTest {
           getVeniceHttpResponseStatusCodeCategory(httpResponseStatus);
       j = RandomGenUtils.getRandomIntWithin(responseCategories.length);
       VeniceResponseStatusCategory veniceResponseStatusCategory = responseCategories[j];
-      Attributes attributes = metricEntityState
-          .getAttributes(httpResponseStatusCode, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
-      assertEquals(attributes.size(), 6);
+      if (createAttributes) {
+        Attributes attributes = metricEntityState
+            .getAttributes(httpResponseStatusCode, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
+        assertEquals(attributes.size(), 6);
+      }
     }
     // end test
-    long endTime = System.currentTimeMillis();
-    System.out.println("Total time taken: " + (endTime - startTime) + " ms");
+    long endTimeGettingAttributesDuringRuntime = System.currentTimeMillis();
+    System.out.println("Attribution creation enabled: " + createAttributes);
     System.out.println("Number of loops: " + formatNumber(iterations));
-    System.out.println("Average time per loop: " + formatNumber((int) ((endTime - startTime) / iterations)) + " ms");
+    System.out.println("Number of stores: " + numStores);
+    System.out.println("pre-creation: " + preCreateAttributes);
+    System.out.println("lazy init: " + lazyInitializeAttributes);
+    System.out.println("Total time taken: " + (endTimeGettingAttributesDuringRuntime - startTimeInit) + " ms");
+    System.out.println("Time taken to init: " + (endTimeInit - startTimeInit) + " ms");
+    System.out.println("Time taken to run test: " + (endTimeGettingAttributesDuringRuntime - endTimeInit) + " ms");
+    System.out.println(
+        "Average time per loop: "
+            + formatNumber((int) ((endTimeGettingAttributesDuringRuntime - endTimeInit) / iterations)) + " ms");
 
     for (GarbageCollectorMXBean gcBean: ManagementFactory.getGarbageCollectorMXBeans()) {
       System.out.println(
