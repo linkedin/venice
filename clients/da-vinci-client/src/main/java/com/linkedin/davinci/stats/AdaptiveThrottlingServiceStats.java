@@ -2,6 +2,7 @@ package com.linkedin.davinci.stats;
 
 import com.linkedin.davinci.kafka.consumer.VeniceAdaptiveIngestionThrottler;
 import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.throttle.EventThrottler;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Gauge;
@@ -19,7 +20,9 @@ public class AdaptiveThrottlingServiceStats extends AbstractVeniceStats {
 
   public void registerSensorForThrottler(VeniceAdaptiveIngestionThrottler throttler) {
     String throttlerName = throttler.getThrottlerName();
-    sensors.put(throttlerName, registerSensorIfAbsent(throttlerName, new Gauge()));
+    for (EventThrottler eventThrottler: throttler.getEventThrottlers()) {
+      sensors.put(throttlerName, registerSensorIfAbsent(eventThrottler.getThrottlerName(), new Gauge()));
+    }
   }
 
   public void recordThrottleLimitForThrottler(VeniceAdaptiveIngestionThrottler throttler) {

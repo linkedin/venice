@@ -121,6 +121,10 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
     return eventThrottlers.get(currentThrottlerIndex.get()).getMaxRatePerSecond();
   }
 
+  public List<EventThrottler> getEventThrottlers() {
+    return eventThrottlers;
+  }
+
   // TEST
   int getCurrentThrottlerIndex() {
     return currentThrottlerIndex.get();
