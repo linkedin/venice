@@ -76,11 +76,5 @@ public class ServerOverloadTest extends AbstractClientEndToEndSetup {
 
     String nonAvailReplicaMetricName = "." + storeName + "--no_available_replica_request_count.OccurrenceRate";
     assertTrue(clientMetricsRepository.getMetric(nonAvailReplicaMetricName).value() > 0);
-
-    clientMetricsRepository.metrics().forEach((mName, metric) -> {
-      if (mName.contains("rejection_ratio")) {
-        System.out.println(mName + " => " + metric.value());
-      }
-    });
   }
 }

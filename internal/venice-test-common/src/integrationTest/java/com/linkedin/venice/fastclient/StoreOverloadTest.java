@@ -79,11 +79,5 @@ public class StoreOverloadTest extends AbstractClientEndToEndSetup {
     String overloadMetricNameForBatchGet =
         "." + storeName + "--multiget_streaming_rejected_request_count_by_load_controller.OccurrenceRate";
     assertTrue(clientMetricsRepository.getMetric(overloadMetricNameForBatchGet).value() > 0);
-
-    clientMetricsRepository.metrics().forEach((mName, metric) -> {
-      if (mName.contains("rejected_request_count_by_load_controller")) {
-        System.out.println(mName + " => " + metric.value());
-      }
-    });
   }
 }
