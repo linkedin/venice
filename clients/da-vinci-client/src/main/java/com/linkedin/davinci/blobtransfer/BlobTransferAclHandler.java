@@ -35,9 +35,7 @@ public class BlobTransferAclHandler extends SimpleChannelInboundHandler<HttpRequ
     SslHandler sslHandler = ServerHandlerUtils.extractSslHandler(ctx);
     if (sslHandler == null) {
       LOGGER.error("No SSL handler in the incoming blob transfer request from {}", ctx.channel().remoteAddress());
-      NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
-      ReferenceCountUtil.release(req);
-      ctx.close();
+      NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx, true);
       return;
     }
     try {
@@ -58,15 +56,11 @@ public class BlobTransferAclHandler extends SimpleChannelInboundHandler<HttpRequ
             req.uri(),
             clientAddress,
             identity);
-        NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
-        ReferenceCountUtil.release(req);
-        ctx.close();
+        NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx, true);
       }
     } catch (Exception e) {
       LOGGER.error("Error validating client certificate for blob transfer from {}", ctx.channel().remoteAddress(), e);
-      NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
-      ReferenceCountUtil.release(req);
-      ctx.close();
+      NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx, true);
     }
   }
 }

@@ -1,19 +1,19 @@
 package com.linkedin.davinci;
 
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYMANAGER_ALGORITHM;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_LOCATION;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_PASSWORD;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_TYPE;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEY_PASSWORD;
+import static com.linkedin.venice.CommonConfigKeys.SSL_SECURE_RANDOM_IMPLEMENTATION;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTMANAGER_ALGORITHM;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_PASSWORD;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_TYPE;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ALLOWED_PRINCIPAL_NAME;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_KEYMANAGER_ALGORITHM;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_KEYSTORE_LOCATION;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_KEYSTORE_PASSWORD;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_KEYSTORE_TYPE;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_KEY_PASSWORD;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_SECURE_RANDOM_IMPLEMENTATION;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_TRUSTMANAGER_ALGORITHM;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_TRUSTSTORE_LOCATION;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_TRUSTSTORE_PASSWORD;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_TRUSTSTORE_TYPE;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT;
@@ -88,16 +88,16 @@ public class DaVinciUserApp {
       extraBackendConfig.put(BLOB_TRANSFER_ALLOWED_PRINCIPAL_NAME, "CN=localhost");
 
       String keyStorePath = SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS);
-      extraBackendConfig.put(BLOB_TRANSFER_SSL_KEYSTORE_TYPE, "JKS");
-      extraBackendConfig.put(BLOB_TRANSFER_SSL_KEYSTORE_LOCATION, keyStorePath);
-      extraBackendConfig.put(BLOB_TRANSFER_SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD);
-      extraBackendConfig.put(BLOB_TRANSFER_SSL_TRUSTSTORE_TYPE, "JKS");
-      extraBackendConfig.put(BLOB_TRANSFER_SSL_TRUSTSTORE_LOCATION, keyStorePath);
-      extraBackendConfig.put(BLOB_TRANSFER_SSL_TRUSTSTORE_PASSWORD, LOCAL_PASSWORD);
-      extraBackendConfig.put(BLOB_TRANSFER_SSL_KEY_PASSWORD, LOCAL_PASSWORD);
-      extraBackendConfig.put(BLOB_TRANSFER_SSL_KEYMANAGER_ALGORITHM, "SunX509");
-      extraBackendConfig.put(BLOB_TRANSFER_SSL_TRUSTMANAGER_ALGORITHM, "SunX509");
-      extraBackendConfig.put(BLOB_TRANSFER_SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
+      extraBackendConfig.put(SSL_KEYSTORE_TYPE, "JKS");
+      extraBackendConfig.put(SSL_KEYSTORE_LOCATION, keyStorePath);
+      extraBackendConfig.put(SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD);
+      extraBackendConfig.put(SSL_TRUSTSTORE_TYPE, "JKS");
+      extraBackendConfig.put(SSL_TRUSTSTORE_LOCATION, keyStorePath);
+      extraBackendConfig.put(SSL_TRUSTSTORE_PASSWORD, LOCAL_PASSWORD);
+      extraBackendConfig.put(SSL_KEY_PASSWORD, LOCAL_PASSWORD);
+      extraBackendConfig.put(SSL_KEYMANAGER_ALGORITHM, "SunX509");
+      extraBackendConfig.put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509");
+      extraBackendConfig.put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
     }
 
     // convert the storage class string to enum

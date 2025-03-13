@@ -3,20 +3,20 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_ON_START_VERSION_INGESTION_LATENCY;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYMANAGER_ALGORITHM;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_LOCATION;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_PASSWORD;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_TYPE;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEY_PASSWORD;
+import static com.linkedin.venice.CommonConfigKeys.SSL_SECURE_RANDOM_IMPLEMENTATION;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTMANAGER_ALGORITHM;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_PASSWORD;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_TYPE;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ALLOWED_PRINCIPAL_NAME;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_KEYMANAGER_ALGORITHM;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_KEYSTORE_LOCATION;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_KEYSTORE_PASSWORD;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_KEYSTORE_TYPE;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_KEY_PASSWORD;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_SECURE_RANDOM_IMPLEMENTATION;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_TRUSTMANAGER_ALGORITHM;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_TRUSTSTORE_LOCATION;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_TRUSTSTORE_PASSWORD;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_TRUSTSTORE_TYPE;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
@@ -1307,16 +1307,16 @@ public class DaVinciClientTest {
         .put(BLOB_TRANSFER_SSL_ENABLED, true)
         .put(BLOB_TRANSFER_ACL_ENABLED, true)
         .put(BLOB_TRANSFER_ALLOWED_PRINCIPAL_NAME, "CN=localhost")
-        .put(BLOB_TRANSFER_SSL_KEYSTORE_TYPE, "JKS")
-        .put(BLOB_TRANSFER_SSL_KEYSTORE_LOCATION, SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS))
-        .put(BLOB_TRANSFER_SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD)
-        .put(BLOB_TRANSFER_SSL_TRUSTSTORE_TYPE, "JKS")
-        .put(BLOB_TRANSFER_SSL_TRUSTSTORE_LOCATION, SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS))
-        .put(BLOB_TRANSFER_SSL_TRUSTSTORE_PASSWORD, LOCAL_PASSWORD)
-        .put(BLOB_TRANSFER_SSL_KEY_PASSWORD, LOCAL_PASSWORD)
-        .put(BLOB_TRANSFER_SSL_KEYMANAGER_ALGORITHM, "SunX509")
-        .put(BLOB_TRANSFER_SSL_TRUSTMANAGER_ALGORITHM, "SunX509")
-        .put(BLOB_TRANSFER_SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
+        .put(SSL_KEYSTORE_TYPE, "JKS")
+        .put(SSL_KEYSTORE_LOCATION, SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS))
+        .put(SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD)
+        .put(SSL_TRUSTSTORE_TYPE, "JKS")
+        .put(SSL_TRUSTSTORE_LOCATION, SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS))
+        .put(SSL_TRUSTSTORE_PASSWORD, LOCAL_PASSWORD)
+        .put(SSL_KEY_PASSWORD, LOCAL_PASSWORD)
+        .put(SSL_KEYMANAGER_ALGORITHM, "SunX509")
+        .put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509")
+        .put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
 
     VeniceProperties backendConfig2 = configBuilder.build();
     DaVinciConfig dvcConfig = new DaVinciConfig().setIsolated(true);

@@ -1,7 +1,6 @@
 package com.linkedin.davinci.blobtransfer.client;
 
 import com.linkedin.alpini.base.concurrency.Executors;
-import com.linkedin.davinci.blobtransfer.BlobTransferAclHandler;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -75,8 +74,7 @@ public class NettyFileTransferClient {
       StorageMetadataService storageMetadataService,
       int peersConnectivityFreshnessInSeconds,
       GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler,
-      Optional<SSLFactory> sslFactory,
-      Optional<BlobTransferAclHandler> aclHandler) {
+      Optional<SSLFactory> sslFactory) {
     this.baseDir = baseDir;
     this.serverPort = serverPort;
     this.storageMetadataService = storageMetadataService;
@@ -100,9 +98,6 @@ public class NettyFileTransferClient {
 
         if (sslHandler != null) {
           ch.pipeline().addLast(verifySsl);
-          if (aclHandler.isPresent()) {
-            ch.pipeline().addLast(aclHandler.get());
-          }
         }
       }
     });

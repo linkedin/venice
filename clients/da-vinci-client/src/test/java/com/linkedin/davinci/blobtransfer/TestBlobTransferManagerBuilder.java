@@ -8,10 +8,12 @@ import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -27,6 +29,8 @@ public class TestBlobTransferManagerBuilder {
     ReadOnlyStoreRepository readOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
     StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
     ClientConfig clientConfig = mock(ClientConfig.class);
+    SSLFactory sslFactory = mock(SSLFactory.class);
+    BlobTransferAclHandler blobTransferAclHandler = mock(BlobTransferAclHandler.class);
 
     P2PBlobTransferConfig blobTransferConfig = new P2PBlobTransferConfig(
         port,
@@ -47,6 +51,8 @@ public class TestBlobTransferManagerBuilder {
         .setReadOnlyStoreRepository(readOnlyStoreRepository)
         .setStorageEngineRepository(storageEngineRepository)
         .setAggVersionedBlobTransferStats(blobTransferStats)
+        .setBlobTransferSSLFactory(Optional.of(sslFactory))
+        .setBlobTransferAclHandler(Optional.of(blobTransferAclHandler))
         .build();
 
     Assert.assertNotNull(blobTransferManager);
@@ -62,6 +68,7 @@ public class TestBlobTransferManagerBuilder {
     StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
     ClientConfig clientConfig = mock(ClientConfig.class);
     CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewFuture = mock(CompletableFuture.class);
+    SSLFactory sslFactory = mock(SSLFactory.class);
 
     P2PBlobTransferConfig blobTransferConfig = new P2PBlobTransferConfig(
         port,
@@ -125,6 +132,44 @@ public class TestBlobTransferManagerBuilder {
           e.getMessage()
               .contains(
                   "The blob transfer config, storage metadata service, read only store repository, storage engine repository, and agg versioned blob transfer stats must not be null"));
+    }
+
+    // Case 4: expect exception is thrown due to null blobTransferAclHandler
+    BlobTransferManager blobTransferManager3 = null;
+    try {
+      blobTransferManager3 = new BlobTransferManagerBuilder().setBlobTransferConfig(blobTransferConfig)
+          .setClientConfig(clientConfig)
+          .setCustomizedViewFuture(null)
+          .setStorageMetadataService(storageMetadataService)
+          .setReadOnlyStoreRepository(readOnlyStoreRepository)
+          .setStorageEngineRepository(storageEngineRepository)
+          .setAggVersionedBlobTransferStats(blobTransferStats)
+          .setBlobTransferAclHandler(null)
+          .setBlobTransferSSLFactory(Optional.ofNullable(sslFactory))
+          .build();
+    } catch (IllegalArgumentException e) {
+      Assert.assertNull(blobTransferManager3);
+      Assert
+          .assertTrue(e.getMessage().contains("The ssl factory and acl handler must not be null and must be present"));
+    }
+
+    // Case 5: expect exception is thrown due to Optional.empty() blobTransferAclHandler
+    BlobTransferManager blobTransferManager4 = null;
+    try {
+      blobTransferManager4 = new BlobTransferManagerBuilder().setBlobTransferConfig(blobTransferConfig)
+          .setClientConfig(clientConfig)
+          .setCustomizedViewFuture(null)
+          .setStorageMetadataService(storageMetadataService)
+          .setReadOnlyStoreRepository(readOnlyStoreRepository)
+          .setStorageEngineRepository(storageEngineRepository)
+          .setAggVersionedBlobTransferStats(blobTransferStats)
+          .setBlobTransferAclHandler(Optional.empty())
+          .setBlobTransferSSLFactory(Optional.of(sslFactory))
+          .build();
+    } catch (IllegalArgumentException e) {
+      Assert.assertNull(blobTransferManager4);
+      Assert
+          .assertTrue(e.getMessage().contains("The ssl factory and acl handler must not be null and must be present"));
     }
   }
 }

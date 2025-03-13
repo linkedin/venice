@@ -128,8 +128,7 @@ public class BlobTransferManagerBuilder {
               storageMetadataService,
               blobTransferConfig.getPeersConnectivityFreshnessInSeconds(),
               globalTrafficHandler,
-              sslFactory,
-              aclHandler),
+              sslFactory),
           blobFinder,
           blobTransferConfig.getBaseDir(),
           aggVersionedBlobTransferStats);
