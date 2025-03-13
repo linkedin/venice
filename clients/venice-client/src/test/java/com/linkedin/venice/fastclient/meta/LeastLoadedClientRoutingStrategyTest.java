@@ -19,19 +19,14 @@ public class LeastLoadedClientRoutingStrategyTest {
   private final static String instance5 = "https://instance5:1234";
   private final static String instance6 = "https://instance6:1234";
 
-  private InstanceHealthMonitor mockInstanceHealthyMonitor(
-      String[] instances,
-      boolean[] blocked,
-      boolean[] healthy,
-      int[] counter) {
+  private InstanceHealthMonitor mockInstanceHealthyMonitor(String[] instances, boolean[] allowed, int[] counter) {
     InstanceHealthMonitor instanceHealthMonitor = mock(InstanceHealthMonitor.class);
-    if (instances.length != blocked.length || blocked.length != healthy.length || healthy.length != counter.length) {
+    if (instances.length != allowed.length || allowed.length != counter.length) {
       throw new IllegalArgumentException("The length of each array param should be same");
     }
     for (int i = 0; i < instances.length; ++i) {
       String instance = instances[i];
-      doReturn(blocked[i]).when(instanceHealthMonitor).isInstanceBlocked(instance);
-      doReturn(healthy[i]).when(instanceHealthMonitor).isInstanceHealthy(instance);
+      doReturn(allowed[i]).when(instanceHealthMonitor).isRequestAllowed(instance);
       doReturn(counter[i]).when(instanceHealthMonitor).getPendingRequestCounter(instance);
     }
 
@@ -65,11 +60,8 @@ public class LeastLoadedClientRoutingStrategyTest {
   public void testGetReplicasWithAllHealthyReplicas() {
     String[] instances = new String[] { instance1, instance2, instance3 };
     List<String> replicas = Arrays.asList(instances);
-    InstanceHealthMonitor instanceHealthMonitor = mockInstanceHealthyMonitor(
-        instances,
-        new boolean[] { false, false, false },
-        new boolean[] { true, true, true },
-        new int[] { 0, 0, 0 });
+    InstanceHealthMonitor instanceHealthMonitor =
+        mockInstanceHealthyMonitor(instances, new boolean[] { true, true, true }, new int[] { 0, 0, 0 });
     runTest(instanceHealthMonitor, replicas, 0, 2, replica -> replicas.contains(replica));
     runTest(instanceHealthMonitor, replicas, 1, 2, replica -> replicas.contains(replica));
     runTest(instanceHealthMonitor, replicas, 2, 2, replica -> replicas.contains(replica));
@@ -80,11 +72,8 @@ public class LeastLoadedClientRoutingStrategyTest {
   public void testGetReplicasWithAllHealthyReplicasWithDifferentWeights() {
     String[] instances = new String[] { instance1, instance2, instance3 };
     List<String> replicas = Arrays.asList(instances);
-    InstanceHealthMonitor instanceHealthMonitor = mockInstanceHealthyMonitor(
-        instances,
-        new boolean[] { false, false, false },
-        new boolean[] { true, true, true },
-        new int[] { 6, 5, 4 });
+    InstanceHealthMonitor instanceHealthMonitor =
+        mockInstanceHealthyMonitor(instances, new boolean[] { true, true, true }, new int[] { 6, 5, 4 });
     List<String> expectedReplicas = Arrays.asList(instance2, instance3);
     runTest(instanceHealthMonitor, replicas, 0, 2, replica -> expectedReplicas.contains(replica));
     runTest(instanceHealthMonitor, replicas, 1, 2, replica -> expectedReplicas.contains(replica));
@@ -95,11 +84,8 @@ public class LeastLoadedClientRoutingStrategyTest {
   public void testGetReplicasWithBlockedReplicas() {
     String[] instances = new String[] { instance1, instance2, instance3 };
     List<String> replicas = Arrays.asList(instances);
-    InstanceHealthMonitor instanceHealthMonitor = mockInstanceHealthyMonitor(
-        instances,
-        new boolean[] { true, false, false },
-        new boolean[] { true, true, true },
-        new int[] { 5, 5, 4 });
+    InstanceHealthMonitor instanceHealthMonitor =
+        mockInstanceHealthyMonitor(instances, new boolean[] { false, true, true }, new int[] { 5, 5, 4 });
     runTest(instanceHealthMonitor, replicas, 0, 2, Arrays.asList(instance3, instance2));
     runTest(instanceHealthMonitor, replicas, 1, 2, Arrays.asList(instance3, instance2));
   }
@@ -110,7 +96,6 @@ public class LeastLoadedClientRoutingStrategyTest {
     List<String> replicas = Arrays.asList(instances);
     InstanceHealthMonitor instanceHealthMonitor = mockInstanceHealthyMonitor(
         instances,
-        new boolean[] { true, false, false, false, false, false },
         new boolean[] { true, false, true, true, true, true },
         new int[] { 100, 1, 2, 4, 5, 3 });
     runTest(instanceHealthMonitor, replicas, 0, 2, replica -> Arrays.asList(instance3, instance6).contains(replica));
@@ -120,11 +105,8 @@ public class LeastLoadedClientRoutingStrategyTest {
   public void testLargeRequestId() {
     String[] instances = new String[] { instance1, instance2, instance3 };
     List<String> replicas = Arrays.asList(instances);
-    InstanceHealthMonitor instanceHealthMonitor = mockInstanceHealthyMonitor(
-        instances,
-        new boolean[] { false, false, false },
-        new boolean[] { true, true, true },
-        new int[] { 0, 0, 0 });
+    InstanceHealthMonitor instanceHealthMonitor =
+        mockInstanceHealthyMonitor(instances, new boolean[] { false, false, false }, new int[] { 0, 0, 0 });
     long requestId = Integer.MAX_VALUE;
     requestId += 100;
     runTest(instanceHealthMonitor, replicas, requestId, 1, replica -> replicas.contains(replica));
