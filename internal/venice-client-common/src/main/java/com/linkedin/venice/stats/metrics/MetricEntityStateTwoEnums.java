@@ -107,7 +107,16 @@ public class MetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensionInte
       return null;
     }
 
+    if (!preCreateAttributes() && !lazyInitializeAttributes()) {
+      // will be created on demand everytime
+      return null;
+    }
+
     EnumMap<E1, EnumMap<E2, Attributes>> attributesEnumMap = new EnumMap<>(enumTypeClass1);
+    if (!preCreateAttributes()) {
+      // will be created on demand once and cached
+      return attributesEnumMap;
+    }
     for (E1 enumConst1: enumTypeClass1.getEnumConstants()) {
       EnumMap<E2, Attributes> mapE2 = new EnumMap<>(enumTypeClass2);
       attributesEnumMap.put(enumConst1, mapE2);
@@ -118,14 +127,16 @@ public class MetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensionInte
     return attributesEnumMap;
   }
 
-  Attributes getAttributes(E1 key1, E2 key2) {
-    if (!emitOpenTelemetryMetrics()) {
-      return null;
-    }
+  /**
+   * Validates whether the input dimensions passed is not null or whether it
+   * is of right class type
+   */
+  private void validateInputDimensions(E1 key1, E2 key2) {
     if (key1 == null || key2 == null) {
       throw new IllegalArgumentException(
           "The key for otel dimension cannot be null for metric Entity: " + getMetricEntity().getMetricName());
     }
+
     if (!enumTypeClass1.isInstance(key1) || !enumTypeClass2.isInstance(key2)) {
       // defensive check: This can only happen if the instance is declared without the explicit types
       // and passed in wrong args
@@ -133,15 +144,49 @@ public class MetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensionInte
           "The key for otel dimension is not of the correct type: " + key1.getClass() + "," + key2.getClass()
               + " for metric Entity: " + getMetricEntity().getMetricName());
     }
+  }
 
+  private Attributes createAttributes(E1 key1, E2 key2) {
+    validateInputDimensions(key1, key2);
+    return getOtelRepository().createAttributes(getMetricEntity(), baseDimensionsMap, key1, key2);
+  }
+
+  private Attributes getAttributesFromEnumMap(E1 key1, E2 key2) {
     Attributes attributes = null;
     EnumMap<E2, Attributes> mapE2 = attributesEnumMap.get(key1);
     if (mapE2 != null) {
       attributes = mapE2.get(key2);
     }
+    return attributes;
+  }
+
+  Attributes getAttributes(E1 key1, E2 key2) {
+    if (!emitOpenTelemetryMetrics()) {
+      return null;
+    }
+
+    Attributes attributes;
+    if (preCreateAttributes()) {
+      // If preCreateAttributes is enabled, then the attributes should have been created during the constructor
+      attributes = getAttributesFromEnumMap(key1, key2);
+    } else if (lazyInitializeAttributes()) {
+      // If lazyInitializeAttributes is enabled, then the attributes should be created on demand for first time and
+      // cache it
+      attributes = getAttributesFromEnumMap(key1, key2);
+      if (attributes != null) {
+        return attributes; // Return from cache if found
+      }
+      attributes = attributesEnumMap.computeIfAbsent(key1, k -> new EnumMap<>(enumTypeClass2))
+          .computeIfAbsent(key2, k -> createAttributes(key1, key2));
+    } else {
+      // create on demand everytime
+      attributes = createAttributes(key1, key2);
+    }
 
     if (attributes == null) {
-      // defensive check: attributes for all entries of bounded enums should be pre created
+      // check for any specific errors
+      validateInputDimensions(key1, key2);
+      // throw a generic error if not
       throw new IllegalArgumentException(
           "No dimensions found for keys: " + key1 + "," + key2 + " for metric Entity: "
               + getMetricEntity().getMetricName());
@@ -152,7 +197,7 @@ public class MetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensionInte
   public void record(long value, E1 key1, E2 key2) {
     try {
       super.record(value, getAttributes(key1, key2));
-    } catch (Exception e) {
+    } catch (IllegalArgumentException e) {
       if (!REDUNDANT_LOG_FILTER.isRedundantLog(e.getMessage())) {
         LOGGER.error("Error recording metric: ", e);
       }
@@ -162,7 +207,7 @@ public class MetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensionInte
   public void record(double value, E1 key1, E2 key2) {
     try {
       super.record(value, getAttributes(key1, key2));
-    } catch (Exception e) {
+    } catch (IllegalArgumentException e) {
       if (!REDUNDANT_LOG_FILTER.isRedundantLog(e.getMessage())) {
         LOGGER.error("Error recording metric: ", e);
       }

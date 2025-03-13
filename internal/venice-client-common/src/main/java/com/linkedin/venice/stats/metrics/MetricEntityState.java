@@ -40,10 +40,13 @@ public abstract class MetricEntityState {
   private final boolean emitOpenTelemetryMetrics;
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final MetricEntity metricEntity;
+
   /** Otel metric */
   private Object otelMetric = null;
   /** Respective tehuti metric */
   private Sensor tehutiSensor = null;
+  private final boolean preCreateAttributes;
+  private final boolean lazyInitializeAttributes;
 
   public MetricEntityState(
       MetricEntity metricEntity,
@@ -52,7 +55,15 @@ public abstract class MetricEntityState {
       TehutiMetricNameEnum tehutiMetricNameEnum,
       List<MeasurableStat> tehutiMetricStats) {
     this.metricEntity = metricEntity;
-    this.emitOpenTelemetryMetrics = (otelRepository != null) && otelRepository.emitOpenTelemetryMetrics();
+    if (otelRepository != null) {
+      this.emitOpenTelemetryMetrics = otelRepository.emitOpenTelemetryMetrics();
+      this.preCreateAttributes = otelRepository.preCreateAttributes();
+      this.lazyInitializeAttributes = otelRepository.lazyInitializeAttributes();
+    } else {
+      this.emitOpenTelemetryMetrics = false;
+      this.preCreateAttributes = false;
+      this.lazyInitializeAttributes = false;
+    }
     this.otelRepository = otelRepository;
     createMetric(tehutiMetricNameEnum, tehutiMetricStats, registerTehutiSensorFn);
   }
@@ -222,6 +233,18 @@ public abstract class MetricEntityState {
 
   MetricEntity getMetricEntity() {
     return metricEntity;
+  }
+
+  VeniceOpenTelemetryMetricsRepository getOtelRepository() {
+    return otelRepository;
+  }
+
+  boolean preCreateAttributes() {
+    return preCreateAttributes;
+  }
+
+  boolean lazyInitializeAttributes() {
+    return lazyInitializeAttributes;
   }
 
   /** used only for testing */

@@ -274,6 +274,7 @@ public abstract class TestBatch {
         validator,
         new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.GZIP));
 
+    Thread.sleep(60000);
     // Re-push with Kafka Input
     testRepush(storeName, validator);
   }

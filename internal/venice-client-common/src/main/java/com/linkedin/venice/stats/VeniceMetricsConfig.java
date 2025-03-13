@@ -115,6 +115,36 @@ public class VeniceMetricsConfig {
   public static final String OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_BUCKETS =
       "otel.exporter.otlp.metrics.default.histogram.aggregation.max.buckets";
 
+  /**
+   * Below configurations dictates how {@link io.opentelemetry.api.common.Attributes} are managed
+   * for Venice metrics to balance performance, memory usage and object churn.<br>
+   * Note that "Bound" Dimensions refers to a scenario where all possible values of a dimension
+   * are known at application startup or configuration time. <br>
+   *<br>
+   * {@link  #OTEL_VENICE_PRE_CREATE_ATTRIBUTES} (Pre-Creation):<br>
+   *   - Enabled (and all dimensions are bound): Attributes are pre-created and stored in an EnumMap for very fast access.
+   *     This significantly reduces runtime object creation overhead and improves performance, but increases memory usage
+   *     upfront as all possible Attributes combinations are created.<br>
+   *   - Enabled (but not all dimensions are bound) or Disabled: The behavior is determined by the lazy initialization
+   *     config (see below).<br>
+   * <br>
+   * {@link #OTEL_VENICE_LAZY_INITIALIZE_ATTRIBUTES} (Lazy Initialization and Caching):<br>
+   *   - Enabled (and pre-creation is not enabled, or pre-creation is enabled but dimensions are not fully bound):
+   *     Attributes are created on demand and then cached (stored) for subsequent fast access. This reduces initial
+   *     memory usage, especially if not all dimension combinations are used. However, the first object creation for
+   *     a given combination will incur the object creation cost, potentially increasing object churn and perf overhead
+   *     compared to full pre-creation.<br>
+   *   - Disabled (and pre-creation is not enabled, or pre-creation is enabled but dimensions are not fully bound):
+   *     Attributes are always created on demand and are never cached. This minimizes memory usage, but results in
+   *     potential performance impact and high object churn if Attributes are frequently created, which is usually
+   *     the case in Venice, especially in the happy path.<br>
+   * <br>
+   *  Note: To disable all optimization and always create Attributes on demand, both {@link #OTEL_VENICE_PRE_CREATE_ATTRIBUTES}
+   *  and {@link #OTEL_VENICE_LAZY_INITIALIZE_ATTRIBUTES} should be disabled.
+   */
+  public static final String OTEL_VENICE_PRE_CREATE_ATTRIBUTES = "otel.venice.pre.create.attributes";
+  public static final String OTEL_VENICE_LAZY_INITIALIZE_ATTRIBUTES = "otel.venice.lazy.initialize.attributes";
+
   private final String serviceName;
   private final String metricPrefix;
   /**
@@ -166,6 +196,18 @@ public class VeniceMetricsConfig {
   private final int otelExponentialHistogramMaxScale;
   private final int otelExponentialHistogramMaxBuckets;
 
+  /**
+   * Config to enable pre-compute Attributes for Venice metrics.
+   * check {@link #OTEL_VENICE_PRE_CREATE_ATTRIBUTES} for more details
+   */
+  private final boolean preCreateAttributes;
+
+  /**
+   * Config to enable lazy initialization of Attributes and caching them.
+   * check {@link #OTEL_VENICE_LAZY_INITIALIZE_ATTRIBUTES} for more details
+   */
+  private final boolean lazyInitializeAttributes;
+
   private VeniceMetricsConfig(Builder builder) {
     this.serviceName = builder.serviceName;
     this.metricPrefix = builder.metricPrefix;
@@ -183,6 +225,8 @@ public class VeniceMetricsConfig {
     this.useOtelExponentialHistogram = builder.useOtelExponentialHistogram;
     this.otelExponentialHistogramMaxScale = builder.otelExponentialHistogramMaxScale;
     this.otelExponentialHistogramMaxBuckets = builder.otelExponentialHistogramMaxBuckets;
+    this.preCreateAttributes = builder.preCreateAttributes;
+    this.lazyInitializeAttributes = builder.lazyInitializeAttributes;
     this.tehutiMetricConfig = builder.tehutiMetricConfig;
   }
 
@@ -204,6 +248,8 @@ public class VeniceMetricsConfig {
     private boolean useOtelExponentialHistogram = true;
     private int otelExponentialHistogramMaxScale = 3;
     private int otelExponentialHistogramMaxBuckets = 250;
+    private boolean preCreateAttributes = true;
+    private boolean lazyInitializeAttributes = true;
     private MetricConfig tehutiMetricConfig = null;
 
     public Builder setServiceName(String serviceName) {
@@ -274,6 +320,16 @@ public class VeniceMetricsConfig {
 
     public Builder setOtelExponentialHistogramMaxBuckets(int otelExponentialHistogramMaxBuckets) {
       this.otelExponentialHistogramMaxBuckets = otelExponentialHistogramMaxBuckets;
+      return this;
+    }
+
+    public Builder setPreCreateAttributes(boolean preCreateAttributes) {
+      this.preCreateAttributes = preCreateAttributes;
+      return this;
+    }
+
+    public Builder setLazyInitializeAttributes(boolean lazyInitializeAttributes) {
+      this.lazyInitializeAttributes = lazyInitializeAttributes;
       return this;
     }
 
@@ -379,6 +435,14 @@ public class VeniceMetricsConfig {
           default:
             throw new IllegalArgumentException("Unrecognized default histogram aggregation: " + configValue);
         }
+      }
+
+      if ((configValue = configs.get(OTEL_VENICE_PRE_CREATE_ATTRIBUTES)) != null) {
+        setPreCreateAttributes(Boolean.parseBoolean(configValue));
+      }
+
+      if ((configValue = configs.get(OTEL_VENICE_LAZY_INITIALIZE_ATTRIBUTES)) != null) {
+        setLazyInitializeAttributes(Boolean.parseBoolean(configValue));
       }
 
       // todo: add more configs
@@ -488,6 +552,14 @@ public class VeniceMetricsConfig {
     return otelExponentialHistogramMaxBuckets;
   }
 
+  public boolean preCreateAttributes() {
+    return preCreateAttributes;
+  }
+
+  public boolean lazyInitializeAttributes() {
+    return lazyInitializeAttributes;
+  }
+
   public MetricConfig getTehutiMetricConfig() {
     return tehutiMetricConfig;
   }
@@ -495,13 +567,15 @@ public class VeniceMetricsConfig {
   @Override
   public String toString() {
     return "VeniceMetricsConfig{" + "serviceName='" + serviceName + '\'' + ", metricPrefix='" + metricPrefix + '\''
-        + ", emitOTelMetrics=" + emitOTelMetrics + ", exportOtelMetricsToEndpoint=" + exportOtelMetricsToEndpoint
+        + ", metricEntities=" + metricEntities + ", tehutiMetricConfig=" + tehutiMetricConfig + ", emitOTelMetrics="
+        + emitOTelMetrics + ", exportOtelMetricsToEndpoint=" + exportOtelMetricsToEndpoint
         + ", exportOtelMetricsIntervalInSeconds=" + exportOtelMetricsIntervalInSeconds + ", otelCustomDimensionsMap="
         + otelCustomDimensionsMap + ", otelExportProtocol='" + otelExportProtocol + '\'' + ", otelEndpoint='"
-        + otelEndpoint + '\'' + ", exportOtelMetricsToLog=" + exportOtelMetricsToLog + ", metricNamingFormat="
-        + metricNamingFormat + ", otelAggregationTemporalitySelector=" + otelAggregationTemporalitySelector
-        + ", useOtelExponentialHistogram=" + useOtelExponentialHistogram + ", otelExponentialHistogramMaxScale="
-        + otelExponentialHistogramMaxScale + ", otelExponentialHistogramMaxBuckets="
-        + otelExponentialHistogramMaxBuckets + '}';
+        + otelEndpoint + '\'' + ", otelHeaders=" + otelHeaders + ", exportOtelMetricsToLog=" + exportOtelMetricsToLog
+        + ", metricNamingFormat=" + metricNamingFormat + ", otelAggregationTemporalitySelector="
+        + otelAggregationTemporalitySelector + ", useOtelExponentialHistogram=" + useOtelExponentialHistogram
+        + ", otelExponentialHistogramMaxScale=" + otelExponentialHistogramMaxScale
+        + ", otelExponentialHistogramMaxBuckets=" + otelExponentialHistogramMaxBuckets + ", preCreateAttributes="
+        + preCreateAttributes + ", lazyInitializeAttributes=" + lazyInitializeAttributes + '}';
   }
 }

@@ -162,6 +162,9 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           .put(ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT.name())
           // OpenTelemetry configs
           .put(OTEL_VENICE_METRICS_ENABLED, Boolean.TRUE.toString())
+          /*          .put(OTEL_VENICE_METRICS_EXPORT_TO_LOG, Boolean.TRUE.toString())
+              .put(OTEL_VENICE_PRE_CREATE_DIMENSIONS, Boolean.TRUE.toString())
+              .put(OTEL_VENICE_DIMENSIONS_LAZY_INITIALIZATION, Boolean.FALSE.toString())*/
           .put(OTEL_EXPORTER_OTLP_METRICS_PROTOCOL, "http/protobuf")
           .put(OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE, "delta")
           .put(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION, "base2_exponential_bucket_histogram")

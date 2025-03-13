@@ -89,21 +89,31 @@ public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterfa
     if (!emitOpenTelemetryMetrics()) {
       return null;
     }
+    if (!preCreateAttributes() && !lazyInitializeAttributes()) {
+      // will be created on demand everytime
+      return null;
+    }
     EnumMap<E, Attributes> attributesEnumMap = new EnumMap<>(enumTypeClass);
+    if (!preCreateAttributes()) {
+      // will be created on demand once and cached
+      return attributesEnumMap;
+    }
     for (E enumValue: enumTypeClass.getEnumConstants()) {
       attributesEnumMap.put(enumValue, otelRepository.createAttributes(metricEntity, baseDimensionsMap, enumValue));
     }
     return attributesEnumMap;
   }
 
-  Attributes getAttributes(E key) {
-    if (!emitOpenTelemetryMetrics()) {
-      return null;
-    }
+  /**
+   * Validates whether the input dimensions passed is not null or whether it
+   * is of right class type.
+   */
+  private void validateInputDimensions(E key) {
     if (key == null) {
       throw new IllegalArgumentException(
           "The key for otel dimension cannot be null for metric Entity: " + getMetricEntity().getMetricName());
     }
+
     if (!enumTypeClass.isInstance(key)) {
       // defensive check: This can only happen if the instance is declared without the explicit types
       // and passed in wrong args
@@ -111,11 +121,39 @@ public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterfa
           "The key for otel dimension is not of the correct type: " + key.getClass() + " for metric Entity: "
               + getMetricEntity().getMetricName());
     }
+  }
 
-    Attributes attributes = attributesEnumMap.get(key);
+  private Attributes createAttributes(E key) {
+    validateInputDimensions(key);
+    return getOtelRepository().createAttributes(getMetricEntity(), baseDimensionsMap, key);
+  }
+
+  Attributes getAttributes(E key) {
+    if (!emitOpenTelemetryMetrics()) {
+      return null;
+    }
+
+    Attributes attributes;
+    if (preCreateAttributes()) {
+      // If preCreateAttributes is enabled, then the attributes should have been created during the constructor
+      attributes = attributesEnumMap.get(key);
+    } else if (lazyInitializeAttributes()) {
+      // If lazyInitializeAttributes is enabled, then the attributes should be created on demand for first time and
+      // cache it
+      attributes = attributesEnumMap.get(key);
+      if (attributes != null) {
+        return attributes; // Return from cache if found
+      }
+      attributes = attributesEnumMap.computeIfAbsent(key, this::createAttributes);
+    } else {
+      // create on demand everytime
+      attributes = createAttributes(key);
+    }
 
     if (attributes == null) {
-      // defensive check: attributes for all entries of bounded enums should be pre created
+      // check for any specific errors
+      validateInputDimensions(key);
+      // throw a generic error if not
       throw new IllegalArgumentException(
           "No dimensions found for key: " + key + " for metric Entity: " + getMetricEntity().getMetricName());
     }
