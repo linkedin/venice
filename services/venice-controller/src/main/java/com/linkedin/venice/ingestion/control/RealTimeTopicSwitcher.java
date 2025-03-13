@@ -213,8 +213,7 @@ public class RealTimeTopicSwitcher {
   }
 
   public void transmitVersionSwapMessage(Store store, int previousVersion, int nextVersion) {
-    if (previousVersion == Store.NON_EXISTING_VERSION || nextVersion == Store.NON_EXISTING_VERSION
-        || store.isSystemStore()) {
+    if (previousVersion == Store.NON_EXISTING_VERSION || nextVersion == Store.NON_EXISTING_VERSION) {
       // NoOp
       return;
     }
@@ -247,12 +246,15 @@ public class RealTimeTopicSwitcher {
     String storeName = previousStoreVersion.getStoreName();
     int partitionCount;
 
-    // Partition count across versions for a batch-only store can vary, so we need to determine the correct
-    // number of partitions. For a hybrid store, the partition count always stays the same between versions.
-    if (topicName.equals(nextStoreVersion.kafkaTopicName())) {
-      partitionCount = nextStoreVersion.getPartitionCount();
-    } else {
+    /*
+     * Partition count across versions for a batch-only store can vary, so we need to determine the correct
+     * number of partitions. For a hybrid store, the partition count always stays the same between versions,
+     * until the hybrid repartitioning project is finished.
+     */
+    if (topicName.equals(previousStoreVersion.kafkaTopicName())) {
       partitionCount = previousStoreVersion.getPartitionCount();
+    } else {
+      partitionCount = nextStoreVersion.getPartitionCount();
     }
 
     try (VeniceWriter veniceWriter = getVeniceWriterFactory().createVeniceWriter(
