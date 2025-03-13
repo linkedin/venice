@@ -275,6 +275,9 @@ public enum Command {
   SET_OWNER(
       "set-owner", "Update owner info of an existing store", new Arg[] { URL, STORE, OWNER }, new Arg[] { CLUSTER }
   ),
+  GET_PARTITION_ID(
+      "get-partition-id", "Get partition id for a key", new Arg[] { URL, CLUSTER, STORE, KEY }, new Arg[] { VERSION }
+  ),
   SET_PARTITION_COUNT(
       "set-partition-count", "Update the number of partitions of an existing store",
       new Arg[] { URL, STORE, PARTITION_COUNT }, new Arg[] { CLUSTER }

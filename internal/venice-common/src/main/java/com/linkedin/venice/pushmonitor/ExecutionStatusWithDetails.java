@@ -50,4 +50,10 @@ public class ExecutionStatusWithDetails {
   public Long getStatusUpdateTimestamp() {
     return statusUpdateTimestamp;
   }
+
+  @Override
+  public String toString() {
+    return "ExecutionStatusWithDetails{" + "status=" + status + ", details='" + details + '\''
+        + ", noDaVinciStatusReport=" + noDaVinciStatusReport + ", statusUpdateTimestamp=" + statusUpdateTimestamp + '}';
+  }
 }
