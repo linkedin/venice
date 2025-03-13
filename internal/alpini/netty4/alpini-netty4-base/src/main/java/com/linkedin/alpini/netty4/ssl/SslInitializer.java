@@ -409,9 +409,12 @@ public class SslInitializer extends ChannelInitializer<Channel> {
       if (LOG.isDebugEnabled()) {
         LOG.debug("SSL enabled for channel: {}", ch.remoteAddress());
       }
-      // Noticed that SSL handshake task is not submitted yet, but here is the beginning of SSL initialization for each
-      // request
-      _queuedTaskNumberRecorder.accept(_sslExecutor.getQueue().size());
+      if (_sslExecutor != null) {
+        // Noticed that SSL handshake task is not submitted yet, but here is the beginning of SSL initialization for
+        // each
+        // request
+        _queuedTaskNumberRecorder.accept(_sslExecutor.getQueue().size());
+      }
       class SslDetect extends ByteToMessageDecoder implements Callable<String>, FutureListener<String> {
         private ChannelHandlerContext _channelHandlerContext;
         private ChannelPromise _resolvePromise;
