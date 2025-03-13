@@ -20,6 +20,7 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
   private final int signalIdleThreshold;
   private int signalIdleCount = 0;
   private AtomicInteger currentThrottlerIndex = new AtomicInteger();
+  private final String throttlerName;
 
   public VeniceAdaptiveIngestionThrottler(
       int signalIdleThreshold,
@@ -28,6 +29,7 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
       long timeWindow,
       String throttlerName) {
     this.signalIdleThreshold = signalIdleThreshold;
+    this.throttlerName = throttlerName;
     DecimalFormat decimalFormat = new DecimalFormat("0.0");
     throttlerNum = factors.size();
     for (int i = 0; i < throttlerNum; i++) {
@@ -48,7 +50,15 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
           false,
           EventThrottler.BLOCK_STRATEGY);
       eventThrottlers.add(eventThrottler);
+      long aa = eventThrottler.getMaxRatePerSecond();
+      if (aa == 0l) {
+        aa = 1l;
+      }
     }
+  }
+
+  public String getThrottlerName() {
+    return throttlerName;
   }
 
   @Override
@@ -119,10 +129,6 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
 
   public long getCurrentThrottlerRate() {
     return eventThrottlers.get(currentThrottlerIndex.get()).getMaxRatePerSecond();
-  }
-
-  public List<EventThrottler> getEventThrottlers() {
-    return eventThrottlers;
   }
 
   // TEST

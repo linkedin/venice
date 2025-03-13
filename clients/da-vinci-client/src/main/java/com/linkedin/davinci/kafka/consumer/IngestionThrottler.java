@@ -114,7 +114,7 @@ public class IngestionThrottler implements Closeable {
           serverConfig.getKafkaFetchQuotaTimeWindow(),
           "aa_wc_leader_records_count");
       adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isSingleGetLatencySignalActive);
-      adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isSingleGetLatencySignalActive);
+      adaptiveThrottlerSignalService.registerThrottler(adaptiveIngestionThrottler);
     }
     this.poolTypeRecordThrottlerMap.put(
         ConsumerPoolType.AA_WC_LEADER_POOL,
@@ -142,7 +142,7 @@ public class IngestionThrottler implements Closeable {
           serverConfig.getKafkaFetchQuotaTimeWindow(),
           "current_version_aa_wc_leader_records_count");
       adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isSingleGetLatencySignalActive);
-      adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isSingleGetLatencySignalActive);
+      adaptiveThrottlerSignalService.registerThrottler(adaptiveIngestionThrottler);
     }
     this.poolTypeRecordThrottlerMap.put(
         ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL,
@@ -178,7 +178,7 @@ public class IngestionThrottler implements Closeable {
           serverConfig.getKafkaFetchQuotaTimeWindow(),
           "non_current_version_aa_wc_leader_records_count");
       adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isSingleGetLatencySignalActive);
-      adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isSingleGetLatencySignalActive);
+      adaptiveThrottlerSignalService.registerThrottler(adaptiveIngestionThrottler);
     }
     this.poolTypeRecordThrottlerMap.put(
         ConsumerPoolType.NON_CURRENT_VERSION_AA_WC_LEADER_POOL,
