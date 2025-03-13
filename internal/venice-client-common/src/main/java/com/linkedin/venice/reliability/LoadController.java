@@ -6,7 +6,7 @@ import io.tehuti.Metric;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
-import io.tehuti.metrics.stats.Count;
+import io.tehuti.metrics.stats.SampledCount;
 import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -60,10 +60,9 @@ public class LoadController {
     MetricsRepository metricsRepository =
         new MetricsRepository(new MetricConfig().timeWindow(windowSizeInSec, TimeUnit.SECONDS));
     this.requestSensor = metricsRepository.sensor("request");
-    this.requestMetric = requestSensor.add("request", new Count());
+    this.requestMetric = requestSensor.add("request", new SampledCount());
     this.acceptSensor = metricsRepository.sensor("accept");
-    this.acceptMetric = acceptSensor.add("accept", new Count());
-
+    this.acceptMetric = acceptSensor.add("accept", new SampledCount());
   }
 
   public void recordRequest() {

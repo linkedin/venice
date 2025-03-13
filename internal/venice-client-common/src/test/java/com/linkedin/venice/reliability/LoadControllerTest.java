@@ -42,7 +42,7 @@ public class LoadControllerTest {
         .setWindowSizeInSec(3)
         .setRejectionRatioUpdateIntervalInSec(1)
         .setMaxRejectionRatio(0.5)
-        .setAcceptMultiplier(2.0)
+        .setAcceptMultiplier(1.0)
         .build();
     for (int i = 0; i < 100; i++) {
       loadController.recordRequest();
