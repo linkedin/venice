@@ -1223,7 +1223,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           1,
           Version.PushType.BATCH,
           null,
-          -1);
+          -1,
+          anyInt());
       assertEquals(newVersion, version);
     }
   }
