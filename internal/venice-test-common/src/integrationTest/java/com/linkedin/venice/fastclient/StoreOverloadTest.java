@@ -12,6 +12,8 @@ import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
+import java.util.HashSet;
+import java.util.Set;
 import org.apache.avro.generic.GenericRecord;
 import org.testng.annotations.Test;
 
@@ -42,25 +44,46 @@ public class StoreOverloadTest extends AbstractClientEndToEndSetup {
         clientMetricsRepository,
         StoreMetadataFetchMode.SERVER_BASED_METADATA);
     // test single get
-    boolean receivedOverloadException = false;
-    for (int rounds = 0; rounds < 3; ++rounds) {
-      for (int i = 0; i < recordCnt; ++i) {
-        Utils.sleep(10);
-        String key = keyPrefix + i;
-        try {
-          genericFastClient.get(key).get();
-        } catch (Exception e) {
-          // Exception can happen because of overload.
-          if (e.getMessage().contains(LoadControlledAvroGenericStoreClient.RATE_EXCEEDED_EXCEPTION.getMessage())) {
-            receivedOverloadException = true;
-          }
+    boolean singleGetReceivedOverloadException = false;
+    boolean batchGetReceivedOverloadException = false;
+    for (int i = 0; i < recordCnt; ++i) {
+      Utils.sleep(10);
+      String key = keyPrefix + i;
+      try {
+        genericFastClient.get(key).get();
+      } catch (Exception e) {
+        // Exception can happen because of overload.
+        if (e.getMessage().contains(LoadControlledAvroGenericStoreClient.RATE_EXCEEDED_EXCEPTION.getMessage())) {
+          singleGetReceivedOverloadException = true;
+        }
+      }
+
+      Set<String> keys = new HashSet<>();
+      keys.add(key);
+      // Try multi-get request
+      try {
+        genericFastClient.batchGet(keys).get();
+      } catch (Exception e) {
+        // Exception can happen because of overload.
+        if (e.getMessage().contains(LoadControlledAvroGenericStoreClient.RATE_EXCEEDED_EXCEPTION.getMessage())) {
+          batchGetReceivedOverloadException = true;
         }
       }
     }
-    assertTrue(receivedOverloadException);
+    assertTrue(singleGetReceivedOverloadException);
+    assertTrue(batchGetReceivedOverloadException);
     // Verify some metrics
-    String overloadInstanceCountMetricName =
+    String overloadMetricNameForSingleGet =
         "." + storeName + "--rejected_request_count_by_load_controller.OccurrenceRate";
-    assertTrue(clientMetricsRepository.getMetric(overloadInstanceCountMetricName).value() > 0);
+    assertTrue(clientMetricsRepository.getMetric(overloadMetricNameForSingleGet).value() > 0);
+    String overloadMetricNameForBatchGet =
+        "." + storeName + "--multiget_streaming_rejected_request_count_by_load_controller.OccurrenceRate";
+    assertTrue(clientMetricsRepository.getMetric(overloadMetricNameForBatchGet).value() > 0);
+
+    clientMetricsRepository.metrics().forEach((mName, metric) -> {
+      if (mName.contains("rejected_request_count_by_load_controller")) {
+        System.out.println(mName + " => " + metric.value());
+      }
+    });
   }
 }

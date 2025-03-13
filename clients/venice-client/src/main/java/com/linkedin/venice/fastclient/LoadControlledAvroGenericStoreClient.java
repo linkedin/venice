@@ -20,7 +20,6 @@ import org.apache.logging.log4j.Logger;
 public class LoadControlledAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient<K, V> {
   public static final VeniceClientRateExceededException RATE_EXCEEDED_EXCEPTION =
       new VeniceClientRateExceededException("Store is overloaded and request got rejected by client");
-  private static final Logger LOGGER = LogManager.getLogger(LoadControlledAvroGenericStoreClient.class);
 
   private final StoreLoadController loadController;
 
@@ -30,7 +29,7 @@ public class LoadControlledAvroGenericStoreClient<K, V> extends DelegatingAvroSt
   }
 
   @Override
-  protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
+  protected CompletableFuture<V> get(GetRequestContext<K> requestContext, K key) throws VeniceClientException {
     requestContext.requestRejectionRatio = loadController.getRejectionRatio();
     if (loadController.shouldRejectRequest()) {
       loadController.recordRejectedRequest();

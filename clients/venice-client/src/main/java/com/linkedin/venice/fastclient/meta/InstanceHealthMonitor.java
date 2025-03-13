@@ -222,7 +222,7 @@ public class InstanceHealthMonitor implements Closeable {
    * eventually become blocked when it reaches the threshold for pendingRequestCounter. This
    * provides some break between continuously sending requests to these instances.
    */
-  public boolean isInstanceHealthy(String instance) {
+  boolean isInstanceHealthy(String instance) {
     return !unhealthyInstanceSet.contains(instance);
   }
 
@@ -230,11 +230,11 @@ public class InstanceHealthMonitor implements Closeable {
    * If an instance is blocked, it won't be considered for new requests until the requests are closed either
    * in a proper manner or closed by {@link #trackHealthBasedOnRequestToInstance#timeoutFuture}
    */
-  public boolean isInstanceBlocked(String instance) {
+  boolean isInstanceBlocked(String instance) {
     return getPendingRequestCounter(instance) >= config.getRoutingPendingRequestCounterInstanceBlockThreshold();
   }
 
-  public boolean shouldRejectRequest(String instance) {
+  boolean shouldRejectRequest(String instance) {
     return loadController.shouldRejectRequest(instance);
   }
 
