@@ -2683,9 +2683,11 @@ public class VeniceParentHelixAdmin implements Admin {
           .map(addToUpdatedConfigList(updatedConfigsList, NEARLINE_PRODUCER_COUNT_PER_WRITER))
           .orElseGet(currStore::getNearlineProducerCountPerWriter);
 
-      setStore.targetSwapRegion = params.getTargetSwapRegion()
-          .map(addToUpdatedConfigList(updatedConfigsList, TARGET_SWAP_REGION))
-          .orElseGet(currStore::getTargetSwapRegion);
+      if (params.getTargetSwapRegion().isPresent()) {
+        setStore.targetSwapRegion = params.getTargetSwapRegion()
+            .map(addToUpdatedConfigList(updatedConfigsList, TARGET_SWAP_REGION))
+            .orElseGet(currStore::getTargetSwapRegion);
+      }
 
       setStore.targetSwapRegionWaitTime = params.getTargetRegionSwapWaitTime()
           .map(addToUpdatedConfigList(updatedConfigsList, TARGET_SWAP_REGION_WAIT_TIME))
