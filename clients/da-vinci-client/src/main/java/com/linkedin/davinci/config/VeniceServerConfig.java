@@ -1997,16 +1997,4 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   public int getLoadControllerComputeLatencyAcceptThresholdMs() {
     return loadControllerComputeLatencyAcceptThresholdMs;
   }
-
-  public boolean isLoadControllerEnabledForSingleGet() {
-    return loadControllerSingleGetLatencyAcceptThresholdMs > 0;
-  }
-
-  public boolean isLoadControllerEnabledForMultiGet() {
-    return loadControllerMultiGetLatencyAcceptThresholdMs > 0;
-  }
-
-  public boolean isLoadControllerEnabledForCompute() {
-    return loadControllerComputeLatencyAcceptThresholdMs > 0;
-  }
 }
