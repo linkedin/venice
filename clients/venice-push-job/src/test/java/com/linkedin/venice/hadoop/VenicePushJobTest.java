@@ -667,13 +667,9 @@ public class VenicePushJobTest {
       }
     }
 
-    props.put(TARGETED_REGION_PUSH_LIST, "dc-0, dc-1");
-    client = getClient();
-    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
-      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString(), anyBoolean());
-      skipVPJValidation(pushJob);
-      pushJob.run();
-      Assert.assertEquals(pushJob.getPushJobSetting().targetedRegions, "dc-0, dc-1");
+    props.put(TARGETED_REGION_PUSH_LIST, "dc-0");
+    try (VenicePushJob pushJob = new VenicePushJob(PUSH_JOB_ID, props)) {
+      Assert.assertEquals(pushJob.getPushJobSetting().targetedRegions, "dc-0");
     }
   }
 
@@ -683,7 +679,7 @@ public class VenicePushJobTest {
     props.put(KEY_FIELD_PROP, "id");
     props.put(VALUE_FIELD_PROP, "name");
     props.put(TARGETED_REGION_PUSH_ENABLED, true);
-    props.put(TARGETED_REGION_PUSH_LIST, "dc-0, dc-1");
+    props.put(TARGETED_REGION_PUSH_LIST, "dc-0");
     ControllerClient client = getClient();
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
       skipVPJValidation(pushJob);
@@ -703,6 +699,10 @@ public class VenicePushJobTest {
       extraInfo.put("dc-0", ExecutionStatus.COMPLETED.toString());
       extraInfo.put("dc-1", ExecutionStatus.COMPLETED.toString());
       // both regions completed, so should succeed
+
+      ControllerResponse dataRecoveryResponse = new ControllerResponse();
+      doReturn(dataRecoveryResponse).when(client)
+          .dataRecovery(anyString(), anyString(), anyString(), anyInt(), anyBoolean(), anyBoolean(), any());
       pushJob.run();
     }
   }
