@@ -33,6 +33,8 @@ import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
 import com.linkedin.davinci.validation.DivSnapshot;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
@@ -46,6 +48,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
+import com.linkedin.venice.offsets.InMemoryStorageMetadataService;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -57,12 +60,14 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.writer.VeniceWriter;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
@@ -201,16 +206,18 @@ public class LeaderFollowerStoreIngestionTaskTest {
     hostLevelIngestionStats = mock(HostLevelIngestionStats.class);
     AggHostLevelIngestionStats aggHostLevelIngestionStats = mock(AggHostLevelIngestionStats.class);
     doReturn(hostLevelIngestionStats).when(aggHostLevelIngestionStats).getStoreStats(storeName);
-    StorageMetadataService mockStorageMetadataService = mock(StorageMetadataService.class);
+    StorageMetadataService inMemoryStorageMetadataService = new InMemoryStorageMetadataService();
     StoreIngestionTaskFactory.Builder builder = TestUtils.getStoreIngestionTaskBuilder(storeName)
         .setServerConfig(mockVeniceServerConfig)
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setVeniceViewWriterFactory(mockVeniceViewWriterFactory)
-        .setCompressorFactory(new StorageEngineBackedCompressorFactory(mockStorageMetadataService))
+        .setCompressorFactory(new StorageEngineBackedCompressorFactory(inMemoryStorageMetadataService))
         .setHostLevelIngestionStats(aggHostLevelIngestionStats);
     when(builder.getSchemaRepo().getKeySchema(storeName)).thenReturn(new SchemaEntry(1, "\"string\""));
     mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
     Version version = mockStore.getVersion(versionNumber);
+    assert version != null; // helps the IDE understand that version is not null, so it won't complain
+    version.setCompressionStrategy(CompressionStrategy.GZIP);
     Map<String, ViewConfig> viewConfigMap = new HashMap<>();
     String viewName = "testView";
     MaterializedViewParameters.Builder viewParamBuilder = new MaterializedViewParameters.Builder(viewName);
@@ -398,7 +405,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   @Test
-  public void testSendGlobalRtDivMessage() throws InterruptedException {
+  public void testSendGlobalRtDivMessage() throws InterruptedException, IOException {
     setUp();
     int partition = 1;
     long offset = 3L;
@@ -438,8 +445,10 @@ public class LeaderFollowerStoreIngestionTaskTest {
         any(),
         eq(false));
 
-    // Verify that GlobalRtDivState is correctly serialized from the VeniceWriter#put() call
-    byte[] valueBytes = valueBytesArgumentCaptor.getValue();
+    // Verify that GlobalRtDivState is correctly compressed and serialized from the VeniceWriter#put() call
+    byte[] compressedBytes = valueBytesArgumentCaptor.getValue();
+    VeniceCompressor compressor = leaderFollowerStoreIngestionTask.getCompressor().get();
+    byte[] valueBytes = ByteUtils.extractByteArray(compressor.decompress(ByteBuffer.wrap(compressedBytes)));
     InternalAvroSpecificSerializer<GlobalRtDivState> serializer =
         AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer();
     GlobalRtDivState globalRtDiv =

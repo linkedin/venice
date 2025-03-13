@@ -3603,6 +3603,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     final long offset = previousMessage.getPosition().getNumericOffset();
     GlobalRtDivState globalRtDiv = new GlobalRtDivState(brokerUrl, rtDiv, offset, emptyBuffer);
     byte[] valueBytes = ByteUtils.extractByteArray(serializer.serialize(globalRtDiv));
+    try {
+      valueBytes = compressor.get().compress(valueBytes);
+    } catch (IOException e) {
+      LOGGER.error("Failed to compress GlobalRtDivState. Will proceed without {} compression", compressionStrategy, e);
+    }
 
     // Create PubSubMessage for the LeaderProducerCallback to enqueue the RT + VT DIV to the drainer
     KafkaKey divKey = new KafkaKey(MessageType.GLOBAL_RT_DIV, keyBytes);
