@@ -107,6 +107,37 @@ public class SemanticDetectorTest {
         "",
         targetSchema,
         "Field array.0.ExampleRecord.field2: Integer value 123 is not the default value 0 or null");
+
+    // Traverse the array with the correct value
+    GenericData.Array<GenericRecord> array2 = new GenericData.Array<>(1, schema);
+    array2.add(record2);
+
+    SemanticDetector.traverseAndValidate(array2, schema, targetSchema, "", null);
+  }
+
+  @Test
+  public void testTraverseUnion() {
+    String recordSchemaString1 =
+        "{\"type\": \"record\", \"name\": \"Record1\", \"fields\": [{\"name\": \"field1\", \"type\": \"string\"}, {\"name\": \"field2\", \"type\": \"int\"}]}";
+    String recordSchemaString2 =
+        "{\"type\": \"record\", \"name\": \"Record2\", \"fields\": [{\"name\": \"field1\", \"type\": \"string\"}, {\"name\": \"field2\", \"type\": \"int\"}]}";
+
+    Schema recordSchema1 = AvroCompatibilityHelper.parse(recordSchemaString1);
+    Schema recordSchema2 = AvroCompatibilityHelper.parse(recordSchemaString2);
+
+    Schema currentSchema = Schema.createUnion(Arrays.asList(recordSchema1, recordSchema2));
+    Schema targetSchema = Schema.createUnion(Arrays.asList(recordSchema1));
+
+    GenericRecord record = new GenericData.Record(recordSchema2);
+    record.put("field1", "exampleString");
+    record.put("field2", 123);
+
+    testBadSemanticUsage(
+        record,
+        currentSchema,
+        "",
+        targetSchema,
+        "Field Record2: Value {\"field1\": \"exampleString\", \"field2\": 123} doesn't match default value null");
   }
 
   @Test

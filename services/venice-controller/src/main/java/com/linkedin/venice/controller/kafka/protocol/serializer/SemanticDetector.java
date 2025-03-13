@@ -380,7 +380,11 @@ public class SemanticDetector {
         break;
       default:
         throw new VeniceProtocolException(
-            String.format("Field %s: Value %s doesn't match default value %s", name, object, defaultValue));
+            String.format(
+                "Field %s: Value %s doesn't match default value %s",
+                name,
+                object instanceof String && ((String) object).isEmpty() ? "\"\"" : object,
+                defaultValue));
     }
   }
 
@@ -400,6 +404,7 @@ public class SemanticDetector {
 
     List<String> prevEnumSymbols = currentSchema.getEnumSymbols();
     List<String> targetEnumSymbols = targetSchema.getEnumSymbols();
+    // Not valid value due to the mismatch with current schema
     if (!prevEnumSymbols.contains(enumValue)) {
       throw new VeniceProtocolException(
           String.format(
