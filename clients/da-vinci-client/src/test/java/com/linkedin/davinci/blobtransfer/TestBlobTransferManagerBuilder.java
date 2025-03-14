@@ -135,39 +135,39 @@ public class TestBlobTransferManagerBuilder {
     }
 
     // Case 4: expect exception is thrown due to null blobTransferAclHandler
-    BlobTransferManager blobTransferManager3 = null;
     try {
-      blobTransferManager3 = new BlobTransferManagerBuilder().setBlobTransferConfig(blobTransferConfig)
-          .setClientConfig(clientConfig)
-          .setCustomizedViewFuture(null)
-          .setStorageMetadataService(storageMetadataService)
-          .setReadOnlyStoreRepository(readOnlyStoreRepository)
-          .setStorageEngineRepository(storageEngineRepository)
-          .setAggVersionedBlobTransferStats(blobTransferStats)
-          .setBlobTransferAclHandler(null)
-          .setBlobTransferSSLFactory(Optional.ofNullable(sslFactory))
-          .build();
-    } catch (IllegalArgumentException e) {
+      BlobTransferManager blobTransferManager3 =
+          new BlobTransferManagerBuilder().setBlobTransferConfig(blobTransferConfig)
+              .setClientConfig(clientConfig)
+              .setCustomizedViewFuture(null)
+              .setStorageMetadataService(storageMetadataService)
+              .setReadOnlyStoreRepository(readOnlyStoreRepository)
+              .setStorageEngineRepository(storageEngineRepository)
+              .setAggVersionedBlobTransferStats(blobTransferStats)
+              .setBlobTransferAclHandler(null)
+              .setBlobTransferSSLFactory(Optional.ofNullable(sslFactory))
+              .build();
       Assert.assertNull(blobTransferManager3);
+    } catch (IllegalArgumentException e) {
       Assert
           .assertTrue(e.getMessage().contains("The ssl factory and acl handler must not be null and must be present"));
     }
 
     // Case 5: expect exception is thrown due to Optional.empty() blobTransferAclHandler
-    BlobTransferManager blobTransferManager4 = null;
     try {
-      blobTransferManager4 = new BlobTransferManagerBuilder().setBlobTransferConfig(blobTransferConfig)
-          .setClientConfig(clientConfig)
-          .setCustomizedViewFuture(null)
-          .setStorageMetadataService(storageMetadataService)
-          .setReadOnlyStoreRepository(readOnlyStoreRepository)
-          .setStorageEngineRepository(storageEngineRepository)
-          .setAggVersionedBlobTransferStats(blobTransferStats)
-          .setBlobTransferAclHandler(Optional.empty())
-          .setBlobTransferSSLFactory(Optional.of(sslFactory))
-          .build();
-    } catch (IllegalArgumentException e) {
+      BlobTransferManager blobTransferManager4 =
+          new BlobTransferManagerBuilder().setBlobTransferConfig(blobTransferConfig)
+              .setClientConfig(clientConfig)
+              .setCustomizedViewFuture(null)
+              .setStorageMetadataService(storageMetadataService)
+              .setReadOnlyStoreRepository(readOnlyStoreRepository)
+              .setStorageEngineRepository(storageEngineRepository)
+              .setAggVersionedBlobTransferStats(blobTransferStats)
+              .setBlobTransferAclHandler(Optional.empty())
+              .setBlobTransferSSLFactory(Optional.of(sslFactory))
+              .build();
       Assert.assertNull(blobTransferManager4);
+    } catch (IllegalArgumentException e) {
       Assert
           .assertTrue(e.getMessage().contains("The ssl factory and acl handler must not be null and must be present"));
     }
