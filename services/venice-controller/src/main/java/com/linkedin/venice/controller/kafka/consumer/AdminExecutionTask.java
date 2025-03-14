@@ -524,6 +524,10 @@ public class AdminExecutionTask implements Callable<Void> {
       params.setLargestUsedVersionNumber(message.largestUsedVersionNumber);
     }
 
+    if (message.largestUsedRTVersionNumber != null) {
+      params.setLargestUsedRTVersionNumber(message.largestUsedRTVersionNumber);
+    }
+
     params.setNativeReplicationEnabled(message.nativeReplicationEnabled)
         .setPushStreamSourceAddress(
             message.pushStreamSourceAddress == null ? null : message.pushStreamSourceAddress.toString())

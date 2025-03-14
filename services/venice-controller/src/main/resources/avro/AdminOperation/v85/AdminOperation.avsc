@@ -484,6 +484,12 @@
               "default": null
             },
             {
+              "name": "largestUsedRTVersionNumber",
+              "type": ["null", "int"],
+              "doc": "largestUsedRTVersionNumber that should be used to formulate real time topic name during add version",
+              "default": null
+            },
+            {
               "name": "incrementalPushPolicy",
               "doc": "Incremental Push Policy to reconcile with real time pushes. Using int because Avro Enums are not evolvable 0 => PUSH_TO_VERSION_TOPIC, 1 => INCREMENTAL_PUSH_SAME_AS_REAL_TIME",
               "type": "int",

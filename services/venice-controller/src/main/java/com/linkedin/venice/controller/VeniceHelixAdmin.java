@@ -5198,6 +5198,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Long> readQuotaInCU = params.getReadQuotaInCU();
     Optional<Integer> currentVersion = params.getCurrentVersion();
     Optional<Integer> largestUsedVersionNumber = params.getLargestUsedVersionNumber();
+    Optional<Integer> largestUsedRTVersionNumber = params.getLargestUsedRTVersionNumber();
     Optional<Long> hybridRewindSeconds = params.getHybridRewindSeconds();
     Optional<Long> hybridOffsetLagThreshold = params.getHybridOffsetLagThreshold();
     Optional<Long> hybridTimeLagThreshold = params.getHybridTimeLagThreshold();
@@ -5318,6 +5319,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       if (largestUsedVersionNumber.isPresent()) {
         setStoreLargestUsedVersion(clusterName, storeName, largestUsedVersionNumber.get());
+      }
+
+      if (largestUsedRTVersionNumber.isPresent()) {
+        setStoreLargestUsedRTVersion(clusterName, storeName, largestUsedRTVersionNumber.get());
       }
 
       if (bootstrapToOnlineTimeoutInHours.isPresent()) {
@@ -5699,9 +5704,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 + " rewind time in seconds and offset or time lag threshold must be specified");
       }
 
-      String newRealTimeTopicName = Utils.isRTVersioningApplicable(oldStore.getName())
-          ? oldStore.getName() + "_v" + oldStore.getLargestUsedRTVersionNumber() + Version.REAL_TIME_TOPIC_SUFFIX
-          : DEFAULT_REAL_TIME_TOPIC_NAME;
+      String newRealTimeTopicName =
+          oldStore.getLargestUsedRTVersionNumber() > 0 && Utils.isRTVersioningApplicable(oldStore.getName())
+              ? oldStore.getName() + "_v" + oldStore.getLargestUsedRTVersionNumber() + Version.REAL_TIME_TOPIC_SUFFIX
+              : DEFAULT_REAL_TIME_TOPIC_NAME;
 
       mergedHybridStoreConfig = new HybridStoreConfigImpl(
           hybridRewindSeconds.get(),

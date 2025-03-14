@@ -27,6 +27,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_DAVINCI_HEARTBEAT_REPORTED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_RT_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LATEST_SUPERSET_SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_COMPACTION_LAG_SECONDS;
@@ -2301,6 +2302,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Long> readQuotaInCU = params.getReadQuotaInCU();
       Optional<Integer> currentVersion = params.getCurrentVersion();
       Optional<Integer> largestUsedVersionNumber = params.getLargestUsedVersionNumber();
+      Optional<Integer> largestUsedRTVersionNumber = params.getLargestUsedRTVersionNumber();
       Optional<Long> hybridRewindSeconds = params.getHybridRewindSeconds();
       Optional<Long> hybridOffsetLagThreshold = params.getHybridOffsetLagThreshold();
       Optional<Long> hybridTimeLagThreshold = params.getHybridTimeLagThreshold();
@@ -2666,6 +2668,10 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.largestUsedVersionNumber =
           largestUsedVersionNumber.map(addToUpdatedConfigList(updatedConfigsList, LARGEST_USED_VERSION_NUMBER))
               .orElseGet(currStore::getLargestUsedVersionNumber);
+
+      setStore.largestUsedRTVersionNumber =
+          largestUsedRTVersionNumber.map(addToUpdatedConfigList(updatedConfigsList, LARGEST_USED_RT_VERSION_NUMBER))
+              .orElseGet(currStore::getLargestUsedRTVersionNumber);
 
       setStore.backupVersionRetentionMs =
           backupVersionRetentionMs.map(addToUpdatedConfigList(updatedConfigsList, BACKUP_VERSION_RETENTION_MS))

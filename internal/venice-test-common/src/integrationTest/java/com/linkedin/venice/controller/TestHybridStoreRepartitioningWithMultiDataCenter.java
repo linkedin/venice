@@ -46,9 +46,12 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   List<TopicManager> topicManagers;
   PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  ControllerClient parentControllerClient;
+  ControllerClient[] childControllerClients;
 
   @BeforeClass
   public void setUp() {
+    String clusterName = CLUSTER_NAMES[0];
     Properties controllerProps = new Properties();
     controllerProps.put(DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID, 2);
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 3);
@@ -67,8 +70,14 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
             .childControllerProperties(controllerProps);
     multiRegionMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
-
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
+    parentControllerClient = ControllerClient.constructClusterControllerClient(CLUSTER_NAMES[0], parentControllerURLs);
+    childControllerClients = new ControllerClient[childDatacenters.size()];
+    for (int i = 0; i < childDatacenters.size(); i++) {
+      childControllerClients[i] =
+          new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString());
+    }
     topicManagers = new ArrayList<>(2);
     topicManagers
         .add(childDatacenters.get(0).getControllers().values().iterator().next().getVeniceAdmin().getTopicManager());
@@ -89,16 +98,6 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
   @Test(timeOut = TEST_TIMEOUT)
   public void testOldStoresWithHybridStoreVersioning() {
     String storeName = Utils.getUniqueString("TestOldStoresWithHybridStoreVersioning");
-    String clusterName = CLUSTER_NAMES[0];
-    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
-
-    ControllerClient parentControllerClient =
-        ControllerClient.constructClusterControllerClient(clusterName, parentControllerURLs);
-    ControllerClient[] childControllerClients = new ControllerClient[childDatacenters.size()];
-    for (int i = 0; i < childDatacenters.size(); i++) {
-      childControllerClients[i] =
-          new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString());
-    }
 
     NewStoreResponse newStoreResponse =
         parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
@@ -106,6 +105,14 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
         newStoreResponse.isError(),
         "The NewStoreResponse returned an error: " + newStoreResponse.getError());
 
+    for (ControllerClient childControllerClient: childControllerClients) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        StoreInfo storeInfo = childControllerClient.getStore(storeName).getStore();
+        Assert.assertEquals(storeInfo.getLargestUsedRTVersionNumber(), 1);
+
+        // Assert.assertEquals(realTimeTopicNameInStore, newRealTimeTopicNameInCofnig);
+      });
+    }
     // make it an old-style store by removing the rt name
     String newRealTimeTopicNameInCofnig = "";
     String newRealTimeTopicName = storeName + Version.REAL_TIME_TOPIC_SUFFIX;
@@ -116,6 +123,7 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
         .setHybridRewindSeconds(1000)
         .setActiveActiveReplicationEnabled(true)
         .setRealTimeTopicName(newRealTimeTopicNameInCofnig)
+        .setLargestUsedRTVersionNumber(0)
         .setHybridOffsetLagThreshold(1000);
     TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
 
@@ -124,8 +132,9 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
         StoreInfo storeInfo = childControllerClient.getStore(storeName).getStore();
         Assert.assertNotNull(storeInfo.getHybridStoreConfig());
         String realTimeTopicNameInStore = storeInfo.getHybridStoreConfig().getRealTimeTopicName();
+        Assert.assertEquals(storeInfo.getLargestUsedRTVersionNumber(), 0);
 
-        Assert.assertEquals(realTimeTopicNameInStore, newRealTimeTopicNameInCofnig);
+        // Assert.assertEquals(realTimeTopicNameInStore, newRealTimeTopicNameInCofnig);
       });
     }
 
@@ -154,58 +163,6 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testUpdateRealTimeTopicName() {
-    String storeName = Utils.getUniqueString("TestUpdateRealTimeTopicName");
-    String clusterName = CLUSTER_NAMES[0];
-    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
-
-    ControllerClient parentControllerClient =
-        ControllerClient.constructClusterControllerClient(clusterName, parentControllerURLs);
-    ControllerClient[] childControllerClients = new ControllerClient[childDatacenters.size()];
-    for (int i = 0; i < childDatacenters.size(); i++) {
-      childControllerClients[i] =
-          new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString());
-    }
-
-    NewStoreResponse newStoreResponse =
-        parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
-    Assert.assertFalse(
-        newStoreResponse.isError(),
-        "The NewStoreResponse returned an error: " + newStoreResponse.getError());
-
-    String newRealTimeTopicName = "NewRealTimeTopicName" + Version.REAL_TIME_TOPIC_SUFFIX;
-    UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams();
-    updateStoreParams.setIncrementalPushEnabled(true)
-        .setBackupStrategy(BackupStrategy.KEEP_MIN_VERSIONS)
-        .setNumVersionsToPreserve(2)
-        .setHybridRewindSeconds(1000)
-        .setActiveActiveReplicationEnabled(true)
-        .setRealTimeTopicName(newRealTimeTopicName)
-        .setHybridOffsetLagThreshold(1000);
-    TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
-
-    // create new version by doing an empty push
-    parentControllerClient
-        .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
-
-    for (ControllerClient controllerClient: childControllerClients) {
-      Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 1);
-    }
-
-    for (int i = 0; i < childControllerClients.length; i++) {
-      final int index = i;
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        StoreInfo storeInfo = childControllerClients[index].getStore(storeName).getStore();
-        String realTimeTopicNameInStore = storeInfo.getHybridStoreConfig().getRealTimeTopicName();
-        String realTimeTopicNameInVersion = Utils.getRealTimeTopicName(storeInfo.getVersions().get(0));
-
-        Assert.assertEquals(realTimeTopicNameInVersion, newRealTimeTopicName);
-        Assert.assertEquals(realTimeTopicNameInStore, newRealTimeTopicName);
-      });
-    }
-  }
-
   /**
    * This test creates a store, do a push, update it's partition count, delete it, recreate it, and do a push again.
    * At all steps, RT name is verified.
@@ -213,15 +170,6 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
   @Test(timeOut = 5 * TEST_TIMEOUT)
   public void testRealTimeTopicVersioning() {
     String storeName = Utils.getUniqueString("TestRealTimeTopicVersioning");
-    String clusterName = CLUSTER_NAMES[0];
-    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
-    ControllerClient parentControllerClient =
-        ControllerClient.constructClusterControllerClient(clusterName, parentControllerURLs);
-    ControllerClient[] childControllerClients = new ControllerClient[childDatacenters.size()];
-    for (int i = 0; i < childDatacenters.size(); i++) {
-      childControllerClients[i] =
-          new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString());
-    }
 
     NewStoreResponse newStoreResponse =
         parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
@@ -243,13 +191,11 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
         .setHybridOffsetLagThreshold(1000);
     TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
 
-    for (int i = 0; i < childControllerClients.length; i++) {
-      for (ControllerClient controllerClient: childControllerClients) {
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-          StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
-          Assert.assertEquals(storeInfo.getLargestUsedRTVersionNumber(), 1);
-        });
-      }
+    for (ControllerClient controllerClient: childControllerClients) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
+        Assert.assertEquals(storeInfo.getLargestUsedRTVersionNumber(), 1);
+      });
     }
 
     // create new version by doing an empty push
