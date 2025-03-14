@@ -1,24 +1,24 @@
 package com.linkedin.venice.stats.dimensions;
 
-import static org.testng.Assert.assertEquals;
+import com.linkedin.venice.utils.CollectionUtils;
+import java.util.Map;
 
-import org.testng.annotations.Test;
 
+public class VeniceResponseStatusCategoryTest extends VeniceDimensionInterfaceTest<VeniceResponseStatusCategory> {
+  protected VeniceResponseStatusCategoryTest() {
+    super(VeniceResponseStatusCategory.class);
+  }
 
-public class VeniceResponseStatusCategoryTest {
-  @Test
-  public void testVeniceResponseStatusCategory() {
-    for (VeniceResponseStatusCategory responseStatusCategory: VeniceResponseStatusCategory.values()) {
-      switch (responseStatusCategory) {
-        case SUCCESS:
-          assertEquals(responseStatusCategory.getCategory(), "success");
-          break;
-        case FAIL:
-          assertEquals(responseStatusCategory.getCategory(), "fail");
-          break;
-        default:
-          throw new IllegalArgumentException("Unknown response status category: " + responseStatusCategory);
-      }
-    }
+  @Override
+  protected VeniceMetricsDimensions expectedDimensionName() {
+    return VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
+  }
+
+  @Override
+  protected Map<VeniceResponseStatusCategory, String> expectedDimensionValueMapping() {
+    return CollectionUtils.<VeniceResponseStatusCategory, String>mapBuilder()
+        .put(VeniceResponseStatusCategory.SUCCESS, "success")
+        .put(VeniceResponseStatusCategory.FAIL, "fail")
+        .build();
   }
 }

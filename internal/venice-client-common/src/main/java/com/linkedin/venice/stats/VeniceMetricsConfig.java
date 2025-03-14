@@ -496,13 +496,13 @@ public class VeniceMetricsConfig {
   public String toString() {
     return "VeniceMetricsConfig{" + "serviceName='" + serviceName + '\'' + ", metricPrefix='" + metricPrefix + '\''
         + ", metricEntities=" + metricEntities + ", emitOTelMetrics=" + emitOTelMetrics
-        + ", exportOtelMetricsToEndpoint=" + exportOtelMetricsToEndpoint + ", otelCustomDimensionsMap="
-        + otelCustomDimensionsMap + ", otelExportProtocol='" + otelExportProtocol + '\'' + ", otelEndpoint='"
-        + otelEndpoint + '\'' + ", otelHeaders=" + otelHeaders + ", exportOtelMetricsToLog=" + exportOtelMetricsToLog
-        + ", metricNamingFormat=" + metricNamingFormat + ", otelAggregationTemporalitySelector="
-        + otelAggregationTemporalitySelector + ", useOtelExponentialHistogram=" + useOtelExponentialHistogram
-        + ", otelExponentialHistogramMaxScale=" + otelExponentialHistogramMaxScale
-        + ", otelExponentialHistogramMaxBuckets=" + otelExponentialHistogramMaxBuckets + ", tehutiMetricConfig="
-        + tehutiMetricConfig + '}';
+        + ", exportOtelMetricsToEndpoint=" + exportOtelMetricsToEndpoint + ", exportOtelMetricsIntervalInSeconds="
+        + exportOtelMetricsIntervalInSeconds + ", otelCustomDimensionsMap=" + otelCustomDimensionsMap
+        + ", otelExportProtocol='" + otelExportProtocol + '\'' + ", otelEndpoint='" + otelEndpoint + '\''
+        + ", otelHeaders=" + otelHeaders + ", metricNamingFormat=" + metricNamingFormat
+        + ", otelAggregationTemporalitySelector=" + otelAggregationTemporalitySelector
+        + ", useOtelExponentialHistogram=" + useOtelExponentialHistogram + ", otelExponentialHistogramMaxScale="
+        + otelExponentialHistogramMaxScale + ", otelExponentialHistogramMaxBuckets="
+        + otelExponentialHistogramMaxBuckets + ", tehutiMetricConfig=" + tehutiMetricConfig + '}';
   }
 }

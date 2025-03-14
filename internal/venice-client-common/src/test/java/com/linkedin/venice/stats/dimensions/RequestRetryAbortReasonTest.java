@@ -1,30 +1,26 @@
 package com.linkedin.venice.stats.dimensions;
 
-import static org.testng.Assert.assertEquals;
+import com.linkedin.venice.utils.CollectionUtils;
+import java.util.Map;
 
-import org.testng.annotations.Test;
 
+public class RequestRetryAbortReasonTest extends VeniceDimensionInterfaceTest<RequestRetryAbortReason> {
+  protected RequestRetryAbortReasonTest() {
+    super(RequestRetryAbortReason.class);
+  }
 
-public class RequestRetryAbortReasonTest {
-  @Test
-  public void testRetryRequestAbortReason() {
-    for (RequestRetryAbortReason reason: RequestRetryAbortReason.values()) {
-      switch (reason) {
-        case SLOW_ROUTE:
-          assertEquals(reason.getAbortReason(), "slow_route");
-          break;
-        case DELAY_CONSTRAINT:
-          assertEquals(reason.getAbortReason(), "delay_constraint");
-          break;
-        case MAX_RETRY_ROUTE_LIMIT:
-          assertEquals(reason.getAbortReason(), "max_retry_route_limit");
-          break;
-        case NO_AVAILABLE_REPLICA:
-          assertEquals(reason.getAbortReason(), "no_available_replica");
-          break;
-        default:
-          throw new IllegalArgumentException("Unknown reason: " + reason);
-      }
-    }
+  @Override
+  protected VeniceMetricsDimensions expectedDimensionName() {
+    return VeniceMetricsDimensions.VENICE_REQUEST_RETRY_ABORT_REASON;
+  }
+
+  @Override
+  protected Map<RequestRetryAbortReason, String> expectedDimensionValueMapping() {
+    return CollectionUtils.<RequestRetryAbortReason, String>mapBuilder()
+        .put(RequestRetryAbortReason.SLOW_ROUTE, "slow_route")
+        .put(RequestRetryAbortReason.DELAY_CONSTRAINT, "delay_constraint")
+        .put(RequestRetryAbortReason.MAX_RETRY_ROUTE_LIMIT, "max_retry_route_limit")
+        .put(RequestRetryAbortReason.NO_AVAILABLE_REPLICA, "no_available_replica")
+        .build();
   }
 }
