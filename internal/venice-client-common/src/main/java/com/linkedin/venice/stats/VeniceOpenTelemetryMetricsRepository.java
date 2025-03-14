@@ -69,6 +69,7 @@ public class VeniceOpenTelemetryMetricsRepository {
     validateMetricName(this.metricPrefix);
     try {
       SdkMeterProviderBuilder builder = SdkMeterProvider.builder();
+
       if (metricsConfig.exportOtelMetricsToEndpoint()) {
         MetricExporter httpExporter = getOtlpHttpMetricExporter(metricsConfig);
         builder.registerMetricReader(
@@ -76,6 +77,7 @@ public class VeniceOpenTelemetryMetricsRepository {
                 .setInterval(metricsConfig.getExportOtelMetricsIntervalInSeconds(), TimeUnit.SECONDS)
                 .build());
       }
+
       if (metricsConfig.exportOtelMetricsToLog()) {
         // internal to test: Disabled by default
         builder.registerMetricReader(
@@ -88,7 +90,10 @@ public class VeniceOpenTelemetryMetricsRepository {
         setExponentialHistogramAggregation(builder, metricsConfig);
       }
 
+      // Set resource to empty to avoid adding any default resource attributes. The receiver
+      // pipeline can choose to add the respective resource attributes if needed.
       builder.setResource(Resource.empty());
+
       sdkMeterProvider = builder.build();
 
       // Register MeterProvider with the OpenTelemetry instance
@@ -98,10 +103,10 @@ public class VeniceOpenTelemetryMetricsRepository {
       LOGGER.info(
           "OpenTelemetry initialization for {} completed with config: {}",
           metricsConfig.getServiceName(),
-          metricsConfig.toString());
+          metricsConfig);
     } catch (Exception e) {
       String err = "OpenTelemetry initialization for " + metricsConfig.getServiceName() + " failed with config: "
-          + metricsConfig.toString();
+          + metricsConfig;
       LOGGER.error(err, e);
       throw new VeniceException(err, e);
     }

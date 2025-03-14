@@ -119,12 +119,12 @@ public abstract class MetricEntityState {
     }
   }
 
-  protected final void record(long value, Attributes attributes) {
+  final void record(long value, Attributes attributes) {
     recordOtelMetric(value, attributes);
     recordTehutiMetric(value);
   }
 
-  protected final void record(double value, Attributes attributes) {
+  final void record(double value, Attributes attributes) {
     recordOtelMetric(value, attributes);
     recordTehutiMetric(value);
   }
