@@ -1,9 +1,12 @@
 package com.linkedin.davinci.blobtransfer.client;
 
 import com.linkedin.alpini.base.concurrency.Executors;
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.exceptions.VenicePeersConnectionException;
+import com.linkedin.venice.listener.VerifySslHandler;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.bootstrap.Bootstrap;
@@ -20,6 +23,7 @@ import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpClientCodec;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
+import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.timeout.IdleStateHandler;
 import io.netty.handler.traffic.GlobalChannelTrafficShapingHandler;
 import java.io.InputStream;
@@ -28,6 +32,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -60,14 +65,16 @@ public class NettyFileTransferClient {
   private VeniceConcurrentHashMap<String, Long> unconnectableHostsToTimestamp = new VeniceConcurrentHashMap<>();
   private VeniceConcurrentHashMap<String, Long> connectedHostsToTimestamp = new VeniceConcurrentHashMap<>();
 
-  // TODO 1: move tunable configs to a config class
-  // TODO 2: consider either increasing worker threads or have a dedicated thread pool to handle requests.
+  private final VerifySslHandler verifySsl = new VerifySslHandler();
+
+  // TODO: consider either increasing worker threads or have a dedicated thread pool to handle requests.
   public NettyFileTransferClient(
       int serverPort,
       String baseDir,
       StorageMetadataService storageMetadataService,
       int peersConnectivityFreshnessInSeconds,
-      GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler) {
+      GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler,
+      Optional<SSLFactory> sslFactory) {
     this.baseDir = baseDir;
     this.serverPort = serverPort;
     this.storageMetadataService = storageMetadataService;
@@ -82,9 +89,16 @@ public class NettyFileTransferClient {
     clientBootstrap.handler(new ChannelInitializer<SocketChannel>() {
       @Override
       public void initChannel(SocketChannel ch) {
+        SslHandler sslHandler = BlobTransferUtils.createBlobTransferClientSslHandler(sslFactory);
+        ch.pipeline().addLast("ssl", sslHandler);
+
         // globalChannelTrafficShapingHandler is shared across all network channels to enforce global rate limits
         ch.pipeline().addLast("globalTrafficShaper", globalChannelTrafficShapingHandler);
         ch.pipeline().addLast(new HttpClientCodec());
+
+        if (sslHandler != null) {
+          ch.pipeline().addLast(verifySsl);
+        }
       }
     });
     this.hostConnectExecutorService =

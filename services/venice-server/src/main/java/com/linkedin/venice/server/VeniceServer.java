@@ -3,6 +3,7 @@ package com.linkedin.venice.server;
 import com.linkedin.avro.fastserde.FastDeserializerGeneratorAccessor;
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferManagerBuilder;
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.blobtransfer.P2PBlobTransferConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
@@ -499,6 +500,8 @@ public class VeniceServer {
           .setReadOnlyStoreRepository(metadataRepo)
           .setStorageEngineRepository(storageService.getStorageEngineRepository())
           .setAggVersionedBlobTransferStats(aggVersionedBlobTransferStats)
+          .setBlobTransferSSLFactory(sslFactory)
+          .setBlobTransferAclHandler(BlobTransferUtils.createAclHandler(veniceConfigLoader))
           .build();
     } else {
       aggVersionedBlobTransferStats = null;
