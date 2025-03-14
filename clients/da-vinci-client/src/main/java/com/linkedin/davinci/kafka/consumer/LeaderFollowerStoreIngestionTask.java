@@ -3599,7 +3599,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     Map<CharSequence, ProducerPartitionState> rtDiv = divClone.getPartitionStates(realTimeTopicType);
 
     // Create GlobalRtDivState (RT DIV + latestOffset) which will be serialized into a byte array
-    ByteBuffer emptyBuffer = ByteBuffer.allocate(0);
+    ByteBuffer emptyBuffer = ByteBuffer.allocate(0); // TODO: replace this for latestOffset in GlobalRtDivState
     final long offset = previousMessage.getPosition().getNumericOffset();
     GlobalRtDivState globalRtDiv = new GlobalRtDivState(brokerUrl, rtDiv, offset, emptyBuffer);
     byte[] valueBytes = ByteUtils.extractByteArray(serializer.serialize(globalRtDiv));
@@ -3641,6 +3641,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     readStoredValueRecord(partitionConsumptionState, keyBytes, schemaId, topicPartition, valueManifestContainer);
 
     // Produce to local kafka for the Global RT DIV + latestOffset (GlobalRtDivState)
+    // Internally, VeniceWriter.put() will schedule DELETEs for the old chunks in the old manifest after the new PUTs
     getVeniceWriter(partitionConsumptionState).get()
         .put(
             keyBytes,
@@ -3651,7 +3652,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             leaderMetadataWrapper,
             APP_DEFAULT_LOGICAL_TS,
             null,
-            valueManifestContainer.getManifest(), // TODO: do oldValueManifest and rmd need to be populated?
+            valueManifestContainer.getManifest(),
             null,
             false);
 

@@ -5,8 +5,8 @@ package com.linkedin.davinci.validation;
  * to the Drainer. Contains the VT DIV (Segments) + LCVO and RT DIV (Segments) + LCRO.
  */
 public class DivSnapshot {
-  private PartitionTracker partitionTracker;
-  private long latestConsumedRtOffset; // LCVO is in PartitionTracker
+  private final PartitionTracker partitionTracker;
+  private final long latestConsumedRtOffset; // LCVO is in PartitionTracker
 
   public DivSnapshot(PartitionTracker partitionTracker, long latestConsumedRtOffset) {
     this.partitionTracker = partitionTracker;

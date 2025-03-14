@@ -2732,7 +2732,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     final long syncBytesInterval = getSyncBytesInterval(pcs) / getConsumedBytesSinceLastSync().size();
     boolean shouldSync = false;
     if (!record.getKey().isControlMessage()) {
-      shouldSync = (syncBytesInterval > 0 && (getConsumedBytesSinceLastSync().get(kafkaUrl) >= syncBytesInterval));
+      shouldSync = syncBytesInterval > 0 && (getConsumedBytesSinceLastSync().get(kafkaUrl) >= syncBytesInterval);
     }
     return shouldSync;
   }
