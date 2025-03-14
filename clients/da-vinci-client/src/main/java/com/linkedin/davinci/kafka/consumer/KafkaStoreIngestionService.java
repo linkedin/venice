@@ -190,14 +190,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final ResourceAutoClosableLockManager<String> topicLockManager;
 
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-  private KafkaValueSerializer kafkaValueSerializer;
+  private final KafkaValueSerializer kafkaValueSerializer;
   private final IngestionThrottler ingestionThrottler;
   private final ExecutorService aaWCWorkLoadProcessingThreadPool;
   private final AdaptiveThrottlerSignalService adaptiveThrottlerSignalService;
 
-  private VeniceServerConfig serverConfig;
+  private final VeniceServerConfig serverConfig;
 
-  private Lazy<ZKHelixAdmin> zkHelixAdmin;
+  private final Lazy<ZKHelixAdmin> zkHelixAdmin;
 
   private final ExecutorService aaWCIngestionStorageLookupThreadPool;
 
@@ -1177,23 +1177,28 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   private VeniceProperties getPubSubSSLPropertiesFromServerConfig(String kafkaBootstrapUrls) {
-    if (!kafkaBootstrapUrls.equals(serverConfig.getKafkaBootstrapServers())) {
+    final VeniceServerConfig serverConfigForCluster;
+    if (kafkaBootstrapUrls.equals(serverConfig.getKafkaBootstrapServers())) {
+      serverConfigForCluster = serverConfig;
+    } else {
       Properties clonedProperties = serverConfig.getClusterProperties().toProperties();
       clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrls);
-      serverConfig = new VeniceServerConfig(new VeniceProperties(clonedProperties), serverConfig.getKafkaClusterMap());
+      serverConfigForCluster =
+          new VeniceServerConfig(new VeniceProperties(clonedProperties), serverConfig.getKafkaClusterMap());
     }
-    VeniceProperties clusterProperties = serverConfig.getClusterProperties();
-    Properties properties = serverConfig.getClusterProperties().getPropertiesCopy();
+
+    VeniceProperties clusterProperties = serverConfigForCluster.getClusterProperties();
+    Properties properties = serverConfigForCluster.getClusterProperties().getPropertiesCopy();
     ApacheKafkaProducerConfig.copyKafkaSASLProperties(clusterProperties, properties, false);
-    kafkaBootstrapUrls = serverConfig.getKafkaBootstrapServers();
-    String resolvedKafkaUrl = serverConfig.getKafkaClusterUrlResolver().apply(kafkaBootstrapUrls);
+    kafkaBootstrapUrls = serverConfigForCluster.getKafkaBootstrapServers();
+    String resolvedKafkaUrl = serverConfigForCluster.getKafkaClusterUrlResolver().apply(kafkaBootstrapUrls);
     if (resolvedKafkaUrl != null) {
       kafkaBootstrapUrls = resolvedKafkaUrl;
     }
     properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrls);
-    PubSubSecurityProtocol securityProtocol = serverConfig.getKafkaSecurityProtocol(kafkaBootstrapUrls);
+    PubSubSecurityProtocol securityProtocol = serverConfigForCluster.getKafkaSecurityProtocol(kafkaBootstrapUrls);
     if (ApacheKafkaUtils.isKafkaSSLProtocol(securityProtocol)) {
-      Optional<SSLConfig> sslConfig = serverConfig.getSslConfig();
+      Optional<SSLConfig> sslConfig = serverConfigForCluster.getSslConfig();
       if (!sslConfig.isPresent()) {
         throw new VeniceException("SSLConfig should be present when Kafka SSL is enabled");
       }
