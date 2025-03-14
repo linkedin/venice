@@ -224,7 +224,7 @@ public class RealTimeTopicSwitcher {
     // If there exists an RT, then broadcast the VersionSwapMessage to it, otherwise broadcast it to the VT
     String storeName = store.getName();
     if (!topicManager.containsTopic(pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName)))) {
-      LOGGER.info("RT topic doesn't exist for store: {}. Broadcasting VersionSwapMessage directly to VT.", storeName);
+      LOGGER.info("RT topic doesn't exist for store: {}. Broadcasting Version Swap message directly to VT.", storeName);
 
       /**
        * In a hybrid mode, the VSM gets emitted to the previous and next version topics by the Leader.
@@ -238,6 +238,7 @@ public class RealTimeTopicSwitcher {
       broadcastVersionSwap(previousStoreVersion, nextStoreVersion, previousStoreVersion.kafkaTopicName());
       broadcastVersionSwap(previousStoreVersion, nextStoreVersion, nextStoreVersion.kafkaTopicName());
     } else {
+      LOGGER.info("RT topic exists for store: {}. Broadcasting Version Swap message directly to RT.", storeName);
       broadcastVersionSwap(previousStoreVersion, nextStoreVersion, Utils.getRealTimeTopicName(store));
     }
   }
@@ -257,6 +258,12 @@ public class RealTimeTopicSwitcher {
       partitionCount = nextStoreVersion.getPartitionCount();
     }
 
+    LOGGER.info(
+        "Broadcasting Version Swap message to topic: {} for store: {} to {} partitions",
+        topicName,
+        storeName,
+        partitionCount);
+
     try (VeniceWriter veniceWriter = getVeniceWriterFactory().createVeniceWriter(
         new VeniceWriterOptions.Builder(topicName).setTime(getTimer()).setPartitionCount(partitionCount).build())) {
       veniceWriter.broadcastVersionSwap(
@@ -266,7 +273,7 @@ public class RealTimeTopicSwitcher {
     }
 
     LOGGER.info(
-        "Successfully sent VersionSwapMessage for store: {} from version: {} to version: {} to topic: {}",
+        "Successfully sent Version Swap message for store: {} from version: {} to version: {} to topic: {}",
         storeName,
         previousStoreVersion.getNumber(),
         nextStoreVersion.getNumber(),

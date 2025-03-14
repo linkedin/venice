@@ -9,10 +9,8 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEV
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
-import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
@@ -87,9 +85,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
     this.storeName = changelogClientConfig.getStoreName();
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     ClientConfig innerClientConfig = changelogClientConfig.getInnerClientConfig();
-
-    // ToDo: Determine default capacity and make configurable by the user
-    this.pubSubMessages = new ArrayBlockingQueue<>(1000);
+    this.pubSubMessages = new ArrayBlockingQueue<>(changelogClientConfig.getMaxBufferSize());
     this.partitionToVersionToServe = new ConcurrentHashMap<>();
 
     recordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
@@ -143,6 +139,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
          */
         startLatch.await();
       } catch (InterruptedException e) {
+        LOGGER.info("Thread was interrupted", e);
         // Restore the interrupt status
         Thread.currentThread().interrupt();
       }
@@ -173,6 +170,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
     try {
       Thread.sleep(timeoutInMs);
     } catch (InterruptedException e) {
+      LOGGER.info("Thread was interrupted", e);
       // Restore the interrupt status
       Thread.currentThread().interrupt();
     }
@@ -221,9 +219,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
         .put(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, false)
         .put(BLOB_TRANSFER_MANAGER_ENABLED, changelogClientConfig.isBlobTransferEnabled())
         .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
-        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(PUSH_STATUS_STORE_ENABLED, true)
-        .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 1)
         .build();
   }
 
@@ -257,10 +253,13 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
            * In the second case, we should not immediately serve the next current version. Doing so would result in
            * sending all messages from SOP to nearline events that the user has already received.
            * To avoid this, we should only serve the current version if no other version is currently being served.
+           * Once the next current version has consumed the version swap message, then it has caught up enough to be
+           * ready to serve.
            */
           partitionToVersionToServe.computeIfAbsent(partitionId, v -> getStoreVersion());
         }
 
+        // Caching these objects, so we don't need to recreate them on every single message received
         pubSubTopicPartitionMap
             .put(partitionId, new PubSubTopicPartitionImpl(new PubSubTopicImpl(topicName), partitionId));
       }
@@ -308,7 +307,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
     @Override
     public void onVersionSwap(int currentVersion, int futureVersion, int partitionId) {
       /*
-       * Only the futureVersion should act on the VSM.
+       * Only the futureVersion should act on the version swap message (VSM).
        * The previousVersion will consume the VSM earlier than the futureVersion, leading to an early version swap.
        * This early swap causes the buffer to fill with records before the EOP, which is undesirable.
        * By only allowing the futureVersion to perform the version swap, we ensure that only nearline events are served.

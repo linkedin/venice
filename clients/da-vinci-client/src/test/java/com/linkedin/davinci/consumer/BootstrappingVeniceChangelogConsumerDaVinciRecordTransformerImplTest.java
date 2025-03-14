@@ -9,12 +9,14 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -51,11 +53,13 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
   private static final int POLL_TIMEOUT = 1;
   private static final int CURRENT_STORE_VERSION = 1;
   private static final int FUTURE_STORE_VERSION = 2;
+  private static final int MAX_BUFFER_SIZE = 10;
 
   private Schema keySchema;
   private Schema valueSchema;
   private BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<Integer, Integer> bootstrappingVeniceChangelogConsumer;
   private BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer recordTransformer;
+  private ChangelogClientConfig changelogClientConfig;
   private DaVinciRecordTransformerConfig mockDaVinciRecordTransformerConfig;
   private DaVinciClient mockDaVinciClient;
   private List<Lazy<Integer>> keys;
@@ -71,22 +75,21 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     D2ControllerClient mockD2ControllerClient = mock(D2ControllerClient.class);
     PubSubConsumerAdapter mockPubSubConsumer = mock(PubSubConsumerAdapter.class);
 
-    ChangelogClientConfig changelogClientConfig =
-        new ChangelogClientConfig<>().setD2ControllerClient(mockD2ControllerClient)
-            .setSchemaReader(mockSchemaReader)
-            .setStoreName(TEST_STORE_NAME)
-            .setViewName("changeCaptureView")
-            .setBootstrapFileSystemPath(TEST_BOOTSTRAP_FILE_SYSTEM_PATH)
-            .setControllerD2ServiceName(D2_SERVICE_NAME)
-            .setD2ServiceName(DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME)
-            .setConsumerProperties(new Properties())
-            .setLocalD2ZkHosts(TEST_ZOOKEEPER_ADDRESS)
-            .setRocksDBBlockCacheSizeInBytes(TEST_ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES)
-            .setDatabaseSyncBytesInterval(TEST_DB_SYNC_BYTES_INTERVAL)
-            .setIsBeforeImageView(true)
-            .setD2Client(mock(D2Client.class))
-            .setShouldCompactMessages(true)
-            .setIsExperimentalClientEnabled(true);
+    changelogClientConfig = new ChangelogClientConfig<>().setD2ControllerClient(mockD2ControllerClient)
+        .setSchemaReader(mockSchemaReader)
+        .setStoreName(TEST_STORE_NAME)
+        .setBootstrapFileSystemPath(TEST_BOOTSTRAP_FILE_SYSTEM_PATH)
+        .setControllerD2ServiceName(D2_SERVICE_NAME)
+        .setD2ServiceName(DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+        .setConsumerProperties(new Properties())
+        .setLocalD2ZkHosts(TEST_ZOOKEEPER_ADDRESS)
+        .setRocksDBBlockCacheSizeInBytes(TEST_ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES)
+        .setDatabaseSyncBytesInterval(TEST_DB_SYNC_BYTES_INTERVAL)
+        .setD2Client(mock(D2Client.class))
+        .setShouldCompactMessages(true)
+        .setIsExperimentalClientEnabled(true);
+    assertEquals(changelogClientConfig.getMaxBufferSize(), 1000, "Default max buffer size should be 1000");
+    changelogClientConfig.setMaxBufferSize(MAX_BUFFER_SIZE);
     changelogClientConfig.getInnerClientConfig().setMetricsRepository(new MetricsRepository());
 
     bootstrappingVeniceChangelogConsumer = new BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<>(
@@ -181,8 +184,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     assertTrue((Boolean) isStartedField.get(bootstrappingVeniceChangelogConsumer), "isStarted should be true");
 
     bootstrappingVeniceChangelogConsumer.stop();
-    // isStarted should be false
-    assertFalse((Boolean) isStartedField.get(bootstrappingVeniceChangelogConsumer));
+    assertFalse((Boolean) isStartedField.get(bootstrappingVeniceChangelogConsumer), "isStarted should be false");
 
     verify(daVinciClientFactoryMock).close();
   }
@@ -289,6 +291,59 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     }
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       assertTrue(startCompletableFuture.isDone());
+    });
+  }
+
+  @Test
+  public void testTransformResult() {
+    int value = 2;
+    int partitionId = 0;
+    Lazy<Integer> lazyValue = Lazy.of(() -> value);
+    DaVinciRecordTransformerResult.Result result =
+        recordTransformer.transform(keys.get(partitionId), lazyValue, partitionId).getResult();
+    assertSame(result, DaVinciRecordTransformerResult.Result.UNCHANGED);
+  }
+
+  @Test
+  public void testMaxBufferSize() {
+    assertEquals(changelogClientConfig.getMaxBufferSize(), MAX_BUFFER_SIZE);
+
+    bootstrappingVeniceChangelogConsumer.start();
+    recordTransformer.onStartVersionIngestion(true);
+
+    int partitionId = 1;
+    int value = 2;
+    Lazy<Integer> lazyValue = Lazy.of(() -> value);
+
+    List<CompletableFuture> completableFutureList = new ArrayList<>();
+    for (int i = 0; i <= MAX_BUFFER_SIZE; i++) {
+      completableFutureList.add(CompletableFuture.supplyAsync(() -> {
+        recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId);
+        return null;
+      }));
+    }
+
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      // Verify every CompletableFuture in completableFutureList is completed besides the last one
+      int completedFutures = 0;
+      int uncompletedFutures = 0;
+      for (int i = 0; i <= MAX_BUFFER_SIZE; i++) {
+        if (completableFutureList.get(i).isDone()) {
+          completedFutures += 1;
+        } else {
+          uncompletedFutures += 1;
+        }
+      }
+      assertEquals(completedFutures, MAX_BUFFER_SIZE);
+      assertEquals(uncompletedFutures, 1);
+    });
+
+    TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, () -> {
+      // Empty the buffer and verify that all CompletableFutures are done
+      bootstrappingVeniceChangelogConsumer.poll(100);
+      for (int i = 0; i <= MAX_BUFFER_SIZE; i++) {
+        assertTrue(completableFutureList.get(i).isDone());
+      }
     });
   }
 
