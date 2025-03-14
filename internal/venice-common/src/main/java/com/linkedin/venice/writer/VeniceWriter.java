@@ -1359,7 +1359,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   /**
    * Broadcast control message to the real-time or version topic partition. If it's broadcasted to the RT, the leader
-   * will consume the VersionSwapMessage and produce it to the VT to be consumed by the followers.
+   * will consume the Version Swap message and produce it to the VT to be consumed by the followers.
    * Partition high watermarks are left to local venice leader to prepare and then been produced to version topic partition.
    *
    * @param oldServingVersionTopic the version topic change capture consumer should switch from.

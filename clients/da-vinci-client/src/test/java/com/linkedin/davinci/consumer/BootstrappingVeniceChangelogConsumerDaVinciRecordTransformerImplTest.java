@@ -131,11 +131,10 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
   public void testStartAllPartitions() throws IllegalAccessException, NoSuchFieldException {
     bootstrappingVeniceChangelogConsumer.start();
 
-    // isStarted should be true
     Field isStartedField =
         BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("isStarted");
     isStartedField.setAccessible(true);
-    assertTrue((Boolean) isStartedField.get(bootstrappingVeniceChangelogConsumer));
+    assertTrue((Boolean) isStartedField.get(bootstrappingVeniceChangelogConsumer), "isStarted should be true");
 
     verify(mockDaVinciClient).start();
 
@@ -324,7 +323,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     }
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      // Verify every CompletableFuture in completableFutureList is completed besides the last one
+      // Verify every CompletableFuture in completableFutureList is completed besides one
       int completedFutures = 0;
       int uncompletedFutures = 0;
       for (int i = 0; i <= MAX_BUFFER_SIZE; i++) {

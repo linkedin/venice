@@ -90,9 +90,10 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
 
     recordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
         .setRecordTransformerFunction(DaVinciRecordTransformerBootstrappingChangelogConsumer::new)
-        // Setting this to true since we're not transforming records and frequent changes can be made to the
-        // DVRT implmentation. This is to prevent the local state from being wiped everytime a change is
-        // deployed.
+        /*
+         * Setting this to true since we're not transforming records and frequent changes can be made to the
+         * DVRT implmentation. This is to prevent the local state from being wiped everytime a change is deployed
+         */
         .setSkipCompatibilityChecks(true)
         .build();
     daVinciConfig.setRecordTransformerConfig(recordTransformerConfig);
@@ -133,7 +134,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
     return CompletableFuture.supplyAsync(() -> {
       try {
         /*
-         * When this latch gets released, that means there's at least one message in pubSubMessages. So when the user
+         * When this latch gets released, this means there's at least one message in pubSubMessages. So when the user
          * calls poll, they don't get an empty response. This also signals that blob transfer was completed
          * for at least one partition.
          */
@@ -180,10 +181,12 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
 
     if (changelogClientConfig.shouldCompactMessages()) {
       Map<K, PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> tempMap = new LinkedHashMap<>();
-      // The behavior of LinkedHashMap is such that it maintains the order of insertion, but for values which are
-      // replaced, it's put in at the position of the first insertion. This isn't quite what we want, we want to keep
-      // only a single key (just as a map would), but we want to keep the position of the last insertion as well. So in
-      // order to do that, we remove the entry before inserting it.
+      /*
+       * The behavior of LinkedHashMap is such that it maintains the order of insertion, but for values which are
+       * replaced, it's put in at the position of the first insertion. This isn't quite what we want, we want to keep
+       * only a single key (just as a map would), but we want to keep the position of the last insertion as well. So in
+       * order to do that, we remove the entry before inserting it.
+       */
       for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> message: drainedPubSubMessages) {
         tempMap.remove(message.getKey());
         tempMap.put(message.getKey(), message);

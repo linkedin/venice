@@ -221,12 +221,12 @@ public class RealTimeTopicSwitcher {
     Version previousStoreVersion = store.getVersionOrThrow(previousVersion);
     Version nextStoreVersion = store.getVersionOrThrow(nextVersion);
 
-    // If there exists an RT, then broadcast the VersionSwapMessage to it, otherwise broadcast it to the VT
+    // If there exists an RT, then broadcast the Version Swap message to it, otherwise broadcast it to the VT
     String storeName = store.getName();
     if (!topicManager.containsTopic(pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName)))) {
       LOGGER.info("RT topic doesn't exist for store: {}. Broadcasting Version Swap message directly to VT.", storeName);
 
-      /**
+      /*
        * In a hybrid mode, the VSM gets emitted to the previous and next version topics by the Leader.
        * In a batch only mode, we will need to do the same in the controller. This is because there exists a
        * race-condition inside DaVinci. If we only emit the VSM to the previous version, it's possible that DaVinci

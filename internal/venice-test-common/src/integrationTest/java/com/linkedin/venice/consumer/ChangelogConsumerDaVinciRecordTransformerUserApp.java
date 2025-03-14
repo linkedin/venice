@@ -38,8 +38,7 @@ import org.testng.Assert;
 
 /**
  * ChangelogConsumerDaVinciRecordTransformerUserApp is a dummy class that spins up a Da Vinci Record Transformer based
- * CDC client and ingest data from all partitions.
- * It then sleeps for preset seconds before exiting itself, which leaves enough time window for tests to perform actions and checks.
+ * CDC client and ingests data from all partitions.
  */
 public class ChangelogConsumerDaVinciRecordTransformerUserApp {
   private static final Logger LOGGER = LogManager.getLogger(ChangelogConsumerDaVinciRecordTransformerUserApp.class);
@@ -67,10 +66,15 @@ public class ChangelogConsumerDaVinciRecordTransformerUserApp {
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
     consumerProperties.put(CLUSTER_NAME, clusterName);
     consumerProperties.put(ZOOKEEPER_ADDRESS, zkUrl);
-    consumerProperties.put(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, 1);
-    consumerProperties.put(BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN, 1);
     consumerProperties.put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, blobTransferServerPort);
     consumerProperties.put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, blobTransferClientPort);
+
+    /*
+     * Setting these to a low value so that when a blob transfer request is received, it sends the
+     * most up-to-date snapshot and offset.
+     */
+    consumerProperties.put(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, 1);
+    consumerProperties.put(BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN, 1);
 
     ChangelogClientConfig globalChangelogClientConfig =
         new ChangelogClientConfig().setConsumerProperties(consumerProperties)

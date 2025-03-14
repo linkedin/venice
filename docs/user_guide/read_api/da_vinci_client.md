@@ -69,6 +69,11 @@ public class StringRecordTransformer extends DaVinciRecordTransformer<Integer, S
   public void processPut(Lazy<Integer> key, Lazy<String> value, int partitionId) {
     return;
   }
+  
+  @Override
+  public void close() throws IOException {
+
+  }
 }
 
 ```

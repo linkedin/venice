@@ -77,11 +77,13 @@ public class BlockingDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
       int partitionId,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       Lazy<VeniceCompressor> compressor) {
-    // Using a wrapper around onRecovery because when calculating the class hash it grabs the name of the current class
-    // that is invoking it. If we directly invoke onRecovery from this class, the class hash will be calculated based
-    // on the contents of BlockingDaVinciRecordTransformer, not the user's implementation of DVRT.
-    // We also can't override onRecovery like the other methods because this method is final and the implementation
-    // should never be overriden.
+    /*
+     * Using a wrapper around onRecovery because when calculating the class hash it grabs the name of the current class
+     * that is invoking it. If we directly invoke onRecovery from this class, the class hash will be calculated based
+     * on the contents of BlockingDaVinciRecordTransformer, not the user's implementation of DVRT.
+     * We also can't override onRecovery like the other methods because this method is final and the implementation
+     * should never be overridden.
+     */
     this.recordTransformer.onRecovery(storageEngine, partitionId, partitionStateSerializer, compressor);
   }
 

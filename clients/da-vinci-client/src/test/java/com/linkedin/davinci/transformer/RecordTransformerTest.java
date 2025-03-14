@@ -215,7 +215,7 @@ public class RecordTransformerTest {
             dummyRecordTransformerConfig));
     assertEquals(clientRecordTransformer.getStoreVersion(), storeVersion);
 
-    DaVinciRecordTransformer<Integer, String, String> blockingRecordTransformer =
+    BlockingDaVinciRecordTransformer<Integer, String, String> blockingRecordTransformer =
         new BlockingDaVinciRecordTransformer<>(
             clientRecordTransformer,
             keySchema,
@@ -247,5 +247,13 @@ public class RecordTransformerTest {
 
     blockingRecordTransformer.onEndVersionIngestion(futureVersion);
     verify(clientRecordTransformer).onEndVersionIngestion(futureVersion);
+
+    AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
+    Lazy<VeniceCompressor> compressor = Lazy.of(() -> mock(VeniceCompressor.class));
+
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+    when(storageEngine.getPartitionOffset(partitionId)).thenReturn(Optional.of(offsetRecord));
+    blockingRecordTransformer.internalOnRecovery(storageEngine, partitionId, partitionStateSerializer, compressor);
+    verify(clientRecordTransformer).onRecovery(storageEngine, partitionId, partitionStateSerializer, compressor);
   }
 }

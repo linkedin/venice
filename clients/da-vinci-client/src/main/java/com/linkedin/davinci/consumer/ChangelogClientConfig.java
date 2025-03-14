@@ -47,7 +47,6 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
 
   private Boolean isBlobTransferEnabled = false;
   private Boolean isExperimentalClientEnabled = false;
-
   private int maxBufferSize = 1000;
 
   public ChangelogClientConfig(String storeName) {
@@ -246,6 +245,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setIsBeforeImageView(config.isBeforeImageView())
         .setIsBlobTransferEnabled(config.isBlobTransferEnabled())
         .setIsExperimentalClientEnabled(config.isExperimentalClientEnabled())
+        .setMaxBufferSize(config.getMaxBufferSize())
         .setShouldSkipFailedToAssembleRecords(config.shouldSkipFailedToAssembleRecords());
     return newConfig;
   }

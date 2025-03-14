@@ -131,10 +131,12 @@ public class DaVinciRecordTransformerConfig {
 
     /**
      * @param skipCompatibilityChecks set this to true if {@link DaVinciRecordTransformer#transform(Lazy, Lazy, int)}
-     *                                returns {@link DaVinciRecordTransformerResult.Result#UNCHANGED}. If you are
-     *                                making frequent changes to your {@link DaVinciRecordTransformer} implementation,
-     *                                setting this to true will prevent your local data from being wiped everytime a
-     *                                change is deployed.
+     *                                returns {@link DaVinciRecordTransformerResult.Result#UNCHANGED}.
+     *                                Additionally, if you are making frequent changes to your
+     *                                {@link DaVinciRecordTransformer} implementation without modifying the transform
+     *                                logic, setting this to true will prevent your local data from being wiped
+     *                                everytime a change is deployed. Remember to set this to false once your
+     *                                changes have stabilized.
      *                                Default is false.
      */
     public Builder setSkipCompatibilityChecks(boolean skipCompatibilityChecks) {
