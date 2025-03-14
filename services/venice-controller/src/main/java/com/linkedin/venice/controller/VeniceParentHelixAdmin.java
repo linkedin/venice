@@ -1043,7 +1043,7 @@ public class VeniceParentHelixAdmin implements Admin {
       int repushSourceVersion) {
     // Parent controller will always pick the replicationMetadataVersionId from configs.
     final int replicationMetadataVersionId = getRmdVersionID(storeName, clusterName);
-    int largestUsedRTVersion = getStore(clusterName, storeName).getLargestUsedRTVersionNumber();
+    int largestUsedRTVersionNumber = getStore(clusterName, storeName).getLargestUsedRTVersionNumber();
     Version version = getVeniceHelixAdmin().addVersionOnly(
         clusterName,
         storeName,
@@ -1053,7 +1053,8 @@ public class VeniceParentHelixAdmin implements Admin {
         pushType,
         remoteKafkaBootstrapServers,
         rewindTimeInSecondsOverride,
-        replicationMetadataVersionId);
+        replicationMetadataVersionId,
+        largestUsedRTVersionNumber);
     if (version.isActiveActiveReplicationEnabled()) {
       updateReplicationMetadataSchemaForAllValueSchema(clusterName, storeName);
     }
@@ -1068,7 +1069,7 @@ public class VeniceParentHelixAdmin implements Admin {
           pushType,
           null,
           -1,
-          largestUsedRTVersion);
+          largestUsedRTVersionNumber);
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
     }
@@ -1671,7 +1672,7 @@ public class VeniceParentHelixAdmin implements Admin {
       boolean versionSwapDeferred,
       String targetedRegions,
       int repushSourceVersion,
-      int largestUsedRTVersion) {
+      int largestUsedRTVersionNumber) {
     final int replicationMetadataVersionId = getRmdVersionID(storeName, clusterName);
     Pair<Boolean, Version> result = getVeniceHelixAdmin().addVersionAndTopicOnly(
         clusterName,
@@ -1691,7 +1692,8 @@ public class VeniceParentHelixAdmin implements Admin {
         emergencySourceRegion,
         versionSwapDeferred,
         targetedRegions,
-        repushSourceVersion);
+        repushSourceVersion,
+        largestUsedRTVersionNumber);
     Version newVersion = result.getSecond();
     if (result.getFirst()) {
       if (newVersion.isActiveActiveReplicationEnabled()) {
@@ -1709,7 +1711,7 @@ public class VeniceParentHelixAdmin implements Admin {
             pushType,
             targetedRegions,
             repushSourceVersion,
-            largestUsedRTVersion);
+            largestUsedRTVersionNumber);
       } finally {
         releaseAdminMessageLock(clusterName, storeName);
       }

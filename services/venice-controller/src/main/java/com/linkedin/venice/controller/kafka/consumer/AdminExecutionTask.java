@@ -636,7 +636,7 @@ public class AdminExecutionTask implements Callable<Void> {
     String pushJobId = message.pushJobId.toString();
     int repushSourceVersion = message.repushSourceVersion;
     int versionNumber = message.versionNum;
-    int largestUsedRTVersion = message.largestUsedRTVersionNumber;
+    int largestUsedRTVersionNumber = message.largestUsedRTVersionNumber;
     int numberOfPartitions = message.numberOfPartitions;
     Version.PushType pushType = Version.PushType.valueOf(message.pushType);
     String remoteKafkaBootstrapServers =
@@ -691,7 +691,8 @@ public class AdminExecutionTask implements Callable<Void> {
             replicationMetadataVersionId,
             message.versionSwapDeferred,
             targetedRegions,
-            repushSourceVersion);
+            repushSourceVersion,
+            largestUsedRTVersionNumber);
       }
     }
   }

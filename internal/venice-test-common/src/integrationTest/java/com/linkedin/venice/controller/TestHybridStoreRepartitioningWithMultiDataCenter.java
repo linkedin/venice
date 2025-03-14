@@ -25,7 +25,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
@@ -88,7 +87,7 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
   it should still be able to return the right RT name and all store operations and push should work.
    */
   @Test(timeOut = TEST_TIMEOUT)
-  public void testOldStoresWithHybridStoreVersioning() throws IOException {
+  public void testOldStoresWithHybridStoreVersioning() {
     String storeName = Utils.getUniqueString("TestOldStoresWithHybridStoreVersioning");
     String clusterName = CLUSTER_NAMES[0];
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
@@ -212,8 +211,8 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
    * At all steps, RT name is verified.
    */
   @Test(timeOut = 5 * TEST_TIMEOUT)
-  public void testHybridStoreVersioning() {
-    String storeName = Utils.getUniqueString("TestHybridStoreRepartitioning");
+  public void testRealTimeTopicVersioning() {
+    String storeName = Utils.getUniqueString("TestRealTimeTopicVersioning");
     String clusterName = CLUSTER_NAMES[0];
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
     ControllerClient parentControllerClient =
@@ -404,7 +403,6 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
         StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
         String realTimeTopicNameInVersion = Utils.getRealTimeTopicName(storeInfo.getVersions().get(0));
         Assert.assertEquals(realTimeTopicNameInVersion, storeName + "_v3" + Version.REAL_TIME_TOPIC_SUFFIX);
-
         Assert.assertEquals(storeInfo.getLargestUsedRTVersionNumber(), 3);
       });
     }

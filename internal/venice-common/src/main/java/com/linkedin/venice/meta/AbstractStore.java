@@ -1,5 +1,8 @@
 package com.linkedin.venice.meta;
 
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
+
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -78,17 +81,17 @@ public abstract class AbstractStore implements Store {
 
   @Override
   public void addVersion(Version version) {
-    addVersion(version, true, false);
+    addVersion(version, true, false, -1);
   }
 
   @Override
-  public void addVersion(Version version, boolean isClonedVersion) {
-    addVersion(version, true, isClonedVersion);
+  public void addVersion(Version version, boolean isClonedVersion, int largestUsedRTVersionNumber) {
+    addVersion(version, true, isClonedVersion, largestUsedRTVersionNumber);
   }
 
   @Override
   public void forceAddVersion(Version version, boolean isClonedVersion) {
-    addVersion(version, false, isClonedVersion);
+    addVersion(version, false, isClonedVersion, -1);
   }
 
   @Override
@@ -107,7 +110,11 @@ public abstract class AbstractStore implements Store {
    *                        any store level config on it; if false, the version being added is new version, so the new version
    *                        config should be the same as store config.
    */
-  private void addVersion(Version version, boolean checkDisableWrite, boolean isClonedVersion) {
+  private void addVersion(
+      Version version,
+      boolean checkDisableWrite,
+      boolean isClonedVersion,
+      int largestUsedRTVersionNumber) {
     checkVersionSupplier();
     if (checkDisableWrite) {
       checkDisableStoreWrite("add", version.getNumber());
@@ -165,6 +172,12 @@ public abstract class AbstractStore implements Store {
       HybridStoreConfig hybridStoreConfig = getHybridStoreConfig();
       if (hybridStoreConfig != null) {
         version.setHybridStoreConfig(hybridStoreConfig.clone());
+        if (largestUsedRTVersionNumber != -1) {
+          String newRealTimeTopicName = VeniceSystemStoreUtils.isSystemStore(getName())
+              ? DEFAULT_REAL_TIME_TOPIC_NAME
+              : getName() + "_v" + largestUsedRTVersionNumber + Version.REAL_TIME_TOPIC_SUFFIX;
+          version.getHybridStoreConfig().setRealTimeTopicName(newRealTimeTopicName);
+        }
       }
 
       version.setUseVersionLevelHybridConfig(true);

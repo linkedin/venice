@@ -1634,7 +1634,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         -1,
         1,
         Optional.empty(),
-        false);
+        false,
+        null,
+        -1,
+        0);
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1);
 
@@ -1659,7 +1662,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         -1,
         1,
         Optional.empty(),
-        false);
+        false,
+        null,
+        -1,
+        0);
     // Version 2 should exist and remote Kafka bootstrap servers info should exist in version 2.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 2);
     Assert.assertEquals(
@@ -1794,7 +1800,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         -1,
         1,
         Optional.empty(),
-        false);
+        false,
+        null,
+        -1,
+        0);
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1);
     // A/A version level config should be true

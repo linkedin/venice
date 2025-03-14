@@ -2131,7 +2131,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         replicationMetadataVersionId,
         versionSwapDeferred,
         null,
-        repushSourceVersion);
+        repushSourceVersion,
+        getStore(clusterName, storeName).getLargestUsedRTVersionNumber());
   }
 
   /**
@@ -2151,7 +2152,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       int replicationMetadataVersionId,
       boolean versionSwapDeferred,
       String targetedRegions,
-      int repushSourceVersion) {
+      int repushSourceVersion,
+      int largestUsedRTVersionNumber) {
     Store store = getStore(clusterName, storeName);
     if (store == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
@@ -2202,7 +2204,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional.empty(),
         versionSwapDeferred,
         targetedRegions,
-        repushSourceVersion);
+        repushSourceVersion,
+        largestUsedRTVersionNumber);
   }
 
   /**
@@ -2278,44 +2281,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  public Pair<Boolean, Version> addVersionAndTopicOnly(
-      String clusterName,
-      String storeName,
-      String pushJobId,
-      int versionNumber,
-      int numberOfPartitions,
-      int replicationFactor,
-      boolean sendStartOfPush,
-      boolean sorted,
-      PushType pushType,
-      String compressionDictionary,
-      String remoteKafkaBootstrapServers,
-      Optional<String> sourceGridFabric,
-      long rewindTimeInSecondsOverride,
-      int replicationMetadataVersionId,
-      Optional<String> emergencySourceRegion,
-      boolean versionSwapDeferred) {
-    return addVersionAndTopicOnly(
-        clusterName,
-        storeName,
-        pushJobId,
-        versionNumber,
-        numberOfPartitions,
-        replicationFactor,
-        sendStartOfPush,
-        sorted,
-        pushType,
-        compressionDictionary,
-        remoteKafkaBootstrapServers,
-        sourceGridFabric,
-        rewindTimeInSecondsOverride,
-        replicationMetadataVersionId,
-        emergencySourceRegion,
-        versionSwapDeferred,
-        null,
-        -1);
-  }
-
   /**
    * A wrapper to invoke VeniceHelixAdmin#addVersion to only increment the version and create the topic(s) needed
    * without starting ingestion.
@@ -2338,7 +2303,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
       String targetedRegions,
-      int repushSourceVersion) {
+      int repushSourceVersion,
+      int largestUsedRTVersionNumber) {
     return addVersion(
         clusterName,
         storeName,
@@ -2359,7 +2325,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         emergencySourceRegion,
         versionSwapDeferred,
         targetedRegions,
-        repushSourceVersion);
+        repushSourceVersion,
+        largestUsedRTVersionNumber);
   }
 
   /**
@@ -2375,7 +2342,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Version.PushType pushType,
       String remoteKafkaBootstrapServers,
       long rewindTimeInSecondsOverride,
-      int replicationMetadataVersionId) {
+      int replicationMetadataVersionId,
+      int largestUsedRTVersionNumber) {
     checkControllerLeadershipFor(clusterName);
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
@@ -2405,7 +2373,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // Update the store object to avoid potential system store flags reversion during repository.updateStore(store).
         store = repository.getStore(storeName);
         version.setPushType(pushType);
-        store.addVersion(version);
+        store.addVersion(version, false, largestUsedRTVersionNumber);
 
         VeniceControllerClusterConfig clusterConfig = resources.getConfig();
         version.setNativeReplicationEnabled(clusterConfig.isMultiRegion());
@@ -2473,7 +2441,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (store.containsVersion(versionNumber)) {
               throwVersionAlreadyExists(storeName, versionNumber);
             } else {
-              store.addVersion(version);
+              store.addVersion(version, false, -1);
             }
             storeRepository.updateStore(store);
           }
@@ -2695,7 +2663,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         emergencySourceRegion,
         versionSwapDeferred,
         null,
-        repushSourceVersion);
+        repushSourceVersion,
+        getStore(clusterName, storeName).getLargestUsedRTVersionNumber());
   }
 
   private Optional<Version> getVersionFromSourceCluster(
@@ -2776,7 +2745,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
       String targetedRegions,
-      int repushSourceVersion) {
+      int repushSourceVersion,
+      int largestUsedRTVersionNumber) {
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     MaintenanceSignal maintenanceSignal =
         HelixUtils.getClusterMaintenanceSignal(clusterName, resources.getHelixManager());
@@ -2855,7 +2825,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               throwVersionAlreadyExists(storeName, version.getNumber());
             }
             // Update ZK with the new version
-            store.addVersion(version, true);
+            store.addVersion(version, true, largestUsedRTVersionNumber);
             repository.updateStore(store);
           } else {
             if (versionNumber == VERSION_ID_UNSET) {
@@ -2883,7 +2853,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             store = repository.getStore(storeName);
             if (!store.containsVersion(version.getNumber())) {
               version.setPushType(pushType);
-              store.addVersion(version);
+              store.addVersion(version, false, largestUsedRTVersionNumber);
             }
 
             version.setNativeReplicationEnabled(store.isNativeReplicationEnabled());
