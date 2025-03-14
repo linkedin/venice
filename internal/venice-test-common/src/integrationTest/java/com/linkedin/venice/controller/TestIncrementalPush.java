@@ -90,6 +90,7 @@ public class TestIncrementalPush {
     runVPJ(propsBatch, 1, controllerClient);
     String incPushTopic = "TEST_INC_PUSH";
 
+    storeInfo.set(controllerClient.getStore(storeName).getStore());
     VeniceWriter<String, String, byte[]> veniceWriterRt =
         cluster.getVeniceWriter(Utils.getRealTimeTopicName(storeInfo.get()));
     veniceWriterRt.broadcastStartOfIncrementalPush(incPushTopic, new HashMap<>());

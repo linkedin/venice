@@ -1088,7 +1088,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       newStore.setNativeReplicationSourceFabric(config.getNativeReplicationSourceFabricAsDefaultForBatchOnly());
     }
     newStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
-    newStore.setLargestUsedRTVersionNumber(largestUsedRTVersionNumber);
+    /* If this store existed previously, we do not want to use the same RT topic name that was used by the previous
+    store. To ensure this, increase largestUsedRTVersionNumber and new RT name will be different */
+    newStore.setLargestUsedRTVersionNumber(largestUsedRTVersionNumber + 1);
   }
 
   /**
@@ -2129,7 +2131,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         replicationMetadataVersionId,
         versionSwapDeferred,
         null,
-        repushSourceVersion);
+        repushSourceVersion,
+        getStore(clusterName, storeName).getLargestUsedRTVersionNumber());
   }
 
   /**
@@ -2149,7 +2152,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       int replicationMetadataVersionId,
       boolean versionSwapDeferred,
       String targetedRegions,
-      int repushSourceVersion) {
+      int repushSourceVersion,
+      int largestUsedRTVersionNumber) {
     Store store = getStore(clusterName, storeName);
     if (store == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
@@ -2200,7 +2204,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional.empty(),
         versionSwapDeferred,
         targetedRegions,
-        repushSourceVersion);
+        repushSourceVersion,
+        largestUsedRTVersionNumber);
   }
 
   /**
@@ -2276,44 +2281,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  public Pair<Boolean, Version> addVersionAndTopicOnly(
-      String clusterName,
-      String storeName,
-      String pushJobId,
-      int versionNumber,
-      int numberOfPartitions,
-      int replicationFactor,
-      boolean sendStartOfPush,
-      boolean sorted,
-      PushType pushType,
-      String compressionDictionary,
-      String remoteKafkaBootstrapServers,
-      Optional<String> sourceGridFabric,
-      long rewindTimeInSecondsOverride,
-      int replicationMetadataVersionId,
-      Optional<String> emergencySourceRegion,
-      boolean versionSwapDeferred) {
-    return addVersionAndTopicOnly(
-        clusterName,
-        storeName,
-        pushJobId,
-        versionNumber,
-        numberOfPartitions,
-        replicationFactor,
-        sendStartOfPush,
-        sorted,
-        pushType,
-        compressionDictionary,
-        remoteKafkaBootstrapServers,
-        sourceGridFabric,
-        rewindTimeInSecondsOverride,
-        replicationMetadataVersionId,
-        emergencySourceRegion,
-        versionSwapDeferred,
-        null,
-        -1);
-  }
-
   /**
    * A wrapper to invoke VeniceHelixAdmin#addVersion to only increment the version and create the topic(s) needed
    * without starting ingestion.
@@ -2336,7 +2303,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
       String targetedRegions,
-      int repushSourceVersion) {
+      int repushSourceVersion,
+      int largestUsedRTVersionNumber) {
     return addVersion(
         clusterName,
         storeName,
@@ -2357,7 +2325,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         emergencySourceRegion,
         versionSwapDeferred,
         targetedRegions,
-        repushSourceVersion);
+        repushSourceVersion,
+        largestUsedRTVersionNumber);
   }
 
   /**
@@ -2373,7 +2342,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Version.PushType pushType,
       String remoteKafkaBootstrapServers,
       long rewindTimeInSecondsOverride,
-      int replicationMetadataVersionId) {
+      int replicationMetadataVersionId,
+      int largestUsedRTVersionNumber) {
     checkControllerLeadershipFor(clusterName);
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
@@ -2403,7 +2373,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // Update the store object to avoid potential system store flags reversion during repository.updateStore(store).
         store = repository.getStore(storeName);
         version.setPushType(pushType);
-        store.addVersion(version);
+        store.addVersion(version, false, largestUsedRTVersionNumber);
 
         VeniceControllerClusterConfig clusterConfig = resources.getConfig();
         version.setNativeReplicationEnabled(clusterConfig.isMultiRegion());
@@ -2471,7 +2441,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (store.containsVersion(versionNumber)) {
               throwVersionAlreadyExists(storeName, versionNumber);
             } else {
-              store.addVersion(version);
+              store.addVersion(version, false, -1);
             }
             storeRepository.updateStore(store);
           }
@@ -2693,7 +2663,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         emergencySourceRegion,
         versionSwapDeferred,
         null,
-        repushSourceVersion);
+        repushSourceVersion,
+        getStore(clusterName, storeName).getLargestUsedRTVersionNumber());
   }
 
   private Optional<Version> getVersionFromSourceCluster(
@@ -2774,7 +2745,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
       String targetedRegions,
-      int repushSourceVersion) {
+      int repushSourceVersion,
+      int largestUsedRTVersionNumber) {
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     MaintenanceSignal maintenanceSignal =
         HelixUtils.getClusterMaintenanceSignal(clusterName, resources.getHelixManager());
@@ -2853,7 +2825,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               throwVersionAlreadyExists(storeName, version.getNumber());
             }
             // Update ZK with the new version
-            store.addVersion(version, true);
+            store.addVersion(version, true, largestUsedRTVersionNumber);
             repository.updateStore(store);
           } else {
             if (versionNumber == VERSION_ID_UNSET) {
@@ -2881,7 +2853,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             store = repository.getStore(storeName);
             if (!store.containsVersion(version.getNumber())) {
               version.setPushType(pushType);
-              store.addVersion(version);
+              store.addVersion(version, false, largestUsedRTVersionNumber);
             }
 
             version.setNativeReplicationEnabled(store.isNativeReplicationEnabled());
@@ -3164,7 +3136,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         store.getName(),
         version.getNumber(),
         clusterName);
-    String storeName = store.getName();
     // Create real-time topic if it doesn't exist; otherwise, update the retention time if necessary
     PubSubTopic realTimeTopic = getPubSubTopicRepository().getTopic(Utils.getRealTimeTopicName(version));
     createOrUpdateRealTimeTopic(clusterName, store, version, realTimeTopic);
@@ -3176,7 +3147,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           clusterName,
           store,
           version,
-          getPubSubTopicRepository().getTopic(Version.composeSeparateRealTimeTopic(storeName)));
+          getPubSubTopicRepository().getTopic(Utils.getSeparateRealTimeTopicName(version)));
     }
   }
 
@@ -3578,7 +3549,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String pushJobId) {
     PubSubTopicRepository topicRepository = getPubSubTopicRepository();
     if (referenceHybridVersion.isSeparateRealTimeTopicEnabled()) {
-      PubSubTopic separateRtTopic = topicRepository.getTopic(Version.composeSeparateRealTimeTopic(store.getName()));
+      PubSubTopic separateRtTopic =
+          topicRepository.getTopic(Utils.getSeparateRealTimeTopicName(referenceHybridVersion));
       validateTopicPresenceAndState(
           clusterName,
           store.getName(),
@@ -3894,10 +3866,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             executor.shutdownNow();
           }
         }
-      }
-      PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
-      if (!store.isHybrid() && getTopicManager().containsTopic(rtTopic)) {
-        safeDeleteRTTopic(clusterName, storeName);
+
+        PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(deletedVersion.get()));
+        if (!store.isHybrid() && getTopicManager().containsTopic(rtTopic)) {
+          safeDeleteRTTopic(clusterName, deletedVersion.get());
+        }
       }
     }
   }
@@ -3912,27 +3885,29 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  private void safeDeleteRTTopic(String clusterName, String storeName) {
-    boolean rtDeletionPermitted = isRTTopicDeletionPermittedByAllControllers(clusterName, storeName);
+  private void safeDeleteRTTopic(String clusterName, Version version) {
+    String realTimeTopicName = Utils.getRealTimeTopicName(version);
+    boolean rtDeletionPermitted = isRTTopicDeletionPermittedByAllControllers(clusterName, realTimeTopicName);
+
     if (rtDeletionPermitted) {
-      String rtTopicToDelete = Utils.composeRealTimeTopic(storeName);
-      deleteRTTopicFromAllFabrics(rtTopicToDelete, clusterName);
+      deleteRTTopicFromAllFabrics(realTimeTopicName, clusterName);
       // Check if there is incremental push topic exist. If yes, delete it and send out to let other controller to
       // delete it.
-      String incrementalPushRTTopicToDelete = Version.composeSeparateRealTimeTopic(storeName);
+      String incrementalPushRTTopicToDelete = Utils.getSeparateRealTimeTopicName(version);
       if (getTopicManager().containsTopic(pubSubTopicRepository.getTopic(incrementalPushRTTopicToDelete))) {
         deleteRTTopicFromAllFabrics(incrementalPushRTTopicToDelete, clusterName);
       }
     }
   }
 
-  public boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, String storeName) {
+  public boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, String rtTopicName) {
     // Perform RT cleanup checks for batch only store that used to be hybrid. Check versions
     // to see if any version is still using RT before deleting the RT.
     // Since we perform this check everytime when a store version is deleted we can afford to do best effort
     // approach if some fabrics are unavailable or out of sync (temporarily).
-    String rtTopicName = Utils.composeRealTimeTopic(storeName);
     Map<String, ControllerClient> controllerClientMap = getControllerClientMap(clusterName);
+    String storeName = Version.parseStoreFromRealTimeTopic(rtTopicName);
+
     for (Map.Entry<String, ControllerClient> controllerClientEntry: controllerClientMap.entrySet()) {
       StoreResponse storeResponse;
       try {
@@ -4641,6 +4616,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
+   * Update the largest used RT version number of a specified store.
+   */
+  @Override
+  public void setStoreLargestUsedRTVersion(String clusterName, String storeName, int versionNumber) {
+    storeMetadataUpdate(clusterName, storeName, store -> {
+      store.setLargestUsedRTVersionNumber(versionNumber);
+      return store;
+    });
+  }
+
+  /**
    * Update the owner of a specified store.
    */
   @Override
@@ -4728,17 +4714,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private void generateAndUpdateRealTimeTopicName(Store store) {
-    // get oldRealTimeTopicName from the store config because that will be more (or equally) recent than any version
-    // config
-    String oldRealTimeTopicName = Utils.getRealTimeTopicNameFromStoreConfig(store);
-    String newRealTimeTopicName = Utils.createNewRealTimeTopicName(oldRealTimeTopicName);
-    PubSubTopic newRealTimeTopic = getPubSubTopicRepository().getTopic(newRealTimeTopicName);
-
-    if (getTopicManager().containsTopic(newRealTimeTopic)) {
-      throw new VeniceException("Topic " + newRealTimeTopic + " should not exist.");
-    }
+    String newRealTimeTopicName = Utils.isRTVersioningApplicable(store.getName())
+        ? store.getName() + "_v" + (store.getLargestUsedRTVersionNumber() + 1) + Version.REAL_TIME_TOPIC_SUFFIX
+        : DEFAULT_REAL_TIME_TOPIC_NAME;
 
     store.getHybridStoreConfig().setRealTimeTopicName(newRealTimeTopicName);
+    // after partition count update, new VT, if is hybrid, has to use a new RT with the same partition count, so we
+    // increase
+    // `largestUsedRTVersionNumber`; this will ensure that a new RT is created when/if needed
+    store.setLargestUsedRTVersionNumber(store.getLargestUsedRTVersionNumber() + 1);
+    LOGGER.info("updated largestUsedRTVersionNumber to " + store.getLargestUsedRTVersionNumber());
   }
 
   void setStorePartitionerConfig(String clusterName, String storeName, PartitionerConfig partitionerConfig) {
@@ -5213,6 +5198,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Long> readQuotaInCU = params.getReadQuotaInCU();
     Optional<Integer> currentVersion = params.getCurrentVersion();
     Optional<Integer> largestUsedVersionNumber = params.getLargestUsedVersionNumber();
+    Optional<Integer> largestUsedRTVersionNumber = params.getLargestUsedRTVersionNumber();
     Optional<Long> hybridRewindSeconds = params.getHybridRewindSeconds();
     Optional<Long> hybridOffsetLagThreshold = params.getHybridOffsetLagThreshold();
     Optional<Long> hybridTimeLagThreshold = params.getHybridTimeLagThreshold();
@@ -5333,6 +5319,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       if (largestUsedVersionNumber.isPresent()) {
         setStoreLargestUsedVersion(clusterName, storeName, largestUsedVersionNumber.get());
+      }
+
+      if (largestUsedRTVersionNumber.isPresent()) {
+        setStoreLargestUsedRTVersion(clusterName, storeName, largestUsedRTVersionNumber.get());
       }
 
       if (bootstrapToOnlineTimeoutInHours.isPresent()) {
@@ -5713,6 +5703,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             oldStore.getName() + " was not a hybrid store.  In order to make it a hybrid store both "
                 + " rewind time in seconds and offset or time lag threshold must be specified");
       }
+
+      String newRealTimeTopicName =
+          oldStore.getLargestUsedRTVersionNumber() > 0 && Utils.isRTVersioningApplicable(oldStore.getName())
+              ? oldStore.getName() + "_v" + oldStore.getLargestUsedRTVersionNumber() + Version.REAL_TIME_TOPIC_SUFFIX
+              : DEFAULT_REAL_TIME_TOPIC_NAME;
+
       mergedHybridStoreConfig = new HybridStoreConfigImpl(
           hybridRewindSeconds.get(),
           // If not specified, offset/time lag threshold will be -1 and will not be used to determine whether
@@ -5721,7 +5717,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           hybridTimeLagThreshold.orElse(DEFAULT_HYBRID_TIME_LAG_THRESHOLD),
           hybridDataReplicationPolicy.orElse(DataReplicationPolicy.NON_AGGREGATE),
           bufferReplayPolicy.orElse(BufferReplayPolicy.REWIND_FROM_EOP),
-          realTimeTopicName.orElse(DEFAULT_REAL_TIME_TOPIC_NAME));
+          realTimeTopicName.orElse(newRealTimeTopicName));
     }
     if (mergedHybridStoreConfig.getRewindTimeInSeconds() > 0
         && mergedHybridStoreConfig.getOffsetLagThresholdToGoOnline() < 0
