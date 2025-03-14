@@ -1177,28 +1177,28 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   private VeniceProperties getPubSubSSLPropertiesFromServerConfig(String kafkaBootstrapUrls) {
-    final VeniceServerConfig serverConfigForCluster;
+    final VeniceServerConfig serverConfigForPubSubCluster;
     if (kafkaBootstrapUrls.equals(serverConfig.getKafkaBootstrapServers())) {
-      serverConfigForCluster = serverConfig;
+      serverConfigForPubSubCluster = serverConfig;
     } else {
       Properties clonedProperties = serverConfig.getClusterProperties().toProperties();
       clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrls);
-      serverConfigForCluster =
+      serverConfigForPubSubCluster =
           new VeniceServerConfig(new VeniceProperties(clonedProperties), serverConfig.getKafkaClusterMap());
     }
 
-    VeniceProperties clusterProperties = serverConfigForCluster.getClusterProperties();
-    Properties properties = serverConfigForCluster.getClusterProperties().getPropertiesCopy();
+    VeniceProperties clusterProperties = serverConfigForPubSubCluster.getClusterProperties();
+    Properties properties = serverConfigForPubSubCluster.getClusterProperties().getPropertiesCopy();
     ApacheKafkaProducerConfig.copyKafkaSASLProperties(clusterProperties, properties, false);
-    kafkaBootstrapUrls = serverConfigForCluster.getKafkaBootstrapServers();
-    String resolvedKafkaUrl = serverConfigForCluster.getKafkaClusterUrlResolver().apply(kafkaBootstrapUrls);
+    kafkaBootstrapUrls = serverConfigForPubSubCluster.getKafkaBootstrapServers();
+    String resolvedKafkaUrl = serverConfigForPubSubCluster.getKafkaClusterUrlResolver().apply(kafkaBootstrapUrls);
     if (resolvedKafkaUrl != null) {
       kafkaBootstrapUrls = resolvedKafkaUrl;
     }
     properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrls);
-    PubSubSecurityProtocol securityProtocol = serverConfigForCluster.getKafkaSecurityProtocol(kafkaBootstrapUrls);
+    PubSubSecurityProtocol securityProtocol = serverConfigForPubSubCluster.getKafkaSecurityProtocol(kafkaBootstrapUrls);
     if (ApacheKafkaUtils.isKafkaSSLProtocol(securityProtocol)) {
-      Optional<SSLConfig> sslConfig = serverConfigForCluster.getSslConfig();
+      Optional<SSLConfig> sslConfig = serverConfigForPubSubCluster.getSslConfig();
       if (!sslConfig.isPresent()) {
         throw new VeniceException("SSLConfig should be present when Kafka SSL is enabled");
       }
