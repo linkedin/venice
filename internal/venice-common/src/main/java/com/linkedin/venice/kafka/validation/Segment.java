@@ -55,11 +55,11 @@ public class Segment {
   // Immutable state
   private final int partition;
   private final int segmentNumber;
-  private final CheckSum checkSum;
   private final Map<CharSequence, CharSequence> debugInfo;
   private final Map<CharSequence, Long> aggregates;
 
   // Mutable state
+  private final CheckSum checkSum;
   private int sequenceNumber;
   private boolean registered;
   private boolean started;
@@ -121,23 +121,27 @@ public class Segment {
   }
 
   public Segment(Segment segment) {
-    this.partition = segment.partition;
-    this.segmentNumber = segment.segmentNumber;
-    this.checkSum = CheckSum.getInstance(segment.getCheckSumType(), segment.getCheckSumState());
-    this.sequenceNumber = segment.sequenceNumber;
+    synchronized (segment) {
+      this.partition = segment.partition;
+      this.segmentNumber = segment.segmentNumber;
+      this.checkSum = CheckSum.getInstance(segment.getCheckSumType(), segment.getCheckSumState());
+      this.sequenceNumber = segment.getSequenceNumber();
 
-    this.started = segment.started;
-    this.ended = segment.ended;
-    this.finalSegment = segment.finalSegment;
-    this.newSegment = false;
-    /**
-     * N.B. No need to call {@link #getDedupedDebugInfo(Map)} here since we assume the other {@link Segment} instance we
-     * are copying from was already deduped, having come from one of the other constructors.
-     */
-    this.debugInfo = segment.debugInfo;
-    this.aggregates = segment.aggregates;
-    this.registered = segment.registered;
-    this.lastRecordProducerTimestamp = segment.lastRecordProducerTimestamp;
+      this.started = segment.isStarted();
+      this.ended = segment.isEnded();
+      this.finalSegment = segment.isFinalSegment();
+      this.newSegment = false;
+      /**
+       * N.B. No need to call {@link #getDedupedDebugInfo(Map)} here since we assume the other {@link Segment} instance we
+       * are copying from was already deduped, having come from one of the other constructors.
+       */
+      this.debugInfo = segment.debugInfo;
+      this.aggregates = segment.aggregates;
+      this.registered = segment.isRegistered();
+      this.lastRecordProducerTimestamp = segment.getLastRecordProducerTimestamp();
+      this.lastSuccessfulOffset = segment.getLastSuccessfulOffset();
+      this.lastRecordTimestamp = segment.getLastRecordTimestamp();
+    }
   }
 
   public int getSegmentNumber() {
@@ -148,8 +152,7 @@ public class Segment {
     return this.partition;
   }
 
-  /** N.B. This function is not threadsafe. Locking must be handled by the caller. */
-  public int getAndIncrementSequenceNumber() {
+  public synchronized int getAndIncrementSequenceNumber() {
     return this.sequenceNumber++;
   }
 
@@ -157,11 +160,11 @@ public class Segment {
    * This function should only be used for hybrid store after receiving 'EOP' when skipping a message in the sequence.
    * @param sequenceNum
    */
-  public void setSequenceNumber(int sequenceNum) {
+  public synchronized void setSequenceNumber(int sequenceNum) {
     this.sequenceNumber = sequenceNum;
   }
 
-  public int getSequenceNumber() {
+  public synchronized int getSequenceNumber() {
     return this.sequenceNumber;
   }
 
@@ -190,60 +193,64 @@ public class Segment {
     return this.checkSum == null ? CheckSumType.NONE : this.checkSum.getType();
   }
 
-  public boolean isStarted() {
+  public synchronized boolean isStarted() {
     return this.started;
   }
 
-  public boolean isEnded() {
+  public synchronized boolean isEnded() {
     return this.ended;
   }
 
-  public boolean isRegistered() {
+  public synchronized boolean isFinalSegment() {
+    return this.finalSegment;
+  }
+
+  public synchronized boolean isRegistered() {
     return this.registered;
   }
 
-  public long getLastSuccessfulOffset() {
+  public synchronized long getLastSuccessfulOffset() {
     return lastSuccessfulOffset;
   }
 
-  public void setLastSuccessfulOffset(long lastSuccessfulOffset) {
+  public synchronized void setLastSuccessfulOffset(long lastSuccessfulOffset) {
     this.lastSuccessfulOffset = lastSuccessfulOffset;
   }
 
-  public long getLastRecordTimestamp() {
+  public synchronized long getLastRecordTimestamp() {
     return lastRecordTimestamp;
   }
 
-  public void setLastRecordTimestamp(long lastRecordTimestamp) {
+  public synchronized void setLastRecordTimestamp(long lastRecordTimestamp) {
     this.lastRecordTimestamp = lastRecordTimestamp;
   }
 
-  public long getLastRecordProducerTimestamp() {
+  public synchronized long getLastRecordProducerTimestamp() {
     return lastRecordProducerTimestamp;
   }
 
-  public void setLastRecordProducerTimestamp(long lastRecordProducerTimestamp) {
+  public synchronized void setLastRecordProducerTimestamp(long lastRecordProducerTimestamp) {
     this.lastRecordProducerTimestamp = lastRecordProducerTimestamp;
   }
 
-  public void start() {
+  public synchronized void start() {
     this.started = true;
   }
 
-  public void end(boolean finalSegment) {
+  public synchronized void end(boolean finalSegment) {
     this.ended = true;
     this.finalSegment = finalSegment;
   }
 
-  public void registeredSegment() {
+  public synchronized void registeredSegment() {
     this.registered = true;
   }
 
-  public boolean isNewSegment() {
+  public synchronized boolean isNewSegment() {
     return this.newSegment;
   }
 
-  public void setNewSegment(boolean newSegment) {
+  public synchronized void setNewSegment(boolean newSegment) {
     this.newSegment = newSegment;
   }
 
@@ -325,11 +332,11 @@ public class Segment {
    *
    * @param content to add into the running checksum
    */
-  private void updateCheckSum(byte[] content) {
+  private synchronized void updateCheckSum(byte[] content) {
     updateCheckSum(content, 0, content.length);
   }
 
-  private void updateCheckSum(byte[] content, int startIndex, int length) {
+  private synchronized void updateCheckSum(byte[] content, int startIndex, int length) {
     if (checkSum != null) {
       checkSum.update(content, startIndex, length);
     }
@@ -341,7 +348,7 @@ public class Segment {
    *
    * @param content to add into the running checksum
    */
-  private void updateCheckSum(int content) {
+  private synchronized void updateCheckSum(int content) {
     if (checkSum != null) {
       checkSum.update(content);
     }
@@ -374,12 +381,12 @@ public class Segment {
   }
 
   @Override
-  public String toString() {
+  public synchronized String toString() {
     return "Segment(partition: " + partition + ", segment: " + segmentNumber + ", sequence: " + sequenceNumber
         + ", started: " + started + ", ended: " + ended + ", checksum: " + checkSum + ")";
   }
 
-  public SegmentStatus getStatus() {
+  public synchronized SegmentStatus getStatus() {
     if (!started) {
       return SegmentStatus.NOT_STARTED;
     } else if (ended) {
@@ -410,7 +417,7 @@ public class Segment {
     return deduped;
   }
 
-  public ProducerPartitionState toProducerPartitionState() {
+  public synchronized ProducerPartitionState toProducerPartitionState() {
     ProducerPartitionState pps = new ProducerPartitionState();
     pps.segmentNumber = segmentNumber;
     pps.segmentStatus = getStatus().getValue();
@@ -424,8 +431,7 @@ public class Segment {
     return pps;
   }
 
-  // Only for testing.
-  public void setStarted(boolean started) {
+  public synchronized void setStarted(boolean started) {
     this.started = started;
   }
 }
