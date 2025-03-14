@@ -10,7 +10,7 @@ import java.util.Map;
 
 
 public class AdaptiveThrottlingServiceStats extends AbstractVeniceStats {
-  private static final String ADAPTIVE_THROTTLING_SERVICE_SUFFIX = "-AdaptiveThrottlingService";
+  private static final String ADAPTIVE_THROTTLING_SERVICE_SUFFIX = "AdaptiveThrottlingService";
   private final Map<String, Sensor> sensors = new HashMap<>();
 
   public AdaptiveThrottlingServiceStats(MetricsRepository metricsRepository) {
