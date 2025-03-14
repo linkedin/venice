@@ -480,7 +480,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doCallRealMethod().when(mockIngestionTask)
         .delegateConsumerRecord(any(), anyInt(), any(), anyInt(), anyLong(), anyLong());
     KafkaDataIntegrityValidator consumerDiv = mock(KafkaDataIntegrityValidator.class);
-    doReturn(consumerDiv).when(mockIngestionTask).getKafkaDataIntegrityValidatorForLeaders();
+    doReturn(consumerDiv).when(mockIngestionTask).getConsumerDiv();
     doReturn(true).when(mockIngestionTask).isGlobalRtDivEnabled();
 
     mockIngestionTask.delegateConsumerRecord(cm, 0, "testURL", 0, 0, 0);
