@@ -50,10 +50,6 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
           false,
           EventThrottler.BLOCK_STRATEGY);
       eventThrottlers.add(eventThrottler);
-      long aa = eventThrottler.getMaxRatePerSecond();
-      if (aa == 0l) {
-        aa = 1l;
-      }
     }
   }
 
@@ -87,10 +83,14 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
         if (currentIndex >= 1) {
           currentThrottlerIndex.set(Math.max(currentIndex - 2, 0));
         }
-        LOGGER.info(
-            "Found active limiter signal, adjusting throttler index to: {} with throttle rate: {}",
-            currentThrottlerIndex,
-            eventThrottlers.get(currentThrottlerIndex.get()).getMaxRatePerSecond());
+        long maxRate = eventThrottlers.get(currentThrottlerIndex.get()).getMaxRatePerSecond();
+        if (maxRate > 0) {
+          LOGGER.info(
+              "Found limiter signal for {}, adjusting throttler index to: {} with throttle rate: {}",
+              throttlerName,
+              currentThrottlerIndex,
+              maxRate);
+        }
       }
     }
     // If any limiter signal is true do not booster the throttler
@@ -105,10 +105,14 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
         if (currentThrottlerIndex.get() < throttlerNum - 1) {
           currentThrottlerIndex.incrementAndGet();
         }
-        LOGGER.info(
-            "Found active booster signal, adjusting throttler index to: {} with throttle rate: {}",
-            currentThrottlerIndex,
-            eventThrottlers.get(currentThrottlerIndex.get()).getMaxRatePerSecond());
+        long maxRate = eventThrottlers.get(currentThrottlerIndex.get()).getMaxRatePerSecond();
+        if (maxRate > 0) {
+          LOGGER.info(
+              "Found booster signal for {}, adjusting throttler index to: {} with throttle rate: {}",
+              throttlerName,
+              currentThrottlerIndex,
+              maxRate);
+        }
       }
     }
     if (isSignalIdle) {
