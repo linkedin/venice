@@ -100,7 +100,7 @@ public class DelegatingAvroStoreClient<K, V> extends InternalAvroStoreClient<K, 
   }
 
   @Override
-  public void compute(
+  protected void compute(
       ComputeRequestContext<K, V> requestContext,
       ComputeRequestWrapper computeRequestWrapper,
       Set<K> keys,
