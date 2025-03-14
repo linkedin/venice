@@ -258,10 +258,25 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /** Persists the last exception thrown by any asynchronous component that should terminate the entire ingestion task */
   private final AtomicReference<Exception> lastStoreIngestionException = new AtomicReference<>();
   /**
-   * Keeps track of producer states inside version topic that drainer threads have processed so far. Producers states in this validator will be
-   * flushed to the metadata partition of the storage engine regularly in {@link #syncOffset(String, PartitionConsumptionState)}
+   * Keeps track of producer states inside version topic that drainer threads have processed so far.
+   * Producers states in this validator will be flushed to the metadata partition of the storage engine regularly in
+   * {@link #syncOffset(String, PartitionConsumptionState)}
+   * NOTE: consumerDiv will be used in place of this when {@link #isGlobalRtDivEnabled()} is true.
    */
-  private final KafkaDataIntegrityValidator kafkaDataIntegrityValidator;
+  private final KafkaDataIntegrityValidator drainerDiv;
+  /**
+   * The consumer and drainer DIV must remain separate. Since the consumer is always ahead of the drainer, the consumer
+   * would be validating data ahead of the actual persisted data on the drainer.
+   *
+   * NOTE: Currently, the state clearing happens only in drainerDiv which persists its state to disk.
+   * consumerDiv is transient, not persisted to disk, and its state is not expected to grow as large. Thus,
+   * bouncing effectively clears it (which is not the case for drainerDiv). Later on, we could trigger state
+   * cleaning for this consumer DIV as well, if deemed necessary.
+   *
+   * NOTE: When {@link #isGlobalRtDivEnabled()} is enabled, this will be used by leaders to produce Global RT DIV state
+   * to local VT. This will also be used to send DIV snapshots to the drainer to persist the VT + RT DIV on-disk.
+   */
+  protected final KafkaDataIntegrityValidator consumerDiv;
   /** Map of broker URL to the total bytes consumed by ConsumptionTask since the last Global RT DIV sync */
   // TODO: clear it out when the sync is done
   protected final VeniceConcurrentHashMap<String, Long> consumedBytesSinceLastSync;
@@ -442,8 +457,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           Math.max(producerStateMaxAgeMs, version.getHybridStoreConfig().getRewindTimeInSeconds() * Time.MS_PER_SECOND);
     }
     // Could be accessed from multiple threads since there are multiple worker threads.
-    this.kafkaDataIntegrityValidator =
-        new KafkaDataIntegrityValidator(this.kafkaVersionTopic, DISABLED, producerStateMaxAgeMs);
+    this.drainerDiv = new KafkaDataIntegrityValidator(this.kafkaVersionTopic, DISABLED, producerStateMaxAgeMs);
+    // Could be accessed from multiple threads since there are multiple worker threads.
+    this.consumerDiv = new KafkaDataIntegrityValidator(kafkaVersionTopic);
     this.consumedBytesSinceLastSync = new VeniceConcurrentHashMap<>();
     this.ingestionTaskName = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
     this.topicManagerRepository = builder.getTopicManagerRepository();
@@ -1847,7 +1863,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void updateOffsetMetadataAndSyncOffset(PartitionConsumptionState pcs) {
-    updateOffsetMetadataAndSyncOffset(this.kafkaDataIntegrityValidator, pcs);
+    updateOffsetMetadataAndSyncOffset(this.drainerDiv, pcs);
   }
 
   protected void updateOffsetMetadataAndSyncOffset(KafkaDataIntegrityValidator div, PartitionConsumptionState pcs) {
@@ -2196,7 +2212,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // processConsumerActions.
       storageMetadataService.clearOffset(kafkaVersionTopic, partition);
       storageMetadataService.clearStoreVersionState(kafkaVersionTopic);
-      kafkaDataIntegrityValidator.clearPartition(partition);
+      drainerDiv.clearPartition(partition);
       throw e;
     }
   }
@@ -2241,7 +2257,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * However, given that DIV heartbeat is yet implemented, so keep drainer DIV the way as is today and let the
          * VERSION_TOPIC to contain both rt and vt messages.
          */
-        kafkaDataIntegrityValidator.setPartitionState(PartitionTracker.VERSION_TOPIC, partition, offsetRecord);
+        drainerDiv.setPartitionState(PartitionTracker.VERSION_TOPIC, partition, offsetRecord);
 
         long consumptionStatePrepTimeStart = System.currentTimeMillis();
         if (!checkDatabaseIntegrity(partition, topic, offsetRecord, newPartitionConsumptionState)) {
@@ -2313,7 +2329,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          */
         partitionConsumptionStateMap.remove(partition);
         storageUtilizationManager.removePartition(partition);
-        kafkaDataIntegrityValidator.clearPartition(partition);
+        drainerDiv.clearPartition(partition);
         // Reset the error partition tracking
         PartitionExceptionInfo partitionExceptionInfo = partitionIngestionExceptionList.get(partition);
         if (partitionExceptionInfo != null) {
@@ -2399,7 +2415,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           ingestionTaskName,
           topicPartition);
     }
-    kafkaDataIntegrityValidator.clearPartition(partition);
+    drainerDiv.clearPartition(partition);
     storageMetadataService.clearOffset(topicPartition.getPubSubTopic().getName(), partition);
   }
 
@@ -2716,7 +2732,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Syncing offset checking in syncOffset() should be the very last step for processing a record.
      *
      * Check whether offset metadata checkpoint will happen; if so, update the producer states recorded in OffsetRecord
-     * with the updated producer states maintained in {@link #kafkaDataIntegrityValidator}
+     * with the updated producer states maintained in {@link #drainerDiv}
      */
     if (shouldSyncOffset(partitionConsumptionState, record, leaderProducedRecordContext)) {
       updateOffsetMetadataAndSyncOffset(partitionConsumptionState);
@@ -3529,7 +3545,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          */
         validateMessage(
             PartitionTracker.VERSION_TOPIC,
-            this.kafkaDataIntegrityValidator,
+            this.drainerDiv,
             consumerRecord,
             endOfPushReceived,
             partitionConsumptionState,
@@ -3657,12 +3673,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * We should only allow {@link StoreIngestionTask} to access {@link #kafkaDataIntegrityValidator}; other components
+   * We should only allow {@link StoreIngestionTask} to access {@link #drainerDiv}; other components
    * like leaders in LeaderFollowerStoreIngestionTask should never access the DIV validator in drainer, because messages
    * consumption in leader is ahead of drainer, leaders and drainers are processing messages at different paces.
    */
   protected void cloneProducerStates(int partition, KafkaDataIntegrityValidator validator) {
-    this.kafkaDataIntegrityValidator.cloneProducerStates(partition, validator);
+    this.drainerDiv.cloneProducerStates(partition, validator);
   }
 
   /**
