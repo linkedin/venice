@@ -2859,7 +2859,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (versionNumber == VERSION_ID_UNSET) {
               // No version supplied, generate a new version. This could happen either in the parent
               // controller or local Samza jobs.
-              version = new VersionImpl(storeName, store.peekNextVersion().getNumber(), pushJobId, numberOfPartitions);
+              version = new VersionImpl(storeName, store.peekNextVersionNumber(), pushJobId, numberOfPartitions);
             } else {
               if (store.containsVersion(versionNumber)) {
                 throwVersionAlreadyExists(storeName, versionNumber);
@@ -3753,15 +3753,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public Map<String, String> getBackupVersionsForMultiColos(String clusterName, String storeName) {
     return Collections.EMPTY_MAP;
-  }
-
-  /**
-   * @return the next version without adding the new version to the store.
-   */
-  @Override
-  public Version peekNextVersion(String clusterName, String storeName) {
-    Store store = getStoreForReadOnly(clusterName, storeName);
-    return store.peekNextVersion(); /* Does not modify the store */
   }
 
   /**

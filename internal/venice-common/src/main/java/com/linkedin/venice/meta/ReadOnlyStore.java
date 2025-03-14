@@ -1429,8 +1429,8 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
-  public Version peekNextVersion() {
-    return this.delegate.peekNextVersion();
+  public int peekNextVersionNumber() {
+    return this.delegate.peekNextVersionNumber();
   }
 
   @Override
