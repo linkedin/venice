@@ -839,12 +839,14 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             Optional.empty(),
             -1,
-            1,
+            0,
             Optional.empty(),
             false,
             null,
             -1,
             0);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    doReturn(0).when(store).getLargestUsedRTVersionNumber();
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
         new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
       VeniceWriter veniceWriter = mock(VeniceWriter.class);
@@ -875,7 +877,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           Optional.empty(),
           -1,
-          1,
+          0,
           Optional.empty(),
           false,
           null,
@@ -1232,7 +1234,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           Version.PushType.BATCH,
           null,
           -1,
-          anyInt());
+          0);
       assertEquals(newVersion, version);
     }
   }
@@ -2770,7 +2772,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             Optional.empty(),
             -1,
-            1,
+            0,
             Optional.empty(),
             false,
             null,
@@ -2791,13 +2793,16 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             Optional.empty(),
             -1,
-            1,
+            0,
             Optional.empty(),
             false,
             null,
             -1,
             0);
     doReturn(new Exception("test")).when(internalAdmin).getLastExceptionForStore(clusterName, storeA);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeA);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeB);
+    doReturn(0).when(store).getLargestUsedRTVersionNumber();
     doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
         .when(veniceWriter)
         .put(any(), any(), anyInt());
