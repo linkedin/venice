@@ -84,6 +84,7 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
           currentThrottlerIndex.set(Math.max(currentIndex - 2, 0));
         }
         long maxRate = eventThrottlers.get(currentThrottlerIndex.get()).getMaxRatePerSecond();
+        // for uninitialized throttlers (rate = 0) do not print logs
         if (maxRate > 0) {
           LOGGER.info(
               "Found limiter signal for {}, adjusting throttler index to: {} with throttle rate: {}",
@@ -106,6 +107,7 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
           currentThrottlerIndex.incrementAndGet();
         }
         long maxRate = eventThrottlers.get(currentThrottlerIndex.get()).getMaxRatePerSecond();
+        // for uninitialized throttlers (rate = 0) do not print logs
         if (maxRate > 0) {
           LOGGER.info(
               "Found booster signal for {}, adjusting throttler index to: {} with throttle rate: {}",
