@@ -24,7 +24,6 @@ import java.util.Map;
 public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterface> extends MetricEntityState {
   private final EnumMap<E, Attributes> attributesEnumMap;
   private final Class<E> enumTypeClass;
-  private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
   /** should not be called directly, call {@link #create} instead */
   private MetricEntityStateOneEnum(
@@ -44,11 +43,16 @@ public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterfa
       List<MeasurableStat> tehutiMetricStats,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
       Class<E> enumTypeClass) {
-    super(metricEntity, otelRepository, registerTehutiSensorFn, tehutiMetricNameEnum, tehutiMetricStats);
+    super(
+        metricEntity,
+        otelRepository,
+        baseDimensionsMap,
+        registerTehutiSensorFn,
+        tehutiMetricNameEnum,
+        tehutiMetricStats);
     validateRequiredDimensions(metricEntity, null, baseDimensionsMap, enumTypeClass);
     this.enumTypeClass = enumTypeClass;
-    this.baseDimensionsMap = baseDimensionsMap;
-    this.attributesEnumMap = createAttributesEnumMap(metricEntity, otelRepository, baseDimensionsMap);
+    this.attributesEnumMap = createAttributesEnumMap();
   }
 
   /** Factory method with named parameters to ensure the passed in enumTypeClass are in the same order as E */
@@ -80,89 +84,36 @@ public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterfa
   }
 
   /**
-   * Creates an EnumMap of {@link Attributes} for each possible value of the dynamic dimension {@link #enumTypeClass}
+   * Creates an EnumMap of {@link Attributes} which will be used to lazy initialize the Attributes
    */
-  private EnumMap<E, Attributes> createAttributesEnumMap(
-      MetricEntity metricEntity,
-      VeniceOpenTelemetryMetricsRepository otelRepository,
-      Map<VeniceMetricsDimensions, String> baseDimensionsMap) {
+  private EnumMap<E, Attributes> createAttributesEnumMap() {
     if (!emitOpenTelemetryMetrics()) {
       return null;
     }
-    if (!preCreateAttributes() && !lazyInitializeAttributes()) {
-      // will be created on demand everytime
-      return null;
-    }
-    EnumMap<E, Attributes> attributesEnumMap = new EnumMap<>(enumTypeClass);
-    if (!preCreateAttributes()) {
-      // will be created on demand once and cached
-      return attributesEnumMap;
-    }
-    for (E enumValue: enumTypeClass.getEnumConstants()) {
-      attributesEnumMap.put(enumValue, otelRepository.createAttributes(metricEntity, baseDimensionsMap, enumValue));
-    }
-    return attributesEnumMap;
+    return new EnumMap<>(enumTypeClass);
   }
 
-  /**
-   * Validates whether the input dimensions passed is not null or whether it
-   * is of right class type.
-   */
-  private void validateInputDimensions(E key) {
-    if (key == null) {
-      throw new IllegalArgumentException(
-          "The key for otel dimension cannot be null for metric Entity: " + getMetricEntity().getMetricName());
-    }
-
-    if (!enumTypeClass.isInstance(key)) {
-      // defensive check: This can only happen if the instance is declared without the explicit types
-      // and passed in wrong args
-      throw new IllegalArgumentException(
-          "The key for otel dimension is not of the correct type: " + key.getClass() + " for metric Entity: "
-              + getMetricEntity().getMetricName());
-    }
-  }
-
-  private Attributes createAttributes(E key) {
-    validateInputDimensions(key);
-    return getOtelRepository().createAttributes(getMetricEntity(), baseDimensionsMap, key);
-  }
-
-  Attributes getAttributes(E key) {
+  Attributes getAttributes(E dimension) {
     if (!emitOpenTelemetryMetrics()) {
       return null;
     }
 
-    Attributes attributes;
-    if (preCreateAttributes()) {
-      // If preCreateAttributes is enabled, then the attributes should have been created during the constructor
-      attributes = attributesEnumMap.get(key);
-    } else if (lazyInitializeAttributes()) {
-      // If lazyInitializeAttributes is enabled, then the attributes should be created on demand for first time and
-      // cache it
-      attributes = attributesEnumMap.get(key);
-      if (attributes != null) {
-        return attributes; // Return from cache if found
-      }
-      attributes = attributesEnumMap.computeIfAbsent(key, this::createAttributes);
-    } else {
-      // create on demand everytime
-      attributes = createAttributes(key);
-    }
+    Attributes attributes = attributesEnumMap.computeIfAbsent(dimension, k -> {
+      validateInputDimension(k);
+      return createAttributes(k);
+    });
 
     if (attributes == null) {
-      // check for any specific errors
-      validateInputDimensions(key);
-      // throw a generic error if not
       throw new IllegalArgumentException(
-          "No dimensions found for key: " + key + " for metric Entity: " + getMetricEntity().getMetricName());
+          "No Attributes found for dimension: " + dimension + " for metric Entity: "
+              + getMetricEntity().getMetricName());
     }
     return attributes;
   }
 
-  public void record(long value, E key) {
+  public void record(long value, E dimension) {
     try {
-      super.record(value, getAttributes(key));
+      super.record(value, getAttributes(dimension));
     } catch (IllegalArgumentException e) {
       if (!REDUNDANT_LOG_FILTER.isRedundantLog(e.getMessage())) {
         LOGGER.error("Error recording metric: ", e);
@@ -170,9 +121,9 @@ public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterfa
     }
   }
 
-  public void record(double value, E key) {
+  public void record(double value, E dimension) {
     try {
-      super.record(value, getAttributes(key));
+      super.record(value, getAttributes(dimension));
     } catch (IllegalArgumentException e) {
       if (!REDUNDANT_LOG_FILTER.isRedundantLog(e.getMessage())) {
         LOGGER.error("Error recording metric: ", e);

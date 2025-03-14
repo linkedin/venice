@@ -37,16 +37,12 @@ public class VeniceOpenTelemetryAttributesPerfTest {
     boolean createAttributes = true;
     int numStores = 500;
     int iterations = 1000000000;
-    boolean preCreateAttributes = true;
-    boolean lazyInitializeAttributes = true;
 
     List<MetricEntityStateThreeEnums<HttpResponseStatusCode, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory>> metricList =
         new ArrayList<>();
     VeniceMetricsConfig mockMetricsConfig = Mockito.mock(VeniceMetricsConfig.class);
     when(mockMetricsConfig.emitOtelMetrics()).thenReturn(true);
     when(mockMetricsConfig.getMetricNamingFormat()).thenReturn(VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE);
-    when(mockMetricsConfig.preCreateAttributes()).thenReturn(preCreateAttributes);
-    when(mockMetricsConfig.lazyInitializeAttributes()).thenReturn(lazyInitializeAttributes);
     VeniceOpenTelemetryMetricsRepository otelRepository = new VeniceOpenTelemetryMetricsRepository(mockMetricsConfig);
     Map<VeniceMetricsDimensions, String> baseMetricDimensionsMap = new HashMap<>();
     baseMetricDimensionsMap.put(VeniceMetricsDimensions.VENICE_CLUSTER_NAME, "test_cluster");
@@ -116,8 +112,6 @@ public class VeniceOpenTelemetryAttributesPerfTest {
     System.out.println("Attribution creation enabled: " + createAttributes);
     System.out.println("Number of loops: " + formatNumber(iterations));
     System.out.println("Number of stores: " + numStores);
-    System.out.println("pre-creation: " + preCreateAttributes);
-    System.out.println("lazy init: " + lazyInitializeAttributes);
     System.out.println("Total time taken: " + (endTimeGettingAttributesDuringRuntime - startTimeInit) + " ms");
     System.out.println("Time taken to init: " + (endTimeInit - startTimeInit) + " ms");
     System.out.println("Time taken to run test: " + (endTimeGettingAttributesDuringRuntime - endTimeInit) + " ms");

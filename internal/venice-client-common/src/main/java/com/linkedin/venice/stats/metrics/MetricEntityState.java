@@ -39,32 +39,25 @@ public abstract class MetricEntityState {
   static final Logger LOGGER = LogManager.getLogger(MetricEntityState.class);
   private final boolean emitOpenTelemetryMetrics;
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
+  private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
   private final MetricEntity metricEntity;
 
   /** Otel metric */
   private Object otelMetric = null;
   /** Respective tehuti metric */
   private Sensor tehutiSensor = null;
-  private final boolean preCreateAttributes;
-  private final boolean lazyInitializeAttributes;
 
   public MetricEntityState(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap,
       TehutiSensorRegistrationFunction registerTehutiSensorFn,
       TehutiMetricNameEnum tehutiMetricNameEnum,
       List<MeasurableStat> tehutiMetricStats) {
     this.metricEntity = metricEntity;
-    if (otelRepository != null) {
-      this.emitOpenTelemetryMetrics = otelRepository.emitOpenTelemetryMetrics();
-      this.preCreateAttributes = otelRepository.preCreateAttributes();
-      this.lazyInitializeAttributes = otelRepository.lazyInitializeAttributes();
-    } else {
-      this.emitOpenTelemetryMetrics = false;
-      this.preCreateAttributes = false;
-      this.lazyInitializeAttributes = false;
-    }
+    this.emitOpenTelemetryMetrics = otelRepository != null && otelRepository.emitOpenTelemetryMetrics();
     this.otelRepository = otelRepository;
+    this.baseDimensionsMap = baseDimensionsMap;
     createMetric(tehutiMetricNameEnum, tehutiMetricStats, registerTehutiSensorFn);
   }
 
@@ -227,6 +220,23 @@ public abstract class MetricEntityState {
     }
   }
 
+  /**
+   * Validates whether the input dimensions passed is not null and throw IllegalArgumentException
+   */
+  void validateInputDimension(VeniceDimensionInterface dimension) {
+    if (dimension == null) {
+      throw new IllegalArgumentException(
+          "The input Otel dimension cannot be null for metric Entity: " + getMetricEntity().getMetricName());
+    }
+  }
+
+  /**
+   * Create the {@link Attributes} for the given dimensions and baseDimensionsMap
+   */
+  Attributes createAttributes(VeniceDimensionInterface... dimensions) {
+    return getOtelRepository().createAttributes(metricEntity, baseDimensionsMap, dimensions);
+  }
+
   final boolean emitOpenTelemetryMetrics() {
     return emitOpenTelemetryMetrics;
   }
@@ -237,14 +247,6 @@ public abstract class MetricEntityState {
 
   VeniceOpenTelemetryMetricsRepository getOtelRepository() {
     return otelRepository;
-  }
-
-  boolean preCreateAttributes() {
-    return preCreateAttributes;
-  }
-
-  boolean lazyInitializeAttributes() {
-    return lazyInitializeAttributes;
   }
 
   /** used only for testing */

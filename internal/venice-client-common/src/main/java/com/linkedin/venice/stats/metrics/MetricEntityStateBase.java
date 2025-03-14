@@ -34,7 +34,13 @@ public class MetricEntityStateBase extends MetricEntityState {
       List<MeasurableStat> tehutiMetricStats,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
       Attributes baseAttributes) {
-    super(metricEntity, otelRepository, registerTehutiSensorFn, tehutiMetricNameEnum, tehutiMetricStats);
+    super(
+        metricEntity,
+        otelRepository,
+        baseDimensionsMap,
+        registerTehutiSensorFn,
+        tehutiMetricNameEnum,
+        tehutiMetricStats);
     validateRequiredDimensions(metricEntity, baseAttributes, baseDimensionsMap);
     // directly using the Attributes as multiple MetricEntityState can reuse the same base attributes object.
     // If we want to fully abstract the Attribute creation inside these classes, we can create it here instead.

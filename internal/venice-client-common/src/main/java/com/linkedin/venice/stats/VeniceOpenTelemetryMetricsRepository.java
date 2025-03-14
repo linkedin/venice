@@ -49,8 +49,6 @@ public class VeniceOpenTelemetryMetricsRepository {
   private final VeniceMetricsConfig metricsConfig;
   private SdkMeterProvider sdkMeterProvider = null;
   private final boolean emitOpenTelemetryMetrics;
-  private final boolean preCreateAttributes;
-  private final boolean lazyInitializeAttributes;
   private final VeniceOpenTelemetryMetricNamingFormat metricFormat;
   private Meter meter;
   private String metricPrefix;
@@ -59,8 +57,6 @@ public class VeniceOpenTelemetryMetricsRepository {
     this.metricsConfig = metricsConfig;
     emitOpenTelemetryMetrics = metricsConfig.emitOtelMetrics();
     metricFormat = metricsConfig.getMetricNamingFormat();
-    preCreateAttributes = metricsConfig.preCreateAttributes();
-    lazyInitializeAttributes = metricsConfig.lazyInitializeAttributes();
     if (!emitOpenTelemetryMetrics) {
       LOGGER.info("OpenTelemetry metrics are disabled");
       return;
@@ -323,14 +319,6 @@ public class VeniceOpenTelemetryMetricsRepository {
 
   public boolean emitOpenTelemetryMetrics() {
     return emitOpenTelemetryMetrics;
-  }
-
-  public boolean preCreateAttributes() {
-    return preCreateAttributes;
-  }
-
-  public boolean lazyInitializeAttributes() {
-    return lazyInitializeAttributes;
   }
 
   public VeniceMetricsConfig getMetricsConfig() {

@@ -18,7 +18,6 @@ import static org.testng.Assert.fail;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
-import com.linkedin.venice.utils.DataProviderUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
 import java.util.EnumMap;
@@ -87,34 +86,14 @@ public class MetricEntityStateOneEnumTest {
     assertNull(metricEntityState.getAttributes(MetricEntityStateTest.DimensionEnum1.DIMENSION_TWO));
   }
 
-  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testConstructorWithOtelRepo(boolean preCreateAttributes, boolean lazyInitializeAttributes) {
-    when(mockOtelRepository.preCreateAttributes()).thenReturn(preCreateAttributes);
-    when(mockOtelRepository.lazyInitializeAttributes()).thenReturn(lazyInitializeAttributes);
+  @Test
+  public void testConstructorWithOtelRepo() {
     MetricEntityStateOneEnum<MetricEntityStateTest.DimensionEnum1> metricEntityState = MetricEntityStateOneEnum
         .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
     assertNotNull(metricEntityState);
     EnumMap<MetricEntityStateTest.DimensionEnum1, Attributes> attributesEnumMap =
         metricEntityState.getAttributesEnumMap();
-    if (!preCreateAttributes && !lazyInitializeAttributes) {
-      assertNull(attributesEnumMap);
-    } else if (!preCreateAttributes) {
-      assertEquals(attributesEnumMap.size(), 0);
-    } else {
-      // MetricEntityStateTest.DimensionEnum1 length
-      assertEquals(attributesEnumMap.size(), 2);
-      // loop through the enum constant and verify whether the attributes are created correctly
-      for (MetricEntityStateTest.DimensionEnum1 dimensionEnum1: MetricEntityStateTest.DimensionEnum1.values()) {
-        Attributes attributes = attributesEnumMap.get(dimensionEnum1);
-        assertNotNull(attributes);
-        assertEquals(attributes.size(), 2);
-        if (dimensionEnum1 == MetricEntityStateTest.DimensionEnum1.DIMENSION_ONE) {
-          assertEquals(attributes, attributesDimensionOne);
-        } else {
-          assertEquals(attributes, attributesDimensionTwo);
-        }
-      }
-    }
+    assertEquals(attributesEnumMap.size(), 0);
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*has no constants.*")
@@ -126,17 +105,15 @@ public class MetricEntityStateOneEnumTest {
         MetricEntityStateTest.EmptyDimensionEnum.class);
   }
 
-  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "The key for otel dimension cannot be null.*")
-  public void testGetAttributesWithNullKey() {
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "The input Otel dimension cannot be null.*")
+  public void testGetAttributesWithNullDimension() {
     MetricEntityStateOneEnum<MetricEntityStateTest.DimensionEnum1> metricEntityState = MetricEntityStateOneEnum
         .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
     metricEntityState.getAttributes(null);
   }
 
-  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "The key for otel dimension is not of the correct type.*")
-  public void testGetAttributesWithInvalidKeyType(boolean preCreateAttributes, boolean lazyInitializeAttributes) {
-    when(mockOtelRepository.preCreateAttributes()).thenReturn(preCreateAttributes);
-    when(mockOtelRepository.lazyInitializeAttributes()).thenReturn(lazyInitializeAttributes);
+  @Test(expectedExceptions = ClassCastException.class)
+  public void testGetAttributesWithInvalidDimensionType() {
     MetricEntityStateOneEnum metricEntityState = MetricEntityStateOneEnum
         .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
     metricEntityState.getAttributes(MULTI_GET_STREAMING);
@@ -151,10 +128,8 @@ public class MetricEntityStateOneEnumTest {
         .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
   }
 
-  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testGetAttributesWithValidKey(boolean preCreateAttributes, boolean lazyInitializeAttributes) {
-    when(mockOtelRepository.preCreateAttributes()).thenReturn(preCreateAttributes);
-    when(mockOtelRepository.lazyInitializeAttributes()).thenReturn(lazyInitializeAttributes);
+  @Test
+  public void testGetAttributesWithValidDimension() {
     MetricEntityStateOneEnum<MetricEntityStateTest.DimensionEnum1> metricEntityState = MetricEntityStateOneEnum
         .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
 
@@ -167,8 +142,6 @@ public class MetricEntityStateOneEnumTest {
 
     validateAttributesEnumMap(
         metricEntityState,
-        preCreateAttributes,
-        lazyInitializeAttributes,
         1,
         MetricEntityStateTest.DimensionEnum1.DIMENSION_ONE,
         attributesDimensionOne);
@@ -180,17 +153,13 @@ public class MetricEntityStateOneEnumTest {
 
     validateAttributesEnumMap(
         metricEntityState,
-        preCreateAttributes,
-        lazyInitializeAttributes,
         2,
         MetricEntityStateTest.DimensionEnum1.DIMENSION_TWO,
         attributesDimensionTwo);
   }
 
-  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testRecordWithValidKey(boolean preCreateAttributes, boolean lazyInitializeAttributes) {
-    when(mockOtelRepository.preCreateAttributes()).thenReturn(preCreateAttributes);
-    when(mockOtelRepository.lazyInitializeAttributes()).thenReturn(lazyInitializeAttributes);
+  @Test
+  public void testRecordWithValidDimension() {
     MetricEntityStateOneEnum<MetricEntityStateTest.DimensionEnum1> metricEntityState = MetricEntityStateOneEnum
         .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
 
@@ -198,8 +167,6 @@ public class MetricEntityStateOneEnumTest {
     metricEntityState.record(100L, MetricEntityStateTest.DimensionEnum1.DIMENSION_ONE);
     validateAttributesEnumMap(
         metricEntityState,
-        preCreateAttributes,
-        lazyInitializeAttributes,
         1,
         MetricEntityStateTest.DimensionEnum1.DIMENSION_ONE,
         attributesDimensionOne);
@@ -208,18 +175,14 @@ public class MetricEntityStateOneEnumTest {
     metricEntityState.record(100.5, MetricEntityStateTest.DimensionEnum1.DIMENSION_ONE);
     validateAttributesEnumMap(
         metricEntityState,
-        preCreateAttributes,
-        lazyInitializeAttributes,
         1,
         MetricEntityStateTest.DimensionEnum1.DIMENSION_ONE,
         attributesDimensionOne);
 
-    // record attempt 3: different key
+    // record attempt 3: different dimension
     metricEntityState.record(100.5, MetricEntityStateTest.DimensionEnum1.DIMENSION_TWO);
     validateAttributesEnumMap(
         metricEntityState,
-        preCreateAttributes,
-        lazyInitializeAttributes,
         2,
         MetricEntityStateTest.DimensionEnum1.DIMENSION_TWO,
         attributesDimensionTwo);
@@ -228,8 +191,6 @@ public class MetricEntityStateOneEnumTest {
     metricEntityState.record(100L, MetricEntityStateTest.DimensionEnum1.DIMENSION_TWO);
     validateAttributesEnumMap(
         metricEntityState,
-        preCreateAttributes,
-        lazyInitializeAttributes,
         2,
         MetricEntityStateTest.DimensionEnum1.DIMENSION_TWO,
         attributesDimensionTwo);
@@ -237,38 +198,28 @@ public class MetricEntityStateOneEnumTest {
 
   private void validateAttributesEnumMap(
       MetricEntityStateOneEnum metricEntityState,
-      boolean preCreateAttributes,
-      boolean lazyInitializeAttributes,
       int attributesEnumMapSize,
-      MetricEntityStateTest.DimensionEnum1 key,
+      MetricEntityStateTest.DimensionEnum1 dimension,
       Attributes attributes) {
-    if (!preCreateAttributes) {
-      EnumMap<MetricEntityStateTest.DimensionEnum1, Attributes> attributesEnumMap =
-          metricEntityState.getAttributesEnumMap();
-      if (lazyInitializeAttributes) {
-        // verify whether the attributes are cached
-        assertNotNull(attributesEnumMap);
-        assertEquals(metricEntityState.getAttributesEnumMap().size(), attributesEnumMapSize);
-        assertEquals(attributesEnumMap.get(key), attributes);
-      } else {
-        assertNull(metricEntityState.getAttributesEnumMap());
-      }
-    }
+    EnumMap<MetricEntityStateTest.DimensionEnum1, Attributes> attributesEnumMap =
+        metricEntityState.getAttributesEnumMap();
+    // verify whether the attributes are cached
+    assertNotNull(attributesEnumMap);
+    assertEquals(metricEntityState.getAttributesEnumMap().size(), attributesEnumMapSize);
+    assertEquals(attributesEnumMap.get(dimension), attributes);
   }
 
-  @Test()
-  public void testRecordWithNullKey() {
+  @Test
+  public void testRecordWithNullDimension() {
     MetricEntityStateOneEnum<MetricEntityStateTest.DimensionEnum1> metricEntityState = MetricEntityStateOneEnum
         .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
-    // Null key will cause IllegalArgumentException in getDimension, record should catch it.
+    // Null dimension will cause IllegalArgumentException in getDimension, record should catch it.
     metricEntityState.record(100L, (MetricEntityStateTest.DimensionEnum1) null);
     metricEntityState.record(100.5, (MetricEntityStateTest.DimensionEnum1) null);
   }
 
-  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testValidateRequiredDimensions(boolean preCreateAttributes, boolean lazyInitializeAttributes) {
-    when(mockOtelRepository.preCreateAttributes()).thenReturn(preCreateAttributes);
-    when(mockOtelRepository.lazyInitializeAttributes()).thenReturn(lazyInitializeAttributes);
+  @Test
+  public void testValidateRequiredDimensions() {
     Map<VeniceMetricsDimensions, String> baseDimensionsMap = new HashMap<>();
     // case 1: right values
     baseDimensionsMap.put(VENICE_REQUEST_METHOD, MULTI_GET_STREAMING.getDimensionValue());
