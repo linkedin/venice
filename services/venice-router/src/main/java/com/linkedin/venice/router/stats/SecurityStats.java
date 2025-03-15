@@ -9,33 +9,28 @@ import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Min;
-import java.util.function.IntSupplier;
 
 
 public class SecurityStats extends AbstractVeniceStats {
-  private final IntSupplier secureConnectionCountSupplier;
   private final Sensor sslErrorCount;
   private final Sensor sslSuccessCount;
-  private final Sensor sslLiveConnectionCount;
+  private final Sensor liveConnectionCount;
   private final Sensor nonSslConnectionCount;
 
-  public SecurityStats(MetricsRepository repository, String name, IntSupplier secureConnectionCountSupplier) {
+  public SecurityStats(MetricsRepository repository, String name) {
     super(repository, name);
-    this.secureConnectionCountSupplier = secureConnectionCountSupplier;
     this.sslErrorCount = registerSensor("ssl_error", new Count());
     this.sslSuccessCount = registerSensor("ssl_success", new Count());
-    this.sslLiveConnectionCount = registerSensor("ssl_connection_count", new Avg(), new Max(), new Min());
+    this.liveConnectionCount = registerSensor("connection_count", new Avg(), new Max(), new Min());
     this.nonSslConnectionCount = registerSensor("non_ssl_request_count", new Avg(), new Max());
   }
 
   public void recordSslError() {
     this.sslErrorCount.record();
-    recordLiveConnectionCount();
   }
 
   public void recordSslSuccess() {
     this.sslSuccessCount.record();
-    recordLiveConnectionCount();
   }
 
   /**
@@ -46,10 +41,10 @@ public class SecurityStats extends AbstractVeniceStats {
   }
 
   /**
-   * This function will be triggered in every ssl event.
+   * This function will be triggered in {@link com.linkedin.alpini.netty4.handlers.ConnectionControlHandler}.
    */
-  private void recordLiveConnectionCount() {
-    this.sslLiveConnectionCount.record(secureConnectionCountSupplier.getAsInt());
+  public void recordLiveConnectionCount(int connectionCount) {
+    this.liveConnectionCount.record(connectionCount);
   }
 
   public void registerSslHandshakeSensors(SslInitializer sslInitializer) {

@@ -26,7 +26,19 @@ public class ThreadPoolStats extends AbstractVeniceStats {
         new LambdaStat((ignored, ignored2) -> this.threadPoolExecutor.getActiveCount(), "active_thread_number"));
     maxThreadNumberSensor = registerSensor(
         new LambdaStat((ignored, ignored2) -> this.threadPoolExecutor.getMaximumPoolSize(), "max_thread_number"));
-    queuedTasksNumberSensor = registerSensor(
-        new LambdaStat((ignored, ignored2) -> this.threadPoolExecutor.getQueue().size(), "queued_task_number"));
+    registerSensor(
+        new LambdaStat((ignored, ignored2) -> this.threadPoolExecutor.getQueue().size(), "queued_task_number_gauge"));
+    /**
+     * If only registered as Gauge, the metric would show the queue size at the time of the metric collection, which is not
+     * very useful. It can provide a better view of the queue size if we record the average and max queue size within
+     * the metric reporting time window which is usually 1 minute.
+     * As a result, we need the users of the thread pool to explicitly call the record function to record the queue size
+     * during each new task submission.
+     */
+    queuedTasksNumberSensor = registerSensor("queued_task_number", avgAndMax());
+  }
+
+  public void recordQueuedTasksNumber(int queuedTasksNumber) {
+    queuedTasksNumberSensor.record(this.threadPoolExecutor.getQueue().size());
   }
 }

@@ -69,6 +69,8 @@ public class Router4<C extends Channel> implements Router.Builder, Router.Pipeli
       executor -> register(new ShutdownableNioEventLoopGroup(_ioWorkerPoolSize, executor));
   private Executor _executor;
   private IntSupplier _connectionLimit = () -> Integer.MAX_VALUE;
+  // Default is a no-op consumer
+  private Consumer<Integer> _connectionCountRecorder = (count) -> {};
   private RouterTimeoutProcessor _timeoutProcessor;
   private final Map<String, Object> _serverSocketOptions = new HashMap<>();
   private BooleanSupplier _shutdownFlag;
@@ -190,15 +192,24 @@ public class Router4<C extends Channel> implements Router.Builder, Router.Pipeli
     return this;
   }
 
+  /**
+   * Allow 0 limit to reject all connections as well as testing.
+   */
   @Override
   public Router.Builder connectionLimit(int connectionLimit) {
-    Preconditions.notLessThan(connectionLimit, 1, "connectionLimit");
+    Preconditions.notLessThan(connectionLimit, 0, "connectionLimit");
     return connectionLimit(() -> connectionLimit);
   }
 
   @Override
   public Router.Builder connectionLimit(@Nonnull IntSupplier connectionLimit) {
     _connectionLimit = Objects.requireNonNull(connectionLimit);
+    return this;
+  }
+
+  @Override
+  public Router.Builder connectionCountRecorder(@Nonnull Consumer<Integer> connectionCountConsumer) {
+    _connectionCountRecorder = connectionCountConsumer;
     return this;
   }
 
@@ -457,7 +468,7 @@ public class Router4<C extends Channel> implements Router.Builder, Router.Pipeli
     RouterTimeoutProcessor timeoutProcessor =
         Optional.ofNullable(_timeoutProcessor).orElseGet(() -> new TimerTimeoutProcessor(nettyTimer));
 
-    ConnectionLimitHandler connectionLimit = new ConnectionControlHandler(_connectionLimit);
+    ConnectionLimitHandler connectionLimit = new ConnectionControlHandler(_connectionLimit, _connectionCountRecorder);
 
     ActiveStreamsCountHandler activeStreamsCountHandler = new ActiveStreamsCountHandler();
 
