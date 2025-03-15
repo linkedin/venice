@@ -85,7 +85,7 @@ public class AdminOperationSerializerTest {
     assertEquals(deserializedOperationPayloadUnion.maxNearlineRecordSizeBytes, -1);
     assertFalse(deserializedOperationPayloadUnion.unusedSchemaDeletionEnabled);
     assertFalse(deserializedOperationPayloadUnion.blobTransferEnabled);
-    assertFalse(deserializedOperationPayloadUnion.nearlineProducerCompressionEnabled);
+    assertTrue(deserializedOperationPayloadUnion.nearlineProducerCompressionEnabled);
     assertEquals(deserializedOperationPayloadUnion.nearlineProducerCountPerWriter, 1);
     assertNull(deserializedOperationPayloadUnion.targetSwapRegion);
     assertEquals(deserializedOperationPayloadUnion.targetSwapRegionWaitTime, 60);
