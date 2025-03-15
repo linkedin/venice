@@ -37,7 +37,9 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -71,9 +73,20 @@ public class PartitionTracker {
   private final Logger logger;
   private final String topicName;
   private final int partition;
+  // TODO: clear vtSegments
+  /**
+   * There should only be one {@link ConsumptionTask} for VT, so there shouldn't need to be any locking.
+   */
   private final VeniceConcurrentHashMap<GUID, Segment> vtSegments = new VeniceConcurrentHashMap<>();
+  /**
+   * The equivalent for RT is not stored. It's the instantaneous offset when a DIV sync is triggered.
+   */
+  private final AtomicLong latestConsumedVtOffset = new AtomicLong(0L);
 
-  // rtSegments is a map of source Kafka URL to a map of GUID to Segment.
+  /**
+   * rtSegments is a map of source broker URL to a map of GUID to Segment.
+   * There should only be one {@link ConsumptionTask} for each broker URL, so there shouldn't need to be any locking.
+   */
   private final VeniceConcurrentHashMap<String, VeniceConcurrentHashMap<GUID, Segment>> rtSegments =
       new VeniceConcurrentHashMap<>();
 
@@ -85,6 +98,14 @@ public class PartitionTracker {
 
   public int getPartition() {
     return partition;
+  }
+
+  public long getLatestConsumedVtOffset() {
+    return latestConsumedVtOffset.get();
+  }
+
+  public void updateLatestConsumedVtOffset(long offset) {
+    latestConsumedVtOffset.updateAndGet(current -> Math.max(current, offset));
   }
 
   public final String toString() {
@@ -137,6 +158,15 @@ public class PartitionTracker {
     }
   }
 
+  public Map<CharSequence, ProducerPartitionState> getPartitionStates(TopicType type) {
+    return getSegments(type).entrySet()
+        .stream()
+        .collect(
+            Collectors.toMap(
+                entry -> GuidUtils.getCharSequenceFromGuid(entry.getKey()),
+                entry -> entry.getValue().toProducerPartitionState()));
+  }
+
   private void setSegment(TopicType type, GUID guid, Segment segment) {
     Segment previousSegment = getSegments(type).put(guid, segment);
     if (previousSegment == null) {
@@ -150,13 +180,18 @@ public class PartitionTracker {
     }
   }
 
-  // Clone both vtSegment and rtSegment to the destination PartitionTracker.
-  public void cloneProducerStates(PartitionTracker destProducerTracker) {
+  /**
+   * Clone both vtSegment and rtSegment to the destination PartitionTracker. May be called concurrently.
+   */
+  public void cloneProducerStates(PartitionTracker destProducerTracker, String brokerUrl) {
     for (Map.Entry<GUID, Segment> entry: vtSegments.entrySet()) {
       destProducerTracker.setSegment(PartitionTracker.VERSION_TOPIC, entry.getKey(), new Segment(entry.getValue()));
     }
 
     for (Map.Entry<String, VeniceConcurrentHashMap<GUID, Segment>> entry: rtSegments.entrySet()) {
+      if (brokerUrl != null && !brokerUrl.equals(entry.getKey())) {
+        continue; // filter by brokerUrl if specified
+      }
       for (Map.Entry<GUID, Segment> rtEntry: entry.getValue().entrySet()) {
         destProducerTracker.setSegment(
             TopicType.of(TopicType.REALTIME_TOPIC_TYPE, entry.getKey()),

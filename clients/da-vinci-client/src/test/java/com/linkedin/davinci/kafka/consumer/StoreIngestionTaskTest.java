@@ -209,6 +209,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import com.linkedin.venice.writer.LeaderCompleteState;
@@ -5584,7 +5585,40 @@ public abstract class StoreIngestionTaskTest {
     DefaultPubSubMessage rtRecord =
         new ImmutablePubSubMessage(key, value, rtPartition, ApacheKafkaOffsetPosition.of(0), 0, 0);
     assertFalse(ingestionTask.shouldProcessRecord(rtRecord), "RT DIV from RT should not be processed");
+  }
 
+  /**
+   * Tests that the {@link StoreIngestionTask#isGlobalRtDivEnabled} feature flag stops the drainer from syncing
+   * OffsetRecord from {@link StoreIngestionTask#updateOffsetMetadataAndSyncOffset}, and the {@link ConsumptionTask}
+   * should send Global RT DIV in {@link LeaderFollowerStoreIngestionTask#sendGlobalRtDivMessage} instead.
+   */
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testShouldSendGlobalRtDiv(boolean isGlobalRtDivEnabled) {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    doCallRealMethod().when(storeIngestionTask).shouldSyncOffset(any(), any(), any());
+    doCallRealMethod().when(storeIngestionTask).shouldSendGlobalRtDiv(any(), any(), any());
+    doReturn(isGlobalRtDivEnabled).when(storeIngestionTask).isGlobalRtDivEnabled();
+    doReturn(1L).when(storeIngestionTask).getSyncBytesInterval(any()); // just needs to be greater than 0
+    DefaultPubSubMessage message = mock(DefaultPubSubMessage.class);
+    KafkaKey key = mock(KafkaKey.class);
+    doReturn(false).when(key).isControlMessage();
+    doReturn(key).when(message).getKey();
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(100L).when(pcs).getProcessedRecordSizeSinceLastSync(); // just needs to be greater than syncBytesInterval
+    VeniceConcurrentHashMap<String, Long> lastProcessedMap = new VeniceConcurrentHashMap<>();
+    String brokerUrl = "localhost:1234";
+    lastProcessedMap.put(brokerUrl, 100L); // just needs to be greater than syncBytesInterval
+    doReturn(lastProcessedMap).when(storeIngestionTask).getConsumedBytesSinceLastSync();
+
+    boolean shouldSendGlobalRtDiv = storeIngestionTask.shouldSendGlobalRtDiv(message, pcs, brokerUrl);
+    boolean shouldSyncOffset = storeIngestionTask.shouldSyncOffset(pcs, message, null);
+
+    // Feature flag should stop drainer from syncing OffsetRecord, and ConsumptionTask should send Global RT DIV
+    if (isGlobalRtDivEnabled) {
+      assertTrue(shouldSendGlobalRtDiv && !shouldSyncOffset);
+    } else {
+      assertTrue(shouldSyncOffset && !shouldSendGlobalRtDiv);
+    }
   }
 
   @Test

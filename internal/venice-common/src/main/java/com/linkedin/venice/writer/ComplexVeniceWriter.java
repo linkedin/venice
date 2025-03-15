@@ -239,7 +239,8 @@ public class ComplexVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
         APP_DEFAULT_LOGICAL_TS,
         putMetadata,
         null,
-        null);
+        null,
+        true);
   }
 
   public String getViewName() {
