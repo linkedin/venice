@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -250,6 +251,30 @@ public class UtilsTest {
     assertEquals(Utils.resolveKafkaUrlForSepTopic(""), "");
     assertEquals(Utils.resolveKafkaUrlForSepTopic(originalKafkaUrlForSep), originalKafkaUrl);
     assertEquals(Utils.resolveKafkaUrlForSepTopic(originalKafkaUrl), originalKafkaUrl);
+  }
+
+  @Test
+  void testGetRealTimeTopicNames() {
+    Store mockStore = mock(Store.class);
+    List<Version> mockVersions = new ArrayList<>();
+    mockVersions.add(mock(Version.class));
+    mockVersions.add(mock(Version.class));
+    mockVersions.add(mock(Version.class));
+    HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
+
+    when(mockStore.getName()).thenReturn("TestStore");
+    when(mockStore.getVersions()).thenReturn(mockVersions);
+    when(mockStore.getCurrentVersion()).thenReturn(1);
+    when(mockStore.getHybridStoreConfig()).thenReturn(mockHybridConfig);
+    when(mockVersions.get(0).getHybridStoreConfig()).thenReturn(mockHybridConfig);
+    when(mockVersions.get(1).getHybridStoreConfig()).thenReturn(mockHybridConfig);
+    when(mockVersions.get(2).getHybridStoreConfig()).thenReturn(mockHybridConfig);
+
+    when(mockHybridConfig.getRealTimeTopicName())
+        .thenReturn("RealTimeTopic_v1", "RealTimeTopic_v2", "RealTimeTopic_v3");
+
+    Set<String> result = Utils.getAllRealTimeTopicNames(mockStore);
+    assertEquals(result, new HashSet<>(Arrays.asList("RealTimeTopic_v1", "RealTimeTopic_v2", "RealTimeTopic_v3")));
   }
 
   @Test
