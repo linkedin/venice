@@ -45,6 +45,10 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    */
   private boolean skipFailedToAssembleRecords = true;
 
+  private Boolean isBlobTransferEnabled = false;
+  private Boolean isExperimentalClientEnabled = false;
+  private int maxBufferSize = 1000;
+
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
   }
@@ -239,6 +243,9 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setDatabaseSyncBytesInterval(config.getDatabaseSyncBytesInterval())
         .setShouldCompactMessages(config.shouldCompactMessages())
         .setIsBeforeImageView(config.isBeforeImageView())
+        .setIsBlobTransferEnabled(config.isBlobTransferEnabled())
+        .setIsExperimentalClientEnabled(config.isExperimentalClientEnabled())
+        .setMaxBufferSize(config.getMaxBufferSize())
         .setShouldSkipFailedToAssembleRecords(config.shouldSkipFailedToAssembleRecords());
     return newConfig;
   }
@@ -249,6 +256,48 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
 
   public ChangelogClientConfig setIsBeforeImageView(Boolean beforeImageView) {
     isBeforeImageView = beforeImageView;
+    return this;
+  }
+
+  protected Boolean isExperimentalClientEnabled() {
+    return isExperimentalClientEnabled;
+  }
+
+  /**
+   * This uses a highly experimental client.
+   * It is currently only supported for {@link BootstrappingVeniceChangelogConsumer}.
+   */
+  public ChangelogClientConfig setIsExperimentalClientEnabled(Boolean experimentalClientEnabled) {
+    isExperimentalClientEnabled = experimentalClientEnabled;
+    return this;
+  }
+
+  protected Boolean isBlobTransferEnabled() {
+    return isBlobTransferEnabled;
+  }
+
+  /**
+   * This is used by the experimental client to speed up bootstrapping times through blob transfer.
+   * In order for this feature to be used, {@link #setIsExperimentalClientEnabled(Boolean)} must be set to true.
+   * It is currently only supported for {@link BootstrappingVeniceChangelogConsumer}.
+   */
+  public ChangelogClientConfig setIsBlobTransferEnabled(Boolean blobTransferEnabled) {
+    isBlobTransferEnabled = blobTransferEnabled;
+    return this;
+  }
+
+  protected int getMaxBufferSize() {
+    return maxBufferSize;
+  }
+
+  /**
+   * This is used by the experimental client to determine the max buffer size that's returned to the user when
+   * calling poll. When the max size is reached, ingestion will be paused, until the buffer is drained.
+   * In order for this feature to be used, {@link #setIsExperimentalClientEnabled(Boolean)} must be set to true.
+   * It is currently only supported for {@link BootstrappingVeniceChangelogConsumer}.
+   */
+  public ChangelogClientConfig setMaxBufferSize(int maxBufferSize) {
+    this.maxBufferSize = maxBufferSize;
     return this;
   }
 }

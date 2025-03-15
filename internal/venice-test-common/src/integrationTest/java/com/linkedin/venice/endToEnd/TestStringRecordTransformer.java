@@ -25,7 +25,7 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
   }
 
   @Override
-  public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<String> value) {
+  public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<String> value, int partitionId) {
     String valueStr = convertUtf8ToString(value.get());
     String transformedValue = valueStr + "Transformed";
     transformInvocationCount++;
@@ -33,13 +33,13 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
   }
 
   @Override
-  public void processPut(Lazy<Integer> key, Lazy<String> value) {
+  public void processPut(Lazy<Integer> key, Lazy<String> value, int partitionId) {
     String valueStr = convertUtf8ToString(value.get());
     put(key.get(), valueStr);
   }
 
   @Override
-  public void processDelete(Lazy<Integer> key) {
+  public void processDelete(Lazy<Integer> key, int partitionId) {
     delete(key.get());
   };
 

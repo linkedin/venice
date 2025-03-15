@@ -20,7 +20,7 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
   }
 
   @Override
-  public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<String> value) {
+  public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<String> value, int partitionId) {
     Object valueObj = value.get();
     String valueStr;
 
@@ -36,7 +36,7 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
   }
 
   @Override
-  public void processPut(Lazy<Integer> key, Lazy<String> value) {
+  public void processPut(Lazy<Integer> key, Lazy<String> value, int partitionId) {
     return;
   }
 
