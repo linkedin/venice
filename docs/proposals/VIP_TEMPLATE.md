@@ -1,9 +1,8 @@
 ---
 layout: default
-title: VIP Template # Replace this with "VIP-{VIP_Number} {VIP_Title}"
+title: VIP Template # Replace with: VIP-{VIP_Number} {VIP_Title}
 parent: Proposals
-
-permalink: /docs/proposals/vip_template
+permalink: /docs/proposals/vip_template # Replace with: /docs/proposals/vip-{VIP_Number}
 ---
 
 # VIP-`$VIP_Number`: `$VIP_Title`
