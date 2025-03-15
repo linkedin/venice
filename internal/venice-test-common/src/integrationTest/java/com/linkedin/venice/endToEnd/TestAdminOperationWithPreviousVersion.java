@@ -201,7 +201,7 @@ public class TestAdminOperationWithPreviousVersion {
     store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertTrue(store.isEnableWrites());
     Assert.assertEquals(store.getVersions().size(), 1);
-    Assert.assertEquals(store.peekNextVersion().getNumber(), 2);
+    Assert.assertEquals(store.peekNextVersionNumber(), 2);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
