@@ -1136,8 +1136,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public void close() {
-    subscriptionLock.writeLock().lock();
     LOGGER.info("Closing Changelog Consumer with name: " + changelogClientConfig.getConsumerName());
+    subscriptionLock.writeLock().lock();
     try {
       this.unsubscribeAll();
       pubSubConsumer.close();
