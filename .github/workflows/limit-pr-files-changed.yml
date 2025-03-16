@@ -2,6 +2,8 @@ name: Enforce Max Lines Changed Per File
 
 on:
   pull_request:
+    branches:
+      - main
     paths:
       - '**/*.java'   # Monitor changes to Java files
       - '**/*.avsc'   # Monitor changes to Avro schema files
