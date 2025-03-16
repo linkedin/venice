@@ -62,8 +62,6 @@ public class PushJobSetting implements Serializable {
   public boolean extendedSchemaValidityCheckEnabled;
   /** Refer {@link VenicePushJobConstants#COMPRESSION_METRIC_COLLECTION_ENABLED} **/
   public boolean compressionMetricCollectionEnabled;
-  /** Refer {@link VenicePushJobConstants#USE_MAPPER_TO_BUILD_DICTIONARY} **/
-  public boolean useMapperToBuildDict;
   public boolean repushTTLEnabled;
   // specify time to drop stale records.
   public long repushTTLStartTimeMs;
