@@ -87,8 +87,8 @@ import com.linkedin.venice.meta.ServerAdminAction;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.metadata.payload.StorePropertiesPayloadRecord;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
-import com.linkedin.venice.metadata.response.StorePropertiesResponseRecord;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -3223,7 +3223,7 @@ public class AdminTool {
       getAndPrintRequestBasedStoreProperties(
           transportClient,
           () -> ControllerClientFactory.discoverAndConstructControllerClient(
-              AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE.getSystemStoreName(),
+              AvroProtocolDefinition.SERVER_STORE_PROPERTIES_PAYLOAD.getSystemStoreName(),
               url,
               sslFactory,
               1),
@@ -3479,23 +3479,23 @@ public class AdminTool {
           e);
     }
     Schema writerSchema;
-    if (writerSchemaId != AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE.getCurrentProtocolVersion()) {
+    if (writerSchemaId != AvroProtocolDefinition.SERVER_STORE_PROPERTIES_PAYLOAD.getCurrentProtocolVersion()) {
       SchemaResponse schemaResponse = controllerClientSupplier.get()
-          .getValueSchema(AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE.getSystemStoreName(), writerSchemaId);
+          .getValueSchema(AvroProtocolDefinition.SERVER_STORE_PROPERTIES_PAYLOAD.getSystemStoreName(), writerSchemaId);
       if (schemaResponse.isError()) {
         throw new VeniceException(
             "Failed to fetch store properties response schema from controller, error: " + schemaResponse.getError());
       }
       writerSchema = parseSchemaFromJSONLooseValidation(schemaResponse.getSchemaStr());
     } else {
-      writerSchema = StorePropertiesResponseRecord.SCHEMA$;
+      writerSchema = StorePropertiesPayloadRecord.SCHEMA$;
     }
-    RecordDeserializer<GenericRecord> storePropertiesResponseDeserializer =
+    RecordDeserializer<GenericRecord> storePropertiesPayloadDeserializer =
         FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema, writerSchema);
-    GenericRecord storePropertiesResponse = storePropertiesResponseDeserializer.deserialize(body);
+    GenericRecord storePropertiesPayload = storePropertiesPayloadDeserializer.deserialize(body);
     // Using the jsonWriter to print Avro objects directly does not handle the collection types (List and Map) well.
     // Use the Avro record's toString() instead and pretty print it.
-    Object printObject = ObjectMapperFactory.getInstance().readValue(storePropertiesResponse.toString(), Object.class);
+    Object printObject = ObjectMapperFactory.getInstance().readValue(storePropertiesPayload.toString(), Object.class);
     System.out.println(jsonWriter.writeValueAsString(printObject));
   }
 

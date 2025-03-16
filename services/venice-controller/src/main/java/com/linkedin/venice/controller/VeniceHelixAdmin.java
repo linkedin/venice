@@ -645,6 +645,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             AvroProtocolDefinition.SERVER_METADATA_RESPONSE,
             multiClusterConfigs,
             this));
+    initRoutines.add(
+        new SystemSchemaInitializationRoutine(
+            AvroProtocolDefinition.SERVER_STORE_PROPERTIES_PAYLOAD,
+            multiClusterConfigs,
+            this));
 
     if (multiClusterConfigs.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()) {
       // Add routine to create zk shared metadata system store
@@ -2854,7 +2859,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (versionNumber == VERSION_ID_UNSET) {
               // No version supplied, generate a new version. This could happen either in the parent
               // controller or local Samza jobs.
-              version = new VersionImpl(storeName, store.peekNextVersion().getNumber(), pushJobId, numberOfPartitions);
+              version = new VersionImpl(storeName, store.peekNextVersionNumber(), pushJobId, numberOfPartitions);
             } else {
               if (store.containsVersion(versionNumber)) {
                 throwVersionAlreadyExists(storeName, versionNumber);
@@ -3748,15 +3753,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public Map<String, String> getBackupVersionsForMultiColos(String clusterName, String storeName) {
     return Collections.EMPTY_MAP;
-  }
-
-  /**
-   * @return the next version without adding the new version to the store.
-   */
-  @Override
-  public Version peekNextVersion(String clusterName, String storeName) {
-    Store store = getStoreForReadOnly(clusterName, storeName);
-    return store.peekNextVersion(); /* Does not modify the store */
   }
 
   /**
@@ -6508,10 +6504,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return getOffLinePushStatus(clusterName, kafkaTopic, Optional.empty(), null, null);
   }
 
-  /**
-   * @see Admin#getOffLinePushStatus(String, String, Optional, String, String).
-   */
   @Override
+  public OfflinePushStatusInfo getOffLinePushStatus(
+      String clusterName,
+      String kafkaTopic,
+      Optional<String> incrementalPushVersion,
+      String region,
+      String targetedRegions,
+      boolean isTargetRegionPushWithDeferredSwap) {
+    return getOffLinePushStatus(clusterName, kafkaTopic, incrementalPushVersion, region, targetedRegions);
+  }
+
+  /**
+   * @see Admin#getOffLinePushStatus(String, String, Optional, String, String, boolean).
+   */
   public OfflinePushStatusInfo getOffLinePushStatus(
       String clusterName,
       String kafkaTopic,

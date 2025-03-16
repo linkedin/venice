@@ -410,15 +410,16 @@ public class VenicePushJob implements AutoCloseable {
 
     pushJobSettingToReturn.isTargetedRegionPushEnabled = props.getBoolean(TARGETED_REGION_PUSH_ENABLED, false);
     pushJobSettingToReturn.isSystemSchemaReaderEnabled = props.getBoolean(SYSTEM_SCHEMA_READER_ENABLED, false);
-    if (pushJobSettingToReturn.isIncrementalPush && pushJobSettingToReturn.isTargetedRegionPushEnabled) {
+    pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled =
+        props.getBoolean(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, false);
+    if (pushJobSettingToReturn.isIncrementalPush && (pushJobSettingToReturn.isTargetedRegionPushEnabled
+        || pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled)) {
       throw new VeniceException("Incremental push is not supported while using targeted region push mode");
     }
 
-    // If target region push with deferred version swap is enabled, enable deferVersionSwap and
-    // isTargetedRegionPushEnabled
-    if (props.getBoolean(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, false)) {
+    // If target region push with deferred version swap is enabled, enable deferVersionSwap
+    if (pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled) {
       pushJobSettingToReturn.deferVersionSwap = true;
-      pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled = true;
     }
 
     if (pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled
@@ -854,7 +855,8 @@ public class VenicePushJob implements AutoCloseable {
             controllerClient,
             pushJobSetting,
             pushJobSetting.targetedRegions,
-            pushJobSetting.isTargetedRegionPushEnabled);
+            pushJobSetting.isTargetedRegionPushEnabled,
+            false);
       }
 
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
@@ -873,7 +875,7 @@ public class VenicePushJob implements AutoCloseable {
       /**
        * Post validation + consumption
        */
-      Set<String> candidateRegions = getRegionsForPostValidationConsumption();
+      Set<String> candidateRegions = getNonTargetRegions();
       if (candidateRegions.isEmpty()) {
         LOGGER.info("No region that needs post-validation consumption identified. Finish the job now.");
         return;
@@ -934,10 +936,10 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   /**
-   * Get the set of regions that haven't been pushed yet after targeted region push.
-   * @return a set of regions that haven't been pushed yet.
+   * Get the set of non target regions for a target region push
+   * @return a set of regions that are the non target regions.
    */
-  private Set<String> getRegionsForPostValidationConsumption() {
+  private Set<String> getNonTargetRegions() {
     Set<String> targetedRegions = RegionUtils.parseRegionsFilterList(pushJobSetting.targetedRegions);
     Set<String> candidateRegions =
         new HashSet<>(pushJobSetting.storeResponse.getStore().getColoToCurrentVersions().keySet());
@@ -999,6 +1001,7 @@ public class VenicePushJob implements AutoCloseable {
           controllerClient,
           pushJobSetting,
           RegionUtils.composeRegionList(candidateRegions),
+          false,
           false);
     }
     pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
@@ -2152,6 +2155,15 @@ public class VenicePushJob implements AutoCloseable {
       }
     }
 
+    if (jobSetting.isTargetedRegionPushEnabled || jobSetting.isTargetRegionPushWithDeferredSwapEnabled) {
+      Set<String> nonTargetRegionsList = getNonTargetRegions();
+      if (nonTargetRegionsList.isEmpty()) {
+        throw new VeniceException(
+            "Target region list cannot contain all regions:" + pushJobSetting.targetedRegions
+                + ". Please remove one or more of the regions from the target region push list.");
+      }
+    }
+
     HybridStoreConfig hybridStoreConfig = storeResponse.getStore().getHybridStoreConfig();
     if (jobSetting.repushTTLEnabled) {
       if (hybridStoreConfig == null) {
@@ -2439,7 +2451,8 @@ public class VenicePushJob implements AutoCloseable {
       ControllerClient controllerClient,
       PushJobSetting pushJobSetting,
       String targetedRegions,
-      boolean isTargetedRegionPush) {
+      boolean isTargetedRegionPush,
+      boolean isTargetRegionPushWithDeferredSwap) {
     // Set of datacenters that have reported a completed status at least once.
     Set<String> completedDatacenters = new HashSet<>();
     // Datacenter-specific details. Stored in memory to avoid printing repetitive details.
@@ -2475,8 +2488,11 @@ public class VenicePushJob implements AutoCloseable {
       JobStatusQueryResponse response = ControllerClient.retryableRequest(
           controllerClient,
           pushJobSetting.controllerStatusPollRetries,
-          client -> client
-              .queryOverallJobStatus(topicToMonitor, Optional.ofNullable(incrementalPushVersion), targetedRegions));
+          client -> client.queryOverallJobStatus(
+              topicToMonitor,
+              Optional.ofNullable(incrementalPushVersion),
+              targetedRegions,
+              isTargetRegionPushWithDeferredSwap));
 
       if (response.isError()) {
         // status could not be queried which could be due to a communication error.

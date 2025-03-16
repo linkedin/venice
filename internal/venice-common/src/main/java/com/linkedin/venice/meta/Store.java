@@ -276,7 +276,7 @@ public interface Store {
 
   void updateVersionStatus(int versionNumber, VersionStatus status);
 
-  Version peekNextVersion();
+  int peekNextVersionNumber();
 
   /**
    * @param versionNumber for which to get the {@link Version}

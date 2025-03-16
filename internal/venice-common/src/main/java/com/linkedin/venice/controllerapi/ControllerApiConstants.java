@@ -241,6 +241,7 @@ public class ControllerApiConstants {
    * String representation of the list of regions that is separated by comma for targeted region push
    */
   public static final String TARGETED_REGIONS = "targeted_regions";
+  public static final String TARGET_REGION_PUSH_WITH_DEFERRED_SWAP = "target_region_push_with_deferred_swap";
 
   public static final String STORAGE_NODE_READ_QUOTA_ENABLED = "storage_node_read_quota_enabled";
 

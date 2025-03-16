@@ -20,6 +20,7 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
   private final int signalIdleThreshold;
   private int signalIdleCount = 0;
   private AtomicInteger currentThrottlerIndex = new AtomicInteger();
+  private final String throttlerName;
 
   public VeniceAdaptiveIngestionThrottler(
       int signalIdleThreshold,
@@ -28,6 +29,7 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
       long timeWindow,
       String throttlerName) {
     this.signalIdleThreshold = signalIdleThreshold;
+    this.throttlerName = throttlerName;
     DecimalFormat decimalFormat = new DecimalFormat("0.0");
     throttlerNum = factors.size();
     for (int i = 0; i < throttlerNum; i++) {
@@ -49,6 +51,10 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
           EventThrottler.BLOCK_STRATEGY);
       eventThrottlers.add(eventThrottler);
     }
+  }
+
+  public String getThrottlerName() {
+    return throttlerName;
   }
 
   @Override
@@ -77,10 +83,15 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
         if (currentIndex >= 1) {
           currentThrottlerIndex.set(Math.max(currentIndex - 2, 0));
         }
-        LOGGER.info(
-            "Found active limiter signal, adjusting throttler index to: {} with throttle rate: {}",
-            currentThrottlerIndex,
-            eventThrottlers.get(currentThrottlerIndex.get()).getMaxRatePerSecond());
+        long maxRate = eventThrottlers.get(currentThrottlerIndex.get()).getMaxRatePerSecond();
+        // for uninitialized throttlers (rate = 0) do not print logs
+        if (maxRate > 0) {
+          LOGGER.info(
+              "Found limiter signal for {}, adjusting throttler index to: {} with throttle rate: {}",
+              throttlerName,
+              currentThrottlerIndex,
+              maxRate);
+        }
       }
     }
     // If any limiter signal is true do not booster the throttler
@@ -95,10 +106,15 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
         if (currentThrottlerIndex.get() < throttlerNum - 1) {
           currentThrottlerIndex.incrementAndGet();
         }
-        LOGGER.info(
-            "Found active booster signal, adjusting throttler index to: {} with throttle rate: {}",
-            currentThrottlerIndex,
-            eventThrottlers.get(currentThrottlerIndex.get()).getMaxRatePerSecond());
+        long maxRate = eventThrottlers.get(currentThrottlerIndex.get()).getMaxRatePerSecond();
+        // for uninitialized throttlers (rate = 0) do not print logs
+        if (maxRate > 0) {
+          LOGGER.info(
+              "Found booster signal for {}, adjusting throttler index to: {} with throttle rate: {}",
+              throttlerName,
+              currentThrottlerIndex,
+              maxRate);
+        }
       }
     }
     if (isSignalIdle) {
