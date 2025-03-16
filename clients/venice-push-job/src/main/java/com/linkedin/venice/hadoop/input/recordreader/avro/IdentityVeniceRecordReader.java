@@ -38,6 +38,11 @@ public class IdentityVeniceRecordReader extends AbstractVeniceRecordReader<ByteB
   }
 
   @Override
+  public Long getRecordRMD(ByteBuffer inputKey, ByteBuffer inputValue) {
+    throw new VeniceUnsupportedOperationException("getRecordRMD in IdentityVeniceRecordReader");
+  }
+
+  @Override
   public byte[] getValueBytes(ByteBuffer keyBuffer, ByteBuffer valueBuffer) {
     return ByteUtils.extractByteArray(valueBuffer);
   }

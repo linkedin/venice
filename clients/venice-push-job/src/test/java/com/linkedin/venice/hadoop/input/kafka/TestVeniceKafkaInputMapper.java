@@ -41,6 +41,7 @@ import org.testng.annotations.Test;
 
 public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceKafkaInputMapper> {
   private static final AtomicReference<byte[]> EMPTY_BYTE_REF = new AtomicReference<>(new byte[0]);
+  private static final AtomicReference<Long> EMPTY_LONG_REF = new AtomicReference<>(-1L);
   private static final KafkaInputMapperKey EMPTY_KEY = new KafkaInputMapperKey();
   static {
     EMPTY_KEY.key = ByteBuffer.wrap("test_key".getBytes());
@@ -123,8 +124,13 @@ public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceK
     mapper.configureTask(any());
     int validCount = 0, filteredCount = 0;
     for (int i = 0; i < 5; i++) {
-      if (mapper
-          .process(EMPTY_KEY, generateKIFRecord(), EMPTY_BYTE_REF, EMPTY_BYTE_REF, mock(DataWriterTaskTracker.class))) {
+      if (mapper.process(
+          EMPTY_KEY,
+          generateKIFRecord(),
+          EMPTY_BYTE_REF,
+          EMPTY_BYTE_REF,
+          EMPTY_LONG_REF,
+          mock(DataWriterTaskTracker.class))) {
         validCount++;
       } else {
         filteredCount++;
@@ -145,7 +151,7 @@ public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceK
     // Trigger manually to set the dummy filterChain
     mapper.configureTask(any());
 
-    Assert.assertFalse(mapper.process(null, null, null, null, mock(DataWriterTaskTracker.class)));
+    Assert.assertFalse(mapper.process(null, null, null, null, null, mock(DataWriterTaskTracker.class)));
   }
 
   private KafkaInputMapperValue generateKIFRecord() {

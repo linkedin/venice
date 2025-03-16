@@ -94,6 +94,11 @@ public class VeniceVsonRecordReader extends AbstractVeniceRecordReader<BytesWrit
     return avroValueObject;
   }
 
+  @Override
+  public Long getRecordRMD(BytesWritable inputKey, BytesWritable inputValue) {
+    return -1L;
+  }
+
   public Map<String, String> getMetadataMap() {
     return metadataMap;
   }

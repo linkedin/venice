@@ -1,11 +1,13 @@
 package com.linkedin.venice.hadoop;
 
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_OPTIONAL_TIMESTAMP_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_KEY_SCHEMA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_VALUE_SCHEMA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.MINIMUM_NUMBER_OF_SAMPLES_REQUIRED_TO_BUILD_ZSTD_DICTIONARY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.OPTIONAL_TIMESTAMP_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PATH_FILTER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 
@@ -99,6 +101,7 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       pushJobSetting.vsonInputKeySchema = VsonSchema.parse(pushJobSetting.vsonInputKeySchemaString);
       pushJobSetting.vsonInputValueSchemaString = fileMetadata.get(FILE_VALUE_SCHEMA);
       pushJobSetting.vsonInputValueSchema = VsonSchema.parse(pushJobSetting.vsonInputValueSchemaString);
+      // TODO: We today don't support overriding the timestamp/RMD in VSON input format
     }
     // Check the first file type prior to check schema consistency to make sure a schema can be obtained from it.
     if (fileStatuses[0].isDirectory()) {
@@ -112,6 +115,8 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       LOGGER.info("Detected Avro input format.");
       pushJobSetting.keyField = props.getString(KEY_FIELD_PROP, DEFAULT_KEY_FIELD_PROP);
       pushJobSetting.valueField = props.getString(VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP);
+      pushJobSetting.timestampField =
+          props.getString(OPTIONAL_TIMESTAMP_FIELD_PROP, DEFAULT_OPTIONAL_TIMESTAMP_FIELD_PROP);
 
       Pair<Schema, Schema> fileAndOutputValueSchema;
       if (!pushJobSetting.useMapperToBuildDict) {
@@ -131,6 +136,7 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       // key / value fields are optional for Vson input
       pushJobSetting.keyField = props.getString(KEY_FIELD_PROP, "");
       pushJobSetting.valueField = props.getString(VALUE_FIELD_PROP, "");
+      pushJobSetting.timestampField = props.getString(OPTIONAL_TIMESTAMP_FIELD_PROP, "");
 
       Pair<VsonSchema, VsonSchema> vsonSchema;
       if (!pushJobSetting.useMapperToBuildDict) {
@@ -364,12 +370,14 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
   private VeniceAvroRecordReader getVeniceAvroRecordReader(FileSystem fs, Path path) {
     String keyField = props.getString(KEY_FIELD_PROP, DEFAULT_KEY_FIELD_PROP);
     String valueField = props.getString(VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP);
+    String timestampField = props.getString(OPTIONAL_TIMESTAMP_FIELD_PROP, DEFAULT_OPTIONAL_TIMESTAMP_FIELD_PROP);
     return new VeniceAvroRecordReader(
         HdfsAvroUtils.getFileSchema(fs, path),
         keyField,
         valueField,
         pushJobSetting.etlValueSchemaTransformation,
-        null);
+        null,
+        timestampField);
   }
 
   private VeniceRecordIterator getVeniceAvroFileIterator(FileSystem fs, Path path) {

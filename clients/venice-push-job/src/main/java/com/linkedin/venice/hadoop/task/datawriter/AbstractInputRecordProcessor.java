@@ -25,10 +25,10 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.util.TriConsumer;
 
 
 /**
@@ -54,25 +54,26 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
   private static final byte[] EMPTY_BYTES = new byte[0];
   private final AtomicReference<byte[]> processedKey = new AtomicReference<>();
   private final AtomicReference<byte[]> processedValue = new AtomicReference<>();
+  private final AtomicReference<Long> processedRMD = new AtomicReference<>();
   private boolean firstRecord = true;
 
   protected final void processRecord(
       INPUT_KEY inputKey,
       INPUT_VALUE inputValue,
-      BiConsumer<byte[], byte[]> recordEmitter,
+      TriConsumer<byte[], byte[], Long> recordEmitter,
       DataWriterTaskTracker dataWriterTaskTracker) {
     if (firstRecord) {
       maybeSprayAllPartitions(recordEmitter, dataWriterTaskTracker);
     }
     firstRecord = false;
-    if (process(inputKey, inputValue, processedKey, processedValue, dataWriterTaskTracker)) {
+    if (process(inputKey, inputValue, processedKey, processedValue, processedRMD, dataWriterTaskTracker)) {
       // key/value pair is valid.
-      recordEmitter.accept(processedKey.get(), processedValue.get());
+      recordEmitter.accept(processedKey.get(), processedValue.get(), processedRMD.get());
     }
   }
 
   private void maybeSprayAllPartitions(
-      BiConsumer<byte[], byte[]> recordEmitter,
+      TriConsumer<byte[], byte[], Long> recordEmitter,
       DataWriterTaskTracker dataWriterTaskTracker) {
     /** First map invocation, since the {@link recordKey} will be set after this. */
     if (getTaskId() == TASK_ID_NOT_SET) {
@@ -84,7 +85,7 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
     for (int i = 0; i < getPartitionCount(); i++) {
       byte[] recordValue = new byte[Integer.BYTES];
       ByteUtils.writeInt(recordValue, i, 0);
-      recordEmitter.accept(EMPTY_BYTES, recordValue);
+      recordEmitter.accept(EMPTY_BYTES, recordValue, -1L);
     }
     dataWriterTaskTracker.trackSprayAllPartitions();
     LOGGER.info(
@@ -100,10 +101,11 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
       INPUT_VALUE inputValue,
       AtomicReference<byte[]> keyRef,
       AtomicReference<byte[]> valueRef,
+      AtomicReference<Long> rmdRef,
       DataWriterTaskTracker dataWriterTaskTracker) {
     byte[] recordKey = veniceRecordReader.getKeyBytes(inputKey, inputValue);
     byte[] recordValue = veniceRecordReader.getValueBytes(inputKey, inputValue);
-
+    long recordRMD = veniceRecordReader.getRecordRMD(inputKey, inputValue);
     if (recordKey == null) {
       throw new VeniceException("Mapper received a empty key record");
     }
@@ -132,6 +134,7 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
     dataWriterTaskTracker.trackCompressedValueSize(finalRecordValue.length);
     keyRef.set(recordKey);
     valueRef.set(finalRecordValue);
+    rmdRef.set(recordRMD);
 
     if (compressionMetricCollectionEnabled) {
       // Compress based on all compression strategies to collect metrics

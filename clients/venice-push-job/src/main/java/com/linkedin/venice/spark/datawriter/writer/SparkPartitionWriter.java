@@ -1,7 +1,6 @@
 package com.linkedin.venice.spark.datawriter.writer;
 
-import static com.linkedin.venice.spark.SparkConstants.KEY_COLUMN_NAME;
-import static com.linkedin.venice.spark.SparkConstants.VALUE_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.*;
 
 import com.linkedin.venice.hadoop.task.datawriter.AbstractPartitionWriter;
 import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
@@ -33,25 +32,36 @@ public class SparkPartitionWriter extends AbstractPartitionWriter {
   void processRows(Iterator<Row> rows) {
     byte[] key = null;
     List<byte[]> valuesForKey = null;
+    List<Long> logicalTimestamps = null;
+    Long logicalTimestamp;
     while (rows.hasNext()) {
       Row row = rows.next();
       byte[] incomingKey = Objects.requireNonNull(row.getAs(KEY_COLUMN_NAME), "Key cannot be null");
 
+      logicalTimestamp = -1L;
+      try {
+        logicalTimestamp = row.getAs(TIMESTAMP_COLUMN_NAME);
+      } catch (IllegalArgumentException e) {
+        // Ignore if timestamp is not present
+      }
+
       if (!Arrays.equals(incomingKey, key)) {
         if (key != null) {
           // Key is different from the prev one and is not null. Write it out to PubSub.
-          super.processValuesForKey(key, valuesForKey.iterator(), dataWriterTaskTracker);
+          super.processValuesForKey(key, valuesForKey.iterator(), logicalTimestamps.iterator(), dataWriterTaskTracker);
         }
         key = incomingKey;
         valuesForKey = new ArrayList<>();
+        logicalTimestamps = new ArrayList<>();
       }
 
       byte[] incomingValue = row.getAs(VALUE_COLUMN_NAME);
       valuesForKey.add(incomingValue);
+      logicalTimestamps.add(logicalTimestamp);
     }
 
     if (key != null) {
-      super.processValuesForKey(key, valuesForKey.iterator(), dataWriterTaskTracker);
+      super.processValuesForKey(key, valuesForKey.iterator(), logicalTimestamps.iterator(), dataWriterTaskTracker);
     }
   }
 }

@@ -10,45 +10,7 @@ import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_LEAST_SIGNIFICANT_BIT
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_VIEW_CONFIGS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.BATCH_NUM_BYTES_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_STRATEGY;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DERIVED_SCHEMA_ID_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.ETL_VALUE_SCHEMA_TRANSFORMATION;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_KEY_SCHEMA;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_VALUE_SCHEMA;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SECURITY_PROTOCOL;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.MAP_REDUCE_PARTITIONER_CLASS_CONFIG;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.REDUCER_SPECULATIVE_EXECUTION_ENABLE;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_POLICY;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.SCHEMA_STRING_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_PREFIX;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.STORAGE_QUOTA_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_CLUSTER_D2_SERVICE_NAME;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_CLUSTER_D2_ZK_HOST;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.UPDATE_SCHEMA_STRING_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_DIR;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_ID_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.VSON_PUSH;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_COMPRESSION_LEVEL;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_DICTIONARY_CREATION_SUCCESS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.*;
 
 import com.github.luben.zstd.Zstd;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
@@ -265,6 +227,7 @@ public class DataWriterMRJob extends DataWriterComputeJob {
 
       jobConf.set(KEY_FIELD_PROP, pushJobSetting.keyField);
       jobConf.set(VALUE_FIELD_PROP, pushJobSetting.valueField);
+      jobConf.set(OPTIONAL_TIMESTAMP_FIELD_PROP, pushJobSetting.timestampField);
       if (pushJobSetting.etlValueSchemaTransformation != null) {
         jobConf.set(ETL_VALUE_SCHEMA_TRANSFORMATION, pushJobSetting.etlValueSchemaTransformation.name());
       }

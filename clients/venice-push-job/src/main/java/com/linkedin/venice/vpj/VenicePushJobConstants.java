@@ -24,8 +24,10 @@ public final class VenicePushJobConstants {
 
   public static final String KEY_FIELD_PROP = "key.field";
   public static final String VALUE_FIELD_PROP = "value.field";
+  public static final String OPTIONAL_TIMESTAMP_FIELD_PROP = "timestamp.field";
   public static final String DEFAULT_KEY_FIELD_PROP = "key";
   public static final String DEFAULT_VALUE_FIELD_PROP = "value";
+  public static final String DEFAULT_OPTIONAL_TIMESTAMP_FIELD_PROP = "timestamp";
   public static final boolean DEFAULT_SSL_ENABLED = false;
   public static final String SCHEMA_STRING_PROP = "schema";
   public static final String KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP = "kafka.source.key.schema";

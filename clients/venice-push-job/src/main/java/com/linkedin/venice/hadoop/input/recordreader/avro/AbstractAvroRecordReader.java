@@ -26,6 +26,7 @@ public abstract class AbstractAvroRecordReader<INPUT_KEY, INPUT_VALUE>
 
   private final int keyFieldPos;
   private final int valueFieldPos;
+  private int timestampFieldPos;
   private final Schema valueSchema;
 
   private final boolean generatePartialUpdateRecordFromInput;
@@ -42,11 +43,20 @@ public abstract class AbstractAvroRecordReader<INPUT_KEY, INPUT_VALUE>
       String keyFieldStr,
       String valueFieldStr,
       ETLValueSchemaTransformation etlValueSchemaTransformation,
-      Schema updateSchema) {
+      Schema updateSchema,
+      String timestampFieldStr) {
     this.dataSchema = dataSchema;
     Schema.Field keyField = getField(dataSchema, keyFieldStr);
     keyFieldPos = keyField.pos();
     Schema keySchema = keyField.schema();
+
+    // The timestamp field is optional
+    try {
+      Schema.Field timestampField = getField(dataSchema, timestampFieldStr);
+      timestampFieldPos = timestampField.pos();
+    } catch (VeniceSchemaFieldNotFoundException e) {
+      timestampFieldPos = -1;
+    }
 
     Schema outputSchema;
     if (!etlValueSchemaTransformation.equals(ETLValueSchemaTransformation.NONE)) {
@@ -127,6 +137,21 @@ public abstract class AbstractAvroRecordReader<INPUT_KEY, INPUT_VALUE>
     }
 
     return keyDatum;
+  }
+
+  @Override
+  public Long getRecordRMD(INPUT_KEY inputKey, INPUT_VALUE inputValue) {
+    if (timestampFieldPos == -1) {
+      return -1L;
+    }
+
+    Object rmdDatum = getRecordDatum(inputKey, inputValue).get(timestampFieldPos);
+    if (!(rmdDatum instanceof Long)) {
+      // This is also ok, this just means it's null or an object, and we haven't implemented the RMD version for this
+      return -1L;
+    }
+
+    return (Long) rmdDatum;
   }
 
   @Override
