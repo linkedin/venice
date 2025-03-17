@@ -143,8 +143,7 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
         inputFileDataSize.get(),
         fileStatuses.length,
         hasRecords(pushJobSetting.isAvro, fs, fileStatuses),
-        inputModificationTime,
-        true);
+        inputModificationTime);
   }
 
   private boolean hasRecords(boolean isAvroFile, FileSystem fs, FileStatus[] fileStatusList) {
