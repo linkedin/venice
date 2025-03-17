@@ -87,7 +87,7 @@ public class DaVinciRecordTransformerUtility<K, O> {
    * @return true if transformer logic has changed since the last time the class was loaded
    */
   public boolean hasTransformerLogicChanged(int currentClassHash, OffsetRecord offsetRecord) {
-    if (recordTransformerConfig.getSkipCompatibilityChecks()) {
+    if (recordTransformerConfig.shouldSkipCompatibilityChecks()) {
       LOGGER.info("Skip compatability checks have been enabled for DaVinciRecordTransformer");
       return false;
     }

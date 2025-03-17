@@ -71,7 +71,7 @@ public class DaVinciRecordTransformerConfig {
   /**
    * @return {@link #skipCompatibilityChecks}
    */
-  public boolean getSkipCompatibilityChecks() {
+  public boolean shouldSkipCompatibilityChecks() {
     return skipCompatibilityChecks;
   }
 

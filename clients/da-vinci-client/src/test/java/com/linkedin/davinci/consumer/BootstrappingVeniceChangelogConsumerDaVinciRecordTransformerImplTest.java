@@ -96,7 +96,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
         changelogClientConfig,
         mockPubSubConsumer);
     assertTrue(
-        bootstrappingVeniceChangelogConsumer.getRecordTransformerConfig().getSkipCompatibilityChecks(),
+        bootstrappingVeniceChangelogConsumer.getRecordTransformerConfig().shouldSkipCompatibilityChecks(),
         "Skip compatability checks for DVRT should be enabled.");
 
     mockDaVinciRecordTransformerConfig = mock(DaVinciRecordTransformerConfig.class);

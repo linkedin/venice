@@ -47,7 +47,7 @@ public class RecordTransformerTest {
             .setStoreRecordsInDaVinci(false)
             .build();
     assertFalse(
-        dummyRecordTransformerConfig.getSkipCompatibilityChecks(),
+        dummyRecordTransformerConfig.shouldSkipCompatibilityChecks(),
         "Default for skipCompatibilityChecks should be false");
 
     DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(
@@ -93,7 +93,7 @@ public class RecordTransformerTest {
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
             .setSkipCompatibilityChecks(true)
             .build();
-    assertTrue(dummyRecordTransformerConfig.getSkipCompatibilityChecks());
+    assertTrue(dummyRecordTransformerConfig.shouldSkipCompatibilityChecks());
 
     DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(
         storeVersion,
