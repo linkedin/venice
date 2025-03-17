@@ -52,14 +52,17 @@ public class SecurityStats extends AbstractVeniceStats {
    */
   public void recordLiveConnectionCount(int connectionCount) {
     this.activeConnectionCount.set(connectionCount);
-    recordLiveConnectionCount();
+    updateConnectionCountInCurrentMetricTimeWindow();
   }
 
   /**
+   * Calling this function doesn't mean the active connection counter is updated; this function will only update
+   * the metric with the connection counter maintained above {@link SecurityStats#activeConnectionCount}
+   *
    * Since new connections or inactive connections events might not happen in each one-minute time window, a more
    * active path like data request path will be leveraged to record avg/max connections in each time window.
    */
-  public void recordLiveConnectionCount() {
+  public void updateConnectionCountInCurrentMetricTimeWindow() {
     this.liveConnectionCount.record(activeConnectionCount.get());
   }
 
