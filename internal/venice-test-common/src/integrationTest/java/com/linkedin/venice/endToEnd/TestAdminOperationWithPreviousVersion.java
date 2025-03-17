@@ -1,10 +1,21 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.*;
 import static com.linkedin.venice.utils.TestStoragePersonaUtils.*;
 import static com.linkedin.venice.utils.TestWriteUtils.*;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.*;
 import static org.testng.Assert.*;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.client.store.AbstractAvroStoreClient;
+import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.client.store.StatTrackingStoreClient;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
@@ -12,11 +23,14 @@ import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.VenicePushJob;
+import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
@@ -24,27 +38,38 @@ import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptio
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
+import com.linkedin.venice.utils.StoreMigrationTestUtil;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import java.io.File;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -56,6 +81,8 @@ public class TestAdminOperationWithPreviousVersion {
   private static final int TEST_TIMEOUT = 360 * Time.MS_PER_SECOND;
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 2;
+  private static final int RECORD_COUNT = 20;
+  private static final String FABRIC0 = "dc-0";
 
   // Do not use venice-cluster1 as it is used for testing failed admin messages
   private static final String[] CLUSTER_NAMES =
@@ -72,9 +99,20 @@ public class TestAdminOperationWithPreviousVersion {
   static final String KEY_SCHEMA = "\"string\"";
   static final String VALUE_SCHEMA = "\"string\"";
   private List<ControllerClient> childControllerClients = new ArrayList<>();
+  private VeniceMultiClusterWrapper multiClusterWrapper;
+  private static final String BASIC_USER_SCHEMA_STRING_WITH_DEFAULT = "{" + "  \"namespace\" : \"example.avro\",  "
+      + "  \"type\": \"record\",   " + "  \"name\": \"User\",     " + "  \"fields\": [           "
+      + "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"\"}  " + "  ] " + " } ";
 
   @BeforeClass(alwaysRun = true)
-  public void setUp() {
+  public void setUp() throws Exception {
+    Utils.thisIsLocalhost();
+    Properties parentControllerProperties = new Properties();
+    // Disable topic cleanup since parent and child are sharing the same kafka cluster.
+    parentControllerProperties
+        .setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
+    parentControllerProperties.setProperty(OFFLINE_JOB_START_TIMEOUT_MS, "180000");
+
     Properties serverProperties = new Properties();
     serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
@@ -85,8 +123,10 @@ public class TestAdminOperationWithPreviousVersion {
             .numberOfServers(1)
             .numberOfRouters(1)
             .replicationFactor(1)
+            .sslToStorageNodes(true)
             .forkServer(false)
-            .serverProperties(serverProperties);
+            .serverProperties(serverProperties)
+            .parentControllerProperties(parentControllerProperties);
     multiRegionMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
 
@@ -134,6 +174,8 @@ public class TestAdminOperationWithPreviousVersion {
         multiRegionMultiClusterWrapper.getChildRegions().get(1).getControllerConnectString());
     childControllerClients.add(dc0Client);
     childControllerClients.add(dc1Client);
+
+    multiClusterWrapper = multiRegionMultiClusterWrapper.getChildRegions().get(0);
   }
 
   @AfterClass(alwaysRun = true)
@@ -154,6 +196,9 @@ public class TestAdminOperationWithPreviousVersion {
   @Test(timeOut = TEST_TIMEOUT)
   public void testStoreCreation() {
     markAsTested("StoreCreation");
+    // When we create store, we will send both messages below to create system store
+    markAsTested("PushStatusSystemStoreAutoCreationValidation");
+    markAsTested("MetaSystemStoreAutoCreationValidation");
 
     clusterName = CLUSTER_NAMES[0];
     VeniceControllerWrapper parentController = parentControllers.get(0);
@@ -208,8 +253,7 @@ public class TestAdminOperationWithPreviousVersion {
   public void testKillOfflinePushJob() {
     markAsTested("KillOfflinePushJob");
 
-    String storeName = Utils.getUniqueString("testKillOfflinePushJob");
-    veniceAdmin.createStore(clusterName, storeName, "testOwner", KEY_SCHEMA, VALUE_SCHEMA);
+    String storeName = setUpTestStore().getName();
 
     // Empty push
     VersionCreationResponse vcr = parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-push"), 1L);
@@ -431,14 +475,21 @@ public class TestAdminOperationWithPreviousVersion {
     markAsTested("ValueSchemaCreation");
     markAsTested("DeleteUnusedValueSchemas");
 
-    Store storeInfo = setUpTestStore();
-    String storeName = storeInfo.getName();
+    String storeName = Utils.getUniqueString("testValueSchemaCreation-store");
 
-    // When read compute is enabled, we will generate superset schema and add value schema into it
-    UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams().setReadComputationEnabled(true);
-    ControllerResponse response = parentControllerClient.updateStore(storeName, updateStoreQueryParams);
-    assertFalse(response.isError());
+    String valueRecordSchemaStr1 = BASIC_USER_SCHEMA_STRING_WITH_DEFAULT;
+    String valueRecordSchemaStr2 = TestWriteUtils.SIMPLE_USER_WITH_DEFAULT_SCHEMA.toString();
+    NewStoreResponse newStoreResponse = parentControllerClient
+        .retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", valueRecordSchemaStr1));
+    Assert.assertFalse(
+        newStoreResponse.isError(),
+        "The NewStoreResponse returned an error: " + newStoreResponse.getError());
 
+    SchemaResponse schemaResponse2 =
+        parentControllerClient.retryableRequest(5, c -> c.addValueSchema(storeName, valueRecordSchemaStr2));
+    Assert.assertFalse(schemaResponse2.isError(), "addValueSchema returned error: " + schemaResponse2.getError());
+
+    // Delete value schema
     parentControllerClient.deleteValueSchemas(storeName, new ArrayList<>(1));
   }
 
@@ -568,6 +619,12 @@ public class TestAdminOperationWithPreviousVersion {
   @Test
   public void testConfigureActiveActiveReplicationForCluster() {
     markAsTested("ConfigureActiveActiveReplicationForCluster");
+    TestUtils.assertCommand(
+        parentControllerClient.configureActiveActiveReplicationForCluster(
+            true,
+            VeniceUserStoreType.BATCH_ONLY.toString(),
+            Optional.empty()),
+        "Failed to configure active-active replication for cluster " + clusterName);
   }
 
   @Test
@@ -584,38 +641,137 @@ public class TestAdminOperationWithPreviousVersion {
   }
 
   @Test
-  public void testMigrateStore() {
+  public void testMigrateStore() throws Exception {
     markAsTested("MigrateStore");
-  }
-
-  @Test
-  public void testAbortMigration() {
     markAsTested("AbortMigration");
+
+    String storeName = Utils.getUniqueString("test");
+
+    String srcClusterName = CLUSTER_NAMES[0]; // venice-cluster0
+    String destClusterName = CLUSTER_NAMES[1]; // venice-cluster1
+
+    createAndPushStore(srcClusterName, storeName);
+    String srcD2ServiceName = multiClusterWrapper.getClusterToD2().get(srcClusterName);
+    String destD2ServiceName = multiClusterWrapper.getClusterToD2().get(destClusterName);
+    D2Client d2Client =
+        D2TestUtils.getAndStartD2Client(multiClusterWrapper.getClusters().get(srcClusterName).getZk().getAddress());
+    ClientConfig clientConfig =
+        ClientConfig.defaultGenericClientConfig(storeName).setD2ServiceName(srcD2ServiceName).setD2Client(d2Client);
+
+    String parentControllerUrl = multiRegionMultiClusterWrapper.getChildRegions().get(0).getControllerConnectString();
+    try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(clientConfig)) {
+      readFromStore(client);
+      StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
+      StoreMigrationTestUtil
+          .completeMigration(parentControllerUrl, storeName, srcClusterName, destClusterName, FABRIC0);
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        // StoreConfig in router might not be up-to-date. Keep reading from the store. Finally, router will find that
+        // cluster discovery changes and redirect the request to dest store. Client's d2ServiceName will be updated.
+        readFromStore(client);
+        AbstractAvroStoreClient<String, Object> castClient =
+            (AbstractAvroStoreClient<String, Object>) ((StatTrackingStoreClient<String, Object>) client)
+                .getInnerStoreClient();
+        Assert.assertTrue(castClient.toString().contains(destD2ServiceName));
+      });
+    }
+
+    // Test abort migration on parent controller
+    try (ControllerClient srcParentControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
+        ControllerClient destParentControllerClient = new ControllerClient(destClusterName, parentControllerUrl)) {
+      StoreMigrationTestUtil.abortMigration(parentControllerUrl, storeName, true, srcClusterName, destClusterName);
+      TestUtils.waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          () -> StoreMigrationTestUtil.checkStatusAfterAbortMigration(
+              srcParentControllerClient,
+              destParentControllerClient,
+              storeName,
+              srcClusterName));
+    }
   }
 
   @Test
   public void testAddVersion() {
     markAsTested("AddVersion");
+
+    String storeName = setUpTestStore().getName();
+    String pushJobId = "test-push-job-id";
+
+    // Add version
+    veniceAdmin.addVersionAndStartIngestion(
+        clusterName,
+        storeName,
+        pushJobId,
+        1,
+        1,
+        Version.PushType.BATCH,
+        null,
+        -1,
+        1,
+        false,
+        -1);
+    Assert.assertNotNull(veniceAdmin.getStore(clusterName, storeName).getVersion(1));
+    Assert.assertEquals(
+        veniceAdmin.getStore(clusterName, storeName).getVersions().size(),
+        1,
+        "There should only be exactly one version added to the test-store");
   }
 
   @Test
   public void testMetadataSchemaCreation() {
     markAsTested("MetadataSchemaCreation");
+    String storeName = Utils.getUniqueString("aa_store");
+    String recordSchemaStr = TestWriteUtils.USER_WITH_DEFAULT_SCHEMA.toString();
+    Schema metadataSchema = RmdSchemaGenerator.generateMetadataSchema(recordSchemaStr, 1);
+
+    veniceAdmin.createStore(clusterName, storeName, "storeOwner", KEY_SCHEMA, recordSchemaStr);
+    veniceAdmin.addReplicationMetadataSchema(clusterName, storeName, 1, 1, metadataSchema.toString());
+    Collection<RmdSchemaEntry> metadataSchemas = veniceAdmin.getReplicationMetadataSchemas(clusterName, storeName);
+    Assert.assertEquals(metadataSchemas.size(), 1);
+    Assert.assertEquals(metadataSchemas.iterator().next().getSchema(), metadataSchema);
   }
 
   @Test
   public void testSupersetSchemaCreation() {
     markAsTested("SupersetSchemaCreation");
-  }
 
-  @Test
-  public void testPushStatusSystemStoreAutoCreationValidation() {
-    markAsTested("PushStatusSystemStoreAutoCreationValidation");
-  }
+    Schema valueSchemaV1 =
+        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("valueSchema/supersetschemas/ValueV1.avsc"));
+    // Contains f2, f3
+    Schema valueSchemaV4 =
+        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("valueSchema/supersetschemas/ValueV4.avsc"));
 
-  @Test
-  public void testMetaSystemStoreAutoCreationValidation() {
-    markAsTested("MetaSystemStoreAutoCreationValidation");
+    String storeName = Utils.getUniqueString("testSupersetSchemaCreation-store");
+    NewStoreResponse newStoreResponse = parentControllerClient
+        .retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", valueSchemaV1.toString()));
+    Assert.assertFalse(
+        newStoreResponse.isError(),
+        "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+
+    ControllerResponse updateStoreResponse =
+        parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true));
+    Assert.assertFalse(updateStoreResponse.isError());
+
+    SchemaResponse schemaResponse2 =
+        parentControllerClient.retryableRequest(5, c -> c.addValueSchema(storeName, valueSchemaV4.toString()));
+    Assert.assertFalse(schemaResponse2.isError(), "addValueSchema returned error: " + schemaResponse2.getError());
+
+    // Verify superset schema id
+    StoreResponse storeResponse = parentControllerClient.getStore(storeName);
+    Assert.assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
+    Assert.assertEquals(
+        storeResponse.getStore().getLatestSuperSetValueSchemaId(),
+        3,
+        "Superset schema ID should be the last schema");
+
+    // Get the value schema
+    SchemaResponse schemaResponse = parentControllerClient.getValueSchema(storeName, 3);
+    Assert.assertFalse(schemaResponse.isError());
+    String supersetSchemaString = schemaResponse.getSchemaStr();
+    Assert.assertTrue(supersetSchemaString.contains("f0"));
+    Assert.assertTrue(supersetSchemaString.contains("f1"));
+    Assert.assertTrue(supersetSchemaString.contains("f2"));
+    Assert.assertTrue(supersetSchemaString.contains("f3"));
   }
 
   private void emptyPushToStore(ControllerClient parentControllerClient, String storeName, int expectedVersion) {
@@ -636,8 +792,9 @@ public class TestAdminOperationWithPreviousVersion {
   private Store setUpTestStore() {
     Store testStore =
         TestUtils.createTestStore(Utils.getUniqueString("testStore"), "testStoreOwner", System.currentTimeMillis());
-    parentControllerClient
+    NewStoreResponse response = parentControllerClient
         .createNewStore(testStore.getName(), testStore.getOwner(), STRING_SCHEMA.toString(), STRING_SCHEMA.toString());
+    assertFalse(response.isError());
     return testStore;
   }
 
@@ -652,5 +809,60 @@ public class TestAdminOperationWithPreviousVersion {
 
   private void markAsTested(String operationType) {
     operationTypeMap.put(operationType, true);
+  }
+
+  private void readFromStore(AvroGenericStoreClient<String, Object> client)
+      throws ExecutionException, InterruptedException {
+    int key = ThreadLocalRandom.current().nextInt(RECORD_COUNT) + 1;
+    client.get(Integer.toString(key)).get();
+  }
+
+  private Properties createAndPushStore(String srcClusterName, String storeName) throws Exception {
+    File inputDir = getTempDataDirectory();
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, RECORD_COUNT);
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+
+    UpdateStoreQueryParams updateStoreQueryParams =
+        new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+            .setHybridRewindSeconds(TEST_TIMEOUT)
+            .setHybridOffsetLagThreshold(2L)
+            .setHybridStoreDiskQuotaEnabled(true)
+            .setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT)
+            .setStorageNodeReadQuotaEnabled(true); // enable this for using fast client
+    IntegrationTestPushUtils
+        .createStoreForJob(srcClusterName, keySchemaStr, valueSchemaStr, props, updateStoreQueryParams)
+        .close();
+
+    // Verify store is created in dc-0
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      StoreResponse response = childControllerClients.get(0).getStore(storeName);
+      StoreInfo storeInfo = response.getStore();
+      Assert.assertNotNull(storeInfo);
+    });
+
+    SystemProducer veniceProducer0 = null;
+    try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
+      job.run();
+
+      // Write streaming records
+      veniceProducer0 =
+          getSamzaProducer(multiClusterWrapper.getClusters().get(srcClusterName), storeName, Version.PushType.STREAM);
+      for (int i = 1; i <= 10; i++) {
+        sendStreamingRecord(veniceProducer0, storeName, i);
+      }
+    } catch (Exception e) {
+      throw new VeniceException(e);
+    } finally {
+      if (veniceProducer0 != null) {
+        veniceProducer0.stop();
+      }
+    }
+
+    return props;
   }
 }
