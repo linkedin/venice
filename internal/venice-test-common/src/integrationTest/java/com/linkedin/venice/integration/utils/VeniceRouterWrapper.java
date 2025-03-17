@@ -150,7 +150,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           .put(ROUTER_CLIENT_SSL_HANDSHAKE_THREADS, 5)
           .put(ROUTER_RESOLVE_THREADS, 5)
           // Below configs are to attempt to minimize resource utilization in tests
-          .put(ROUTER_CONNECTION_LIMIT, 20)
+          .put(ROUTER_CONNECTION_LIMIT, 200)
           .put(ROUTER_HTTP_CLIENT_POOL_SIZE, 2)
           .put(ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE, 2)
           .put(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_LOW_WATER_MARK, 1)
