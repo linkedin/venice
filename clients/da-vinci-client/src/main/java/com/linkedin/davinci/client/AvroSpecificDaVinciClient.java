@@ -2,6 +2,7 @@ package com.linkedin.davinci.client;
 
 import com.linkedin.davinci.storage.chunking.SpecificRecordChunkingAdapter;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -18,7 +19,8 @@ public class AvroSpecificDaVinciClient<K, V extends SpecificRecord> extends Avro
       VeniceProperties backendConfig,
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
-      Executor readChunkExecutorForLargeRequest) {
+      Executor readChunkExecutorForLargeRequest,
+      Optional<SSLFactory> sslFactory) {
     super(
         daVinciConfig,
         clientConfig,
@@ -30,6 +32,7 @@ public class AvroSpecificDaVinciClient<K, V extends SpecificRecord> extends Avro
           Class<V> valueClass = clientConfig.getSpecificValueClass();
           FastSerializerDeserializerFactory.verifyWhetherFastSpecificDeserializerWorks(valueClass);
         },
-        readChunkExecutorForLargeRequest);
+        readChunkExecutorForLargeRequest,
+        sslFactory);
   }
 }

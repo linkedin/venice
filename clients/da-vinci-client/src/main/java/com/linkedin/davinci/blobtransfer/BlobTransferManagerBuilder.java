@@ -14,6 +14,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.SslUtils;
 import io.netty.handler.traffic.GlobalChannelTrafficShapingHandler;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -78,7 +79,9 @@ public class BlobTransferManagerBuilder {
   }
 
   public BlobTransferManagerBuilder setBlobTransferSSLFactory(Optional<SSLFactory> sslFactory) {
-    this.sslFactory = sslFactory;
+    // If sslFactory is present, convert it to one with OpenSSL support, if it's empty, just keep it as empty
+    this.sslFactory =
+        sslFactory.isPresent() ? Optional.of(SslUtils.toSSLFactoryWithOpenSSLSupport(sslFactory.get())) : sslFactory;
     return this;
   }
 

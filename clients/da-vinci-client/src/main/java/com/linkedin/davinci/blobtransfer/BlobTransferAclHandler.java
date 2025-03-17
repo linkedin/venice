@@ -1,6 +1,5 @@
 package com.linkedin.davinci.blobtransfer;
 
-import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.listener.ServerHandlerUtils;
 import com.linkedin.venice.utils.NettyUtils;
 import com.linkedin.venice.utils.SslUtils;
@@ -22,12 +21,8 @@ import org.apache.logging.log4j.Logger;
 @ChannelHandler.Sharable
 public class BlobTransferAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private static final Logger LOGGER = LogManager.getLogger(BlobTransferAclHandler.class);
-  private final IdentityParser identityParser;
-  private final String allowedPrincipalName;
 
-  public BlobTransferAclHandler(IdentityParser identityParser, String allowedPrincipalName) {
-    this.identityParser = identityParser;
-    this.allowedPrincipalName = allowedPrincipalName;
+  public BlobTransferAclHandler() {
   }
 
   @Override
@@ -41,21 +36,26 @@ public class BlobTransferAclHandler extends SimpleChannelInboundHandler<HttpRequ
     try {
       X509Certificate clientCert =
           SslUtils.getX509Certificate(sslHandler.engine().getSession().getPeerCertificates()[0]);
-      String identity = identityParser.parseIdentityFromCert(clientCert);
-      if (identity.equals(allowedPrincipalName)) {
+      X509Certificate localCert =
+          SslUtils.getX509Certificate(sslHandler.engine().getSession().getLocalCertificates()[0]);
+
+      boolean samePrincipal = clientCert.getIssuerX500Principal().equals(localCert.getIssuerX500Principal());
+      if (samePrincipal) {
         LOGGER.info(
-            "Blob transfer request is from identity: {}, allowed principal name is {}",
-            identity,
-            allowedPrincipalName);
+            "Client certification {} and local certification {} are the same. Acl check passed.",
+            clientCert.getIssuerX500Principal(),
+            localCert.getIssuerX500Principal());
         ReferenceCountUtil.retain(req);
         ctx.fireChannelRead(req);
       } else {
         String clientAddress = ctx.channel().remoteAddress().toString();
         LOGGER.error(
-            "Unauthorized blob transfer access rejected: {} requested from {} with identity {}",
+            "Unauthorized blob transfer access rejected: {} requested from {} "
+                + "due to client certificate mismatch, expected {} but got {}",
             req.uri(),
             clientAddress,
-            identity);
+            clientCert.getIssuerX500Principal(),
+            localCert.getIssuerX500Principal());
         NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx, true);
       }
     } catch (Exception e) {

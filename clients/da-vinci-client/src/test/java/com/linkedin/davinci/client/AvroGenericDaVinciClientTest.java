@@ -73,7 +73,7 @@ public class AvroGenericDaVinciClientTest {
     AvroGenericDaVinciClient<Integer, String> dvcClient =
         spy(new AvroGenericDaVinciClient<>(daVinciConfig, clientConfig, backendConfig, Optional.empty()));
     doReturn(false).when(dvcClient).isReady();
-    doNothing().when(dvcClient).initBackend(any(), any(), any(), any(), any(), any());
+    doNothing().when(dvcClient).initBackend(any(), any(), any(), any(), any(), any(), any());
 
     D2ServiceDiscoveryResponse mockDiscoveryResponse = mock(D2ServiceDiscoveryResponse.class);
     when(mockDiscoveryResponse.getCluster()).thenReturn("test_cluster");
@@ -221,8 +221,14 @@ public class AvroGenericDaVinciClientTest {
     VeniceProperties backendConfig = mock(VeniceProperties.class);
     ICProvider icProvider = mock(ICProvider.class);
 
-    AvroGenericDaVinciClient daVinciClient =
-        new AvroGenericDaVinciClient(daVinciConfig, clientConfig, backendConfig, Optional.empty(), icProvider, null);
+    AvroGenericDaVinciClient daVinciClient = new AvroGenericDaVinciClient(
+        daVinciConfig,
+        clientConfig,
+        backendConfig,
+        Optional.empty(),
+        icProvider,
+        null,
+        Optional.empty());
 
     assertEquals(daVinciClient.getReadChunkExecutorForLargeRequest(), READ_CHUNK_EXECUTOR);
 
@@ -233,7 +239,8 @@ public class AvroGenericDaVinciClientTest {
         backendConfig,
         Optional.empty(),
         icProvider,
-        readChunkExecutor);
+        readChunkExecutor,
+        Optional.empty());
     assertEquals(daVinciClient.getReadChunkExecutorForLargeRequest(), readChunkExecutor);
 
     // Close a not-ready client won't throw exception.

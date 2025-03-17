@@ -62,6 +62,7 @@ import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
@@ -125,7 +126,8 @@ public class DaVinciBackend implements Closeable {
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
       Optional<ObjectCacheConfig> cacheConfig,
-      DaVinciRecordTransformerConfig recordTransformerConfig) {
+      DaVinciRecordTransformerConfig recordTransformerConfig,
+      Optional<SSLFactory> sslFactory) {
     LOGGER.info("Creating Da Vinci backend with managed clients: {}", managedClients);
     try {
       VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
@@ -328,7 +330,7 @@ public class DaVinciBackend implements Closeable {
             .setReadOnlyStoreRepository(readOnlyStoreRepository)
             .setStorageEngineRepository(storageService.getStorageEngineRepository())
             .setAggVersionedBlobTransferStats(aggVersionedBlobTransferStats)
-            .setBlobTransferSSLFactory(BlobTransferUtils.createSSLFactoryForBlobTransferInDVC(configLoader))
+            .setBlobTransferSSLFactory(sslFactory)
             .setBlobTransferAclHandler(BlobTransferUtils.createAclHandler(configLoader))
             .build();
       } else {
