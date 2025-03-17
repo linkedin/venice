@@ -62,7 +62,6 @@ import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.logcompaction.LogCompactionService;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
-import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
@@ -73,6 +72,7 @@ import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.RepushInfo;
+import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -8068,6 +8068,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public List<StoreInfo> getStoresForCompaction(String clusterName) {
+    if (compactionManager == null) {
+      throw new VeniceException("CompactionManager is not initialized.");
+    }
     try {
       Map<String, ControllerClient> childControllers = getControllerClientMap(clusterName);
       return compactionManager.getStoresForCompaction(clusterName, childControllers);
@@ -8086,6 +8089,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public RepushJobResponse compactStore(RepushJobRequest repushJobRequest) throws Exception {
+    if (compactionManager == null) {
+      throw new VeniceException("CompactionManager is not initialized.");
+    }
     try {
       return compactionManager.compactStore(repushJobRequest);
     } catch (Exception e) {

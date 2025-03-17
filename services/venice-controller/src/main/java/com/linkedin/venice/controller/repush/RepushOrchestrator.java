@@ -1,5 +1,8 @@
 package com.linkedin.venice.controller.repush;
 
+import com.linkedin.venice.controllerapi.RepushJobResponse;
+
+
 /**
  * Sends requests to external service to trigger repush job for a store
  *

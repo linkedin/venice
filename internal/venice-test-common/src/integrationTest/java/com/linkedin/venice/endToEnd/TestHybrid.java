@@ -2,21 +2,7 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOB_FILES_ENABLED;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
-import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_INTERVAL_MS;
-import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
-import static com.linkedin.venice.ConfigKeys.REPUSH_ORCHESTRATOR_CLASS_NAME;
-import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY;
-import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
-import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
-import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
-import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
-import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
-import static com.linkedin.venice.ConfigKeys.TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS;
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
 import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_EOP;
@@ -51,10 +37,10 @@ import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
-import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -1096,6 +1082,22 @@ public class TestHybrid {
       LOGGER.error("Log compaction job failed");
       throw new RuntimeException(e);
     }
+
+    // ok, now do it again manually
+    TestRepushOrchestratorImpl.latch = new CountDownLatch(1);
+    sharedVenice.useControllerClient(client -> {
+      RepushJobResponse response = client.triggerRepush(storeName, null);
+      Assert.assertFalse(response.isError(), "Repush failed with error: " + response.getError());
+    });
+
+    try {
+      if (TestRepushOrchestratorImpl.latch.await(TEST_LOG_COMPACTION_TIMEOUT, TimeUnit.MILLISECONDS)) {
+        LOGGER.info("Log compaction job triggered");
+      }
+    } catch (InterruptedException e) {
+      LOGGER.error("Log compaction job failed");
+      throw new RuntimeException(e);
+    }
   }
 
   public static class TestRepushOrchestratorImpl implements RepushOrchestrator {
@@ -1786,6 +1788,7 @@ public class TestHybrid {
     // log compaction controller configs
     extraProperties.setProperty(REPUSH_ORCHESTRATOR_CLASS_NAME, TestHybrid.TestRepushOrchestratorImpl.class.getName());
     extraProperties.setProperty(LOG_COMPACTION_ENABLED, "true");
+    extraProperties.setProperty(LOG_COMPACTION_SCHEDULING_ENABLED, "true");
     extraProperties.setProperty(LOG_COMPACTION_INTERVAL_MS, String.valueOf(TEST_LOG_COMPACTION_INTERVAL_MS));
     extraProperties.setProperty(
         TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS,
