@@ -77,7 +77,7 @@ public class ConnectionLimitHandler extends ChannelInboundHandlerAdapter {
     int limit = _connectionLimit.getAsInt();
     _connectionCountRecorder.accept(count);
     if (count > limit) {
-      LOG.debug("Connection count {} exceeds {}", count, limit);
+      LOG.error("Connection count {} exceeds {}", count, limit);
 
       ctx.writeAndFlush(Unpooled.copiedBuffer(REJECT_MESSAGE, StandardCharsets.US_ASCII))
           .addListener(ChannelFutureListener.CLOSE);

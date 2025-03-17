@@ -698,8 +698,7 @@ public class RouterServer extends AbstractVeniceService {
             LINKED_BLOCKING_QUEUE);
         ThreadPoolStats sslHandshakeThreadPoolStats =
             new ThreadPoolStats(metricsRepository, sslHandshakeExecutor, "ssl_handshake_thread_pool");
-        sslInitializer
-            .enableSslTaskExecutor(sslHandshakeExecutor, sslHandshakeThreadPoolStats::recordQueuedTasksNumber);
+        sslInitializer.enableSslTaskExecutor(sslHandshakeExecutor, sslHandshakeThreadPoolStats::recordQueuedTasksCount);
       }
       if (config.getResolveThreads() > 0) {
         ThreadPoolExecutor dnsResolveExecutor = ThreadPoolFactory.createThreadPool(
