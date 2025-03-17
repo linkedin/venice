@@ -15,6 +15,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.longThat;
 import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -670,6 +671,87 @@ public class VeniceWriterUnitTest {
         assertTrue(e instanceof RecordTooLargeException);
         Assert.assertNotEquals(size, SMALL_VALUE_SIZE, "Small records shouldn't throw RecordTooLargeException");
       }
+    }
+  }
+
+  /**
+   * Testing that VeniceWriter does not throw when calling put() with Global RT DIV messages
+   * and does not enforce size limits on them
+   */
+  @Test(timeOut = TIMEOUT)
+  public void testPutGlobalRtDiv() {
+    final int maxRecordSizeBytes = BYTES_PER_MB; // 1MB
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    ChunkedValueManifestSerializer manifestSerializer = new ChunkedValueManifestSerializer(true);
+    final VeniceKafkaSerializer<Object> serializer = new VeniceAvroKafkaSerializer(TestWriteUtils.STRING_SCHEMA);
+    final VeniceWriterOptions options = new VeniceWriterOptions.Builder("testTopic").setPartitionCount(1)
+        .setKeyPayloadSerializer(serializer)
+        .setValuePayloadSerializer(serializer)
+        .setChunkingEnabled(true)
+        .setMaxRecordSizeBytes(maxRecordSizeBytes)
+        .build();
+    VeniceProperties props = VeniceProperties.empty();
+    final VeniceWriter<Object, Object, Object> writer = new VeniceWriter<>(options, props, mockedProducer);
+
+    // "small" < maxSizeForUserPayloadPerMessageInBytes < "large" < maxRecordSizeBytes < "too large"
+    final int SMALL_VALUE_SIZE = maxRecordSizeBytes / 2;
+    final int LARGE_VALUE_SIZE = maxRecordSizeBytes - BYTES_PER_KB; // offset to account for the size of the key
+    final int TOO_LARGE_VALUE_SIZE = maxRecordSizeBytes * 2;
+
+    // Even when the value is too large, there should not be an exception thrown for Global RT DIV (non-put) messages
+    for (int size: Arrays.asList(SMALL_VALUE_SIZE, LARGE_VALUE_SIZE, TOO_LARGE_VALUE_SIZE)) {
+      char[] valueChars = new char[size];
+      Arrays.fill(valueChars, '*');
+      writer.put(
+          String.format("test-key-%d", size).getBytes(),
+          new String(valueChars).getBytes(),
+          0,
+          1,
+          null,
+          new LeaderMetadataWrapper(0, 0),
+          APP_DEFAULT_LOGICAL_TS,
+          null,
+          null,
+          null,
+          false);
+
+      ArgumentCaptor<KafkaKey> keyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
+      ArgumentCaptor<KafkaMessageEnvelope> kmeArgumentCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
+      verify(mockedProducer, atLeast(1))
+          .sendMessage(any(), any(), keyArgumentCaptor.capture(), kmeArgumentCaptor.capture(), any(), any());
+
+      // KafkaKey for Global RT DIV message should always have messageType == GLOBAL_RT_DIV rather than PUT
+      // (Some control messages are also created in the process of sending the Global RT DIV message)
+      keyArgumentCaptor.getAllValues().forEach(key -> assertTrue(key.isGlobalRtDiv() || key.isControlMessage()));
+
+      for (KafkaMessageEnvelope kme: kmeArgumentCaptor.getAllValues()) {
+        if (kme.messageType == MessageType.CONTROL_MESSAGE.getValue()) {
+          ControlMessage controlMessage = ((ControlMessage) kme.getPayloadUnion());
+          assertEquals(ControlMessageType.START_OF_SEGMENT.getValue(), controlMessage.getControlMessageType());
+        } else {
+          Put put = (Put) kme.payloadUnion;
+          assertEquals(kme.messageType, MessageType.PUT.getValue(), "KME should have type == PUT, not GLOBAL_RT_DIV");
+          if (size == SMALL_VALUE_SIZE) {
+            // The schemaId of the PutValue should indicate that the contents are a GlobalRtDivState object
+            assertEquals(put.getSchemaId(), AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
+          } else {
+            // The schemaId of the outer PutValue should indicate that the contents are a chunked object
+            assertTrue(put.getSchemaId() == CHUNK_VALUE_SCHEMA_ID || put.getSchemaId() == CHUNK_MANIFEST_SCHEMA_ID);
+            if (put.getSchemaId() == CHUNK_MANIFEST_SCHEMA_ID) {
+              // The schemaId of the inner ChunkedValueManifest should finally indicate that it's a GlobalRtDivState
+              ChunkedValueManifest chunkedValueManifest = manifestSerializer.deserialize(
+                  put.getPutValue().array(),
+                  AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
+              assertEquals(
+                  chunkedValueManifest.schemaId,
+                  AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
+            }
+          }
+        }
+      }
+      clearInvocations(mockedProducer); // important for the non-chunked messages don't appear in the next iteration
     }
   }
 
