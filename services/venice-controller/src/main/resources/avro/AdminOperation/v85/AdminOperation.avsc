@@ -486,7 +486,7 @@
             {
               "name": "largestUsedRTVersionNumber",
               "type": ["null", "int"],
-              "doc": "largestUsedRTVersionNumber that should be used to formulate real time topic name during add version",
+              "doc": "Largest used RT version number used by this store. This is used to create real time topic name while creating a new store-version",
               "default": null
             },
             {
