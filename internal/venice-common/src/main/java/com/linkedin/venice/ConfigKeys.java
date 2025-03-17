@@ -1063,6 +1063,7 @@ public class ConfigKeys {
    */
   public static final String ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ = "router.max.key_count.in.multiget.req";
   public static final String ROUTER_CONNECTION_LIMIT = "router.connection.limit";
+  public static final String ROUTER_CONNECTION_HANDLE_MODE = "router.connection.handle.mode";
   /**
    * The http client pool size being used in one Router;
    */

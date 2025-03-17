@@ -661,6 +661,7 @@ public class RouterServer extends AbstractVeniceService {
               .bossPoolBuilder(EventLoopGroup.class, ignored -> serverEventLoopGroup)
               .ioWorkerPoolBuilder(EventLoopGroup.class, ignored -> workerEventLoopGroup)
               .connectionLimit(config.getConnectionLimit())
+              .connectionHandleMode(config.getConnectionHandleMode())
               .connectionCountRecorder(securityStats::recordLiveConnectionCount)
               .timeoutProcessor(timeoutProcessor)
               .beforeHttpRequestHandler(ChannelPipeline.class, (pipeline) -> {
@@ -762,6 +763,7 @@ public class RouterServer extends AbstractVeniceService {
         .bossPoolBuilder(EventLoopGroup.class, ignored -> serverEventLoopGroup)
         .ioWorkerPoolBuilder(EventLoopGroup.class, ignored -> workerEventLoopGroup)
         .connectionLimit(config.getConnectionLimit())
+        .connectionHandleMode(config.getConnectionHandleMode())
         .connectionCountRecorder(securityStats::recordLiveConnectionCount)
         .timeoutProcessor(timeoutProcessor)
         .beforeHttpServerCodec(ChannelPipeline.class, sslFactory.isPresent() ? addSslInitializer : noop) // Compare once

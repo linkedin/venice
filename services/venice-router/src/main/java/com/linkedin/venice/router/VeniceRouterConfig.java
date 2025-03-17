@@ -26,6 +26,7 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_RESOLUTION_RETRY_BACK
 import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_SSL_HANDSHAKE_QUEUE_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_SSL_HANDSHAKE_THREADS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_COMPUTE_TARDY_LATENCY_MS;
+import static com.linkedin.venice.ConfigKeys.ROUTER_CONNECTION_HANDLE_MODE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CONNECTION_LIMIT;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CONNECTION_TIMEOUT;
 import static com.linkedin.venice.ConfigKeys.ROUTER_DICTIONARY_PROCESSING_THREADS;
@@ -104,6 +105,7 @@ import static com.linkedin.venice.helix.HelixInstanceConfigRepository.ZONE_FIELD
 import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.LEAST_LOADED_ROUTING;
 import static com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum.LEAST_LOADED;
 
+import com.linkedin.alpini.netty4.handlers.ConnectionHandleMode;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.NameRepository;
@@ -147,6 +149,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
   private final int longTailRetryMaxRouteForMultiKeyReq;
   private final int maxKeyCountInMultiGetReq;
   private final int connectionLimit;
+  private final ConnectionHandleMode connectionHandleMode;
   private final int httpClientPoolSize;
   private final int maxOutgoingConnPerRoute;
   private final int maxOutgoingConn;
@@ -259,6 +262,10 @@ public class VeniceRouterConfig implements RouterRetryConfig {
       longTailRetryMaxRouteForMultiKeyReq = props.getInt(ROUTER_LONG_TAIL_RETRY_MAX_ROUTE_FOR_MULTI_KEYS_REQ, 2);
       maxKeyCountInMultiGetReq = props.getInt(ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ, 500);
       connectionLimit = props.getInt(ROUTER_CONNECTION_LIMIT, 10000);
+      // When connection limit is breached, fail fast to client request by default.
+      connectionHandleMode = ConnectionHandleMode.valueOf(
+          props
+              .getString(ROUTER_CONNECTION_HANDLE_MODE, ConnectionHandleMode.FAIL_FAST_WHEN_LIMIT_EXCEEDED.toString()));
       httpClientPoolSize = props.getInt(ROUTER_HTTP_CLIENT_POOL_SIZE, 12);
       maxOutgoingConnPerRoute = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE, 120);
       maxOutgoingConn = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION, 1200);
@@ -484,6 +491,10 @@ public class VeniceRouterConfig implements RouterRetryConfig {
 
   public int getConnectionLimit() {
     return connectionLimit;
+  }
+
+  public ConnectionHandleMode getConnectionHandleMode() {
+    return connectionHandleMode;
   }
 
   public int getHttpClientPoolSize() {

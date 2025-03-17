@@ -8,6 +8,7 @@ import com.linkedin.alpini.base.registry.Shutdownable;
 import com.linkedin.alpini.base.registry.ShutdownableExecutors;
 import com.linkedin.alpini.base.registry.ShutdownableResource;
 import com.linkedin.alpini.netty4.handlers.ConnectionControlHandler;
+import com.linkedin.alpini.netty4.handlers.ConnectionHandleMode;
 import com.linkedin.alpini.netty4.handlers.ConnectionLimitHandler;
 import com.linkedin.alpini.netty4.handlers.Http2SettingsFrameLogger;
 import com.linkedin.alpini.netty4.http2.Http2PipelineInitializer;
@@ -71,6 +72,8 @@ public class Router4<C extends Channel> implements Router.Builder, Router.Pipeli
   private IntSupplier _connectionLimit = () -> Integer.MAX_VALUE;
   // Default is a no-op consumer
   private Consumer<Integer> _connectionCountRecorder = (count) -> {};
+  private ConnectionHandleMode _connectionHandleMode = ConnectionHandleMode.FAIL_FAST_WHEN_LIMIT_EXCEEDED; // Default to
+                                                                                                           // fail fast
   private RouterTimeoutProcessor _timeoutProcessor;
   private final Map<String, Object> _serverSocketOptions = new HashMap<>();
   private BooleanSupplier _shutdownFlag;
@@ -210,6 +213,12 @@ public class Router4<C extends Channel> implements Router.Builder, Router.Pipeli
   @Override
   public Router.Builder connectionCountRecorder(@Nonnull Consumer<Integer> connectionCountConsumer) {
     _connectionCountRecorder = connectionCountConsumer;
+    return this;
+  }
+
+  @Override
+  public Router.Builder connectionHandleMode(@Nonnull ConnectionHandleMode connectionHandleMode) {
+    _connectionHandleMode = connectionHandleMode;
     return this;
   }
 
@@ -468,7 +477,16 @@ public class Router4<C extends Channel> implements Router.Builder, Router.Pipeli
     RouterTimeoutProcessor timeoutProcessor =
         Optional.ofNullable(_timeoutProcessor).orElseGet(() -> new TimerTimeoutProcessor(nettyTimer));
 
-    ConnectionLimitHandler connectionLimit = new ConnectionControlHandler(_connectionLimit, _connectionCountRecorder);
+    ConnectionLimitHandler connectionLimit;
+    switch (_connectionHandleMode) {
+      case STALL_WHEN_LIMIT_EXCEEDED:
+        connectionLimit = new ConnectionControlHandler(_connectionLimit, _connectionCountRecorder);
+        break;
+      case FAIL_FAST_WHEN_LIMIT_EXCEEDED:
+      default:
+        connectionLimit = new ConnectionLimitHandler(_connectionLimit, _connectionCountRecorder);
+        break;
+    }
 
     ActiveStreamsCountHandler activeStreamsCountHandler = new ActiveStreamsCountHandler();
 
