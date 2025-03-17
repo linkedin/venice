@@ -1614,6 +1614,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     if (!isParent()) {
+      // This will never be executed because the `migrateStore` function is not called in the `AdminConsumptionTask`
+      // child controller.
       // Update store and storeConfig to support single datacenter store migration
       this.updateStore(srcClusterName, storeName, new UpdateStoreQueryParams().setStoreMigration(true));
       this.setStoreConfigForMigration(storeName, srcClusterName, destClusterName);
@@ -1870,6 +1872,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       return controllerClients;
     });
+  }
+
+  private StoreInfo getStoreInfo(String storeName, String clusterName) {
+    ControllerClient controllerClient = getControllerClientMap(clusterName).get(getRegionName());
+    if (controllerClient == null) {
+      throw new VeniceException(
+          "Failed to constructed controller client for cluster " + clusterName + " and region " + getRegionName());
+    }
+    StoreResponse storeResponse = controllerClient.getStore(storeName);
+    if (storeResponse.isError()) {
+      throw new VeniceException(
+          "Failed to get store " + storeName + " from cluster " + clusterName + " and region " + getRegionName()
+              + " with error " + storeResponse.getError());
+    }
+    return storeResponse.getStore();
   }
 
   /**
@@ -2816,7 +2833,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           currentVersionBeforePush = store.getCurrentVersion();
 
           // Dest child controllers skip the version whose kafka topic is truncated
-          if (store.isMigrating() && skipMigratingVersion(clusterName, storeName, versionNumber, store)) {
+          if (store.isMigrating() && skipMigratingVersion(clusterName, storeName, versionNumber)) {
+
             if (versionNumber > store.getLargestUsedVersionNumber()) {
               store.setLargestUsedVersionNumber(versionNumber);
               repository.updateStore(store);
@@ -3282,7 +3300,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @param versionNumber version number
    * @return whether to skip adding the version
    */
-  private boolean skipMigratingVersion(String clusterName, String storeName, int versionNumber, Store store) {
+  private boolean skipMigratingVersion(String clusterName, String storeName, int versionNumber) {
     if (multiClusterConfigs.isParent()) {
       return false;
     }
@@ -3290,13 +3308,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     String destCluster = storeConfig.getMigrationDestCluster();
     if (clusterName.equals(destCluster)) {
       PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, versionNumber));
+      String migrationSourceCluster = storeConfig.getMigrationSrcCluster();
       // If the topic doesn't exist, we don't know whether it's not created or already deleted, so we don't skip
       return getTopicManager().containsTopic(versionTopic) && isTopicTruncated(versionTopic.getName()) ||
-      // If the topic doesn't exist and the version smaller than the largest used version number should be skipped as
-      // it's already deleted(older version).
-          !getTopicManager().containsTopic(versionTopic) && (versionNumber <= store.getLargestUsedVersionNumber());
+      // The topic doesn't exist and less/equal than the largest used version number in the source, it's deleted
+          !getTopicManager().containsTopic(versionTopic)
+              && (versionNumber <= getStoreInfo(storeName, migrationSourceCluster).getLargestUsedVersionNumber());
     }
-
     return false;
   }
 
