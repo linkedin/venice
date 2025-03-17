@@ -831,9 +831,9 @@
               "default": -1
             },
             {
-              "name": "largestUsedRTVersionNumber",
+              "name": "currentRTVersionNumber",
               "type": "int",
-              "doc": "largestUsedRTVersionNumber that should be used to formulate real time topic name during add version",
+              "doc": "current RT version number that should be used to formulate real time topic name during add version",
               "default": 0
             }
           ]
