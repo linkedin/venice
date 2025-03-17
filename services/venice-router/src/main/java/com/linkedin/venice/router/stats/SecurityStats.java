@@ -8,7 +8,7 @@ import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
-import io.tehuti.metrics.stats.Min;
+import java.util.concurrent.atomic.AtomicInteger;
 
 
 public class SecurityStats extends AbstractVeniceStats {
@@ -17,11 +17,17 @@ public class SecurityStats extends AbstractVeniceStats {
   private final Sensor liveConnectionCount;
   private final Sensor nonSslConnectionCount;
 
+  private final AtomicInteger activeConnectionCount = new AtomicInteger();
+
   public SecurityStats(MetricsRepository repository, String name) {
     super(repository, name);
     this.sslErrorCount = registerSensor("ssl_error", new Count());
     this.sslSuccessCount = registerSensor("ssl_success", new Count());
-    this.liveConnectionCount = registerSensor("connection_count", new Avg(), new Max(), new Min());
+    this.liveConnectionCount = registerSensor(
+        "connection_count",
+        new Avg(),
+        new Max(),
+        new AsyncGauge((ignored1, ignored2) -> activeConnectionCount.get(), "connection_count"));
     this.nonSslConnectionCount = registerSensor("non_ssl_request_count", new Avg(), new Max());
   }
 
@@ -41,10 +47,20 @@ public class SecurityStats extends AbstractVeniceStats {
   }
 
   /**
-   * This function will be triggered in {@link com.linkedin.alpini.netty4.handlers.ConnectionControlHandler}.
+   * This function will be triggered in {@link com.linkedin.alpini.netty4.handlers.ConnectionControlHandler}
+   * or {@link com.linkedin.alpini.netty4.handlers.ConnectionLimitHandler} depending on the connection handle mode.
    */
   public void recordLiveConnectionCount(int connectionCount) {
-    this.liveConnectionCount.record(connectionCount);
+    this.activeConnectionCount.set(connectionCount);
+    recordLiveConnectionCount();
+  }
+
+  /**
+   * Since new connections or inactive connections events might not happen in each one-minute time window, a more
+   * active path like data request path will be leveraged to record avg/max connections in each time window.
+   */
+  public void recordLiveConnectionCount() {
+    this.liveConnectionCount.record(activeConnectionCount.get());
   }
 
   public void registerSslHandshakeSensors(SslInitializer sslInitializer) {
