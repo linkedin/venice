@@ -499,10 +499,8 @@ public class TestStreaming {
   public void testConnectionLimitRejection() throws Exception {
     // Clear existing routers first
     veniceCluster.getVeniceRouters().forEach(router -> veniceCluster.removeVeniceRouter(router.getPort()));
-    VeniceRouterWrapper veniceRouterRejectsAllConnections =
-        veniceCluster.addVeniceRouter(getRouterProperties(false, true, false, 0));
-    MetricsRepository routerMetricsRepositoryWithHttpAsyncClient =
-        veniceRouterRejectsAllConnections.getMetricsRepository();
+    // Add a normal router
+    veniceCluster.addVeniceRouter(getRouterProperties(false, true, false, 1000));
     D2Client d2Client = null;
     AvroGenericStoreClient d2StoreClient = null;
     try {
@@ -521,6 +519,13 @@ public class TestStreaming {
       // verified.
       StatTrackingStoreClient trackingStoreClient = (StatTrackingStoreClient) d2StoreClient;
 
+      // After the client is started successfully, clear existing routers again
+      veniceCluster.getVeniceRouters().forEach(router -> veniceCluster.removeVeniceRouter(router.getPort()));
+      // Add a router which rejects all connections
+      VeniceRouterWrapper veniceRouterRejectsAllConnections =
+          veniceCluster.addVeniceRouter(getRouterProperties(false, true, false, 0));
+      MetricsRepository routerMetricsRepositoryWithHttpAsyncClient =
+          veniceRouterRejectsAllConnections.getMetricsRepository();
       Set<String> keySet = new TreeSet<>();
       for (int i = 0; i < MAX_KEY_LIMIT; ++i) {
         keySet.add(KEY_PREFIX + i);
@@ -558,11 +563,16 @@ public class TestStreaming {
 
       // Verify some router metrics
       Map<String, ? extends Metric> routerMetrics = routerMetricsRepositoryWithHttpAsyncClient.metrics();
-      Assert.assertTrue(routerMetrics.get(".security--connection_count.Max").value() > 0);
-      Assert.assertTrue(routerMetrics.get(".security--connection_count.Min").value() > 0);
-      Assert.assertTrue(routerMetrics.get(".security--connection_count_gauge.Gauge").value() > 0);
+      double maxValue = routerMetrics.get(".security--connection_count.Max").value();
+      double avgValue = routerMetrics.get(".security--connection_count.Avg").value();
+      // Since connection limit is 0, the active connection counter would at most be incremented to 1
+      Assert.assertTrue(Math.abs(maxValue - 1d) < 0.0001d);
+      Assert.assertTrue(avgValue > 0 && avgValue < 1.0d);
+      // Gauge metric might not be updated yet since it's only updated one time each one-minute time window
+      // Assert.assertTrue(routerMetrics.get(".security--connection_count_gauge.Gauge").value() > 0);
     } finally {
-      Utils.closeQuietlyWithErrorLogged(veniceRouterRejectsAllConnections);
+      // Clear all routers
+      veniceCluster.getVeniceRouters().forEach(router -> veniceCluster.removeVeniceRouter(router.getPort()));
       Utils.closeQuietlyWithErrorLogged(d2StoreClient);
       if (d2Client != null) {
         D2ClientUtils.shutdownClient(d2Client);
