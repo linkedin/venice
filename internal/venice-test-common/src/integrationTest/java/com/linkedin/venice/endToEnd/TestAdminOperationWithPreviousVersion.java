@@ -1,11 +1,11 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.*;
-import static com.linkedin.venice.utils.TestStoragePersonaUtils.*;
-import static com.linkedin.venice.utils.TestWriteUtils.*;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.*;
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.d2.balancer.D2Client;
@@ -49,10 +49,12 @@ import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.StoreMigrationTestUtil;
+import com.linkedin.venice.utils.TestStoragePersonaUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.vpj.VenicePushJobConstants;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -70,7 +72,6 @@ import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.samza.system.SystemProducer;
-import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -109,9 +110,10 @@ public class TestAdminOperationWithPreviousVersion {
     Utils.thisIsLocalhost();
     Properties parentControllerProperties = new Properties();
     // Disable topic cleanup since parent and child are sharing the same kafka cluster.
-    parentControllerProperties
-        .setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
-    parentControllerProperties.setProperty(OFFLINE_JOB_START_TIMEOUT_MS, "180000");
+    parentControllerProperties.setProperty(
+        ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS,
+        String.valueOf(Long.MAX_VALUE));
+    parentControllerProperties.setProperty(ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS, "180000");
 
     Properties serverProperties = new Properties();
     serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
@@ -208,7 +210,7 @@ public class TestAdminOperationWithPreviousVersion {
     // Create store
     NewStoreResponse newStoreResponse =
         parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
-    Assert.assertFalse(newStoreResponse.isError());
+    assertFalse(newStoreResponse.isError());
 
     // Empty push
     emptyPushToStore(parentControllerClient, storeName, 1);
@@ -226,27 +228,27 @@ public class TestAdminOperationWithPreviousVersion {
     Store store = veniceAdmin.getStore(clusterName, storeName);
 
     // Store has been disabled, can not accept a new version
-    Assert.assertThrows(
+    assertThrows(
         VeniceException.class,
         () -> veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1));
 
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions(), store.getVersions());
+    assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions(), store.getVersions());
 
     // Store has been disabled, can not accept a new version
-    Assert.assertThrows(
+    assertThrows(
         VeniceException.class,
         () -> veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1));
 
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions(), store.getVersions());
+    assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions(), store.getVersions());
 
     // Resume store
     veniceAdmin.setStoreWriteability(clusterName, storeName, true);
 
     emptyPushToStore(parentControllerClient, storeName, 1);
     store = veniceAdmin.getStore(clusterName, storeName);
-    Assert.assertTrue(store.isEnableWrites());
-    Assert.assertEquals(store.getVersions().size(), 1);
-    Assert.assertEquals(store.peekNextVersionNumber(), 2);
+    assertTrue(store.isEnableWrites());
+    assertEquals(store.getVersions().size(), 1);
+    assertEquals(store.peekNextVersionNumber(), 2);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -257,7 +259,7 @@ public class TestAdminOperationWithPreviousVersion {
 
     // Empty push
     VersionCreationResponse vcr = parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-push"), 1L);
-    Assert.assertFalse(vcr.isError());
+    assertFalse(vcr.isError());
     // No wait to kill the push job
     // Kill push job
     parentControllerClient.killOfflinePushJob(Version.composeKafkaTopic(storeName, 1));
@@ -266,7 +268,7 @@ public class TestAdminOperationWithPreviousVersion {
     for (ControllerClient childControllerClient: childControllerClients) {
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
         StoreResponse storeResponse = childControllerClient.getStore(storeName);
-        Assert.assertFalse(storeResponse.isError());
+        assertFalse(storeResponse.isError());
         StoreInfo storeInfo = storeResponse.getStore();
         assertEquals(storeInfo.getVersions().size(), 0);
       });
@@ -290,7 +292,7 @@ public class TestAdminOperationWithPreviousVersion {
     for (ControllerClient childControllerClient: childControllerClients) {
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
         StoreResponse storeResponse = childControllerClient.getStore(storeName);
-        Assert.assertFalse(storeResponse.isError());
+        assertFalse(storeResponse.isError());
         StoreInfo storeInfo = storeResponse.getStore();
         assertFalse(storeInfo.isEnableStoreReads());
       });
@@ -302,7 +304,7 @@ public class TestAdminOperationWithPreviousVersion {
     for (ControllerClient childControllerClient: childControllerClients) {
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
         StoreResponse storeResponse = childControllerClient.getStore(storeName);
-        Assert.assertFalse(storeResponse.isError());
+        assertFalse(storeResponse.isError());
         StoreInfo storeInfo = storeResponse.getStore();
         assertTrue(storeInfo.isEnableStoreReads());
       });
@@ -326,7 +328,7 @@ public class TestAdminOperationWithPreviousVersion {
     assertFalse(response.isError());
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
       StoreResponse storeResponse = parentControllerClient.getStore(storeName);
-      Assert.assertFalse(storeResponse.isError());
+      assertFalse(storeResponse.isError());
       StoreInfo storeInfo = storeResponse.getStore();
       assertEquals(storeInfo.getVersions().size(), 0);
     });
@@ -342,7 +344,7 @@ public class TestAdminOperationWithPreviousVersion {
     assertFalse(response.isError());
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
       StoreResponse storeResponse = parentControllerClient.getStore(storeName);
-      Assert.assertFalse(storeResponse.isError());
+      assertFalse(storeResponse.isError());
       StoreInfo storeInfo = storeResponse.getStore();
       assertEquals(storeInfo.getOwner(), newOwner);
     });
@@ -358,7 +360,7 @@ public class TestAdminOperationWithPreviousVersion {
     assertFalse(response.isError());
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
       StoreResponse storeResponse = parentControllerClient.getStore(storeName);
-      Assert.assertFalse(storeResponse.isError());
+      assertFalse(storeResponse.isError());
       StoreInfo storeInfo = storeResponse.getStore();
       assertEquals(storeInfo.getPartitionCount(), newPartitionCount);
     });
@@ -379,7 +381,7 @@ public class TestAdminOperationWithPreviousVersion {
     assertFalse(response.isError());
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
       StoreResponse storeResponse = parentControllerClient.getStore(storeName);
-      Assert.assertFalse(storeResponse.isError());
+      assertFalse(storeResponse.isError());
       StoreInfo storeInfo = storeResponse.getStore();
       assertEquals(storeInfo.getCurrentVersion(), newCurrentVersion);
     });
@@ -396,7 +398,7 @@ public class TestAdminOperationWithPreviousVersion {
     // Create store
     NewStoreResponse newStoreResponse =
         parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
-    Assert.assertFalse(newStoreResponse.isError());
+    assertFalse(newStoreResponse.isError());
 
     // Empty push
     emptyPushToStore(parentControllerClient, storeName, 1);
@@ -404,12 +406,12 @@ public class TestAdminOperationWithPreviousVersion {
     // Store update
     ControllerResponse updateStore =
         parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setBatchGetLimit(100));
-    Assert.assertFalse(updateStore.isError());
+    assertFalse(updateStore.isError());
 
     for (ControllerClient childControllerClient: childControllerClients) {
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
         StoreResponse storeResponse = childControllerClient.getStore(storeName);
-        Assert.assertFalse(storeResponse.isError());
+        assertFalse(storeResponse.isError());
         StoreInfo storeInfo = storeResponse.getStore();
         assertEquals(storeInfo.getBatchGetLimit(), 100);
       });
@@ -430,7 +432,7 @@ public class TestAdminOperationWithPreviousVersion {
     assertFalse(response.isError());
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
       StoreResponse storeResponse = parentControllerClient.getStore(storeName);
-      Assert.assertTrue(storeResponse.isError());
+      assertTrue(storeResponse.isError());
     });
   }
 
@@ -450,7 +452,7 @@ public class TestAdminOperationWithPreviousVersion {
     assertFalse(response.isError());
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
       StoreResponse storeResponse = parentControllerClient.getStore(storeName);
-      Assert.assertFalse(storeResponse.isError());
+      assertFalse(storeResponse.isError());
       StoreInfo storeInfo = storeResponse.getStore();
       assertEquals(storeInfo.getVersions().size(), 1);
     });
@@ -467,7 +469,7 @@ public class TestAdminOperationWithPreviousVersion {
     Schema derivedSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchemaStr(recordSchemaStr);
 
     veniceAdmin.addDerivedSchema(clusterName, storeName, 1, derivedSchema.toString());
-    Assert.assertEquals(veniceAdmin.getDerivedSchemas(clusterName, storeName).size(), 1);
+    assertEquals(veniceAdmin.getDerivedSchemas(clusterName, storeName).size(), 1);
   }
 
   @Test
@@ -481,13 +483,11 @@ public class TestAdminOperationWithPreviousVersion {
     String valueRecordSchemaStr2 = TestWriteUtils.SIMPLE_USER_WITH_DEFAULT_SCHEMA.toString();
     NewStoreResponse newStoreResponse = parentControllerClient
         .retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", valueRecordSchemaStr1));
-    Assert.assertFalse(
-        newStoreResponse.isError(),
-        "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+    assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
 
     SchemaResponse schemaResponse2 =
         parentControllerClient.retryableRequest(5, c -> c.addValueSchema(storeName, valueRecordSchemaStr2));
-    Assert.assertFalse(schemaResponse2.isError(), "addValueSchema returned error: " + schemaResponse2.getError());
+    assertFalse(schemaResponse2.isError(), "addValueSchema returned error: " + schemaResponse2.getError());
 
     // Delete value schema
     parentControllerClient.deleteValueSchemas(storeName, new ArrayList<>(1));
@@ -499,7 +499,7 @@ public class TestAdminOperationWithPreviousVersion {
     markAsTested("UpdateStoragePersona");
     markAsTested("DeleteStoragePersona");
     long totalQuota = 1000;
-    StoragePersona persona = createDefaultPersona();
+    StoragePersona persona = TestStoragePersonaUtils.createDefaultPersona();
     persona.setQuotaNumber(totalQuota * 3);
     List<String> stores = new ArrayList<>();
     Store store1 = setUpTestStore();
@@ -533,16 +533,16 @@ public class TestAdminOperationWithPreviousVersion {
     TestUtils.waitForNonDeterministicAssertion(
         60,
         TimeUnit.SECONDS,
-        () -> Assert.assertEquals(controllerClient.getStoragePersona(persona.getName()).getStoragePersona(), persona));
+        () -> assertEquals(controllerClient.getStoragePersona(persona.getName()).getStoragePersona(), persona));
 
     response = parentControllerClient.deleteStoragePersona(persona.getName());
     if (response.isError())
       throw new VeniceException(response.getError());
-    Assert.assertFalse(response.isError());
+    assertFalse(response.isError());
     TestUtils.waitForNonDeterministicAssertion(
         60,
         TimeUnit.SECONDS,
-        () -> Assert.assertNull(parentControllerClient.getStoragePersona(persona.getName()).getStoragePersona()));
+        () -> assertNull(parentControllerClient.getStoragePersona(persona.getName()).getStoragePersona()));
   }
 
   @Test
@@ -558,7 +558,7 @@ public class TestAdminOperationWithPreviousVersion {
     for (ControllerClient childControllerClient: childControllerClients) {
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
         StoreResponse storeResponse = childControllerClient.getStore(storeName);
-        Assert.assertFalse(storeResponse.isError());
+        assertFalse(storeResponse.isError());
         StoreInfo storeInfo = storeResponse.getStore();
         assertEquals(storeInfo.getCurrentVersion(), 1);
       });
@@ -570,7 +570,7 @@ public class TestAdminOperationWithPreviousVersion {
     for (ControllerClient childControllerClient: childControllerClients) {
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
         StoreResponse storeResponse = childControllerClient.getStore(storeName);
-        Assert.assertFalse(storeResponse.isError());
+        assertFalse(storeResponse.isError());
         StoreInfo storeInfo = storeResponse.getStore();
         assertEquals(storeInfo.getCurrentVersion(), childControllerClient == childControllerClients.get(1) ? 1 : 2);
       });
@@ -590,7 +590,7 @@ public class TestAdminOperationWithPreviousVersion {
     assertFalse(response.isError());
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
       StoreResponse storeResponse = parentControllerClient.getStore(storeName);
-      Assert.assertFalse(storeResponse.isError());
+      assertFalse(storeResponse.isError());
       StoreInfo storeInfo = storeResponse.getStore();
       assertTrue(storeInfo.isNativeReplicationEnabled());
     });
@@ -610,7 +610,7 @@ public class TestAdminOperationWithPreviousVersion {
     assertFalse(response.isError());
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
       StoreResponse storeResponse = parentControllerClient.getStore(storeName);
-      Assert.assertFalse(storeResponse.isError());
+      assertFalse(storeResponse.isError());
       StoreInfo storeInfo = storeResponse.getStore();
       assertTrue(storeInfo.isActiveActiveReplicationEnabled());
     });
@@ -671,7 +671,7 @@ public class TestAdminOperationWithPreviousVersion {
         AbstractAvroStoreClient<String, Object> castClient =
             (AbstractAvroStoreClient<String, Object>) ((StatTrackingStoreClient<String, Object>) client)
                 .getInnerStoreClient();
-        Assert.assertTrue(castClient.toString().contains(destD2ServiceName));
+        assertTrue(castClient.toString().contains(destD2ServiceName));
       });
     }
 
@@ -710,8 +710,8 @@ public class TestAdminOperationWithPreviousVersion {
         1,
         false,
         -1);
-    Assert.assertNotNull(veniceAdmin.getStore(clusterName, storeName).getVersion(1));
-    Assert.assertEquals(
+    assertNotNull(veniceAdmin.getStore(clusterName, storeName).getVersion(1));
+    assertEquals(
         veniceAdmin.getStore(clusterName, storeName).getVersions().size(),
         1,
         "There should only be exactly one version added to the test-store");
@@ -727,8 +727,8 @@ public class TestAdminOperationWithPreviousVersion {
     veniceAdmin.createStore(clusterName, storeName, "storeOwner", KEY_SCHEMA, recordSchemaStr);
     veniceAdmin.addReplicationMetadataSchema(clusterName, storeName, 1, 1, metadataSchema.toString());
     Collection<RmdSchemaEntry> metadataSchemas = veniceAdmin.getReplicationMetadataSchemas(clusterName, storeName);
-    Assert.assertEquals(metadataSchemas.size(), 1);
-    Assert.assertEquals(metadataSchemas.iterator().next().getSchema(), metadataSchema);
+    assertEquals(metadataSchemas.size(), 1);
+    assertEquals(metadataSchemas.iterator().next().getSchema(), metadataSchema);
   }
 
   @Test
@@ -744,39 +744,37 @@ public class TestAdminOperationWithPreviousVersion {
     String storeName = Utils.getUniqueString("testSupersetSchemaCreation-store");
     NewStoreResponse newStoreResponse = parentControllerClient
         .retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", valueSchemaV1.toString()));
-    Assert.assertFalse(
-        newStoreResponse.isError(),
-        "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+    assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
 
     ControllerResponse updateStoreResponse =
         parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true));
-    Assert.assertFalse(updateStoreResponse.isError());
+    assertFalse(updateStoreResponse.isError());
 
     SchemaResponse schemaResponse2 =
         parentControllerClient.retryableRequest(5, c -> c.addValueSchema(storeName, valueSchemaV4.toString()));
-    Assert.assertFalse(schemaResponse2.isError(), "addValueSchema returned error: " + schemaResponse2.getError());
+    assertFalse(schemaResponse2.isError(), "addValueSchema returned error: " + schemaResponse2.getError());
 
     // Verify superset schema id
     StoreResponse storeResponse = parentControllerClient.getStore(storeName);
-    Assert.assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
-    Assert.assertEquals(
+    assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
+    assertEquals(
         storeResponse.getStore().getLatestSuperSetValueSchemaId(),
         3,
         "Superset schema ID should be the last schema");
 
     // Get the value schema
     SchemaResponse schemaResponse = parentControllerClient.getValueSchema(storeName, 3);
-    Assert.assertFalse(schemaResponse.isError());
+    assertFalse(schemaResponse.isError());
     String supersetSchemaString = schemaResponse.getSchemaStr();
-    Assert.assertTrue(supersetSchemaString.contains("f0"));
-    Assert.assertTrue(supersetSchemaString.contains("f1"));
-    Assert.assertTrue(supersetSchemaString.contains("f2"));
-    Assert.assertTrue(supersetSchemaString.contains("f3"));
+    assertTrue(supersetSchemaString.contains("f0"));
+    assertTrue(supersetSchemaString.contains("f1"));
+    assertTrue(supersetSchemaString.contains("f2"));
+    assertTrue(supersetSchemaString.contains("f3"));
   }
 
   private void emptyPushToStore(ControllerClient parentControllerClient, String storeName, int expectedVersion) {
     VersionCreationResponse vcr = parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-push"), 1L);
-    Assert.assertFalse(vcr.isError());
+    assertFalse(vcr.isError());
     assertEquals(
         vcr.getVersion(),
         expectedVersion,
@@ -792,8 +790,11 @@ public class TestAdminOperationWithPreviousVersion {
   private Store setUpTestStore() {
     Store testStore =
         TestUtils.createTestStore(Utils.getUniqueString("testStore"), "testStoreOwner", System.currentTimeMillis());
-    NewStoreResponse response = parentControllerClient
-        .createNewStore(testStore.getName(), testStore.getOwner(), STRING_SCHEMA.toString(), STRING_SCHEMA.toString());
+    NewStoreResponse response = parentControllerClient.createNewStore(
+        testStore.getName(),
+        testStore.getOwner(),
+        TestWriteUtils.STRING_SCHEMA.toString(),
+        TestWriteUtils.STRING_SCHEMA.toString());
     assertFalse(response.isError());
     return testStore;
   }
@@ -818,14 +819,14 @@ public class TestAdminOperationWithPreviousVersion {
   }
 
   private Properties createAndPushStore(String srcClusterName, String storeName) throws Exception {
-    File inputDir = getTempDataDirectory();
+    File inputDir = TestWriteUtils.getTempDataDirectory();
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     Properties props =
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
-    props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
+    props.put(VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY, true);
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, RECORD_COUNT);
-    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
-    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+    String keySchemaStr = recordSchema.getField(VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = recordSchema.getField(VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP).schema().toString();
 
     UpdateStoreQueryParams updateStoreQueryParams =
         new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
@@ -842,7 +843,7 @@ public class TestAdminOperationWithPreviousVersion {
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       StoreResponse response = childControllerClients.get(0).getStore(storeName);
       StoreInfo storeInfo = response.getStore();
-      Assert.assertNotNull(storeInfo);
+      assertNotNull(storeInfo);
     });
 
     SystemProducer veniceProducer0 = null;
@@ -850,10 +851,10 @@ public class TestAdminOperationWithPreviousVersion {
       job.run();
 
       // Write streaming records
-      veniceProducer0 =
-          getSamzaProducer(multiClusterWrapper.getClusters().get(srcClusterName), storeName, Version.PushType.STREAM);
+      veniceProducer0 = IntegrationTestPushUtils
+          .getSamzaProducer(multiClusterWrapper.getClusters().get(srcClusterName), storeName, Version.PushType.STREAM);
       for (int i = 1; i <= 10; i++) {
-        sendStreamingRecord(veniceProducer0, storeName, i);
+        IntegrationTestPushUtils.sendStreamingRecord(veniceProducer0, storeName, i);
       }
     } catch (Exception e) {
       throw new VeniceException(e);
