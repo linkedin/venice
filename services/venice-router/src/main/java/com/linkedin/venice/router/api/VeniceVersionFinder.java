@@ -98,17 +98,22 @@ public class VeniceVersionFinder {
       throw new StoreDisabledException(storeName, "read");
     }
 
+    // TODO: put in Map.computeIfAbsent()
     int metadataCurrentVersion = store.getCurrentVersion();
+    // new store
     if (!lastCurrentVersionMap.containsKey(storeName)) {
-      lastCurrentVersionMap.put(storeName, metadataCurrentVersion);
       if (metadataCurrentVersion == Store.NON_EXISTING_VERSION) {
         /** This should happen at most once per store, since we are adding the mapping to {@link lastCurrentVersionMap} */
         store = metadataRepository.refreshOneStore(storeName);
         metadataCurrentVersion = store.getCurrentVersion();
+      } else if (!isDecompressorReady(store, metadataCurrentVersion)) {
+        // new store ready, but compressor not ready -> fail request
+        return Store.NON_EXISTING_VERSION;
       }
     }
     int lastCurrentVersion = lastCurrentVersionMap.get(storeName);
     if (lastCurrentVersion == metadataCurrentVersion) {
+      // no version change
       stats.recordNotStale();
       return metadataCurrentVersion;
     }
@@ -119,6 +124,7 @@ public class VeniceVersionFinder {
     return currentVersion;
   }
 
+  // existing store, new version
   private int maybeServeNewCurrentVersion(Store store, int lastCurrentVersion, int newCurrentVersion) {
     String storeName = store.getName();
     // This is a new version change, verify we have online replicas for each partition
