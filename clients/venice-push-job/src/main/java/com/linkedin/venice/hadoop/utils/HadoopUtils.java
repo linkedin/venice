@@ -1,12 +1,14 @@
 package com.linkedin.venice.hadoop.utils;
 
 import com.linkedin.venice.utils.VeniceProperties;
+import java.io.DataInputStream;
 import java.io.IOException;
 import java.util.Properties;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
+import org.apache.hadoop.io.SequenceFile;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -83,5 +85,45 @@ public class HadoopUtils {
       // tested in hdfs, so splitting it like this, it works!
       fs.setPermission(path, permission);
     }
+  }
+
+  /**
+   * This function is a helper function to validate if a given file is a SequenceFile or not.
+   * There is no utility function that can help fetch this info. This code has been mostly copied from the Apache Hadoop
+   * project: https://github.com/apache/hadoop/blob/trunk/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/io/SequenceFile.java#L2022
+   *
+   * @return {@code true} if the {@param path} is a {@link SequenceFile}; {@code false} otherwise
+   * @throws {@link IOException} if the input path is a directory, or on IO failure
+   */
+  public static boolean isSequenceFile(FileSystem fs, Path path) throws IOException {
+    final byte VERSION_WITH_METADATA = (byte) 6;
+    final byte[] VERSION = new byte[] { (byte) 'S', (byte) 'E', (byte) 'Q', VERSION_WITH_METADATA };
+
+    byte[] versionBlock = new byte[VERSION.length];
+
+    if (fs.isDirectory(path)) {
+      throw new IOException("Input path " + path + " is not a file.");
+    }
+
+    try (DataInputStream in = fs.open(path)) {
+      // Try to read sequence file header.
+      try {
+        in.readFully(versionBlock);
+      } catch (Exception e) {
+        return false;
+      }
+    }
+
+    if ((versionBlock[0] != VERSION[0]) || (versionBlock[1] != VERSION[1]) || (versionBlock[2] != VERSION[2])) {
+      return false;
+    }
+
+    // Set 'version'
+    byte version = versionBlock[3];
+    if (version > VERSION[3]) {
+      return false;
+    }
+
+    return true;
   }
 }
