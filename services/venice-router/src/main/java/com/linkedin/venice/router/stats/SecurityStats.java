@@ -12,38 +12,35 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 
 public class SecurityStats extends AbstractVeniceStats {
-  private final Sensor sslErrorCount;
-  private final Sensor sslSuccessCount;
-  private final Sensor liveConnectionCount;
-  private final Sensor nonSslConnectionCount;
+  private final Sensor sslErrorCountSensor;
+  private final Sensor sslSuccessCountSensor;
+  private final Sensor liveConnectionCountSensor;
+  private final Sensor nonSslConnectionCountSensor;
 
   private final AtomicInteger activeConnectionCount = new AtomicInteger();
 
   public SecurityStats(MetricsRepository repository, String name) {
     super(repository, name);
-    this.sslErrorCount = registerSensor("ssl_error", new Count());
-    this.sslSuccessCount = registerSensor("ssl_success", new Count());
-    this.liveConnectionCount = registerSensor(
-        "connection_count",
-        new Avg(),
-        new Max(),
-        new AsyncGauge((ignored1, ignored2) -> activeConnectionCount.get(), "connection_count"));
-    this.nonSslConnectionCount = registerSensor("non_ssl_request_count", new Avg(), new Max());
+    this.sslErrorCountSensor = registerSensor("ssl_error", new Count());
+    this.sslSuccessCountSensor = registerSensor("ssl_success", new Count());
+    this.liveConnectionCountSensor = registerSensor("connection_count", new Avg(), new Max());
+    registerSensor(new AsyncGauge((ignored1, ignored2) -> activeConnectionCount.get(), "connection_count_gauge"));
+    this.nonSslConnectionCountSensor = registerSensor("non_ssl_request_count", new Avg(), new Max());
   }
 
   public void recordSslError() {
-    this.sslErrorCount.record();
+    this.sslErrorCountSensor.record();
   }
 
   public void recordSslSuccess() {
-    this.sslSuccessCount.record();
+    this.sslSuccessCountSensor.record();
   }
 
   /**
    * Record all HTTP requests received in routers.
    */
   public void recordNonSslRequest() {
-    this.nonSslConnectionCount.record();
+    this.nonSslConnectionCountSensor.record();
   }
 
   /**
@@ -63,7 +60,7 @@ public class SecurityStats extends AbstractVeniceStats {
    * active path like data request path will be leveraged to record avg/max connections in each time window.
    */
   public void updateConnectionCountInCurrentMetricTimeWindow() {
-    this.liveConnectionCount.record(activeConnectionCount.get());
+    this.liveConnectionCountSensor.record(activeConnectionCount.get());
   }
 
   public void registerSslHandshakeSensors(SslInitializer sslInitializer) {

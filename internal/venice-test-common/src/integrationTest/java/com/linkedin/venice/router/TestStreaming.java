@@ -560,7 +560,7 @@ public class TestStreaming {
       Map<String, ? extends Metric> routerMetrics = routerMetricsRepositoryWithHttpAsyncClient.metrics();
       Assert.assertTrue(routerMetrics.get(".security--connection_count.Max").value() > 0);
       Assert.assertTrue(routerMetrics.get(".security--connection_count.Min").value() > 0);
-      Assert.assertTrue(routerMetrics.get(".security--connection_count.Gauge").value() > 0);
+      Assert.assertTrue(routerMetrics.get(".security--connection_count_gauge.Gauge").value() > 0);
     } finally {
       Utils.closeQuietlyWithErrorLogged(veniceRouterRejectsAllConnections);
       Utils.closeQuietlyWithErrorLogged(d2StoreClient);
