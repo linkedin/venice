@@ -9,6 +9,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -29,7 +30,8 @@ public class TestBlobTransferManagerBuilder {
     ReadOnlyStoreRepository readOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
     StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
     ClientConfig clientConfig = mock(ClientConfig.class);
-    SSLFactory sslFactory = mock(SSLFactory.class);
+    SSLFactory sslFactory = SslUtils.getVeniceLocalSslFactory();
+
     BlobTransferAclHandler blobTransferAclHandler = mock(BlobTransferAclHandler.class);
 
     P2PBlobTransferConfig blobTransferConfig = new P2PBlobTransferConfig(
@@ -68,7 +70,7 @@ public class TestBlobTransferManagerBuilder {
     StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
     ClientConfig clientConfig = mock(ClientConfig.class);
     CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewFuture = mock(CompletableFuture.class);
-    SSLFactory sslFactory = mock(SSLFactory.class);
+    SSLFactory sslFactory = SslUtils.getVeniceLocalSslFactory();
 
     P2PBlobTransferConfig blobTransferConfig = new P2PBlobTransferConfig(
         port,
