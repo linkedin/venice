@@ -72,8 +72,7 @@ public class Router4<C extends Channel> implements Router.Builder, Router.Pipeli
   private IntSupplier _connectionLimit = () -> Integer.MAX_VALUE;
   // Default is a no-op consumer
   private Consumer<Integer> _connectionCountRecorder = (count) -> {};
-  private ConnectionHandleMode _connectionHandleMode = ConnectionHandleMode.FAIL_FAST_WHEN_LIMIT_EXCEEDED; // Default to
-                                                                                                           // fail fast
+  private ConnectionHandleMode _connectionHandleMode = ConnectionHandleMode.STALL_WHEN_LIMIT_EXCEEDED;
   private RouterTimeoutProcessor _timeoutProcessor;
   private final Map<String, Object> _serverSocketOptions = new HashMap<>();
   private BooleanSupplier _shutdownFlag;
