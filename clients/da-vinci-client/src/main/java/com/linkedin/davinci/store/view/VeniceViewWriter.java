@@ -15,6 +15,7 @@ import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -32,6 +33,10 @@ import org.apache.avro.generic.GenericRecord;
  * view implementations.
  */
 public abstract class VeniceViewWriter extends VeniceView {
+  public enum ViewWriterType {
+    MATERIALIZED_VIEW, CHANGE_CAPTURE_VIEW
+  }
+
   protected final Version version;
   protected final int versionNumber;
   protected Optional<Boolean> isNearlineProducerCompressionEnabled = Optional.empty();
@@ -84,15 +89,20 @@ public abstract class VeniceViewWriter extends VeniceView {
    * @param newValue the incoming fully specified value which hasn't yet been committed to Venice
    * @param key the key of the record that designates newValue and oldValue
    * @param newValueSchemaId the schemaId of the incoming record
-   * @param isChunkedKey is the key already serialized with {@link com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer}
+   * @param viewPartitionSet set of view partitions this record should be processed to. This is used in NR
+   *                                 pass-through when remote region leaders can forward record or chunks of a record
+   *                                 to the correct view partitions without the need to perform chunk assembly or
+   *                                 repartitioning.
    * @param newValueProvider to provide the deserialized new value
    */
   public abstract CompletableFuture<Void> processRecord(
       ByteBuffer newValue,
       byte[] key,
       int newValueSchemaId,
-      boolean isChunkedKey,
+      Set<Integer> viewPartitionSet,
       Lazy<GenericRecord> newValueProvider);
+
+  public abstract ViewWriterType getViewWriterType();
 
   /**
    * Called when the server encounters a control message. There isn't (today) a strict ordering

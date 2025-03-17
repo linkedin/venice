@@ -45,4 +45,10 @@ public class RepushJobRequest {
     params.put(SOURCE_REGION, sourceRegion);
     return params;
   }
+
+  @Override
+  public String toString() {
+    return "RepushJobRequest {" + "storeName='" + this.storeName + '\'' + ", sourceRegion='" + this.sourceRegion + '\''
+        + ", triggerSource='" + this.triggerSource + '\'' + '}';
+  }
 }

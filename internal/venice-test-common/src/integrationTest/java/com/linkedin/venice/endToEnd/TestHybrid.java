@@ -1107,8 +1107,8 @@ public class TestHybrid {
     @Override
     public RepushJobResponse repush(RepushJobRequest repushJobRequest) {
       latch.countDown();
-      LOGGER.info("Repush job triggered for store: " + repushJobRequest.getStoreName());
-      return null;
+      LOGGER.info("Repush job triggered for store: " + repushJobRequest.toString());
+      return new RepushJobResponse(Utils.getUniqueString("repush-execId"));
     }
   }
 

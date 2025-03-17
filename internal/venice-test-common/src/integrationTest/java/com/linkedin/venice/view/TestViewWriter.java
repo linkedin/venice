@@ -13,6 +13,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -50,10 +51,15 @@ public class TestViewWriter extends VeniceViewWriter {
       ByteBuffer newValue,
       byte[] key,
       int newValueSchemaId,
-      boolean isChunkedKey,
+      Set<Integer> viewPartitionSet,
       Lazy<GenericRecord> newValueProvider) {
     internalView.incrementRecordCount(storeName);
     return CompletableFuture.completedFuture(null);
+  }
+
+  @Override
+  public ViewWriterType getViewWriterType() {
+    return null;
   }
 
   @Override

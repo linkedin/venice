@@ -25,7 +25,9 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -129,6 +131,10 @@ public class TestAdminToolConsumption {
     when(controllerClient.getStore(STORE_NAME)).thenReturn(storeResponse);
     when(storeResponse.getStore()).thenReturn(storeInfo);
     when(storeInfo.getHybridStoreConfig().getRealTimeTopicName()).thenReturn(Utils.composeRealTimeTopic(STORE_NAME));
+    PartitionerConfig partitionerConfig = mock(PartitionerConfig.class);
+    when(storeInfo.getPartitionerConfig()).thenReturn(partitionerConfig);
+    when(partitionerConfig.getPartitionerClass()).thenReturn(DefaultVenicePartitioner.class.getName());
+    when(partitionerConfig.getPartitionerParams()).thenReturn(new HashMap<>());
     String topic = storeInfo.getHybridStoreConfig().getRealTimeTopicName();
 
     int assignedPartition = 0;
