@@ -1086,7 +1086,7 @@ public class TestHybrid {
     // ok, now do it again manually
     TestRepushOrchestratorImpl.latch = new CountDownLatch(1);
     sharedVenice.useControllerClient(client -> {
-      RepushJobResponse response = client.triggerRepush(storeName, null);
+      RepushJobResponse response = client.triggerRepush(storeName, null, null);
       Assert.assertFalse(response.isError(), "Repush failed with error: " + response.getError());
     });
 
