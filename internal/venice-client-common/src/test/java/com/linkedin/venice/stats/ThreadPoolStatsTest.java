@@ -33,6 +33,8 @@ public class ThreadPoolStatsTest {
         (int) reporter.query("." + name + "--active_thread_number.LambdaStat").value(),
         activeThreadNumber);
     Assert.assertEquals((int) reporter.query("." + name + "--max_thread_number.LambdaStat").value(), maxThreadNumber);
-    Assert.assertEquals((int) reporter.query("." + name + "--queued_task_number.LambdaStat").value(), queuedTaskNumber);
+    Assert.assertEquals(
+        (int) reporter.query("." + name + "--queued_task_count_gauge.LambdaStat").value(),
+        queuedTaskNumber);
   }
 }

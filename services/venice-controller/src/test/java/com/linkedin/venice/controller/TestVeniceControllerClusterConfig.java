@@ -34,12 +34,7 @@ import static com.linkedin.venice.PushJobCheckpoints.QUOTA_EXCEEDED;
 import static com.linkedin.venice.controller.VeniceControllerClusterConfig.parsePushJobUserErrorCheckpoints;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertNull;
-import static org.testng.Assert.assertThrows;
-import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.expectThrows;
+import static org.testng.Assert.*;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.PushJobCheckpoints;
@@ -363,6 +358,22 @@ public class TestVeniceControllerClusterConfig {
     assertNull(clusterConfig.getHelixInstanceCapacityKeys());
     assertNull(clusterConfig.getHelixDefaultInstanceCapacityMap());
     assertNull(clusterConfig.getHelixDefaultPartitionWeightMap());
+    assertFalse(clusterConfig.isLogCompactionSchedulingEnabled());
+  }
+
+  @Test
+  public void testCompactionConfigs() {
+    Properties clusterProperties = getBaseSingleRegionProperties(false);
+    VeniceControllerClusterConfig clusterConfig =
+        new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties));
+
+    assertFalse(clusterConfig.isLogCompactionSchedulingEnabled());
+
+    clusterProperties.put(ConfigKeys.LOG_COMPACTION_SCHEDULING_ENABLED, true);
+    clusterProperties.put(ConfigKeys.LOG_COMPACTION_ENABLED, true);
+    clusterProperties.put(ConfigKeys.REPUSH_ORCHESTRATOR_CLASS_NAME, "com.linkedin.venice.RepushOrchestrator");
+    clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties));
+    assertTrue(clusterConfig.isLogCompactionSchedulingEnabled());
   }
 
   @Test

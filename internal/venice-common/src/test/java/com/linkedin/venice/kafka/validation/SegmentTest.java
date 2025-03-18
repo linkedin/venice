@@ -14,13 +14,16 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.Update;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -176,5 +179,27 @@ public class SegmentTest {
           "The identity of the elements inside the debug info maps should be deduped; property: " + property
               + ", dedupedValue1: " + dedupedValue1 + ", dedupedValue2: " + dedupedValue2);
     }
+  }
+
+  @Test(dataProvider = "CheckpointingSupported-CheckSum-Types", dataProviderClass = DataProviderUtils.class)
+  public void testToProducerPartitionState(CheckSumType checkSumType) {
+    int partition = 1;
+    int segmentNumber = 2;
+    int sequence = 3;
+    Map<CharSequence, CharSequence> debugInfo = Utils.getDebugInfo();
+    Map<CharSequence, Long> aggregates = new HashMap<>();
+    aggregates.put("test", 4L);
+
+    Segment segment = new Segment(partition, segmentNumber, sequence, checkSumType, debugInfo, aggregates);
+    ProducerPartitionState pps = segment.toProducerPartitionState();
+    assertEquals(pps.getSegmentNumber(), segmentNumber);
+    assertEquals(pps.getSegmentStatus(), segment.getStatus().getValue());
+    assertEquals(pps.getMessageSequenceNumber(), sequence);
+    assertEquals(ByteUtils.extractByteArray(pps.getChecksumState()), segment.getCheckSumState());
+    assertEquals(pps.getChecksumType(), segment.getCheckSumType().getValue());
+    assertEquals(pps.getAggregates(), aggregates);
+    assertEquals(pps.getDebugInfo(), debugInfo);
+    assertEquals(pps.getMessageTimestamp(), segment.getLastRecordProducerTimestamp());
+    assertEquals(pps.getIsRegistered(), segment.isRegistered());
   }
 }
