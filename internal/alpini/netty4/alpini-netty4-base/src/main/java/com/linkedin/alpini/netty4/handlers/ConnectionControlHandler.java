@@ -42,8 +42,9 @@ public class ConnectionControlHandler extends ConnectionLimitHandler {
 
   public ConnectionControlHandler(
       @Nonnull IntSupplier connectionLimit,
-      @Nonnull Consumer<Integer> connectionCountRecorder) {
-    super(connectionLimit, connectionCountRecorder);
+      Consumer<Integer> connectionCountRecorder,
+      Consumer<Integer> rejectedConnectionCountRecorder) {
+    super(connectionLimit, connectionCountRecorder, rejectedConnectionCountRecorder);
   }
 
   @Override
@@ -59,6 +60,7 @@ public class ConnectionControlHandler extends ConnectionLimitHandler {
               "Connection limit exceeded! Active connections: {}, Limit: {}",
               getConnectedCount(),
               getConnectionLimit());
+          _rejectedConnectionCountRecorder.accept(1);
           parent.config().setAutoRead(false);
         }
       }).addListener(ignored -> _activeSemaphore.release());

@@ -72,6 +72,7 @@ public class Router4<C extends Channel> implements Router.Builder, Router.Pipeli
   private IntSupplier _connectionLimit = () -> Integer.MAX_VALUE;
   // Default is a no-op consumer
   private Consumer<Integer> _connectionCountRecorder = (count) -> {};
+  private Consumer<Integer> _rejectedConnectionCountRecorder = (count) -> {};
   private ConnectionHandleMode _connectionHandleMode = ConnectionHandleMode.STALL_WHEN_LIMIT_EXCEEDED;
   private RouterTimeoutProcessor _timeoutProcessor;
   private final Map<String, Object> _serverSocketOptions = new HashMap<>();
@@ -212,6 +213,12 @@ public class Router4<C extends Channel> implements Router.Builder, Router.Pipeli
   @Override
   public Router.Builder connectionCountRecorder(@Nonnull Consumer<Integer> connectionCountConsumer) {
     _connectionCountRecorder = connectionCountConsumer;
+    return this;
+  }
+
+  @Override
+  public Router.Builder rejectedConnectionCountRecorder(@Nonnull Consumer<Integer> rejectedConnectionCountRecorderr) {
+    _rejectedConnectionCountRecorder = rejectedConnectionCountRecorderr;
     return this;
   }
 
@@ -479,11 +486,13 @@ public class Router4<C extends Channel> implements Router.Builder, Router.Pipeli
     ConnectionLimitHandler connectionLimit;
     switch (_connectionHandleMode) {
       case STALL_WHEN_LIMIT_EXCEEDED:
-        connectionLimit = new ConnectionControlHandler(_connectionLimit, _connectionCountRecorder);
+        connectionLimit =
+            new ConnectionControlHandler(_connectionLimit, _connectionCountRecorder, _rejectedConnectionCountRecorder);
         break;
       case FAIL_FAST_WHEN_LIMIT_EXCEEDED:
       default:
-        connectionLimit = new ConnectionLimitHandler(_connectionLimit, _connectionCountRecorder);
+        connectionLimit =
+            new ConnectionLimitHandler(_connectionLimit, _connectionCountRecorder, _rejectedConnectionCountRecorder);
         break;
     }
 

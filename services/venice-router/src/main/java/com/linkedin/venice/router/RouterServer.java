@@ -663,6 +663,7 @@ public class RouterServer extends AbstractVeniceService {
               .connectionLimit(config.getConnectionLimit())
               .connectionHandleMode(config.getConnectionHandleMode())
               .connectionCountRecorder(securityStats::recordLiveConnectionCount)
+              .rejectedConnectionCountRecorder(securityStats::recordRejectedConnectionCount)
               .timeoutProcessor(timeoutProcessor)
               .beforeHttpRequestHandler(ChannelPipeline.class, (pipeline) -> {
                 pipeline.addLast(
@@ -765,6 +766,7 @@ public class RouterServer extends AbstractVeniceService {
         .connectionLimit(config.getConnectionLimit())
         .connectionHandleMode(config.getConnectionHandleMode())
         .connectionCountRecorder(securityStats::recordLiveConnectionCount)
+        .rejectedConnectionCountRecorder(securityStats::recordRejectedConnectionCount)
         .timeoutProcessor(timeoutProcessor)
         .beforeHttpServerCodec(ChannelPipeline.class, sslFactory.isPresent() ? addSslInitializer : noop) // Compare once
                                                                                                          // per router.

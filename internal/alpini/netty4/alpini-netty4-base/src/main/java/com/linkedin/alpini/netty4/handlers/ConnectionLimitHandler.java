@@ -28,15 +28,21 @@ public class ConnectionLimitHandler extends ChannelInboundHandlerAdapter {
   private final AtomicInteger _activeCount = new AtomicInteger();
   private IntSupplier _connectionLimit;
   protected final Consumer<Integer> _connectionCountRecorder;
+  protected final Consumer<Integer> _rejectedConnectionCountRecorder;
 
   /**
    * Construct with a preset connection limit.
    * @param limit Maximum number of connections.
    */
-  public ConnectionLimitHandler(IntSupplier limit, Consumer<Integer> connectionCountRecorder) {
+  public ConnectionLimitHandler(
+      IntSupplier limit,
+      Consumer<Integer> connectionCountRecorder,
+      Consumer<Integer> rejectedConnectionCountRecorder) {
     _connectionLimit = limit;
     // Build a no-op recorder if the pass-in recorder is null
     _connectionCountRecorder = (connectionCountRecorder == null) ? (ignored) -> {} : connectionCountRecorder;
+    _rejectedConnectionCountRecorder =
+        (rejectedConnectionCountRecorder == null) ? (ignored) -> {} : rejectedConnectionCountRecorder;
   }
 
   /**
@@ -78,6 +84,7 @@ public class ConnectionLimitHandler extends ChannelInboundHandlerAdapter {
     _connectionCountRecorder.accept(count);
     if (count > limit) {
       LOG.error("Connection count {} exceeds {}", count, limit);
+      _rejectedConnectionCountRecorder.accept(1);
 
       ctx.writeAndFlush(Unpooled.copiedBuffer(REJECT_MESSAGE, StandardCharsets.US_ASCII))
           .addListener(ChannelFutureListener.CLOSE);

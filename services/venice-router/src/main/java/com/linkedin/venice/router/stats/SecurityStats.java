@@ -2,6 +2,7 @@ package com.linkedin.venice.router.stats;
 
 import com.linkedin.alpini.netty4.ssl.SslInitializer;
 import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.stats.LongAdderRateGauge;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.AsyncGauge;
@@ -15,6 +16,7 @@ public class SecurityStats extends AbstractVeniceStats {
   private final Sensor sslErrorCountSensor;
   private final Sensor sslSuccessCountSensor;
   private final Sensor liveConnectionCountSensor;
+  private final Sensor rejectedConnectionCountSensor;
   private final Sensor nonSslConnectionCountSensor;
 
   private final AtomicInteger activeConnectionCount = new AtomicInteger();
@@ -26,6 +28,7 @@ public class SecurityStats extends AbstractVeniceStats {
     this.liveConnectionCountSensor = registerSensor("connection_count", new Avg(), new Max());
     registerSensor(new AsyncGauge((ignored1, ignored2) -> activeConnectionCount.get(), "connection_count_gauge"));
     this.nonSslConnectionCountSensor = registerSensor("non_ssl_request_count", new Avg(), new Max());
+    rejectedConnectionCountSensor = registerSensor("rejected_connection_count", new LongAdderRateGauge());
   }
 
   public void recordSslError() {
@@ -50,6 +53,10 @@ public class SecurityStats extends AbstractVeniceStats {
   public void recordLiveConnectionCount(int connectionCount) {
     this.activeConnectionCount.set(connectionCount);
     updateConnectionCountInCurrentMetricTimeWindow();
+  }
+
+  public void recordRejectedConnectionCount(int rejectedConnectionCount) {
+    this.rejectedConnectionCountSensor.record(rejectedConnectionCount);
   }
 
   /**

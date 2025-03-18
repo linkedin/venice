@@ -110,6 +110,8 @@ public interface Router extends ShutdownableResource {
 
     Builder connectionCountRecorder(@Nonnull Consumer<Integer> recorder);
 
+    Builder rejectedConnectionCountRecorder(@Nonnull Consumer<Integer> recorder);
+
     Builder connectionHandleMode(@Nonnull ConnectionHandleMode connectionHandleMode);
 
     Builder serverSocketOptions(Map<String, Object> serverSocketOptions);
