@@ -568,6 +568,11 @@ public class TestStreaming {
       // Since connection limit is 0, the active connection counter would at most be incremented to 1
       Assert.assertTrue(Math.abs(maxValue - 1d) < 0.0001d);
       Assert.assertTrue(avgValue > 0 && avgValue < 1.0d);
+      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+        Map<String, ? extends Metric> latestRouterMetrics = routerMetricsRepositoryWithHttpAsyncClient.metrics();
+        double rejectedConnectionCount = latestRouterMetrics.get(".security--rejected_connection_count.Rate").value();
+        Assert.assertTrue(rejectedConnectionCount > 0);
+      });
       // Gauge metric might not be updated yet since it's only updated one time each one-minute time window
       // Assert.assertTrue(routerMetrics.get(".security--connection_count_gauge.Gauge").value() > 0);
     } finally {
