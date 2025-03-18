@@ -30,18 +30,14 @@ import org.apache.logging.log4j.Logger;
 public class PubSubClientsFactory {
   private static final Logger LOGGER = LogManager.getLogger(PubSubClientsFactory.class);
 
-  private enum FactoryType {
-    PRODUCER, CONSUMER, ADMIN
-  }
-
-  private final PubSubProducerAdapterFactory producerAdapterFactory;
-  private final PubSubConsumerAdapterFactory consumerAdapterFactory;
-  private final PubSubAdminAdapterFactory adminAdapterFactory;
+  private final PubSubProducerAdapterFactory<? extends PubSubProducerAdapter> producerAdapterFactory;
+  private final PubSubConsumerAdapterFactory<? extends PubSubConsumerAdapter> consumerAdapterFactory;
+  private final PubSubAdminAdapterFactory<? extends PubSubAdminAdapter> adminAdapterFactory;
 
   public PubSubClientsFactory(
-      PubSubProducerAdapterFactory producerAdapterFactory,
-      PubSubConsumerAdapterFactory consumerAdapterFactory,
-      PubSubAdminAdapterFactory adminAdapterFactory) {
+      PubSubProducerAdapterFactory<? extends PubSubProducerAdapter> producerAdapterFactory,
+      PubSubConsumerAdapterFactory<? extends PubSubConsumerAdapter> consumerAdapterFactory,
+      PubSubAdminAdapterFactory<? extends PubSubAdminAdapter> adminAdapterFactory) {
     this.producerAdapterFactory = producerAdapterFactory;
     this.consumerAdapterFactory = consumerAdapterFactory;
     this.adminAdapterFactory = adminAdapterFactory;
@@ -51,59 +47,61 @@ public class PubSubClientsFactory {
     this(createProducerFactory(properties), createConsumerFactory(properties), createAdminFactory(properties));
   }
 
-  public PubSubProducerAdapterFactory getProducerAdapterFactory() {
+  public PubSubProducerAdapterFactory<? extends PubSubProducerAdapter> getProducerAdapterFactory() {
     return producerAdapterFactory;
   }
 
-  public PubSubConsumerAdapterFactory getConsumerAdapterFactory() {
+  public PubSubConsumerAdapterFactory<? extends PubSubConsumerAdapter> getConsumerAdapterFactory() {
     return consumerAdapterFactory;
   }
 
-  public PubSubAdminAdapterFactory getAdminAdapterFactory() {
+  public PubSubAdminAdapterFactory<? extends PubSubAdminAdapter> getAdminAdapterFactory() {
     return adminAdapterFactory;
   }
 
-  public static PubSubProducerAdapterFactory<PubSubProducerAdapter> createProducerFactory(Properties properties) {
+  public static PubSubProducerAdapterFactory<? extends PubSubProducerAdapter> createProducerFactory(
+      Properties properties) {
     return createProducerFactory(new VeniceProperties(properties));
   }
 
-  public static PubSubProducerAdapterFactory<PubSubProducerAdapter> createProducerFactory(
+  public static PubSubProducerAdapterFactory<? extends PubSubProducerAdapter> createProducerFactory(
       VeniceProperties veniceProperties) {
     return createFactory(
         veniceProperties,
         PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS,
         PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS,
         ApacheKafkaProducerAdapterFactory.class.getName(),
-        FactoryType.PRODUCER);
+        PubSubClientType.PRODUCER);
   }
 
-  public static PubSubConsumerAdapterFactory<PubSubConsumerAdapter> createConsumerFactory(
+  public static PubSubConsumerAdapterFactory<? extends PubSubConsumerAdapter> createConsumerFactory(
       VeniceProperties veniceProperties) {
     return createFactory(
         veniceProperties,
         PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS,
         PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS,
         ApacheKafkaConsumerAdapterFactory.class.getName(),
-        FactoryType.CONSUMER);
+        PubSubClientType.CONSUMER);
   }
 
-  public static PubSubAdminAdapterFactory<PubSubAdminAdapter> createAdminFactory(VeniceProperties veniceProperties) {
+  public static PubSubAdminAdapterFactory<? extends PubSubAdminAdapter> createAdminFactory(
+      VeniceProperties veniceProperties) {
     return createFactory(
         veniceProperties,
         PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS,
         PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS,
         ApacheKafkaAdminAdapterFactory.class.getName(),
-        FactoryType.ADMIN);
+        PubSubClientType.ADMIN);
   }
 
-  public static PubSubAdminAdapterFactory<PubSubAdminAdapter> createSourceOfTruthAdminFactory(
+  public static PubSubAdminAdapterFactory<? extends PubSubAdminAdapter> createSourceOfTruthAdminFactory(
       VeniceProperties veniceProperties) {
     return createFactory(
         veniceProperties,
         PUBSUB_SOURCE_OF_TRUTH_ADMIN_ADAPTER_FACTORY_CLASS,
         PUB_SUB_SOURCE_OF_TRUTH_ADMIN_ADAPTER_FACTORY_CLASS,
         ApacheKafkaAdminAdapterFactory.class.getName(),
-        FactoryType.ADMIN);
+        PubSubClientType.ADMIN);
   }
 
   private static <T> T createFactory(
@@ -111,14 +109,14 @@ public class PubSubClientsFactory {
       String preferredConfigKey,
       String alternateConfigKey,
       String defaultClassName,
-      FactoryType factoryType) {
+      PubSubClientType pubSubClientType) {
     String className;
     if (properties.containsKey(preferredConfigKey) || properties.containsKey(alternateConfigKey)) {
       className = properties.getStringWithAlternative(preferredConfigKey, alternateConfigKey);
-      LOGGER.debug("Creating pub-sub {} adapter factory instance for class: {}", factoryType, className);
+      LOGGER.debug("Creating pub-sub {} adapter factory instance for class: {}", pubSubClientType, className);
     } else {
       className = defaultClassName;
-      LOGGER.debug("Creating pub-sub {} adapter factory instance with default class: {}", factoryType, className);
+      LOGGER.debug("Creating pub-sub {} adapter factory instance with default class: {}", pubSubClientType, className);
     }
 
     return createInstance(className);

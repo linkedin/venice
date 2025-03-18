@@ -48,7 +48,7 @@ public class TopicManagerIntegrationTest extends TopicManagerTest {
         .create(
             new PubSubProducerAdapterContext.Builder().setVeniceProperties(VeniceProperties.empty())
                 .setProducerName("topicManagerTestProducer")
-                .setBrokerAddress(pubSubBrokerWrapper.getAddress())
+                .setPubSubBrokerAddress(pubSubBrokerWrapper.getAddress())
                 .setPubSubPositionTypeRegistry(pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
                 .build());
   }

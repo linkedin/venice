@@ -14,13 +14,14 @@ import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubConstants;
-import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
@@ -102,13 +103,15 @@ class TopicMetadataFetcher implements Closeable {
     this.closeables = new ArrayList<>(topicManagerContext.getTopicMetadataFetcherConsumerPoolSize());
     this.cachedEntryTtlInNs = MILLISECONDS.toNanos(topicManagerContext.getTopicOffsetCheckIntervalMs());
     PubSubMessageDeserializer pubSubMessageDeserializer = PubSubMessageDeserializer.getInstance();
+    PubSubConsumerAdapterContext.Builder consumerContextBuilder = new PubSubConsumerAdapterContext.Builder()
+        .setPubSubBrokerAddress(pubSubClusterAddress)
+        .setVeniceProperties(topicManagerContext.getVeniceProperties())
+        .setPubSubSecurityProtocol(topicManagerContext.getPubSubSecurityProtocolResolver().apply(pubSubClusterAddress))
+        .setIsOffsetCollectionEnabled(false)
+        .setPubSubMessageDeserializer(pubSubMessageDeserializer);
     for (int i = 0; i < topicManagerContext.getTopicMetadataFetcherConsumerPoolSize(); i++) {
       PubSubConsumerAdapter pubSubConsumerAdapter = topicManagerContext.getPubSubConsumerAdapterFactory()
-          .create(
-              topicManagerContext.getPubSubProperties(pubSubClusterAddress),
-              false,
-              pubSubMessageDeserializer,
-              pubSubClusterAddress);
+          .create(consumerContextBuilder.setConsumerName("TopicMetadataFetcherConsumer-" + i).build());
 
       closeables.add(pubSubConsumerAdapter);
       if (!pubSubConsumerPool.offer(pubSubConsumerAdapter)) {

@@ -10,9 +10,11 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.WriterChunkingHelper;
 import java.nio.ByteBuffer;
@@ -26,11 +28,13 @@ import org.testng.annotations.Test;
 
 
 public class PartitionConsumptionStateTest {
-  private static final String replicaId = Utils.getReplicaId("topic1", 0);
+  private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
+  private static final PubSubTopicPartition TOPIC_PARTITION =
+      new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("topic1"), 0);
 
   @Test
   public void testUpdateChecksum() {
-    PartitionConsumptionState pcs = new PartitionConsumptionState(replicaId, 0, mock(OffsetRecord.class), false);
+    PartitionConsumptionState pcs = new PartitionConsumptionState(TOPIC_PARTITION, mock(OffsetRecord.class), false);
     pcs.initializeExpectedChecksum();
     byte[] rmdPayload = new byte[] { 127 };
     byte[] key1 = new byte[] { 1 };
@@ -85,7 +89,7 @@ public class PartitionConsumptionStateTest {
    */
   @Test
   public void testTransientRecordMap() {
-    PartitionConsumptionState pcs = new PartitionConsumptionState(replicaId, 0, mock(OffsetRecord.class), false);
+    PartitionConsumptionState pcs = new PartitionConsumptionState(TOPIC_PARTITION, mock(OffsetRecord.class), false);
 
     byte[] key1 = new byte[] { 65, 66, 67, 68 };
     byte[] key2 = new byte[] { 65, 66, 67, 68 };
@@ -132,7 +136,7 @@ public class PartitionConsumptionStateTest {
 
   @Test
   public void testIsLeaderCompleted() {
-    PartitionConsumptionState pcs = new PartitionConsumptionState(replicaId, 0, mock(OffsetRecord.class), false);
+    PartitionConsumptionState pcs = new PartitionConsumptionState(TOPIC_PARTITION, mock(OffsetRecord.class), false);
     // default is LEADER_NOT_COMPLETED
     assertEquals(pcs.getLeaderCompleteState(), LeaderCompleteState.LEADER_NOT_COMPLETED);
     assertFalse(pcs.isLeaderCompleted());
@@ -147,7 +151,7 @@ public class PartitionConsumptionStateTest {
     List<String> pendingReportIncrementalPush = new ArrayList<>();
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(pendingReportIncrementalPush).when(offsetRecord).getPendingReportIncPushVersionList();
-    PartitionConsumptionState pcs = new PartitionConsumptionState(replicaId, 0, offsetRecord, false);
+    PartitionConsumptionState pcs = new PartitionConsumptionState(TOPIC_PARTITION, offsetRecord, false);
     pcs.addIncPushVersionToPendingReportList("a");
     Assert.assertEquals(pcs.getPendingReportIncPushVersionList().size(), 1);
     for (int i = 0; i < 50; i++) {

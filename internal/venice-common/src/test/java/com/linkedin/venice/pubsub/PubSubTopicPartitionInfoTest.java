@@ -6,6 +6,7 @@ import static org.testng.Assert.assertFalse;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartitionInfo;
 import java.util.PriorityQueue;
 import java.util.Random;
 import org.testng.Assert;

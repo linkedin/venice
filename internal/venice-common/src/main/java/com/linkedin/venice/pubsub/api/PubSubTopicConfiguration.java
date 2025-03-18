@@ -1,4 +1,4 @@
-package com.linkedin.venice.pubsub;
+package com.linkedin.venice.pubsub.api;
 
 import java.util.Optional;
 

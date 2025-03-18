@@ -13,7 +13,6 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Properties;
 
 
 /**
@@ -34,15 +33,14 @@ public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKa
       new VeniceConcurrentHashMap<>();
 
   StoreAwarePartitionWiseKafkaConsumerService(
+      final String pubSubBrokerAddress,
       final ConsumerPoolType poolType,
       final PubSubConsumerAdapterFactory consumerFactory,
-      final Properties consumerProperties,
       final long readCycleDelayMs,
       final int numOfConsumersPerKafkaCluster,
       final IngestionThrottler ingestionThrottler,
       final KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
       final MetricsRepository metricsRepository,
-      final String kafkaClusterAlias,
       final long sharedConsumerNonExistingTopicCleanupDelayMS,
       final StaleTopicChecker staleTopicChecker,
       final boolean liveConfigBasedKafkaThrottlingEnabled,
@@ -54,15 +52,14 @@ public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKa
       final boolean isUnregisterMetricForDeletedStoreEnabled,
       VeniceServerConfig veniceServerConfig) {
     super(
+        pubSubBrokerAddress,
         poolType,
         consumerFactory,
-        consumerProperties,
         readCycleDelayMs,
         numOfConsumersPerKafkaCluster,
         ingestionThrottler,
         kafkaClusterBasedRecordThrottler,
         metricsRepository,
-        kafkaClusterAlias,
         sharedConsumerNonExistingTopicCleanupDelayMS,
         staleTopicChecker,
         liveConfigBasedKafkaThrottlingEnabled,

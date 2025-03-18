@@ -66,7 +66,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
@@ -107,27 +106,27 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       StoreIngestionTaskFactory.Builder builder,
       Store store,
       Version version,
-      Properties kafkaConsumerProperties,
       BooleanSupplier isCurrentVersion,
       VeniceStoreVersionConfig storeConfig,
       int errorPartitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
       DaVinciRecordTransformerConfig recordTransformerConfig,
-      Lazy<ZKHelixAdmin> zkHelixAdmin) {
+      Lazy<ZKHelixAdmin> zkHelixAdmin,
+      String localPubSubBrokerAddress) {
     super(
         storageService,
         builder,
         store,
         version,
-        kafkaConsumerProperties,
         isCurrentVersion,
         storeConfig,
         errorPartitionId,
         isIsolatedIngestion,
         cacheBackend,
         recordTransformerConfig,
-        zkHelixAdmin);
+        zkHelixAdmin,
+        localPubSubBrokerAddress);
 
     this.rmdProtocolVersionId = version.getRmdVersionId();
 
@@ -982,6 +981,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                 rewindStartTimestamp);
             upstreamOffsetsByKafkaURLs.put(sourceKafkaURL, upstreamStartOffset);
           } catch (Exception e) {
+            LOGGER.info(
+                "#### Failed to get upstream offset for topic-partition: {} from source URL: {}",
+                newSourceTopicPartition,
+                sourceKafkaURL,
+                e);
             /**
              * This is actually tricky. Potentially we could return a -1 value here, but this has the gotcha that if we
              * have a non-symmetrical failure (like, region1 can't talk to the region2 broker) this will result in a remote

@@ -47,7 +47,6 @@ import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Pair;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.Closeable;
 import java.io.IOException;
@@ -501,10 +500,11 @@ public interface Admin extends AutoCloseable, Closeable {
       boolean isTargetRegionPushWithDeferredSwap);
 
   /**
-   * Return the ssl or non-ssl bootstrap servers based on the given flag.
-   * @return kafka bootstrap servers url, if there are multiple will be comma separated.
+   * Returns the PubSub broker address associated with the local region.
+   *
+   * @return the local region's PubSub broker address
    */
-  String getKafkaBootstrapServers(boolean isSSL);
+  String getLocalPubSubBrokerAddress();
 
   /**
    * Return the region name of this Admin
@@ -525,8 +525,6 @@ public interface Admin extends AutoCloseable, Closeable {
    * Return whether ssl is enabled for the given store for push.
    */
   boolean isSSLEnabledForPush(String clusterName, String storeName);
-
-  boolean isSslToKafka();
 
   TopicManager getTopicManager();
 
@@ -673,8 +671,6 @@ public interface Admin extends AutoCloseable, Closeable {
   Map<String, String> findAllBootstrappingVersions(String clusterName);
 
   VeniceWriterFactory getVeniceWriterFactory();
-
-  VeniceProperties getPubSubSSLProperties(String pubSubBrokerAddress);
 
   void close();
 
@@ -850,7 +846,7 @@ public interface Admin extends AutoCloseable, Closeable {
   long getBackupVersionDefaultRetentionMs();
 
   /**
-   * @return The default value of {@link com.linkedin.venice.writer.VeniceWriter#maxRecordSizeBytes} which is
+   * @return The default value of {@link com.linkedin.venice.writer.VeniceWriter#MAX_RECORD_SIZE_BYTES} which is
    * provided to the VPJ and Consumer as a controller config to dynamically control the setting per cluster.
    */
   int getDefaultMaxRecordSizeBytes();

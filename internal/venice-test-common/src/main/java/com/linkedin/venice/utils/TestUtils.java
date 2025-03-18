@@ -834,7 +834,6 @@ public class TestUtils {
     doReturn(false).when(mockVeniceServerConfig).isHybridQuotaEnabled();
     VeniceProperties mockVeniceProperties = mock(VeniceProperties.class);
     doReturn(true).when(mockVeniceProperties).isEmpty();
-    doReturn(mockVeniceProperties).when(mockVeniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
 
     StorageEngineRepository mockStorageEngineRepository = mock(StorageEngineRepository.class);
     doReturn(mock(AbstractStorageEngine.class)).when(mockStorageEngineRepository).getLocalStorageEngine(anyString());

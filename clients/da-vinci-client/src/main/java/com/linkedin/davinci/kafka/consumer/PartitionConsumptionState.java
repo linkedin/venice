@@ -22,11 +22,13 @@ import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import javax.annotation.Nonnull;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -37,9 +39,11 @@ public class PartitionConsumptionState {
   private static final int MAX_INCREMENTAL_PUSH_ENTRY_NUM = 50;
   private static final String PREVIOUSLY_READY_TO_SERVE = "previouslyReadyToServe";
   private static final String TRUE = "true";
-
-  private final String replicaId;
-  private final int partition;
+  /**
+   * This is the topic partition that this state is associated with.
+   * It could be a version topic or a view topic.
+   */
+  private final PubSubTopicPartition pubSubTopicPartition;
   private final boolean hybrid;
   private final OffsetRecord offsetRecord;
 
@@ -238,9 +242,8 @@ public class PartitionConsumptionState {
 
   private BooleanSupplier isCurrentVersion;
 
-  public PartitionConsumptionState(String replicaId, int partition, OffsetRecord offsetRecord, boolean hybrid) {
-    this.replicaId = replicaId;
-    this.partition = partition;
+  public PartitionConsumptionState(PubSubTopicPartition topicPartition, OffsetRecord offsetRecord, boolean hybrid) {
+    this.pubSubTopicPartition = validateVersionOrViewTopicPartitionForReplica(topicPartition);
     this.hybrid = hybrid;
     this.offsetRecord = offsetRecord;
     this.errorReported = false;
@@ -285,8 +288,21 @@ public class PartitionConsumptionState {
     this.pendingReportIncPushVersionList = offsetRecord.getPendingReportIncPushVersionList();
   }
 
+  private static PubSubTopicPartition validateVersionOrViewTopicPartitionForReplica(
+      @Nonnull PubSubTopicPartition topicPartition) {
+    Objects.requireNonNull(
+        topicPartition,
+        "TopicPartition must not be null when creating PartitionConsumptionState for a replica.");
+
+    PubSubTopic pubSubTopic = topicPartition.getPubSubTopic();
+    if (!pubSubTopic.isVersionTopic() && !pubSubTopic.isViewTopic()) {
+      throw new IllegalArgumentException("Expected a version or view topic partition, but got: " + topicPartition);
+    }
+    return topicPartition;
+  }
+
   public int getPartition() {
-    return this.partition;
+    return this.pubSubTopicPartition.getPartitionNumber();
   }
 
   public CompletableFuture<Void> getLastVTProduceCallFuture() {
@@ -409,7 +425,7 @@ public class PartitionConsumptionState {
   public String toString() {
     return new StringBuilder().append("PCS{")
         .append("replicaId=")
-        .append(replicaId)
+        .append(getReplicaId())
         .append(", hybrid=")
         .append(hybrid)
         .append(", latestProcessedLocalVersionTopicOffset=")
@@ -910,7 +926,11 @@ public class PartitionConsumptionState {
   }
 
   public String getReplicaId() {
-    return replicaId;
+    return this.pubSubTopicPartition.toString();
+  }
+
+  public PubSubTopicPartition getPubSubTopicPartition() {
+    return this.pubSubTopicPartition;
   }
 
   public void addIncPushVersionToPendingReportList(String incPushVersion) {

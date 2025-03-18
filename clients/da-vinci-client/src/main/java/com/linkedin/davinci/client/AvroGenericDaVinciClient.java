@@ -14,6 +14,7 @@ import static com.linkedin.venice.ConfigKeys.DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIO
 import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.client.store.ClientFactory.getTransportClient;
 import static org.apache.avro.Schema.Type.RECORD;
@@ -697,7 +698,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       zkAddress = backendConfig.getString(ZOOKEEPER_ADDRESS);
     }
     if (kafkaBootstrapServers == null) {
-      kafkaBootstrapServers = backendConfig.getString(KAFKA_BOOTSTRAP_SERVERS);
+      kafkaBootstrapServers = backendConfig.getStringWithAlternative(PUBSUB_BROKER_ADDRESS, KAFKA_BOOTSTRAP_SERVERS);
     }
 
     String recordTransformerOutputValueSchema = "null";
@@ -714,6 +715,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         .put(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION, 80)
         .put(ZOOKEEPER_ADDRESS, zkAddress)
         .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers)
+        .put(PUBSUB_BROKER_ADDRESS, kafkaBootstrapServers)
         .put(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, true)
         .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, daVinciConfig.getStorageClass() == StorageClass.MEMORY_BACKED_BY_DISK)
         .put(INGESTION_USE_DA_VINCI_CLIENT, true)

@@ -9,7 +9,6 @@ import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
 import static com.linkedin.davinci.validation.KafkaDataIntegrityValidator.DISABLED;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.pubsub.PubSubConstants.UNKNOWN_LATEST_OFFSET;
@@ -122,7 +121,6 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.ValueHolder;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
@@ -141,7 +139,6 @@ import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -230,7 +227,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final ReadOnlySchemaRepository schemaRepository;
   protected final ReadOnlyStoreRepository storeRepository;
   protected final String ingestionTaskName;
-  protected final Properties kafkaProps;
   protected final AtomicBoolean isRunning;
   protected final AtomicBoolean emitMetrics; // TODO: remove this once we migrate to versioned stats
   protected final AtomicInteger consumerActionSequenceNumber = new AtomicInteger(0);
@@ -404,7 +400,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       StoreIngestionTaskFactory.Builder builder,
       Store store,
       Version version,
-      Properties kafkaConsumerProperties,
       BooleanSupplier isCurrentVersion,
       VeniceStoreVersionConfig storeVersionConfig,
       int errorPartitionId,
@@ -412,7 +407,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       Optional<ObjectCacheBackend> cacheBackend,
       DaVinciRecordTransformerConfig recordTransformerConfig,
       Queue<VeniceNotifier> notifiers,
-      Lazy<ZKHelixAdmin> zkHelixAdmin) {
+      Lazy<ZKHelixAdmin> zkHelixAdmin,
+      String localPubSubBrokerAddress) {
     this.storeVersionConfig = storeVersionConfig;
     this.readCycleDelayMs = storeVersionConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeVersionConfig.getKafkaEmptyPollSleepMs();
@@ -420,7 +416,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         storeVersionConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
     this.databaseSyncBytesIntervalForDeferredWriteMode =
         storeVersionConfig.getDatabaseSyncBytesIntervalForDeferredWriteMode();
-    this.kafkaProps = kafkaConsumerProperties;
     this.storageService = storageService;
     this.storageEngineRepository = builder.getStorageEngineRepository();
     this.storageMetadataService = builder.getStorageMetadataService();
@@ -565,7 +560,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       this.chunkAssembler = null;
     }
 
-    this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
+    this.localKafkaServer = localPubSubBrokerAddress;
     this.localKafkaServerSingletonSet = Collections.singleton(localKafkaServer);
     this.isDaVinciClient = builder.isDaVinciClient();
     this.isActiveActiveReplicationEnabled = version.isActiveActiveReplicationEnabled();
@@ -2281,8 +2276,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         // Let's try to restore the state retrieved from the OffsetManager
         PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(
-            Utils.getReplicaId(versionTopic, partition),
-            partition,
+            new PubSubTopicPartitionImpl(versionTopic, partition),
             offsetRecord,
             hybridStoreConfig.isPresent());
         newPartitionConsumptionState.setCurrentVersionSupplier(isCurrentVersion);
@@ -2301,7 +2295,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (!checkDatabaseIntegrity(partition, topic, offsetRecord, newPartitionConsumptionState)) {
           LOGGER.warn(
               "Restart ingestion from the beginning by resetting OffsetRecord for topic-partition: {}. Replica: {}",
-              Utils.getReplicaId(topic, partition),
+              topicPartition,
               newPartitionConsumptionState.getReplicaId());
           resetOffset(partition, topicPartition, true);
           newPartitionConsumptionState = partitionConsumptionStateMap.get(partition);
@@ -2438,10 +2432,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             partitionConsumptionState.getReplicaId());
       }
       PartitionConsumptionState consumptionState = new PartitionConsumptionState(
-          Utils.getReplicaId(versionTopic, partition),
-          partition,
-          new OffsetRecord(partitionStateSerializer),
-          hybridStoreConfig.isPresent());
+              partitionConsumptionState.getPubSubTopicPartition(),
+              new OffsetRecord(partitionStateSerializer),
+              hybridStoreConfig.isPresent());
       consumptionState.setCurrentVersionSupplier(isCurrentVersion);
       partitionConsumptionStateMap.put(partition, consumptionState);
       storageUtilizationManager.initPartition(partition);
@@ -3873,14 +3866,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         && pubSubTopicPartition.getPubSubTopic().isRealTime()) {
       return;
     }
-    final boolean consumeRemotely = !Objects.equals(resolvedKafkaURL, localKafkaServer);
-    // TODO: Move remote KafkaConsumerService creating operations into the aggKafkaConsumerService.
-    aggKafkaConsumerService
-        .createKafkaConsumerService(createKafkaConsumerProperties(kafkaProps, resolvedKafkaURL, consumeRemotely));
     PartitionReplicaIngestionContext partitionReplicaIngestionContext =
         new PartitionReplicaIngestionContext(versionTopic, pubSubTopicPartition, versionRole, workloadType);
-    // localKafkaServer doesn't have suffix but kafkaURL may have suffix,
-    // and we don't want to pass the resolvedKafkaURL as it will be passed to data receiver for parsing cluster id
     aggKafkaConsumerService.subscribeConsumerFor(kafkaURL, this, partitionReplicaIngestionContext, startOffset);
   }
 
@@ -4422,25 +4409,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Override the {@link com.linkedin.venice.ConfigKeys#KAFKA_BOOTSTRAP_SERVERS} config with a remote Kafka bootstrap url.
-   */
-  protected Properties createKafkaConsumerProperties(
-      Properties localConsumerProps,
-      String remoteKafkaSourceAddress,
-      boolean consumeRemotely) {
-    Properties newConsumerProps = serverConfig.getClusterProperties().getPropertiesCopy();
-    newConsumerProps.putAll(localConsumerProps);
-    newConsumerProps.setProperty(KAFKA_BOOTSTRAP_SERVERS, remoteKafkaSourceAddress);
-    VeniceProperties customizedConsumerConfigs = consumeRemotely
-        ? serverConfig.getKafkaConsumerConfigsForRemoteConsumption()
-        : serverConfig.getKafkaConsumerConfigsForLocalConsumption();
-    if (!customizedConsumerConfigs.isEmpty()) {
-      newConsumerProps.putAll(customizedConsumerConfigs.toProperties());
-    }
-    return newConsumerProps;
-  }
-
-  /**
    * A function that would apply on a specific partition to check whether the partition is ready to serve.
    */
   @FunctionalInterface
@@ -4621,7 +4589,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // Use default kafka admin client (could be scala or java based) to get local topic manager
       return topicManagerRepository.getLocalTopicManager();
     }
-    // Use java-based kafka admin client to get remote topic manager
     return topicManagerRepository.getTopicManager(sourceKafkaServer);
   }
 

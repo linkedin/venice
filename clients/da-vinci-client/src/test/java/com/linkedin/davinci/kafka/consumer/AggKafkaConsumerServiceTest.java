@@ -2,9 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.davinci.kafka.consumer.KafkaConsumerService.ConsumerAssignmentStrategy.PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
 import static com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.DEFAULT;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -18,6 +16,7 @@ import static org.testng.Assert.assertEquals;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.StuckConsumerRepairStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -26,9 +25,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
-import com.linkedin.venice.pubsub.manager.TopicManagerContext.PubSubPropertiesSupplier;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
@@ -36,7 +33,6 @@ import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Properties;
 import java.util.function.Consumer;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -45,7 +41,6 @@ import org.testng.annotations.Test;
 
 public class AggKafkaConsumerServiceTest {
   private PubSubConsumerAdapterFactory consumerFactory;
-  private PubSubPropertiesSupplier pubSubPropertiesSupplier;
   private VeniceServerConfig serverConfig;
   private IngestionThrottler ingestionThrottler;
   private KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler;
@@ -67,7 +62,6 @@ public class AggKafkaConsumerServiceTest {
     topic = topicRepository.getTopic(Utils.getUniqueString("topic") + "_v1");
     topicPartition = new PubSubTopicPartitionImpl(topic, 0);
     consumerFactory = mock(PubSubConsumerAdapterFactory.class);
-    pubSubPropertiesSupplier = mock(PubSubPropertiesSupplier.class);
     ingestionThrottler = mock(IngestionThrottler.class);
     kafkaClusterBasedRecordThrottler = mock(KafkaClusterBasedRecordThrottler.class);
     metricsRepository = mock(MetricsRepository.class);
@@ -90,10 +84,9 @@ public class AggKafkaConsumerServiceTest {
     Sensor dummySensor = mock(Sensor.class);
     when(metricsRepository.sensor(anyString(), any())).thenReturn(dummySensor);
     PubSubConsumerAdapter adapter = mock(PubSubConsumerAdapter.class);
-    when(consumerFactory.create(any(), anyBoolean(), any(), any())).thenReturn(adapter);
+    when(consumerFactory.create(any(PubSubConsumerAdapterContext.class))).thenReturn(adapter);
     aggKafkaConsumerService = new AggKafkaConsumerService(
         consumerFactory,
-        pubSubPropertiesSupplier,
         serverConfig,
         ingestionThrottler,
         kafkaClusterBasedRecordThrottler,
@@ -108,15 +101,11 @@ public class AggKafkaConsumerServiceTest {
   // test subscribeConsumerFor
   @Test
   public void testSubscribeConsumerFor() {
-    doReturn(new VeniceProperties(new Properties())).when(pubSubPropertiesSupplier).get(PUBSUB_URL);
-
     AggKafkaConsumerService aggKafkaConsumerServiceSpy = spy(aggKafkaConsumerService);
     StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
     TopicManager topicManager = mock(TopicManager.class);
 
-    Properties props = new Properties();
-    props.put(KAFKA_BOOTSTRAP_SERVERS, PUBSUB_URL);
-    aggKafkaConsumerService.createKafkaConsumerService(props);
+    aggKafkaConsumerService.createKafkaConsumerService(PUBSUB_URL);
     when(storeIngestionTask.getVersionTopic()).thenReturn(topic);
     when(storeIngestionTask.getTopicManager(PUBSUB_URL)).thenReturn(topicManager);
     PartitionReplicaIngestionContext partitionReplicaIngestionContext = new PartitionReplicaIngestionContext(

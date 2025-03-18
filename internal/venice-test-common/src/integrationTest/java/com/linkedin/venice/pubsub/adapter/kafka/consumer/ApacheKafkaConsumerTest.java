@@ -6,13 +6,15 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterContext;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminConfig;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -39,13 +41,19 @@ public class ApacheKafkaConsumerTest {
     kafkaBroker = ServiceFactory.getPubSubBroker();
     Properties properties = new Properties();
     properties.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBroker.getAddress());
-    ApacheKafkaConsumerConfig apacheKafkaConsumerConfig =
-        new ApacheKafkaConsumerConfig(new VeniceProperties(properties), "testConsumer");
-    consumer =
-        new ApacheKafkaConsumerAdapter(apacheKafkaConsumerConfig, PubSubMessageDeserializer.getInstance(), false);
-    admin = new ApacheKafkaAdminAdapter(
-        new ApacheKafkaAdminConfig(new VeniceProperties(properties)),
-        pubSubTopicRepository);
+    PubSubConsumerAdapterContext context =
+        new PubSubConsumerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(properties))
+            .setConsumerName("testConsumer")
+            .setPubSubMessageDeserializer(PubSubMessageDeserializer.getInstance())
+            .setIsOffsetCollectionEnabled(false)
+            .build();
+    consumer = new ApacheKafkaConsumerAdapter(new ApacheKafkaConsumerConfig(context));
+    PubSubAdminAdapterContext adminContext =
+        new PubSubAdminAdapterContext.Builder().setVeniceProperties(new VeniceProperties(properties))
+            .setPubSubBrokerAddress(kafkaBroker.getAddress())
+            .setPubSubTopicRepository(pubSubTopicRepository)
+            .build();
+    admin = new ApacheKafkaAdminAdapter(new ApacheKafkaAdminConfig(adminContext), pubSubTopicRepository);
   }
 
   @AfterMethod

@@ -304,7 +304,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   /**
    * Sets the maximum number of records that can be buffered and returned to the user when calling poll.
    * When the maximum number of records is reached, ingestion will be paused until the buffer is drained.
-   * Please note that this is separate from {@link com.linkedin.venice.ConfigKeys#SERVER_KAFKA_MAX_POLL_RECORDS}.
+   * Please note that this is separate from consumer max poll records config.
    * In order for this feature to be used, {@link #setIsExperimentalClientEnabled(Boolean)} must be set to true.
    * It is currently only supported for {@link BootstrappingVeniceChangelogConsumer}.
    */

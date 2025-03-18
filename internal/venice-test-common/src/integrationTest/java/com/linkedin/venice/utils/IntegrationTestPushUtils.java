@@ -452,12 +452,9 @@ public class IntegrationTestPushUtils {
       PubSubBrokerWrapper pubSubBrokerWrapper,
       PubSubTopicRepository pubSubTopicRepository) {
     Properties properties = new Properties();
-    String pubSubBootstrapServers = pubSubBrokerWrapper.getAddress();
     properties.putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));
-    properties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
-
     TopicManagerContext topicManagerContext =
-        new TopicManagerContext.Builder().setPubSubPropertiesSupplier(k -> new VeniceProperties(properties))
+        new TopicManagerContext.Builder().setVeniceProperties(new VeniceProperties(properties))
             .setPubSubTopicRepository(pubSubTopicRepository)
             .setPubSubConsumerAdapterFactory(pubSubBrokerWrapper.getPubSubClientsFactory().getConsumerAdapterFactory())
             .setPubSubAdminAdapterFactory(pubSubBrokerWrapper.getPubSubClientsFactory().getAdminAdapterFactory())
@@ -466,7 +463,7 @@ public class IntegrationTestPushUtils {
             .setTopicMinLogCompactionLagMs(topicMinLogCompactionLagMs)
             .build();
 
-    return new TopicManagerRepository(topicManagerContext, pubSubBootstrapServers);
+    return new TopicManagerRepository(topicManagerContext, pubSubBrokerWrapper.getAddress());
   }
 
   public static VeniceWriterFactory getVeniceWriterFactory(

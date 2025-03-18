@@ -2,7 +2,6 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atMostOnce;
@@ -48,12 +47,12 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -116,7 +115,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     mockLiveClusterConfigRepo = mock(ReadOnlyLiveClusterConfigRepository.class);
     PubSubConsumerAdapterFactory mockPubSubConsumerAdapterFactory = mock(PubSubConsumerAdapterFactory.class);
     doReturn(mock(PubSubConsumerAdapter.class)).when(mockPubSubConsumerAdapterFactory)
-        .create(any(), anyBoolean(), any(), any());
+        .create(any(PubSubConsumerAdapterContext.class));
     mockPubSubClientsFactory = new PubSubClientsFactory(
         mock(PubSubProducerAdapterFactory.class),
         mockPubSubConsumerAdapterFactory,
@@ -148,14 +147,12 @@ public abstract class KafkaStoreIngestionServiceTest {
     doReturn(5).when(mockVeniceServerConfig).getIdleIngestionTaskCleanupIntervalInSeconds();
 
     // Consumer related configs for preparing kafka consumer service.
-    doReturn(dummyKafkaUrl).when(mockVeniceServerConfig).getKafkaBootstrapServers();
+    doReturn(dummyKafkaUrl).when(mockVeniceServerConfig).getLocalPubSubBrokerAddress();
     Function<String, String> kafkaClusterUrlResolver = String::toString;
     doReturn(kafkaClusterUrlResolver).when(mockVeniceServerConfig).getKafkaClusterUrlResolver();
-    doReturn(VeniceProperties.empty()).when(mockVeniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
     doReturn(getConsumerAssignmentStrategy()).when(mockVeniceServerConfig).getSharedConsumerAssignmentStrategy();
     doReturn(1).when(mockVeniceServerConfig).getConsumerPoolSizePerKafkaCluster();
-    doReturn(PubSubSecurityProtocol.PLAINTEXT).when(mockVeniceServerConfig).getKafkaSecurityProtocol(dummyKafkaUrl);
-    doReturn(10).when(mockVeniceServerConfig).getKafkaMaxPollRecords();
+    // doReturn(PubSubSecurityProtocol.PLAINTEXT).when(mockVeniceServerConfig).getPubSubSecurityProtocolResolver(dummyKafkaUrl);
     doReturn(2).when(mockVeniceServerConfig).getTopicManagerMetadataFetcherConsumerPoolSize();
     doReturn(2).when(mockVeniceServerConfig).getTopicManagerMetadataFetcherThreadPoolSize();
     doReturn(30l).when(mockVeniceServerConfig).getKafkaFetchQuotaTimeWindow();
@@ -489,10 +486,8 @@ public abstract class KafkaStoreIngestionServiceTest {
     Assert.assertNotNull(storeIngestionTask);
     PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topicName);
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopic, 0);
-    Properties consumerProperties = new Properties();
-    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, "localhost:16637");
     AbstractKafkaConsumerService kafkaConsumerService =
-        spy(storeIngestionTask.aggKafkaConsumerService.createKafkaConsumerService(consumerProperties));
+        spy(storeIngestionTask.aggKafkaConsumerService.createKafkaConsumerService("localhost:1663"));
     kafkaStoreIngestionService.getTopicPartitionIngestionContext(topicName, topicName, 0);
     verify(kafkaConsumerService, atMostOnce()).getIngestionInfoFor(pubSubTopic, pubSubTopicPartition);
     kafkaStoreIngestionService.close();

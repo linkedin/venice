@@ -1,8 +1,11 @@
 package com.linkedin.venice.pubsub.adapter.kafka.admin;
 
+import static com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminConfig.KAFKA_ADMIN_CONFIG_PREFIXES;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX;
 import static org.testng.Assert.assertEquals;
 
+import com.linkedin.venice.pubsub.PubSubAdminAdapterContext;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -14,6 +17,8 @@ import org.testng.annotations.Test;
 
 
 public class ApacheKafkaAdminConfigTest {
+  private final PubSubTopicRepository topicRepository = new PubSubTopicRepository();
+
   private static final String SASL_JAAS_CONFIG =
       "org.apache.kafka.common.security.plain.PlainLoginModule required " + "username=\"foo\" password=\"bar\"\n";
 
@@ -33,7 +38,6 @@ public class ApacheKafkaAdminConfigTest {
     Properties properties = new Properties();
     properties.put("cluster.name", "cluster");
     properties.put("zookeeper.address", "localhost:2181");
-    properties.put("kafka.bootstrap.servers", "localhost:9092");
     properties.put("kafka.sasl.jaas.config", SASL_JAAS_CONFIG);
     properties.put("kafka.sasl.mechanism", SASL_MECHANISM);
     properties.put("kafka.security.protocol", securityProtocol.name());
@@ -49,8 +53,15 @@ public class ApacheKafkaAdminConfigTest {
       properties.put("kafka.ssl.trustmanager.algorithm", "SunX509");
       properties.put("kafka.ssl.secure.random.implementation", "SHA1PRNG");
     }
-    VeniceProperties veniceProperties = new VeniceProperties(properties);
-    ApacheKafkaAdminConfig serverConfig = new ApacheKafkaAdminConfig(veniceProperties);
+    PubSubAdminAdapterContext adminAdapterContext =
+        new PubSubAdminAdapterContext.Builder().setPubSubBrokerAddress("localhost:9092")
+            .setAdminClientName("test-admin-client")
+            .setPubSubSecurityProtocol(securityProtocol)
+            .setPubSubTopicRepository(topicRepository)
+            .setVeniceProperties(new VeniceProperties(properties))
+            .build();
+    ApacheKafkaAdminConfig serverConfig = new ApacheKafkaAdminConfig(adminAdapterContext);
+
     Properties adminProperties = serverConfig.getAdminProperties();
     assertEquals(SASL_JAAS_CONFIG, adminProperties.get("sasl.jaas.config"));
     assertEquals(SASL_MECHANISM, adminProperties.get("sasl.mechanism"));
@@ -65,9 +76,12 @@ public class ApacheKafkaAdminConfigTest {
     allProps.put(KAFKA_CONFIG_PREFIX + AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
     allProps.put(KAFKA_CONFIG_PREFIX + "bogus.kafka.config", "bogusValue");
 
-    Properties validProps =
-        ApacheKafkaUtils.getValidKafkaClientProperties(new VeniceProperties(allProps), AdminClientConfig.configNames());
-    assertEquals(validProps.size(), 1);
+    Properties validProps = ApacheKafkaUtils.getValidKafkaClientProperties(
+        new VeniceProperties(allProps),
+        PubSubSecurityProtocol.PLAINTEXT,
+        AdminClientConfig.configNames(),
+        KAFKA_ADMIN_CONFIG_PREFIXES);
+    assertEquals(validProps.size(), 2);
     assertEquals(validProps.get(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG), "localhost:9092");
   }
 }

@@ -193,7 +193,7 @@ public abstract class ConsumerIntegrationTest {
         new PubSubProducerAdapterContext.Builder().setShouldValidateProducerConfigStrictly(false)
             .setVeniceProperties(props)
             .setPubSubMessageSerializer(pubSubMessageSerializer)
-            .setBrokerAddress(cluster.getPubSubBrokerWrapper().getAddress())
+            .setPubSubBrokerAddress(cluster.getPubSubBrokerWrapper().getAddress())
             .setPubSubPositionTypeRegistry(cluster.getPubSubBrokerWrapper().getPubSubPositionTypeRegistry())
             .build();
     return new VeniceWriterWithNewerProtocol(

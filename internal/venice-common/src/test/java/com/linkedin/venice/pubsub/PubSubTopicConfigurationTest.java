@@ -6,6 +6,7 @@ import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertNull;
 
+import com.linkedin.venice.pubsub.api.PubSubTopicConfiguration;
 import java.util.Optional;
 import org.testng.annotations.Test;
 

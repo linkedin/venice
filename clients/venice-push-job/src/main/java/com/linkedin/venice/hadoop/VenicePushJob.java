@@ -122,6 +122,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.writecompute.WriteComputeOperation;
@@ -1311,15 +1312,16 @@ public class VenicePushJob implements AutoCloseable {
 
   private ByteBuffer fetchOrBuildCompressionDictionary() throws VeniceException {
     // Prepare the param builder, which can be used by different scenarios.
-    KafkaInputDictTrainer.ParamBuilder paramBuilder = new KafkaInputDictTrainer.ParamBuilder()
-        .setKeySchema(AvroCompatibilityHelper.toParsingForm(pushJobSetting.storeKeySchema))
-        .setSslProperties(pushJobSetting.enableSSL ? sslProperties.get() : new Properties())
-        .setCompressionDictSize(
-            props.getInt(
-                COMPRESSION_DICTIONARY_SIZE_LIMIT,
-                VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES))
-        .setDictSampleSize(
-            props.getInt(COMPRESSION_DICTIONARY_SAMPLE_SIZE, DEFAULT_COMPRESSION_DICTIONARY_SAMPLE_SIZE));
+    KafkaInputDictTrainer.ParamBuilder paramBuilder =
+        new KafkaInputDictTrainer.ParamBuilder().setPubSubClientsFactory(ApacheKafkaUtils.getKafkaClientsFactory())
+            .setKeySchema(AvroCompatibilityHelper.toParsingForm(pushJobSetting.storeKeySchema))
+            .setSslProperties(pushJobSetting.enableSSL ? sslProperties.get() : new Properties())
+            .setCompressionDictSize(
+                props.getInt(
+                    COMPRESSION_DICTIONARY_SIZE_LIMIT,
+                    VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES))
+            .setDictSampleSize(
+                props.getInt(COMPRESSION_DICTIONARY_SAMPLE_SIZE, DEFAULT_COMPRESSION_DICTIONARY_SAMPLE_SIZE));
     if (pushJobSetting.isSourceKafka) {
       paramBuilder.setSourceVersionChunkingEnabled(pushJobSetting.sourceKafkaInputVersionInfo.isChunkingEnabled());
       // Currently, KIF repush will always build a dict in Azkaban Job driver if necessary.
@@ -2203,6 +2205,7 @@ public class VenicePushJob implements AutoCloseable {
       veniceWriterProperties.put(VeniceWriter.CLOSE_TIMEOUT_MS, props.getInt(VeniceWriter.CLOSE_TIMEOUT_MS));
     }
     if (sslToKafka) {
+      // TODO(sushantmane): Check if we can always pass ssl properties to the writer.
       veniceWriterProperties.putAll(sslProperties.get());
     }
     veniceWriterProperties.setProperty(

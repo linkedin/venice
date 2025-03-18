@@ -1,4 +1,4 @@
-package com.linkedin.venice.pubsub.adapter;
+package com.linkedin.venice.pubsub;
 
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;

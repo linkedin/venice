@@ -37,8 +37,9 @@ import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT;
 import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT_STORE_LIST;
 import static com.linkedin.venice.ConfigKeys.INGESTION_MLOCK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_THROTTLER_FACTORS_PER_SECOND;
-import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_METRICS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.KEY_VALUE_PROFILING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY;
@@ -55,6 +56,7 @@ import static com.linkedin.venice.ConfigKeys.MIN_CONSUMER_IN_CONSUMER_POOL_PER_K
 import static com.linkedin.venice.ConfigKeys.OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PRINCIPAL_NAME;
@@ -119,7 +121,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_MAX_IDLE_COUNT;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_MAX_POLL_RECORDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEAKED_RESOURCE_CLEANUP_ENABLED;
@@ -202,6 +203,10 @@ import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_STA
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.UNSORTED_INPUT_DRAINER_SIZE;
 import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR;
+import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CONSUMER_POLL_RETRY_BACKOFF_MS;
+import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CONSUMER_POLL_RETRY_BACKOFF_MS_DEFAULT_VALUE;
+import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CONSUMER_POLL_RETRY_TIMES;
+import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CONSUMER_POLL_RETRY_TIMES_DEFAULT_VALUE;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
@@ -235,6 +240,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -401,8 +407,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final long nodeCapacityInRcu;
 
-  private final int kafkaMaxPollRecords;
-
   private final int pubSubConsumerPollRetryTimes;
 
   private final int pubSubConsumerPollRetryBackoffMs;
@@ -469,18 +473,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int ingestionApplicationPort;
   private final boolean databaseChecksumVerificationEnabled;
   private final boolean rocksDbStorageEngineConfigCheckEnabled;
-
-  private final VeniceProperties kafkaConsumerConfigsForLocalConsumption;
-  private final VeniceProperties kafkaConsumerConfigsForRemoteConsumption;
-
   private final boolean freezeIngestionIfReadyToServeOrLocalDataExists;
 
   private final String systemSchemaClusterName;
 
   private final long sharedConsumerNonExistingTopicCleanupDelayMS;
   private final int offsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart;
-
-  private final Set<String> kafkaProducerMetrics;
   /**
    * Boolean flag indicating if it is a Da Vinci application.
    */
@@ -638,6 +636,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final boolean isParticipantMessageStoreEnabled;
 
+  private final VeniceProperties localPubSubClientProperties;
+  private final VeniceProperties remotePubSubClientProperties;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
   }
@@ -757,7 +758,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getBoolean(SEVER_CALCULATE_QUOTA_USAGE_BASED_ON_PARTITIONS_ASSIGNMENT_ENABLED, true);
 
     nodeCapacityInRcu = serverProperties.getLong(SERVER_NODE_CAPACITY_RCU, 100000);
-    kafkaMaxPollRecords = serverProperties.getInt(SERVER_KAFKA_MAX_POLL_RECORDS, 100);
     pubSubConsumerPollRetryTimes = serverProperties.getInt(SERVER_PUBSUB_CONSUMER_POLL_RETRY_TIMES, 100);
     pubSubConsumerPollRetryBackoffMs = serverProperties.getInt(SERVER_PUBSUB_CONSUMER_POLL_RETRY_BACKOFF_MS, 0);
     diskHealthCheckIntervalInMS =
@@ -842,11 +842,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     databaseChecksumVerificationEnabled =
         serverProperties.getBoolean(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, false);
 
-    kafkaConsumerConfigsForLocalConsumption =
-        serverProperties.clipAndFilterNamespace(SERVER_LOCAL_CONSUMER_CONFIG_PREFIX);
-    kafkaConsumerConfigsForRemoteConsumption =
-        serverProperties.clipAndFilterNamespace(SERVER_REMOTE_CONSUMER_CONFIG_PREFIX);
-
     rocksDbStorageEngineConfigCheckEnabled =
         serverProperties.getBoolean(SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED, true);
 
@@ -856,17 +851,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     systemSchemaClusterName = serverProperties.getString(SYSTEM_SCHEMA_CLUSTER_NAME, "");
     sharedConsumerNonExistingTopicCleanupDelayMS = serverProperties
         .getLong(SERVER_SHARED_CONSUMER_NON_EXISTING_TOPIC_CLEANUP_DELAY_MS, TimeUnit.MINUTES.toMillis(10));
-
-    List<String> kafkaProducerMetricsList = serverProperties.getList(
-        KAFKA_PRODUCER_METRICS,
-        Arrays.asList(
-            "outgoing-byte-rate",
-            "record-send-rate",
-            "batch-size-max",
-            "batch-size-avg",
-            "buffer-available-bytes",
-            "buffer-exhausted-rate"));
-    kafkaProducerMetrics = new HashSet<>(kafkaProducerMetricsList);
 
     isDaVinciClient = serverProperties.getBoolean(INGESTION_USE_DA_VINCI_CLIENT, false);
     unsubscribeAfterBatchpushEnabled = serverProperties.getBoolean(SERVER_UNSUB_AFTER_BATCHPUSH, false);
@@ -1088,6 +1072,21 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_LOAD_CONTROLLER_MULTI_GET_LATENCY_ACCEPT_THRESHOLD_IN_MS, 100);
     loadControllerComputeLatencyAcceptThresholdMs =
         serverProperties.getInt(SERVER_LOAD_CONTROLLER_COMPUTE_LATENCY_ACCEPT_THRESHOLD_IN_MS, 100);
+
+    Properties localPubSubProps =
+        extractPropertiesForPubSubClients(serverProperties, SERVER_LOCAL_CONSUMER_CONFIG_PREFIX);
+    localPubSubProps.put(KAFKA_BOOTSTRAP_SERVERS, localPubSubBrokerAddress);
+    localPubSubProps.put(KAFKA_SECURITY_PROTOCOL, pubSubSecurityProtocolResolver.apply(localPubSubBrokerAddress));
+    localPubSubClientProperties = new VeniceProperties(localPubSubProps);
+    remotePubSubClientProperties =
+        new VeniceProperties(extractPropertiesForPubSubClients(serverProperties, SERVER_REMOTE_CONSUMER_CONFIG_PREFIX));
+
+    // log local broker address and pubsub security protocol
+    LOGGER.info(
+        "Local broker address: {}, pubsub security protocol: {} resolver: {}",
+        localPubSubBrokerAddress,
+        pubSubSecurityProtocol,
+        pubSubSecurityProtocolResolver.apply(localPubSubBrokerAddress));
   }
 
   List<Double> extractThrottleLimitFactorsFor(VeniceProperties serverProperties, String configKey) {
@@ -1362,18 +1361,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return nodeCapacityInRcu;
   }
 
-  public int getKafkaMaxPollRecords() {
-    return kafkaMaxPollRecords;
-  }
-
-  public int getPubSubConsumerPollRetryTimes() {
-    return pubSubConsumerPollRetryTimes;
-  }
-
-  public int getPubSubConsumerPollRetryBackoffMs() {
-    return pubSubConsumerPollRetryBackoffMs;
-  }
-
   public long getDiskHealthCheckIntervalInMS() {
     return diskHealthCheckIntervalInMS;
   }
@@ -1486,12 +1473,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return databaseChecksumVerificationEnabled;
   }
 
-  public VeniceProperties getKafkaConsumerConfigsForLocalConsumption() {
-    return kafkaConsumerConfigsForLocalConsumption;
+  public VeniceProperties getPropertiesForLocalPubSubClients() {
+    return localPubSubClientProperties;
   }
 
-  public VeniceProperties getKafkaConsumerConfigsForRemoteConsumption() {
-    return kafkaConsumerConfigsForRemoteConsumption;
+  public VeniceProperties getPropertiesForRemotePubSubClients() {
+    return remotePubSubClientProperties;
   }
 
   public boolean isRocksDbStorageEngineConfigCheckEnabled() {
@@ -2012,5 +1999,47 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getLoadControllerComputeLatencyAcceptThresholdMs() {
     return loadControllerComputeLatencyAcceptThresholdMs;
+  }
+
+  /**
+   * Extracts and prepares configuration properties for PubSub clients based on the provided prefix.
+   * <p>
+   * This method:
+   * <ul>
+   *   <li>Creates a copy of the full server properties.</li>
+   *   <li>Overwrites or adds properties matching the given {@code configPrefix} by removing the prefix and merging the values.</li>
+   *   <li>Removes any bootstrap server configurations, as these should be explicitly set in the PubSub client creation context.</li>
+   * </ul>
+   *
+   * @param serverProperties the full set of server properties
+   * @param configPrefix the prefix used to filter and include PubSub-specific properties
+   * @return a new {@link Properties} instance containing only the properties relevant for PubSub clients
+   */
+  private Properties extractPropertiesForPubSubClients(VeniceProperties serverProperties, String configPrefix) {
+    Properties properties = serverProperties.getPropertiesCopy();
+    properties.putAll(serverProperties.clipAndFilterNamespace(configPrefix).getAsMap());
+    properties.put(
+        PUBSUB_CONSUMER_POLL_RETRY_TIMES,
+        serverProperties.getLong(PUBSUB_CONSUMER_POLL_RETRY_TIMES, PUBSUB_CONSUMER_POLL_RETRY_TIMES_DEFAULT_VALUE));
+    properties.put(
+        PUBSUB_CONSUMER_POLL_RETRY_BACKOFF_MS,
+        serverProperties
+            .getLong(PUBSUB_CONSUMER_POLL_RETRY_BACKOFF_MS, PUBSUB_CONSUMER_POLL_RETRY_BACKOFF_MS_DEFAULT_VALUE));
+
+    properties.put(
+        PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS,
+        serverProperties.getBoolean(PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS, true));
+
+    /**
+     * Excluded the following keys from the properties, as they are expected to be provided
+     * directly in the PubSub client creation context rather than inherited from general configuration.
+     */
+    properties.remove(KAFKA_BOOTSTRAP_SERVERS);
+    properties.remove(ConfigKeys.PUBSUB_BROKER_ADDRESS);
+    properties.remove(ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS);
+    properties.remove(KAFKA_SECURITY_PROTOCOL);
+    properties.remove(ConfigKeys.PUBSUB_SECURITY_PROTOCOL);
+
+    return properties;
   }
 }

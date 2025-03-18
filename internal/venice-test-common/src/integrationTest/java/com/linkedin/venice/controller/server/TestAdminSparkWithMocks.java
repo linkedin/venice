@@ -3,7 +3,6 @@ package com.linkedin.venice.controller.server;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
@@ -99,7 +98,7 @@ public class TestAdminSparkWithMocks {
     doReturn(true).when(admin).isLeaderControllerFor(anyString());
     doReturn(1).when(admin).getReplicationFactor(anyString(), anyString());
     doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString());
-    doReturn("kafka-bootstrap").when(admin).getKafkaBootstrapServers(anyBoolean());
+    doReturn("kafka-bootstrap").when(admin).getLocalPubSubBrokerAddress();
     doReturn(hybridVersion).when(admin).getReferenceVersionForStreamingWrites(anyString(), anyString(), any());
     // Add a banned route not relevant to the test just to make sure theres coverage for unbanned routes still be
     // accessible
@@ -163,7 +162,7 @@ public class TestAdminSparkWithMocks {
     doReturn(true).when(admin).isLeaderControllerFor(anyString());
     doReturn(1).when(admin).getReplicationFactor(anyString(), anyString());
     doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString());
-    doReturn("kafka-bootstrap").when(admin).getKafkaBootstrapServers(anyBoolean());
+    doReturn("kafka-bootstrap").when(admin).getLocalPubSubBrokerAddress();
     AdminSparkServer server = ServiceFactory
         .getMockAdminSparkServer(admin, "clustername", Arrays.asList(ControllerRoute.REQUEST_TOPIC), requestHandler);
     int port = server.getPort();
@@ -236,7 +235,7 @@ public class TestAdminSparkWithMocks {
     doReturn(true).when(admin).isLeaderControllerFor(anyString());
     doReturn(1).when(admin).getReplicationFactor(anyString(), anyString());
     doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString());
-    doReturn(corpRegionKafka).when(admin).getKafkaBootstrapServers(anyBoolean());
+    doReturn(corpRegionKafka).when(admin).getLocalPubSubBrokerAddress();
     doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(anyString());
     doReturn(true).when(admin).isActiveActiveReplicationEnabledInAllRegion(clusterName, storeName, false);
     doReturn(corpRegionKafka).when(admin).getNativeReplicationKafkaBootstrapServerAddress(corpRegion);
@@ -361,7 +360,7 @@ public class TestAdminSparkWithMocks {
     doReturn(true).when(admin).isLeaderControllerFor(anyString());
     doReturn(1).when(admin).getReplicationFactor(anyString(), anyString());
     doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString());
-    doReturn("kafka-bootstrap").when(admin).getKafkaBootstrapServers(anyBoolean());
+    doReturn("kafka-bootstrap").when(admin).getLocalPubSubBrokerAddress();
     doReturn(hybridVersion).when(admin).getReferenceVersionForStreamingWrites(anyString(), anyString(), anyString());
     doReturn(samzaPolicy).when(admin).isParent();
     doReturn(ParentControllerRegionState.ACTIVE).when(admin).getParentControllerRegionState();

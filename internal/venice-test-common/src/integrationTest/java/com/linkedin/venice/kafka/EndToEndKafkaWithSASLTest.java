@@ -48,6 +48,7 @@ public class EndToEndKafkaWithSASLTest {
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(veniceCluster);
+    Utils.closeQuietlyWithErrorLogged(pubSubBrokerWrapper);
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)

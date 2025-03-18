@@ -1,6 +1,5 @@
 package com.linkedin.venice.kafka;
 
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicCompletion;
 import static org.mockito.Mockito.doReturn;
@@ -37,6 +36,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -61,8 +61,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.common.serialization.ByteArrayDeserializer;
+import java.util.function.Function;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -180,6 +179,11 @@ public class KafkaConsumptionTest {
     clusterUrlToIdMap.put(localKafkaUrl, 0);
     clusterUrlToIdMap.put(remoteKafkaUrl, 1);
     doReturn(clusterUrlToIdMap).when(veniceServerConfig).getKafkaClusterUrlToIdMap();
+    doReturn(Function.identity()).when(veniceServerConfig).getKafkaClusterUrlResolver();
+    doReturn(localKafkaUrl).when(veniceServerConfig).getLocalPubSubBrokerAddress();
+    Function<String, PubSubSecurityProtocol> pubSubSecurityProtocolResolver =
+        (clusterUrl) -> PubSubSecurityProtocol.PLAINTEXT;
+    doReturn(pubSubSecurityProtocolResolver).when(veniceServerConfig).getPubSubSecurityProtocolResolver();
 
     StaleTopicChecker staleTopicChecker = mock(StaleTopicChecker.class);
     PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory =
@@ -188,10 +192,12 @@ public class KafkaConsumptionTest {
         new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+    VeniceProperties veniceProperties = new VeniceProperties(pubSubClientProperties);
+    doReturn(veniceProperties).when(veniceServerConfig).getPropertiesForRemotePubSubClients();
+    doReturn(veniceProperties).when(veniceServerConfig).getPropertiesForLocalPubSubClients();
 
     AggKafkaConsumerService aggKafkaConsumerService = new AggKafkaConsumerService(
         pubSubConsumerAdapterFactory,
-        k -> new VeniceProperties(pubSubClientProperties),
         veniceServerConfig,
         mockIngestionThrottler,
         kafkaClusterBasedRecordThrottler,
@@ -209,12 +215,7 @@ public class KafkaConsumptionTest {
     doReturn(versionTopic).when(storeIngestionTask).getVersionTopic();
 
     // Local consumer subscription.
-    Properties consumerProperties = new Properties();
-    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
-    consumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-    consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-    consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
-    aggKafkaConsumerService.createKafkaConsumerService(consumerProperties);
+    aggKafkaConsumerService.createKafkaConsumerService(localKafkaUrl);
     PartitionReplicaIngestionContext partitionReplicaIngestionContext = new PartitionReplicaIngestionContext(
         versionTopic,
         pubSubTopicPartition,
@@ -226,12 +227,7 @@ public class KafkaConsumptionTest {
         .assertTrue(aggKafkaConsumerService.hasConsumerAssignedFor(localKafkaUrl, versionTopic, pubSubTopicPartition));
 
     // Remote consumer subscription.
-    consumerProperties = new Properties();
-    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, remoteKafkaUrl);
-    consumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-    consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-    consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
-    aggKafkaConsumerService.createKafkaConsumerService(consumerProperties);
+    aggKafkaConsumerService.createKafkaConsumerService(remoteKafkaUrl);
     StorePartitionDataReceiver remoteDataReceiver = (StorePartitionDataReceiver) aggKafkaConsumerService
         .subscribeConsumerFor(remoteKafkaUrl, storeIngestionTask, partitionReplicaIngestionContext, -1);
     Assert
@@ -293,7 +289,7 @@ public class KafkaConsumptionTest {
     brokerDetails.forEach(properties::setProperty);
     PubSubProducerAdapterContext producerAdapterContext =
         new PubSubProducerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(properties))
-            .setBrokerAddress(pubSubBrokerWrapper.getAddress())
+            .setPubSubBrokerAddress(pubSubBrokerWrapper.getAddress())
             .setProducerName("test-producer")
             .setPubSubPositionTypeRegistry(pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
             .build();

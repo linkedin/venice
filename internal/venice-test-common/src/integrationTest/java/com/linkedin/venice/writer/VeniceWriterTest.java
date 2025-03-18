@@ -12,12 +12,12 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.validation.Segment;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -28,8 +28,6 @@ import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
-import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
-import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -37,7 +35,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
@@ -122,13 +119,14 @@ public class VeniceWriterTest {
     } finally {
       TestUtils.shutdownExecutor(executorService);
     }
-    KafkaValueSerializer kafkaValueSerializer = new OptimizedKafkaValueSerializer();
-    PubSubMessageDeserializer pubSubDeserializer = new PubSubMessageDeserializer(
-        kafkaValueSerializer,
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
-    try (PubSubConsumerAdapter consumer = pubSubConsumerAdapterFactory
-        .create(new VeniceProperties(properties), false, pubSubDeserializer, pubSubBrokerWrapper.getAddress())) {
+    PubSubConsumerAdapterContext consumerContext =
+        new PubSubConsumerAdapterContext.Builder().setPubSubBrokerAddress(pubSubBrokerWrapper.getAddress())
+            .setVeniceProperties(new VeniceProperties(properties))
+            .setPubSubMessageDeserializer(PubSubMessageDeserializer.getOptimizedInstance())
+            .setPubSubTopicRepository(pubSubTopicRepository)
+            .setIsOffsetCollectionEnabled(false)
+            .build();
+    try (PubSubConsumerAdapter consumer = pubSubConsumerAdapterFactory.create(consumerContext)) {
       PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopic, 0);
       consumer.subscribe(pubSubTopicPartition, -1);
       int lastSeenSequenceNumber = -1;

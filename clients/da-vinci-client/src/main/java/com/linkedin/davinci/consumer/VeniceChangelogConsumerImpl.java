@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFR
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_POS;
@@ -203,8 +204,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       rocksDBBufferProperties.put(ZOOKEEPER_ADDRESS, "");
       rocksDBBufferProperties
           .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, changelogClientConfig.getRocksDBBlockCacheSizeInBytes());
-      rocksDBBufferProperties
-          .put(KAFKA_BOOTSTRAP_SERVERS, changelogClientConfig.getConsumerProperties().get(KAFKA_BOOTSTRAP_SERVERS));
+      String pubSubBootstrapServers = changelogClientConfig.getConsumerProperties().getProperty(PUBSUB_BROKER_ADDRESS);
+      if (pubSubBootstrapServers == null) {
+        pubSubBootstrapServers = changelogClientConfig.getConsumerProperties().getProperty(KAFKA_BOOTSTRAP_SERVERS);
+      }
+      rocksDBBufferProperties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
+      rocksDBBufferProperties.put(PUBSUB_BROKER_ADDRESS, pubSubBootstrapServers);
       VeniceProperties rocksDBBufferVeniceProperties = new VeniceProperties(rocksDBBufferProperties);
       VeniceServerConfig serverConfig = new VeniceServerConfig(rocksDBBufferVeniceProperties);
       rocksDBStorageEngineFactory = new RocksDBStorageEngineFactory(serverConfig);

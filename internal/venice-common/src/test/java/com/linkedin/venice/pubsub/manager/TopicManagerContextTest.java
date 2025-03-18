@@ -10,7 +10,9 @@ import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Properties;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -20,7 +22,7 @@ public class TopicManagerContextTest {
   private PubSubConsumerAdapterFactory<PubSubConsumerAdapter> pubSubConsumerAdapterFactory;
   private PubSubTopicRepository pubSubTopicRepository;
   private MetricsRepository metricsRepository;
-  private TopicManagerContext.PubSubPropertiesSupplier pubSubPropertiesSupplier;
+  private VeniceProperties veniceProperties;
   private long pubSubOperationTimeoutMs;
   private long topicDeletionStatusPollIntervalMs;
   private long topicMinLogCompactionLagMs;
@@ -34,7 +36,7 @@ public class TopicManagerContextTest {
     pubSubConsumerAdapterFactory = mock(PubSubConsumerAdapterFactory.class);
     pubSubTopicRepository = new PubSubTopicRepository();
     metricsRepository = new MetricsRepository();
-    pubSubPropertiesSupplier = mock(TopicManagerContext.PubSubPropertiesSupplier.class);
+    veniceProperties = new VeniceProperties(new Properties());
     pubSubOperationTimeoutMs = 11;
     topicDeletionStatusPollIntervalMs = 12;
     topicMinLogCompactionLagMs = 12;
@@ -49,8 +51,8 @@ public class TopicManagerContextTest {
         new TopicManagerContext.Builder().setPubSubAdminAdapterFactory(pubSubAdminAdapterFactory)
             .setPubSubConsumerAdapterFactory(pubSubConsumerAdapterFactory)
             .setPubSubTopicRepository(pubSubTopicRepository)
+            .setVeniceProperties(veniceProperties)
             .setMetricsRepository(metricsRepository)
-            .setPubSubPropertiesSupplier(pubSubPropertiesSupplier)
             .setPubSubOperationTimeoutMs(pubSubOperationTimeoutMs)
             .setTopicDeletionStatusPollIntervalMs(topicDeletionStatusPollIntervalMs)
             .setTopicMinLogCompactionLagMs(topicMinLogCompactionLagMs)
@@ -64,7 +66,6 @@ public class TopicManagerContextTest {
     assertEquals(topicManagerContext.getPubSubConsumerAdapterFactory(), pubSubConsumerAdapterFactory);
     assertEquals(topicManagerContext.getPubSubTopicRepository(), pubSubTopicRepository);
     assertEquals(topicManagerContext.getMetricsRepository(), metricsRepository);
-    assertEquals(topicManagerContext.getPubSubPropertiesSupplier(), pubSubPropertiesSupplier);
     assertEquals(topicManagerContext.getPubSubOperationTimeoutMs(), pubSubOperationTimeoutMs);
     assertEquals(topicManagerContext.getTopicDeletionStatusPollIntervalMs(), topicDeletionStatusPollIntervalMs);
     assertEquals(topicManagerContext.getTopicMinLogCompactionLagMs(), topicMinLogCompactionLagMs);
@@ -80,8 +81,8 @@ public class TopicManagerContextTest {
         new TopicManagerContext.Builder().setPubSubAdminAdapterFactory(pubSubAdminAdapterFactory)
             .setPubSubConsumerAdapterFactory(pubSubConsumerAdapterFactory)
             .setPubSubTopicRepository(pubSubTopicRepository)
+            .setVeniceProperties(veniceProperties)
             .setMetricsRepository(metricsRepository)
-            .setPubSubPropertiesSupplier(pubSubPropertiesSupplier)
             .setPubSubOperationTimeoutMs(pubSubOperationTimeoutMs)
             .setTopicDeletionStatusPollIntervalMs(topicDeletionStatusPollIntervalMs)
             .setTopicMinLogCompactionLagMs(topicMinLogCompactionLagMs)
@@ -106,12 +107,6 @@ public class TopicManagerContextTest {
     ex = expectThrows(IllegalArgumentException.class, builder::build);
     builder.setPubSubTopicRepository(pubSubTopicRepository);
     assertEquals(ex.getMessage(), "pubSubTopicRepository cannot be null");
-
-    // set pub sub properties supplier to null
-    builder.setPubSubPropertiesSupplier(null);
-    ex = expectThrows(IllegalArgumentException.class, builder::build);
-    builder.setPubSubPropertiesSupplier(pubSubPropertiesSupplier);
-    assertEquals(ex.getMessage(), "pubSubPropertiesSupplier cannot be null");
 
     // set pub sub operation timeout to -1
     builder.setPubSubOperationTimeoutMs(-1);

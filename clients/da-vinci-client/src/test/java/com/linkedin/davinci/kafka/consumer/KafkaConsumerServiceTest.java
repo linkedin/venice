@@ -4,7 +4,6 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.atLeastOnce;
@@ -22,6 +21,7 @@ import com.linkedin.davinci.utils.IndexedMap;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -62,7 +62,6 @@ public class KafkaConsumerServiceTest {
 
   @Test
   public void testTopicWiseGetConsumer() throws Exception {
-    String testKafkaClusterAlias = "test_kafka_cluster_alias";
     ApacheKafkaConsumerAdapter consumer1 = mock(ApacheKafkaConsumerAdapter.class);
     when(consumer1.hasAnySubscription()).thenReturn(true);
 
@@ -82,24 +81,21 @@ public class KafkaConsumerServiceTest {
     when(task2.isHybridMode()).thenReturn(true);
 
     PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
-    when(factory.create(any(), anyBoolean(), any(), any())).thenReturn(consumer1, consumer2);
+    when(factory.create(any(PubSubConsumerAdapterContext.class))).thenReturn(consumer1, consumer2);
 
-    Properties properties = new Properties();
-    properties.put(KAFKA_BOOTSTRAP_SERVERS, "test_kafka_url");
-
+    String pubSubBrokerAddress = "test_kafka_url";
     MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
     KafkaConsumerService consumerService = new TopicWiseKafkaConsumerService(
+        pubSubBrokerAddress,
         ConsumerPoolType.REGULAR_POOL,
         factory,
-        properties,
         1000L,
         2,
         mock(IngestionThrottler.class),
         mock(KafkaClusterBasedRecordThrottler.class),
         mockMetricsRepository,
-        testKafkaClusterAlias,
         TimeUnit.MINUTES.toMillis(1),
         mock(StaleTopicChecker.class),
         false,
@@ -156,18 +152,16 @@ public class KafkaConsumerServiceTest {
     when(consumer1.hasAnySubscription()).thenReturn(true);
 
     PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
-    when(factory.create(any(), anyBoolean(), any(), any())).thenReturn(consumer1);
+    when(factory.create(any(PubSubConsumerAdapterContext.class))).thenReturn(consumer1);
 
-    Properties properties = new Properties();
-    String testKafkaUrl = "test_kafka_url";
-    properties.put(KAFKA_BOOTSTRAP_SERVERS, "test_kafka_url");
+    String pubSubBrokerAddress = "test_kafka_url";
     MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
     IngestionThrottler mockIngestionThrottler = mock(IngestionThrottler.class);
     KafkaConsumerService consumerService = getKafkaConsumerServiceWithSingleConsumer(
+        pubSubBrokerAddress,
         factory,
-        properties,
         mockMetricsRepository,
         ConsumerPoolType.AA_WC_LEADER_POOL,
         mockIngestionThrottler);
@@ -209,7 +203,8 @@ public class KafkaConsumerServiceTest {
       Assert.assertEquals(topicPartitionIngestionInfoMap.size(), 1);
       Assert.assertTrue(topicPartitionIngestionInfoMap.containsKey(topicPartition));
       Assert.assertTrue(topicPartitionIngestionInfoMap.get(topicPartition).getConsumerIdStr().contains("0"));
-      Assert.assertTrue(topicPartitionIngestionInfoMap.get(topicPartition).getConsumerIdStr().contains(testKafkaUrl));
+      Assert.assertTrue(
+          topicPartitionIngestionInfoMap.get(topicPartition).getConsumerIdStr().contains(pubSubBrokerAddress));
       Assert.assertTrue(topicPartitionIngestionInfoMap.get(topicPartition).getMsgRate() > 0);
       Assert.assertTrue(topicPartitionIngestionInfoMap.get(topicPartition).getByteRate() > 0);
       Assert.assertEquals(
@@ -223,21 +218,20 @@ public class KafkaConsumerServiceTest {
   }
 
   private KafkaConsumerService getKafkaConsumerServiceWithSingleConsumer(
+      String pubSubBrokerAddress,
       PubSubConsumerAdapterFactory factory,
-      Properties properties,
       MetricsRepository mockMetricsRepository,
       ConsumerPoolType poolType,
       IngestionThrottler mockIngestionThrottler) {
     KafkaConsumerService consumerService = new KafkaConsumerService(
+        pubSubBrokerAddress,
         poolType,
         factory,
-        properties,
         1000L,
         1,
         mockIngestionThrottler,
         mock(KafkaClusterBasedRecordThrottler.class),
         mockMetricsRepository,
-        "test_kafka_cluster_alias",
         TimeUnit.MINUTES.toMillis(1),
         mock(StaleTopicChecker.class),
         false,
@@ -275,24 +269,22 @@ public class KafkaConsumerServiceTest {
     when(consumer1.hasAnySubscription()).thenReturn(false);
 
     PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
-    when(factory.create(any(), anyBoolean(), any(), any())).thenReturn(consumer1, consumer2);
+    when(factory.create(any(PubSubConsumerAdapterContext.class))).thenReturn(consumer1, consumer2);
 
-    Properties properties = new Properties();
-    properties.put(KAFKA_BOOTSTRAP_SERVERS, "test_kafka_url");
+    String pubSubBrokerAddress = "test_kafka_url";
 
     MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
     KafkaConsumerService consumerService = new TopicWiseKafkaConsumerService(
+        pubSubBrokerAddress,
         ConsumerPoolType.REGULAR_POOL,
         factory,
-        properties,
         1000L,
         2,
         mock(IngestionThrottler.class),
         mock(KafkaClusterBasedRecordThrottler.class),
         mockMetricsRepository,
-        "test_kafka_cluster_alias",
         TimeUnit.MINUTES.toMillis(1),
         mock(StaleTopicChecker.class),
         false,
@@ -376,24 +368,24 @@ public class KafkaConsumerServiceTest {
     when(task2.isHybridMode()).thenReturn(true);
 
     PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
-    when(factory.create(any(), anyBoolean(), any(), any())).thenReturn(consumer1, consumer2);
+    when(factory.create(any(PubSubConsumerAdapterContext.class))).thenReturn(consumer1, consumer2);
 
     Properties properties = new Properties();
-    properties.put(KAFKA_BOOTSTRAP_SERVERS, "test_kafka_url");
+    String pubSubBrokerAddress = "test_kafka_url";
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerAddress);
 
     MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
     PartitionWiseKafkaConsumerService consumerService = new PartitionWiseKafkaConsumerService(
+        pubSubBrokerAddress,
         ConsumerPoolType.REGULAR_POOL,
         factory,
-        properties,
         1000L,
         2,
         mock(IngestionThrottler.class),
         mock(KafkaClusterBasedRecordThrottler.class),
         mockMetricsRepository,
-        "test_kafka_cluster_alias",
         TimeUnit.MINUTES.toMillis(1),
         mock(StaleTopicChecker.class),
         false,
@@ -562,24 +554,22 @@ public class KafkaConsumerServiceTest {
     ApacheKafkaConsumerAdapter consumer1 = mock(ApacheKafkaConsumerAdapter.class);
     ApacheKafkaConsumerAdapter consumer2 = mock(ApacheKafkaConsumerAdapter.class);
     PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
-    when(factory.create(any(), anyBoolean(), any(), any())).thenReturn(consumer1, consumer2);
+    when(factory.create(any(PubSubConsumerAdapterContext.class))).thenReturn(consumer1, consumer2);
 
-    Properties properties = new Properties();
-    properties.put(KAFKA_BOOTSTRAP_SERVERS, "test_kafka_url");
+    String pubSubBrokerAddress = "test_kafka_url";
     MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
 
     KafkaConsumerService consumerService = new KafkaConsumerService(
+        pubSubBrokerAddress,
         ConsumerPoolType.REGULAR_POOL,
         factory,
-        properties,
         1000L,
         2,
         mock(IngestionThrottler.class),
         mock(KafkaClusterBasedRecordThrottler.class),
         mockMetricsRepository,
-        "test_kafka_cluster_alias",
         TimeUnit.MINUTES.toMillis(1),
         mock(StaleTopicChecker.class),
         false,

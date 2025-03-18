@@ -16,13 +16,15 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -88,18 +90,31 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
   private boolean ownedConsumer = true;
 
   public KafkaInputRecordReader(InputSplit split, JobConf job, DataWriterTaskTracker taskTracker) {
+    this(split, job, taskTracker, KafkaInputUtils.getConsumerProperties(job));
+  }
+
+  private KafkaInputRecordReader(
+      InputSplit split,
+      JobConf job,
+      DataWriterTaskTracker taskTracker,
+      VeniceProperties veniceProperties) {
     this(
         split,
         job,
         taskTracker,
-        new ApacheKafkaConsumerAdapterFactory().create(
-            KafkaInputUtils.getConsumerProperties(job),
-            false,
-            new PubSubMessageDeserializer(
-                KafkaInputUtils.getKafkaValueSerializer(job),
-                new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-                new LandFillObjectPool<>(KafkaMessageEnvelope::new)),
-            null),
+        PubSubClientsFactory.createConsumerFactory(veniceProperties)
+            .create(
+                new PubSubConsumerAdapterContext.Builder()
+                    .setVeniceProperties(KafkaInputUtils.getConsumerProperties(job))
+                    .setConsumerName("KIF_RECORD_READER")
+                    .setPubSubMessageDeserializer(
+                        new PubSubMessageDeserializer(
+                            KafkaInputUtils.getKafkaValueSerializer(job),
+                            new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+                            new LandFillObjectPool<>(KafkaMessageEnvelope::new)))
+                    .setPubSubTopicRepository(PUBSUB_TOPIC_REPOSITORY)
+                    .setIsOffsetCollectionEnabled(false)
+                    .build()),
         PUBSUB_TOPIC_REPOSITORY);
   }
 
@@ -326,5 +341,21 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
 
       recordIterator = Utils.iterateOnMapOfLists(messages);
     }
+  }
+
+  private static PubSubConsumerAdapter createConsumerAdapter(JobConf job) {
+    VeniceProperties veniceProperties = KafkaInputUtils.getConsumerProperties(job);
+    return PubSubClientsFactory.createConsumerFactory(veniceProperties)
+        .create(
+            new PubSubConsumerAdapterContext.Builder().setVeniceProperties(veniceProperties)
+                .setConsumerName("KIF_RECORD_READER")
+                .setPubSubMessageDeserializer(
+                    new PubSubMessageDeserializer(
+                        KafkaInputUtils.getKafkaValueSerializer(job),
+                        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+                        new LandFillObjectPool<>(KafkaMessageEnvelope::new)))
+                .setPubSubTopicRepository(PUBSUB_TOPIC_REPOSITORY)
+                .setIsOffsetCollectionEnabled(false)
+                .build());
   }
 }

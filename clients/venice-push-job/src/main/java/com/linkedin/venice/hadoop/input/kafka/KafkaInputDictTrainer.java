@@ -1,5 +1,7 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTIONARY_SAMPLE_SIZE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTIONARY_SIZE_LIMIT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
@@ -16,7 +18,8 @@ import com.linkedin.venice.hadoop.PushJobZstdConfig;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.utils.ByteUtils;
@@ -50,6 +53,7 @@ public class KafkaInputDictTrainer {
     private final CompressionStrategy sourceVersionCompressionStrategy;
 
     private final boolean sourceVersionChunkingEnabled;
+    private final PubSubClientsFactory pubSubClientsFactory;
 
     Param(ParamBuilder builder) {
       this.kafkaInputBroker = builder.kafkaInputBroker;
@@ -60,6 +64,7 @@ public class KafkaInputDictTrainer {
       this.dictSampleSize = builder.dictSampleSize;
       this.sourceVersionCompressionStrategy = builder.sourceVersionCompressionStrategy;
       this.sourceVersionChunkingEnabled = builder.sourceVersionChunkingEnabled;
+      this.pubSubClientsFactory = builder.pubSubClientsFactory;
     }
   }
 
@@ -72,6 +77,7 @@ public class KafkaInputDictTrainer {
     private int dictSampleSize;
     private CompressionStrategy sourceVersionCompressionStrategy;
     private boolean sourceVersionChunkingEnabled;
+    private PubSubClientsFactory pubSubClientsFactory;
 
     public ParamBuilder setKafkaInputBroker(String kafkaInputBroker) {
       this.kafkaInputBroker = kafkaInputBroker;
@@ -113,6 +119,11 @@ public class KafkaInputDictTrainer {
       return this;
     }
 
+    public ParamBuilder setPubSubClientsFactory(PubSubClientsFactory pubSubClientsFactory) {
+      this.pubSubClientsFactory = pubSubClientsFactory;
+      return this;
+    }
+
     public Param build() {
       return new Param(this);
     }
@@ -127,6 +138,7 @@ public class KafkaInputDictTrainer {
   private final Optional<ZstdDictTrainer> trainerSupplier;
   private final CompressionStrategy sourceVersionCompressionStrategy;
   private final CompressorBuilder compressorBuilder;
+  private final PubSubClientsFactory pubSubClientsFactory;
 
   public KafkaInputDictTrainer(Param param) {
     this(new KafkaInputFormat(), Optional.empty(), param, KafkaInputUtils::getCompressor);
@@ -164,8 +176,8 @@ public class KafkaInputDictTrainer {
     props = new VeniceProperties(properties);
     jobConf = new JobConf();
     properties.forEach((k, v) -> jobConf.set((String) k, (String) v));
-
     this.compressorBuilder = compressorBuilder;
+    this.pubSubClientsFactory = param.pubSubClientsFactory;
   }
 
   public synchronized byte[] trainDict() {
@@ -206,15 +218,21 @@ public class KafkaInputDictTrainer {
     long totalSampledRecordCnt = 0;
 
     // Reuse the same Kafka Consumer across all partitions avoid log flooding
-    PubSubConsumerAdapter reusedConsumer = reusedConsumerOptional.orElseGet(
-        () -> new ApacheKafkaConsumerAdapterFactory().create(
-            KafkaInputUtils.getConsumerProperties(jobConf),
-            false,
-            new PubSubMessageDeserializer(
-                KafkaInputUtils.getKafkaValueSerializer(jobConf),
-                new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-                new LandFillObjectPool<>(KafkaMessageEnvelope::new)),
-            null));
+    PubSubConsumerAdapter reusedConsumer = reusedConsumerOptional.orElseGet(() -> {
+      VeniceProperties consumerProperties = KafkaInputUtils.getConsumerProperties(jobConf);
+      return pubSubClientsFactory.getConsumerAdapterFactory()
+          .create(
+              new PubSubConsumerAdapterContext.Builder().setConsumerName("KafkaInputDictTrainer")
+                  .setPubSubBrokerAddress(
+                      consumerProperties.getStringWithAlternative(PUBSUB_BROKER_ADDRESS, KAFKA_BOOTSTRAP_SERVERS))
+                  .setVeniceProperties(consumerProperties)
+                  .setPubSubMessageDeserializer(
+                      new PubSubMessageDeserializer(
+                          KafkaInputUtils.getKafkaValueSerializer(jobConf),
+                          new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+                          new LandFillObjectPool<>(KafkaMessageEnvelope::new)))
+                  .build());
+    });
     try {
       for (InputSplit split: splits) {
         long currentFilledSize = 0;

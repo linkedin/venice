@@ -8,6 +8,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterContext;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -19,7 +20,6 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Time;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -126,8 +126,13 @@ public class TopicCleanupService extends AbstractVeniceService {
 
   private PubSubAdminAdapter constructSourceOfTruthPubSubAdminAdapter(
       PubSubAdminAdapterFactory<?> sourceOfTruthAdminAdapterFactory) {
-    VeniceProperties veniceProperties = admin.getPubSubSSLProperties(getTopicManager().getPubSubClusterAddress());
-    return sourceOfTruthAdminAdapterFactory.create(veniceProperties, pubSubTopicRepository);
+    PubSubAdminAdapterContext pubSubAdminAdapterContext = new PubSubAdminAdapterContext.Builder()
+        .setPubSubBrokerAddress(multiClusterConfigs.getLocalPubSubBrokerAddress())
+        .setPubSubSecurityProtocol(multiClusterConfigs.getPubSubSecurityProtocol())
+        .setVeniceProperties(multiClusterConfigs.getPropertiesForPubSubClients())
+        .setPubSubTopicRepository(pubSubTopicRepository)
+        .build();
+    return sourceOfTruthAdminAdapterFactory.create(pubSubAdminAdapterContext);
   }
 
   // For test purpose

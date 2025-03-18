@@ -2,6 +2,8 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
@@ -35,11 +37,9 @@ public class TestEnablingSSLPushInVeniceHelixAdminWithIsolatedEnvironment extend
   @Override
   protected Properties getControllerProperties(String clusterName) throws IOException {
     Properties properties = super.getControllerProperties(clusterName);
-    properties.put(ConfigKeys.SSL_TO_KAFKA_LEGACY, true);
-    properties.put(ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getSSLAddress());
-    properties.put(ConfigKeys.ENABLE_OFFLINE_PUSH_SSL_ALLOWLIST, true);
-    properties.put(ConfigKeys.ENABLE_HYBRID_PUSH_SSL_ALLOWLIST, false);
-    properties.put(ConfigKeys.PUSH_SSL_ALLOWLIST, STORE_NAME_1);
+    properties.put(ConfigKeys.KAFKA_SECURITY_PROTOCOL, PubSubSecurityProtocol.SSL.name());
+    properties.putAll(SslUtils.getVeniceLocalSslProperties());
+    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getSSLAddress());
     return properties;
   }
 
@@ -59,7 +59,7 @@ public class TestEnablingSSLPushInVeniceHelixAdminWithIsolatedEnvironment extend
     Assert.assertTrue(
         veniceAdmin.isSSLEnabledForPush(clusterName, STORE_NAME_1),
         "Store1 is in the allowlist, ssl should be enabled.");
-    Assert.assertFalse(
+    Assert.assertTrue(
         veniceAdmin.isSSLEnabledForPush(clusterName, STORE_NAME_2),
         "Store2 is not in the allowlist, ssl should be disabled.");
     Assert.assertTrue(

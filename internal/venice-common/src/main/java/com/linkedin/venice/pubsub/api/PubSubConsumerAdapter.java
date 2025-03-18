@@ -2,7 +2,6 @@ package com.linkedin.venice.pubsub.api;
 
 import com.linkedin.venice.annotation.UnderDevelopment;
 import com.linkedin.venice.pubsub.PubSubConstants;
-import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;

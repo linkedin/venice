@@ -10,10 +10,11 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterContext;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConstants;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
-import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
@@ -21,6 +22,7 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
@@ -115,10 +117,23 @@ public class PubSubAdminAdapterTest {
     properties.putAll(pubSubBrokerWrapper.getMergeableConfigs());
     VeniceProperties veniceProperties = new VeniceProperties(properties);
 
-    pubSubAdminAdapter = pubSubClientsFactory.getAdminAdapterFactory().create(veniceProperties, pubSubTopicRepository);
+    pubSubAdminAdapter = pubSubClientsFactory.getAdminAdapterFactory()
+        .create(
+            new PubSubAdminAdapterContext.Builder().setVeniceProperties(veniceProperties)
+                .setPubSubBrokerAddress(pubSubBrokerWrapper.getAddress())
+                .setAdminClientName(clientId)
+                .setPubSubTopicRepository(pubSubTopicRepository)
+                .build());
     pubSubConsumerAdapterLazy = Lazy.of(
         () -> pubSubClientsFactory.getConsumerAdapterFactory()
-            .create(veniceProperties, false, pubSubMessageDeserializer, clientId));
+            .create(
+                new PubSubConsumerAdapterContext.Builder().setVeniceProperties(veniceProperties)
+                    .setPubSubBrokerAddress(pubSubBrokerWrapper.getAddress())
+                    .setPubSubTopicRepository(pubSubTopicRepository)
+                    .setPubSubMessageDeserializer(pubSubMessageDeserializer)
+                    .setConsumerName(clientId)
+                    .setIsOffsetCollectionEnabled(false)
+                    .build()));
     pubSubProducerAdapterLazy = Lazy.of(
         () -> pubSubClientsFactory.getProducerAdapterFactory()
             .create(
