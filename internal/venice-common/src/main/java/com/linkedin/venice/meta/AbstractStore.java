@@ -78,7 +78,7 @@ public abstract class AbstractStore implements Store {
 
   @Override
   public void addVersion(Version version) {
-    addVersion(version, true, false, -1);
+    addVersion(version, true, false, 0);
   }
 
   @Override
@@ -88,7 +88,7 @@ public abstract class AbstractStore implements Store {
 
   @Override
   public void forceAddVersion(Version version, boolean isClonedVersion) {
-    addVersion(version, false, isClonedVersion, -1);
+    addVersion(version, false, isClonedVersion, 0);
   }
 
   @Override
