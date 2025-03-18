@@ -270,11 +270,10 @@ public class UtilsTest {
     when(mockVersions.get(1).getHybridStoreConfig()).thenReturn(mockHybridConfig);
     when(mockVersions.get(2).getHybridStoreConfig()).thenReturn(mockHybridConfig);
 
-    when(mockHybridConfig.getRealTimeTopicName())
-        .thenReturn("RealTimeTopic_v1", "RealTimeTopic_v2", "RealTimeTopic_v3");
+    when(mockHybridConfig.getRealTimeTopicName()).thenReturn("StoreName_v1_rt", "StoreName_v2_rt", "StoreName_v3_rt");
 
     Set<String> result = Utils.getAllRealTimeTopicNames(mockStore);
-    assertEquals(result, new HashSet<>(Arrays.asList("RealTimeTopic_v1", "RealTimeTopic_v2", "RealTimeTopic_v3")));
+    assertEquals(result, new HashSet<>(Arrays.asList("StoreName_v1_rt", "StoreName_v2_rt", "StoreName_v3_rt")));
   }
 
   @Test
