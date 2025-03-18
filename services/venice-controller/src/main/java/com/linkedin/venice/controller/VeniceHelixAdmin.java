@@ -62,7 +62,6 @@ import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.logcompaction.LogCompactionService;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
-import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
@@ -73,6 +72,7 @@ import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.RepushInfo;
+import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -295,6 +295,7 @@ import org.apache.http.HttpStatus;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import spark.utils.Assert;
 
 
 /**
@@ -8068,6 +8069,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public List<StoreInfo> getStoresForCompaction(String clusterName) {
+    Assert.isTrue(multiClusterConfigs.isLogCompactionEnabled(), "Log compaction is not enabled for this cluster!");
     try {
       Map<String, ControllerClient> childControllers = getControllerClientMap(clusterName);
       return compactionManager.getStoresForCompaction(clusterName, childControllers);
@@ -8086,6 +8088,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public RepushJobResponse compactStore(RepushJobRequest repushJobRequest) throws Exception {
+    Assert.isTrue(multiClusterConfigs.isLogCompactionEnabled(), "Log compaction is not enabled for this cluster!");
     try {
       return compactionManager.compactStore(repushJobRequest);
     } catch (Exception e) {

@@ -307,6 +307,11 @@ public class ConfigKeys {
    * Whether log compaction is enabled for stores in this Venice controller
    */
   public static final String LOG_COMPACTION_ENABLED = "log.compaction.enabled";
+
+  /**
+   * Whether log compaction scheduling is enabled for stores in this Venice controller
+   */
+  public static final String LOG_COMPACTION_SCHEDULING_ENABLED = "log.compaction.scheduling.enabled";
   /**
    * Number of threads to use for log compaction
    */

@@ -2,10 +2,10 @@ package com.linkedin.venice.controller.logcompaction;
 
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
-import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
+import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.StoreInfo;
 import java.util.ArrayList;
@@ -67,7 +67,7 @@ public class CompactionManager {
    * This function abstracts the criteria for a store to be ready for compaction
    *
    * public for testing in {@link com.linkedin.venice.endToEnd.TestHybrid#testHybridStoreLogCompaction}
-   * todo: move TestHybrid::testHybridStoreLogCompaction to TestCompactionManager, then make this class package private
+   * TODO: move TestHybrid::testHybridStoreLogCompaction to TestCompactionManager, then make this class package private
    */
   //
   public boolean isCompactionReady(StoreInfo storeInfo) {
