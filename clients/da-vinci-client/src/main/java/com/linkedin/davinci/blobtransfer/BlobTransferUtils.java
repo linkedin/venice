@@ -1,19 +1,32 @@
 package com.linkedin.davinci.blobtransfer;
 
+import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
+import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.store.rocksdb.RocksDBUtils.composePartitionDbDir;
 import static org.apache.commons.codec.digest.DigestUtils.md5Hex;
 
+import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.SslUtils;
 import io.netty.handler.codec.http.HttpResponse;
+import io.netty.handler.ssl.SslHandler;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Optional;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class BlobTransferUtils {
+  private static final Logger LOGGER = LogManager.getLogger(BlobTransferUtils.class);
   public static final String BLOB_TRANSFER_STATUS = "X-Blob-Transfer-Status";
   public static final String BLOB_TRANSFER_COMPLETED = "Completed";
   public static final String BLOB_TRANSFER_TYPE = "X-Blob-Transfer-Type";
@@ -104,5 +117,64 @@ public class BlobTransferUtils {
     } catch (Exception e) {
       return 0;
     }
+  }
+
+  /**
+   * Create an SSLFactory from the Venice config loader
+   *
+   * @param configLoader The Venice config loader containing SSL configuration
+   * @return Optional SSLFactory, which will be empty if SSL is not enabled
+   */
+  public static Optional<SSLFactory> createSSLFactoryForBlobTransferInDVC(VeniceConfigLoader configLoader) {
+    // Check if SSL is enabled
+    if (!isBlobTransferDVCSslEnabled(configLoader)) {
+      throw new IllegalArgumentException("Blob transfer SSL is not enabled");
+    }
+
+    try {
+      // Create SSL factory
+      String sslFactoryClassName =
+          configLoader.getCombinedProperties().getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
+      SSLConfig sslConfig = new SSLConfig(configLoader.getCombinedProperties());
+      SSLFactory sslFactory = SslUtils.getSSLFactory(sslConfig.getSslProperties(), sslFactoryClassName);
+      return Optional.of(sslFactory);
+    } catch (Exception e) {
+      throw new IllegalArgumentException("Failed to create SSL factory for blob transfer", e);
+    }
+  }
+
+  public static SslHandler createBlobTransferClientSslHandler(Optional<SSLFactory> sslFactory) {
+    javax.net.ssl.SSLEngine engine = sslFactory.get().getSSLContext().createSSLEngine();
+    engine.setUseClientMode(true);
+
+    SslHandler sslHandler = new SslHandler(engine);
+    sslHandler.setHandshakeTimeoutMillis(10000); // 10 seconds for handshake timeout
+
+    return sslHandler;
+  }
+
+  /**
+   * Create the acl handler for blob transfer, for both DVC peers and server peers
+   */
+  public static Optional<BlobTransferAclHandler> createAclHandler(VeniceConfigLoader configLoader) {
+    if (!isBlobTransferDVCSslEnabled(configLoader) || !isBlobTransferAclValidationEnabled(configLoader)) {
+      String errorMsg =
+          "Blob transfer SSL or ACL validation is not enabled. sslEnabled: " + isBlobTransferDVCSslEnabled(configLoader)
+              + ", aclEnabled: " + isBlobTransferAclValidationEnabled(configLoader) + ", skip create ACL handler.";
+      throw new IllegalArgumentException(errorMsg);
+    }
+    try {
+      return Optional.of(new BlobTransferAclHandler());
+    } catch (Exception e) {
+      throw new IllegalArgumentException("Failed to create ACL handler for blob transfer", e);
+    }
+  }
+
+  private static boolean isBlobTransferDVCSslEnabled(VeniceConfigLoader configLoader) {
+    return configLoader.getCombinedProperties().getBoolean(BLOB_TRANSFER_SSL_ENABLED, false);
+  }
+
+  private static boolean isBlobTransferAclValidationEnabled(VeniceConfigLoader configLoader) {
+    return configLoader.getCombinedProperties().getBoolean(BLOB_TRANSFER_ACL_ENABLED, false);
   }
 }
