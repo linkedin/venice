@@ -628,6 +628,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public boolean isGlobalRtDivEnabled() {
+      return delegate.isGlobalRtDivEnabled();
+    }
+
+    @Override
+    public void setGlobalRtDivEnabled(boolean globalRtDivEnabled) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public void setRepushSourceVersion(int version) {
       throw new UnsupportedOperationException();
     }
