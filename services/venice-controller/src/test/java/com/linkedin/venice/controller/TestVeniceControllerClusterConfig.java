@@ -362,6 +362,21 @@ public class TestVeniceControllerClusterConfig {
   }
 
   @Test
+  public void testCompactionConfigs() {
+    Properties clusterProperties = getBaseSingleRegionProperties(false);
+    VeniceControllerClusterConfig clusterConfig =
+        new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties));
+
+    assertFalse(clusterConfig.isLogCompactionSchedulingEnabled());
+
+    clusterProperties.put(ConfigKeys.LOG_COMPACTION_SCHEDULING_ENABLED, true);
+    clusterProperties.put(ConfigKeys.LOG_COMPACTION_ENABLED, true);
+    clusterProperties.put(ConfigKeys.REPUSH_ORCHESTRATOR_CLASS_NAME, "com.linkedin.venice.RepushOrchestrator");
+    clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties));
+    assertTrue(clusterConfig.isLogCompactionSchedulingEnabled());
+  }
+
+  @Test
   public void testPartiallyDefinedRebalancePreferenceAndCapacityKeys() {
 
     int helixRebalancePreferenceEvenness = 10;
