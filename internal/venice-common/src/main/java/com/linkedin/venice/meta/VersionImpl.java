@@ -426,6 +426,16 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public boolean isGlobalRtDivEnabled() {
+    return this.storeVersion.globalRtDivEnabled;
+  }
+
+  @Override
+  public void setGlobalRtDivEnabled(boolean globalRtDivEnabled) {
+    this.storeVersion.globalRtDivEnabled = globalRtDivEnabled;
+  }
+
+  @Override
   public StoreVersion dataModel() {
     return this.storeVersion;
   }
@@ -508,6 +518,7 @@ public class VersionImpl implements Version {
     clonedVersion.setTargetSwapRegion(getTargetSwapRegion());
     clonedVersion.setTargetSwapRegionWaitTime(getTargetSwapRegionWaitTime());
     clonedVersion.setIsDavinciHeartbeatReported(getIsDavinciHeartbeatReported());
+    clonedVersion.setGlobalRtDivEnabled(isGlobalRtDivEnabled());
     return clonedVersion;
   }
 
