@@ -1,6 +1,6 @@
 package com.linkedin.davinci.consumer;
 
-import static com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory.*;
+import static com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory.getConsumer;
 
 import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
 import com.linkedin.venice.exceptions.VeniceException;

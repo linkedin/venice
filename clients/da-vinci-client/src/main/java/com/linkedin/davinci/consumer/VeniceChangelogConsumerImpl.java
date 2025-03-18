@@ -399,11 +399,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     subscriptionLock.readLock().lock();
     try {
       Set<PubSubTopicPartition> currentSubscriptions = getTopicAssignment();
-      synchronized (currentSubscriptions) {
-        for (PubSubTopicPartition partition: currentSubscriptions) {
-          if (partitions.contains(partition.getPartitionNumber())) {
-            pubSubConsumer.resume(partition);
-          }
+      for (PubSubTopicPartition partition: currentSubscriptions) {
+        if (partitions.contains(partition.getPartitionNumber())) {
+          pubSubConsumer.resume(partition);
         }
       }
     } finally {
@@ -648,12 +646,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     try {
       Set<PubSubTopicPartition> topicPartitionSet = getTopicAssignment();
       Set<PubSubTopicPartition> topicPartitionsToUnsub = new HashSet<>();
-      synchronized (topicPartitionSet) {
-        for (PubSubTopicPartition topicPartition: topicPartitionSet) {
-          if (partitions.contains(topicPartition.getPartitionNumber())) {
-            topicPartitionsToUnsub.add(topicPartition);
-            currentVersionLastHeartbeat.remove(topicPartition.getPartitionNumber());
-          }
+      for (PubSubTopicPartition topicPartition: topicPartitionSet) {
+        if (partitions.contains(topicPartition.getPartitionNumber())) {
+          topicPartitionsToUnsub.add(topicPartition);
+          currentVersionLastHeartbeat.remove(topicPartition.getPartitionNumber());
         }
       }
       pubSubConsumer.batchUnsubscribe(topicPartitionsToUnsub);
