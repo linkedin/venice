@@ -22,6 +22,7 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ScheduledExecutorService;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -36,6 +37,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final String storeName;
   private final Map<RequestType, FastClientStats> clientStatsMap = new VeniceConcurrentHashMap<>();
   private final Executor deserializationExecutor;
+  private final ScheduledExecutorService metadataRefreshExecutor;
   private final ClientRoutingStrategyType clientRoutingStrategyType;
   /**
    * For dual-read support.
@@ -99,6 +101,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       boolean speculativeQueryEnabled,
       Class<T> specificValueClass,
       Executor deserializationExecutor,
+      ScheduledExecutorService metadataRefreshExecutor,
       ClientRoutingStrategyType clientRoutingStrategyType,
       boolean dualReadEnabled,
       AvroGenericStoreClient<K, V> genericThinClient,
@@ -151,6 +154,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.speculativeQueryEnabled = speculativeQueryEnabled;
     this.specificValueClass = specificValueClass;
     this.deserializationExecutor = deserializationExecutor;
+    this.metadataRefreshExecutor = metadataRefreshExecutor;
     this.clientRoutingStrategyType =
         clientRoutingStrategyType == null ? ClientRoutingStrategyType.LEAST_LOADED : clientRoutingStrategyType;
     this.dualReadEnabled = dualReadEnabled;
@@ -272,6 +276,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return deserializationExecutor;
   }
 
+  public ScheduledExecutorService getMetadataRefreshExecutor() {
+    return metadataRefreshExecutor;
+  }
+
   public boolean isDualReadEnabled() {
     return dualReadEnabled;
   }
@@ -389,6 +397,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private Class<T> specificValueClass;
     private String storeName;
     private Executor deserializationExecutor;
+    private ScheduledExecutorService metadataRefreshExecutor;
     private ClientRoutingStrategyType clientRoutingStrategyType;
     private Client r2Client;
     private boolean dualReadEnabled = false;
@@ -455,6 +464,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     public ClientConfigBuilder<K, V, T> setDeserializationExecutor(Executor deserializationExecutor) {
       this.deserializationExecutor = deserializationExecutor;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setMetadataRefreshExecutor(ScheduledExecutorService metadataRefreshExecutor) {
+      this.metadataRefreshExecutor = metadataRefreshExecutor;
       return this;
     }
 
@@ -609,6 +623,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setSpeculativeQueryEnabled(speculativeQueryEnabled)
           .setSpecificValueClass(specificValueClass)
           .setDeserializationExecutor(deserializationExecutor)
+          .setMetadataRefreshExecutor(metadataRefreshExecutor)
           .setClientRoutingStrategyType(clientRoutingStrategyType)
           .setDualReadEnabled(dualReadEnabled)
           .setGenericThinClient(genericThinClient)
@@ -646,6 +661,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           speculativeQueryEnabled,
           specificValueClass,
           deserializationExecutor,
+          metadataRefreshExecutor,
           clientRoutingStrategyType,
           dualReadEnabled,
           genericThinClient,
