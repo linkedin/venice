@@ -138,6 +138,7 @@ public class VeniceVersionFinder {
       return newCurrentVersion;
     }
 
+    // new version not ready to serve -> serve last current version
     String errorMessage = "Unable to serve new active version: " + kafkaTopic + ".";
     if (!currentVersionPartitionResourcesReady) {
       errorMessage += " Partition resources not ready for new active version.";
@@ -149,9 +150,11 @@ public class VeniceVersionFinder {
       stats.recordStalenessReason(StaleVersionReason.DICTIONARY_NOT_DOWNLOADED);
     }
 
+    // check last current version still ready to serve/online
     VersionStatus lastCurrentVersionStatus = store.getVersionStatus(lastCurrentVersion);
     boolean prevVersionDecompressorReady = isDecompressorReady(store, lastCurrentVersion);
     if (lastCurrentVersionStatus.equals(VersionStatus.ONLINE) && prevVersionDecompressorReady) {
+      // last current version is still ready to serve/online
       String message = errorMessage + " Continuing to serve previous version: " + lastCurrentVersion + ".";
       if (!EXCEPTION_FILTER.isRedundantException(message)) {
         LOGGER.warn(message);
@@ -169,19 +172,12 @@ public class VeniceVersionFinder {
         errorMessage += " Decompressor not ready for previous version (Has dictionary downloaded?).";
       }
 
-      /**
-       * When the router has only one available version, despite offline partitions, or dictionary not yet downloaded,
-       * it will return it as the available version.
-       * If the partitions are still unavailable or the dictionary is not downloaded by the time the records needs to
-       * be decompressed, then the router will return an error response.
-       */
-      String message = errorMessage + " Switching to serve new active version.";
+      // both last current and new version are not ready to serve -> fail request
+      String message = errorMessage + " No version ready to serve.";
       if (!EXCEPTION_FILTER.isRedundantException(message)) {
         LOGGER.warn(message);
       }
-      lastCurrentVersionMap.put(storeName, newCurrentVersion);
-      stats.recordNotStale();
-      return newCurrentVersion;
+      return Store.NON_EXISTING_VERSION;
     }
   }
 
