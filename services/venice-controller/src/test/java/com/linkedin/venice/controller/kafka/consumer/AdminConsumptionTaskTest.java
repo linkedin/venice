@@ -1178,6 +1178,7 @@ public class AdminConsumptionTaskTest {
             1,
             false,
             "",
+            0,
             0);
     // isLeaderController() is called once every consumption cycle (1000ms) and for every message processed in
     // AdminExecutionTask.
@@ -1336,6 +1337,7 @@ public class AdminConsumptionTaskTest {
             1,
             false,
             "",
+            0,
             0);
     Future<PubSubProduceResult> future = veniceWriter.put(
         emptyKeyBytes,
@@ -1493,6 +1495,7 @@ public class AdminConsumptionTaskTest {
           1,
           false,
           "dc-0",
+          0,
           0);
     });
 
@@ -1538,6 +1541,7 @@ public class AdminConsumptionTaskTest {
           1,
           true,
           "dc-1",
+          0,
           0);
     });
 

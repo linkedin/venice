@@ -449,6 +449,8 @@ public interface Admin extends AutoCloseable, Closeable {
 
   void setStoreLargestUsedVersion(String clusterName, String storeName, int versionNumber);
 
+  void setStoreLargestUsedRTVersion(String clusterName, String storeName, int versionNumber);
+
   void setStoreOwner(String clusterName, String storeName, String owner);
 
   void setStorePartitionCount(String clusterName, String storeName, int partitionCount);
