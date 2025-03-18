@@ -1877,8 +1877,6 @@ public class ConfigKeys {
 
   // Enable acl for the blob transfer between Da Vinci peers, or server peers
   public static final String BLOB_TRANSFER_ACL_ENABLED = "blob.transfer.acl.enabled";
-  // Allowed principal name for the blob transfer in acl handler
-  public static final String BLOB_TRANSFER_ALLOWED_PRINCIPAL_NAME = "blob.transfer.davinci.allowed.principal.name";
 
   // Port used by peer-to-peer transfer service. It should be used by both server and client
   public static final String DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT = "davinci.p2p.blob.transfer.server.port";

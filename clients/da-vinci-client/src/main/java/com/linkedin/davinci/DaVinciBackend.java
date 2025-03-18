@@ -62,7 +62,6 @@ import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
-import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
@@ -126,8 +125,7 @@ public class DaVinciBackend implements Closeable {
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
       Optional<ObjectCacheConfig> cacheConfig,
-      DaVinciRecordTransformerConfig recordTransformerConfig,
-      Optional<SSLFactory> sslFactory) {
+      DaVinciRecordTransformerConfig recordTransformerConfig) {
     LOGGER.info("Creating Da Vinci backend with managed clients: {}", managedClients);
     try {
       VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
@@ -307,32 +305,38 @@ public class DaVinciBackend implements Closeable {
       }
 
       if (backendConfig.isBlobTransferManagerEnabled()) {
-        aggVersionedBlobTransferStats =
-            new AggVersionedBlobTransferStats(metricsRepository, storeRepository, configLoader.getVeniceServerConfig());
+        try {
+          aggVersionedBlobTransferStats = new AggVersionedBlobTransferStats(
+              metricsRepository,
+              storeRepository,
+              configLoader.getVeniceServerConfig());
 
-        P2PBlobTransferConfig p2PBlobTransferConfig = new P2PBlobTransferConfig(
-            configLoader.getVeniceServerConfig().getDvcP2pBlobTransferServerPort(),
-            configLoader.getVeniceServerConfig().getDvcP2pBlobTransferClientPort(),
-            configLoader.getVeniceServerConfig().getRocksDBPath(),
-            backendConfig.getMaxConcurrentSnapshotUser(),
-            backendConfig.getSnapshotRetentionTimeInMin(),
-            backendConfig.getBlobTransferMaxTimeoutInMin(),
-            backendConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
-                ? BlobTransferTableFormat.PLAIN_TABLE
-                : BlobTransferTableFormat.BLOCK_BASED_TABLE,
-            backendConfig.getBlobTransferPeersConnectivityFreshnessInSeconds(),
-            backendConfig.getBlobTransferClientReadLimitBytesPerSec(),
-            backendConfig.getBlobTransferServiceWriteLimitBytesPerSec());
+          P2PBlobTransferConfig p2PBlobTransferConfig = new P2PBlobTransferConfig(
+              configLoader.getVeniceServerConfig().getDvcP2pBlobTransferServerPort(),
+              configLoader.getVeniceServerConfig().getDvcP2pBlobTransferClientPort(),
+              configLoader.getVeniceServerConfig().getRocksDBPath(),
+              backendConfig.getMaxConcurrentSnapshotUser(),
+              backendConfig.getSnapshotRetentionTimeInMin(),
+              backendConfig.getBlobTransferMaxTimeoutInMin(),
+              backendConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
+                  ? BlobTransferTableFormat.PLAIN_TABLE
+                  : BlobTransferTableFormat.BLOCK_BASED_TABLE,
+              backendConfig.getBlobTransferPeersConnectivityFreshnessInSeconds(),
+              backendConfig.getBlobTransferClientReadLimitBytesPerSec(),
+              backendConfig.getBlobTransferServiceWriteLimitBytesPerSec());
 
-        blobTransferManager = new BlobTransferManagerBuilder().setBlobTransferConfig(p2PBlobTransferConfig)
-            .setClientConfig(clientConfig)
-            .setStorageMetadataService(storageMetadataService)
-            .setReadOnlyStoreRepository(readOnlyStoreRepository)
-            .setStorageEngineRepository(storageService.getStorageEngineRepository())
-            .setAggVersionedBlobTransferStats(aggVersionedBlobTransferStats)
-            .setBlobTransferSSLFactory(sslFactory)
-            .setBlobTransferAclHandler(BlobTransferUtils.createAclHandler(configLoader))
-            .build();
+          blobTransferManager = new BlobTransferManagerBuilder().setBlobTransferConfig(p2PBlobTransferConfig)
+              .setClientConfig(clientConfig)
+              .setStorageMetadataService(storageMetadataService)
+              .setReadOnlyStoreRepository(readOnlyStoreRepository)
+              .setStorageEngineRepository(storageService.getStorageEngineRepository())
+              .setAggVersionedBlobTransferStats(aggVersionedBlobTransferStats)
+              .setBlobTransferSSLFactory(BlobTransferUtils.createSSLFactoryForBlobTransferInDVC(configLoader))
+              .setBlobTransferAclHandler(BlobTransferUtils.createAclHandler(configLoader))
+              .build();
+        } catch (Exception e) {
+          LOGGER.error("Failed to create BlobTransferManager", e);
+        }
       } else {
         aggVersionedBlobTransferStats = null;
         blobTransferManager = null;

@@ -11,7 +11,6 @@ import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_PASSWORD;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_TYPE;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ALLOWED_PRINCIPAL_NAME;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
@@ -85,7 +84,6 @@ public class DaVinciUserApp {
     if (blobTransferDaVinciSSLEnabled) {
       extraBackendConfig.put(BLOB_TRANSFER_SSL_ENABLED, true);
       extraBackendConfig.put(BLOB_TRANSFER_ACL_ENABLED, true);
-      extraBackendConfig.put(BLOB_TRANSFER_ALLOWED_PRINCIPAL_NAME, "CN=localhost");
 
       String keyStorePath = SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS);
       extraBackendConfig.put(SSL_KEYSTORE_TYPE, "JKS");

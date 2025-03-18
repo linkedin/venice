@@ -101,7 +101,6 @@ public class TestNettyP2PBlobTransferManager {
     Properties sslProperties = SslUtils.getVeniceLocalSslProperties();
     sslProperties.setProperty(ConfigKeys.BLOB_TRANSFER_SSL_ENABLED, "true");
     sslProperties.setProperty(ConfigKeys.BLOB_TRANSFER_ACL_ENABLED, "true");
-    sslProperties.setProperty(ConfigKeys.BLOB_TRANSFER_ALLOWED_PRINCIPAL_NAME, "CN=localhost");
 
     VeniceProperties veniceProperties = new VeniceProperties(sslProperties);
     VeniceConfigLoader configLoader = Mockito.mock(VeniceConfigLoader.class);

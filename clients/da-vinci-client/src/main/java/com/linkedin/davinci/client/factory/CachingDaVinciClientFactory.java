@@ -1,8 +1,5 @@
 package com.linkedin.davinci.client.factory;
 
-import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
-import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
-
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.AvroGenericDaVinciClient;
 import com.linkedin.davinci.client.AvroSpecificDaVinciClient;
@@ -10,12 +7,9 @@ import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.StatsAvroGenericDaVinciClient;
 import com.linkedin.davinci.client.StatsAvroSpecificDaVinciClient;
-import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.ICProvider;
-import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.views.VeniceView;
 import io.tehuti.metrics.MetricsRepository;
@@ -46,7 +40,6 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
   protected final List<DaVinciClient> isolatedClients = new ArrayList<>();
   protected final Map<String, DaVinciConfig> configs = new HashMap<>();
   private final Executor readChunkExecutorForLargeRequest;
-  private final Optional<SSLFactory> sslFactory;
 
   @Deprecated
   public CachingDaVinciClientFactory(
@@ -132,7 +125,6 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
     this.managedClients = managedClients;
     this.icProvider = icProvider;
     this.readChunkExecutorForLargeRequest = readChunkExecutorForLargeRequest;
-    this.sslFactory = createSSLFactory();
   }
 
   @Override
@@ -332,8 +324,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
           backendConfig,
           managedClients,
           icProvider,
-          readChunkExecutorForLargeRequest,
-          sslFactory);
+          readChunkExecutorForLargeRequest);
       if (config.isReadMetricsEnabled()) {
         return new StatsAvroGenericDaVinciClient<>(client, clientConfig);
       }
@@ -355,8 +346,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
           backendConfig,
           managedClients,
           icProvider,
-          readChunkExecutorForLargeRequest,
-          sslFactory);
+          readChunkExecutorForLargeRequest);
       if (config.isReadMetricsEnabled()) {
         return new StatsAvroSpecificDaVinciClient<>(client, clientConfig);
       }
@@ -418,22 +408,5 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
       client.start();
     }
     return client;
-  }
-
-  /**
-   * Create an instance of {@link SSLFactory} based on the config.
-   * @return
-   */
-  private Optional<SSLFactory> createSSLFactory() {
-    Optional<SSLFactory> sslFactory = Optional.empty();
-    try {
-      String sslFactoryClassName = backendConfig.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
-      SSLConfig sslConfig = new SSLConfig(backendConfig);
-      sslFactory = Optional.of(SslUtils.getSSLFactory(sslConfig.getSslProperties(), sslFactoryClassName));
-    } catch (Exception e) {
-      LOGGER.error("Failed to create SSL factory", e);
-    }
-
-    return sslFactory;
   }
 }

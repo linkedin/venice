@@ -1,13 +1,17 @@
 package com.linkedin.davinci.blobtransfer;
 
+import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
+import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.store.rocksdb.RocksDBUtils.composePartitionDbDir;
 import static org.apache.commons.codec.digest.DigestUtils.md5Hex;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.SslUtils;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.ssl.SslHandler;
 import java.io.File;
@@ -115,6 +119,30 @@ public class BlobTransferUtils {
     }
   }
 
+  /**
+   * Create an SSLFactory from the Venice config loader
+   *
+   * @param configLoader The Venice config loader containing SSL configuration
+   * @return Optional SSLFactory, which will be empty if SSL is not enabled
+   */
+  public static Optional<SSLFactory> createSSLFactoryForBlobTransferInDVC(VeniceConfigLoader configLoader) {
+    // Check if SSL is enabled
+    if (!isBlobTransferDVCSslEnabled(configLoader)) {
+      throw new IllegalArgumentException("Blob transfer SSL is not enabled");
+    }
+
+    try {
+      // Create SSL factory
+      String sslFactoryClassName =
+          configLoader.getCombinedProperties().getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
+      SSLConfig sslConfig = new SSLConfig(configLoader.getCombinedProperties());
+      SSLFactory sslFactory = SslUtils.getSSLFactory(sslConfig.getSslProperties(), sslFactoryClassName);
+      return Optional.of(sslFactory);
+    } catch (Exception e) {
+      throw new IllegalArgumentException("Failed to create SSL factory for blob transfer", e);
+    }
+  }
+
   public static SslHandler createBlobTransferClientSslHandler(Optional<SSLFactory> sslFactory) {
     javax.net.ssl.SSLEngine engine = sslFactory.get().getSSLContext().createSSLEngine();
     engine.setUseClientMode(true);
@@ -130,17 +158,15 @@ public class BlobTransferUtils {
    */
   public static Optional<BlobTransferAclHandler> createAclHandler(VeniceConfigLoader configLoader) {
     if (!isBlobTransferDVCSslEnabled(configLoader) || !isBlobTransferAclValidationEnabled(configLoader)) {
-      LOGGER.error(
-          "Blob transfer SSL or ACL validation is not enabled. sslEnabled: {}, aclEnabled: {}, skip create ACL handler.",
-          isBlobTransferDVCSslEnabled(configLoader),
-          isBlobTransferAclValidationEnabled(configLoader));
-      return Optional.empty();
+      String errorMsg =
+          "Blob transfer SSL or ACL validation is not enabled. sslEnabled: " + isBlobTransferDVCSslEnabled(configLoader)
+              + ", aclEnabled: " + isBlobTransferAclValidationEnabled(configLoader) + ", skip create ACL handler.";
+      throw new IllegalArgumentException(errorMsg);
     }
     try {
       return Optional.of(new BlobTransferAclHandler());
     } catch (Exception e) {
-      LOGGER.error("Failed to create ACL handler for blob transfer", e);
-      return Optional.empty();
+      throw new IllegalArgumentException("Failed to create ACL handler for blob transfer", e);
     }
   }
 

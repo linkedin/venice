@@ -49,7 +49,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.SchemaRepoBackedSchemaReader;
-import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroSpecificStoreDeserializerCache;
@@ -139,14 +138,13 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   private final Executor readChunkExecutorForLargeRequest;
 
   private final DaVinciRecordTransformerConfig recordTransformerConfig;
-  private final Optional<SSLFactory> sslFactory;
 
   public AvroGenericDaVinciClient(
       DaVinciConfig daVinciConfig,
       ClientConfig clientConfig,
       VeniceProperties backendConfig,
       Optional<Set<String>> managedClients) {
-    this(daVinciConfig, clientConfig, backendConfig, managedClients, null, null, Optional.empty());
+    this(daVinciConfig, clientConfig, backendConfig, managedClients, null, null);
   }
 
   public AvroGenericDaVinciClient(
@@ -155,8 +153,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       VeniceProperties backendConfig,
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
-      Executor readChunkExecutorForLargeRequest,
-      Optional<SSLFactory> sslFactory) {
+      Executor readChunkExecutorForLargeRequest) {
     this(
         daVinciConfig,
         clientConfig,
@@ -165,8 +162,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         icProvider,
         GenericChunkingAdapter.INSTANCE,
         () -> {},
-        readChunkExecutorForLargeRequest,
-        sslFactory);
+        readChunkExecutorForLargeRequest);
   }
 
   protected AvroGenericDaVinciClient(
@@ -177,8 +173,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       ICProvider icProvider,
       AbstractAvroChunkingAdapter<V> chunkingAdapter,
       Runnable preValidation,
-      Executor readChunkExecutorForLargeRequest,
-      Optional<SSLFactory> sslFactory) {
+      Executor readChunkExecutorForLargeRequest) {
     logger.info("Creating client, storeName={}, daVinciConfig={}", clientConfig.getStoreName(), daVinciConfig);
     this.daVinciConfig = daVinciConfig;
     this.clientConfig = clientConfig;
@@ -187,7 +182,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     this.icProvider = icProvider;
     this.chunkingAdapter = chunkingAdapter;
     this.recordTransformerConfig = daVinciConfig.getRecordTransformerConfig();
-    this.sslFactory = sslFactory;
     this.readChunkExecutorForLargeRequest =
         readChunkExecutorForLargeRequest != null ? readChunkExecutorForLargeRequest : READ_CHUNK_EXECUTOR;
 
@@ -739,8 +733,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
       Optional<ObjectCacheConfig> cacheConfig,
-      DaVinciRecordTransformerConfig recordTransformerConfig,
-      Optional<SSLFactory> sslFactory) {
+      DaVinciRecordTransformerConfig recordTransformerConfig) {
     synchronized (AvroGenericDaVinciClient.class) {
       if (daVinciBackend == null) {
         logger
@@ -752,8 +745,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
                 managedClients,
                 icProvider,
                 cacheConfig,
-                recordTransformerConfig,
-                sslFactory),
+                recordTransformerConfig),
             backend -> {
               // Ensure that existing backend is fully closed before a new one can be created.
               synchronized (AvroGenericDaVinciClient.class) {
@@ -791,14 +783,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     logger.info("Starting client, storeName={}", getStoreName());
     VeniceConfigLoader configLoader = buildVeniceConfig();
     Optional<ObjectCacheConfig> cacheConfig = Optional.ofNullable(daVinciConfig.getCacheConfig());
-    initBackend(
-        clientConfig,
-        configLoader,
-        managedClients,
-        icProvider,
-        cacheConfig,
-        recordTransformerConfig,
-        sslFactory);
+    initBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig, recordTransformerConfig);
 
     try {
       getBackend().verifyCacheConfigEquality(daVinciConfig.getCacheConfig(), getStoreName());

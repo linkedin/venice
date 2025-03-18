@@ -318,7 +318,6 @@ public class BlobP2PTransferAmongServersTest {
     serverProperties.setProperty(ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED, "true");
     serverProperties.setProperty(ConfigKeys.BLOB_TRANSFER_SSL_ENABLED, "true");
     serverProperties.setProperty(ConfigKeys.BLOB_TRANSFER_ACL_ENABLED, "true");
-    serverProperties.setProperty(ConfigKeys.BLOB_TRANSFER_ALLOWED_PRINCIPAL_NAME, "CN=localhost");
 
     Properties serverFeatureProperties = new Properties();
     serverFeatureProperties.put(VeniceServerWrapper.SERVER_ENABLE_SSL, "true");

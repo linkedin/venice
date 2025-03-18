@@ -45,6 +45,7 @@ public class BlobTransferNettyChannelInitializer extends ChannelInitializer<Sock
   @Override
   protected void initChannel(SocketChannel ch) throws Exception {
     ChannelPipeline pipeline = ch.pipeline();
+    // The sslFactory is already converted to openssl factory
     sslFactory.ifPresent(
         sslFactory -> ch.pipeline().addLast(new SslInitializer(SslUtils.toAlpiniSSLFactory(sslFactory), false)));
 
