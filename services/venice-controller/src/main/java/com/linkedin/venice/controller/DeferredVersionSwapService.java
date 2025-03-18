@@ -15,6 +15,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RegionUtils;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -43,6 +44,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private final VeniceParentHelixAdmin veniceParentHelixAdmin;
   private final ScheduledExecutorService deferredVersionSwapExecutor = Executors.newSingleThreadScheduledExecutor();
   private final DeferredVersionSwapStats deferredVersionSwapStats;
+  private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER =
+      new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(10));
   private static final Logger LOGGER = LogManager.getLogger(DeferredVersionSwapService.class);
   private Cache<String, Map<String, Long>> storePushCompletionTimeCache =
       Caffeine.newBuilder().expireAfterWrite(2, TimeUnit.HOURS).build();
@@ -107,6 +110,12 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     return didWaitTimeElapseInTargetRegions;
   }
 
+  private void logMessageIfNotRedundant(String message) {
+    if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(message)) {
+      LOGGER.debug(message);
+    }
+  }
+
   private class DeferredVersionSwapTask implements Runnable {
     @Override
     public void run() {
@@ -147,11 +156,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                     storePushCompletionTimes,
                     targetRegions,
                     store.getTargetSwapRegionWaitTime())) {
-                  LOGGER.info(
-                      "Skipping version swap for store: {} on version: {} as wait time: {} has not passed",
-                      storeName,
-                      targetVersionNum,
-                      store.getTargetSwapRegionWaitTime());
+                  String message = "Skipping version swap for store: " + storeName + " on version: " + targetVersionNum
+                      + " as wait time: " + store.getTargetSwapRegionWaitTime() + " has not passed";
+                  logMessageIfNotRedundant(message);
                   continue;
                 }
               }
@@ -182,10 +189,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                 }
 
                 if (version.get().getIsDavinciHeartbeatReported()) {
-                  LOGGER.info(
-                      "Skipping version swap for store: {} on version: {} as it is davinci",
-                      storeName,
-                      targetVersionNum);
+                  String message = "Skipping version swap for store: " + storeName + " on version: " + targetVersionNum
+                      + " as there is a davinci heartbeat";
+                  logMessageIfNotRedundant(message);
                   continue;
                 }
               }
@@ -198,22 +204,14 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                 String executionStatus = pushStatusInfo.getExtraInfo().get(targetRegion);
                 if (executionStatus.equals(ExecutionStatus.COMPLETED.toString())) {
                   targetRegionsCompleted.add(targetRegion);
-                  LOGGER.warn(
-                      "Skipping version swap for store: {} on version: {} as push is not complete in target region {}",
-                      storeName,
-                      targetVersionNum,
-                      targetRegion);
                 }
               }
 
               if (targetRegionsCompleted.size() < targetRegions.size() / 2) {
-                LOGGER.warn(
-                    "Skipping version swap for store: {} on version: {} as push is complete in the majority of target regions."
-                        + "Completed target regions: {}, target regions: {}",
-                    storeName,
-                    targetVersionNum,
-                    targetRegionsCompleted,
-                    targetRegions);
+                String message = "Skipping version swap for store: " + storeName + " on version: " + targetVersionNum
+                    + "as push is complete in the majority of target regions. Completed target regions: "
+                    + targetRegionsCompleted + ", target regions: " + targetRegions;
+                logMessageIfNotRedundant(message);
                 continue;
               }
 
@@ -224,7 +222,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                 String executionStatus = pushStatusInfo.getExtraInfo().get(remainingRegion);
                 if (executionStatus.equals(ExecutionStatus.ERROR.toString())) {
                   numNonTargetRegionsFailed += 1;
-                  LOGGER.warn(
+                  LOGGER.debug(
                       "Push has error status for store: {} on version: {} in a non target region: {}",
                       storeName,
                       targetVersionNum,
@@ -258,10 +256,10 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               int nonTargetRegionsInTerminalStatus = nonTargetRegionsCompleted.size() + numNonTargetRegionsFailed;
               if (nonTargetRegionsCompleted.size() < remainingRegions.size() / 2
                   || nonTargetRegionsInTerminalStatus != remainingRegions.size()) {
-                LOGGER.info(
-                    "Skipping version swap for store: {} on version: {} as majority of non target regions have not completed their push",
-                    storeName,
-                    targetVersionNum);
+                String message = "Skipping version swap for store: " + storeName + " on version: " + targetVersionNum
+                    + "as majority of non target regions have not completed their push. Completed non target regions: "
+                    + nonTargetRegionsCompleted + ", non target regions: " + remainingRegions;
+                logMessageIfNotRedundant(message);
                 continue;
               }
 
@@ -272,11 +270,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                   store.getTargetSwapRegionWaitTime());
 
               if (!didWaitTimeElapseInTargetRegions) {
-                LOGGER.info(
-                    "Skipping version swap for store: {} on version: {} as wait time: {} has not passed",
-                    storeName,
-                    targetVersionNum,
-                    store.getTargetSwapRegionWaitTime());
+                String message = "Skipping version swap for store: " + storeName + " on version: " + targetVersionNum
+                    + " as wait time: " + store.getTargetSwapRegionWaitTime() + " has not passed";
+                logMessageIfNotRedundant(message);
                 storePushCompletionTimeCache.put(kafkaTopicName, pushStatusInfo.getExtraInfoUpdateTimestamp());
                 continue;
               }
@@ -284,7 +280,11 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               // TODO add call for postStoreVersionSwap() once it is implemented
 
               String regionsToRollForward = RegionUtils.composeRegionList(nonTargetRegionsCompleted);
-              LOGGER.info("Issuing roll forward message for store: {} in regions: {}", storeName, regionsToRollForward);
+              LOGGER.info(
+                  "Issuing roll forward message for store: {} in regions: {} for version: {}",
+                  storeName,
+                  regionsToRollForward,
+                  targetVersionNum);
               veniceParentHelixAdmin.rollForwardToFutureVersion(cluster, storeName, regionsToRollForward);
 
               // Once version is swapped in the remaining regions, update parent status to ONLINE so that we don't check
