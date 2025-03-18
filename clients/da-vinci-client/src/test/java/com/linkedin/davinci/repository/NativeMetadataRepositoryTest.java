@@ -181,6 +181,12 @@ public class NativeMetadataRepositoryTest {
     }
 
     @Override
+    protected void handleNewStore(Store store, StoreConfig storeConfig) {
+      putStore(store);
+      getAndCacheSchemaData(store.getName());
+    }
+
+    @Override
     protected Store fetchStoreFromRemote(String storeName, String clusterName) {
       Store store = mock(Store.class);
       when(store.getName()).thenReturn(storeName);

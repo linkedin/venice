@@ -11,6 +11,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.MissingKeyInStoreMetadataException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
@@ -29,6 +30,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
@@ -39,6 +41,8 @@ public class ThinClientMetaStoreBasedRepository extends NativeMetadataRepository
   private final Map<String, AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue>> storeClientMap =
       new VeniceConcurrentHashMap<>();
   private final ICProvider icProvider;
+  private static final List<Class<? extends Throwable>> retryableExceptionsGetStoreMetaValue =
+      Collections.singletonList(VeniceRetriableException.class);
 
   public ThinClientMetaStoreBasedRepository(
       ClientConfig clientConfig,
@@ -76,6 +80,17 @@ public class ThinClientMetaStoreBasedRepository extends NativeMetadataRepository
   }
 
   @Override
+  protected void handleNewStore(Store store, StoreConfig storeConfig) throws VeniceNoStoreException {
+    // isDeleting check to detect deleted store is only supported by meta system store based implementation.
+    if (store != null && !storeConfig.isDeleting()) {
+      putStore(store);
+      getAndCacheSchemaData(storeConfig.getStoreName());
+    } else {
+      removeStore(storeConfig.getStoreName());
+    }
+  }
+
+  @Override
   protected Store fetchStoreFromRemote(String storeName, String clusterName) {
     StoreProperties storeProperties =
         getStoreMetaValue(storeName, MetaStoreDataType.STORE_PROPERTIES.getStoreMetaKey(new HashMap<String, String>() {
@@ -93,7 +108,13 @@ public class ThinClientMetaStoreBasedRepository extends NativeMetadataRepository
         icProvider == null ? supplier : () -> icProvider.call(getClass().getCanonicalName(), supplier);
     StoreMetaValue value = RetryUtils.executeWithMaxAttempt(() -> {
       try {
-        return wrappedSupplier.call().get(5, TimeUnit.SECONDS);
+        StoreMetaValue storeMetaValue = wrappedSupplier.call().get(3, TimeUnit.SECONDS);
+        if (storeMetaValue == null) {
+          throw new VeniceRetriableException(
+              "Failed to get data from meta store using thin client for store: " + storeName + " with key: " + key
+                  + " - StoreMetaValue null");
+        }
+        return storeMetaValue;
       } catch (ServiceDiscoveryException e) {
         throw e;
       } catch (Exception e) {
@@ -101,7 +122,7 @@ public class ThinClientMetaStoreBasedRepository extends NativeMetadataRepository
             "Failed to get data from meta store using thin client for store: " + storeName + " with key: " + key,
             e);
       }
-    }, 10, Duration.ofSeconds(1), Collections.singletonList(VeniceRetriableException.class));
+    }, 15, Duration.ofSeconds(1), retryableExceptionsGetStoreMetaValue);
 
     if (value == null) {
       throw new MissingKeyInStoreMetadataException(key.toString(), StoreMetaValue.class.getSimpleName());

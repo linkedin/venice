@@ -1,5 +1,6 @@
 package com.linkedin.davinci.repository;
 
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -28,8 +29,10 @@ import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.mockito.stubbing.Answer;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
@@ -71,7 +74,7 @@ public class RequestBasedMetaRepositoryTest {
   }
 
   @Test
-  public void testRequestBasedMetaRepositoryFetchStoreConfigFromRemote() {
+  public void testFetchStoreConfigFromRemote() {
 
     // Mock RequestBasedMetaRepository
     RequestBasedMetaRepository requestBasedMetaRepository = getMockRequestBasedMetaRepository();
@@ -87,7 +90,54 @@ public class RequestBasedMetaRepositoryTest {
   }
 
   @Test
-  public void testRequestBasedMetaRepositoryFetchStoreFromRemote() {
+  public void testHandleNewStore() {
+
+    // Mock ThinClientMetaStoreBasedRepository
+    RequestBasedMetaRepository requestBasedMetaRepository = getMockRequestBasedMetaRepository();
+    StoreConfig storeConfig = mock(StoreConfig.class);
+
+    // Mock metrics
+    AtomicInteger metricPutStoreInvocCount = new AtomicInteger(0);
+    AtomicInteger metricGetAndCacheSchemaDataInvocCount = new AtomicInteger(0);
+    AtomicInteger metricRemoveStoreInvocCount = new AtomicInteger(0);
+    doAnswer((Answer<Void>) invoc -> {
+      metricPutStoreInvocCount.getAndIncrement();
+      return null;
+    }).when(requestBasedMetaRepository).putStore(store);
+    when(requestBasedMetaRepository.getAndCacheSchemaData(storeConfig.getStoreName())).thenAnswer(invocation -> {
+      metricGetAndCacheSchemaDataInvocCount.getAndIncrement();
+      return null;
+    });
+    when(requestBasedMetaRepository.removeStore(storeConfig.getStoreName())).thenAnswer(invocation -> {
+      metricRemoveStoreInvocCount.getAndIncrement();
+      return null;
+    });
+
+    // Test HandleNewStore
+    doCallRealMethod().when(requestBasedMetaRepository).handleNewStore(store, storeConfig);
+    requestBasedMetaRepository.handleNewStore(store, storeConfig);
+    Assert.assertNotNull(storeConfig);
+    Assert.assertEquals(metricPutStoreInvocCount.get(), 1);
+    Assert.assertEquals(metricGetAndCacheSchemaDataInvocCount.get(), 1);
+    Assert.assertEquals(metricRemoveStoreInvocCount.get(), 0);
+
+    // reset metrics
+    metricPutStoreInvocCount.set(0);
+    metricGetAndCacheSchemaDataInvocCount.set(0);
+    metricRemoveStoreInvocCount.set(0);
+
+    // Test isDeleting
+    // this should not affect this implementation of handleNewStore, but ThinClientMetaRepository will be affected
+    when(storeConfig.isDeleting()).thenReturn(true);
+    requestBasedMetaRepository.handleNewStore(store, storeConfig);
+    Assert.assertNotNull(storeConfig);
+    Assert.assertEquals(metricPutStoreInvocCount.get(), 1);
+    Assert.assertEquals(metricGetAndCacheSchemaDataInvocCount.get(), 1);
+    Assert.assertEquals(metricRemoveStoreInvocCount.get(), 0);
+  }
+
+  @Test
+  public void testFetchStoreFromRemote() {
 
     // Mock RequestBasedMetaRepository
     RequestBasedMetaRepository requestBasedMetaRepository = getMockRequestBasedMetaRepository();
@@ -103,7 +153,7 @@ public class RequestBasedMetaRepositoryTest {
   }
 
   @Test
-  public void testRequestBasedMetaRepositoryFetchAndCacheStorePropertiesPayloadRecord() {
+  public void testFetchAndCacheStorePropertiesPayloadRecord() {
 
     // Mock RequestBasedMetaRepository
     RequestBasedMetaRepository requestBasedMetaRepository = getMockRequestBasedMetaRepository();
@@ -121,7 +171,7 @@ public class RequestBasedMetaRepositoryTest {
   }
 
   @Test
-  public void testRequestBasedMetaRepositoryGetMaxValueSchemaId() {
+  public void testGetMaxValueSchemaId() {
 
     // Mock RequestBasedMetaRepository
     RequestBasedMetaRepository requestBasedMetaRepository = getMockRequestBasedMetaRepository();
@@ -146,7 +196,7 @@ public class RequestBasedMetaRepositoryTest {
   }
 
   @Test
-  public void testRequestBasedMetaRepositoryCacheStoreSchema() {
+  public void testCacheStoreSchema() {
 
     // Mock RequestBasedMetaRepository
     RequestBasedMetaRepository requestBasedMetaRepository = getMockRequestBasedMetaRepository();

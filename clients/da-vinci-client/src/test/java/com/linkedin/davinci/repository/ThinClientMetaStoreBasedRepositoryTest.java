@@ -2,6 +2,8 @@ package com.linkedin.davinci.repository;
 
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_CLUSTER_NAME;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -22,8 +24,10 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.mockito.stubbing.Answer;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
@@ -71,6 +75,53 @@ public class ThinClientMetaStoreBasedRepositoryTest {
     Assert.assertNotNull(storeConfig);
     Assert.assertEquals(storeConfig.getStoreName(), store.getName());
     Assert.assertEquals(storeConfig.getCluster(), CLUSTER_NAME);
+  }
+
+  @Test
+  public void testHandleNewStore() {
+
+    // Mock ThinClientMetaStoreBasedRepository
+    ThinClientMetaStoreBasedRepository thinClientMetaStoreBasedRepository = getMockThinClientMetaStoreBasedRepository();
+    StoreConfig storeConfig = mock(StoreConfig.class);
+
+    // Mock metrics
+    AtomicInteger metricPutStoreInvocCount = new AtomicInteger(0);
+    AtomicInteger metricGetAndCacheSchemaDataInvocCount = new AtomicInteger(0);
+    AtomicInteger metricRemoveStoreInvocCount = new AtomicInteger(0);
+    doAnswer((Answer<Void>) invoc -> {
+      metricPutStoreInvocCount.getAndIncrement();
+      return null;
+    }).when(thinClientMetaStoreBasedRepository).putStore(store);
+    when(thinClientMetaStoreBasedRepository.getAndCacheSchemaData(storeConfig.getStoreName()))
+        .thenAnswer(invocation -> {
+          metricGetAndCacheSchemaDataInvocCount.getAndIncrement();
+          return null;
+        });
+    when(thinClientMetaStoreBasedRepository.removeStore(storeConfig.getStoreName())).thenAnswer(invocation -> {
+      metricRemoveStoreInvocCount.getAndIncrement();
+      return null;
+    });
+
+    // Test HandleNewStore
+    doCallRealMethod().when(thinClientMetaStoreBasedRepository).handleNewStore(store, storeConfig);
+    thinClientMetaStoreBasedRepository.handleNewStore(store, storeConfig);
+    Assert.assertNotNull(storeConfig);
+    Assert.assertEquals(metricPutStoreInvocCount.get(), 1);
+    Assert.assertEquals(metricGetAndCacheSchemaDataInvocCount.get(), 1);
+    Assert.assertEquals(metricRemoveStoreInvocCount.get(), 0);
+
+    // reset metrics
+    metricPutStoreInvocCount.set(0);
+    metricGetAndCacheSchemaDataInvocCount.set(0);
+    metricRemoveStoreInvocCount.set(0);
+
+    // Test isDeleting
+    when(storeConfig.isDeleting()).thenReturn(true);
+    thinClientMetaStoreBasedRepository.handleNewStore(store, storeConfig);
+    Assert.assertNotNull(storeConfig);
+    Assert.assertEquals(metricPutStoreInvocCount.get(), 0);
+    Assert.assertEquals(metricGetAndCacheSchemaDataInvocCount.get(), 0);
+    Assert.assertEquals(metricRemoveStoreInvocCount.get(), 1);
   }
 
   @Test

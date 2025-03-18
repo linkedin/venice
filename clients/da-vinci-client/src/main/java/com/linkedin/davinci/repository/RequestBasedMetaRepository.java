@@ -9,6 +9,7 @@ import com.linkedin.venice.client.store.D2ServiceDiscovery;
 import com.linkedin.venice.client.store.InternalAvroStoreClient;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
@@ -85,6 +86,14 @@ public class RequestBasedMetaRepository extends NativeMetadataRepository {
     storeClusterConfig.setCluster(d2TransportClient.getServiceName());
 
     return new StoreConfig(storeClusterConfig);
+  }
+
+  // handleNewStore will throw the VeniceNoStoreException when
+  // retrieving metadata for stores in "Deleting" state or "Missing".
+  @Override
+  protected void handleNewStore(Store store, StoreConfig storeConfig) throws VeniceNoStoreException {
+    putStore(store);
+    getAndCacheSchemaData(storeConfig.getStoreName());
   }
 
   @Override

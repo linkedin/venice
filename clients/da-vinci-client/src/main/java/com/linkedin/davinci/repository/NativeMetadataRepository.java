@@ -168,8 +168,6 @@ public abstract class NativeMetadataRepository
     return subscribedStoreMap.containsKey(storeName);
   }
 
-  // refreshOneStore will throw the VeniceNoStoreException when
-  // retrieving metadata for stores in "Deleting" state or "Missing".
   @Override
   public Store refreshOneStore(String storeName) {
     try {
@@ -178,14 +176,8 @@ public abstract class NativeMetadataRepository
         throw new VeniceException("StoreConfig is missing unexpectedly for store: " + storeName);
       }
       Store newStore = fetchStoreFromRemote(storeName, storeConfig.getCluster());
-      // isDeleting check to detect deleted store is only supported by meta system store based implementation.
-      if (newStore != null && !storeConfig.isDeleting()) {
-        putStore(newStore);
-        getAndCacheSchemaData(storeName);
-        nativeMetadataRepositoryStats.updateCacheTimestamp(storeName, clock.millis());
-      } else {
-        removeStore(storeName);
-      }
+      handleNewStore(newStore, storeConfig);
+      nativeMetadataRepositoryStats.updateCacheTimestamp(storeName, clock.millis());
       return newStore;
     } catch (ServiceDiscoveryException | MissingKeyInStoreMetadataException e) {
       throw new VeniceNoStoreException(storeName, e);
@@ -403,6 +395,8 @@ public abstract class NativeMetadataRepository
   protected abstract StoreConfig fetchStoreConfigFromRemote(String storeName);
 
   protected abstract Store fetchStoreFromRemote(String storeName, String clusterName);
+
+  protected abstract void handleNewStore(Store store, StoreConfig storeConfig) throws VeniceNoStoreException;
 
   protected abstract SchemaData getSchemaData(String storeName);
 
