@@ -178,9 +178,14 @@ public abstract class NativeMetadataRepository
         throw new VeniceException("StoreConfig is missing unexpectedly for store: " + storeName);
       }
       Store newStore = fetchStoreFromRemote(storeName, storeConfig.getCluster());
-      putStore(newStore);
-      getAndCacheSchemaData(storeName);
-      nativeMetadataRepositoryStats.updateCacheTimestamp(storeName, clock.millis());
+      // isDeleting check to detect deleted store is only supported by meta system store based implementation.
+      if (newStore != null && !storeConfig.isDeleting()) {
+        putStore(newStore);
+        getAndCacheSchemaData(storeName);
+        nativeMetadataRepositoryStats.updateCacheTimestamp(storeName, clock.millis());
+      } else {
+        removeStore(storeName);
+      }
       return newStore;
     } catch (ServiceDiscoveryException | MissingKeyInStoreMetadataException e) {
       throw new VeniceNoStoreException(storeName, e);
