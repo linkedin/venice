@@ -478,31 +478,36 @@ public class VeniceServer {
      * Initialize Blob transfer manager for Service
      */
     if (serverConfig.isBlobTransferManagerEnabled()) {
-      aggVersionedBlobTransferStats = new AggVersionedBlobTransferStats(metricsRepository, metadataRepo, serverConfig);
+      try {
+        aggVersionedBlobTransferStats =
+            new AggVersionedBlobTransferStats(metricsRepository, metadataRepo, serverConfig);
 
-      P2PBlobTransferConfig p2PBlobTransferConfig = new P2PBlobTransferConfig(
-          serverConfig.getDvcP2pBlobTransferServerPort(),
-          serverConfig.getDvcP2pBlobTransferClientPort(),
-          serverConfig.getRocksDBPath(),
-          serverConfig.getMaxConcurrentSnapshotUser(),
-          serverConfig.getSnapshotRetentionTimeInMin(),
-          serverConfig.getBlobTransferMaxTimeoutInMin(),
-          serverConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
-              ? BlobTransferTableFormat.PLAIN_TABLE
-              : BlobTransferTableFormat.BLOCK_BASED_TABLE,
-          serverConfig.getBlobTransferPeersConnectivityFreshnessInSeconds(),
-          serverConfig.getBlobTransferClientReadLimitBytesPerSec(),
-          serverConfig.getBlobTransferServiceWriteLimitBytesPerSec());
+        P2PBlobTransferConfig p2PBlobTransferConfig = new P2PBlobTransferConfig(
+            serverConfig.getDvcP2pBlobTransferServerPort(),
+            serverConfig.getDvcP2pBlobTransferClientPort(),
+            serverConfig.getRocksDBPath(),
+            serverConfig.getMaxConcurrentSnapshotUser(),
+            serverConfig.getSnapshotRetentionTimeInMin(),
+            serverConfig.getBlobTransferMaxTimeoutInMin(),
+            serverConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
+                ? BlobTransferTableFormat.PLAIN_TABLE
+                : BlobTransferTableFormat.BLOCK_BASED_TABLE,
+            serverConfig.getBlobTransferPeersConnectivityFreshnessInSeconds(),
+            serverConfig.getBlobTransferClientReadLimitBytesPerSec(),
+            serverConfig.getBlobTransferServiceWriteLimitBytesPerSec());
 
-      blobTransferManager = new BlobTransferManagerBuilder().setBlobTransferConfig(p2PBlobTransferConfig)
-          .setCustomizedViewFuture(customizedViewFuture)
-          .setStorageMetadataService(storageMetadataService)
-          .setReadOnlyStoreRepository(metadataRepo)
-          .setStorageEngineRepository(storageService.getStorageEngineRepository())
-          .setAggVersionedBlobTransferStats(aggVersionedBlobTransferStats)
-          .setBlobTransferSSLFactory(sslFactory)
-          .setBlobTransferAclHandler(BlobTransferUtils.createAclHandler(veniceConfigLoader))
-          .build();
+        blobTransferManager = new BlobTransferManagerBuilder().setBlobTransferConfig(p2PBlobTransferConfig)
+            .setCustomizedViewFuture(customizedViewFuture)
+            .setStorageMetadataService(storageMetadataService)
+            .setReadOnlyStoreRepository(metadataRepo)
+            .setStorageEngineRepository(storageService.getStorageEngineRepository())
+            .setAggVersionedBlobTransferStats(aggVersionedBlobTransferStats)
+            .setBlobTransferSSLFactory(sslFactory)
+            .setBlobTransferAclHandler(BlobTransferUtils.createAclHandler(veniceConfigLoader))
+            .build();
+      } catch (Exception e) {
+        LOGGER.error("Failed to initialize BlobTransferManager", e);
+      }
     } else {
       aggVersionedBlobTransferStats = null;
       blobTransferManager = null;
