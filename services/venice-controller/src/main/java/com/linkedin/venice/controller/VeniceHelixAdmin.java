@@ -295,6 +295,7 @@ import org.apache.http.HttpStatus;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import spark.utils.Assert;
 
 
 /**
@@ -8068,9 +8069,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public List<StoreInfo> getStoresForCompaction(String clusterName) {
-    if (compactionManager == null) {
-      throw new VeniceException("CompactionManager is not initialized.");
-    }
+    Assert.isTrue(multiClusterConfigs.isLogCompactionEnabled(), "Log compaction is not enabled for this cluster!");
     try {
       Map<String, ControllerClient> childControllers = getControllerClientMap(clusterName);
       return compactionManager.getStoresForCompaction(clusterName, childControllers);
@@ -8089,9 +8088,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public RepushJobResponse compactStore(RepushJobRequest repushJobRequest) throws Exception {
-    if (compactionManager == null) {
-      throw new VeniceException("CompactionManager is not initialized.");
-    }
+    Assert.isTrue(multiClusterConfigs.isLogCompactionEnabled(), "Log compaction is not enabled for this cluster!");
     try {
       return compactionManager.compactStore(repushJobRequest);
     } catch (Exception e) {
