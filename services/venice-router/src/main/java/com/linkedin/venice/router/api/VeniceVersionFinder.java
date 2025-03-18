@@ -154,7 +154,7 @@ public class VeniceVersionFinder {
     VersionStatus lastCurrentVersionStatus = store.getVersionStatus(lastCurrentVersion);
     boolean prevVersionDecompressorReady = isDecompressorReady(store, lastCurrentVersion);
     if (lastCurrentVersionStatus.equals(VersionStatus.ONLINE) && prevVersionDecompressorReady) {
-      // last current version is still ready to serve/online
+      // last current version is still ready to serve
       String message = errorMessage + " Continuing to serve previous version: " + lastCurrentVersion + ".";
       if (!EXCEPTION_FILTER.isRedundantException(message)) {
         LOGGER.warn(message);
@@ -162,6 +162,7 @@ public class VeniceVersionFinder {
       stats.recordStale(newCurrentVersion, lastCurrentVersion);
       return lastCurrentVersion;
     } else {
+      // last current version is not ready to serve
       errorMessage += " Unable to serve previous version: " + lastCurrentVersion + ".";
 
       if (!lastCurrentVersionStatus.equals(VersionStatus.ONLINE)) {
