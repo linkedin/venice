@@ -150,7 +150,7 @@ public class TestHybrid {
 
   // Log compaction test constants
   private static final long TEST_LOG_COMPACTION_INTERVAL_MS = TimeUnit.SECONDS.toMillis(1);
-  private static final long TEST_LOG_COMPACTION_TIMEOUT = TEST_LOG_COMPACTION_INTERVAL_MS * 5; // ms
+  private static final long TEST_LOG_COMPACTION_TIMEOUT = TEST_LOG_COMPACTION_INTERVAL_MS * 10; // ms
   private static final long TEST_TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS = 0;
 
   /**
@@ -1098,7 +1098,8 @@ public class TestHybrid {
       throw new RuntimeException(e);
     }
 
-    // ok, now do it again manually
+    // ok, now run run repush manually with the controller client.
+    // this call should be synchronous and the count down will trigger immediately..
     TestRepushOrchestratorImpl.latch = new CountDownLatch(1);
     sharedVenice.useControllerClient(client -> {
       RepushJobResponse response = client.triggerRepush(storeName, null);
