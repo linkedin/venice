@@ -620,6 +620,10 @@ public class Utils {
     }
   }
 
+  public static Set<String> getAllRealTimeTopicNames(Store store) {
+    return store.getVersions().stream().map(Utils::getRealTimeTopicName).collect(Collectors.toSet());
+  }
+
   static String getRealTimeTopicName(
       String storeName,
       List<Version> versions,
