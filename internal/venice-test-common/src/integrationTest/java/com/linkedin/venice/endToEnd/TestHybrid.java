@@ -1103,16 +1103,9 @@ public class TestHybrid {
     sharedVenice.useControllerClient(client -> {
       RepushJobResponse response = client.triggerRepush(storeName, null);
       Assert.assertFalse(response.isError(), "Repush failed with error: " + response.getError());
+      // No waiting this time, this should countdown immediately
+      Assert.assertEquals(TestRepushOrchestratorImpl.latch.getCount(), 0);
     });
-
-    try {
-      if (TestRepushOrchestratorImpl.latch.await(TEST_LOG_COMPACTION_TIMEOUT, TimeUnit.MILLISECONDS)) {
-        LOGGER.info("Log compaction job triggered");
-      }
-    } catch (InterruptedException e) {
-      LOGGER.error("Log compaction job failed");
-      throw new RuntimeException(e);
-    }
   }
 
   public static class TestRepushOrchestratorImpl implements RepushOrchestrator {
