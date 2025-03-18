@@ -222,11 +222,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                 String executionStatus = pushStatusInfo.getExtraInfo().get(remainingRegion);
                 if (executionStatus.equals(ExecutionStatus.ERROR.toString())) {
                   numNonTargetRegionsFailed += 1;
-                  LOGGER.debug(
-                      "Push has error status for store: {} on version: {} in a non target region: {}",
-                      storeName,
-                      targetVersionNum,
-                      remainingRegion);
+                  String message = "Push has error status for store: " + storeName + " on version: " + targetVersionNum
+                      + " in a non target region: " + remainingRegion;
+                  logMessageIfNotRedundant(message);
                 } else if (executionStatus.equals(ExecutionStatus.COMPLETED.toString())) {
                   nonTargetRegionsCompleted.add(remainingRegion);
                 }
@@ -249,7 +247,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
               // Do not perform a version swap if:
               // 1. The majority of the remaining regions have not completed their push yet
-              // 2. Any of the remaining regions have yet to reach a terminal status: COMPLETED or ERRORas we need to
+              // 2. Any of the remaining regions have yet to reach a terminal status: COMPLETED or ERROR as we need to
               // wait for all of the
               // remaining regions to be completed to account for cases where we have 3 remaining regions and 2
               // COMPLETED, but 1 is STARTED
