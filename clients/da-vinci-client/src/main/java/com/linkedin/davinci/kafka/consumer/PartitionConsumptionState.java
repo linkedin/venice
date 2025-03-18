@@ -773,19 +773,6 @@ public class PartitionConsumptionState {
     return latestProcessedUpstreamRTOffset;
   }
 
-  public Long getLatestProcessedUpstreamRTOffsetWithNoDefault(String kafkaUrl) {
-    long latestProcessedUpstreamRTOffset = latestProcessedUpstreamRTOffsetMap.getOrDefault(kafkaUrl, -1L);
-    if (latestProcessedUpstreamRTOffset < 0) {
-      /**
-       * When processing {@link TopicSwitch} control message, only the checkpoint upstream offset maps in {@link OffsetRecord}
-       * will be updated, since those offset are not processed yet; so when leader try to get the upstream offsets for the very
-       * first time, there are no records in {@link #latestProcessedUpstreamRTOffsetMap} yet.
-       */
-      return getOffsetRecord().getUpstreamOffsetWithNoDefault(kafkaUrl);
-    }
-    return latestProcessedUpstreamRTOffset;
-  }
-
   /**
    * The caller of this API should be interested in which offset currently leader should consume from now.
    * 1. If currently leader should consume from real-time topic, return upstream RT offset;

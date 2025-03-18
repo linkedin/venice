@@ -3914,11 +3914,7 @@ public abstract class StoreIngestionTaskTest {
       doReturn(1000L).when(mock).getLeaderOffset(anyString(), any());
       System.out.println(mockOR.getLeaderTopic(null));
       doReturn(1000L).when(mockOR).getUpstreamOffset(anyString());
-      if (aaConfig == AA_ON) {
-        doReturn(1000L).when(mock).getLatestProcessedUpstreamRTOffsetWithNoDefault(anyString());
-      } else {
-        doReturn(1000L).when(mock).getLatestProcessedUpstreamRTOffset(anyString());
-      }
+      doReturn(1000L).when(mock).getLatestProcessedUpstreamRTOffset(anyString());
       doReturn(mockOR).when(mock).getOffsetRecord();
       System.out.println("inside mock" + mockOR.getLeaderTopic(null));
       return mock;
@@ -3935,12 +3931,7 @@ public abstract class StoreIngestionTaskTest {
     Supplier<PartitionConsumptionState> mockPcsSupplier2 = () -> {
       PartitionConsumptionState mock = mockPcsSupplier.get();
       doReturn(-1L).when(mock).getLeaderOffset(anyString(), any());
-
-      if (aaConfig == AA_ON) {
-        doReturn(-1L).when(mock).getLatestProcessedUpstreamRTOffsetWithNoDefault(anyString());
-      } else {
-        doReturn(-1L).when(mock).getLatestProcessedUpstreamRTOffset(anyString());
-      }
+      doReturn(-1L).when(mock).getLatestProcessedUpstreamRTOffset(anyString());
       doReturn(new PubSubTopicPartitionImpl(rtTopic, 0)).when(mock).getSourceTopicPartition(any());
       return mock;
     };
