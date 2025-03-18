@@ -262,7 +262,7 @@ public class UtilsTest {
     mockVersions.add(mock(Version.class));
     HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
 
-    when(mockStore.getName()).thenReturn("TestStore");
+    when(mockStore.getName()).thenReturn("StoreName");
     when(mockStore.getVersions()).thenReturn(mockVersions);
     when(mockStore.getCurrentVersion()).thenReturn(1);
     when(mockStore.getHybridStoreConfig()).thenReturn(mockHybridConfig);
