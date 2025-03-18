@@ -248,7 +248,7 @@ public class OffsetRecord {
    * call this API to get the latest upstream offset.
    */
   public long getUpstreamOffset(String kafkaURL) {
-    return getUpstreamOffsetFromPartitionState(this.partitionState, kafkaURL);
+    return partitionState.upstreamOffsetMap.getOrDefault(kafkaURL, -1L);
   }
 
   /**
@@ -390,12 +390,5 @@ public class OffsetRecord {
    */
   public byte[] toBytes() {
     return serializer.serialize(PARTITION_STATE_STRING, partitionState);
-  }
-
-  /**
-   * Return the single entry value from upstreamOffsetMap in native replication.
-   */
-  private Long getUpstreamOffsetFromPartitionState(PartitionState partitionState, String kafkaURL) {
-    return partitionState.upstreamOffsetMap.get(kafkaURL);
   }
 }
