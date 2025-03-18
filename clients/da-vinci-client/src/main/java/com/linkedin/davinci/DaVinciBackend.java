@@ -304,39 +304,34 @@ public class DaVinciBackend implements Closeable {
             "Ingestion isolated and Cache are incompatible configs!!  Aborting start up!");
       }
 
-      if (backendConfig.isBlobTransferManagerEnabled()) {
-        try {
-          aggVersionedBlobTransferStats = new AggVersionedBlobTransferStats(
-              metricsRepository,
-              storeRepository,
-              configLoader.getVeniceServerConfig());
+      if (backendConfig.isBlobTransferManagerEnabled() && backendConfig.isBlobTransferSslEnabled()
+          && backendConfig.isBlobTransferAclEnabled()) {
+        aggVersionedBlobTransferStats =
+            new AggVersionedBlobTransferStats(metricsRepository, storeRepository, configLoader.getVeniceServerConfig());
 
-          P2PBlobTransferConfig p2PBlobTransferConfig = new P2PBlobTransferConfig(
-              configLoader.getVeniceServerConfig().getDvcP2pBlobTransferServerPort(),
-              configLoader.getVeniceServerConfig().getDvcP2pBlobTransferClientPort(),
-              configLoader.getVeniceServerConfig().getRocksDBPath(),
-              backendConfig.getMaxConcurrentSnapshotUser(),
-              backendConfig.getSnapshotRetentionTimeInMin(),
-              backendConfig.getBlobTransferMaxTimeoutInMin(),
-              backendConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
-                  ? BlobTransferTableFormat.PLAIN_TABLE
-                  : BlobTransferTableFormat.BLOCK_BASED_TABLE,
-              backendConfig.getBlobTransferPeersConnectivityFreshnessInSeconds(),
-              backendConfig.getBlobTransferClientReadLimitBytesPerSec(),
-              backendConfig.getBlobTransferServiceWriteLimitBytesPerSec());
+        P2PBlobTransferConfig p2PBlobTransferConfig = new P2PBlobTransferConfig(
+            configLoader.getVeniceServerConfig().getDvcP2pBlobTransferServerPort(),
+            configLoader.getVeniceServerConfig().getDvcP2pBlobTransferClientPort(),
+            configLoader.getVeniceServerConfig().getRocksDBPath(),
+            backendConfig.getMaxConcurrentSnapshotUser(),
+            backendConfig.getSnapshotRetentionTimeInMin(),
+            backendConfig.getBlobTransferMaxTimeoutInMin(),
+            backendConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
+                ? BlobTransferTableFormat.PLAIN_TABLE
+                : BlobTransferTableFormat.BLOCK_BASED_TABLE,
+            backendConfig.getBlobTransferPeersConnectivityFreshnessInSeconds(),
+            backendConfig.getBlobTransferClientReadLimitBytesPerSec(),
+            backendConfig.getBlobTransferServiceWriteLimitBytesPerSec());
 
-          blobTransferManager = new BlobTransferManagerBuilder().setBlobTransferConfig(p2PBlobTransferConfig)
-              .setClientConfig(clientConfig)
-              .setStorageMetadataService(storageMetadataService)
-              .setReadOnlyStoreRepository(readOnlyStoreRepository)
-              .setStorageEngineRepository(storageService.getStorageEngineRepository())
-              .setAggVersionedBlobTransferStats(aggVersionedBlobTransferStats)
-              .setBlobTransferSSLFactory(BlobTransferUtils.createSSLFactoryForBlobTransferInDVC(configLoader))
-              .setBlobTransferAclHandler(BlobTransferUtils.createAclHandler(configLoader))
-              .build();
-        } catch (Exception e) {
-          LOGGER.error("Failed to create BlobTransferManager", e);
-        }
+        blobTransferManager = new BlobTransferManagerBuilder().setBlobTransferConfig(p2PBlobTransferConfig)
+            .setClientConfig(clientConfig)
+            .setStorageMetadataService(storageMetadataService)
+            .setReadOnlyStoreRepository(readOnlyStoreRepository)
+            .setStorageEngineRepository(storageService.getStorageEngineRepository())
+            .setAggVersionedBlobTransferStats(aggVersionedBlobTransferStats)
+            .setBlobTransferSSLFactory(BlobTransferUtils.createSSLFactoryForBlobTransferInDVC(configLoader))
+            .setBlobTransferAclHandler(BlobTransferUtils.createAclHandler(configLoader))
+            .build();
       } else {
         aggVersionedBlobTransferStats = null;
         blobTransferManager = null;
