@@ -143,7 +143,6 @@ import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
-import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controller.supersetschema.DefaultSupersetSchemaGenerator;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controller.util.ParentControllerConfigUpdateUtils;
@@ -159,6 +158,7 @@ import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.ReadyForDataRecoveryResponse;
 import com.linkedin.venice.controllerapi.RegionPushDetailsResponse;
 import com.linkedin.venice.controllerapi.RepushInfo;
+import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.SchemaUsageResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -1952,14 +1952,6 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * Unsupported operation in the parent controller.
-   */
-  @Override
-  public Version peekNextVersion(String clusterName, String storeName) {
-    throw new VeniceUnsupportedOperationException("peekNextVersion");
-  }
-
-  /**
    * @see Admin#deleteAllVersionsInStore(String, String)
    */
   @Override
@@ -2683,9 +2675,8 @@ public class VeniceParentHelixAdmin implements Admin {
           .map(addToUpdatedConfigList(updatedConfigsList, NEARLINE_PRODUCER_COUNT_PER_WRITER))
           .orElseGet(currStore::getNearlineProducerCountPerWriter);
 
-      setStore.targetSwapRegion = params.getTargetSwapRegion()
-          .map(addToUpdatedConfigList(updatedConfigsList, TARGET_SWAP_REGION))
-          .orElseGet(currStore::getTargetSwapRegion);
+      setStore.targetSwapRegion =
+          params.getTargetSwapRegion().map(addToUpdatedConfigList(updatedConfigsList, TARGET_SWAP_REGION)).orElse(null);
 
       setStore.targetSwapRegionWaitTime = params.getTargetRegionSwapWaitTime()
           .map(addToUpdatedConfigList(updatedConfigsList, TARGET_SWAP_REGION_WAIT_TIME))
@@ -3608,7 +3599,8 @@ public class VeniceParentHelixAdmin implements Admin {
       String kafkaTopic,
       Optional<String> incrementalPushVersion,
       String region,
-      String targetedRegions) {
+      String targetedRegions,
+      boolean isTargetRegionPushWithDeferredSwap) {
     Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
     if (region != null) {
       if (!controllerClients.containsKey(region)) {
@@ -3626,14 +3618,20 @@ public class VeniceParentHelixAdmin implements Admin {
       offlinePushStatusInfo.setUncompletedPartitions(response.getUncompletedPartitions());
       return offlinePushStatusInfo;
     }
-    return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients, incrementalPushVersion, targetedRegions);
+    return getOffLineJobStatus(
+        clusterName,
+        kafkaTopic,
+        controllerClients,
+        incrementalPushVersion,
+        targetedRegions,
+        isTargetRegionPushWithDeferredSwap);
   }
 
   OfflinePushStatusInfo getOffLineJobStatus(
       String clusterName,
       String kafkaTopic,
       Map<String, ControllerClient> controllerClients) {
-    return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients, Optional.empty(), null);
+    return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients, Optional.empty(), null, false);
   }
 
   /**
@@ -3650,7 +3648,8 @@ public class VeniceParentHelixAdmin implements Admin {
       String kafkaTopic,
       Map<String, ControllerClient> controllerClients,
       Optional<String> incrementalPushVersion,
-      String targetedRegions) {
+      String targetedRegions,
+      boolean isTargetRegionPushWithDeferredSwap) {
     Set<String> childRegions = controllerClients.keySet();
     Map<String, ExecutionStatus> statuses = new HashMap<>();
     Map<String, String> extraInfo = new HashMap<>();
@@ -3661,8 +3660,10 @@ public class VeniceParentHelixAdmin implements Admin {
 
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
       String region = entry.getKey();
-      // if targetedRegions is present, only query the targeted regions
-      if (!targetedRegionSet.isEmpty() && !targetedRegionSet.contains(region)) {
+      // if targetedRegions is present, and it is not a target region push with deferred swap, only query the targeted
+      // regions
+      // otherwise, query all regions
+      if (!targetedRegionSet.isEmpty() && !targetedRegionSet.contains(region) && !isTargetRegionPushWithDeferredSwap) {
         continue;
       }
       ControllerClient controllerClient = entry.getValue();
@@ -3717,13 +3718,16 @@ public class VeniceParentHelixAdmin implements Admin {
           Version storeVersion = parentStore.getVersion(versionNum);
           boolean isVersionPushed = storeVersion != null && storeVersion.getStatus().equals(PUSHED);
           boolean isHybridStore = storeVersion != null && storeVersion.getHybridStoreConfig() != null;
+          boolean isTargetRegionPushWithDeferredSwapForCurrentVersion =
+              isTargetRegionPush && version.isVersionSwapDeferred();
           // Truncate topic after push is in terminal state if
           // 1. Its a hybrid store or regular push. (Hybrid store target push uses repush where isTargetRegionPush is
           // false)
           // 2. If target region push is enabled and job to push data only to target region completed (status == PUSHED)
+          // 3. If it is a target region push with deferred swap and a majority of regions have reached terminal status
           if (!isTargetRegionPush // regular push
               || isVersionPushed // target region push
-              || isHybridStore) {
+              || isHybridStore || isTargetRegionPushWithDeferredSwapForCurrentVersion) {
             LOGGER
                 .info("Truncating parent VT {} after push status {}", kafkaTopic, currentReturnStatus.getRootStatus());
             truncateTopicsOptionally(
@@ -3837,6 +3841,7 @@ public class VeniceParentHelixAdmin implements Admin {
        * 1. the store is not incremental push enabled and the push completed (no ERROR)
        * 2. this is a failed batch push
        * 3. the store is incremental push enabled and same incPushToRT and batch push finished
+       * 4. it is a target region push with deferred swap (targetRegions != null and deferVersionSwap == true)
        */
       Store store = getVeniceHelixAdmin().getStore(clusterName, Version.parseStoreFromKafkaTopicName(kafkaTopic));
       boolean failedBatchPush = !incrementalPushVersion.isPresent() && currentReturnStatus.isError();
@@ -3845,8 +3850,11 @@ public class VeniceParentHelixAdmin implements Admin {
       boolean incPushEnabledBatchPushSuccess = !incrementalPushVersion.isPresent() && store.isIncrementalPushEnabled();
       boolean nonIncPushBatchSuccess = !store.isIncrementalPushEnabled() && !currentReturnStatus.isError();
       boolean isDeferredVersionSwap = version != null && version.isVersionSwapDeferred();
+      boolean isTargetRegionPushWithDeferredSwap =
+          isDeferredVersionSwap && !StringUtils.isEmpty(version.getTargetSwapRegion());
 
-      if ((failedBatchPush || nonIncPushBatchSuccess && !isDeferredVersionSwap || incPushEnabledBatchPushSuccess)
+      if ((failedBatchPush || nonIncPushBatchSuccess && !isDeferredVersionSwap || incPushEnabledBatchPushSuccess
+          || isTargetRegionPushWithDeferredSwap)
           && !getMultiClusterConfigs().getCommonConfig().disableParentTopicTruncationUponCompletion()) {
         LOGGER.info("Truncating kafka topic: {} with job status: {}", kafkaTopic, currentReturnStatus);
         truncateKafkaTopic(kafkaTopic);
@@ -4066,7 +4074,7 @@ public class VeniceParentHelixAdmin implements Admin {
       try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
         ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
         Store parentStore = repository.getStore(storeName);
-        int newVersion = parentStore.peekNextVersion().getNumber();
+        int newVersion = parentStore.peekNextVersionNumber();
         parentStore.setLargestUsedVersionNumber(newVersion);
         repository.updateStore(parentStore);
         LOGGER.info(
@@ -4969,8 +4977,16 @@ public class VeniceParentHelixAdmin implements Admin {
    * see {@link Admin#compactStore}
    */
   @Override
-  public RepushJobResponse compactStore(RepushJobRequest repushJobRequest) {
-    throw new UnsupportedOperationException("This function is implemented in VeniceHelixAdmin.");
+  public RepushJobResponse compactStore(RepushJobRequest repushJobRequest) throws Exception {
+    // TODO:
+    // Repush implementation today with no parameter adjustments does a repush to all colo's. There's some discussion
+    // about if this should instead be federated out and if this should be done in parent at all. Considering today
+    // we don't offer parameter adjustments to the compaction call, it makes sense to have the parent controller
+    // be able to invoke an 'all colo's now push' style of repush, and child colos do single region pushes.
+    // But when that day comes that we implement that kind of behavior dichotomy, we should code here that either honors
+    // what's been passed in (parent getting a request for a repush in a child colo should forward that along) OR the
+    // parent should just abort the request and return an error.
+    return veniceHelixAdmin.compactStore(repushJobRequest);
   }
 
   @Override

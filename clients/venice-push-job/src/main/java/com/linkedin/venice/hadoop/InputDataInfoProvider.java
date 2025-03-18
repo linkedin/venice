@@ -18,7 +18,7 @@ public interface InputDataInfoProvider extends Closeable {
    */
 
   class InputDataInfo {
-    private long inputFileDataSizeInBytes;
+    private final long inputFileDataSizeInBytes;
     private final int numInputFiles;
     private final boolean hasRecords;
     private final long inputModificationTime;
@@ -28,16 +28,7 @@ public interface InputDataInfoProvider extends Closeable {
         int numInputFiles,
         boolean hasRecords,
         long inputModificationTime) {
-      this(inputFileDataSizeInBytes, numInputFiles, hasRecords, inputModificationTime, true);
-    }
-
-    public InputDataInfo(
-        long inputFileDataSizeInBytes,
-        int numInputFiles,
-        boolean hasRecords,
-        long inputModificationTime,
-        boolean requireValidInputFileDataSizeInBytes) {
-      if (requireValidInputFileDataSizeInBytes && inputFileDataSizeInBytes <= 0) {
+      if (inputFileDataSizeInBytes <= 0) {
         throw new IllegalArgumentException(
             "The input data file size is expected to be positive. Got: " + inputFileDataSizeInBytes);
       }
@@ -53,10 +44,6 @@ public interface InputDataInfoProvider extends Closeable {
 
     public long getInputFileDataSizeInBytes() {
       return inputFileDataSizeInBytes;
-    }
-
-    public void setInputFileDataSizeInBytes(long inputFileDataSizeInBytes) {
-      this.inputFileDataSizeInBytes = inputFileDataSizeInBytes;
     }
 
     public int getNumInputFiles() {

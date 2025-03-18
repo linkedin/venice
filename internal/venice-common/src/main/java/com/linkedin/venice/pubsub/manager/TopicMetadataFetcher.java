@@ -12,13 +12,12 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -494,8 +493,7 @@ class TopicMetadataFetcher implements Closeable {
     int fetchedRecordsCount;
     long startTime = System.nanoTime();
     do {
-      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> lastConsumedRecords =
-          consumeLatestRecords(pubSubTopicPartition, fetchSize);
+      List<DefaultPubSubMessage> lastConsumedRecords = consumeLatestRecords(pubSubTopicPartition, fetchSize);
       // if there are no records in this topic partition, return a special timestamp
       if (lastConsumedRecords.isEmpty()) {
         return PubSubConstants.PUBSUB_NO_PRODUCER_TIME_IN_EMPTY_TOPIC_PARTITION;
@@ -503,7 +501,7 @@ class TopicMetadataFetcher implements Closeable {
       fetchedRecordsCount = lastConsumedRecords.size();
       // iterate in reverse order to find the first data message (not control message) from the end
       for (int i = lastConsumedRecords.size() - 1; i >= 0; i--) {
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = lastConsumedRecords.get(i);
+        DefaultPubSubMessage record = lastConsumedRecords.get(i);
         if (!record.getKey().isControlMessage()
             || Arrays.equals(record.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
           stats.recordLatency(GET_PRODUCER_TIMESTAMP_OF_LAST_DATA_MESSAGE, startTime);
@@ -578,9 +576,7 @@ class TopicMetadataFetcher implements Closeable {
    *   2. This method might return more than {@code lastRecordsCount} records since the consumer poll method gets a batch
    *      of consumer records each time and the batch size is arbitrary.
    */
-  List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> consumeLatestRecords(
-      PubSubTopicPartition pubSubTopicPartition,
-      int lastRecordsCount) {
+  List<DefaultPubSubMessage> consumeLatestRecords(PubSubTopicPartition pubSubTopicPartition, int lastRecordsCount) {
     if (lastRecordsCount < 1) {
       throw new IllegalArgumentException(
           "Last record count must be greater than or equal to 1. Got: " + lastRecordsCount);
@@ -617,12 +613,12 @@ class TopicMetadataFetcher implements Closeable {
           pubSubTopicPartition,
           consumePastOffset + 1);
 
-      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> allConsumedRecords = new ArrayList<>(lastRecordsCount);
+      List<DefaultPubSubMessage> allConsumedRecords = new ArrayList<>(lastRecordsCount);
 
       // Keep consuming records from that topic-partition until the last consumed record's
       // offset is greater or equal to the partition end offset retrieved before.
       do {
-        List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> consumedBatch = Collections.emptyList();
+        List<DefaultPubSubMessage> consumedBatch = Collections.emptyList();
         int pollAttempt = 1;
         while (pollAttempt <= PubSubConstants.PUBSUB_CONSUMER_POLLING_FOR_METADATA_RETRY_MAX_ATTEMPT
             && (consumedBatch == null || consumedBatch.isEmpty())) {
@@ -642,7 +638,8 @@ class TopicMetadataFetcher implements Closeable {
           throw new VeniceException(message);
         }
         allConsumedRecords.addAll(consumedBatch);
-      } while (allConsumedRecords.get(allConsumedRecords.size() - 1).getOffset() + 1 < latestOffset);
+      } while (allConsumedRecords.get(allConsumedRecords.size() - 1).getPosition().getNumericOffset()
+          + 1 < latestOffset);
 
       return allConsumedRecords;
     } finally {

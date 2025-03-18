@@ -798,7 +798,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     // Version 1 and version 2 are added to this store. Version 1 is deleted by early backup deletion
     Assert.assertTrue(store.isEnableWrites());
     Assert.assertEquals(store.getVersions().size(), 1);
-    Assert.assertEquals(store.peekNextVersion().getNumber(), 3);
+    Assert.assertEquals(store.peekNextVersionNumber(), 3);
     PushMonitor monitor = veniceAdmin.getHelixVeniceClusterResources(clusterName).getPushMonitor();
     TestUtils.waitForNonDeterministicCompletion(
         TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,

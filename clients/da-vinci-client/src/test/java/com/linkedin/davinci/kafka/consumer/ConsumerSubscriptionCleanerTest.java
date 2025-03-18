@@ -72,8 +72,8 @@ public class ConsumerSubscriptionCleanerTest {
     time.addMilliseconds(NON_EXISTING_TOPIC_CLEANUP_DELAY_MS + 1);
     partitionsToUnsub = consumerSubscriptionCleaner.getTopicPartitionsToUnsubscribe(partitionsToUnsub);
     assertTrue(partitionsToUnsub.isEmpty());
-    verify(batchUnsubFunction, times(batchUnsubFunctionExpectedCallCount)).accept(anySet()); // N.B. Same number of
-                                                                                             // times as before
+    // N.B. Same number of times as before
+    verify(batchUnsubFunction, times(batchUnsubFunctionExpectedCallCount)).accept(anySet());
 
     // Explicitly call topic-partition to unsub
     Set<PubSubTopicPartition> topicPartitionsToUnsubExplicitly = new HashSet<>();

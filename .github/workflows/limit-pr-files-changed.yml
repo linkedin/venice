@@ -2,6 +2,8 @@ name: Enforce Max Lines Changed Per File
 
 on:
   pull_request:
+    branches:
+      - main
     paths:
       - '**/*.java'   # Monitor changes to Java files
       - '**/*.avsc'   # Monitor changes to Avro schema files
@@ -37,7 +39,7 @@ jobs:
         id: check_override
         run: |
           # Define the keyword for override
-          OVERRIDE_KEYWORD="DIFFSIZEOVERRIDE"
+          OVERRIDE_KEYWORD="VALIDATION_OVERRIDE"
           
           # Check PR title and body for the keyword
           if printf "%s%s" "$pr_title$pr_description" | grep -iq "$OVERRIDE_KEYWORD"; then
@@ -60,7 +62,7 @@ jobs:
           SCHEMA_FILE=false
           while IFS=$'\t' read -r added removed file; do
           # Skip test files
-          if [[ "$file" != *src/main* ]]; then
+          if [[ "$file" != *src/main* || "$file" == *test-common* ]]; then
             echo "Skipping file: $file"
             continue
           fi

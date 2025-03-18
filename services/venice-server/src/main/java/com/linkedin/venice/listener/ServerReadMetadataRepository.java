@@ -2,7 +2,7 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
-import com.linkedin.davinci.listener.response.StorePropertiesResponse;
+import com.linkedin.davinci.listener.response.StorePropertiesPayload;
 import com.linkedin.davinci.stats.ServerMetadataServiceStats;
 import com.linkedin.davinci.storage.ReadMetadataRetriever;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -150,13 +150,13 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
    * Return the store properties for the given store. The data is retrieved from its respective repositories which
    * originate from the VeniceServer.
    * @param storeName
-   * @return {@link StorePropertiesResponse} object that holds all the information required for answering a server metadata
+   * @return {@link StorePropertiesPayload} object that holds all the information required for answering a server metadata
    * fetch request.
    */
   @Override
-  public StorePropertiesResponse getStoreProperties(String storeName, Optional<Integer> largestKnownSchemaId) {
+  public StorePropertiesPayload getStoreProperties(String storeName, Optional<Integer> largestKnownSchemaId) {
     serverMetadataServiceStats.recordRequestBasedMetadataInvokeCount();
-    StorePropertiesResponse response = new StorePropertiesResponse();
+    StorePropertiesPayload response = new StorePropertiesPayload();
 
     try {
       Store store = storeRepository.getStoreOrThrow(storeName);

@@ -156,7 +156,11 @@ public class PushStatusCollector {
       String storeName = Version.parseStoreFromKafkaTopicName(pushStatus.topicName);
       Store store = storeRepository.getStore(storeName);
       if (daVinciStatus.isNoDaVinciStatusReport()) {
-        LOGGER.info("Received empty DaVinci status report for topic: {}", pushStatus.topicName);
+        LOGGER.info(
+            "Received empty DaVinci status report for topic: {}. Server status: {}, DvcStatus: {}",
+            pushStatus.topicName,
+            pushStatus.getServerStatus(),
+            daVinciStatus);
         // poll DaVinci status more
         int noDaVinciStatusRetryAttempts = topicToNoDaVinciStatusRetryCountMap.compute(pushStatus.topicName, (k, v) -> {
           if (v == null) {
@@ -190,10 +194,10 @@ public class PushStatusCollector {
       }
 
       LOGGER.info(
-          "Received DaVinci status: {} with details: {} for topic: {}",
-          daVinciStatus.getStatus(),
-          daVinciStatus.getDetails(),
-          pushStatus.topicName);
+          "Received DaVinci status: {} for topic: {} and server status: {}",
+          daVinciStatus,
+          pushStatus.topicName,
+          pushStatus.getServerStatus());
       ExecutionStatusWithDetails serverStatus = pushStatus.getServerStatus();
       if (serverStatus == null) {
         continue;

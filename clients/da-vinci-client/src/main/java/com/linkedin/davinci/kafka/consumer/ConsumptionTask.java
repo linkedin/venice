@@ -2,10 +2,8 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -45,10 +43,10 @@ class ConsumptionTask implements Runnable {
   private final Logger LOGGER;
   private final int taskId;
   private final String consumptionTaskIdStr;
-  private final Map<PubSubTopicPartition, ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> dataReceiverMap =
+  private final Map<PubSubTopicPartition, ConsumedDataReceiver<List<DefaultPubSubMessage>>> dataReceiverMap =
       new VeniceConcurrentHashMap<>();
   private final long readCycleDelayMs;
-  private final Supplier<Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> pollFunction;
+  private final Supplier<Map<PubSubTopicPartition, List<DefaultPubSubMessage>>> pollFunction;
   private final IntConsumer bandwidthThrottler;
   private final IntConsumer recordsThrottler;
   private final AggKafkaConsumerServiceStats aggStats;
@@ -83,7 +81,7 @@ class ConsumptionTask implements Runnable {
       final String consumerNamePrefix,
       final int taskId,
       final long readCycleDelayMs,
-      final Supplier<Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> pollFunction,
+      final Supplier<Map<PubSubTopicPartition, List<DefaultPubSubMessage>>> pollFunction,
       final IntConsumer bandwidthThrottler,
       final IntConsumer recordsThrottler,
       final AggKafkaConsumerServiceStats aggStats,
@@ -105,9 +103,9 @@ class ConsumptionTask implements Runnable {
 
     // Pre-allocate some variables to clobber in the loop
     long beforePollingTimeStamp;
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> polledPubSubMessages;
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> polledPubSubMessages;
     long beforeProducingToWriteBufferTimestamp;
-    ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumedDataReceiver;
+    ConsumedDataReceiver<List<DefaultPubSubMessage>> consumedDataReceiver;
     Set<PubSubTopicPartition> topicPartitionsToUnsub = new HashSet<>();
     int payloadBytesConsumedInOnePoll;
     int polledPubSubMessagesCount = 0;
@@ -126,9 +124,10 @@ class ConsumptionTask implements Runnable {
             addSomeDelay = false;
           }
           beforePollingTimeStamp = System.currentTimeMillis();
-          topicPartitionsToUnsub = cleaner.getTopicPartitionsToUnsubscribe(topicPartitionsToUnsub); // N.B. cheap call
+          // N.B. cheap call
+          topicPartitionsToUnsub = cleaner.getTopicPartitionsToUnsubscribe(topicPartitionsToUnsub);
           for (PubSubTopicPartition topicPartitionToUnSub: topicPartitionsToUnsub) {
-            ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> dataReceiver =
+            ConsumedDataReceiver<List<DefaultPubSubMessage>> dataReceiver =
                 dataReceiverMap.remove(topicPartitionToUnSub);
             if (dataReceiver != null) {
               dataReceiver.notifyOfTopicDeletion(topicPartitionToUnSub.getPubSubTopic().getName());
@@ -148,13 +147,12 @@ class ConsumptionTask implements Runnable {
             payloadBytesConsumedInOnePoll = 0;
             polledPubSubMessagesCount = 0;
             beforeProducingToWriteBufferTimestamp = System.currentTimeMillis();
-            for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: polledPubSubMessages
-                .entrySet()) {
+            for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: polledPubSubMessages.entrySet()) {
               PubSubTopicPartition pubSubTopicPartition = entry.getKey();
               String storeName = Version.parseStoreFromKafkaTopicName(pubSubTopicPartition.getTopicName());
               StorePollCounter counter =
                   storePollCounterMap.computeIfAbsent(storeName, k -> new StorePollCounter(0, 0));
-              List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> topicPartitionMessages = entry.getValue();
+              List<DefaultPubSubMessage> topicPartitionMessages = entry.getValue();
               consumedDataReceiver = dataReceiverMap.get(pubSubTopicPartition);
               if (consumedDataReceiver == null) {
                 // defensive code
@@ -167,7 +165,7 @@ class ConsumptionTask implements Runnable {
               polledPubSubMessagesCount += topicPartitionMessages.size();
               counter.msgCount += topicPartitionMessages.size();
               int payloadSizePerTopicPartition = 0;
-              for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage: topicPartitionMessages) {
+              for (DefaultPubSubMessage pubSubMessage: topicPartitionMessages) {
                 payloadSizePerTopicPartition += pubSubMessage.getPayloadSize();
               }
               counter.byteSize += payloadSizePerTopicPartition;
@@ -242,8 +240,8 @@ class ConsumptionTask implements Runnable {
 
   void setDataReceiver(
       PubSubTopicPartition pubSubTopicPartition,
-      ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumedDataReceiver) {
-    ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> previousConsumedDataReceiver =
+      ConsumedDataReceiver<List<DefaultPubSubMessage>> consumedDataReceiver) {
+    ConsumedDataReceiver<List<DefaultPubSubMessage>> previousConsumedDataReceiver =
         dataReceiverMap.put(pubSubTopicPartition, consumedDataReceiver);
     if (previousConsumedDataReceiver != null
         && !previousConsumedDataReceiver.destinationIdentifier().equals(consumedDataReceiver.destinationIdentifier())) {
@@ -279,8 +277,7 @@ class ConsumptionTask implements Runnable {
   }
 
   PubSubTopic getDestinationIdentifier(PubSubTopicPartition topicPartition) {
-    ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> dataReceiver =
-        dataReceiverMap.get(topicPartition);
+    ConsumedDataReceiver<List<DefaultPubSubMessage>> dataReceiver = dataReceiverMap.get(topicPartition);
     return dataReceiver == null ? null : dataReceiver.destinationIdentifier();
   }
 
