@@ -187,7 +187,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
         subscriptionLock.readLock().unlock();
       }
       return null;
-    });
+    }, seekExecutorService);
   }
 
   @Override

@@ -85,6 +85,8 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -141,6 +143,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final String storeName;
 
   protected final PubSubConsumerAdapter pubSubConsumer;
+  protected final ExecutorService seekExecutorService;
 
   // This member is a map of maps in order to accommodate view topics. If the message we consume has the appropriate
   // footer then we'll use that to infer entry into the wrapped map and compare with it, otherwise we'll infer it from
@@ -161,6 +164,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       ChangelogClientConfig changelogClientConfig,
       PubSubConsumerAdapter pubSubConsumer) {
     this.pubSubConsumer = pubSubConsumer;
+    seekExecutorService = Executors.newFixedThreadPool(10);
 
     // TODO: putting the change capture case here is a little bit weird. The view abstraction should probably
     // accommodate
@@ -335,7 +339,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       }
       isSubscribed.set(true);
       return null;
-    });
+    }, seekExecutorService);
   }
 
   protected VeniceCompressor getVersionCompressor(PubSubTopicPartition topicPartition) {
@@ -482,7 +486,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return CompletableFuture.supplyAsync(() -> {
       synchronousSeekToCheckpoint(checkpoints);
       return null;
-    });
+    }, seekExecutorService);
   }
 
   protected void synchronousSeekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints) {
@@ -490,7 +494,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       checkLiveVersion(coordinate.getTopic());
       PubSubTopic topic = pubSubTopicRepository.getTopic(coordinate.getTopic());
       PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(topic, coordinate.getPartition());
-      internalSeek(Collections.singleton(coordinate.getPartition()), topic, foo -> {
+      synchronousSeek(Collections.singleton(coordinate.getPartition()), topic, foo -> {
         Long topicOffset = coordinate.getPosition().getNumericOffset();
         pubSubConsumerSeek(pubSubTopicPartition, topicOffset);
       });
@@ -586,7 +590,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return CompletableFuture.supplyAsync(() -> {
       synchronousSeek(partitions, targetTopic, seekAction);
       return null;
-    });
+    }, seekExecutorService);
   }
 
   protected void synchronousSeek(Set<Integer> partitions, PubSubTopic targetTopic, SeekFunction seekAction) {
@@ -608,9 +612,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           compressorMap.put(topicPartition.getPartitionNumber(), getVersionCompressor(topicPartition));
         }
         seekAction.apply(topicPartition);
-
       }
-
     } finally {
       subscriptionLock.writeLock().unlock();
     }

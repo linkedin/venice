@@ -8,6 +8,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -42,6 +44,17 @@ public class TestVeniceChangeCoordinate {
     Assert.assertEquals(restoredCoordinate.getPartition(), TEST_PARTITION);
     Assert.assertEquals(restoredCoordinate.getPosition(), position);
 
+  }
+
+  @Test
+  public void testcompleteablefuture() throws ExecutionException, InterruptedException {
+    internalSeekToEndOfPush().get();
+  }
+
+  public CompletableFuture<Void> internalSeekToEndOfPush() {
+    return CompletableFuture.supplyAsync(() -> {
+      throw new VeniceException("sUCKS to suck");
+    });
   }
 
   @Test
