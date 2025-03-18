@@ -34,12 +34,7 @@ import static com.linkedin.venice.PushJobCheckpoints.QUOTA_EXCEEDED;
 import static com.linkedin.venice.controller.VeniceControllerClusterConfig.parsePushJobUserErrorCheckpoints;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertNull;
-import static org.testng.Assert.assertThrows;
-import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.expectThrows;
+import static org.testng.Assert.*;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.PushJobCheckpoints;
@@ -363,6 +358,7 @@ public class TestVeniceControllerClusterConfig {
     assertNull(clusterConfig.getHelixInstanceCapacityKeys());
     assertNull(clusterConfig.getHelixDefaultInstanceCapacityMap());
     assertNull(clusterConfig.getHelixDefaultPartitionWeightMap());
+    assertFalse(clusterConfig.isLogCompactionSchedulingEnabled());
   }
 
   @Test
