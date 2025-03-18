@@ -20,7 +20,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
+import java.util.concurrent.ThreadPoolExecutor;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -33,7 +33,7 @@ public class HttpChannelInitializerTest {
   private Optional<SSLFactory> sslFactoryOptional;
 
   private SSLFactory sslFactory;
-  private Executor sslHandshakeExecutor;
+  private ThreadPoolExecutor sslHandshakeExecutor;
   private VeniceServerConfig serverConfig;
   private Optional<StaticAccessController> accessController;
   private Optional<DynamicAccessController> storeAccessController;
@@ -45,7 +45,7 @@ public class HttpChannelInitializerTest {
     metricsRepository = new MetricsRepository();
     sslFactory = mock(SSLFactory.class);
     sslFactoryOptional = Optional.of(sslFactory);
-    sslHandshakeExecutor = mock(Executor.class);
+    sslHandshakeExecutor = mock(ThreadPoolExecutor.class);
     accessController = Optional.of(mock(StaticAccessController.class));
     storeAccessController = Optional.of(mock(DynamicAccessController.class));
     requestHandler = mock(StorageReadRequestHandler.class);
