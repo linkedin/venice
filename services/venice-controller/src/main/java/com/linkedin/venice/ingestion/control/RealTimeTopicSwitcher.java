@@ -224,6 +224,7 @@ public class RealTimeTopicSwitcher {
     // If there exists an RT, then broadcast the Version Swap message to it, otherwise broadcast it to the VT
     String storeName = store.getName();
     if (!topicManager.containsTopic(pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName)))) {
+      // ToDo: Broadcast the Version Swap message to batch only view topics
       LOGGER.info("RT topic doesn't exist for store: {}. Broadcasting Version Swap message directly to VT.", storeName);
 
       /*

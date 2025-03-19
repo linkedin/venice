@@ -12,6 +12,7 @@ import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY;
+import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
@@ -50,6 +51,8 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -73,6 +76,9 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   private final DaVinciClient<Object, Object> daVinciClient;
   private boolean isStarted = false;
   private final CountDownLatch startLatch = new CountDownLatch(1);
+  // Using a dedicated thread pool for CompletableFutures created by this class to avoid potential thread starvation
+  // issues in the default ForkJoinPool
+  private final ExecutorService completableFutureThreadPool = Executors.newFixedThreadPool(1);
 
   private Set<Integer> subscribedPartitions = new HashSet<>();
   private final ApacheKafkaOffsetPosition placeHolderOffset = ApacheKafkaOffsetPosition.of(0);
@@ -145,7 +151,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
         Thread.currentThread().interrupt();
       }
       return null;
-    });
+    }, completableFutureThreadPool);
   }
 
   @Override
@@ -223,6 +229,9 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
         .put(BLOB_TRANSFER_MANAGER_ENABLED, changelogClientConfig.isBlobTransferEnabled())
         .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(PUSH_STATUS_STORE_ENABLED, true)
+        // Turning this off, as the CDC client will be throttling ingestion based on calls to poll, which can block
+        // version pushes and may delay a version being ready to serve
+        .put(PARTICIPANT_MESSAGE_STORE_ENABLED, false)
         .build();
   }
 
