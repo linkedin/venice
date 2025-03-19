@@ -17,7 +17,6 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.StatTrackingStoreClient;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -41,9 +40,6 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.persona.StoragePersona;
-import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.api.PubSubTopic;
-import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
@@ -74,40 +70,44 @@ import org.apache.logging.log4j.Logger;
 import org.apache.samza.system.SystemProducer;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class TestAdminOperationWithPreviousVersion {
-  private static final Logger LOGGER = LogManager.getLogger(TestMultiDataCenterAdminOperations.class);
+  private static final Logger LOGGER = LogManager.getLogger(TestAdminOperationWithPreviousVersion.class);
   private static final int TEST_TIMEOUT = 360 * Time.MS_PER_SECOND;
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 2;
   private static final int RECORD_COUNT = 20;
-  private static final String FABRIC0 = "dc-0";
-
   // Do not use venice-cluster1 as it is used for testing failed admin messages
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new); // ["venice-cluster0",
   // "venice-cluster1",
   // ...];
+  static final String KEY_SCHEMA = "\"string\"";
+  static final String VALUE_SCHEMA = "\"string\"";
 
   private List<VeniceControllerWrapper> parentControllers;
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private ControllerClient parentControllerClient;
   private String clusterName;
-  private Map<String, Boolean> operationTypeMap = getAllPayloadUnionTypes();
   private Admin veniceAdmin;
-  static final String KEY_SCHEMA = "\"string\"";
-  static final String VALUE_SCHEMA = "\"string\"";
   private List<ControllerClient> childControllerClients = new ArrayList<>();
-  private VeniceMultiClusterWrapper multiClusterWrapper;
-  private static final String BASIC_USER_SCHEMA_STRING_WITH_DEFAULT = "{" + "  \"namespace\" : \"example.avro\",  "
-      + "  \"type\": \"record\",   " + "  \"name\": \"User\",     " + "  \"fields\": [           "
-      + "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"\"}  " + "  ] " + " } ";
+  private VeniceMultiClusterWrapper multiClusterWrapperRegion0;
+  private static int countTestRun;
+  private Map<String, Boolean> operationTypeMap = getAllPayloadUnionTypes();
 
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
     Utils.thisIsLocalhost();
+    // Reset the test run count to 0 for each test class
+    countTestRun = 0;
+
+    // Set the cluster name to the first cluster
+    clusterName = CLUSTER_NAMES[0];
+
+    // Create multi-region multi-cluster setup
     Properties parentControllerProperties = new Properties();
     // Disable topic cleanup since parent and child are sharing the same kafka cluster.
     parentControllerProperties.setProperty(
@@ -117,6 +117,7 @@ public class TestAdminOperationWithPreviousVersion {
 
     Properties serverProperties = new Properties();
     serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
+
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
             .numberOfClusters(NUMBER_OF_CLUSTERS)
@@ -132,28 +133,20 @@ public class TestAdminOperationWithPreviousVersion {
     multiRegionMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
 
-    List<VeniceMultiClusterWrapper> childClusters = multiRegionMultiClusterWrapper.getChildRegions();
+    veniceAdmin = multiRegionMultiClusterWrapper.getParentControllers().get(0).getVeniceAdmin();
+    multiClusterWrapperRegion0 = multiRegionMultiClusterWrapper.getChildRegions().get(0);
+
+    // Create controller and controllerClient
     parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
-
-    LOGGER.info(
-        "parentControllers: {}",
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(", ")));
-
-    int i = 0;
-    for (VeniceMultiClusterWrapper multiClusterWrapper: childClusters) {
-      LOGGER.info(
-          "childCluster{} controllers: {}",
-          i++,
-          multiClusterWrapper.getControllers()
-              .values()
-              .stream()
-              .map(VeniceControllerWrapper::getControllerUrl)
-              .collect(Collectors.joining(", ")));
-    }
-
-    clusterName = CLUSTER_NAMES[0];
     VeniceControllerWrapper parentController = parentControllers.get(0);
     parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
+
+    for (int i = 0; i < NUMBER_OF_CHILD_DATACENTERS; i++) {
+      ControllerClient dcClient = ControllerClient.constructClusterControllerClient(
+          clusterName,
+          multiRegionMultiClusterWrapper.getChildRegions().get(i).getControllerConnectString());
+      childControllerClients.add(dcClient);
+    }
 
     // Pinning the version to the previous version
     AdminTopicMetadataResponse updateProtocolVersionResponse =
@@ -161,23 +154,12 @@ public class TestAdminOperationWithPreviousVersion {
             clusterName,
             (long) (AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION - 1));
     assertFalse(updateProtocolVersionResponse.isError(), "Failed to update protocol version");
+  }
 
-    veniceAdmin = multiRegionMultiClusterWrapper.getParentControllers().get(0).getVeniceAdmin();
-    PubSubTopicRepository pubSubTopicRepository = veniceAdmin.getPubSubTopicRepository();
-    TopicManager topicManager = veniceAdmin.getTopicManager();
-    PubSubTopic adminTopic = pubSubTopicRepository.getTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName));
-    topicManager.createTopic(adminTopic, 1, 1, true);
-
-    ControllerClient dc0Client = ControllerClient.constructClusterControllerClient(
-        clusterName,
-        multiRegionMultiClusterWrapper.getChildRegions().get(0).getControllerConnectString());
-    ControllerClient dc1Client = ControllerClient.constructClusterControllerClient(
-        clusterName,
-        multiRegionMultiClusterWrapper.getChildRegions().get(1).getControllerConnectString());
-    childControllerClients.add(dc0Client);
-    childControllerClients.add(dc1Client);
-
-    multiClusterWrapper = multiRegionMultiClusterWrapper.getChildRegions().get(0);
+  @BeforeMethod
+  void beforeEachTest() {
+    // Increment the count of test run
+    countTestRun++;
   }
 
   @AfterClass(alwaysRun = true)
@@ -189,9 +171,16 @@ public class TestAdminOperationWithPreviousVersion {
     assertFalse(updateProtocolVersionResponse.isError(), "Failed to update protocol version");
     multiRegionMultiClusterWrapper.close();
 
-    System.out.println(operationTypeMap);
-    for (Map.Entry<String, Boolean> entry: operationTypeMap.entrySet()) {
-      assertTrue(entry.getValue(), "Operation type " + entry.getKey() + " was not tested");
+    // If the countTestRun = 1, it means we are running one specific test only, no need to verify for all operations
+    // However, if you are running all tests, we will verify that all operations are tested
+    if (countTestRun > 1) {
+      for (Map.Entry<String, Boolean> entry: operationTypeMap.entrySet()) {
+        assertTrue(
+            entry.getValue(),
+            "Operation type " + entry.getKey() + " was not tested. " + "Please add integration test for "
+                + entry.getKey() + " in TestAdminOperationWithPreviousVersion and markAsTested(" + entry.getKey()
+                + "); to bypass this check.");
+      }
     }
   }
 
@@ -202,18 +191,12 @@ public class TestAdminOperationWithPreviousVersion {
     markAsTested("PushStatusSystemStoreAutoCreationValidation");
     markAsTested("MetaSystemStoreAutoCreationValidation");
 
-    clusterName = CLUSTER_NAMES[0];
-    VeniceControllerWrapper parentController = parentControllers.get(0);
-    parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
-    String storeName = Utils.getUniqueString("test-store");
-
     // Create store
-    NewStoreResponse newStoreResponse =
-        parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
-    assertFalse(newStoreResponse.isError());
+    String storeName = setUpTestStore().getName();
 
-    // Empty push
-    emptyPushToStore(parentControllerClient, storeName, 1);
+    // Check store creation
+    StoreResponse storeResponse = parentControllerClient.getStore(storeName);
+    assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -257,9 +240,21 @@ public class TestAdminOperationWithPreviousVersion {
 
     String storeName = setUpTestStore().getName();
 
-    // Empty push
-    VersionCreationResponse vcr = parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-push"), 1L);
-    assertFalse(vcr.isError());
+    // Request topic for writes instead of push empty job since empty push job can cause flaky test when push job runs
+    // fast.
+    parentControllerClient.requestTopicForWrites(
+        storeName,
+        1000,
+        Version.PushType.BATCH,
+        Version.numberBasedDummyPushId(1),
+        true,
+        true,
+        false,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.of("dc-1"),
+        false,
+        -1);
     // No wait to kill the push job
     // Kill push job
     parentControllerClient.killOfflinePushJob(Version.composeKafkaTopic(storeName, 1));
@@ -311,7 +306,7 @@ public class TestAdminOperationWithPreviousVersion {
     }
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testDeleteAllVersions() {
     markAsTested("DeleteAllVersions");
 
@@ -334,7 +329,7 @@ public class TestAdminOperationWithPreviousVersion {
     });
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testSetStoreOwner() {
     markAsTested("SetStoreOwner");
     String storeName = setUpTestStore().getName();
@@ -350,7 +345,7 @@ public class TestAdminOperationWithPreviousVersion {
     });
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testSetStorePartitionCount() {
     markAsTested("SetStorePartitionCount");
     String storeName = setUpTestStore().getName();
@@ -366,7 +361,7 @@ public class TestAdminOperationWithPreviousVersion {
     });
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testSetStoreCurrentVersion() {
     markAsTested("SetStoreCurrentVersion");
 
@@ -393,12 +388,9 @@ public class TestAdminOperationWithPreviousVersion {
     clusterName = CLUSTER_NAMES[0];
     VeniceControllerWrapper parentController = parentControllers.get(0);
     parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
-    String storeName = Utils.getUniqueString("test-store");
 
     // Create store
-    NewStoreResponse newStoreResponse =
-        parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
-    assertFalse(newStoreResponse.isError());
+    String storeName = setUpTestStore().getName();
 
     // Empty push
     emptyPushToStore(parentControllerClient, storeName, 1);
@@ -418,7 +410,7 @@ public class TestAdminOperationWithPreviousVersion {
     }
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testDeleteStore() {
     markAsTested("DeleteStore");
     String storeName = setUpTestStore().getName();
@@ -436,7 +428,7 @@ public class TestAdminOperationWithPreviousVersion {
     });
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testDeleteOldVersion() {
     markAsTested("DeleteOldVersion");
 
@@ -459,7 +451,7 @@ public class TestAdminOperationWithPreviousVersion {
 
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testDerivedSchemaCreation() {
     markAsTested("DerivedSchemaCreation");
 
@@ -472,17 +464,19 @@ public class TestAdminOperationWithPreviousVersion {
     assertEquals(veniceAdmin.getDerivedSchemas(clusterName, storeName).size(), 1);
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testValueSchemaCreation() {
     markAsTested("ValueSchemaCreation");
     markAsTested("DeleteUnusedValueSchemas");
 
     String storeName = Utils.getUniqueString("testValueSchemaCreation-store");
 
-    String valueRecordSchemaStr1 = BASIC_USER_SCHEMA_STRING_WITH_DEFAULT;
+    String valueRecordSchemaStr1 = "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   "
+        + "  \"name\": \"User\",     " + "  \"fields\": [           "
+        + "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"\"}  " + "  ] " + " } ";
     String valueRecordSchemaStr2 = TestWriteUtils.SIMPLE_USER_WITH_DEFAULT_SCHEMA.toString();
     NewStoreResponse newStoreResponse = parentControllerClient
-        .retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", valueRecordSchemaStr1));
+        .retryableRequest(5, c -> c.createNewStore(storeName, "", KEY_SCHEMA, valueRecordSchemaStr1));
     assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
 
     SchemaResponse schemaResponse2 =
@@ -493,7 +487,7 @@ public class TestAdminOperationWithPreviousVersion {
     parentControllerClient.deleteValueSchemas(storeName, new ArrayList<>(1));
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testStoragePersona() {
     markAsTested("CreateStoragePersona");
     markAsTested("UpdateStoragePersona");
@@ -545,7 +539,7 @@ public class TestAdminOperationWithPreviousVersion {
         () -> assertNull(parentControllerClient.getStoragePersona(persona.getName()).getStoragePersona()));
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testRollbackCurrentVersion() {
     markAsTested("RollbackCurrentVersion");
     markAsTested("RollForwardCurrentVersion");
@@ -577,7 +571,7 @@ public class TestAdminOperationWithPreviousVersion {
     }
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testEnableNativeReplicationForCluster() {
     markAsTested("EnableNativeReplicationForCluster");
     String storeName = setUpTestStore().getName();
@@ -596,7 +590,7 @@ public class TestAdminOperationWithPreviousVersion {
     });
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testEnableActiveActiveReplicationForCluster() {
     markAsTested("EnableActiveActiveReplicationForCluster");
 
@@ -616,7 +610,7 @@ public class TestAdminOperationWithPreviousVersion {
     });
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testConfigureActiveActiveReplicationForCluster() {
     markAsTested("ConfigureActiveActiveReplicationForCluster");
     TestUtils.assertCommand(
@@ -627,20 +621,20 @@ public class TestAdminOperationWithPreviousVersion {
         "Failed to configure active-active replication for cluster " + clusterName);
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testConfigureNativeReplicationForCluster() {
     // No usage found for this operation
     // Check @code{AdminExecutionTask#handleEnableNativeReplicationForCluster}
     markAsTested("ConfigureNativeReplicationForCluster");
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testConfigureIncrementalPushForCluster() {
     // No usage found for this operation
     markAsTested("ConfigureIncrementalPushForCluster");
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testMigrateStore() throws Exception {
     markAsTested("MigrateStore");
     markAsTested("AbortMigration");
@@ -651,10 +645,10 @@ public class TestAdminOperationWithPreviousVersion {
     String destClusterName = CLUSTER_NAMES[1]; // venice-cluster1
 
     createAndPushStore(srcClusterName, storeName);
-    String srcD2ServiceName = multiClusterWrapper.getClusterToD2().get(srcClusterName);
-    String destD2ServiceName = multiClusterWrapper.getClusterToD2().get(destClusterName);
-    D2Client d2Client =
-        D2TestUtils.getAndStartD2Client(multiClusterWrapper.getClusters().get(srcClusterName).getZk().getAddress());
+    String srcD2ServiceName = multiClusterWrapperRegion0.getClusterToD2().get(srcClusterName);
+    String destD2ServiceName = multiClusterWrapperRegion0.getClusterToD2().get(destClusterName);
+    D2Client d2Client = D2TestUtils
+        .getAndStartD2Client(multiClusterWrapperRegion0.getClusters().get(srcClusterName).getZk().getAddress());
     ClientConfig clientConfig =
         ClientConfig.defaultGenericClientConfig(storeName).setD2ServiceName(srcD2ServiceName).setD2Client(d2Client);
 
@@ -662,8 +656,7 @@ public class TestAdminOperationWithPreviousVersion {
     try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(clientConfig)) {
       readFromStore(client);
       StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
-      StoreMigrationTestUtil
-          .completeMigration(parentControllerUrl, storeName, srcClusterName, destClusterName, FABRIC0);
+      StoreMigrationTestUtil.completeMigration(parentControllerUrl, storeName, srcClusterName, destClusterName, "dc-0");
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         // StoreConfig in router might not be up-to-date. Keep reading from the store. Finally, router will find that
         // cluster discovery changes and redirect the request to dest store. Client's d2ServiceName will be updated.
@@ -690,7 +683,7 @@ public class TestAdminOperationWithPreviousVersion {
     }
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testAddVersion() {
     markAsTested("AddVersion");
 
@@ -717,7 +710,7 @@ public class TestAdminOperationWithPreviousVersion {
         "There should only be exactly one version added to the test-store");
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testMetadataSchemaCreation() {
     markAsTested("MetadataSchemaCreation");
     String storeName = Utils.getUniqueString("aa_store");
@@ -731,7 +724,7 @@ public class TestAdminOperationWithPreviousVersion {
     assertEquals(metadataSchemas.iterator().next().getSchema(), metadataSchema);
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testSupersetSchemaCreation() {
     markAsTested("SupersetSchemaCreation");
 
@@ -790,11 +783,8 @@ public class TestAdminOperationWithPreviousVersion {
   private Store setUpTestStore() {
     Store testStore =
         TestUtils.createTestStore(Utils.getUniqueString("testStore"), "testStoreOwner", System.currentTimeMillis());
-    NewStoreResponse response = parentControllerClient.createNewStore(
-        testStore.getName(),
-        testStore.getOwner(),
-        TestWriteUtils.STRING_SCHEMA.toString(),
-        TestWriteUtils.STRING_SCHEMA.toString());
+    NewStoreResponse response =
+        parentControllerClient.createNewStore(testStore.getName(), testStore.getOwner(), KEY_SCHEMA, VALUE_SCHEMA);
     assertFalse(response.isError());
     return testStore;
   }
@@ -851,8 +841,10 @@ public class TestAdminOperationWithPreviousVersion {
       job.run();
 
       // Write streaming records
-      veniceProducer0 = IntegrationTestPushUtils
-          .getSamzaProducer(multiClusterWrapper.getClusters().get(srcClusterName), storeName, Version.PushType.STREAM);
+      veniceProducer0 = IntegrationTestPushUtils.getSamzaProducer(
+          multiClusterWrapperRegion0.getClusters().get(srcClusterName),
+          storeName,
+          Version.PushType.STREAM);
       for (int i = 1; i <= 10; i++) {
         IntegrationTestPushUtils.sendStreamingRecord(veniceProducer0, storeName, i);
       }
