@@ -25,6 +25,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
 
   private String bootstrapFileSystemPath;
   private long versionSwapDetectionIntervalTimeInSeconds = 60L;
+  private int seekThreadPoolSize = 10;
 
   /**
    * This will be used in BootstrappingVeniceChangelogConsumer to determine when to sync updates with the underlying
@@ -183,6 +184,15 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  public int getSeekThreadPoolSize() {
+    return seekThreadPoolSize;
+  }
+
+  public ChangelogClientConfig setSeekThreadPoolSize(int seekThreadPoolSize) {
+    this.seekThreadPoolSize = seekThreadPoolSize;
+    return this;
+  }
+
   /**
    * Gets the databaseSyncBytesInterval.
    */
@@ -239,6 +249,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setDatabaseSyncBytesInterval(config.getDatabaseSyncBytesInterval())
         .setShouldCompactMessages(config.shouldCompactMessages())
         .setIsBeforeImageView(config.isBeforeImageView())
+        .setSeekThreadPoolSize(config.getSeekThreadPoolSize())
         .setShouldSkipFailedToAssembleRecords(config.shouldSkipFailedToAssembleRecords());
     return newConfig;
   }
