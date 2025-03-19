@@ -168,6 +168,8 @@ public abstract class AbstractStore implements Store {
 
       version.setTargetSwapRegionWaitTime(getTargetSwapRegionWaitTime());
 
+      version.setGlobalRtDivEnabled(isGlobalRtDivEnabled());
+
       HybridStoreConfig hybridStoreConfig = getHybridStoreConfig();
       if (hybridStoreConfig != null) {
         version.setHybridStoreConfig(hybridStoreConfig.clone());

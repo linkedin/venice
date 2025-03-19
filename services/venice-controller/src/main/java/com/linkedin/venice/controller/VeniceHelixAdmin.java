@@ -5277,6 +5277,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<String> targetSwapRegion = params.getTargetSwapRegion();
     Optional<Integer> targetSwapRegionWaitTime = params.getTargetRegionSwapWaitTime();
     Optional<Boolean> isDavinciHeartbeatReported = params.getIsDavinciHeartbeatReported();
+    Optional<Boolean> globalRtDivEnabled = params.isGlobalRtDivEnabled();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -5587,6 +5588,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       isDavinciHeartbeatReported.ifPresent(aBool -> storeMetadataUpdate(clusterName, storeName, store -> {
         store.setIsDavinciHeartbeatReported(aBool);
+        return store;
+      }));
+
+      globalRtDivEnabled.ifPresent(aBool -> storeMetadataUpdate(clusterName, storeName, store -> {
+        store.setGlobalRtDivEnabled(aBool);
         return store;
       }));
 

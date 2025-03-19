@@ -150,6 +150,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setMaxNearlineRecordSizeBytes(srcStore.getMaxNearlineRecordSizeBytes())
             .setTargetRegionSwap(srcStore.getTargetRegionSwap())
             .setTargetRegionSwapWaitTime(srcStore.getTargetRegionSwapWaitTime())
+            .setGlobalRtDivEnabled(srcStore.isGlobalRtDivEnabled())
             // TODO: This needs probably some refinement, but since we only support one kind of view type today, this is
             // still easy to parse
             .setStoreViews(
