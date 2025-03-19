@@ -31,7 +31,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
-import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -60,7 +59,7 @@ import org.apache.logging.log4j.Logger;
 
 @Experimental
 public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
-    extends VeniceAfterImageConsumerImpl<K, V> implements BootstrappingVeniceChangelogConsumer<K, V> {
+    implements BootstrappingVeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER =
       LogManager.getLogger(BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class);
 
@@ -83,10 +82,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   private Set<Integer> subscribedPartitions = new HashSet<>();
   private final ApacheKafkaOffsetPosition placeHolderOffset = ApacheKafkaOffsetPosition.of(0);
 
-  public BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl(
-      ChangelogClientConfig changelogClientConfig,
-      PubSubConsumerAdapter pubSubConsumer) {
-    super(changelogClientConfig, pubSubConsumer);
+  public BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl(ChangelogClientConfig changelogClientConfig) {
     this.changelogClientConfig = changelogClientConfig;
     this.storeName = changelogClientConfig.getStoreName();
     DaVinciConfig daVinciConfig = new DaVinciConfig();

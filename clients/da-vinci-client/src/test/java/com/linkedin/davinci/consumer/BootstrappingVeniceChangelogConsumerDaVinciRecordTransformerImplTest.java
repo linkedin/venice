@@ -19,7 +19,6 @@ import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
-import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.utils.TestUtils;
@@ -73,7 +72,6 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     doReturn(valueSchema).when(mockSchemaReader).getValueSchema(1);
 
     D2ControllerClient mockD2ControllerClient = mock(D2ControllerClient.class);
-    PubSubConsumerAdapter mockPubSubConsumer = mock(PubSubConsumerAdapter.class);
 
     changelogClientConfig = new ChangelogClientConfig<>().setD2ControllerClient(mockD2ControllerClient)
         .setSchemaReader(mockSchemaReader)
@@ -92,9 +90,8 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     changelogClientConfig.setMaxBufferSize(MAX_BUFFER_SIZE);
     changelogClientConfig.getInnerClientConfig().setMetricsRepository(new MetricsRepository());
 
-    bootstrappingVeniceChangelogConsumer = new BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<>(
-        changelogClientConfig,
-        mockPubSubConsumer);
+    bootstrappingVeniceChangelogConsumer =
+        new BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<>(changelogClientConfig);
     assertTrue(
         bootstrappingVeniceChangelogConsumer.getRecordTransformerConfig().shouldSkipCompatibilityChecks(),
         "Skip compatability checks for DVRT should be enabled.");
