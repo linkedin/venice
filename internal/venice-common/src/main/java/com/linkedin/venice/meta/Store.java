@@ -345,4 +345,8 @@ public interface Store {
   boolean getIsDavinciHeartbeatReported();
 
   void updateVersionForDaVinciHeartbeat(int versionNumber, boolean reported);
+
+  boolean isGlobalRtDivEnabled();
+
+  void setGlobalRtDivEnabled(boolean globalRtDivEnabled);
 }

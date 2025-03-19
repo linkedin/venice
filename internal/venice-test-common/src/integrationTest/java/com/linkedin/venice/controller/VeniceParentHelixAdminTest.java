@@ -936,6 +936,7 @@ public class VeniceParentHelixAdminTest {
     testUpdateBlobTransfer(parentControllerClient, childControllerClient);
     testUpdateNearlineProducerConfig(parentControllerClient, childControllerClient);
     testUpdateTargetSwapRegion(parentControllerClient, childControllerClient);
+    testUpdateGlobalRtDivEnabled(parentControllerClient, childControllerClient);
   }
 
   /**
@@ -1040,6 +1041,14 @@ public class VeniceParentHelixAdminTest {
         childClient,
         params -> params.setBlobTransferEnabled(true),
         response -> Assert.assertTrue(response.getStore().isBlobTransferEnabled()));
+  }
+
+  private void testUpdateGlobalRtDivEnabled(ControllerClient parentClient, ControllerClient childClient) {
+    testUpdateConfig(
+        parentClient,
+        childClient,
+        params -> params.setGlobalRtDivEnabled(true),
+        response -> Assert.assertTrue(response.getStore().isGlobalRtDivEnabled()));
   }
 
   private void testAddBadValueSchema(ControllerClient parentControllerClient) {

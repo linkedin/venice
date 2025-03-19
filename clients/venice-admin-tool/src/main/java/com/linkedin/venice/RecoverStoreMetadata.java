@@ -257,7 +257,8 @@ public class RecoverStoreMetadata {
             .setBlobTransferEnabled(deletedStore.isBlobTransferEnabled())
             .setTargetRegionSwap(deletedStore.getTargetSwapRegion())
             .setTargetRegionSwapWaitTime(deletedStore.getTargetSwapRegionWaitTime())
-            .setIsDavinciHeartbeatReported(deletedStore.getIsDavinciHeartbeatReported());
+            .setIsDavinciHeartbeatReported(deletedStore.getIsDavinciHeartbeatReported())
+            .setGlobalRtDivEnabled(deletedStore.isGlobalRtDivEnabled());
         System.out.println(
             "Updating store: " + storeName + " in cluster: " + recoverCluster + " with params: "
                 + updateParams.toString());
