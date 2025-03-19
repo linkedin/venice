@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
 import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_SOP;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
+import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
 import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
@@ -844,7 +845,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             false,
             null,
             -1,
-            0);
+            DEFAULT_RT_VERSION_NUMBER);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     doReturn(0).when(store).getLargestUsedRTVersionNumber();
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
@@ -882,7 +883,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           false,
           null,
           -1,
-          0);
+          DEFAULT_RT_VERSION_NUMBER);
       verify(zkClient, times(2)).readData(zkMetadataNodePath, null);
     }
   }
@@ -1029,7 +1030,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           false,
           null,
           -1,
-          0);
+          DEFAULT_RT_VERSION_NUMBER);
       assertEquals(newVersion, version);
     }
   }
@@ -1076,7 +1077,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             false,
             null,
             -1,
-            0);
+            DEFAULT_RT_VERSION_NUMBER);
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
         new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
       partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
@@ -1128,7 +1129,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           false,
           null,
           -1,
-          0);
+          DEFAULT_RT_VERSION_NUMBER);
       verify(zkClient, times(2)).readData(zkMetadataNodePath, null);
     }
   }
@@ -1205,7 +1206,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             false,
             null,
             -1,
-            0);
+            DEFAULT_RT_VERSION_NUMBER);
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
         spy(new PartialMockVeniceParentHelixAdmin(internalAdmin, config))) {
       Version newVersion = partialMockParentAdmin.incrementVersionIdempotent(
@@ -1234,7 +1235,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           Version.PushType.BATCH,
           null,
           -1,
-          0);
+          DEFAULT_RT_VERSION_NUMBER);
       assertEquals(newVersion, version);
     }
   }
@@ -1318,7 +1319,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             false,
             null,
             -1,
-            0);
+            DEFAULT_RT_VERSION_NUMBER);
 
     HelixVeniceClusterResources mockHelixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
     doReturn(mockHelixVeniceClusterResources).when(mockInternalAdmin).getHelixVeniceClusterResources(clusterName);
@@ -1424,7 +1425,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             false,
             null,
             -1,
-            0);
+            DEFAULT_RT_VERSION_NUMBER);
 
     HelixVeniceClusterResources mockHelixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
     doReturn(mockHelixVeniceClusterResources).when(mockInternalAdmin).getHelixVeniceClusterResources(clusterName);
@@ -2674,7 +2675,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
               false,
               null,
               -1,
-              0);
+              DEFAULT_RT_VERSION_NUMBER);
 
       VeniceWriter veniceWriter = mock(VeniceWriter.class);
       partialMockParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
@@ -2778,7 +2779,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             false,
             null,
             -1,
-            0);
+            DEFAULT_RT_VERSION_NUMBER);
     doReturn(new Pair<>(true, storeBVersion)).when(internalAdmin)
         .addVersionAndTopicOnly(
             clusterName,
@@ -2799,7 +2800,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             false,
             null,
             -1,
-            0);
+            DEFAULT_RT_VERSION_NUMBER);
     doReturn(new Exception("test")).when(internalAdmin).getLastExceptionForStore(clusterName, storeA);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeA);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeB);
@@ -3151,7 +3152,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             false,
             "",
             -1,
-            0);
+            DEFAULT_RT_VERSION_NUMBER);
     doReturn("region1").when(config).getRegionName();
     doReturn(true).when(config).isSkipDeferredVersionSwapForDVCEnabled();
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
@@ -3202,7 +3203,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           false,
           "",
           -1,
-          0);
+          DEFAULT_RT_VERSION_NUMBER);
     }
   }
 

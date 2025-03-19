@@ -1,5 +1,7 @@
 package com.linkedin.venice.meta;
 
+import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
+
 import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -78,7 +80,7 @@ public abstract class AbstractStore implements Store {
 
   @Override
   public void addVersion(Version version) {
-    addVersion(version, true, false, 0);
+    addVersion(version, true, false, DEFAULT_RT_VERSION_NUMBER);
   }
 
   @Override
@@ -88,7 +90,7 @@ public abstract class AbstractStore implements Store {
 
   @Override
   public void forceAddVersion(Version version, boolean isClonedVersion) {
-    addVersion(version, false, isClonedVersion, 0);
+    addVersion(version, false, isClonedVersion, DEFAULT_RT_VERSION_NUMBER);
   }
 
   @Override

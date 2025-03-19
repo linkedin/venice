@@ -206,6 +206,9 @@ public class TestStoreMigration {
       });
     }
 
+    StoreInfo storeInfo = new ControllerClient(destClusterName, parentControllerUrl).getStore(storeName).getStore();
+    Assert.assertEquals(storeInfo.getLargestUsedRTVersionNumber(), 2);
+
     // Test abort migration on parent controller
     try (ControllerClient srcParentControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
         ControllerClient destParentControllerClient = new ControllerClient(destClusterName, parentControllerUrl)) {
@@ -531,6 +534,7 @@ public class TestStoreMigration {
             .setHybridRewindSeconds(TEST_TIMEOUT)
             .setHybridOffsetLagThreshold(2L)
             .setHybridStoreDiskQuotaEnabled(true)
+            .setLargestUsedRTVersionNumber(2)
             .setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT)
             .setStorageNodeReadQuotaEnabled(true); // enable this for using fast client
     IntegrationTestPushUtils.createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreQueryParams)

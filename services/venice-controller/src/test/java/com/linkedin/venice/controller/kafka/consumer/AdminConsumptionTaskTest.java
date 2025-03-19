@@ -19,6 +19,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
+import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
@@ -1179,7 +1180,7 @@ public class AdminConsumptionTaskTest {
             false,
             "",
             0,
-            0);
+            DEFAULT_RT_VERSION_NUMBER);
     // isLeaderController() is called once every consumption cycle (1000ms) and for every message processed in
     // AdminExecutionTask.
     // Provide a sufficient number of true -> false -> true to mimic a transfer of leaderShip and resubscribed behavior
@@ -1338,7 +1339,7 @@ public class AdminConsumptionTaskTest {
             false,
             "",
             0,
-            0);
+            DEFAULT_RT_VERSION_NUMBER);
     Future<PubSubProduceResult> future = veniceWriter.put(
         emptyKeyBytes,
         getAddVersionMessage(clusterName, storeName, mockPushJobId, versionNumber, numberOfPartitions, 1L),
@@ -1496,7 +1497,7 @@ public class AdminConsumptionTaskTest {
           false,
           "dc-0",
           0,
-          0);
+          DEFAULT_RT_VERSION_NUMBER);
     });
 
     task.close();
@@ -1542,7 +1543,7 @@ public class AdminConsumptionTaskTest {
           true,
           "dc-1",
           0,
-          0);
+          DEFAULT_RT_VERSION_NUMBER);
     });
 
     task.close();

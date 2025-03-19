@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.controller.VeniceHelixAdmin.OfflinePushStatusInfo;
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
+import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
@@ -1637,7 +1638,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         false,
         null,
         -1,
-        0);
+        DEFAULT_RT_VERSION_NUMBER);
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1);
 
@@ -1665,7 +1666,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         false,
         null,
         -1,
-        0);
+        DEFAULT_RT_VERSION_NUMBER);
     // Version 2 should exist and remote Kafka bootstrap servers info should exist in version 2.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 2);
     Assert.assertEquals(
@@ -1803,7 +1804,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         false,
         null,
         -1,
-        0);
+        DEFAULT_RT_VERSION_NUMBER);
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1);
     // A/A version level config should be true

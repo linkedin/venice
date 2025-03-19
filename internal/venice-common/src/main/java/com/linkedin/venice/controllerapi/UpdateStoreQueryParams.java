@@ -183,6 +183,7 @@ public class UpdateStoreQueryParams extends QueryParams {
           .setHybridTimeLagThreshold(hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds());
       updateStoreQueryParams.setHybridDataReplicationPolicy(hybridStoreConfig.getDataReplicationPolicy());
       updateStoreQueryParams.setHybridBufferReplayPolicy(hybridStoreConfig.getBufferReplayPolicy());
+      updateStoreQueryParams.setRealTimeTopicName(hybridStoreConfig.getRealTimeTopicName());
     }
 
     PartitionerConfig partitionerConfig = srcStore.getPartitionerConfig();
