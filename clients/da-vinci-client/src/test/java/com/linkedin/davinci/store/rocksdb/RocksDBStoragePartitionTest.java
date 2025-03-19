@@ -234,7 +234,7 @@ public class RocksDBStoragePartitionTest {
     }
     storagePartition.sync();
     assertTrue(
-        storagePartition.getPartitionSizeInBytes() > 700
+        storagePartition.getPartitionSizeInBytes() > 700l
             * (KEY_PREFIX.length() + VALUE_PREFIX.length() * 2 + largeRecordPaddingLength));
 
     storagePartition.close();
@@ -263,7 +263,7 @@ public class RocksDBStoragePartitionTest {
 
     storagePartition.sync();
     assertTrue(
-        storagePartition.getPartitionSizeInBytes() > 1000
+        storagePartition.getPartitionSizeInBytes() > 1000l
             * (KEY_PREFIX.length() + VALUE_PREFIX.length() * 2 + largeRecordPaddingLength));
     // Make sure no new blob files were generated
     assertEquals(blobFileFinder.get().length, blobFileCnt);
@@ -463,7 +463,8 @@ public class RocksDBStoragePartitionTest {
     Assert.assertNull(storagePartition.get(toBeDeletedKey.getBytes()));
 
     assertTrue(
-        storagePartition.getPartitionSizeInBytes() > numberOfRecords * (KEY_PREFIX.length() + VALUE_PREFIX.length()));
+        storagePartition.getPartitionSizeInBytes() > (long) numberOfRecords
+            * (KEY_PREFIX.length() + VALUE_PREFIX.length()));
 
     Options storeOptions = storagePartition.getOptions();
     Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 40);
