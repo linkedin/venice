@@ -109,12 +109,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       return CompletableFuture.completedFuture(null);
     }
     return CompletableFuture.supplyAsync(() -> {
-      // We need exclusive access in this code section HOWEVER, we also want user poll requests to go through. So here,
-      // we'll
-      // take the subscription read lock, and we'll lock the internalSeekConsumer as it's stateful. We'll then acquire
-      // the
-      // exclusive lock on the subscriptions just before applying changes to the main consumer.
-      subscriptionLock.readLock().lock();
+      subscriptionLock.writeLock().lock();
       Set<VeniceChangeCoordinate> checkpoints = new HashSet<>();
       try {
         // TODO: This implementation basically just scans the version topic until it finds the EOP message. The
@@ -184,7 +179,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
                   + targetTopic.getName());
         }
       } finally {
-        subscriptionLock.readLock().unlock();
+        subscriptionLock.writeLock().unlock();
       }
       return null;
     }, seekExecutorService);
