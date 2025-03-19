@@ -194,7 +194,10 @@ public class RequestBasedMetaRepository extends NativeMetadataRepository {
   private RecordDeserializer<StorePropertiesPayloadRecord> getStorePropertiesDeserializer(int schemaVersion) {
 
     return storePropertiesDeserializers.computeIfAbsent(schemaVersion, key -> {
-      Schema schema = storePropertiesSchemaReader.getValueSchema(key);
+      Schema schema = fetchSchemaByVersion(
+          AvroProtocolDefinition.SERVER_STORE_PROPERTIES_PAYLOAD,
+          storePropertiesSchemaReader,
+          key);
       return FastSerializerDeserializerFactory
           .getFastAvroSpecificDeserializer(schema, StorePropertiesPayloadRecord.class);
     });
@@ -203,8 +206,23 @@ public class RequestBasedMetaRepository extends NativeMetadataRepository {
   private RecordDeserializer<StoreMetaValue> getStoreMetaValueDeserializer(int schemaVersion) {
 
     return storeMetaValueDeserializers.computeIfAbsent(schemaVersion, key -> {
-      Schema schema = storeMetaValueSchemaReader.getValueSchema(key);
+      Schema schema =
+          fetchSchemaByVersion(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE, storeMetaValueSchemaReader, key);
       return FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(schema, StoreMetaValue.class);
     });
+  }
+
+  private Schema fetchSchemaByVersion(
+      AvroProtocolDefinition definition,
+      RouterBackedSchemaReader schemaReader,
+      int version) {
+
+    if (definition.currentProtocolVersion.isPresent() && definition.currentProtocolVersion.get().equals(version)) {
+      // Get local schema
+      return definition.getCurrentProtocolVersionSchema();
+    }
+
+    // Fetch remote schema via router
+    return schemaReader.getValueSchema(version);
   }
 }
