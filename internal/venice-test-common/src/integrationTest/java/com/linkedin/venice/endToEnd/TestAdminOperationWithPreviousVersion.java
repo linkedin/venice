@@ -95,7 +95,7 @@ public class TestAdminOperationWithPreviousVersion {
   private Admin veniceAdmin;
   private List<ControllerClient> childControllerClients = new ArrayList<>();
   private VeniceMultiClusterWrapper multiClusterWrapperRegion0;
-  private static int countTestRun;
+  private int countTestRun;
   private Map<String, Boolean> operationTypeMap = getAllPayloadUnionTypes();
 
   @BeforeClass(alwaysRun = true)
