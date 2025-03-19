@@ -586,7 +586,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.recordLevelMetricEnabled = new AtomicBoolean(
         serverConfig.isRecordLevelMetricWhenBootstrappingCurrentVersionEnabled()
             || !this.isCurrentVersion.getAsBoolean());
-    this.isGlobalRtDivEnabled = serverConfig.isGlobalRtDivEnabled();
+    this.isGlobalRtDivEnabled = version.isGlobalRtDivEnabled();
     if (!this.recordLevelMetricEnabled.get()) {
       LOGGER.info("Disabled record-level metric when ingesting current version: {}", kafkaVersionTopic);
     }
