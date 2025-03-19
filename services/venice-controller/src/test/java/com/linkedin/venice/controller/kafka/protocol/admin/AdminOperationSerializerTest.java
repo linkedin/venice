@@ -58,7 +58,9 @@ public class AdminOperationSerializerTest {
     try {
       adminOperationSerializer.serialize(adminMessage, 74);
     } catch (VeniceProtocolException e) {
-      assertTrue(e.getMessage().contains("payloadUnion.UpdateStore.separateRealTimeTopicEnabled"));
+      String expectedMessage =
+          "Field AdminOperation.payloadUnion.UpdateStore.separateRealTimeTopicEnabled: Boolean value true is not the default value false or false";
+      assertEquals(e.getMessage(), expectedMessage);
     }
 
     // Set the separateRealTimeTopicEnabled to false
