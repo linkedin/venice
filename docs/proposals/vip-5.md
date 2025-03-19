@@ -28,12 +28,53 @@ including on the client-side and server-side.
 
 This section dives deeper in defining what Facet Counting is, and how to integrate it into Venice.
 
+Before diving into specifics, it may be useful to provide an analogy in order to make a general observation: _the 
+proposal in this VIP has similarities and differences compared to Read Compute_. Read Compute, as it exists today, is a
+record-wise (or we could say: row-wise) operation, meaning that for a given input record there is exactly one output
+record. This type of workload is very natural to push down into the server-side, in such way that the work is split 
+across many servers and the client can retrieve the various output records individually. The use cases presented here
+also have a portion of work which is executable on a per-record basis, and therefore has the potential of being pushed
+down to the server-side, however, given that they are "aggregation queries", there is also a final processing step which
+must be performed in some central location (e.g., in the client). The work can therefore only be partially pushed down.
+
 ### Facet Counting Use Cases
 
-First off, let's define what Facet Counting is, with a series of examples from simple to more complex, using SQL to
-explain it (although SQL is just a convenient way to express query semantics, but is not part of this proposal). These
-are functioning SQL queries that have been run on a DuckDB database populated by Venice's own Push Job Details [system
-store](../ops_guide/system_stores.md).
+Let's define what Facet Counting is, with a series of examples from simple to more complex, using SQL to explain it 
+(although SQL is just a convenient way to express query semantics, but is not part of this proposal).
+
+These are functioning SQL queries that have been run on a DuckDB database populated by Venice's own Push Job Details 
+[system store](../ops_guide/system_stores.md). This system store's Avro schema can be seen here: [key](https://github.com/linkedin/venice/blob/main/internal/venice-common/src/main/resources/avro/PushJobStatusRecordKey/v1/PushJobStatusRecordKey.avsc),
+[value](https://github.com/linkedin/venice/blob/main/internal/venice-common/src/main/resources/avro/PushJobDetails/v4/PushJobDetails.avsc).
+The SQL schema for the table is also included below, though only a subset of these columns are used in the examples:
+
+```sql
+SELECT column_name, column_type FROM (DESCRIBE current_version);
+┌───────────────────────────────────────┬─────────────┐
+│              column_name              │ column_type │
+│                varchar                │   varchar   │
+├───────────────────────────────────────┼─────────────┤
+│ storeName                             │ VARCHAR     │
+│ versionNumber                         │ INTEGER     │
+│ clusterName                           │ VARCHAR     │
+│ reportTimestamp                       │ BIGINT      │
+│ pushId                                │ VARCHAR     │
+│ partitionCount                        │ INTEGER     │
+│ valueCompressionStrategy              │ INTEGER     │
+│ chunkingEnabled                       │ BOOLEAN     │
+│ jobDurationInMs                       │ BIGINT      │
+│ totalNumberOfRecords                  │ BIGINT      │
+│ totalKeyBytes                         │ BIGINT      │
+│ totalRawValueBytes                    │ BIGINT      │
+│ totalCompressedValueBytes             │ BIGINT      │
+│ totalGzipCompressedValueBytes         │ BIGINT      │
+│ totalZstdWithDictCompressedValueBytes │ BIGINT      │
+│ pushJobLatestCheckpoint               │ INTEGER     │
+│ failureDetails                        │ VARCHAR     │
+│ sendLivenessHeartbeatFailureDetails   │ VARCHAR     │
+├───────────────────────────────────────┴─────────────┤
+│ 18 rows                                   2 columns │
+└─────────────────────────────────────────────────────┘
+```
 
 #### Facet Counting by Values of a Single Column
 
