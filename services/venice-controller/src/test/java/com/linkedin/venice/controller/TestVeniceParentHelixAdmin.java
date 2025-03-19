@@ -28,6 +28,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
+import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
@@ -3205,6 +3206,22 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           -1,
           DEFAULT_RT_VERSION_NUMBER);
     }
+  }
+
+  @Test
+  public void testUpdateAdminOperationProtocolVersion() {
+    String clusterName = "test-cluster";
+    Long adminProtocolVersion = 10L;
+    VeniceParentHelixAdmin veniceParentHelixAdmin = mock(VeniceParentHelixAdmin.class);
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    when(veniceParentHelixAdmin.getVeniceHelixAdmin()).thenReturn(veniceHelixAdmin);
+    doCallRealMethod().when(veniceParentHelixAdmin)
+        .updateAdminOperationProtocolVersion(clusterName, adminProtocolVersion);
+    AdminConsumerService adminConsumerService = mock(AdminConsumerService.class);
+    when(veniceHelixAdmin.getAdminConsumerService(clusterName)).thenReturn(adminConsumerService);
+
+    veniceParentHelixAdmin.updateAdminOperationProtocolVersion(clusterName, adminProtocolVersion);
+    verify(adminConsumerService, times(1)).updateAdminOperationProtocolVersion(clusterName, adminProtocolVersion);
   }
 
   private Store setupForStoreViewConfigUpdateTest(String storeName) {
