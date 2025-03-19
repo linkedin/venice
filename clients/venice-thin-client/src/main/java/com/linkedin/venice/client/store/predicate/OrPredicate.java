@@ -1,18 +1,18 @@
 package com.linkedin.venice.client.store.predicate;
 
-public class AndPredicate<T> extends CompositePredicate<T> {
-  AndPredicate(Predicate<T>... predicates) {
+public class OrPredicate<T> extends CompositePredicate<T> {
+  OrPredicate(Predicate<T>... predicates) {
     super(predicates);
   }
 
   @Override
   public boolean evaluate(T value) {
     for (Predicate<T> predicate: predicates) {
-      if (!predicate.evaluate(value)) {
-        return false;
+      if (predicate.evaluate(value)) {
+        return true;
       }
     }
 
-    return true;
+    return false;
   }
 }

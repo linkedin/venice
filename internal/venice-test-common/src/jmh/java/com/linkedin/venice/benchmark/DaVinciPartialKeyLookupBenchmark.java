@@ -1,6 +1,6 @@
 package com.linkedin.venice.benchmark;
 
-import static com.linkedin.venice.client.store.predicate.PredicateBuilder.equalTo;
+import static com.linkedin.venice.client.store.predicate.Predicate.equalTo;
 import static com.linkedin.venice.integration.utils.ServiceFactory.getGenericAvroDaVinciClient;
 import static com.linkedin.venice.integration.utils.ServiceFactory.getVeniceCluster;
 
@@ -107,7 +107,7 @@ public class DaVinciPartialKeyLookupBenchmark {
   @Benchmark
   @Threads(1)
   public void partialKeyGetHitT1(Blackhole blackhole) {
-    Predicate partialKey = equalTo("field1", "key_0");
+    Predicate<GenericRecord> partialKey = equalTo("field1", "key_0");
     client.compute()
         .project("value")
         .executeWithFilter(partialKey, new StreamingCallback<GenericRecord, GenericRecord>() {
