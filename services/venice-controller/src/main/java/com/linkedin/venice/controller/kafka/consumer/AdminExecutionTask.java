@@ -502,7 +502,8 @@ public class AdminExecutionTask implements Callable<Void> {
         .setNearlineProducerCompressionEnabled(message.nearlineProducerCompressionEnabled)
         .setNearlineProducerCountPerWriter(message.nearlineProducerCountPerWriter)
         .setTargetRegionSwapWaitTime(message.targetSwapRegionWaitTime)
-        .setIsDavinciHeartbeatReported(message.isDaVinciHeartBeatReported);
+        .setIsDavinciHeartbeatReported(message.isDaVinciHeartBeatReported)
+        .setGlobalRtDivEnabled(message.globalRtDivEnabled);
 
     if (message.targetSwapRegion != null) {
       params.setTargetRegionSwap(message.getTargetSwapRegion().toString());
