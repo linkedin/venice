@@ -620,18 +620,18 @@ public class VeniceParentHelixAdminTest {
           isControllerSslEnabled ? Optional.of(SslUtils.getVeniceLocalSslFactory()) : Optional.empty();
       try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrl, sslFactory);
           ControllerClient childControllerClient = new ControllerClient(clusterName, childControllerUrl, sslFactory)) {
-        // testBadDefaultSchemaValidation(parentControllerClient);
-        // testBackupVersionRetentionUpdate(parentControllerClient, childControllerClient);
-        // testLatestSupersetSchemaIdUpdate(parentControllerClient, childControllerClient);
-        // testSuperSetSchemaGen(parentControllerClient);
-        // testSuperSetSchemaGenWithSameUpcomingSchema(parentControllerClient);
-        // testSupersetSchemaRegistration(parentControllerClient);
-        // testAddValueSchemaDocUpdate(parentControllerClient);
-        // testAddBadValueSchema(parentControllerClient);
-        // testWriteComputeSchemaAutoGeneration(parentControllerClient);
-        // testWriteComputeSchemaEnable(parentControllerClient);
-        // testWriteComputeSchemaAutoGenerationFailure(parentControllerClient);
-        // testSupersetSchemaGenerationWithUpdateDefaultValue(parentControllerClient);
+        testBadDefaultSchemaValidation(parentControllerClient);
+        testBackupVersionRetentionUpdate(parentControllerClient, childControllerClient);
+        testLatestSupersetSchemaIdUpdate(parentControllerClient, childControllerClient);
+        testSuperSetSchemaGen(parentControllerClient);
+        testSuperSetSchemaGenWithSameUpcomingSchema(parentControllerClient);
+        testSupersetSchemaRegistration(parentControllerClient);
+        testAddValueSchemaDocUpdate(parentControllerClient);
+        testAddBadValueSchema(parentControllerClient);
+        testWriteComputeSchemaAutoGeneration(parentControllerClient);
+        testWriteComputeSchemaEnable(parentControllerClient);
+        testWriteComputeSchemaAutoGenerationFailure(parentControllerClient);
+        testSupersetSchemaGenerationWithUpdateDefaultValue(parentControllerClient);
         testUpdateConfigs(parentControllerClient, childControllerClient);
       }
     }
