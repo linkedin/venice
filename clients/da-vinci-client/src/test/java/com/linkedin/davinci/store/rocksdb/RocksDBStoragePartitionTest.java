@@ -159,7 +159,8 @@ public class RocksDBStoragePartitionTest {
 
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
 
-    Map<String, String> largeInputRecords = generateInput(1000, false, 10000, 0);
+    int largeRecordPaddingLength = 10000;
+    Map<String, String> largeInputRecords = generateInput(1000, false, largeRecordPaddingLength, 0);
     Map<String, String> smallInputRecords = generateInput(1000, false, 10, 10000);
     List<Map.Entry<String, String>> largeEntryList = new ArrayList<>(largeInputRecords.entrySet());
     List<Map.Entry<String, String>> smallEntryList = new ArrayList<>(smallInputRecords.entrySet());
@@ -231,6 +232,11 @@ public class RocksDBStoragePartitionTest {
           storagePartition.get(smallEntryList.get(i).getKey().getBytes()),
           smallEntryList.get(i).getValue().getBytes());
     }
+    storagePartition.sync();
+    assertTrue(
+        storagePartition.getPartitionSizeInBytes() > 700
+            * (KEY_PREFIX.length() + VALUE_PREFIX.length() * 2 + largeRecordPaddingLength));
+
     storagePartition.close();
 
     // Disable blob files
@@ -256,6 +262,9 @@ public class RocksDBStoragePartitionTest {
     }
 
     storagePartition.sync();
+    assertTrue(
+        storagePartition.getPartitionSizeInBytes() > 1000
+            * (KEY_PREFIX.length() + VALUE_PREFIX.length() * 2 + largeRecordPaddingLength));
     // Make sure no new blob files were generated
     assertEquals(blobFileFinder.get().length, blobFileCnt);
     // Validate all the entries inserted previously
@@ -297,7 +306,8 @@ public class RocksDBStoragePartitionTest {
       options.setBlobFileStartingLevel(0);
     }
 
-    Map<String, String> inputRecords = generateInput(101000, sorted, 0);
+    int numberOfRecords = 101000;
+    Map<String, String> inputRecords = generateInput(numberOfRecords, sorted, 0);
     Properties extraProps = new Properties();
     if (enableBlobFile) {
       extraProps.put(ROCKSDB_BLOB_FILES_ENABLED, "true");
@@ -452,7 +462,8 @@ public class RocksDBStoragePartitionTest {
     storagePartition.delete(toBeDeletedKey.getBytes());
     Assert.assertNull(storagePartition.get(toBeDeletedKey.getBytes()));
 
-    assertTrue(storagePartition.getPartitionSizeInBytes() > 0);
+    assertTrue(
+        storagePartition.getPartitionSizeInBytes() > numberOfRecords * (KEY_PREFIX.length() + VALUE_PREFIX.length()));
 
     Options storeOptions = storagePartition.getOptions();
     Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 40);

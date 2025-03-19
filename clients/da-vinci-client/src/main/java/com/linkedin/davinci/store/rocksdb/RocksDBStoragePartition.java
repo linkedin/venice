@@ -985,7 +985,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     readCloseRWLock.readLock().lock();
     try {
       makeSureRocksDBIsStillOpen();
-      return getRocksDBStatValue("rocksdb.live-sst-files-size");
+      return getRocksDBStatValue("rocksdb.live-sst-files-size") + getRocksDBStatValue("rocksdb.live-blob-file-size");
     } finally {
       readCloseRWLock.readLock().unlock();
     }
