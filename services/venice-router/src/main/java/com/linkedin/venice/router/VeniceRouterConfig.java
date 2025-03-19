@@ -26,6 +26,7 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_RESOLUTION_RETRY_BACK
 import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_SSL_HANDSHAKE_QUEUE_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_SSL_HANDSHAKE_THREADS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_COMPUTE_TARDY_LATENCY_MS;
+import static com.linkedin.venice.ConfigKeys.ROUTER_CONNECTION_HANDLE_MODE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CONNECTION_LIMIT;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CONNECTION_TIMEOUT;
 import static com.linkedin.venice.ConfigKeys.ROUTER_DICTIONARY_PROCESSING_THREADS;
@@ -65,7 +66,7 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_LONG_TAIL_RETRY_BUDGET_ENFOR
 import static com.linkedin.venice.ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_LONG_TAIL_RETRY_MAX_ROUTE_FOR_MULTI_KEYS_REQ;
-import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_CONCURRENT_RESOLUTIONS;
+import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_CONCURRENT_SSL_HANDSHAKES;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_OUTGOING_CONNECTION;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE;
@@ -82,7 +83,8 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_PER_NODE_CLIENT_THREAD_COUNT
 import static com.linkedin.venice.ConfigKeys.ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER;
 import static com.linkedin.venice.ConfigKeys.ROUTER_QUOTA_CHECK_WINDOW;
 import static com.linkedin.venice.ConfigKeys.ROUTER_READ_QUOTA_THROTTLING_LEASE_TIMEOUT_MS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_RESOLVE_BEFORE_SSL;
+import static com.linkedin.venice.ConfigKeys.ROUTER_RESOLVE_QUEUE_CAPACITY;
+import static com.linkedin.venice.ConfigKeys.ROUTER_RESOLVE_THREADS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_RETRY_MANAGER_CORE_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SINGLEGET_TARDY_LATENCY_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SINGLE_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL;
@@ -103,6 +105,7 @@ import static com.linkedin.venice.helix.HelixInstanceConfigRepository.ZONE_FIELD
 import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.LEAST_LOADED_ROUTING;
 import static com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum.LEAST_LOADED;
 
+import com.linkedin.alpini.netty4.handlers.ConnectionHandleMode;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.NameRepository;
@@ -146,6 +149,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
   private final int longTailRetryMaxRouteForMultiKeyReq;
   private final int maxKeyCountInMultiGetReq;
   private final int connectionLimit;
+  private final ConnectionHandleMode connectionHandleMode;
   private final int httpClientPoolSize;
   private final int maxOutgoingConnPerRoute;
   private final int maxOutgoingConn;
@@ -198,8 +202,9 @@ public class VeniceRouterConfig implements RouterRetryConfig {
   private final HelixGroupSelectionStrategyEnum helixGroupSelectionStrategy;
   private final String systemSchemaClusterName;
   private final int clientSslHandshakeThreads;
-  private final boolean resolveBeforeSSL;
-  private final int maxConcurrentResolutions;
+  private final int maxConcurrentSslHandshakes;
+  private final int resolveThreads;
+  private final int resolveQueueCapacity;;
   private final int clientResolutionRetryAttempts;
   private final long clientResolutionRetryBackoffMs;
   private final int clientSslHandshakeQueueCapacity;
@@ -257,6 +262,10 @@ public class VeniceRouterConfig implements RouterRetryConfig {
       longTailRetryMaxRouteForMultiKeyReq = props.getInt(ROUTER_LONG_TAIL_RETRY_MAX_ROUTE_FOR_MULTI_KEYS_REQ, 2);
       maxKeyCountInMultiGetReq = props.getInt(ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ, 500);
       connectionLimit = props.getInt(ROUTER_CONNECTION_LIMIT, 10000);
+      // When connection limit is breached, fail fast to client request by default.
+      connectionHandleMode = ConnectionHandleMode.valueOf(
+          props
+              .getString(ROUTER_CONNECTION_HANDLE_MODE, ConnectionHandleMode.FAIL_FAST_WHEN_LIMIT_EXCEEDED.toString()));
       httpClientPoolSize = props.getInt(ROUTER_HTTP_CLIENT_POOL_SIZE, 12);
       maxOutgoingConnPerRoute = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE, 120);
       maxOutgoingConn = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION, 1200);
@@ -336,11 +345,12 @@ public class VeniceRouterConfig implements RouterRetryConfig {
           props.getInt(ROUTER_HTTPASYNCCLIENT_CLIENT_POOL_THREAD_COUNT, Runtime.getRuntime().availableProcessors());
 
       clientSslHandshakeThreads = props.getInt(ROUTER_CLIENT_SSL_HANDSHAKE_THREADS, 0);
-      resolveBeforeSSL = props.getBoolean(ROUTER_RESOLVE_BEFORE_SSL, false);
-      maxConcurrentResolutions = props.getInt(ROUTER_MAX_CONCURRENT_RESOLUTIONS, 100);
+      maxConcurrentSslHandshakes = props.getInt(ROUTER_MAX_CONCURRENT_SSL_HANDSHAKES, 1000);
+      resolveThreads = props.getInt(ROUTER_RESOLVE_THREADS, 0);
+      resolveQueueCapacity = props.getInt(ROUTER_RESOLVE_QUEUE_CAPACITY, 500000);
       clientResolutionRetryAttempts = props.getInt(ROUTER_CLIENT_RESOLUTION_RETRY_ATTEMPTS, 3);
       clientResolutionRetryBackoffMs = props.getLong(ROUTER_CLIENT_RESOLUTION_RETRY_BACKOFF_MS, 5 * Time.MS_PER_SECOND);
-      clientSslHandshakeQueueCapacity = props.getInt(ROUTER_CLIENT_SSL_HANDSHAKE_QUEUE_CAPACITY, Integer.MAX_VALUE);
+      clientSslHandshakeQueueCapacity = props.getInt(ROUTER_CLIENT_SSL_HANDSHAKE_QUEUE_CAPACITY, 500000);
 
       readQuotaThrottlingLeaseTimeoutMs =
           props.getLong(ROUTER_READ_QUOTA_THROTTLING_LEASE_TIMEOUT_MS, 6 * Time.MS_PER_HOUR);
@@ -481,6 +491,10 @@ public class VeniceRouterConfig implements RouterRetryConfig {
 
   public int getConnectionLimit() {
     return connectionLimit;
+  }
+
+  public ConnectionHandleMode getConnectionHandleMode() {
+    return connectionHandleMode;
   }
 
   public int getHttpClientPoolSize() {
@@ -788,12 +802,16 @@ public class VeniceRouterConfig implements RouterRetryConfig {
     return clientSslHandshakeThreads;
   }
 
-  public boolean isResolveBeforeSSL() {
-    return resolveBeforeSSL;
+  public int getResolveThreads() {
+    return resolveThreads;
   }
 
-  public int getMaxConcurrentResolutions() {
-    return maxConcurrentResolutions;
+  public int getResolveQueueCapacity() {
+    return resolveQueueCapacity;
+  }
+
+  public int getMaxConcurrentSslHandshakes() {
+    return maxConcurrentSslHandshakes;
   }
 
   public int getClientResolutionRetryAttempts() {

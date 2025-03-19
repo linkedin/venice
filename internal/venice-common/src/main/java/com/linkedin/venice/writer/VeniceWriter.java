@@ -946,7 +946,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         logicalTs,
         putMetadata,
         oldValueManifest,
-        oldRmdManifest);
+        oldRmdManifest,
+        true);
   }
 
   /**
@@ -987,7 +988,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   /**
    * Write a record with new DIV to a predetermined partition.
    */
-  protected CompletableFuture<PubSubProduceResult> put(
+  public CompletableFuture<PubSubProduceResult> put(
       byte[] serializedKey,
       byte[] serializedValue,
       int partition,
@@ -997,7 +998,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       long logicalTs,
       PutMetadata putMetadata,
       ChunkedValueManifest oldValueManifest,
-      ChunkedValueManifest oldRmdManifest) {
+      ChunkedValueManifest oldRmdManifest,
+      boolean isPutMessage) {
     int replicationMetadataPayloadSize = putMetadata == null ? 0 : putMetadata.getSerializedSize();
     isChunkingFlagInvoked = true;
 
@@ -1008,7 +1010,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     int veniceRecordSize = serializedKey.length + serializedValue.length + replicationMetadataPayloadSize;
     if (isChunkingNeededForRecord(veniceRecordSize)) { // ~1MB default
       // RMD size is not checked because it's an internal component, and a user's write should not be failed due to it
-      if (isChunkingEnabled && !isRecordTooLarge(serializedKey.length + serializedValue.length)) {
+      if ((isChunkingEnabled && !isRecordTooLarge(serializedKey.length + serializedValue.length)) || !isPutMessage) {
         return putLargeValue(
             serializedKey,
             serializedValue,
@@ -1019,7 +1021,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             logicalTs,
             putMetadata,
             oldValueManifest,
-            oldRmdManifest);
+            oldRmdManifest,
+            isPutMessage);
       } else {
         throw new RecordTooLargeException(
             "This record exceeds the maximum size. "
@@ -1036,10 +1039,13 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           .setChunkingInfo(serializedKey, null, null, null, null, oldValueManifest, oldRmdManifest);
     }
 
-    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, serializedKey);
+    MessageType keyType = (isPutMessage) ? MessageType.PUT : MessageType.GLOBAL_RT_DIV;
+    KafkaKey kafkaKey = new KafkaKey(keyType, serializedKey);
+    int schemaId =
+        (isPutMessage) ? valueSchemaId : AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
 
     // Initialize the SpecificRecord instances used by the Avro-based Kafka protocol
-    Put putPayload = buildPutPayload(serializedValue, valueSchemaId, putMetadata);
+    Put putPayload = buildPutPayload(serializedValue, schemaId, putMetadata);
     CompletableFuture<PubSubProduceResult> produceResultFuture = sendMessage(
         producerMetadata -> kafkaKey,
         MessageType.PUT,
@@ -1670,7 +1676,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       long logicalTs,
       PutMetadata putMetadata,
       ChunkedValueManifest oldValueManifest,
-      ChunkedValueManifest oldRmdManifest) {
+      ChunkedValueManifest oldRmdManifest,
+      boolean isPutMessage) {
     int replicationMetadataPayloadSize = putMetadata == null ? 0 : putMetadata.getSerializedSize();
     final Supplier<String> reportSizeGenerator =
         () -> getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize);
@@ -1683,6 +1690,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
                 DEFAULT_UPSTREAM_OFFSET,
                 DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID,
                 leaderMetadataWrapper.getViewPartitionMap());
+    MessageType keyMessageType = (isPutMessage) ? MessageType.PUT : MessageType.GLOBAL_RT_DIV;
+    int schemaId =
+        (isPutMessage) ? valueSchemaId : AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
     BiConsumer<KeyProvider, Put> sendMessageFunction = (keyProvider, putPayload) -> sendMessage(
         keyProvider,
         MessageType.PUT,
@@ -1694,9 +1704,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     ChunkedPayloadAndManifest valueChunksAndManifest = WriterChunkingHelper.chunkPayloadAndSend(
         serializedKey,
         serializedValue,
-        MessageType.PUT,
+        keyMessageType,
         true,
-        valueSchemaId,
+        schemaId,
         0,
         callback instanceof ChunkAwareCallback,
         reportSizeGenerator,
@@ -1729,7 +1739,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     CompletableFuture<PubSubProduceResult> manifestProduceFuture = sendManifestMessage(
         putManifestsPayload,
         serializedKey,
-        MessageType.PUT,
+        keyMessageType,
         valueChunksAndManifest,
         callback,
         rmdChunksAndManifest,
@@ -2190,7 +2200,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param messageType an instance of the {@link MessageType} enum.
    * @return A {@link KafkaMessageEnvelope} for producing into Kafka
    */
-  protected KafkaMessageEnvelope getKafkaMessageEnvelope(
+  public KafkaMessageEnvelope getKafkaMessageEnvelope(
       MessageType messageType,
       boolean isEndOfSegment,
       int partition,

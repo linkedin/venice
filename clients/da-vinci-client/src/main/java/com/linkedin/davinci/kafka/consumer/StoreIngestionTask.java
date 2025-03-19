@@ -263,6 +263,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * flushed to the metadata partition of the storage engine regularly in {@link #syncOffset(String, PartitionConsumptionState)}
    */
   private final KafkaDataIntegrityValidator kafkaDataIntegrityValidator;
+  /** Map of broker URL to the total bytes consumed by ConsumptionTask since the last Global RT DIV sync */
+  protected final VeniceConcurrentHashMap<String, Long> consumedBytesSinceLastSync;
   protected final HostLevelIngestionStats hostLevelIngestionStats;
   protected final AggVersionedDIVStats versionedDIVStats;
   protected final AggVersionedIngestionStats versionedIngestionStats;
@@ -437,6 +439,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // Could be accessed from multiple threads since there are multiple worker threads.
     this.kafkaDataIntegrityValidator =
         new KafkaDataIntegrityValidator(this.kafkaVersionTopic, DISABLED, producerStateMaxAgeMs);
+    this.consumedBytesSinceLastSync = new VeniceConcurrentHashMap<>();
     this.ingestionTaskName = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
     this.topicManagerRepository = builder.getTopicManagerRepository();
     this.readOnlyForBatchOnlyStoreEnabled = storeVersionConfig.isReadOnlyForBatchOnlyStoreEnabled();
@@ -1301,7 +1304,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // Check schema id availability before putting consumer record to drainer queue
       waitReadyToProcessRecord(record);
 
-      totalBytesRead += handleSingleMessage(
+      int recordSize = handleSingleMessage(
           new PubSubMessageProcessedResultWrapper(record),
           topicPartition,
           partitionConsumptionState,
@@ -1311,6 +1314,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           beforeProcessingBatchRecordsTimestampMs,
           metricsEnabled,
           elapsedTimeForPuttingIntoQueue);
+      totalBytesRead += recordSize;
+      if (isGlobalRtDivEnabled) {
+        consumedBytesSinceLastSync.compute(kafkaUrl, (k, v) -> (v == null) ? recordSize : v + recordSize);
+      }
     }
 
     /**
@@ -2668,7 +2675,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /*
      * Report ingestion throughput metric based on the store version
      */
-    if (!record.getKey().isControlMessage()) { // skip control messages
+    if (!record.getKey().isControlMessage() && !record.getKey().isGlobalRtDiv()) { // skip control messages and DIV
       // Still track record throughput to understand the performance benefits of disabling other record-level metrics.
       hostLevelIngestionStats.recordTotalRecordsConsumed();
       if (recordLevelMetricEnabled.get()) {
@@ -2688,9 +2695,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     reportIfCatchUpVersionTopicOffset(partitionConsumptionState);
 
-    long syncBytesInterval = partitionConsumptionState.isDeferredWrite()
-        ? databaseSyncBytesIntervalForDeferredWriteMode
-        : databaseSyncBytesIntervalForTransactionalMode;
+    long syncBytesInterval = getSyncBytesInterval(partitionConsumptionState);
     boolean recordsProcessedAboveSyncIntervalThreshold = (syncBytesInterval > 0
         && (partitionConsumptionState.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval));
     defaultReadyToServeChecker.apply(partitionConsumptionState, recordsProcessedAboveSyncIntervalThreshold);
@@ -2701,9 +2706,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Check whether offset metadata checkpoint will happen; if so, update the producer states recorded in OffsetRecord
      * with the updated producer states maintained in {@link #kafkaDataIntegrityValidator}
      */
-    if (shouldSyncOffset(partitionConsumptionState, syncBytesInterval, record, leaderProducedRecordContext)) {
+    if (shouldSyncOffset(partitionConsumptionState, record, leaderProducedRecordContext)) {
       updateOffsetMetadataAndSyncOffset(partitionConsumptionState);
     }
+  }
+
+  long getSyncBytesInterval(PartitionConsumptionState pcs) {
+    return pcs.isDeferredWrite()
+        ? databaseSyncBytesIntervalForDeferredWriteMode
+        : databaseSyncBytesIntervalForTransactionalMode;
   }
 
   protected void recordHeartbeatReceived(
@@ -2711,6 +2722,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       DefaultPubSubMessage consumerRecord,
       String kafkaUrl) {
     // No Op
+  }
+
+  protected boolean shouldSendGlobalRtDiv(DefaultPubSubMessage record, PartitionConsumptionState pcs, String kafkaUrl) {
+    if (!isGlobalRtDivEnabled()) {
+      return false;
+    }
+
+    // The Global RT DIV is sent on a per-broker basis, so divide the size limit by the number of brokers
+    final long syncBytesInterval = getSyncBytesInterval(pcs) / getConsumedBytesSinceLastSync().size();
+    boolean shouldSync = false;
+    if (!record.getKey().isControlMessage()) {
+      shouldSync = syncBytesInterval > 0 && (getConsumedBytesSinceLastSync().get(kafkaUrl) >= syncBytesInterval);
+    }
+    return shouldSync;
   }
 
   /**
@@ -2723,11 +2748,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * 1. Every ControlMessage
    * 2. Record count based strategy, which doesn't work well for stores with very small key/value pairs.
    */
-  private boolean shouldSyncOffset(
+  boolean shouldSyncOffset(
       PartitionConsumptionState pcs,
-      long syncBytesInterval,
       DefaultPubSubMessage record,
       LeaderProducedRecordContext leaderProducedRecordContext) {
+    if (isGlobalRtDivEnabled()) {
+      return false; // If Global RT DIV is enabled, OffsetRecord is synced by ConsumptionTask rather than the Drainer
+    }
+
+    final long syncBytesInterval = getSyncBytesInterval(pcs);
     boolean syncOffset = false;
     if (record.getKey().isControlMessage()) {
       ControlMessage controlMessage = (leaderProducedRecordContext == null
@@ -3788,9 +3817,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     boolean metricsEnabled = emitMetrics.get();
     boolean traceEnabled = LOGGER.isTraceEnabled();
     long startTimeNs = (metricsEnabled || traceEnabled) ? System.nanoTime() : 0;
+    boolean emitRecordLevelMetrics = metricsEnabled && recordLevelMetricEnabled.get();
 
     switch (messageType) {
       case PUT:
+      case GLOBAL_RT_DIV:
         // If single-threaded, we can re-use (and clobber) the same Put instance. // TODO: explore GC tuning later.
         Put put;
         if (leaderProducedRecordContext == null) {
@@ -3804,14 +3835,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         keyLen = keyBytes.length;
         // update checksum for this PUT message if needed.
         partitionConsumptionState.maybeUpdateExpectedChecksum(keyBytes, put);
-        if (metricsEnabled && recordLevelMetricEnabled.get() && put.getSchemaId() == CHUNK_MANIFEST_SCHEMA_ID) {
+        if (emitRecordLevelMetrics && put.getSchemaId() == CHUNK_MANIFEST_SCHEMA_ID && messageType == MessageType.PUT) {
           // This must be done before the recordTransformer modifies the putValue, otherwise the size will be incorrect.
           recordAssembledRecordSize(keyLen, put.getPutValue(), put.getReplicationMetadataPayload(), currentTimeMs);
         }
 
         int writerSchemaId = put.getSchemaId();
 
-        if (recordTransformer != null) {
+        if (recordTransformer != null && messageType == MessageType.PUT) {
           long recordTransformerStartTime = System.nanoTime();
           ByteBufferValueRecord<ByteBuffer> assembledRecord = chunkAssembler.bufferAndAssembleRecord(
               consumerRecord.getTopicPartition(),
@@ -3897,7 +3928,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (writerSchemaId > 0) {
           valueSchemaId = writerSchemaId;
         }
-        if (metricsEnabled && recordLevelMetricEnabled.get()) {
+        if (emitRecordLevelMetrics) {
           hostLevelIngestionStats
               .recordStorageEnginePutLatency(LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs), currentTimeMs);
         }
@@ -3980,7 +4011,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           kafkaKey.getKey());
     }
 
-    if (emitMetrics.get() && recordLevelMetricEnabled.get()) {
+    if (emitRecordLevelMetrics) {
       hostLevelIngestionStats.recordKeySize(keyLen, currentTimeMs);
       hostLevelIngestionStats.recordValueSize(valueLen, currentTimeMs);
     }
@@ -4774,5 +4805,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (isHybridAggregateMode()) {
       getReadyToServeChecker().apply(partitionConsumptionState);
     }
+  }
+
+  VeniceConcurrentHashMap<String, Long> getConsumedBytesSinceLastSync() {
+    return consumedBytesSinceLastSync; // mainly for unit test mocks
+  }
+
+  boolean isGlobalRtDivEnabled() {
+    return isGlobalRtDivEnabled; // mainly for unit test mocks
   }
 }

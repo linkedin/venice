@@ -1931,6 +1931,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertFalse(updateStore.blobTransferEnabled);
     Assert.assertEquals(updateStore.maxRecordSizeBytes, 7777);
     Assert.assertEquals(updateStore.maxNearlineRecordSizeBytes, 6666);
+    Assert.assertNull(updateStore.targetSwapRegion);
     // Disable Access Control
     accessControlled = false;
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setAccessControlled(accessControlled));

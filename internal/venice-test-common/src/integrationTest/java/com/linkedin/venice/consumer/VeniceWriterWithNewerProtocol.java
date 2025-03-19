@@ -20,7 +20,7 @@ class VeniceWriterWithNewerProtocol extends VeniceWriter<String, String, byte[]>
   }
 
   @Override
-  protected KafkaMessageEnvelope getKafkaMessageEnvelope(
+  public KafkaMessageEnvelope getKafkaMessageEnvelope(
       MessageType messageType,
       boolean isEndOfSegment,
       int partition,

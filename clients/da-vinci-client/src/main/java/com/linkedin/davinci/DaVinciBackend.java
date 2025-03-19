@@ -10,6 +10,7 @@ import static java.lang.Thread.currentThread;
 
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferManagerBuilder;
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.blobtransfer.P2PBlobTransferConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
@@ -303,7 +304,8 @@ public class DaVinciBackend implements Closeable {
             "Ingestion isolated and Cache are incompatible configs!!  Aborting start up!");
       }
 
-      if (backendConfig.isBlobTransferManagerEnabled()) {
+      if (backendConfig.isBlobTransferManagerEnabled() && backendConfig.isBlobTransferSslEnabled()
+          && backendConfig.isBlobTransferAclEnabled()) {
         aggVersionedBlobTransferStats =
             new AggVersionedBlobTransferStats(metricsRepository, storeRepository, configLoader.getVeniceServerConfig());
 
@@ -327,6 +329,8 @@ public class DaVinciBackend implements Closeable {
             .setReadOnlyStoreRepository(readOnlyStoreRepository)
             .setStorageEngineRepository(storageService.getStorageEngineRepository())
             .setAggVersionedBlobTransferStats(aggVersionedBlobTransferStats)
+            .setBlobTransferSSLFactory(BlobTransferUtils.createSSLFactoryForBlobTransferInDVC(configLoader))
+            .setBlobTransferAclHandler(BlobTransferUtils.createAclHandler(configLoader))
             .build();
       } else {
         aggVersionedBlobTransferStats = null;

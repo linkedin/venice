@@ -63,7 +63,7 @@ public class BlobP2PTransferAmongServersTest {
     }
   }
 
-  @Test(singleThreaded = true, timeOut = 180000)
+  @Test(singleThreaded = true, timeOut = 240000)
   public void testBlobP2PTransferAmongServersForBatchStore() throws Exception {
     cluster = initializeVeniceCluster();
 
@@ -97,13 +97,13 @@ public class BlobP2PTransferAmongServersTest {
     }
 
     cluster.stopAndRestartVeniceServer(server1Port);
-    TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
       Assert.assertTrue(server1.isRunning());
     });
 
     // wait for server 1
     cluster.getVeniceControllers().forEach(controller -> {
-      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+      TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
         Assert.assertEquals(
             controller.getController()
                 .getVeniceControllerService()
@@ -299,7 +299,10 @@ public class BlobP2PTransferAmongServersTest {
         .numberOfServers(0)
         .numberOfRouters(0)
         .replicationFactor(2)
+        .sslToStorageNodes(true)
+        .sslToKafka(false)
         .build();
+
     VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(options);
     // add first server
     Properties serverProperties = new Properties();
@@ -313,7 +316,13 @@ public class BlobP2PTransferAmongServersTest {
     serverProperties.setProperty(ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, String.valueOf(port1));
     serverProperties.setProperty(ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, String.valueOf(port2));
     serverProperties.setProperty(ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED, "true");
-    veniceClusterWrapper.addVeniceServer(new Properties(), serverProperties);
+    serverProperties.setProperty(ConfigKeys.BLOB_TRANSFER_SSL_ENABLED, "true");
+    serverProperties.setProperty(ConfigKeys.BLOB_TRANSFER_ACL_ENABLED, "true");
+
+    Properties serverFeatureProperties = new Properties();
+    serverFeatureProperties.put(VeniceServerWrapper.SERVER_ENABLE_SSL, "true");
+
+    veniceClusterWrapper.addVeniceServer(serverFeatureProperties, serverProperties);
     // get the first port id for finding first server.
     server1Port = veniceClusterWrapper.getVeniceServers().get(0).getPort();
 
@@ -329,7 +338,7 @@ public class BlobP2PTransferAmongServersTest {
       serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "true");
     }
 
-    veniceClusterWrapper.addVeniceServer(new Properties(), serverProperties);
+    veniceClusterWrapper.addVeniceServer(serverFeatureProperties, serverProperties);
     // get the second port num for finding second server,
     // because the order of servers is not guaranteed, need to exclude the first server.
     for (VeniceServerWrapper server: veniceClusterWrapper.getVeniceServers()) {
@@ -384,7 +393,7 @@ public class BlobP2PTransferAmongServersTest {
     LOGGER.info("**TIME** VPJ" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - vpjStart));
   }
 
-  @Test(singleThreaded = true, timeOut = 180000)
+  @Test(singleThreaded = true, timeOut = 240000)
   public void testBlobP2PTransferAmongServersForHybridStore() throws Exception {
     cluster = initializeVeniceCluster();
 
@@ -461,7 +470,7 @@ public class BlobP2PTransferAmongServersTest {
       });
     });
 
-    TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
       for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
         File file = new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
         Boolean fileExisted = Files.exists(file.toPath());
@@ -475,7 +484,7 @@ public class BlobP2PTransferAmongServersTest {
     });
 
     // server 1 and 2 offset record should be the same
-    TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
       for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
         OffsetRecord offsetServer1 =
             server1.getVeniceServer().getStorageMetadataService().getLastOffset(storeName + "_v1", partitionId);

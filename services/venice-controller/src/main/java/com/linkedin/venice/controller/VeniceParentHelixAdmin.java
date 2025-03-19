@@ -143,7 +143,6 @@ import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
-import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controller.supersetschema.DefaultSupersetSchemaGenerator;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controller.util.ParentControllerConfigUpdateUtils;
@@ -159,6 +158,7 @@ import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.ReadyForDataRecoveryResponse;
 import com.linkedin.venice.controllerapi.RegionPushDetailsResponse;
 import com.linkedin.venice.controllerapi.RepushInfo;
+import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.SchemaUsageResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -1952,14 +1952,6 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * Unsupported operation in the parent controller.
-   */
-  @Override
-  public Version peekNextVersion(String clusterName, String storeName) {
-    throw new VeniceUnsupportedOperationException("peekNextVersion");
-  }
-
-  /**
    * @see Admin#deleteAllVersionsInStore(String, String)
    */
   @Override
@@ -2683,9 +2675,8 @@ public class VeniceParentHelixAdmin implements Admin {
           .map(addToUpdatedConfigList(updatedConfigsList, NEARLINE_PRODUCER_COUNT_PER_WRITER))
           .orElseGet(currStore::getNearlineProducerCountPerWriter);
 
-      setStore.targetSwapRegion = params.getTargetSwapRegion()
-          .map(addToUpdatedConfigList(updatedConfigsList, TARGET_SWAP_REGION))
-          .orElseGet(currStore::getTargetSwapRegion);
+      setStore.targetSwapRegion =
+          params.getTargetSwapRegion().map(addToUpdatedConfigList(updatedConfigsList, TARGET_SWAP_REGION)).orElse(null);
 
       setStore.targetSwapRegionWaitTime = params.getTargetRegionSwapWaitTime()
           .map(addToUpdatedConfigList(updatedConfigsList, TARGET_SWAP_REGION_WAIT_TIME))
@@ -4083,7 +4074,7 @@ public class VeniceParentHelixAdmin implements Admin {
       try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
         ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
         Store parentStore = repository.getStore(storeName);
-        int newVersion = parentStore.peekNextVersion().getNumber();
+        int newVersion = parentStore.peekNextVersionNumber();
         parentStore.setLargestUsedVersionNumber(newVersion);
         repository.updateStore(parentStore);
         LOGGER.info(
@@ -4986,8 +4977,16 @@ public class VeniceParentHelixAdmin implements Admin {
    * see {@link Admin#compactStore}
    */
   @Override
-  public RepushJobResponse compactStore(RepushJobRequest repushJobRequest) {
-    throw new UnsupportedOperationException("This function is implemented in VeniceHelixAdmin.");
+  public RepushJobResponse compactStore(RepushJobRequest repushJobRequest) throws Exception {
+    // TODO:
+    // Repush implementation today with no parameter adjustments does a repush to all colo's. There's some discussion
+    // about if this should instead be federated out and if this should be done in parent at all. Considering today
+    // we don't offer parameter adjustments to the compaction call, it makes sense to have the parent controller
+    // be able to invoke an 'all colo's now push' style of repush, and child colos do single region pushes.
+    // But when that day comes that we implement that kind of behavior dichotomy, we should code here that either honors
+    // what's been passed in (parent getting a request for a repush in a child colo should forward that along) OR the
+    // parent should just abort the request and return an error.
+    return veniceHelixAdmin.compactStore(repushJobRequest);
   }
 
   @Override
