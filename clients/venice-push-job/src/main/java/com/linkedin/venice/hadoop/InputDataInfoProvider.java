@@ -61,7 +61,7 @@ public interface InputDataInfoProvider extends Closeable {
 
   InputDataInfo validateInputAndGetInfo(String inputUri) throws Exception;
 
-  void initZstdConfig(int numFiles);
+  PushJobZstdConfig initZstdConfig(int numFiles);
 
   /**
    * This function loads training samples from recordReader abstraction for building the Zstd dictionary.
