@@ -6,9 +6,11 @@ import java.util.Map;
 
 
 /**
- * This enum is used to map the HttpResponseStatus to an Enum implementing VeniceDimensionInterface.
+ * This is used to map all values of {@link HttpResponseStatus} to an Enum implementing
+ * VeniceDimensionInterface to be able to use it in {@link com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum}
+ * or other similar classes.
  */
-public enum HttpResponseStatusCode implements VeniceDimensionInterface {
+public enum HttpResponseStatusEnum implements VeniceDimensionInterface {
   CONTINUE(HttpResponseStatus.CONTINUE), SWITCHING_PROTOCOLS(HttpResponseStatus.SWITCHING_PROTOCOLS),
   PROCESSING(HttpResponseStatus.PROCESSING), OK(HttpResponseStatus.OK), CREATED(HttpResponseStatus.CREATED),
   ACCEPTED(HttpResponseStatus.ACCEPTED),
@@ -47,29 +49,29 @@ public enum HttpResponseStatusCode implements VeniceDimensionInterface {
   INSUFFICIENT_STORAGE(HttpResponseStatus.INSUFFICIENT_STORAGE), NOT_EXTENDED(HttpResponseStatus.NOT_EXTENDED),
   NETWORK_AUTHENTICATION_REQUIRED(HttpResponseStatus.NETWORK_AUTHENTICATION_REQUIRED), UNKNOWN;
 
-  private final String code;
-  private final HttpResponseStatus httpResponseStatus;
+  private final String codeAsString;
+  private final int codeAsInt;
 
-  HttpResponseStatusCode(HttpResponseStatus httpResponseStatus) {
-    this.httpResponseStatus = httpResponseStatus;
-    this.code = httpResponseStatus.codeAsText().toString();
+  HttpResponseStatusEnum(HttpResponseStatus httpResponseStatus) {
+    this.codeAsString = httpResponseStatus.codeAsText().toString();
+    this.codeAsInt = httpResponseStatus.code();
   }
 
-  HttpResponseStatusCode() {
-    this.httpResponseStatus = null;
-    this.code = "0";
+  HttpResponseStatusEnum() {
+    this.codeAsString = "0";
+    this.codeAsInt = 0;
   }
 
-  private static final Map<Integer, HttpResponseStatusCode> statusToEnumMap;
+  private static final Map<Integer, HttpResponseStatusEnum> statusToEnumMap;
 
   static {
     statusToEnumMap = new HashMap<>();
-    for (HttpResponseStatusCode enumStatus: HttpResponseStatusCode.values()) {
-      statusToEnumMap.put(enumStatus.httpResponseStatus == null ? 0 : enumStatus.httpResponseStatus.code(), enumStatus);
+    for (HttpResponseStatusEnum enumStatus: HttpResponseStatusEnum.values()) {
+      statusToEnumMap.put(enumStatus.codeAsInt, enumStatus);
     }
   }
 
-  public static HttpResponseStatusCode transformHttpResponseStatusToHttpResponseStatusCode(HttpResponseStatus status) {
+  public static HttpResponseStatusEnum transformHttpResponseStatusToHttpResponseStatusEnum(HttpResponseStatus status) {
     return statusToEnumMap.getOrDefault(status.code(), UNKNOWN);
   }
 
@@ -84,6 +86,6 @@ public enum HttpResponseStatusCode implements VeniceDimensionInterface {
 
   @Override
   public String getDimensionValue() {
-    return code;
+    return codeAsString;
   }
 }

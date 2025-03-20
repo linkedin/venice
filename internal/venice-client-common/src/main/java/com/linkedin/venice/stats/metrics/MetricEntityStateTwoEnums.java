@@ -110,6 +110,13 @@ public class MetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensionInte
     return new EnumMap<>(enumTypeClass1);
   }
 
+  /**
+   * Manages the nested EnumMap structure for lazy initialization of Attributes.
+   * The structure is a two-level nested EnumMap: EnumMap<E1, EnumMap<E2, Attributes>>.
+   * This allows efficient retrieval of Attributes based on two enum dimensions (E1, E2)
+   *
+   * For thread safety considerations, refer {@link MetricEntityStateOneEnum#getAttributes}.
+   */
   Attributes getAttributes(E1 dimension1, E2 dimension2) {
     if (!emitOpenTelemetryMetrics()) {
       return null;

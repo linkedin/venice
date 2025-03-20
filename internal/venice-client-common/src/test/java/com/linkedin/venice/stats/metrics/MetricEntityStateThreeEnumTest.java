@@ -16,9 +16,13 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.utils.Time;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
 import java.util.EnumMap;
@@ -26,6 +30,11 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 import org.mockito.Mockito;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -392,6 +401,134 @@ public class MetricEntityStateThreeEnumTest {
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
+    }
+  }
+
+  /**
+   * Test concurrent access to MetricEntityStateThreeEnums to ensure thread safety and correctness and the idempotent
+   * nature of the result stored in cache: by creating multiple threads that concurrently write and read to the
+   * MetricEntityStateThreeEnums instance. It verifies that the attributes are correctly retrieved everytime while
+   * there are concurrent writes and the values are always the same for each set of enums.
+   */
+  @Test(timeOut = 20 * Time.MS_PER_SECOND, invocationCount = 10)
+  public void testConcurrentAccess() throws InterruptedException {
+    MetricEntity mockMetricEntity = Mockito.mock(MetricEntity.class);
+    Set<VeniceMetricsDimensions> dimensionsSet = new HashSet<>();
+    dimensionsSet.add(VENICE_REQUEST_RETRY_ABORT_REASON);
+    dimensionsSet.add(HttpResponseStatusEnum.CONTINUE.getDimensionName());
+    dimensionsSet.add(HttpResponseStatusCodeCategory.UNKNOWN.getDimensionName());
+    dimensionsSet.add(MULTI_GET_STREAMING.getDimensionName());
+    doReturn(dimensionsSet).when(mockMetricEntity).getDimensionsList();
+    Map<VeniceMetricsDimensions, String> baseDimensionsMap = new HashMap<>();
+    baseDimensionsMap.put(VENICE_REQUEST_RETRY_ABORT_REASON, SLOW_ROUTE.getDimensionValue());
+
+    // use a metric and populate dimensions to use as a base for comparison
+    MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, RequestType> metricEntityStateForComparison =
+        MetricEntityStateThreeEnums.create(
+            mockMetricEntity,
+            mockOtelRepository,
+            baseDimensionsMap,
+            HttpResponseStatusEnum.class,
+            HttpResponseStatusCodeCategory.class,
+            RequestType.class);
+    for (HttpResponseStatusEnum enum1: HttpResponseStatusEnum.values()) {
+      for (HttpResponseStatusCodeCategory enum2: HttpResponseStatusCodeCategory.values()) {
+        for (RequestType enum3: RequestType.values()) {
+          Attributes attributes = metricEntityStateForComparison.getAttributes(enum1, enum2, enum3);
+          assertNotNull(attributes);
+        }
+      }
+    }
+    EnumMap<HttpResponseStatusEnum, EnumMap<HttpResponseStatusCodeCategory, EnumMap<RequestType, Attributes>>> attributesEnumMapForComparison =
+        metricEntityStateForComparison.getAttributesEnumMap();
+
+    // create a new metric keeping everything the same to concurrently access for testing
+    MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, RequestType> metricEntityStateForTest =
+        MetricEntityStateThreeEnums.create(
+            mockMetricEntity,
+            mockOtelRepository,
+            baseDimensionsMap,
+            HttpResponseStatusEnum.class,
+            HttpResponseStatusCodeCategory.class,
+            RequestType.class);
+
+    int writerThreads = 10;
+    int readerThreads = 10;
+    int totalThreads = writerThreads + readerThreads;
+    int iterations = 100;
+
+    ExecutorService executor = Executors.newFixedThreadPool(totalThreads);
+    CountDownLatch startLatch = new CountDownLatch(1);
+    CountDownLatch finishLatch = new CountDownLatch(totalThreads);
+
+    // Writer threads
+    for (int threadNum = 0; threadNum < writerThreads; threadNum++) {
+      executor.submit(() -> {
+        try {
+          startLatch.await();
+          // Random sleep of 0-2 ms to randomize the order of execution
+          Thread.sleep(ThreadLocalRandom.current().nextInt(3));
+          for (HttpResponseStatusEnum enum1: HttpResponseStatusEnum.values()) {
+            for (HttpResponseStatusCodeCategory enum2: HttpResponseStatusCodeCategory.values()) {
+              for (RequestType enum3: RequestType.values()) {
+                metricEntityStateForTest.record(1L, enum1, enum2, enum3);
+                metricEntityStateForTest.record(1.0, enum1, enum2, enum3);
+                metricEntityStateForTest.record(100.0, enum1, enum2, enum3);
+              }
+            }
+          }
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+        } finally {
+          finishLatch.countDown();
+        }
+      });
+    }
+
+    // Reader threads
+    for (int threadNum = 0; threadNum < readerThreads; threadNum++) {
+      executor.submit(() -> {
+        try {
+          startLatch.await();
+          for (int j = 0; j < iterations; j++) {
+            for (HttpResponseStatusEnum enum1: HttpResponseStatusEnum.values()) {
+              for (HttpResponseStatusCodeCategory enum2: HttpResponseStatusCodeCategory.values()) {
+                for (RequestType enum3: RequestType.values()) {
+                  Attributes attributes = metricEntityStateForTest.getAttributes(enum1, enum2, enum3);
+                  assertNotNull(attributes);
+                  assertEquals(attributes, attributesEnumMapForComparison.get(enum1).get(enum2).get(enum3));
+                }
+              }
+            }
+          }
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+        } finally {
+          finishLatch.countDown();
+        }
+      });
+    }
+
+    // start executing all threads
+    startLatch.countDown();
+    // wait to finish
+    finishLatch.await();
+
+    executor.shutdownNow();
+    executor.awaitTermination(5, TimeUnit.SECONDS);
+
+    // Verify the end result
+    EnumMap<HttpResponseStatusEnum, EnumMap<HttpResponseStatusCodeCategory, EnumMap<RequestType, Attributes>>> attributesEnumMapForTest =
+        metricEntityStateForTest.getAttributesEnumMap();
+
+    for (HttpResponseStatusEnum enum1: HttpResponseStatusEnum.values()) {
+      for (HttpResponseStatusCodeCategory enum2: HttpResponseStatusCodeCategory.values()) {
+        for (RequestType enum3: RequestType.values()) {
+          assertEquals(
+              attributesEnumMapForTest.get(enum1).get(enum2).get(enum3),
+              attributesEnumMapForComparison.get(enum1).get(enum2).get(enum3));
+        }
+      }
     }
   }
 }

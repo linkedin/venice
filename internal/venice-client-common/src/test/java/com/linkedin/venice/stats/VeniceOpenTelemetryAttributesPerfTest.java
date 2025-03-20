@@ -1,12 +1,12 @@
 package com.linkedin.venice.stats;
 
-import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCode.transformHttpResponseStatusToHttpResponseStatusCode;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
+import static com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum.transformHttpResponseStatusToHttpResponseStatusEnum;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 
-import com.linkedin.venice.stats.dimensions.HttpResponseStatusCode;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntity;
@@ -38,7 +38,7 @@ public class VeniceOpenTelemetryAttributesPerfTest {
     int numStores = 500;
     int iterations = 1000000000;
 
-    List<MetricEntityStateThreeEnums<HttpResponseStatusCode, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory>> metricList =
+    List<MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory>> metricList =
         new ArrayList<>();
     VeniceMetricsConfig mockMetricsConfig = Mockito.mock(VeniceMetricsConfig.class);
     when(mockMetricsConfig.emitOtelMetrics()).thenReturn(true);
@@ -82,7 +82,7 @@ public class VeniceOpenTelemetryAttributesPerfTest {
               metricEntity,
               otelRepository,
               baseMetricDimensionsMap,
-              HttpResponseStatusCode.class,
+              HttpResponseStatusEnum.class,
               HttpResponseStatusCodeCategory.class,
               VeniceResponseStatusCategory.class));
     }
@@ -91,19 +91,19 @@ public class VeniceOpenTelemetryAttributesPerfTest {
     // Start test
     for (int i = 0; i < iterations; i++) {
       int j = RandomGenUtils.getRandomIntWithin(metricList.size());
-      MetricEntityStateThreeEnums<HttpResponseStatusCode, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> metricEntityState =
+      MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> metricEntityState =
           metricList.get(j);
       j = RandomGenUtils.getRandomIntWithin(possibleStatuses.length);
       HttpResponseStatus httpResponseStatus = possibleStatuses[j];
-      HttpResponseStatusCode httpResponseStatusCode =
-          transformHttpResponseStatusToHttpResponseStatusCode(httpResponseStatus);
+      HttpResponseStatusEnum httpResponseStatusEnum =
+          transformHttpResponseStatusToHttpResponseStatusEnum(httpResponseStatus);
       HttpResponseStatusCodeCategory httpResponseStatusCodeCategory =
           getVeniceHttpResponseStatusCodeCategory(httpResponseStatus);
       j = RandomGenUtils.getRandomIntWithin(responseCategories.length);
       VeniceResponseStatusCategory veniceResponseStatusCategory = responseCategories[j];
       if (createAttributes) {
         Attributes attributes = metricEntityState
-            .getAttributes(httpResponseStatusCode, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
+            .getAttributes(httpResponseStatusEnum, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
         assertEquals(attributes.size(), 6);
       }
     }

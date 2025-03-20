@@ -9,8 +9,8 @@ import static com.linkedin.venice.router.stats.RouterMetricEntity.KEY_COUNT;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.RETRY_COUNT;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.RETRY_DELAY;
 import static com.linkedin.venice.stats.AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT;
-import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCode.transformHttpResponseStatusToHttpResponseStatusCode;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
+import static com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum.transformHttpResponseStatusToHttpResponseStatusEnum;
 import static com.linkedin.venice.stats.dimensions.RequestRetryAbortReason.DELAY_CONSTRAINT;
 import static com.linkedin.venice.stats.dimensions.RequestRetryAbortReason.MAX_RETRY_ROUTE_LIMIT;
 import static com.linkedin.venice.stats.dimensions.RequestRetryAbortReason.NO_AVAILABLE_REPLICA;
@@ -31,8 +31,8 @@ import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
-import com.linkedin.venice.stats.dimensions.HttpResponseStatusCode;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
 import com.linkedin.venice.stats.dimensions.RequestRetryAbortReason;
 import com.linkedin.venice.stats.dimensions.RequestRetryType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
@@ -67,21 +67,21 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor requestSensor;
 
   /** metrics to track response handling */
-  private final MetricEntityStateThreeEnums<HttpResponseStatusCode, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> healthyRequestMetric;
-  private final MetricEntityStateThreeEnums<HttpResponseStatusCode, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> unhealthyRequestMetric;
-  private final MetricEntityStateThreeEnums<HttpResponseStatusCode, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> tardyRequestMetric;
-  private final MetricEntityStateThreeEnums<HttpResponseStatusCode, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> throttledRequestMetric;
-  private final MetricEntityStateThreeEnums<HttpResponseStatusCode, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> badRequestMetric;
+  private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> healthyRequestMetric;
+  private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> unhealthyRequestMetric;
+  private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> tardyRequestMetric;
+  private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> throttledRequestMetric;
+  private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> badRequestMetric;
 
   private final Sensor healthyRequestRateSensor;
   private final Sensor tardyRequestRatioSensor;
 
   /** latency metrics */
   private final Sensor latencyTehutiSensor; // This can be removed while removing tehuti
-  private final MetricEntityStateThreeEnums<HttpResponseStatusCode, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> healthyLatencyMetric;
-  private final MetricEntityStateThreeEnums<HttpResponseStatusCode, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> unhealthyLatencyMetric;
-  private final MetricEntityStateThreeEnums<HttpResponseStatusCode, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> tardyLatencyMetric;
-  private final MetricEntityStateThreeEnums<HttpResponseStatusCode, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> throttledLatencyMetric;
+  private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> healthyLatencyMetric;
+  private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> unhealthyLatencyMetric;
+  private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> tardyLatencyMetric;
+  private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> throttledLatencyMetric;
 
   /** retry metrics */
   private final MetricEntityStateOneEnum<RequestRetryType> retryCountMetric;
@@ -96,7 +96,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final MetricEntityStateOneEnum<RequestRetryAbortReason> noAvailableReplicaAbortedRetryCountMetric;
 
   /** key count metrics */
-  private final MetricEntityStateThreeEnums<HttpResponseStatusCode, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> keyCountMetric;
+  private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> keyCountMetric;
   private final Sensor keyNumSensor;
   private final Sensor badRequestKeyCountSensor;
 
@@ -192,7 +192,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         RouterTehutiMetricNameEnum.HEALTHY_REQUEST,
         Arrays.asList(new Count(), healthyRequestRate),
         baseDimensionsMap,
-        HttpResponseStatusCode.class,
+        HttpResponseStatusEnum.class,
         HttpResponseStatusCodeCategory.class,
         VeniceResponseStatusCategory.class);
 
@@ -203,7 +203,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         RouterTehutiMetricNameEnum.UNHEALTHY_REQUEST,
         singletonList(new Count()),
         baseDimensionsMap,
-        HttpResponseStatusCode.class,
+        HttpResponseStatusEnum.class,
         HttpResponseStatusCodeCategory.class,
         VeniceResponseStatusCategory.class);
 
@@ -214,7 +214,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         RouterTehutiMetricNameEnum.TARDY_REQUEST,
         Arrays.asList(new Count(), tardyRequestRate),
         baseDimensionsMap,
-        HttpResponseStatusCode.class,
+        HttpResponseStatusEnum.class,
         HttpResponseStatusCodeCategory.class,
         VeniceResponseStatusCategory.class);
 
@@ -225,7 +225,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         RouterTehutiMetricNameEnum.THROTTLED_REQUEST,
         singletonList(new Count()),
         baseDimensionsMap,
-        HttpResponseStatusCode.class,
+        HttpResponseStatusEnum.class,
         HttpResponseStatusCodeCategory.class,
         VeniceResponseStatusCategory.class);
 
@@ -236,7 +236,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         RouterTehutiMetricNameEnum.BAD_REQUEST,
         singletonList(new Count()),
         baseDimensionsMap,
-        HttpResponseStatusCode.class,
+        HttpResponseStatusEnum.class,
         HttpResponseStatusCodeCategory.class,
         VeniceResponseStatusCategory.class);
 
@@ -253,7 +253,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
                 getName(),
                 getFullMetricName(RouterTehutiMetricNameEnum.HEALTHY_REQUEST_LATENCY.getMetricName()))),
         baseDimensionsMap,
-        HttpResponseStatusCode.class,
+        HttpResponseStatusEnum.class,
         HttpResponseStatusCodeCategory.class,
         VeniceResponseStatusCategory.class);
     unhealthyLatencyMetric = MetricEntityStateThreeEnums.create(
@@ -263,7 +263,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         RouterTehutiMetricNameEnum.UNHEALTHY_REQUEST_LATENCY,
         Arrays.asList(new Avg(), new Max(0)),
         baseDimensionsMap,
-        HttpResponseStatusCode.class,
+        HttpResponseStatusEnum.class,
         HttpResponseStatusCodeCategory.class,
         VeniceResponseStatusCategory.class);
 
@@ -274,7 +274,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         RouterTehutiMetricNameEnum.TARDY_REQUEST_LATENCY,
         Arrays.asList(new Avg(), new Max(0)),
         baseDimensionsMap,
-        HttpResponseStatusCode.class,
+        HttpResponseStatusEnum.class,
         HttpResponseStatusCodeCategory.class,
         VeniceResponseStatusCategory.class);
 
@@ -285,7 +285,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         RouterTehutiMetricNameEnum.THROTTLED_REQUEST_LATENCY,
         Arrays.asList(new Avg(), new Max(0)),
         baseDimensionsMap,
-        HttpResponseStatusCode.class,
+        HttpResponseStatusEnum.class,
         HttpResponseStatusCodeCategory.class,
         VeniceResponseStatusCategory.class);
 
@@ -364,7 +364,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         KEY_COUNT.getMetricEntity(),
         otelRepository,
         baseDimensionsMap,
-        HttpResponseStatusCode.class,
+        HttpResponseStatusEnum.class,
         HttpResponseStatusCodeCategory.class,
         VeniceResponseStatusCategory.class);
 
@@ -472,7 +472,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   public void recordUnhealthyRequest(HttpResponseStatus responseStatus) {
     unhealthyRequestMetric.record(
         1,
-        transformHttpResponseStatusToHttpResponseStatusCode(responseStatus),
+        transformHttpResponseStatusToHttpResponseStatusEnum(responseStatus),
         getVeniceHttpResponseStatusCodeCategory(responseStatus),
         VeniceResponseStatusCategory.FAIL);
   }
@@ -492,14 +492,14 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
       double latency,
       HttpResponseStatus responseStatus,
       VeniceResponseStatusCategory veniceResponseStatusCategory,
-      MetricEntityStateThreeEnums<HttpResponseStatusCode, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> requestMetric,
-      MetricEntityStateThreeEnums<HttpResponseStatusCode, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> latencyMetric) {
-    HttpResponseStatusCode httpResponseStatusCode = transformHttpResponseStatusToHttpResponseStatusCode(responseStatus);
+      MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> requestMetric,
+      MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> latencyMetric) {
+    HttpResponseStatusEnum httpResponseStatusEnum = transformHttpResponseStatusToHttpResponseStatusEnum(responseStatus);
     HttpResponseStatusCodeCategory httpResponseStatusCodeCategory =
         getVeniceHttpResponseStatusCodeCategory(responseStatus);
-    requestMetric.record(1, httpResponseStatusCode, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
-    keyCountMetric.record(keyNum, httpResponseStatusCode, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
-    latencyMetric.record(latency, httpResponseStatusCode, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
+    requestMetric.record(1, httpResponseStatusEnum, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
+    keyCountMetric.record(keyNum, httpResponseStatusEnum, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
+    latencyMetric.record(latency, httpResponseStatusEnum, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
   }
 
   public void recordUnavailableReplicaStreamingRequest() {
@@ -544,7 +544,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   public void recordThrottledRequest(HttpResponseStatus responseStatus) {
     throttledRequestMetric.record(
         1,
-        transformHttpResponseStatusToHttpResponseStatusCode(responseStatus),
+        transformHttpResponseStatusToHttpResponseStatusEnum(responseStatus),
         getVeniceHttpResponseStatusCodeCategory(responseStatus),
         VeniceResponseStatusCategory.FAIL);
   }
@@ -576,7 +576,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   public void recordBadRequest(HttpResponseStatus responseStatus) {
     badRequestMetric.record(
         1,
-        transformHttpResponseStatusToHttpResponseStatusCode(responseStatus),
+        transformHttpResponseStatusToHttpResponseStatusEnum(responseStatus),
         getVeniceHttpResponseStatusCodeCategory(responseStatus),
         VeniceResponseStatusCategory.FAIL);
   }
@@ -631,7 +631,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     badRequestKeyCountSensor.record(keyNum);
     keyCountMetric.record(
         keyNum,
-        transformHttpResponseStatusToHttpResponseStatusCode(responseStatus),
+        transformHttpResponseStatusToHttpResponseStatusEnum(responseStatus),
         getVeniceHttpResponseStatusCodeCategory(responseStatus),
         VeniceResponseStatusCategory.FAIL);
   }

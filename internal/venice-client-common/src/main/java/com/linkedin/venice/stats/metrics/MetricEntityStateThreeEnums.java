@@ -120,6 +120,13 @@ public class MetricEntityStateThreeEnums<E1 extends Enum<E1> & VeniceDimensionIn
     return new EnumMap<>(enumTypeClass1);
   }
 
+  /**
+   * Manages the nested EnumMap structure for lazy initialization of Attributes.
+   * The structure is a three-level nested EnumMap: EnumMap<E1, EnumMap<E2, EnumMap<E3, Attributes>>>.
+   * This allows efficient retrieval of Attributes based on three enum dimensions (E1, E2, E3).
+   *
+   * For thread safety considerations, refer {@link MetricEntityStateOneEnum#getAttributes}.
+   */
   public Attributes getAttributes(E1 dimension1, E2 dimension2, E3 dimension3) {
     if (!emitOpenTelemetryMetrics()) {
       return null;
