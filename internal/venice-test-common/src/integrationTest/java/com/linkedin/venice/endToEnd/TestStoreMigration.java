@@ -212,6 +212,10 @@ public class TestStoreMigration {
     Assert.assertEquals(
         storeInfo.getHybridStoreConfig().getRealTimeTopicName(),
         storeName + "_v1" + Version.REAL_TIME_TOPIC_SUFFIX);
+    // we set largestUsedRTVersionNumber=2 before VPJ, so the version would have rt=<store_name>_v2_rt
+    Assert.assertEquals(
+        storeInfo.getVersions().get(0).getHybridStoreConfig().getRealTimeTopicName(),
+        storeName + "_v2" + Version.REAL_TIME_TOPIC_SUFFIX);
 
     // Test abort migration on parent controller
     try (ControllerClient srcParentControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
