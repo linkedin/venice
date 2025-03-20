@@ -379,13 +379,14 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
     if (!isRealTimeTopic(kafkaTopic)) {
       throw new VeniceException("Kafka topic: " + kafkaTopic + " is not a real-time topic");
     }
+
     int lastIndexOfVersionSeparator = kafkaTopic.lastIndexOf(VERSION_SEPARATOR);
     // we only care about the prefix, so providing topic in place of store should work
     if (lastIndexOfVersionSeparator != -1 && Utils.isRTVersioningApplicable(kafkaTopic)) {
       return kafkaTopic.substring(0, lastIndexOfVersionSeparator);
-    } else {
-      return kafkaTopic.substring(0, kafkaTopic.length() - REAL_TIME_TOPIC_SUFFIX.length());
     }
+
+    return kafkaTopic.substring(0, kafkaTopic.length() - REAL_TIME_TOPIC_SUFFIX.length());
   }
 
   static String parseStoreFromStreamReprocessingTopic(String kafkaTopic) {

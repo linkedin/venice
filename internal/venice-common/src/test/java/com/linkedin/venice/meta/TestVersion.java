@@ -74,6 +74,10 @@ public class TestVersion {
   public void testParseStoreFromRealTimeTopic() {
     String validRealTimeTopic = "abc_rt";
     assertEquals(Version.parseStoreFromRealTimeTopic(validRealTimeTopic), "abc");
+
+    String validRealTimeTopic2 = "abc_v1_rt";
+    assertEquals(Version.parseStoreFromRealTimeTopic(validRealTimeTopic2), "abc");
+
     String invalidRealTimeTopic = "abc";
     try {
       Version.parseStoreFromRealTimeTopic(invalidRealTimeTopic);

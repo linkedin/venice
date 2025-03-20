@@ -5744,8 +5744,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 + " rewind time in seconds and offset or time lag threshold must be specified");
       }
 
-      String newRealTimeTopicName =
-          oldStore.getLargestUsedRTVersionNumber() > 0 && Utils.isRTVersioningApplicable(oldStore.getName())
+      String newRealTimeTopicName = oldStore.getLargestUsedRTVersionNumber() > DEFAULT_RT_VERSION_NUMBER
+          && Utils.isRTVersioningApplicable(oldStore.getName())
               ? oldStore.getName() + "_v" + oldStore.getLargestUsedRTVersionNumber() + Version.REAL_TIME_TOPIC_SUFFIX
               : DEFAULT_REAL_TIME_TOPIC_NAME;
 
