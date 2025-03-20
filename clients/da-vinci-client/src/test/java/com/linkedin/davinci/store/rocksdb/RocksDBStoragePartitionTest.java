@@ -296,9 +296,10 @@ public class RocksDBStoragePartitionTest {
     Options options = new Options();
     options.setCreateIfMissing(true);
 
+    int padding = 100;
     if (enableBlobFile) {
       options.setEnableBlobFiles(true);
-      options.setMinBlobSize(1);
+      options.setMinBlobSize(10);
       options.setBlobFileSize(2 * 1024 * 1024);
       options.setEnableBlobGarbageCollection(true);
       options.setBlobGarbageCollectionAgeCutoff(0.25);
@@ -307,7 +308,7 @@ public class RocksDBStoragePartitionTest {
     }
 
     int numberOfRecords = 101000;
-    Map<String, String> inputRecords = generateInput(numberOfRecords, sorted, 0);
+    Map<String, String> inputRecords = generateInput(numberOfRecords, sorted, padding);
     Properties extraProps = new Properties();
     if (enableBlobFile) {
       extraProps.put(ROCKSDB_BLOB_FILES_ENABLED, "true");
@@ -464,7 +465,7 @@ public class RocksDBStoragePartitionTest {
 
     assertTrue(
         storagePartition.getPartitionSizeInBytes() > (long) numberOfRecords
-            * (KEY_PREFIX.length() + VALUE_PREFIX.length()));
+            * (KEY_PREFIX.length() + VALUE_PREFIX.length() + padding));
 
     Options storeOptions = storagePartition.getOptions();
     Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 40);
