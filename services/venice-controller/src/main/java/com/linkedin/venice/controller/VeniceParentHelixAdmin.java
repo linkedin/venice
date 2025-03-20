@@ -4371,7 +4371,9 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public void updateAdminOperationProtocolVersion(String clusterName, Long adminOperationProtocolVersion) {
-    getVeniceHelixAdmin().updateAdminOperationProtocolVersion(clusterName, adminOperationProtocolVersion);
+    getVeniceHelixAdmin().checkControllerLeadershipFor(clusterName);
+    getVeniceHelixAdmin().getAdminConsumerService(clusterName)
+        .updateAdminOperationProtocolVersion(clusterName, adminOperationProtocolVersion);
   }
 
   /**

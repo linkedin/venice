@@ -217,8 +217,8 @@ public class AdminConsumptionTaskIntegrationTest {
 
     String clusterName = venice.getClusterNames()[0];
 
-    // Get the child controller
-    VeniceControllerWrapper controller = venice.getChildRegions().get(0).getLeaderController(clusterName);
+    // Get the parent controller
+    VeniceControllerWrapper controller = venice.getParentControllers().get(0);
     Admin admin = controller.getVeniceAdmin();
 
     AdminConsumerService adminConsumerService = controller.getAdminConsumerServiceByCluster(clusterName);
