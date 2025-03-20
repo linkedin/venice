@@ -1,0 +1,22 @@
+name: Auto Release Notes
+
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+" 
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create GitHub Release with Auto-Generated Notes
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
