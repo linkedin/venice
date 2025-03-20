@@ -315,6 +315,13 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
     @Override
     public void onVersionSwap(int currentVersion, int futureVersion, int partitionId) {
       /*
+       * ToDo: In the event of a version rollback, VSMs will be added to the VT again to the backup version.
+       *  This means that when we first encounter a VSM we will swap to the next version too early as we read
+       *  an old VSM. What we need to do here is ignore it until we consume the same VSM that the current version
+       *  has ingested. This means we need some coordination mechanism between the versions regarding VSM.
+       */
+
+      /*
        * Only the futureVersion should act on the version swap message (VSM).
        * The previousVersion will consume the VSM earlier than the futureVersion, leading to an early version swap.
        * This early swap causes the buffer to fill with records before the EOP, which is undesirable.
