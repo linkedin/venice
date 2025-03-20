@@ -1090,9 +1090,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       newStore.setNativeReplicationSourceFabric(config.getNativeReplicationSourceFabricAsDefaultForBatchOnly());
     }
     newStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
-    /* If this store existed previously, we do not want to use the same RT topic name that was used by the previous
-    store. To ensure this, increase largestUsedRTVersionNumber and new RT name will be different */
-    newStore.setLargestUsedRTVersionNumber(largestUsedRTVersionNumber + 1);
+    newStore.setLargestUsedRTVersionNumber(largestUsedRTVersionNumber);
   }
 
   /**
@@ -4731,11 +4729,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         : DEFAULT_REAL_TIME_TOPIC_NAME;
 
     store.getHybridStoreConfig().setRealTimeTopicName(newRealTimeTopicName);
-    // after partition count update, new VT, if is hybrid, has to use a new RT with the same partition count, so we
-    // increase
-    // `largestUsedRTVersionNumber`; this will ensure that a new RT is created when/if needed
-    store.setLargestUsedRTVersionNumber(store.getLargestUsedRTVersionNumber() + 1);
-    LOGGER.info("updated largestUsedRTVersionNumber to " + store.getLargestUsedRTVersionNumber());
   }
 
   void setStorePartitionerConfig(String clusterName, String storeName, PartitionerConfig partitionerConfig) {

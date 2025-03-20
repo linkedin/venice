@@ -90,11 +90,6 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
     Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
-  /*
-  This tests verifies the stores that are present before rolling out RT versioning changes.
-  If the store does not have `realTimeTopicName` and/or `largestUsedRTVersion` configs, that came in RT Versioning changes,
-  it should still be able to return the right RT name and all store operations and push should work.
-   */
   @Test(timeOut = TEST_TIMEOUT)
   public void testOldStoresWithHybridStoreVersioning() {
     String storeName = Utils.getUniqueString("TestOldStoresWithHybridStoreVersioning");

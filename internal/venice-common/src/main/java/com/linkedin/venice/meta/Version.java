@@ -1,5 +1,6 @@
 package com.linkedin.venice.meta;
 
+import static com.linkedin.venice.utils.Utils.SEPARATE_TOPIC_SUFFIX;
 import static java.lang.Character.isDigit;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -25,7 +26,7 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   String VERSION_SEPARATOR = "_v";
   String REAL_TIME_TOPIC_SUFFIX = "_rt";
   String STREAM_REPROCESSING_TOPIC_SUFFIX = "_sr";
-  String SEPARATE_REAL_TIME_TOPIC_SUFFIX = "_rt_sep";
+  String SEPARATE_REAL_TIME_TOPIC_SUFFIX = REAL_TIME_TOPIC_SUFFIX + SEPARATE_TOPIC_SUFFIX;
   /**
    * Special number indicating no replication metadata version is set.
    */
