@@ -6,7 +6,9 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PO
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.REPUSH_ORCHESTRATOR_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
@@ -20,6 +22,9 @@ import static com.linkedin.venice.utils.TestWriteUtils.DEFAULT_USER_DATA_RECORD_
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
@@ -36,6 +41,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.endToEnd.TestHybrid;
 import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -92,6 +98,11 @@ public class TestBootstrappingChangelogConsumer {
   private MetricsRepository metricsRepository;
   private String zkAddress;
 
+  // Log compaction test constants
+  private static final long TEST_LOG_COMPACTION_INTERVAL_MS = TimeUnit.SECONDS.toMillis(1);
+  private static final long TEST_LOG_COMPACTION_TIMEOUT = TEST_LOG_COMPACTION_INTERVAL_MS * 10; // ms
+  private static final long TEST_TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS = 0;
+
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     Utils.thisIsLocalhost();
@@ -101,6 +112,16 @@ public class TestBootstrappingChangelogConsumer {
     clusterConfig.put(PUSH_STATUS_STORE_ENABLED, true);
     clusterConfig.put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 3);
     clusterConfig.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
+
+    // log compaction controller configs
+    clusterConfig.setProperty(REPUSH_ORCHESTRATOR_CLASS_NAME, TestHybrid.TestRepushOrchestratorImpl.class.getName());
+    clusterConfig.setProperty(LOG_COMPACTION_ENABLED, "true");
+    // clusterConfig.setProperty(LOG_COMPACTION_SCHEDULING_ENABLED, "true");
+    // clusterConfig.setProperty(LOG_COMPACTION_INTERVAL_MS, String.valueOf(TEST_LOG_COMPACTION_INTERVAL_MS));
+    // clusterConfig.setProperty(
+    // TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS,
+    // String.valueOf(TEST_TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS));
+
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfServers(1)
         .numberOfRouters(1)
@@ -239,7 +260,7 @@ public class TestBootstrappingChangelogConsumer {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  @Test(timeOut = TEST_TIMEOUT * 2, priority = 3)
   public void testVeniceChangelogConsumerDaVinciRecordTransformerImpl() throws Exception {
     String storeName = Utils.getUniqueString("store");
     String inputDirPath = setUpStore(storeName);
@@ -322,10 +343,32 @@ public class TestBootstrappingChangelogConsumer {
       });
 
       // Change events should be from version 2 and 20 nearline events produced before
-      runNearlineJobAndVerifyConsumption(
+      startIndex = runNearlineJobAndVerifyConsumption(
           startIndex,
           storeName,
           2,
+          polledChangeEventsMap,
+          polledChangeEventsList,
+          bootstrappingVeniceChangelogConsumerList);
+
+      // Do a repush
+      props = defaultVPJProps(clusterWrapper, inputDirPath, storeName);
+      props.setProperty(SOURCE_KAFKA, "true");
+      props.setProperty(KAFKA_INPUT_BROKER_URL, clusterWrapper.getPubSubBrokerWrapper().getAddress());
+      props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+      TestWriteUtils.runPushJob("Run repush job v3", props);
+
+      clusterWrapper.useControllerClient(controllerClient -> {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+          Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 3);
+        });
+      });
+
+      // Change events should be from version 3 and 20 nearline events produced before
+      runNearlineJobAndVerifyConsumption(
+          startIndex,
+          storeName,
+          3,
           polledChangeEventsMap,
           polledChangeEventsList,
           bootstrappingVeniceChangelogConsumerList);
