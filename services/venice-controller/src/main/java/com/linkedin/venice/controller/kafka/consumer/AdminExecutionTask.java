@@ -524,6 +524,10 @@ public class AdminExecutionTask implements Callable<Void> {
       params.setLargestUsedVersionNumber(message.largestUsedVersionNumber);
     }
 
+    if (message.largestUsedRTVersionNumber != null) {
+      params.setLargestUsedRTVersionNumber(message.largestUsedRTVersionNumber);
+    }
+
     params.setNativeReplicationEnabled(message.nativeReplicationEnabled)
         .setPushStreamSourceAddress(
             message.pushStreamSourceAddress == null ? null : message.pushStreamSourceAddress.toString())
@@ -636,6 +640,7 @@ public class AdminExecutionTask implements Callable<Void> {
     String pushJobId = message.pushJobId.toString();
     int repushSourceVersion = message.repushSourceVersion;
     int versionNumber = message.versionNum;
+    int currentRTVersionNumber = message.currentRTVersionNumber;
     int numberOfPartitions = message.numberOfPartitions;
     Version.PushType pushType = Version.PushType.valueOf(message.pushType);
     String remoteKafkaBootstrapServers =
@@ -690,7 +695,8 @@ public class AdminExecutionTask implements Callable<Void> {
             replicationMetadataVersionId,
             message.versionSwapDeferred,
             targetedRegions,
-            repushSourceVersion);
+            repushSourceVersion,
+            currentRTVersionNumber);
       }
     }
   }

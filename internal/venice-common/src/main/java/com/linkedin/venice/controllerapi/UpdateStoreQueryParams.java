@@ -26,6 +26,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_ST
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_OVERHEAD_BYPASS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_DAVINCI_HEARTBEAT_REPORTED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_RT_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LATEST_SUPERSET_SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_COMPACTION_LAG_SECONDS;
@@ -129,6 +130,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setHybridStoreDiskQuotaEnabled(srcStore.isHybridStoreDiskQuotaEnabled())
             .setIncrementalPushEnabled(srcStore.isIncrementalPushEnabled())
             .setLargestUsedVersionNumber(srcStore.getLargestUsedVersionNumber())
+            .setLargestUsedRTVersionNumber(srcStore.getLargestUsedRTVersionNumber())
             .setNativeReplicationEnabled(srcStore.isNativeReplicationEnabled())
             .setNativeReplicationSourceFabric(srcStore.getNativeReplicationSourceFabric())
             .setNumVersionsToPreserve(srcStore.getNumVersionsToPreserve())
@@ -181,6 +183,7 @@ public class UpdateStoreQueryParams extends QueryParams {
           .setHybridTimeLagThreshold(hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds());
       updateStoreQueryParams.setHybridDataReplicationPolicy(hybridStoreConfig.getDataReplicationPolicy());
       updateStoreQueryParams.setHybridBufferReplayPolicy(hybridStoreConfig.getBufferReplayPolicy());
+      updateStoreQueryParams.setRealTimeTopicName(hybridStoreConfig.getRealTimeTopicName());
     }
 
     PartitionerConfig partitionerConfig = srcStore.getPartitionerConfig();
@@ -258,6 +261,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Integer> getLargestUsedVersionNumber() {
     return getInteger(LARGEST_USED_VERSION_NUMBER);
+  }
+
+  public UpdateStoreQueryParams setLargestUsedRTVersionNumber(int largestUsedRTVersionNumber) {
+    return putInteger(LARGEST_USED_RT_VERSION_NUMBER, largestUsedRTVersionNumber);
+  }
+
+  public Optional<Integer> getLargestUsedRTVersionNumber() {
+    return getInteger(LARGEST_USED_RT_VERSION_NUMBER);
   }
 
   public UpdateStoreQueryParams setEnableReads(boolean enableReads) {
