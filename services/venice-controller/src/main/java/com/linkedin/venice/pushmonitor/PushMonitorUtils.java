@@ -94,10 +94,6 @@ public class PushMonitorUtils {
         PushStatusStoreReader.InstanceStatus instanceStatus =
             reader.getInstanceStatus(storeName, entry.getKey().toString());
         if (instanceStatus.equals(PushStatusStoreReader.InstanceStatus.BOOTSTRAPPING)) {
-          LOGGER.info(
-              "Skipping ingestion status report from bootstrapping instance: {} for topic: {}",
-              entry.getKey().toString(),
-              topicName);
           continue;
         }
         ExecutionStatus status = ExecutionStatus.valueOf(entry.getValue());
@@ -266,17 +262,21 @@ public class PushMonitorUtils {
       Map<CharSequence, Integer> instances =
           reader.getPartitionStatus(storeName, version, partitionId, incrementalPushVersion);
       boolean allInstancesCompleted = true;
+      int skipLogCount = 0;
       totalReplicaCount += instances.size();
       for (Map.Entry<CharSequence, Integer> entry: instances.entrySet()) {
         // Ignore the instance that are in the ignore set
         if (instancesToIgnore.contains(entry.getKey())) {
           totalReplicaCount--;
           // Log about this decision
-          LOGGER.debug(
-              "Skipping ingestion status report from instance: {} for topic: {}, partition: {}",
-              entry.getKey().toString(),
-              topicName,
-              partitionId);
+          skipLogCount++;
+          if (skipLogCount < 10) {
+            LOGGER.info(
+                "Skipping ingestion status report from instance: {} for topic: {}, partition: {}",
+                entry.getKey().toString(),
+                topicName,
+                partitionId);
+          }
           continue;
         }
         String instanceName = entry.getKey().toString();
@@ -285,11 +285,14 @@ public class PushMonitorUtils {
         if (instanceStatus.equals(PushStatusStoreReader.InstanceStatus.BOOTSTRAPPING)) {
           // Don't count bootstrapping instance status report.
           totalReplicaCount--;
-          LOGGER.info(
-              "Skipping ingestion status report from bootstrapping node: {} for topic: {}, partition: {}",
-              entry.getKey().toString(),
-              topicName,
-              partitionId);
+          skipLogCount++;
+          if (skipLogCount < 10) {
+            LOGGER.info(
+                "Skipping ingestion status report from bootstrapping node: {} for topic: {}, partition: {}",
+                entry.getKey().toString(),
+                topicName,
+                partitionId);
+          }
           continue;
         }
 
