@@ -373,6 +373,13 @@ class TopicMetadataFetcher implements Closeable {
     }, retries, INITIAL_RETRY_DELAY, Duration.ofSeconds(5), Duration.ofMinutes(5), PUBSUB_RETRIABLE_FAILURES);
   }
 
+  CompletableFuture<Long> getLatestOffsetNoRetry(PubSubTopicPartition pubSubTopicPartition) {
+    return CompletableFuture.supplyAsync(() -> {
+      validateTopicPartition(pubSubTopicPartition);
+      return getLatestOffset(pubSubTopicPartition);
+    }, threadPoolExecutor);
+  }
+
   CompletableFuture<Long> getLatestOffsetWithRetriesAsync(PubSubTopicPartition pubSubTopicPartition, int retries) {
     return CompletableFuture
         .supplyAsync(() -> getLatestOffsetWithRetries(pubSubTopicPartition, retries), threadPoolExecutor);
@@ -385,9 +392,7 @@ class TopicMetadataFetcher implements Closeable {
         pubSubTopicPartition,
         cachedValue,
         latestOffsetCache,
-        () -> getLatestOffsetWithRetriesAsync(
-            pubSubTopicPartition,
-            DEFAULT_MAX_RETRIES_FOR_POPULATING_TMD_CACHE_ENTRY));
+        () -> getLatestOffsetNoRetry(pubSubTopicPartition));
     if (cachedValue == null) {
       cachedValue = latestOffsetCache.get(pubSubTopicPartition);
       if (cachedValue == null) {

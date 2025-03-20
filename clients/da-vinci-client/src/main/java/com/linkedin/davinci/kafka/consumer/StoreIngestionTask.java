@@ -2444,7 +2444,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           MAX_OFFSET_FETCH_ATTEMPTS,
           Duration.ofMillis(10),
           Duration.ofMillis(500),
-          Duration.ofSeconds(60),
+          Duration.ofSeconds(5),
           RETRY_FAILURE_TYPES);
     } catch (Exception e) {
       LOGGER.error(
