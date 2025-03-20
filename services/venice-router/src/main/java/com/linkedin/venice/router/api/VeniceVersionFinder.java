@@ -100,25 +100,77 @@ public class VeniceVersionFinder {
 
     int metadataCurrentVersion = store.getCurrentVersion();
     if (!lastCurrentVersionMap.containsKey(storeName)) {
-      lastCurrentVersionMap.put(storeName, metadataCurrentVersion);
+      /**
+       * new version not ready to serve
+       * OR a version of an existing store comes back online */
       if (metadataCurrentVersion == Store.NON_EXISTING_VERSION) {
-        /** This should happen at most once per store, since we are adding the mapping to {@link lastCurrentVersionMap} */
+
         store = metadataRepository.refreshOneStore(storeName);
         metadataCurrentVersion = store.getCurrentVersion();
+      } else if (!isDecompressorReady(store, metadataCurrentVersion)) {
+        // new store ready, but compressor not ready -> fail request
+        return Store.NON_EXISTING_VERSION;
       }
     }
+    // TODO: put lastCurrentVersion in Map.computeIfAbsent()
+
+    // existing store OR new store version ready to serve
     int lastCurrentVersion = lastCurrentVersionMap.get(storeName);
     if (lastCurrentVersion == metadataCurrentVersion) {
+      // no version change
       stats.recordNotStale();
       return metadataCurrentVersion;
     }
     int currentVersion = maybeServeNewCurrentVersion(store, lastCurrentVersion, metadataCurrentVersion);
+    // TODO: refactor maybeServeNewCurrentVersion to a smaller function that checks for version readiness, checking 1)
+    // status 2) partition 3) decompressor
+
+    String errorMessage = "";
+    // TODO check new version
+    // TODO log checking new version
+    if (!EXCEPTION_FILTER.isRedundantException(errorMessage)) {
+      LOGGER.warn(errorMessage);
+    }
+    // TODO else check old version
+    // TODO log checking old version
+    if (!EXCEPTION_FILTER.isRedundantException(errorMessage)) {
+      LOGGER.warn(errorMessage);
+    }
 
     storeStats.computeIfAbsent(storeName, k -> new RouterCurrentVersionStats(metricsRepository, storeName))
         .updateCurrentVersion(currentVersion);
     return currentVersion;
   }
 
+  private boolean checkVersionReadiness(Store store, int versionNumber, String errorMessage) {
+    String storeName = store.getName();
+    VersionStatus versionStatus = store.getVersionStatus(versionNumber);
+    String kafkaTopic = Version.composeKafkaTopic(storeName, versionNumber);
+    boolean versionStatusOnline = versionStatus.equals(VersionStatus.ONLINE);
+    boolean partitionResourcesReady = isPartitionResourcesReady(kafkaTopic);
+    boolean decompressorReady = isDecompressorReady(store, versionNumber);
+
+    // TODO: switch case for if each of the above is not ready, add to error message and emit staleness reason metric
+    errorMessage += "Unable to serve version: " + kafkaTopic + ".";
+
+    if (!versionStatusOnline) {
+      errorMessage += " Version has status: " + versionStatus + ".";
+    }
+
+    if (!partitionResourcesReady) {
+      errorMessage += " Partition resources not ready for new active version.";
+      stats.recordStalenessReason(StaleVersionReason.OFFLINE_PARTITIONS);
+    }
+
+    if (!decompressorReady) {
+      errorMessage += " Decompressor not ready for current version (Has dictionary downloaded?).";
+      stats.recordStalenessReason(StaleVersionReason.DICTIONARY_NOT_DOWNLOADED);
+    }
+
+    return decompressorReady && partitionResourcesReady && versionStatusOnline;
+  }
+
+  // existing store, new version
   private int maybeServeNewCurrentVersion(Store store, int lastCurrentVersion, int newCurrentVersion) {
     String storeName = store.getName();
     // This is a new version change, verify we have online replicas for each partition
@@ -132,6 +184,7 @@ public class VeniceVersionFinder {
       return newCurrentVersion;
     }
 
+    // new version not ready to serve -> serve last current version
     String errorMessage = "Unable to serve new active version: " + kafkaTopic + ".";
     if (!currentVersionPartitionResourcesReady) {
       errorMessage += " Partition resources not ready for new active version.";
@@ -143,9 +196,11 @@ public class VeniceVersionFinder {
       stats.recordStalenessReason(StaleVersionReason.DICTIONARY_NOT_DOWNLOADED);
     }
 
+    // check last current version still ready to serve/online
     VersionStatus lastCurrentVersionStatus = store.getVersionStatus(lastCurrentVersion);
     boolean prevVersionDecompressorReady = isDecompressorReady(store, lastCurrentVersion);
     if (lastCurrentVersionStatus.equals(VersionStatus.ONLINE) && prevVersionDecompressorReady) {
+      // last current version is still ready to serve
       String message = errorMessage + " Continuing to serve previous version: " + lastCurrentVersion + ".";
       if (!EXCEPTION_FILTER.isRedundantException(message)) {
         LOGGER.warn(message);
@@ -153,6 +208,12 @@ public class VeniceVersionFinder {
       stats.recordStale(newCurrentVersion, lastCurrentVersion);
       return lastCurrentVersion;
     } else {
+      /**
+       * last current version is not ready to serve
+       * -> both last current and new version are not ready to serve
+       * -> fail request
+       */
+      lastCurrentVersionMap.remove(storeName, lastCurrentVersion);
       errorMessage += " Unable to serve previous version: " + lastCurrentVersion + ".";
 
       if (!lastCurrentVersionStatus.equals(VersionStatus.ONLINE)) {
@@ -163,19 +224,11 @@ public class VeniceVersionFinder {
         errorMessage += " Decompressor not ready for previous version (Has dictionary downloaded?).";
       }
 
-      /**
-       * When the router has only one available version, despite offline partitions, or dictionary not yet downloaded,
-       * it will return it as the available version.
-       * If the partitions are still unavailable or the dictionary is not downloaded by the time the records needs to
-       * be decompressed, then the router will return an error response.
-       */
-      String message = errorMessage + " Switching to serve new active version.";
+      String message = errorMessage + " No version ready to serve.";
       if (!EXCEPTION_FILTER.isRedundantException(message)) {
         LOGGER.warn(message);
       }
-      lastCurrentVersionMap.put(storeName, newCurrentVersion);
-      stats.recordNotStale();
-      return newCurrentVersion;
+      return Store.NON_EXISTING_VERSION;
     }
   }
 
