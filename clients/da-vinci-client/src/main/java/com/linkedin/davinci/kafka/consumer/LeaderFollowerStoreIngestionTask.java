@@ -3645,7 +3645,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             true,
             DEFAULT_LEADER_METADATA_WRAPPER,
             APP_DEFAULT_LOGICAL_TS);
-    divEnvelope.payloadUnion = new DivSnapshot(divClone, offset); // contains both VT + RT DIV
+    // DivSnapshot contains both VT + RT DIV and LCVO + LCRO.
+    divEnvelope.payloadUnion = new DivSnapshot(divClone, offset, Optional.of(realTimeTopicType));
     DefaultPubSubMessage divMessage = new ImmutablePubSubMessage(
         divKey,
         divEnvelope,
