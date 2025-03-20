@@ -78,6 +78,9 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.util.ReferenceCountUtil;
+import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.Count;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.security.cert.CertificateExpiredException;
@@ -155,6 +158,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   static final String REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE =
       "Blob Discovery: failed to get the live node hostNames for store:%s version:%s partition:%s";
   private final VeniceVersionFinder veniceVersionFinder;
+  private final MetricsRepository metricsRepository;
 
   public MetaDataHandler(
       HelixCustomizedViewOfflinePushRepository routingDataRepository,
@@ -169,7 +173,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       String kafkaBootstrapServers,
       boolean isSslToKafka,
       VeniceVersionFinder versionFinder,
-      PushStatusStoreReader pushStatusStoreReader) {
+      PushStatusStoreReader pushStatusStoreReader,
+      MetricsRepository metricsRepository) {
     super();
     this.routingDataRepository = routingDataRepository;
     this.schemaRepo = schemaRepo;
@@ -184,6 +189,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     this.isSslToKafka = isSslToKafka;
     this.veniceVersionFinder = versionFinder;
     this.pushStatusStoreReader = pushStatusStoreReader;
+    this.metricsRepository = metricsRepository;
   }
 
   @Override
@@ -476,6 +482,16 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       setupErrorD2DiscoveryResponseAndFlush(NOT_FOUND, errorMsg, ctx);
       return;
     }
+
+    // Only create metrics for valid stores
+    Sensor d2DiscoverySensor = metricsRepository.sensor("venice.router.d2_discovery." + storeName);
+    String d2DiscoveryRequestCountMetric = "venice.router.d2_discovery." + storeName + ".request.count";
+    // Check if metric already exists before adding
+    if (!metricsRepository.metrics().containsKey(d2DiscoveryRequestCountMetric)) {
+      d2DiscoverySensor.add(d2DiscoveryRequestCountMetric, new Count());
+    }
+    d2DiscoverySensor.record();
+
     String clusterName = config.get().getCluster();
     String d2Service = getD2ServiceByClusterName(clusterName);
     if (StringUtils.isEmpty(d2Service)) {
