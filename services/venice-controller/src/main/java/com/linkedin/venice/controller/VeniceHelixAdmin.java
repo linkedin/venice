@@ -1614,8 +1614,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     if (!isParent()) {
-      // This will never be executed because the `migrateStore` function is not called in the `AdminConsumptionTask`
-      // child controller.
       // Update store and storeConfig to support single datacenter store migration
       this.updateStore(srcClusterName, storeName, new UpdateStoreQueryParams().setStoreMigration(true));
       this.setStoreConfigForMigration(storeName, srcClusterName, destClusterName);

@@ -47,6 +47,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
+import org.apache.avro.util.Utf8;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -256,7 +257,7 @@ public class TestStoreMigrationMultiRegion {
     IntegrationTestPushUtils.createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreQueryParams)
         .close();
 
-    // Verify store is created in dc-0, dc-1
+    // Verify store is created in dc-0
     try (ControllerClient childControllerClient0 = new ControllerClient(clusterName, childControllerUrl0)) {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         StoreResponse response = childControllerClient0.getStore(storeName);
@@ -278,7 +279,9 @@ public class TestStoreMigrationMultiRegion {
   private void readFromStore(AvroGenericStoreClient<String, Object> client)
       throws ExecutionException, InterruptedException {
     int key = ThreadLocalRandom.current().nextInt(RECORD_COUNT) + 1;
-    client.get(Integer.toString(key)).get();
+    Assert.assertEquals(
+        ((Utf8) client.get(Integer.toString(key)).get()).toString(),
+        TestWriteUtils.DEFAULT_USER_DATA_VALUE_PREFIX + key);
   }
 
   private static boolean containsVersionOnline(List<Version> versions, int versionNum) {
