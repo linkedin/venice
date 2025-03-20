@@ -1,6 +1,18 @@
 package com.linkedin.venice.consumer;
 
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYMANAGER_ALGORITHM;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_LOCATION;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_PASSWORD;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_TYPE;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEY_PASSWORD;
+import static com.linkedin.venice.CommonConfigKeys.SSL_SECURE_RANDOM_IMPLEMENTATION;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTMANAGER_ALGORITHM;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_PASSWORD;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_TYPE;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT;
@@ -8,6 +20,8 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
+import static com.linkedin.venice.utils.SslUtils.LOCAL_KEYSTORE_JKS;
+import static com.linkedin.venice.utils.SslUtils.LOCAL_PASSWORD;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
@@ -19,6 +33,7 @@ import com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
@@ -68,6 +83,20 @@ public class ChangelogConsumerDaVinciRecordTransformerUserApp {
     consumerProperties.put(ZOOKEEPER_ADDRESS, zkUrl);
     consumerProperties.put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, blobTransferServerPort);
     consumerProperties.put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, blobTransferClientPort);
+    consumerProperties.put(BLOB_TRANSFER_SSL_ENABLED, true);
+    consumerProperties.put(BLOB_TRANSFER_ACL_ENABLED, true);
+
+    String keyStorePath = SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS);
+    consumerProperties.put(SSL_KEYSTORE_TYPE, "JKS");
+    consumerProperties.put(SSL_KEYSTORE_LOCATION, keyStorePath);
+    consumerProperties.put(SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD);
+    consumerProperties.put(SSL_TRUSTSTORE_TYPE, "JKS");
+    consumerProperties.put(SSL_TRUSTSTORE_LOCATION, keyStorePath);
+    consumerProperties.put(SSL_TRUSTSTORE_PASSWORD, LOCAL_PASSWORD);
+    consumerProperties.put(SSL_KEY_PASSWORD, LOCAL_PASSWORD);
+    consumerProperties.put(SSL_KEYMANAGER_ALGORITHM, "SunX509");
+    consumerProperties.put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509");
+    consumerProperties.put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
 
     /*
      * Setting these to a low value so that when a blob transfer request is received, it sends the
