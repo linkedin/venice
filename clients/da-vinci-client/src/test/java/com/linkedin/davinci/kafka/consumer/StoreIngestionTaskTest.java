@@ -5849,6 +5849,48 @@ public abstract class StoreIngestionTaskTest {
     }
   }
 
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testResubscribeAsLeaderFromVersionTopic(boolean aaEnabled) throws InterruptedException {
+    LeaderFollowerStoreIngestionTask ingestionTask =
+        aaEnabled ? mock(ActiveActiveStoreIngestionTask.class) : mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask).prepareOffsetCheckpointAndStartConsumptionAsLeader(any(), any());
+    PubSubTopicRepository topicRepository = new PubSubTopicRepository();
+    when(ingestionTask.getPubSubTopicRepository()).thenReturn(topicRepository);
+    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+    PubSubTopic pubSubTopic = topicRepository.getTopic("test_v1");
+    offsetRecord.setLeaderTopic(pubSubTopic);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.getOffsetRecord()).thenReturn(offsetRecord);
+    when(pcs.getReplicaId()).thenReturn("test_v1-1");
+    when(pcs.getPartition()).thenReturn(1);
+    when(ingestionTask.isActiveActiveReplicationEnabled()).thenReturn(aaEnabled);
+    Set<String> upstreamUrlSet = new HashSet<>();
+    upstreamUrlSet.add("dc-1");
+    if (aaEnabled) {
+      upstreamUrlSet.add("dc-2");
+      upstreamUrlSet.add("dc-3");
+    }
+    Map<String, Long> upstreamOffsetMap = new HashMap<>();
+    when(ingestionTask.getConsumptionSourceKafkaAddress(pcs)).thenReturn(upstreamUrlSet);
+    when(pcs.getLatestProcessedUpstreamRTOffsetMap()).thenReturn(upstreamOffsetMap);
+    doCallRealMethod().when(pcs).getLatestProcessedUpstreamRTOffset(anyString());
+    doCallRealMethod().when(pcs).getLeaderOffset(anyString(), any());
+    when(pcs.getLatestProcessedUpstreamVersionTopicOffset()).thenReturn(100L);
+    when(pcs.consumeRemotely()).thenReturn(true);
+    ingestionTask.prepareOffsetCheckpointAndStartConsumptionAsLeader(pubSubTopic, pcs);
+
+    if (aaEnabled) {
+      Assert.assertEquals(offsetRecord.getUpstreamOffset("dc-1"), -1);
+      Assert.assertEquals(offsetRecord.getUpstreamOffset("dc-2"), -1);
+      Assert.assertEquals(offsetRecord.getUpstreamOffset("dc-3"), -1);
+    } else {
+      Assert.assertEquals(offsetRecord.getUpstreamOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY), -1);
+    }
+
+  }
+
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(
       Consumer<VeniceStoreVersionConfig> storeVersionConfigOverride) {
     // mock the store config
