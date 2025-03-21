@@ -1582,8 +1582,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     idleCounter = 0;
     maybeUnsubscribeCompletedPartitions(store);
-    recordQuotaMetrics();
-    recordMaxIdleTime();
+    if (emitMetrics.get()) {
+      recordQuotaMetrics();
+      recordMaxIdleTime();
+    }
 
     /**
      * While using the shared consumer, we still need to check hybrid quota here since the actual disk usage could change
@@ -1661,21 +1663,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   private void recordMaxIdleTime() {
-    if (emitMetrics.get()) {
-      long curTime = System.currentTimeMillis(), oldest = curTime;
-      for (PartitionConsumptionState state: partitionConsumptionStateMap.values()) {
-        if (state != null) {
-          oldest = Math.min(oldest, state.getLatestPolledMessageTimestampInMs());
-        }
+    long curTime = System.currentTimeMillis(), oldest = curTime;
+    for (PartitionConsumptionState state: partitionConsumptionStateMap.values()) {
+      if (state != null) {
+        oldest = Math.min(oldest, state.getLatestPolledMessageTimestampInMs());
       }
-      versionedIngestionStats.recordMaxIdleTime(storeName, versionNumber, curTime - oldest);
     }
+    versionedIngestionStats.recordMaxIdleTime(storeName, versionNumber, curTime - oldest);
   }
 
   private void recordQuotaMetrics() {
-    if (emitMetrics.get()) {
-      hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
-    }
+    hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
   }
 
   public boolean isIngestionTaskActive() {
