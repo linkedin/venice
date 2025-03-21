@@ -133,8 +133,11 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     this.compressorFactory = new CompressorFactory();
     this.storageRequestPath = TYPE_STORAGE + "/" + clientConfig.getStoreName();
     this.computeRequestPath = TYPE_COMPUTE + "/" + clientConfig.getStoreName();
-    this.veniceClientWarmUpExecutor = Executors
-        .newFixedThreadPool(1, new DaemonThreadFactory("Venice-Client-Warmup-For-" + clientConfig.getStoreName()));
+    this.veniceClientWarmUpExecutor = Optional.ofNullable(clientConfig.getWarmupExecutor())
+        .orElse(
+            Executors.newFixedThreadPool(
+                1,
+                new DaemonThreadFactory("Venice-Client-Warmup-For-" + clientConfig.getStoreName())));
   }
 
   @Override

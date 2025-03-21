@@ -3,8 +3,11 @@ package com.linkedin.venice.client.store;
 import static com.linkedin.venice.VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME;
 import static com.linkedin.venice.client.schema.RouterBackedSchemaReader.TYPE_KEY_SCHEMA;
 import static com.linkedin.venice.client.store.AbstractAvroStoreClient.TYPE_STORAGE;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.HttpConstants;
@@ -71,12 +74,21 @@ public class AbstractAvroStoreClientTest {
         boolean needSchemaReader,
         Executor deserializationExecutor,
         boolean overrideGetSchemaReader) {
-      super(
+      this(
           transportClient,
           needSchemaReader,
+          overrideGetSchemaReader,
           ClientConfig.defaultGenericClientConfig(storeName).setDeserializationExecutor(deserializationExecutor));
+    }
+
+    public SimpleStoreClient(
+        TransportClient transportClient,
+        boolean needSchemaReader,
+        boolean overrideGetSchemaReader,
+        ClientConfig clientConfig) {
+      super(transportClient, needSchemaReader, clientConfig);
       this.transportClient = transportClient;
-      this.storeName = storeName;
+      this.storeName = clientConfig.getStoreName();
       this.overrideGetSchemaReader = overrideGetSchemaReader;
     }
 
@@ -517,5 +529,28 @@ public class AbstractAvroStoreClientTest {
     Assert.assertEquals(result.size(), 2);
     Assert.assertEquals(result.get("key1"), result1);
     Assert.assertEquals(result.get("key2"), result2);
+  }
+
+  @Test
+  public void testCustomWarmupExecutor() {
+    TransportClient mockTransportClient = new ParameterizedComputeTransportClient(Optional.empty(), Optional.empty());
+
+    Executor warmupExecutor = mock(Executor.class);
+    SimpleStoreClient<String, GenericRecord> storeClient = new SimpleStoreClient<String, GenericRecord>(
+        mockTransportClient,
+        true,
+        true,
+        ClientConfig.defaultGenericClientConfig("test_store")
+            .setDeserializationExecutor(AbstractAvroStoreClient.getDefaultDeserializationExecutor())
+            .setWarmupExecutor(warmupExecutor)) {
+      @Override
+      protected RecordSerializer<String> getKeySerializerWithoutRetry() {
+        // throw an exception to force use of async backup method
+        throw new RuntimeException("Use async execution");
+      }
+    };
+    storeClient.start();
+    // verify warmupExecutor is used
+    verify(warmupExecutor, times(1)).execute(any());
   }
 }
