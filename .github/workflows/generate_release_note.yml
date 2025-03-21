@@ -28,6 +28,8 @@ jobs:
       - name: Create GitHub Release with Auto-Generated Notes
         uses: softprops/action-gh-release@v4
         with:
+          tag_name: ${{ github.ref }}
+          name: Release ${{ github.ref_name }}
           body_path: changelog.txt
           token: ${{ secrets.GITHUB_TOKEN }}
         env:
