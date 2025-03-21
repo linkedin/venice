@@ -212,6 +212,23 @@ public class RetryUtils {
         RetryUtils::logAttemptWithFailure);
   }
 
+  public static <T> T executeWithMaxAttemptAndExponentialBackoffNoLog(
+      VeniceCheckedSupplier<T> supplier,
+      final int maxAttempt,
+      Duration initialDelay,
+      Duration maxDelay,
+      Duration maxDuration,
+      List<Class<? extends Throwable>> retryFailureTypes) {
+    return executeWithMaxAttemptAndExponentialBackoff(
+        supplier,
+        maxAttempt,
+        initialDelay,
+        maxDelay,
+        maxDuration,
+        retryFailureTypes,
+        RetryUtils::doNotLog);
+  }
+
   /**
    * Execute a {@link Supplier} with exponential backoff. If all attempts are made or the max duration has reached
    * and still no success, the last thrown exception will be thrown.
