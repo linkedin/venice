@@ -556,9 +556,10 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       for (PubSubTopicPartition topicPartition: consumer.getAssignment()) {
         long offsetLag = consumer.getOffsetLag(topicPartition);
         long latestOffset = consumer.getLatestOffset(topicPartition);
-        double msgRate = consumptionTask.getMessageRate(topicPartition);
-        double byteRate = consumptionTask.getByteRate(topicPartition);
-        long lastSuccessfulPollTimestamp = consumptionTask.getLastSuccessfulPollTimestamp(topicPartition);
+        ConsumptionTask.PartitionStats partitionStats = consumptionTask.getPartitionStats(topicPartition);
+        double msgRate = partitionStats.getMessageRate();
+        double byteRate = partitionStats.getBytesRate();
+        long lastSuccessfulPollTimestamp = partitionStats.getLastSuccessfulPollTimestamp();
         long elapsedTimeSinceLastPollInMs = ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP;
         if (lastSuccessfulPollTimestamp != ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP) {
           elapsedTimeSinceLastPollInMs =
