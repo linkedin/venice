@@ -25,14 +25,11 @@ jobs:
             git --no-pager log --no-decorate "$commit^..$commit" --oneline >> changelog.txt
           done
 
-      - name: Create GitHub Release with Auto-Generated Notes
-        uses: softprops/action-gh-release@v4
-        with:
-          tag_name: ${{ github.ref }}
-          name: Release ${{ github.ref_name }}
-          body_path: changelog.txt
-          generate_release_notes: true
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create $GITHUB_REF_NAME \
+              --title "$GITHUB_REF_NAME Release" \
+              --notes-file changelog.txt
 
