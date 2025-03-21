@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.controller.VeniceHelixAdmin.OfflinePushStatusInfo;
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
+import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
@@ -1634,7 +1635,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         -1,
         1,
         Optional.empty(),
-        false);
+        false,
+        null,
+        -1,
+        DEFAULT_RT_VERSION_NUMBER);
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1);
 
@@ -1659,7 +1663,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         -1,
         1,
         Optional.empty(),
-        false);
+        false,
+        null,
+        -1,
+        DEFAULT_RT_VERSION_NUMBER);
     // Version 2 should exist and remote Kafka bootstrap servers info should exist in version 2.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 2);
     Assert.assertEquals(
@@ -1794,7 +1801,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         -1,
         1,
         Optional.empty(),
-        false);
+        false,
+        null,
+        -1,
+        DEFAULT_RT_VERSION_NUMBER);
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1);
     // A/A version level config should be true
@@ -1884,7 +1894,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).getVersion(1).isSeparateRealTimeTopicEnabled());
 
     Store store = Objects.requireNonNull(veniceAdmin.getStore(clusterName, storeName), "Store should not be null");
-
     String rtTopic = Utils.getRealTimeTopicName(store);
     PubSubTopic rtPubSubTopic = pubSubTopicRepository.getTopic(rtTopic);
     String incrementalPushRealTimeTopic = Version.composeSeparateRealTimeTopic(storeName);

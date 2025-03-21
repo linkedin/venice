@@ -70,6 +70,11 @@ public class DataProviderUtils {
     return allPermutationGenerator(BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN);
   }
 
+  @DataProvider(name = "Six-True-and-False")
+  public static Object[][] sixBoolean() {
+    return allPermutationGenerator(BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN);
+  }
+
   @DataProvider(name = "CheckpointingSupported-CheckSum-Types")
   public static Object[][] checkpointingSupportedCheckSumTypes() {
     return new Object[][] { { CheckSumType.MD5 }, { CheckSumType.ADHASH } };

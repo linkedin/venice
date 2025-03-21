@@ -6,12 +6,15 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
 import io.tehuti.metrics.MetricConfig;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
 import org.mockito.Mockito;
 import org.testng.annotations.Test;
 
@@ -47,8 +50,15 @@ public class VeniceMetricsRepositoryTest {
   @Test
   public void testConstructorWithMetricConfigAndOtelEnabled() {
     Collection<MetricEntity> metricEntities = new ArrayList<>();
-    metricEntities
-        .add(new MetricEntity("test_metric", MetricType.HISTOGRAM, MetricUnit.MILLISECOND, "Test description"));
+    Set<VeniceMetricsDimensions> dimensionsSet = new HashSet<>();
+    dimensionsSet.add(VeniceMetricsDimensions.VENICE_REQUEST_METHOD); // dummy
+    metricEntities.add(
+        new MetricEntity(
+            "test_metric",
+            MetricType.HISTOGRAM,
+            MetricUnit.MILLISECOND,
+            "Test description",
+            dimensionsSet));
     VeniceMetricsConfig metricsConfig =
         new VeniceMetricsConfig.Builder().setEmitOtelMetrics(true).setMetricEntities(metricEntities).build();
     VeniceMetricsRepository repository = new VeniceMetricsRepository(metricsConfig);
