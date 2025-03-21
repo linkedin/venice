@@ -142,7 +142,10 @@ public class StatsHandler extends ChannelDuplexHandler {
           serverStatsContext.errorRequest(serverHttpRequestStats, elapsedTime);
         }
         if (loadControllerHandler != null) {
-          loadControllerHandler.recordLatency(serverStatsContext.getRequestType(), elapsedTime);
+          loadControllerHandler.recordLatency(
+              serverStatsContext.getRequestType(),
+              elapsedTime,
+              serverStatsContext.getResponseStatus().code());
         }
         serverStatsContext.setStatCallBackExecuted(true);
       }
