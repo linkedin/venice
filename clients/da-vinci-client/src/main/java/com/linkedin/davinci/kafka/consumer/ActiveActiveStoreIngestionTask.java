@@ -965,9 +965,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     Set<String> sourceKafkaServers = getKafkaUrlSetFromTopicSwitch(partitionConsumptionState.getTopicSwitch());
     Map<String, Long> upstreamOffsetsByKafkaURLs = new HashMap<>(sourceKafkaServers.size());
     sourceKafkaServers.forEach(sourceKafkaURL -> {
-      Long upstreamStartOffset =
-          partitionConsumptionState.getLatestProcessedUpstreamRTOffsetWithNoDefault(sourceKafkaURL);
-      if (upstreamStartOffset == null || upstreamStartOffset < 0) {
+      long upstreamStartOffset = partitionConsumptionState.getLatestProcessedUpstreamRTOffset(sourceKafkaURL);
+      if (upstreamStartOffset < 0) {
         if (rewindStartTimestamp > 0) {
           PubSubTopicPartition newSourceTopicPartition =
               resolveTopicPartitionWithKafkaURL(newSourceTopic, partitionConsumptionState, sourceKafkaURL);

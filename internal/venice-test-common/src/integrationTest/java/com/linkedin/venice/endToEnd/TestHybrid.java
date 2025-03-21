@@ -6,6 +6,7 @@ import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_INTERVAL_MS;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_SCHEDULING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.REPUSH_ORCHESTRATOR_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY;
@@ -51,10 +52,10 @@ import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
-import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -149,7 +150,7 @@ public class TestHybrid {
 
   // Log compaction test constants
   private static final long TEST_LOG_COMPACTION_INTERVAL_MS = TimeUnit.SECONDS.toMillis(1);
-  private static final long TEST_LOG_COMPACTION_TIMEOUT = TEST_LOG_COMPACTION_INTERVAL_MS * 5; // ms
+  private static final long TEST_LOG_COMPACTION_TIMEOUT = TEST_LOG_COMPACTION_INTERVAL_MS * 10; // ms
   private static final long TEST_TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS = 0;
 
   /**
@@ -1096,6 +1097,16 @@ public class TestHybrid {
       LOGGER.error("Log compaction job failed");
       throw new RuntimeException(e);
     }
+
+    // ok, now run run repush manually with the controller client.
+    // this call should be synchronous and the count down will trigger immediately..
+    TestRepushOrchestratorImpl.latch = new CountDownLatch(1);
+    sharedVenice.useControllerClient(client -> {
+      RepushJobResponse response = client.triggerRepush(storeName, null);
+      Assert.assertFalse(response.isError(), "Repush failed with error: " + response.getError());
+      // No waiting this time, this should countdown immediately
+      Assert.assertEquals(TestRepushOrchestratorImpl.latch.getCount(), 0);
+    });
   }
 
   public static class TestRepushOrchestratorImpl implements RepushOrchestrator {
@@ -1786,6 +1797,7 @@ public class TestHybrid {
     // log compaction controller configs
     extraProperties.setProperty(REPUSH_ORCHESTRATOR_CLASS_NAME, TestHybrid.TestRepushOrchestratorImpl.class.getName());
     extraProperties.setProperty(LOG_COMPACTION_ENABLED, "true");
+    extraProperties.setProperty(LOG_COMPACTION_SCHEDULING_ENABLED, "true");
     extraProperties.setProperty(LOG_COMPACTION_INTERVAL_MS, String.valueOf(TEST_LOG_COMPACTION_INTERVAL_MS));
     extraProperties.setProperty(
         TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS,

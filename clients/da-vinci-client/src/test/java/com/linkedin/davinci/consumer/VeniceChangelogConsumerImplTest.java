@@ -206,14 +206,12 @@ public class VeniceChangelogConsumerImplTest {
     prepareVersionTopicRecordsToBePolled(0L, 5L, mockPubSubConsumer, oldVersionTopic, 0, true);
     ChangelogClientConfig changelogClientConfig = getChangelogClientConfig(d2ControllerClient).setViewName("");
 
-    VeniceChangelogConsumerImpl mockInternalSeekConsumer = Mockito.mock(VeniceChangelogConsumerImpl.class);
-    Mockito.when(mockInternalSeekConsumer.internalSubscribe(any(), any()))
-        .thenReturn(CompletableFuture.completedFuture(null));
-    Mockito.when(mockInternalSeekConsumer.getPubSubConsumer()).thenReturn(mockPubSubConsumer);
+    PubSubConsumerAdapter mockInternalSeekConsumer = Mockito.mock(PubSubConsumerAdapter.class);
+
     prepareChangeCaptureRecordsToBePolled(
         0L,
         10L,
-        mockPubSubConsumer,
+        mockInternalSeekConsumer,
         oldVersionTopic,
         0,
         oldVersionTopic,
@@ -249,8 +247,6 @@ public class VeniceChangelogConsumerImplTest {
 
     veniceChangelogConsumer.seekToEndOfPush(partitionSet).get();
 
-    Mockito.verify(mockInternalSeekConsumer).internalSubscribe(partitionSet, oldVersionTopic);
-    Mockito.verify(mockInternalSeekConsumer).unsubscribe(partitionSet);
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(oldVersionTopic, 0);
     Mockito.verify(mockPubSubConsumer).subscribe(pubSubTopicPartition, 10);
   }

@@ -71,7 +71,6 @@ import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.rocksdb.util.BytewiseComparator;
 import org.testng.Assert;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -131,21 +130,6 @@ public class RocksDBStoragePartitionTest {
     }
   }
 
-  @DataProvider(name = "testIngestionDataProvider")
-  public Object[][] testIngestionDataProvider() {
-    return new Object[][] { { true, false, false, true, true }, // Sorted input without interruption, with
-                                                                // verifyChecksum
-        { true, false, false, false, false }, // Sorted input without interruption, without verifyChecksum
-        { true, true, true, false, true }, // Sorted input with interruption, without verifyChecksum
-        { true, true, false, false, false }, // Sorted input with storage node re-boot, without verifyChecksum
-        { true, true, true, true, true }, // Sorted input with interruption, with verifyChecksum
-        { true, true, false, true, false }, // Sorted input with storage node re-boot, with verifyChecksum
-        { false, false, false, false, true }, // Unsorted input without interruption, without verifyChecksum
-        { false, true, false, false, true }, // Unsorted input with interruption, without verifyChecksum
-        { false, true, true, false, true } // Unsorted input with storage node re-boot, without verifyChecksum
-    };
-  }
-
   @Test
   public void testBlobDBCompatibility() {
     String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
@@ -159,7 +143,8 @@ public class RocksDBStoragePartitionTest {
 
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
 
-    Map<String, String> largeInputRecords = generateInput(1000, false, 10000, 0);
+    int largeRecordPaddingLength = 10000;
+    Map<String, String> largeInputRecords = generateInput(1000, false, largeRecordPaddingLength, 0);
     Map<String, String> smallInputRecords = generateInput(1000, false, 10, 10000);
     List<Map.Entry<String, String>> largeEntryList = new ArrayList<>(largeInputRecords.entrySet());
     List<Map.Entry<String, String>> smallEntryList = new ArrayList<>(smallInputRecords.entrySet());
@@ -231,6 +216,11 @@ public class RocksDBStoragePartitionTest {
           storagePartition.get(smallEntryList.get(i).getKey().getBytes()),
           smallEntryList.get(i).getValue().getBytes());
     }
+    storagePartition.sync();
+    assertTrue(
+        storagePartition.getPartitionSizeInBytes() > 700l
+            * (KEY_PREFIX.length() + VALUE_PREFIX.length() * 2 + largeRecordPaddingLength));
+
     storagePartition.close();
 
     // Disable blob files
@@ -256,6 +246,9 @@ public class RocksDBStoragePartitionTest {
     }
 
     storagePartition.sync();
+    assertTrue(
+        storagePartition.getPartitionSizeInBytes() > 1000l
+            * (KEY_PREFIX.length() + VALUE_PREFIX.length() * 2 + largeRecordPaddingLength));
     // Make sure no new blob files were generated
     assertEquals(blobFileFinder.get().length, blobFileCnt);
     // Validate all the entries inserted previously
@@ -271,13 +264,14 @@ public class RocksDBStoragePartitionTest {
     removeDir(storeDir);
   }
 
-  @Test(dataProvider = "testIngestionDataProvider")
+  @Test(dataProvider = "Six-True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testIngestion(
       boolean sorted,
       boolean interrupted,
       boolean reopenDatabaseDuringInterruption,
       boolean verifyChecksum,
-      boolean enableBlobFile) {
+      boolean enableBlobFile,
+      boolean enablePlainTable) {
     CheckSum runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
     String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
     String storeDir = getTempDatabaseDir(storeName);
@@ -287,23 +281,18 @@ public class RocksDBStoragePartitionTest {
     Options options = new Options();
     options.setCreateIfMissing(true);
 
-    if (enableBlobFile) {
-      options.setEnableBlobFiles(true);
-      options.setMinBlobSize(1);
-      options.setBlobFileSize(2 * 1024 * 1024);
-      options.setEnableBlobGarbageCollection(true);
-      options.setBlobGarbageCollectionAgeCutoff(0.25);
-      options.setBlobGarbageCollectionForceThreshold(0.8);
-      options.setBlobFileStartingLevel(0);
-    }
-
-    Map<String, String> inputRecords = generateInput(101000, sorted, 0);
+    int padding = 100;
+    int numberOfRecords = 101000;
+    Map<String, String> inputRecords = generateInput(numberOfRecords, sorted, padding);
     Properties extraProps = new Properties();
     if (enableBlobFile) {
       extraProps.put(ROCKSDB_BLOB_FILES_ENABLED, "true");
-      extraProps.put(ROCKSDB_MIN_BLOB_SIZE_IN_BYTES, "1");
+      extraProps.put(ROCKSDB_MIN_BLOB_SIZE_IN_BYTES, "10");
       extraProps.put(ROCKSDB_BLOB_FILE_SIZE_IN_BYTES, "2097152");
       extraProps.put(ROCKSDB_BLOB_FILE_STARTING_LEVEL, "0");
+    }
+    if (enablePlainTable) {
+      extraProps.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "true");
     }
     VeniceProperties veniceServerProperties =
         AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, extraProps);
@@ -346,7 +335,7 @@ public class RocksDBStoragePartitionTest {
       }
       if (++currentRecordNum % syncPerRecords == 0) {
         checkpointingInfo = storagePartition.sync();
-        if (sorted) {
+        if (sorted && !enablePlainTable) {
           Assert.assertEquals(
               checkpointingInfo.get(RocksDBSstFileWriter.ROCKSDB_LAST_FINISHED_SST_FILE_NO),
               String.valueOf(currentFileNo++));
@@ -370,7 +359,7 @@ public class RocksDBStoragePartitionTest {
             Options storeOptions = storagePartition.getOptions();
             Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 100);
           }
-          if (sorted) {
+          if (sorted && !enablePlainTable) {
             storagePartition.beginBatchWrite(checkpointingInfo, checksumSupplier);
           }
 
@@ -398,7 +387,7 @@ public class RocksDBStoragePartitionTest {
       }
     }
 
-    if (sorted) {
+    if (sorted && !enablePlainTable) {
       Assert.assertFalse(storagePartition.validateBatchIngestion());
       storagePartition.endBatchWrite();
       assertTrue(storagePartition.validateBatchIngestion());
@@ -409,7 +398,7 @@ public class RocksDBStoragePartitionTest {
       Assert.assertEquals(storagePartition.get(entry.getKey().getBytes()), entry.getValue().getBytes());
     }
 
-    if (sorted) {
+    if (sorted && !enablePlainTable) {
       if (enableBlobFile) {
         // Verify some Blob file related metrics
         for (String metric: BLOB_METRIC_LIST) {
@@ -417,7 +406,7 @@ public class RocksDBStoragePartitionTest {
         }
       }
     } else {
-      if (enableBlobFile) {
+      if (enableBlobFile && !enablePlainTable) {
         // Verify some Blob file related metrics
         for (String metric: BLOB_METRIC_LIST) {
           if (!metric.equals(BLOB_GARBAGE_METRIC)) {
@@ -452,12 +441,14 @@ public class RocksDBStoragePartitionTest {
     storagePartition.delete(toBeDeletedKey.getBytes());
     Assert.assertNull(storagePartition.get(toBeDeletedKey.getBytes()));
 
-    assertTrue(storagePartition.getPartitionSizeInBytes() > 0);
+    long minimalPartitionSize = (long) numberOfRecords * (KEY_PREFIX.length() + VALUE_PREFIX.length() + padding);
+    long maxPartitionSize = 2 * minimalPartitionSize; // Add some buffer;
+    long partitionSize = storagePartition.getPartitionSizeInBytes();
+    assertTrue(partitionSize > minimalPartitionSize && partitionSize < maxPartitionSize);
 
     Options storeOptions = storagePartition.getOptions();
     Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 40);
     storagePartition.drop();
-    options.close();
     removeDir(storeDir);
   }
 
@@ -633,13 +624,12 @@ public class RocksDBStoragePartitionTest {
     removeDir(storeDir);
   }
 
-  @Test(dataProvider = "testIngestionDataProvider")
+  @Test(dataProvider = "Four-True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testIngestionWithClockCache(
       boolean sorted,
       boolean interrupted,
       boolean reopenDatabaseDuringInterruption,
-      boolean verifyChecksum,
-      boolean ignored) {
+      boolean verifyChecksum) {
     CheckSum runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
     String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
     String storeDir = getTempDatabaseDir(storeName);

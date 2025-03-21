@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -175,16 +174,21 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
 
   @Override
   public boolean hasAnySubscriptionFor(PubSubTopic versionTopic) {
-    return consumerServices.stream()
-        .anyMatch(kafkaConsumerService -> kafkaConsumerService.hasAnySubscriptionFor(versionTopic));
+    for (KafkaConsumerService kafkaConsumerService: this.consumerServices) {
+      if (kafkaConsumerService.hasAnySubscriptionFor(versionTopic)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   @Override
   public long getMaxElapsedTimeMSSinceLastPollInConsumerPool() {
-    return Collections.max(
-        consumerServices.stream()
-            .map(KafkaConsumerService::getMaxElapsedTimeMSSinceLastPollInConsumerPool)
-            .collect(Collectors.toList()));
+    long max = -1;
+    for (KafkaConsumerService kafkaConsumerService: this.consumerServices) {
+      max = Math.max(max, kafkaConsumerService.getMaxElapsedTimeMSSinceLastPollInConsumerPool());
+    }
+    return max;
   }
 
   @Override

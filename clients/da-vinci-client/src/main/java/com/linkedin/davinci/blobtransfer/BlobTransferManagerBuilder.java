@@ -13,7 +13,10 @@ import com.linkedin.venice.blobtransfer.ServerBlobFinder;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.SslUtils;
 import io.netty.handler.traffic.GlobalChannelTrafficShapingHandler;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -32,6 +35,8 @@ public class BlobTransferManagerBuilder {
   private ReadOnlyStoreRepository readOnlyStoreRepository;
   private StorageEngineRepository storageEngineRepository;
   private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
+  private Optional<SSLFactory> sslFactory;
+  private Optional<BlobTransferAclHandler> aclHandler;
 
   public BlobTransferManagerBuilder() {
   }
@@ -73,11 +78,22 @@ public class BlobTransferManagerBuilder {
     return this;
   }
 
-  public BlobTransferManager<Void> build() {
-    validateFields();
+  public BlobTransferManagerBuilder setBlobTransferSSLFactory(Optional<SSLFactory> sslFactory) {
+    // If sslFactory is present, convert it to one with OpenSSL support, if it's empty, just keep it as empty
+    this.sslFactory =
+        sslFactory.isPresent() ? Optional.of(SslUtils.toSSLFactoryWithOpenSSLSupport(sslFactory.get())) : sslFactory;
+    return this;
+  }
 
-    // initialize the P2P blob transfer manager
+  public BlobTransferManagerBuilder setBlobTransferAclHandler(Optional<BlobTransferAclHandler> blobTransferAclHandler) {
+    this.aclHandler = blobTransferAclHandler;
+    return this;
+  }
+
+  public BlobTransferManager<Void> build() {
     try {
+      validateFields();
+      // initialize the P2P blob transfer manager
       BlobFinder blobFinder = null;
       if (customizedViewFuture != null && clientConfig == null) {
         blobFinder = new ServerBlobFinder(customizedViewFuture);
@@ -106,13 +122,16 @@ public class BlobTransferManagerBuilder {
               blobTransferConfig.getBaseDir(),
               blobTransferConfig.getBlobTransferMaxTimeoutInMin(),
               blobSnapshotManager,
-              globalTrafficHandler),
+              globalTrafficHandler,
+              sslFactory,
+              aclHandler),
           new NettyFileTransferClient(
               blobTransferConfig.getP2pTransferClientPort(),
               blobTransferConfig.getBaseDir(),
               storageMetadataService,
               blobTransferConfig.getPeersConnectivityFreshnessInSeconds(),
-              globalTrafficHandler),
+              globalTrafficHandler,
+              sslFactory),
           blobFinder,
           blobTransferConfig.getBaseDir(),
           aggVersionedBlobTransferStats);
@@ -144,6 +163,10 @@ public class BlobTransferManagerBuilder {
       throw new IllegalArgumentException(
           "The blob transfer config, storage metadata service, read only store repository, storage engine repository, "
               + "and agg versioned blob transfer stats must not be null");
+    }
+
+    if (sslFactory == null || aclHandler == null || !sslFactory.isPresent() || !aclHandler.isPresent()) {
+      throw new IllegalArgumentException("The ssl factory and acl handler must not be null and must be present");
     }
   }
 }

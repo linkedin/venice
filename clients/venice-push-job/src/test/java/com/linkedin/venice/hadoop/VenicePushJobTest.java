@@ -276,7 +276,7 @@ public class VenicePushJobTest {
     ControllerClient client = mock(ControllerClient.class);
     JobStatusQueryResponse response = mock(JobStatusQueryResponse.class);
     doReturn("UNKNOWN").when(response).getStatus();
-    doReturn(response).when(client).queryOverallJobStatus(anyString(), eq(Optional.empty()), eq(null));
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), eq(Optional.empty()), eq(null), anyBoolean());
     try (VenicePushJob pushJob = getSpyVenicePushJob(vpjProps, client)) {
       PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
       pushJobSetting.jobStatusInUnknownStateTimeoutMs = 10;
@@ -290,7 +290,7 @@ public class VenicePushJobTest {
       pushJobSetting.storeResponse.setStore(storeInfo);
       VeniceException exception = Assert.expectThrows(
           VeniceException.class,
-          () -> pushJob.pollStatusUntilComplete(null, client, pushJobSetting, null, false));
+          () -> pushJob.pollStatusUntilComplete(null, client, pushJobSetting, null, false, false));
       Assert
           .assertEquals(exception.getMessage(), "Failing push-job for store abc which is still running after 0 hours.");
     }
@@ -308,7 +308,7 @@ public class VenicePushJobTest {
     doReturn(unknownResponse).doReturn(unknownResponse)
         .doReturn(completedResponse)
         .when(client)
-        .queryOverallJobStatus(anyString(), eq(Optional.empty()), eq(null));
+        .queryOverallJobStatus(anyString(), eq(Optional.empty()), eq(null), anyBoolean());
     try (VenicePushJob pushJob = getSpyVenicePushJob(vpjProps, client)) {
       PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
       pushJobSetting.jobStatusInUnknownStateTimeoutMs = 100_000_000;
@@ -320,7 +320,7 @@ public class VenicePushJobTest {
       StoreInfo storeInfo = new StoreInfo();
       storeInfo.setBootstrapToOnlineTimeoutInHours(10);
       pushJobSetting.storeResponse.setStore(storeInfo);
-      pushJob.pollStatusUntilComplete(null, client, pushJobSetting, null, false);
+      pushJob.pollStatusUntilComplete(null, client, pushJobSetting, null, false, false);
     } catch (Exception e) {
       fail("The test should be completed successfully without any timeout exception");
     }
@@ -654,7 +654,7 @@ public class VenicePushJobTest {
     JobStatusQueryResponse response = mockJobStatusQuery();
 
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
-      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString());
+      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString(), anyBoolean());
       skipVPJValidation(pushJob);
       try {
         pushJob.run();
@@ -667,13 +667,9 @@ public class VenicePushJobTest {
       }
     }
 
-    props.put(TARGETED_REGION_PUSH_LIST, "dc-0, dc-1");
-    client = getClient();
-    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
-      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString());
-      skipVPJValidation(pushJob);
-      pushJob.run();
-      Assert.assertEquals(pushJob.getPushJobSetting().targetedRegions, "dc-0, dc-1");
+    props.put(TARGETED_REGION_PUSH_LIST, "dc-0");
+    try (VenicePushJob pushJob = new VenicePushJob(PUSH_JOB_ID, props)) {
+      Assert.assertEquals(pushJob.getPushJobSetting().targetedRegions, "dc-0");
     }
   }
 
@@ -683,7 +679,7 @@ public class VenicePushJobTest {
     props.put(KEY_FIELD_PROP, "id");
     props.put(VALUE_FIELD_PROP, "name");
     props.put(TARGETED_REGION_PUSH_ENABLED, true);
-    props.put(TARGETED_REGION_PUSH_LIST, "dc-0, dc-1");
+    props.put(TARGETED_REGION_PUSH_LIST, "dc-0");
     ControllerClient client = getClient();
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
       skipVPJValidation(pushJob);
@@ -692,7 +688,7 @@ public class VenicePushJobTest {
       Map<String, String> extraInfo = response.getExtraInfo();
       // one of the regions failed, so should fail
       extraInfo.put("dc-0", ExecutionStatus.NOT_STARTED.toString());
-      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString());
+      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString(), anyBoolean());
       try {
         pushJob.run();
         fail("Test should fail, but doesn't.");
@@ -703,6 +699,10 @@ public class VenicePushJobTest {
       extraInfo.put("dc-0", ExecutionStatus.COMPLETED.toString());
       extraInfo.put("dc-1", ExecutionStatus.COMPLETED.toString());
       // both regions completed, so should succeed
+
+      ControllerResponse dataRecoveryResponse = new ControllerResponse();
+      doReturn(dataRecoveryResponse).when(client)
+          .dataRecovery(anyString(), anyString(), anyString(), anyInt(), anyBoolean(), anyBoolean(), any());
       pushJob.run();
     }
   }
@@ -718,7 +718,7 @@ public class VenicePushJobTest {
       skipVPJValidation(pushJob);
 
       JobStatusQueryResponse response = mockJobStatusQuery();
-      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString());
+      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString(), anyBoolean());
 
       VersionCreationResponse mockVersionCreationResponse = mockVersionCreationResponse(client);
       mockVersionCreationResponse.setKafkaSourceRegion(null);
@@ -767,7 +767,7 @@ public class VenicePushJobTest {
       skipVPJValidation(pushJob);
 
       JobStatusQueryResponse response = mockJobStatusQuery();
-      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString());
+      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString(), anyBoolean());
       // skip the mocking for repush
       doCallRealMethod().doNothing().when(pushJob).run();
       pushJob.run();
@@ -788,7 +788,7 @@ public class VenicePushJobTest {
       skipVPJValidation(pushJob);
 
       JobStatusQueryResponse response = mockJobStatusQuery();
-      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString());
+      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString(), anyBoolean());
       mockVersionCreationResponse(client);
 
       doThrow(new VeniceValidationException("error")).when(pushJob).postPushValidation();
@@ -973,7 +973,7 @@ public class VenicePushJobTest {
     properties.put(VALUE_FIELD_PROP, "name");
     JobStatusQueryResponse response = mockJobStatusQuery();
     ControllerClient client = getClient();
-    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), eq(null));
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), eq(null), anyBoolean());
     try (final VenicePushJob vpj = getSpyVenicePushJob(properties, client)) {
       skipVPJValidation(vpj);
       vpj.run();
@@ -993,7 +993,7 @@ public class VenicePushJobTest {
       storeInfo.setViewConfigs(viewConfigs);
       storeInfo.setVersions(Collections.singletonList(version));
     }, true);
-    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), eq(null));
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), eq(null), anyBoolean());
     MultiSchemaResponse valueSchemaResponse = getMultiSchemaResponse();
     MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[1];
     schemas[0] = getBasicSchema();
@@ -1012,6 +1012,46 @@ public class VenicePushJobTest {
       Assert.assertEquals(viewConfigMap.size(), 1);
       Assert.assertTrue(viewConfigMap.containsKey("testView"));
       Assert.assertEquals(viewConfigMap.get("testView").getViewClassName(), MaterializedView.class.getCanonicalName());
+    }
+  }
+
+  @Test
+  public void testTargetedRegionPushWithDeferredSwapConfigValidation() throws Exception {
+    Properties props = getVpjRequiredProperties();
+    props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, false);
+    props.put(TARGETED_REGION_PUSH_LIST, "dc-0");
+    try (VenicePushJob pushJob = new VenicePushJob(PUSH_JOB_ID, props)) {
+      fail("Test should fail, but doesn't.");
+    } catch (VeniceException e) {
+      assertEquals(e.getMessage(), "Targeted region push list is only supported when targeted region push is enabled");
+    }
+
+    props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+    props.put(INCREMENTAL_PUSH, true);
+    try (VenicePushJob pushJob = new VenicePushJob(PUSH_JOB_ID, props)) {
+      fail("Test should fail, but doesn't.");
+    } catch (VeniceException e) {
+      assertEquals(e.getMessage(), "Incremental push is not supported while using targeted region push mode");
+    }
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Target region list cannot contain all regions.*")
+  public void testTargetRegionPushWithAllRegions() {
+    Properties props = getVpjRequiredProperties();
+    props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+    props.put(TARGETED_REGION_PUSH_LIST, "dc-0, dc-1");
+
+    ControllerClient client = getClient(storeInfo -> {
+      storeInfo.setColoToCurrentVersions(new HashMap<String, Integer>() {
+        {
+          put("dc-0", 1);
+          put("dc-1", 1);
+        }
+      });
+    });
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      pushJob.run();
     }
   }
 

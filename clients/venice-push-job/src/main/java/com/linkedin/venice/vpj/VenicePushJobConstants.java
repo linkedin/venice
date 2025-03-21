@@ -4,7 +4,6 @@ import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 
 import com.github.luben.zstd.ZstdDictTrainer;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.hadoop.ValidateSchemaAndBuildDictMapper;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.map.AbstractVeniceMapper;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
@@ -74,22 +73,6 @@ public final class VenicePushJobConstants {
   public static final boolean DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED = false;
 
   /**
-   * Config to enable/disable using mapper to do the below which are currently done in VPJ driver <br>
-   * 1. validate schema, <br>
-   * 2. collect the input data size <br>
-   * 3. build dictionary (if needed: refer {@link VenicePushJob#shouldBuildZstdCompressionDictionary}) <br><br>
-   *
-   * This new mapper was added because the sample collection for Zstd dictionary is currently
-   * in-memory and to help play around with the sample size and also to support future enhancements
-   * if needed. <br><br>
-   *
-   * Currently, the plan is to only have it available for MapReduce compute engine and remove it eventually as we
-   * remove the MapReduce-related codes.
-   */
-  public static final String USE_MAPPER_TO_BUILD_DICTIONARY = "use.mapper.to.build.dictionary";
-  public static final boolean DEFAULT_USE_MAPPER_TO_BUILD_DICTIONARY = false;
-
-  /**
    * Known <a href="https://github.com/luben/zstd-jni/issues/253">zstd lib issue</a> which
    * crashes if the input sample is too small. So adding a preventive check to skip training
    * the dictionary in such cases using a minimum limit of 20. Keeping it simple and hard coding
@@ -103,17 +86,6 @@ public final class VenicePushJobConstants {
    */
   public static final String ZSTD_DICTIONARY_CREATION_REQUIRED = "zstd.dictionary.creation.required";
   public static final String ZSTD_DICTIONARY_CREATION_SUCCESS = "zstd.dictionary.creation.success";
-
-  /**
-   * Location and key to store the output of {@link ValidateSchemaAndBuildDictMapper} and retrieve it back
-   * when USE_MAPPER_TO_BUILD_DICTIONARY is enabled
-   */
-  // used to send the dir details from VPJ driver to mapper
-  public static final String VALIDATE_SCHEMA_AND_BUILD_DICT_MAPPER_OUTPUT_DIRECTORY =
-      "validate.schema.and.build.dict.mapper.output.directory";
-
-  public static final String VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_PREFIX = "mapper-output-";
-  public static final String VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_EXTENSION = ".avro";
 
   // keys inside the avro file
   public static final String KEY_ZSTD_COMPRESSION_DICTIONARY = "zstdDictionary";

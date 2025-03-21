@@ -25,7 +25,6 @@ import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.Map;
@@ -54,19 +53,17 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
   private static final String HDFS_OPERATIONS_PARALLEL_THREAD_NUM = "hdfs.operations.parallel.thread.num";
 
   private final PushJobSetting pushJobSetting;
-  protected PushJobZstdConfig pushJobZstdConfig;
+  private PushJobZstdConfig pushJobZstdConfig;
   private final VeniceProperties props;
   /**
-   * Thread pool for Hadoop File System operations: Lazy initialization as this
-   * is not needed when {@link PushJobSetting#useMapperToBuildDict} is true
+   * Thread pool for Hadoop File System operations
    */
-  private final Lazy<ExecutorService> hdfsExecutorService;
+  private final ExecutorService hdfsExecutorService;
 
   public DefaultInputDataInfoProvider(PushJobSetting pushJobSetting, VeniceProperties props) {
     this.pushJobSetting = pushJobSetting;
     this.props = props;
-    this.hdfsExecutorService =
-        Lazy.of(() -> Executors.newFixedThreadPool(props.getInt(HDFS_OPERATIONS_PARALLEL_THREAD_NUM, 20)));
+    this.hdfsExecutorService = Executors.newFixedThreadPool(props.getInt(HDFS_OPERATIONS_PARALLEL_THREAD_NUM, 20));
   }
 
   /**
@@ -89,7 +86,7 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       throw new RuntimeException("No data found at source path: " + srcPath);
     }
 
-    if (pushJobSetting.isZstdDictCreationRequired && !pushJobSetting.useMapperToBuildDict) {
+    if (pushJobSetting.isZstdDictCreationRequired) {
       initZstdConfig(fileStatuses.length);
     }
 
@@ -118,13 +115,7 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       pushJobSetting.timestampField =
           props.getString(OPTIONAL_TIMESTAMP_FIELD_PROP, DEFAULT_OPTIONAL_TIMESTAMP_FIELD_PROP);
 
-      Pair<Schema, Schema> fileAndOutputValueSchema;
-      if (!pushJobSetting.useMapperToBuildDict) {
-        fileAndOutputValueSchema = checkAvroSchemaConsistency(fs, fileStatuses, inputFileDataSize);
-      } else {
-        // ValidateSchemaAndBuildDictMapper will validate all file schemas and build the dictionary
-        fileAndOutputValueSchema = getAvroFileHeader(fs, fileStatuses[0].getPath(), false);
-      }
+      Pair<Schema, Schema> fileAndOutputValueSchema = checkAvroSchemaConsistency(fs, fileStatuses, inputFileDataSize);
 
       pushJobSetting.inputDataSchema = fileAndOutputValueSchema.getFirst();
       pushJobSetting.valueSchema = fileAndOutputValueSchema.getSecond();
@@ -138,13 +129,7 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       pushJobSetting.valueField = props.getString(VALUE_FIELD_PROP, "");
       pushJobSetting.timestampField = props.getString(OPTIONAL_TIMESTAMP_FIELD_PROP, "");
 
-      Pair<VsonSchema, VsonSchema> vsonSchema;
-      if (!pushJobSetting.useMapperToBuildDict) {
-        vsonSchema = checkVsonSchemaConsistency(fs, fileStatuses, inputFileDataSize);
-      } else {
-        // ValidateSchemaAndBuildDictMapper will validate all file schemas and build the dictionary
-        vsonSchema = getVsonFileHeader(fs, fileStatuses[0].getPath(), false);
-      }
+      Pair<VsonSchema, VsonSchema> vsonSchema = checkVsonSchemaConsistency(fs, fileStatuses, inputFileDataSize);
 
       VsonSchema vsonKeySchema = StringUtils.isEmpty(pushJobSetting.keyField)
           ? vsonSchema.getFirst()
@@ -164,8 +149,7 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
         inputFileDataSize.get(),
         fileStatuses.length,
         hasRecords(pushJobSetting.isAvro, fs, fileStatuses),
-        inputModificationTime,
-        !pushJobSetting.useMapperToBuildDict);
+        inputModificationTime);
   }
 
   private boolean hasRecords(boolean isAvroFile, FileSystem fs, FileStatus[] fileStatusList) {
@@ -181,11 +165,12 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
   }
 
   @Override
-  public void initZstdConfig(int numFiles) {
+  public PushJobZstdConfig initZstdConfig(int numFiles) {
     if (pushJobZstdConfig != null) {
-      return;
+      return pushJobZstdConfig;
     }
     pushJobZstdConfig = new PushJobZstdConfig(props, numFiles);
+    return pushJobZstdConfig;
   }
 
   // Vson-based file store key / value schema string as separated properties in file header
@@ -219,10 +204,8 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     return vsonSchema;
   }
 
-  protected Pair<VsonSchema, VsonSchema> getVsonFileHeader(
-      FileSystem fs,
-      Path path,
-      boolean isZstdDictCreationRequired) {
+  // Visible for testing
+  Pair<VsonSchema, VsonSchema> getVsonFileHeader(FileSystem fs, Path path, boolean isZstdDictCreationRequired) {
     Map<String, String> fileMetadata = getMetadataFromSequenceFile(fs, path, isZstdDictCreationRequired);
     if (!fileMetadata.containsKey(FILE_KEY_SCHEMA) || !fileMetadata.containsKey(FILE_VALUE_SCHEMA)) {
       throw new VeniceException("Can't find Vson schema from file: " + path.getName());
@@ -240,7 +223,6 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       final FileStatus[] fileStatusList,
       String operation,
       Consumer<FileStatus> fileStatusConsumer) {
-    ExecutorService hdfsExecutorService = this.hdfsExecutorService.get();
     if (hdfsExecutorService.isShutdown()) {
       throw new VeniceException(
           "Unable to execute HDFS operations in parallel, the executor has already been shutdown");
@@ -355,7 +337,8 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     return avroSchema;
   }
 
-  protected Pair<Schema, Schema> getAvroFileHeader(FileSystem fs, Path path, boolean isZstdDictCreationRequired) {
+  // Visible for testing
+  Pair<Schema, Schema> getAvroFileHeader(FileSystem fs, Path path, boolean isZstdDictCreationRequired) {
     VeniceAvroRecordReader recordReader = getVeniceAvroRecordReader(fs, path);
     if (isZstdDictCreationRequired) {
       try (VeniceAvroFileIterator fileIterator = new VeniceAvroFileIterator(fs, path, recordReader)) {
@@ -390,12 +373,6 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
   }
 
   private void shutdownHdfsExecutorService() {
-    if (!this.hdfsExecutorService.isPresent()) {
-      LOGGER.warn("No HDFS executor service to shutdown");
-      return;
-    }
-
-    ExecutorService hdfsExecutorService = this.hdfsExecutorService.get();
     hdfsExecutorService.shutdownNow();
     try {
       if (!hdfsExecutorService.awaitTermination(30, TimeUnit.SECONDS)) {

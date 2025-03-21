@@ -209,6 +209,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import com.linkedin.venice.writer.LeaderCompleteState;
@@ -1598,16 +1599,15 @@ public abstract class StoreIngestionTaskTest {
 
   @Test(dataProvider = "aaConfigProvider")
   public void testNotifier(AAConfig aaConfig) throws Exception {
-    localVeniceWriter.broadcastStartOfPush(new HashMap<>());
+    localVeniceWriter.broadcastStartOfPush(Collections.emptyMap());
     long fooLastOffset = getOffset(localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     long barLastOffset = getOffset(localVeniceWriter.put(putKeyBar, putValue, SCHEMA_ID));
-    localVeniceWriter.broadcastEndOfPush(new HashMap<>());
-    localVeniceWriter.broadcastEndOfPush(new HashMap<>());
     doReturn(fooLastOffset + 1).when(mockTopicManager).getLatestOffsetCachedNonBlocking(any(), eq(PARTITION_FOO));
     doReturn(barLastOffset + 1).when(mockTopicManager).getLatestOffsetCachedNonBlocking(any(), eq(PARTITION_BAR));
+    localVeniceWriter.broadcastEndOfPush(Collections.emptyMap());
 
-    Utils.sleep(1000);
     runTest(Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {
+      Utils.sleep(1000);
       /**
        * Considering that the {@link VeniceWriter} will send an {@link ControlMessageType#END_OF_PUSH},
        * we need to add 1 to last data message offset.
@@ -3914,11 +3914,7 @@ public abstract class StoreIngestionTaskTest {
       doReturn(1000L).when(mock).getLeaderOffset(anyString(), any());
       System.out.println(mockOR.getLeaderTopic(null));
       doReturn(1000L).when(mockOR).getUpstreamOffset(anyString());
-      if (aaConfig == AA_ON) {
-        doReturn(1000L).when(mock).getLatestProcessedUpstreamRTOffsetWithNoDefault(anyString());
-      } else {
-        doReturn(1000L).when(mock).getLatestProcessedUpstreamRTOffset(anyString());
-      }
+      doReturn(1000L).when(mock).getLatestProcessedUpstreamRTOffset(anyString());
       doReturn(mockOR).when(mock).getOffsetRecord();
       System.out.println("inside mock" + mockOR.getLeaderTopic(null));
       return mock;
@@ -3935,12 +3931,7 @@ public abstract class StoreIngestionTaskTest {
     Supplier<PartitionConsumptionState> mockPcsSupplier2 = () -> {
       PartitionConsumptionState mock = mockPcsSupplier.get();
       doReturn(-1L).when(mock).getLeaderOffset(anyString(), any());
-
-      if (aaConfig == AA_ON) {
-        doReturn(-1L).when(mock).getLatestProcessedUpstreamRTOffsetWithNoDefault(anyString());
-      } else {
-        doReturn(-1L).when(mock).getLatestProcessedUpstreamRTOffset(anyString());
-      }
+      doReturn(-1L).when(mock).getLatestProcessedUpstreamRTOffset(anyString());
       doReturn(new PubSubTopicPartitionImpl(rtTopic, 0)).when(mock).getSourceTopicPartition(any());
       return mock;
     };
@@ -5585,7 +5576,40 @@ public abstract class StoreIngestionTaskTest {
     DefaultPubSubMessage rtRecord =
         new ImmutablePubSubMessage(key, value, rtPartition, ApacheKafkaOffsetPosition.of(0), 0, 0);
     assertFalse(ingestionTask.shouldProcessRecord(rtRecord), "RT DIV from RT should not be processed");
+  }
 
+  /**
+   * Tests that the {@link StoreIngestionTask#isGlobalRtDivEnabled} feature flag stops the drainer from syncing
+   * OffsetRecord from {@link StoreIngestionTask#updateOffsetMetadataAndSyncOffset}, and the {@link ConsumptionTask}
+   * should send Global RT DIV in {@link LeaderFollowerStoreIngestionTask#sendGlobalRtDivMessage} instead.
+   */
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testShouldSendGlobalRtDiv(boolean isGlobalRtDivEnabled) {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    doCallRealMethod().when(storeIngestionTask).shouldSyncOffset(any(), any(), any());
+    doCallRealMethod().when(storeIngestionTask).shouldSendGlobalRtDiv(any(), any(), any());
+    doReturn(isGlobalRtDivEnabled).when(storeIngestionTask).isGlobalRtDivEnabled();
+    doReturn(1L).when(storeIngestionTask).getSyncBytesInterval(any()); // just needs to be greater than 0
+    DefaultPubSubMessage message = mock(DefaultPubSubMessage.class);
+    KafkaKey key = mock(KafkaKey.class);
+    doReturn(false).when(key).isControlMessage();
+    doReturn(key).when(message).getKey();
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(100L).when(pcs).getProcessedRecordSizeSinceLastSync(); // just needs to be greater than syncBytesInterval
+    VeniceConcurrentHashMap<String, Long> lastProcessedMap = new VeniceConcurrentHashMap<>();
+    String brokerUrl = "localhost:1234";
+    lastProcessedMap.put(brokerUrl, 100L); // just needs to be greater than syncBytesInterval
+    doReturn(lastProcessedMap).when(storeIngestionTask).getConsumedBytesSinceLastSync();
+
+    boolean shouldSendGlobalRtDiv = storeIngestionTask.shouldSendGlobalRtDiv(message, pcs, brokerUrl);
+    boolean shouldSyncOffset = storeIngestionTask.shouldSyncOffset(pcs, message, null);
+
+    // Feature flag should stop drainer from syncing OffsetRecord, and ConsumptionTask should send Global RT DIV
+    if (isGlobalRtDivEnabled) {
+      assertTrue(shouldSendGlobalRtDiv && !shouldSyncOffset);
+    } else {
+      assertTrue(shouldSyncOffset && !shouldSendGlobalRtDiv);
+    }
   }
 
   @Test
@@ -5823,6 +5847,48 @@ public abstract class StoreIngestionTaskTest {
       Assert.assertEquals(offsets.size(), 1);
       Assert.assertEquals(offsets.get(0).longValue(), 1000L);
     }
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testResubscribeAsLeaderFromVersionTopic(boolean aaEnabled) throws InterruptedException {
+    LeaderFollowerStoreIngestionTask ingestionTask =
+        aaEnabled ? mock(ActiveActiveStoreIngestionTask.class) : mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask).prepareOffsetCheckpointAndStartConsumptionAsLeader(any(), any());
+    PubSubTopicRepository topicRepository = new PubSubTopicRepository();
+    when(ingestionTask.getPubSubTopicRepository()).thenReturn(topicRepository);
+    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+    PubSubTopic pubSubTopic = topicRepository.getTopic("test_v1");
+    offsetRecord.setLeaderTopic(pubSubTopic);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.getOffsetRecord()).thenReturn(offsetRecord);
+    when(pcs.getReplicaId()).thenReturn("test_v1-1");
+    when(pcs.getPartition()).thenReturn(1);
+    when(ingestionTask.isActiveActiveReplicationEnabled()).thenReturn(aaEnabled);
+    Set<String> upstreamUrlSet = new HashSet<>();
+    upstreamUrlSet.add("dc-1");
+    if (aaEnabled) {
+      upstreamUrlSet.add("dc-2");
+      upstreamUrlSet.add("dc-3");
+    }
+    Map<String, Long> upstreamOffsetMap = new HashMap<>();
+    when(ingestionTask.getConsumptionSourceKafkaAddress(pcs)).thenReturn(upstreamUrlSet);
+    when(pcs.getLatestProcessedUpstreamRTOffsetMap()).thenReturn(upstreamOffsetMap);
+    doCallRealMethod().when(pcs).getLatestProcessedUpstreamRTOffset(anyString());
+    doCallRealMethod().when(pcs).getLeaderOffset(anyString(), any());
+    when(pcs.getLatestProcessedUpstreamVersionTopicOffset()).thenReturn(100L);
+    when(pcs.consumeRemotely()).thenReturn(true);
+    ingestionTask.prepareOffsetCheckpointAndStartConsumptionAsLeader(pubSubTopic, pcs);
+
+    if (aaEnabled) {
+      Assert.assertEquals(offsetRecord.getUpstreamOffset("dc-1"), -1);
+      Assert.assertEquals(offsetRecord.getUpstreamOffset("dc-2"), -1);
+      Assert.assertEquals(offsetRecord.getUpstreamOffset("dc-3"), -1);
+    } else {
+      Assert.assertEquals(offsetRecord.getUpstreamOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY), -1);
+    }
+
   }
 
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(
