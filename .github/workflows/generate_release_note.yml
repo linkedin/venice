@@ -6,7 +6,7 @@ on:
       - "[0-9]+.[0-9]+.[0-9]+"
 
 jobs:
-  enforce-lines-changed:
+  generate-release-note:
     runs-on: ubuntu-latest
 
     steps:
@@ -22,6 +22,7 @@ jobs:
           echo "Previous tag: ${prev_tag}"
           echo "Current tag: ${curr_tag}"
           for commit in $(git rev-list "$prev_tag..$curr_tag"); do
+            echo -n "  -  " >> changelog.txt
             git --no-pager log --no-decorate "$commit^..$commit" --oneline >> changelog.txt
           done
 
