@@ -128,7 +128,6 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -1973,7 +1972,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Consumes the kafka actions messages in the queue.
    */
   void processConsumerActions(Store store) throws InterruptedException {
-    Instant startTime = Instant.now();
+    boolean metricsEnabled = emitMetrics.get();
+    long startTime = metricsEnabled ? System.currentTimeMillis() : 0;
     for (;;) {
       // Do not want to remove a message from the queue unless it has been processed.
       ConsumerAction action = consumerActionsQueue.peek();
@@ -2006,8 +2006,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
       }
     }
-    if (emitMetrics.get()) {
-      hostLevelIngestionStats.recordProcessConsumerActionLatency(Duration.between(startTime, Instant.now()).toMillis());
+    if (metricsEnabled) {
+      hostLevelIngestionStats.recordProcessConsumerActionLatency(LatencyUtils.getElapsedTimeFromMsToMs(startTime));
     }
   }
 
@@ -3711,7 +3711,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * 30 minutes according to the maximum value of the metric consumer_records_producing_to_write_buffer_latency.
    */
   void consumerUnSubscribeForStateTransition(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
-    Instant startTime = Instant.now();
+    long startTime = System.currentTimeMillis();
     int partitionId = partitionConsumptionState.getPartition();
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, partitionId);
     aggKafkaConsumerService
@@ -3720,16 +3720,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         "Consumer unsubscribed to topic-partition: {} for replica: {}. Took {} ms",
         topicPartition,
         partitionConsumptionState.getReplicaId(),
-        Instant.now().toEpochMilli() - startTime.toEpochMilli());
+        LatencyUtils.getElapsedTimeFromMsToMs(startTime));
   }
 
   public void consumerBatchUnsubscribe(Set<PubSubTopicPartition> topicPartitionSet) {
-    Instant startTime = Instant.now();
+    long startTime = System.currentTimeMillis();
     aggKafkaConsumerService.batchUnsubscribeConsumerFor(versionTopic, topicPartitionSet);
     LOGGER.info(
         "Consumer unsubscribed {} partitions. Took {} ms",
         topicPartitionSet.size(),
-        Instant.now().toEpochMilli() - startTime.toEpochMilli());
+        LatencyUtils.getElapsedTimeFromMsToMs(startTime));
   }
 
   public abstract void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState);
