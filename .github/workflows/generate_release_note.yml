@@ -3,20 +3,33 @@ name: Auto Release Notes
 on:
   push:
     tags:
-      - "[0-9]+.[0-9]+.[0-9]+" 
+      - "[0-9]+.[0-9]+.[0-9]+"
 
 jobs:
-  create-release:
+  enforce-lines-changed:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate Changelog
+        run: |
+          prev_tag=$(git for-each-ref --sort=creatordate --format '%(refname:lstrip=2)' refs/tags |  tail -2 | head -1)
+          curr_tag=$(git for-each-ref --sort=creatordate --format '%(refname:lstrip=2)' refs/tags | tail -1)
+          echo "Previous tag: ${prev_tag}"
+          echo "Current tag: ${curr_tag}"
+          for commit in $(git rev-list "$prev_tag..$curr_tag"); do
+            git --no-pager log --no-decorate "$commit^..$commit" --oneline >> changelog.txt
+          done
 
       - name: Create GitHub Release with Auto-Generated Notes
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v4
         with:
-          tag_name: ${{ github.ref_name }}
-          generate_release_notes: true
+          body_path: changelog.txt
+          token: ${{ secrets.GITHUB_TOKEN }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
