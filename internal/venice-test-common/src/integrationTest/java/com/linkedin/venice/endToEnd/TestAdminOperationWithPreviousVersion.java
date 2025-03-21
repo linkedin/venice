@@ -17,6 +17,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.StatTrackingStoreClient;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -56,11 +57,12 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
@@ -76,6 +78,32 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
+/**
+ * This test class is used to test the admin operations with the previous version of the admin operation protocol.
+ * It is used to detect any bad usages for new semantics in the latest Admin Operation protocol.
+ * We will enforce integration tests for all types of admin operations, which are defined in payloadUnion field
+ * of AdminOperation.
+ * <p>
+ *   The test will run all the admin operations with the previous version of the admin operation protocol.
+ * </p>
+ *
+ * <p>
+ *   If the latest schema is adding a new operation, we will run the test for that operation two times:
+ *   <ol>
+ *     <li>With the latest schema</li>
+ *     <li>With the previous schema - expect to throw VeniceProtocolException</li>
+ *   </ol>
+ * </p>
+ *
+ * <p>
+ *   How to add new test for new operation:
+ *   <ol>
+ *     <li>Create a new test method with the name test<OperationName> </li>
+ *     <li>Use runTestForEntryNames inside that test to provide all OperationNames that we are testing</li>
+ *     <li>Write integration test</li>
+ *   </ol>
+ * </p>
+ */
 public class TestAdminOperationWithPreviousVersion {
   private static final Logger LOGGER = LogManager.getLogger(TestAdminOperationWithPreviousVersion.class);
   private static final int TEST_TIMEOUT = 360 * Time.MS_PER_SECOND;
@@ -89,9 +117,11 @@ public class TestAdminOperationWithPreviousVersion {
   // ...];
   static final String KEY_SCHEMA = "\"string\"";
   static final String VALUE_SCHEMA = "\"string\"";
-  static final long LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION =
-      AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
-  static final long PREVIOUS_SCHEMA_ID_FOR_ADMIN_OPERATION = LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION - 1;
+  static final int LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION = AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
+  static final Schema LATEST_SCHEMA = AdminOperation.getClassSchema();
+  static final int PREVIOUS_SCHEMA_ID_FOR_ADMIN_OPERATION = LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION - 1;
+  static final Schema PREVIOUS_SCHEMA = AdminOperationSerializer.getSchema(PREVIOUS_SCHEMA_ID_FOR_ADMIN_OPERATION);
+  private static final Set<String> NEW_UNION_ENTRIES = getNewUnionEntries();
 
   private List<VeniceControllerWrapper> parentControllers;
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
@@ -101,14 +131,14 @@ public class TestAdminOperationWithPreviousVersion {
   private List<ControllerClient> childControllerClients = new ArrayList<>();
   private VeniceMultiClusterWrapper multiClusterWrapperRegion0;
   private int countTestRun;
-  private Map<String, Boolean> operationTypeMap = getAllPayloadUnionTypes();
-  private String[] NEW_UNION_ENTRIES = getNewUnionEntries();
+  private Set<String> testedOperations;
 
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
     Utils.thisIsLocalhost();
     // Reset the test run count to 0 for each test class
     countTestRun = 0;
+    testedOperations = new HashSet<>();
 
     // Set the cluster name to the first cluster
     clusterName = CLUSTER_NAMES[0];
@@ -162,6 +192,14 @@ public class TestAdminOperationWithPreviousVersion {
   void beforeEachTest() {
     // Increment the count of test run
     countTestRun++;
+
+    // Verify the admin protocol version
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      assertEquals(
+          parentControllerClient.getAdminTopicMetadata(Optional.empty()).getAdminOperationProtocolVersion(),
+          PREVIOUS_SCHEMA_ID_FOR_ADMIN_OPERATION,
+          "Admin operation version should be " + PREVIOUS_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    });
   }
 
   @AfterClass(alwaysRun = true)
@@ -176,11 +214,11 @@ public class TestAdminOperationWithPreviousVersion {
     // If the countTestRun = 1, it means we are running one specific test only, no need to verify for all operations
     // However, if you are running all tests, we will verify that all operations are tested
     if (countTestRun > 1) {
-      for (Map.Entry<String, Boolean> entry: operationTypeMap.entrySet()) {
+      for (String operationName: getPayloadUnionSchemaNames(LATEST_SCHEMA)) {
         assertTrue(
-            entry.getValue(),
-            "Operation type " + entry.getKey() + " was not tested. " + "Please add integration test for "
-                + entry.getKey() + " in TestAdminOperationWithPreviousVersion");
+            testedOperations.contains(operationName),
+            "Operation type " + operationName + " was not tested. Please add integration test for " + operationName
+                + " in TestAdminOperationWithPreviousVersion and use runTestForEntryNames in that test.");
       }
     }
   }
@@ -188,8 +226,10 @@ public class TestAdminOperationWithPreviousVersion {
   @Test(timeOut = TEST_TIMEOUT)
   public void testStoreCreation() {
     runTestForEntryNames(
-        new String[] { "StoreCreation", "PushStatusSystemStoreAutoCreationValidation",
-            "MetaSystemStoreAutoCreationValidation" },
+        Arrays.asList(
+            "StoreCreation",
+            "PushStatusSystemStoreAutoCreationValidation",
+            "MetaSystemStoreAutoCreationValidation"),
         () -> {
           // Create store and verify its creation
           String storeName = setUpTestStore().getName();
@@ -200,8 +240,7 @@ public class TestAdminOperationWithPreviousVersion {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testPauseStore() {
-
-    runTestForEntryNames(new String[] { "PauseStore", "ResumeStore" }, () -> {
+    runTestForEntryNames(Arrays.asList("PauseStore", "ResumeStore"), () -> {
       String storeName = Utils.getUniqueString("testDisableStoreWriter");
       veniceAdmin.createStore(clusterName, storeName, "testOwner", KEY_SCHEMA, VALUE_SCHEMA);
       veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setBatchGetLimit(100));
@@ -235,7 +274,7 @@ public class TestAdminOperationWithPreviousVersion {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testKillOfflinePushJob() {
-    runTestForEntryNames(new String[] { "KillOfflinePushJob" }, () -> {
+    runTestForEntryNames(Collections.singletonList("KillOfflinePushJob"), () -> {
       String storeName = setUpTestStore().getName();
 
       // Request topic for writes instead of push empty job since empty push job can cause flaky test when push job runs
@@ -271,7 +310,7 @@ public class TestAdminOperationWithPreviousVersion {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testDisableStoreRead() {
-    runTestForEntryNames(new String[] { "DisableStoreRead", "EnableStoreRead" }, () -> {
+    runTestForEntryNames(Arrays.asList("DisableStoreRead", "EnableStoreRead"), () -> {
       String storeName = setUpTestStore().getName();
 
       emptyPushToStore(parentControllerClient, storeName, 1);
@@ -305,8 +344,7 @@ public class TestAdminOperationWithPreviousVersion {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testDeleteAllVersions() {
-    runTestForEntryNames(new String[] { "DeleteAllVersions" }, () -> {
-      ;
+    runTestForEntryNames(Collections.singletonList("DeleteAllVersions"), () -> {
       String storeName = setUpTestStore().getName();
       emptyPushToStore(parentControllerClient, storeName, 1);
 
@@ -329,7 +367,7 @@ public class TestAdminOperationWithPreviousVersion {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testSetStoreOwner() {
-    runTestForEntryNames(new String[] { "SetStoreOwner" }, () -> {
+    runTestForEntryNames(Collections.singletonList("SetStoreOwner"), () -> {
       String storeName = setUpTestStore().getName();
       String newOwner = "newOwner";
       UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams().setOwner(newOwner);
@@ -346,7 +384,7 @@ public class TestAdminOperationWithPreviousVersion {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testSetStorePartitionCount() {
-    runTestForEntryNames(new String[] { "SetStorePartitionCount" }, () -> {
+    runTestForEntryNames(Collections.singletonList("SetStorePartitionCount"), () -> {
       String storeName = setUpTestStore().getName();
       int newPartitionCount = 1;
       UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams().setPartitionCount(newPartitionCount);
@@ -363,7 +401,7 @@ public class TestAdminOperationWithPreviousVersion {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testSetStoreCurrentVersion() {
-    runTestForEntryNames(new String[] { "SetStoreCurrentVersion" }, () -> {
+    runTestForEntryNames(Collections.singletonList("SetStoreCurrentVersion"), () -> {
       String storeName = setUpTestStore().getName();
 
       // Empty push
@@ -384,7 +422,7 @@ public class TestAdminOperationWithPreviousVersion {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testUpdateStore() {
-    runTestForEntryNames(new String[] { "UpdateStore" }, () -> {
+    runTestForEntryNames(Collections.singletonList("UpdateStore"), () -> {
       clusterName = CLUSTER_NAMES[0];
       VeniceControllerWrapper parentController = parentControllers.get(0);
       parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
@@ -413,7 +451,7 @@ public class TestAdminOperationWithPreviousVersion {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testDeleteStore() {
-    runTestForEntryNames(new String[] { "DeleteStore" }, () -> {
+    runTestForEntryNames(Collections.singletonList("DeleteStore"), () -> {
       String storeName = setUpTestStore().getName();
       // Disable read and write
       UpdateStoreQueryParams disableParams = new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false);
@@ -432,7 +470,7 @@ public class TestAdminOperationWithPreviousVersion {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testDeleteOldVersion() {
-    runTestForEntryNames(new String[] { "DeleteOldVersion" }, () -> {
+    runTestForEntryNames(Collections.singletonList("DeleteOldVersion"), () -> {
       String storeName = setUpTestStore().getName();
 
       // version 1
@@ -454,7 +492,7 @@ public class TestAdminOperationWithPreviousVersion {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testDerivedSchemaCreation() {
-    runTestForEntryNames(new String[] { "DerivedSchemaCreation" }, () -> {
+    runTestForEntryNames(Collections.singletonList("DerivedSchemaCreation"), () -> {
       Store storeInfo = setUpTestStore();
       String storeName = storeInfo.getName();
       String recordSchemaStr = TestWriteUtils.USER_WITH_DEFAULT_SCHEMA.toString();
@@ -467,7 +505,7 @@ public class TestAdminOperationWithPreviousVersion {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testValueSchemaCreation() {
-    runTestForEntryNames(new String[] { "ValueSchemaCreation", "DeleteUnusedValueSchemas" }, () -> {
+    runTestForEntryNames(Arrays.asList("ValueSchemaCreation", "DeleteUnusedValueSchemas"), () -> {
       String storeName = Utils.getUniqueString("testValueSchemaCreation-store");
 
       String valueRecordSchemaStr1 = "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   "
@@ -489,60 +527,58 @@ public class TestAdminOperationWithPreviousVersion {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testStoragePersona() {
-    runTestForEntryNames(
-        new String[] { "CreateStoragePersona", "UpdateStoragePersona", "DeleteStoragePersona" },
-        () -> {
-          long totalQuota = 1000;
-          StoragePersona persona = TestStoragePersonaUtils.createDefaultPersona();
-          persona.setQuotaNumber(totalQuota * 3);
-          List<String> stores = new ArrayList<>();
-          Store store1 = setUpTestStore();
+    runTestForEntryNames(Arrays.asList("CreateStoragePersona", "UpdateStoragePersona", "DeleteStoragePersona"), () -> {
+      long totalQuota = 1000;
+      StoragePersona persona = TestStoragePersonaUtils.createDefaultPersona();
+      persona.setQuotaNumber(totalQuota * 3);
+      List<String> stores = new ArrayList<>();
+      Store store1 = setUpTestStore();
 
-          parentControllerClient
-              .updateStore(store1.getName(), new UpdateStoreQueryParams().setStorageQuotaInByte(totalQuota));
-          stores.add(store1.getName());
-          persona.getStoresToEnforce().add(stores.get(0));
+      parentControllerClient
+          .updateStore(store1.getName(), new UpdateStoreQueryParams().setStorageQuotaInByte(totalQuota));
+      stores.add(store1.getName());
+      persona.getStoresToEnforce().add(stores.get(0));
 
-          ControllerClient controllerClient = new ControllerClient(
-              multiRegionMultiClusterWrapper.getClusterNames()[0],
-              multiRegionMultiClusterWrapper.getControllerConnectString());
+      ControllerClient controllerClient = new ControllerClient(
+          multiRegionMultiClusterWrapper.getClusterNames()[0],
+          multiRegionMultiClusterWrapper.getControllerConnectString());
 
-          ControllerResponse response = controllerClient.createStoragePersona(
-              persona.getName(),
-              persona.getQuotaNumber(),
-              persona.getStoresToEnforce(),
-              persona.getOwners());
-          assertFalse(response.isError());
-          Store store2 = setUpTestStore();
+      ControllerResponse response = controllerClient.createStoragePersona(
+          persona.getName(),
+          persona.getQuotaNumber(),
+          persona.getStoresToEnforce(),
+          persona.getOwners());
+      assertFalse(response.isError());
+      Store store2 = setUpTestStore();
 
-          parentControllerClient
-              .updateStore(store2.getName(), new UpdateStoreQueryParams().setStorageQuotaInByte(totalQuota * 2));
+      parentControllerClient
+          .updateStore(store2.getName(), new UpdateStoreQueryParams().setStorageQuotaInByte(totalQuota * 2));
 
-          stores.add(store2.getName());
-          persona.setStoresToEnforce(new HashSet<>(stores));
-          response = controllerClient.updateStoragePersona(
-              persona.getName(),
-              new UpdateStoragePersonaQueryParams().setStoresToEnforce(new HashSet<>(stores)));
-          assertFalse(response.isError());
-          TestUtils.waitForNonDeterministicAssertion(
-              60,
-              TimeUnit.SECONDS,
-              () -> assertEquals(controllerClient.getStoragePersona(persona.getName()).getStoragePersona(), persona));
+      stores.add(store2.getName());
+      persona.setStoresToEnforce(new HashSet<>(stores));
+      response = controllerClient.updateStoragePersona(
+          persona.getName(),
+          new UpdateStoragePersonaQueryParams().setStoresToEnforce(new HashSet<>(stores)));
+      assertFalse(response.isError());
+      TestUtils.waitForNonDeterministicAssertion(
+          60,
+          TimeUnit.SECONDS,
+          () -> assertEquals(controllerClient.getStoragePersona(persona.getName()).getStoragePersona(), persona));
 
-          response = parentControllerClient.deleteStoragePersona(persona.getName());
-          if (response.isError())
-            throw new VeniceException(response.getError());
-          assertFalse(response.isError());
-          TestUtils.waitForNonDeterministicAssertion(
-              60,
-              TimeUnit.SECONDS,
-              () -> assertNull(parentControllerClient.getStoragePersona(persona.getName()).getStoragePersona()));
-        });
+      response = parentControllerClient.deleteStoragePersona(persona.getName());
+      if (response.isError())
+        throw new VeniceException(response.getError());
+      assertFalse(response.isError());
+      TestUtils.waitForNonDeterministicAssertion(
+          60,
+          TimeUnit.SECONDS,
+          () -> assertNull(parentControllerClient.getStoragePersona(persona.getName()).getStoragePersona()));
+    });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testRollbackCurrentVersion() {
-    runTestForEntryNames(new String[] { "RollbackCurrentVersion", "RollForwardCurrentVersion" }, () -> {
+    runTestForEntryNames(Arrays.asList("RollbackCurrentVersion", "RollForwardCurrentVersion"), () -> {
       String storeName = setUpTestStore().getName();
       emptyPushToStore(parentControllerClient, storeName, 1);
       emptyPushToStore(parentControllerClient, storeName, 2);
@@ -573,7 +609,7 @@ public class TestAdminOperationWithPreviousVersion {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testEnableNativeReplicationForCluster() {
-    runTestForEntryNames(new String[] { "EnableNativeReplicationForCluster" }, () -> {
+    runTestForEntryNames(Collections.singletonList("EnableNativeReplicationForCluster"), () -> {
       String storeName = setUpTestStore().getName();
 
       emptyPushToStore(parentControllerClient, storeName, 1);
@@ -593,7 +629,7 @@ public class TestAdminOperationWithPreviousVersion {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testEnableActiveActiveReplicationForCluster() {
-    runTestForEntryNames(new String[] { "EnableActiveActiveReplicationForCluster" }, () -> {
+    runTestForEntryNames(Collections.singletonList("EnableActiveActiveReplicationForCluster"), () -> {
       String storeName = setUpTestStore().getName();
       emptyPushToStore(parentControllerClient, storeName, 1);
 
@@ -613,7 +649,7 @@ public class TestAdminOperationWithPreviousVersion {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testConfigureActiveActiveReplicationForCluster() {
-    runTestForEntryNames(new String[] { "ConfigureActiveActiveReplicationForCluster" }, () -> {
+    runTestForEntryNames(Collections.singletonList("ConfigureActiveActiveReplicationForCluster"), () -> {
       TestUtils.assertCommand(
           parentControllerClient.configureActiveActiveReplicationForCluster(
               true,
@@ -627,7 +663,7 @@ public class TestAdminOperationWithPreviousVersion {
   public void testConfigureNativeReplicationForCluster() {
     // No usage found for this operation
     // Check @code{AdminExecutionTask#handleEnableNativeReplicationForCluster}
-    runTestForEntryNames(new String[] { "ConfigureNativeReplicationForCluster" }, () -> {
+    runTestForEntryNames(Collections.singletonList("ConfigureNativeReplicationForCluster"), () -> {
       // Empty Runnable, does nothing
     });
   }
@@ -635,14 +671,14 @@ public class TestAdminOperationWithPreviousVersion {
   @Test(timeOut = TEST_TIMEOUT)
   public void testConfigureIncrementalPushForCluster() {
     // No usage found for this operation
-    runTestForEntryNames(new String[] { "ConfigureIncrementalPushForCluster" }, () -> {
+    runTestForEntryNames(Collections.singletonList("ConfigureIncrementalPushForCluster"), () -> {
       // Empty Runnable, does nothing
     });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testMigrateStore() {
-    runTestForEntryNames(new String[] { "MigrateStore", "AbortMigration" }, () -> {
+    runTestForEntryNames(Arrays.asList("MigrateStore", "AbortMigration"), () -> {
       String storeName = Utils.getUniqueString("test");
 
       String srcClusterName = CLUSTER_NAMES[0]; // venice-cluster0
@@ -705,7 +741,7 @@ public class TestAdminOperationWithPreviousVersion {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testAddVersion() {
-    runTestForEntryNames(new String[] { "AddVersion" }, () -> {
+    runTestForEntryNames(Collections.singletonList("AddVersion"), () -> {
       String storeName = setUpTestStore().getName();
       String pushJobId = "test-push-job-id";
 
@@ -732,7 +768,7 @@ public class TestAdminOperationWithPreviousVersion {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testMetadataSchemaCreation() {
-    runTestForEntryNames(new String[] { "MetadataSchemaCreation" }, () -> {
+    runTestForEntryNames(Collections.singletonList("MetadataSchemaCreation"), () -> {
       String storeName = Utils.getUniqueString("aa_store");
       String recordSchemaStr = TestWriteUtils.USER_WITH_DEFAULT_SCHEMA.toString();
       Schema metadataSchema = RmdSchemaGenerator.generateMetadataSchema(recordSchemaStr, 1);
@@ -747,7 +783,7 @@ public class TestAdminOperationWithPreviousVersion {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testSupersetSchemaCreation() {
-    runTestForEntryNames(new String[] { "SupersetSchemaCreation" }, () -> {
+    runTestForEntryNames(Collections.singletonList("SupersetSchemaCreation"), () -> {
       Schema valueSchemaV1 =
           AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("valueSchema/supersetschemas/ValueV1.avsc"));
       // Contains f2, f3
@@ -810,21 +846,25 @@ public class TestAdminOperationWithPreviousVersion {
     return testStore;
   }
 
-  private Map<String, Boolean> getAllPayloadUnionTypes() {
-    List<String> payloadUnionNames = getPayloadUnionSchemaNames(
-        AdminOperationSerializer.getSchema(AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
-    return payloadUnionNames.stream().collect(Collectors.toMap(name -> name, name -> false));
+  /**
+   * Get the new union entries from the latest schema that are not present in the previous schema.
+   * These new operations are required to run in two different versions in test.
+   * @return Set of all new union entries name
+   */
+  private static Set<String> getNewUnionEntries() {
+    Set<String> previousSchemaNames = new HashSet<>(getPayloadUnionSchemaNames(PREVIOUS_SCHEMA)); // Use Set for fast
+                                                                                                  // lookup
+
+    return getPayloadUnionSchemaNames(LATEST_SCHEMA).stream()
+        .filter(name -> !previousSchemaNames.contains(name)) // Filter out new operation records
+        .collect(Collectors.toSet());
   }
 
-  private static String[] getNewUnionEntries() {
-    List<String> latestSchemaNames =
-        getPayloadUnionSchemaNames(AdminOperationSerializer.getSchema((int) LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
-    List<String> previousSchemaNames =
-        getPayloadUnionSchemaNames(AdminOperationSerializer.getSchema((int) PREVIOUS_SCHEMA_ID_FOR_ADMIN_OPERATION));
-
-    return latestSchemaNames.stream().filter(name -> !previousSchemaNames.contains(name)).toArray(String[]::new);
-  }
-
+  /**
+   * Get the payloadUnion schema names from the given schema.
+   * @param schema: AdminOperation schema
+   * @return List of payloadUnion schema names - all operation names.
+   */
   private static List<String> getPayloadUnionSchemaNames(Schema schema) {
     // Extract the payloadUnion field, filter for RECORD types, and map to names.
     return schema.getField("payloadUnion")
@@ -899,17 +939,14 @@ public class TestAdminOperationWithPreviousVersion {
    * @param entryNames: The entry names to run the test for
    * @param testLogic: The logic to run the test
    */
-  private void runTestForEntryNames(String[] entryNames, Runnable testLogic) {
-    for (String entryName: entryNames) {
-      // Mark the operation type as tested
-      operationTypeMap.put(entryName, true);
-    }
+  private void runTestForEntryNames(List<String> entryNames, Runnable testLogic) {
+    // Mark the operation type as tested
+    testedOperations.addAll(entryNames);
 
-    List<String> commonStrings = Arrays.stream(entryNames)
-        .filter(entryName -> Arrays.asList(NEW_UNION_ENTRIES).contains(entryName))
-        .collect(Collectors.toList());
+    List<String> newEntriesInLatestSchema =
+        entryNames.stream().filter(NEW_UNION_ENTRIES::contains).collect(Collectors.toList());
 
-    if (commonStrings.size() > 0) {
+    if (!newEntriesInLatestSchema.isEmpty()) {
       // If the test is for new union entry, we expect an exception when running the test with previous version
       assertThrows(VeniceProtocolException.class, testLogic::run);
       // Pin the version to latest to test the full test
