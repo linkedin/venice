@@ -635,8 +635,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             repushOrchestratorClass,
             new Class[] { VeniceProperties.class },
             new Object[] { multiClusterConfigs.getRepushOrchestratorConfigs() });
+        LOGGER.info(RepushOrchestrator.class.getSimpleName() + " created successfully.");
         compactionManager =
             new CompactionManager(repushOrchestrator, multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS());
+        LOGGER.info(CompactionManager.class.getSimpleName() + " created successfully.");
       } catch (Exception e) {
         LOGGER.error("Failed to enable " + LogCompactionService.class.getSimpleName(), e);
         throw new VeniceException(e);
