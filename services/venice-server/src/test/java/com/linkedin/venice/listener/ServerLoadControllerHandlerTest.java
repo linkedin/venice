@@ -48,9 +48,9 @@ public class ServerLoadControllerHandlerTest {
     doReturn("/storage/abc").when(request).uri();
 
     // Record regular request
-    serverLoadControllerHandler.recordLatency(RequestType.SINGLE_GET, 5);
-    serverLoadControllerHandler.recordLatency(RequestType.MULTI_GET, 50);
-    serverLoadControllerHandler.recordLatency(RequestType.COMPUTE, 50);
+    serverLoadControllerHandler.recordLatency(RequestType.SINGLE_GET, 5, 200);
+    serverLoadControllerHandler.recordLatency(RequestType.MULTI_GET, 50, 200);
+    serverLoadControllerHandler.recordLatency(RequestType.COMPUTE, 50, 200);
 
     verify(loadStats, times(3)).recordAcceptedRequest();
     verify(loadStats, times(3)).recordTotalRequest();
@@ -60,9 +60,9 @@ public class ServerLoadControllerHandlerTest {
     assertEquals(loadController.getRejectionRatio(), 0.0d);
 
     // Record slow requests
-    serverLoadControllerHandler.recordLatency(RequestType.SINGLE_GET, 20);
-    serverLoadControllerHandler.recordLatency(RequestType.MULTI_GET, 200);
-    serverLoadControllerHandler.recordLatency(RequestType.COMPUTE, 200);
+    serverLoadControllerHandler.recordLatency(RequestType.SINGLE_GET, 20, 200);
+    serverLoadControllerHandler.recordLatency(RequestType.MULTI_GET, 200, 200);
+    serverLoadControllerHandler.recordLatency(RequestType.COMPUTE, 200, 200);
     TestUtils.waitForNonDeterministicAssertion(
         10,
         TimeUnit.SECONDS,
@@ -73,6 +73,13 @@ public class ServerLoadControllerHandlerTest {
     }
     // There must be some rejected requests
     verify(loadStats, atLeastOnce()).recordRejectedRequest();
+
+    // Record overload requests
+    serverLoadControllerHandler.recordLatency(RequestType.SINGLE_GET, 5, 529);
+    serverLoadControllerHandler.recordLatency(RequestType.SINGLE_GET, 5, 529);
+
+    verify(loadStats, times(3)).recordAcceptedRequest();
+    verify(loadStats, times(8)).recordTotalRequest();
 
   }
 

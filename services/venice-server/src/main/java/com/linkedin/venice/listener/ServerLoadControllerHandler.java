@@ -58,11 +58,6 @@ public class ServerLoadControllerHandler extends SimpleChannelInboundHandler<Htt
     loadStats.recordRejectionRatio(loadController.getRejectionRatio());
 
     if (loadController.shouldRejectRequest()) {
-      /**
-       * Record the total request count regardless of whether it is being rejected or not.
-       */
-      loadController.recordRequest();
-      // Reject request
       loadStats.recordRejectedRequest();
       ctx.writeAndFlush(new HttpShortcutResponse(SERVICE_OVERLOADED_MESSAGE, OVERLOADED_RESPONSE_STATUS));
     } else {
@@ -71,7 +66,17 @@ public class ServerLoadControllerHandler extends SimpleChannelInboundHandler<Htt
     }
   }
 
-  public void recordLatency(RequestType requestType, double latency) {
+  public void recordLatency(RequestType requestType, double latency, int responseStatusCode) {
+    /**
+     * Only record the request when the response is available to avoid rejecting many requests at startup time.
+     */
+    loadController.recordRequest();
+    loadStats.recordTotalRequest();
+
+    if (responseStatusCode == HttpConstants.SC_SERVICE_OVERLOADED) {
+      // No need to check the latency threshold.
+      return;
+    }
     double latencyThreshold = 0;
     switch (requestType) {
       case SINGLE_GET:
@@ -90,11 +95,7 @@ public class ServerLoadControllerHandler extends SimpleChannelInboundHandler<Htt
       loadStats.recordAcceptedRequest();
       loadController.recordAccept();
     }
-    loadStats.recordTotalRequest();
-    /**
-     * Only record the request when the response is available to avoid rejecting many requests at startup time.
-     */
-    loadController.recordRequest();
+
   }
 
   // For testing purpose
