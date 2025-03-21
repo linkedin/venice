@@ -8,6 +8,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.GENERATE_PARTIAL_UP
 import static com.linkedin.venice.vpj.VenicePushJobConstants.GLOB_FILTER_PATTERN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.OPTIONAL_TIMESTAMP_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.UPDATE_SCHEMA_STRING_PROP;
@@ -64,6 +65,7 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
     setInputConf(sparkSession, dataFrameReader, INPUT_PATH_PROP, new Path(pushJobSetting.inputURI).toString());
     setInputConf(sparkSession, dataFrameReader, KEY_FIELD_PROP, pushJobSetting.keyField);
     setInputConf(sparkSession, dataFrameReader, VALUE_FIELD_PROP, pushJobSetting.valueField);
+    setInputConf(sparkSession, dataFrameReader, OPTIONAL_TIMESTAMP_FIELD_PROP, pushJobSetting.timestampField);
     if (pushJobSetting.etlValueSchemaTransformation != null) {
       setInputConf(
           sparkSession,
@@ -103,12 +105,13 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
           pushJobSetting.keyField,
           pushJobSetting.valueField,
           pushJobSetting.etlValueSchemaTransformation,
-          updateSchema);
+          updateSchema,
+          pushJobSetting.timestampField);
 
       AvroWrapper<IndexedRecord> recordAvroWrapper = new AvroWrapper<>(rowRecord);
       final byte[] inputKeyBytes = recordReader.getKeyBytes(recordAvroWrapper, null);
       final byte[] inputValueBytes = recordReader.getValueBytes(recordAvroWrapper, null);
-
+      final Long timestamp = recordReader.getRecordRMD(recordAvroWrapper, null);
       return new GenericRowWithSchema(new Object[] { inputKeyBytes, inputValueBytes }, DEFAULT_SCHEMA);
     }, RowEncoder.apply(DEFAULT_SCHEMA));
 
@@ -129,6 +132,7 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
 
           final byte[] inputKeyBytes = recordReader.getKeyBytes(record._1, record._2);
           final byte[] inputValueBytes = recordReader.getValueBytes(record._1, record._2);
+          // final Long timestamp = recordReader.getRecordRMD(record._1, record._2);
 
           return new GenericRowWithSchema(new Object[] { inputKeyBytes, inputValueBytes }, DEFAULT_SCHEMA);
         });

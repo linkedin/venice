@@ -6,12 +6,12 @@ import com.linkedin.venice.hadoop.mapreduce.engine.MapReduceEngineTaskConfigProv
 import com.linkedin.venice.hadoop.task.datawriter.AbstractInputRecordProcessor;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import java.io.IOException;
-import java.util.function.BiConsumer;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Mapper;
 import org.apache.hadoop.mapred.OutputCollector;
 import org.apache.hadoop.mapred.Reporter;
+import org.apache.logging.log4j.util.TriConsumer;
 
 
 /**
@@ -63,8 +63,10 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
     return bw;
   }
 
-  private BiConsumer<byte[], byte[]> getRecordEmitter(OutputCollector<BytesWritable, BytesWritable> outputCollector) {
-    return (key, value) -> {
+  private TriConsumer<byte[], byte[], Long> getRecordEmitter(
+      OutputCollector<BytesWritable, BytesWritable> outputCollector) {
+    // TODO: We don't support passing the timestamp in MR yet, so this ignored the timestamp input
+    return (key, value, Long) -> {
       BytesWritable keyBW = wrapBytes(key);
       BytesWritable valueBW = wrapBytes(value);
       try {
