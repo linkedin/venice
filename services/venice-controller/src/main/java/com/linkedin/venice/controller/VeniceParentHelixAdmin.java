@@ -1502,22 +1502,17 @@ public class VeniceParentHelixAdmin implements Admin {
     boolean isTargetRegionPushWithDeferredSwap = !StringUtils.isEmpty(targetedRegions) && versionSwapDeferred;
     if (isTargetRegionPushWithDeferredSwap) {
       validateTargetedRegions(targetedRegions, clusterName);
-      Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetedRegions);
-      StoreInfo childStore = getStoreInChildRegion(targetRegions.iterator().next(), clusterName, storeName);
-      Optional<Version> currentVersionInChild = childStore.getVersion(childStore.getCurrentVersion());
-      if (currentVersionInChild.isPresent()) {
-        boolean skipTargetRegionPushForDavinci = currentVersionInChild.get().getIsDavinciHeartbeatReported()
-            && multiClusterConfigs.isSkipDeferredVersionSwapForDVCEnabled();
-        if (skipTargetRegionPushForDavinci) {
-          LOGGER.info(
-              "Skip setting targetedRegions and versionSwapDeferred values for store: {} "
-                  + "because isSkipDeferredVersionSwapForDVCEnabled: {} and isDavinciHeartbeatReported: {}",
-              storeName,
-              multiClusterConfigs.isSkipDeferredVersionSwapForDVCEnabled(),
-              currentVersionInChild.get().getIsDavinciHeartbeatReported());
-          targetedRegions = "";
-          versionSwapDeferred = false;
-        }
+      boolean skipTargetRegionPushForDavinci = isDavinciHeartbeatReported(clusterName, storeName)
+          && multiClusterConfigs.isSkipDeferredVersionSwapForDVCEnabled();
+      if (skipTargetRegionPushForDavinci) {
+        LOGGER.info(
+            "Skip setting targetedRegions and versionSwapDeferred values for store: {} "
+                + "because isSkipDeferredVersionSwapForDVCEnabled: {} and isDavinciHeartbeatReported: {}",
+            storeName,
+            multiClusterConfigs.isSkipDeferredVersionSwapForDVCEnabled(),
+            isDavinciHeartbeatReported(clusterName, storeName));
+        targetedRegions = "";
+        versionSwapDeferred = false;
       }
     }
 
@@ -1635,6 +1630,26 @@ public class VeniceParentHelixAdmin implements Admin {
     }
 
     return newVersion;
+  }
+
+  /**
+   * Checks if there is a davinci heartbeat reported in any region for the current version
+   * @param clusterName name of the cluster the store is in
+   * @param storeName name of the store to check for a davinci heartbeat
+   * @return
+   */
+  private boolean isDavinciHeartbeatReported(String clusterName, String storeName) {
+    Map<String, ControllerClient> clientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    for (String region: clientMap.keySet()) {
+      StoreInfo childStore = getStoreInChildRegion(region, clusterName, storeName);
+      Optional<Version> currentVersionInChild = childStore.getVersion(childStore.getCurrentVersion());
+      if (currentVersionInChild.isPresent()) {
+        if (currentVersionInChild.get().getIsDavinciHeartbeatReported()) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   /**
@@ -3774,6 +3789,7 @@ public class VeniceParentHelixAdmin implements Admin {
           }
           // status PUSHED is set when batch store's target region push is completed, but other region are yet to
           // complete
+          // somehow removing the outer if makes the status ERROR instead of KILLED
           if (currentReturnStatus.equals(ExecutionStatus.COMPLETED)) {
             if (isTargetRegionPush && !isVersionPushed) {
               parentStore.updateVersionStatus(versionNum, PUSHED);
