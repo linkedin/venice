@@ -1663,7 +1663,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   private void recordMaxIdleTime() {
-    long curTime = System.currentTimeMillis(), oldest = curTime;
+    long curTime = System.currentTimeMillis();
+    long oldest = curTime;
     for (PartitionConsumptionState state: partitionConsumptionStateMap.values()) {
       if (state != null) {
         oldest = Math.min(oldest, state.getLatestPolledMessageTimestampInMs());
