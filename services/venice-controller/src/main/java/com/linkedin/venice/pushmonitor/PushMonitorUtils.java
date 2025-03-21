@@ -382,7 +382,7 @@ public class PushMonitorUtils {
     if (incompleteSize > 0) {
       List<Integer> list = new ArrayList<>(incompletePartition);
       statusDetailStringBuilder.append(". Following partitions still not complete (capped at 10) ")
-          .append(list.size() > 10 ? list.subList(0, 10) : list)
+          .append(list.subList(0, Math.min(10, list.size())))
           .append(". Live replica count: ")
           .append(liveReplicaCount)
           .append(", completed replica count: ")
