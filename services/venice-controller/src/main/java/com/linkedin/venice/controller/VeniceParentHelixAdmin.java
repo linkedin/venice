@@ -2671,7 +2671,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
       setStore.largestUsedRTVersionNumber =
           largestUsedRTVersionNumber.map(addToUpdatedConfigList(updatedConfigsList, LARGEST_USED_RT_VERSION_NUMBER))
-              .orElseGet(currStore::getLargestUsedRTVersionNumber);
+              .orElse(null);
 
       setStore.backupVersionRetentionMs =
           backupVersionRetentionMs.map(addToUpdatedConfigList(updatedConfigsList, BACKUP_VERSION_RETENTION_MS))
