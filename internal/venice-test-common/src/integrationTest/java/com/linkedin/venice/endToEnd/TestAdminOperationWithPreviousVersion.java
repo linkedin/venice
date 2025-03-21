@@ -28,6 +28,7 @@ import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceProtocolException;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -53,6 +54,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.vpj.VenicePushJobConstants;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -87,6 +89,9 @@ public class TestAdminOperationWithPreviousVersion {
   // ...];
   static final String KEY_SCHEMA = "\"string\"";
   static final String VALUE_SCHEMA = "\"string\"";
+  static final long LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION =
+      AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
+  static final long PREVIOUS_SCHEMA_ID_FOR_ADMIN_OPERATION = LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION - 1;
 
   private List<VeniceControllerWrapper> parentControllers;
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
@@ -97,6 +102,7 @@ public class TestAdminOperationWithPreviousVersion {
   private VeniceMultiClusterWrapper multiClusterWrapperRegion0;
   private int countTestRun;
   private Map<String, Boolean> operationTypeMap = getAllPayloadUnionTypes();
+  private String[] NEW_UNION_ENTRIES = getNewUnionEntries();
 
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
@@ -149,11 +155,7 @@ public class TestAdminOperationWithPreviousVersion {
     }
 
     // Pinning the version to the previous version
-    AdminTopicMetadataResponse updateProtocolVersionResponse =
-        parentControllerClient.updateAdminOperationProtocolVersion(
-            clusterName,
-            (long) (AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION - 1));
-    assertFalse(updateProtocolVersionResponse.isError(), "Failed to update protocol version");
+    pinVersion(PREVIOUS_SCHEMA_ID_FOR_ADMIN_OPERATION);
   }
 
   @BeforeMethod
@@ -178,591 +180,610 @@ public class TestAdminOperationWithPreviousVersion {
         assertTrue(
             entry.getValue(),
             "Operation type " + entry.getKey() + " was not tested. " + "Please add integration test for "
-                + entry.getKey() + " in TestAdminOperationWithPreviousVersion and markAsTested(" + entry.getKey()
-                + "); to bypass this check.");
+                + entry.getKey() + " in TestAdminOperationWithPreviousVersion");
       }
     }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testStoreCreation() {
-    markAsTested("StoreCreation");
-    // When we create store, we will send both messages below to create system store
-    markAsTested("PushStatusSystemStoreAutoCreationValidation");
-    markAsTested("MetaSystemStoreAutoCreationValidation");
-
-    // Create store
-    String storeName = setUpTestStore().getName();
-
-    // Check store creation
-    StoreResponse storeResponse = parentControllerClient.getStore(storeName);
-    assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
+    runTestForEntryNames(
+        new String[] { "StoreCreation", "PushStatusSystemStoreAutoCreationValidation",
+            "MetaSystemStoreAutoCreationValidation" },
+        () -> {
+          // Create store and verify its creation
+          String storeName = setUpTestStore().getName();
+          StoreResponse storeResponse = parentControllerClient.getStore(storeName);
+          assertFalse(storeResponse.isError(), "Error in store response: " + storeResponse.getError());
+        });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testPauseStore() {
-    markAsTested("PauseStore");
-    markAsTested("ResumeStore");
 
-    String storeName = Utils.getUniqueString("testDisableStoreWriter");
-    veniceAdmin.createStore(clusterName, storeName, "testOwner", KEY_SCHEMA, VALUE_SCHEMA);
-    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setBatchGetLimit(100));
-    veniceAdmin.setStoreWriteability(clusterName, storeName, false);
-    Store store = veniceAdmin.getStore(clusterName, storeName);
+    runTestForEntryNames(new String[] { "PauseStore", "ResumeStore" }, () -> {
+      String storeName = Utils.getUniqueString("testDisableStoreWriter");
+      veniceAdmin.createStore(clusterName, storeName, "testOwner", KEY_SCHEMA, VALUE_SCHEMA);
+      veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setBatchGetLimit(100));
+      veniceAdmin.setStoreWriteability(clusterName, storeName, false);
+      Store store = veniceAdmin.getStore(clusterName, storeName);
 
-    // Store has been disabled, can not accept a new version
-    assertThrows(
-        VeniceException.class,
-        () -> veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1));
+      // Store has been disabled, can not accept a new version
+      assertThrows(
+          VeniceException.class,
+          () -> veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1));
 
-    assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions(), store.getVersions());
+      assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions(), store.getVersions());
 
-    // Store has been disabled, can not accept a new version
-    assertThrows(
-        VeniceException.class,
-        () -> veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1));
+      // Store has been disabled, can not accept a new version
+      assertThrows(
+          VeniceException.class,
+          () -> veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1));
 
-    assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions(), store.getVersions());
+      assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions(), store.getVersions());
 
-    // Resume store
-    veniceAdmin.setStoreWriteability(clusterName, storeName, true);
+      // Resume store
+      veniceAdmin.setStoreWriteability(clusterName, storeName, true);
 
-    emptyPushToStore(parentControllerClient, storeName, 1);
-    store = veniceAdmin.getStore(clusterName, storeName);
-    assertTrue(store.isEnableWrites());
-    assertEquals(store.getVersions().size(), 1);
-    assertEquals(store.peekNextVersionNumber(), 2);
+      emptyPushToStore(parentControllerClient, storeName, 1);
+      store = veniceAdmin.getStore(clusterName, storeName);
+      assertTrue(store.isEnableWrites());
+      assertEquals(store.getVersions().size(), 1);
+      assertEquals(store.peekNextVersionNumber(), 2);
+    });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testKillOfflinePushJob() {
-    markAsTested("KillOfflinePushJob");
+    runTestForEntryNames(new String[] { "KillOfflinePushJob" }, () -> {
+      String storeName = setUpTestStore().getName();
 
-    String storeName = setUpTestStore().getName();
+      // Request topic for writes instead of push empty job since empty push job can cause flaky test when push job runs
+      // fast.
+      parentControllerClient.requestTopicForWrites(
+          storeName,
+          1000,
+          Version.PushType.BATCH,
+          Version.numberBasedDummyPushId(1),
+          true,
+          true,
+          false,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.of("dc-1"),
+          false,
+          -1);
+      // No wait to kill the push job
+      // Kill push job
+      parentControllerClient.killOfflinePushJob(Version.composeKafkaTopic(storeName, 1));
 
-    // Request topic for writes instead of push empty job since empty push job can cause flaky test when push job runs
-    // fast.
-    parentControllerClient.requestTopicForWrites(
-        storeName,
-        1000,
-        Version.PushType.BATCH,
-        Version.numberBasedDummyPushId(1),
-        true,
-        true,
-        false,
-        Optional.empty(),
-        Optional.empty(),
-        Optional.of("dc-1"),
-        false,
-        -1);
-    // No wait to kill the push job
-    // Kill push job
-    parentControllerClient.killOfflinePushJob(Version.composeKafkaTopic(storeName, 1));
-
-    // Check version
-    for (ControllerClient childControllerClient: childControllerClients) {
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
-        StoreResponse storeResponse = childControllerClient.getStore(storeName);
-        assertFalse(storeResponse.isError());
-        StoreInfo storeInfo = storeResponse.getStore();
-        assertEquals(storeInfo.getVersions().size(), 0);
-      });
-    }
-
+      // Check version
+      for (ControllerClient childControllerClient: childControllerClients) {
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+          StoreResponse storeResponse = childControllerClient.getStore(storeName);
+          assertFalse(storeResponse.isError());
+          StoreInfo storeInfo = storeResponse.getStore();
+          assertEquals(storeInfo.getVersions().size(), 0);
+        });
+      }
+    });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testDisableStoreRead() {
-    markAsTested("DisableStoreRead");
-    markAsTested("EnableStoreRead");
+    runTestForEntryNames(new String[] { "DisableStoreRead", "EnableStoreRead" }, () -> {
+      String storeName = setUpTestStore().getName();
 
-    String storeName = setUpTestStore().getName();
+      emptyPushToStore(parentControllerClient, storeName, 1);
 
-    emptyPushToStore(parentControllerClient, storeName, 1);
+      UpdateStoreQueryParams disableReadParams = new UpdateStoreQueryParams().setEnableReads(false);
+      ControllerResponse response = parentControllerClient.updateStore(storeName, disableReadParams);
+      assertFalse(response.isError());
 
-    UpdateStoreQueryParams disableReadParams = new UpdateStoreQueryParams().setEnableReads(false);
-    ControllerResponse response = parentControllerClient.updateStore(storeName, disableReadParams);
-    assertFalse(response.isError());
+      for (ControllerClient childControllerClient: childControllerClients) {
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+          StoreResponse storeResponse = childControllerClient.getStore(storeName);
+          assertFalse(storeResponse.isError());
+          StoreInfo storeInfo = storeResponse.getStore();
+          assertFalse(storeInfo.isEnableStoreReads());
+        });
+      }
 
-    for (ControllerClient childControllerClient: childControllerClients) {
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
-        StoreResponse storeResponse = childControllerClient.getStore(storeName);
-        assertFalse(storeResponse.isError());
-        StoreInfo storeInfo = storeResponse.getStore();
-        assertFalse(storeInfo.isEnableStoreReads());
-      });
-    }
-
-    UpdateStoreQueryParams enableReadParams = new UpdateStoreQueryParams().setEnableReads(true);
-    response = parentControllerClient.updateStore(storeName, enableReadParams);
-    assertFalse(response.isError());
-    for (ControllerClient childControllerClient: childControllerClients) {
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
-        StoreResponse storeResponse = childControllerClient.getStore(storeName);
-        assertFalse(storeResponse.isError());
-        StoreInfo storeInfo = storeResponse.getStore();
-        assertTrue(storeInfo.isEnableStoreReads());
-      });
-    }
+      UpdateStoreQueryParams enableReadParams = new UpdateStoreQueryParams().setEnableReads(true);
+      response = parentControllerClient.updateStore(storeName, enableReadParams);
+      assertFalse(response.isError());
+      for (ControllerClient childControllerClient: childControllerClients) {
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+          StoreResponse storeResponse = childControllerClient.getStore(storeName);
+          assertFalse(storeResponse.isError());
+          StoreInfo storeInfo = storeResponse.getStore();
+          assertTrue(storeInfo.isEnableStoreReads());
+        });
+      }
+    });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testDeleteAllVersions() {
-    markAsTested("DeleteAllVersions");
+    runTestForEntryNames(new String[] { "DeleteAllVersions" }, () -> {
+      ;
+      String storeName = setUpTestStore().getName();
+      emptyPushToStore(parentControllerClient, storeName, 1);
 
-    String storeName = setUpTestStore().getName();
-    emptyPushToStore(parentControllerClient, storeName, 1);
+      // Disable read and write
+      UpdateStoreQueryParams disableParams = new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false);
+      ControllerResponse response = parentControllerClient.updateStore(storeName, disableParams);
+      assertFalse(response.isError());
 
-    // Disable read and write
-    UpdateStoreQueryParams disableParams = new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false);
-    ControllerResponse response = parentControllerClient.updateStore(storeName, disableParams);
-    assertFalse(response.isError());
-
-    // Delete all versions
-    response = parentControllerClient.deleteAllVersions(storeName);
-    assertFalse(response.isError());
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
-      StoreResponse storeResponse = parentControllerClient.getStore(storeName);
-      assertFalse(storeResponse.isError());
-      StoreInfo storeInfo = storeResponse.getStore();
-      assertEquals(storeInfo.getVersions().size(), 0);
+      // Delete all versions
+      response = parentControllerClient.deleteAllVersions(storeName);
+      assertFalse(response.isError());
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+        StoreResponse storeResponse = parentControllerClient.getStore(storeName);
+        assertFalse(storeResponse.isError());
+        StoreInfo storeInfo = storeResponse.getStore();
+        assertEquals(storeInfo.getVersions().size(), 0);
+      });
     });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testSetStoreOwner() {
-    markAsTested("SetStoreOwner");
-    String storeName = setUpTestStore().getName();
-    String newOwner = "newOwner";
-    UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams().setOwner(newOwner);
-    ControllerResponse response = parentControllerClient.updateStore(storeName, updateStoreQueryParams);
-    assertFalse(response.isError());
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
-      StoreResponse storeResponse = parentControllerClient.getStore(storeName);
-      assertFalse(storeResponse.isError());
-      StoreInfo storeInfo = storeResponse.getStore();
-      assertEquals(storeInfo.getOwner(), newOwner);
+    runTestForEntryNames(new String[] { "SetStoreOwner" }, () -> {
+      String storeName = setUpTestStore().getName();
+      String newOwner = "newOwner";
+      UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams().setOwner(newOwner);
+      ControllerResponse response = parentControllerClient.updateStore(storeName, updateStoreQueryParams);
+      assertFalse(response.isError());
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+        StoreResponse storeResponse = parentControllerClient.getStore(storeName);
+        assertFalse(storeResponse.isError());
+        StoreInfo storeInfo = storeResponse.getStore();
+        assertEquals(storeInfo.getOwner(), newOwner);
+      });
     });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testSetStorePartitionCount() {
-    markAsTested("SetStorePartitionCount");
-    String storeName = setUpTestStore().getName();
-    int newPartitionCount = 1;
-    UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams().setPartitionCount(newPartitionCount);
-    ControllerResponse response = parentControllerClient.updateStore(storeName, updateStoreQueryParams);
-    assertFalse(response.isError());
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
-      StoreResponse storeResponse = parentControllerClient.getStore(storeName);
-      assertFalse(storeResponse.isError());
-      StoreInfo storeInfo = storeResponse.getStore();
-      assertEquals(storeInfo.getPartitionCount(), newPartitionCount);
+    runTestForEntryNames(new String[] { "SetStorePartitionCount" }, () -> {
+      String storeName = setUpTestStore().getName();
+      int newPartitionCount = 1;
+      UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams().setPartitionCount(newPartitionCount);
+      ControllerResponse response = parentControllerClient.updateStore(storeName, updateStoreQueryParams);
+      assertFalse(response.isError());
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+        StoreResponse storeResponse = parentControllerClient.getStore(storeName);
+        assertFalse(storeResponse.isError());
+        StoreInfo storeInfo = storeResponse.getStore();
+        assertEquals(storeInfo.getPartitionCount(), newPartitionCount);
+      });
     });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testSetStoreCurrentVersion() {
-    markAsTested("SetStoreCurrentVersion");
+    runTestForEntryNames(new String[] { "SetStoreCurrentVersion" }, () -> {
+      String storeName = setUpTestStore().getName();
 
-    String storeName = setUpTestStore().getName();
+      // Empty push
+      emptyPushToStore(parentControllerClient, storeName, 1);
 
-    // Empty push
-    emptyPushToStore(parentControllerClient, storeName, 1);
-
-    int newCurrentVersion = 0;
-    UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams().setCurrentVersion(newCurrentVersion);
-    ControllerResponse response = parentControllerClient.updateStore(storeName, updateStoreQueryParams);
-    assertFalse(response.isError());
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
-      StoreResponse storeResponse = parentControllerClient.getStore(storeName);
-      assertFalse(storeResponse.isError());
-      StoreInfo storeInfo = storeResponse.getStore();
-      assertEquals(storeInfo.getCurrentVersion(), newCurrentVersion);
+      int newCurrentVersion = 0;
+      UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams().setCurrentVersion(newCurrentVersion);
+      ControllerResponse response = parentControllerClient.updateStore(storeName, updateStoreQueryParams);
+      assertFalse(response.isError());
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+        StoreResponse storeResponse = parentControllerClient.getStore(storeName);
+        assertFalse(storeResponse.isError());
+        StoreInfo storeInfo = storeResponse.getStore();
+        assertEquals(storeInfo.getCurrentVersion(), newCurrentVersion);
+      });
     });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testUpdateStore() {
-    markAsTested("UpdateStore");
-    clusterName = CLUSTER_NAMES[0];
-    VeniceControllerWrapper parentController = parentControllers.get(0);
-    parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
+    runTestForEntryNames(new String[] { "UpdateStore" }, () -> {
+      clusterName = CLUSTER_NAMES[0];
+      VeniceControllerWrapper parentController = parentControllers.get(0);
+      parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
 
-    // Create store
-    String storeName = setUpTestStore().getName();
+      // Create store
+      String storeName = setUpTestStore().getName();
 
-    // Empty push
-    emptyPushToStore(parentControllerClient, storeName, 1);
+      // Empty push
+      emptyPushToStore(parentControllerClient, storeName, 1);
 
-    // Store update
-    ControllerResponse updateStore =
-        parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setBatchGetLimit(100));
-    assertFalse(updateStore.isError());
+      // Store update
+      ControllerResponse updateStore =
+          parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setBatchGetLimit(100));
+      assertFalse(updateStore.isError());
 
-    for (ControllerClient childControllerClient: childControllerClients) {
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
-        StoreResponse storeResponse = childControllerClient.getStore(storeName);
-        assertFalse(storeResponse.isError());
-        StoreInfo storeInfo = storeResponse.getStore();
-        assertEquals(storeInfo.getBatchGetLimit(), 100);
-      });
-    }
+      for (ControllerClient childControllerClient: childControllerClients) {
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+          StoreResponse storeResponse = childControllerClient.getStore(storeName);
+          assertFalse(storeResponse.isError());
+          StoreInfo storeInfo = storeResponse.getStore();
+          assertEquals(storeInfo.getBatchGetLimit(), 100);
+        });
+      }
+    });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testDeleteStore() {
-    markAsTested("DeleteStore");
-    String storeName = setUpTestStore().getName();
-    // Disable read and write
-    UpdateStoreQueryParams disableParams = new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false);
-    ControllerResponse response = parentControllerClient.updateStore(storeName, disableParams);
-    assertFalse(response.isError());
+    runTestForEntryNames(new String[] { "DeleteStore" }, () -> {
+      String storeName = setUpTestStore().getName();
+      // Disable read and write
+      UpdateStoreQueryParams disableParams = new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false);
+      ControllerResponse response = parentControllerClient.updateStore(storeName, disableParams);
+      assertFalse(response.isError());
 
-    // Delete store
-    response = parentControllerClient.deleteStore(storeName);
-    assertFalse(response.isError());
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
-      StoreResponse storeResponse = parentControllerClient.getStore(storeName);
-      assertTrue(storeResponse.isError());
+      // Delete store
+      response = parentControllerClient.deleteStore(storeName);
+      assertFalse(response.isError());
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+        StoreResponse storeResponse = parentControllerClient.getStore(storeName);
+        assertTrue(storeResponse.isError());
+      });
     });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testDeleteOldVersion() {
-    markAsTested("DeleteOldVersion");
+    runTestForEntryNames(new String[] { "DeleteOldVersion" }, () -> {
+      String storeName = setUpTestStore().getName();
 
-    String storeName = setUpTestStore().getName();
+      // version 1
+      emptyPushToStore(parentControllerClient, storeName, 1);
 
-    // version 1
-    emptyPushToStore(parentControllerClient, storeName, 1);
+      // version 2
+      emptyPushToStore(parentControllerClient, storeName, 2);
 
-    // version 2
-    emptyPushToStore(parentControllerClient, storeName, 2);
-
-    ControllerResponse response = parentControllerClient.deleteOldVersion(storeName, 1);
-    assertFalse(response.isError());
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
-      StoreResponse storeResponse = parentControllerClient.getStore(storeName);
-      assertFalse(storeResponse.isError());
-      StoreInfo storeInfo = storeResponse.getStore();
-      assertEquals(storeInfo.getVersions().size(), 1);
+      ControllerResponse response = parentControllerClient.deleteOldVersion(storeName, 1);
+      assertFalse(response.isError());
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+        StoreResponse storeResponse = parentControllerClient.getStore(storeName);
+        assertFalse(storeResponse.isError());
+        StoreInfo storeInfo = storeResponse.getStore();
+        assertEquals(storeInfo.getVersions().size(), 1);
+      });
     });
-
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testDerivedSchemaCreation() {
-    markAsTested("DerivedSchemaCreation");
+    runTestForEntryNames(new String[] { "DerivedSchemaCreation" }, () -> {
+      Store storeInfo = setUpTestStore();
+      String storeName = storeInfo.getName();
+      String recordSchemaStr = TestWriteUtils.USER_WITH_DEFAULT_SCHEMA.toString();
+      Schema derivedSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchemaStr(recordSchemaStr);
 
-    Store storeInfo = setUpTestStore();
-    String storeName = storeInfo.getName();
-    String recordSchemaStr = TestWriteUtils.USER_WITH_DEFAULT_SCHEMA.toString();
-    Schema derivedSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchemaStr(recordSchemaStr);
-
-    veniceAdmin.addDerivedSchema(clusterName, storeName, 1, derivedSchema.toString());
-    assertEquals(veniceAdmin.getDerivedSchemas(clusterName, storeName).size(), 1);
+      veniceAdmin.addDerivedSchema(clusterName, storeName, 1, derivedSchema.toString());
+      assertEquals(veniceAdmin.getDerivedSchemas(clusterName, storeName).size(), 1);
+    });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testValueSchemaCreation() {
-    markAsTested("ValueSchemaCreation");
-    markAsTested("DeleteUnusedValueSchemas");
+    runTestForEntryNames(new String[] { "ValueSchemaCreation", "DeleteUnusedValueSchemas" }, () -> {
+      String storeName = Utils.getUniqueString("testValueSchemaCreation-store");
 
-    String storeName = Utils.getUniqueString("testValueSchemaCreation-store");
+      String valueRecordSchemaStr1 = "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   "
+          + "  \"name\": \"User\",     " + "  \"fields\": [           "
+          + "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"\"}  " + "  ] " + " } ";
+      String valueRecordSchemaStr2 = TestWriteUtils.SIMPLE_USER_WITH_DEFAULT_SCHEMA.toString();
+      NewStoreResponse newStoreResponse = parentControllerClient
+          .retryableRequest(5, c -> c.createNewStore(storeName, "", KEY_SCHEMA, valueRecordSchemaStr1));
+      assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
 
-    String valueRecordSchemaStr1 = "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   "
-        + "  \"name\": \"User\",     " + "  \"fields\": [           "
-        + "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"\"}  " + "  ] " + " } ";
-    String valueRecordSchemaStr2 = TestWriteUtils.SIMPLE_USER_WITH_DEFAULT_SCHEMA.toString();
-    NewStoreResponse newStoreResponse = parentControllerClient
-        .retryableRequest(5, c -> c.createNewStore(storeName, "", KEY_SCHEMA, valueRecordSchemaStr1));
-    assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+      SchemaResponse schemaResponse2 =
+          parentControllerClient.retryableRequest(5, c -> c.addValueSchema(storeName, valueRecordSchemaStr2));
+      assertFalse(schemaResponse2.isError(), "addValueSchema returned error: " + schemaResponse2.getError());
 
-    SchemaResponse schemaResponse2 =
-        parentControllerClient.retryableRequest(5, c -> c.addValueSchema(storeName, valueRecordSchemaStr2));
-    assertFalse(schemaResponse2.isError(), "addValueSchema returned error: " + schemaResponse2.getError());
-
-    // Delete value schema
-    parentControllerClient.deleteValueSchemas(storeName, new ArrayList<>(1));
+      // Delete value schema
+      parentControllerClient.deleteValueSchemas(storeName, new ArrayList<>(1));
+    });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testStoragePersona() {
-    markAsTested("CreateStoragePersona");
-    markAsTested("UpdateStoragePersona");
-    markAsTested("DeleteStoragePersona");
-    long totalQuota = 1000;
-    StoragePersona persona = TestStoragePersonaUtils.createDefaultPersona();
-    persona.setQuotaNumber(totalQuota * 3);
-    List<String> stores = new ArrayList<>();
-    Store store1 = setUpTestStore();
+    runTestForEntryNames(
+        new String[] { "CreateStoragePersona", "UpdateStoragePersona", "DeleteStoragePersona" },
+        () -> {
+          long totalQuota = 1000;
+          StoragePersona persona = TestStoragePersonaUtils.createDefaultPersona();
+          persona.setQuotaNumber(totalQuota * 3);
+          List<String> stores = new ArrayList<>();
+          Store store1 = setUpTestStore();
 
-    parentControllerClient
-        .updateStore(store1.getName(), new UpdateStoreQueryParams().setStorageQuotaInByte(totalQuota));
-    stores.add(store1.getName());
-    persona.getStoresToEnforce().add(stores.get(0));
+          parentControllerClient
+              .updateStore(store1.getName(), new UpdateStoreQueryParams().setStorageQuotaInByte(totalQuota));
+          stores.add(store1.getName());
+          persona.getStoresToEnforce().add(stores.get(0));
 
-    ControllerClient controllerClient = new ControllerClient(
-        multiRegionMultiClusterWrapper.getClusterNames()[0],
-        multiRegionMultiClusterWrapper.getControllerConnectString());
+          ControllerClient controllerClient = new ControllerClient(
+              multiRegionMultiClusterWrapper.getClusterNames()[0],
+              multiRegionMultiClusterWrapper.getControllerConnectString());
 
-    ControllerResponse response = controllerClient.createStoragePersona(
-        persona.getName(),
-        persona.getQuotaNumber(),
-        persona.getStoresToEnforce(),
-        persona.getOwners());
-    assertFalse(response.isError());
-    Store store2 = setUpTestStore();
+          ControllerResponse response = controllerClient.createStoragePersona(
+              persona.getName(),
+              persona.getQuotaNumber(),
+              persona.getStoresToEnforce(),
+              persona.getOwners());
+          assertFalse(response.isError());
+          Store store2 = setUpTestStore();
 
-    parentControllerClient
-        .updateStore(store2.getName(), new UpdateStoreQueryParams().setStorageQuotaInByte(totalQuota * 2));
+          parentControllerClient
+              .updateStore(store2.getName(), new UpdateStoreQueryParams().setStorageQuotaInByte(totalQuota * 2));
 
-    stores.add(store2.getName());
-    persona.setStoresToEnforce(new HashSet<>(stores));
-    response = controllerClient.updateStoragePersona(
-        persona.getName(),
-        new UpdateStoragePersonaQueryParams().setStoresToEnforce(new HashSet<>(stores)));
-    assertFalse(response.isError());
-    TestUtils.waitForNonDeterministicAssertion(
-        60,
-        TimeUnit.SECONDS,
-        () -> assertEquals(controllerClient.getStoragePersona(persona.getName()).getStoragePersona(), persona));
+          stores.add(store2.getName());
+          persona.setStoresToEnforce(new HashSet<>(stores));
+          response = controllerClient.updateStoragePersona(
+              persona.getName(),
+              new UpdateStoragePersonaQueryParams().setStoresToEnforce(new HashSet<>(stores)));
+          assertFalse(response.isError());
+          TestUtils.waitForNonDeterministicAssertion(
+              60,
+              TimeUnit.SECONDS,
+              () -> assertEquals(controllerClient.getStoragePersona(persona.getName()).getStoragePersona(), persona));
 
-    response = parentControllerClient.deleteStoragePersona(persona.getName());
-    if (response.isError())
-      throw new VeniceException(response.getError());
-    assertFalse(response.isError());
-    TestUtils.waitForNonDeterministicAssertion(
-        60,
-        TimeUnit.SECONDS,
-        () -> assertNull(parentControllerClient.getStoragePersona(persona.getName()).getStoragePersona()));
+          response = parentControllerClient.deleteStoragePersona(persona.getName());
+          if (response.isError())
+            throw new VeniceException(response.getError());
+          assertFalse(response.isError());
+          TestUtils.waitForNonDeterministicAssertion(
+              60,
+              TimeUnit.SECONDS,
+              () -> assertNull(parentControllerClient.getStoragePersona(persona.getName()).getStoragePersona()));
+        });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testRollbackCurrentVersion() {
-    markAsTested("RollbackCurrentVersion");
-    markAsTested("RollForwardCurrentVersion");
+    runTestForEntryNames(new String[] { "RollbackCurrentVersion", "RollForwardCurrentVersion" }, () -> {
+      String storeName = setUpTestStore().getName();
+      emptyPushToStore(parentControllerClient, storeName, 1);
+      emptyPushToStore(parentControllerClient, storeName, 2);
+      // Should roll back to version 1
+      parentControllerClient.rollbackToBackupVersion(storeName);
+      for (ControllerClient childControllerClient: childControllerClients) {
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+          StoreResponse storeResponse = childControllerClient.getStore(storeName);
+          assertFalse(storeResponse.isError());
+          StoreInfo storeInfo = storeResponse.getStore();
+          assertEquals(storeInfo.getCurrentVersion(), 1);
+        });
+      }
 
-    String storeName = setUpTestStore().getName();
-    emptyPushToStore(parentControllerClient, storeName, 1);
-    emptyPushToStore(parentControllerClient, storeName, 2);
-    // Should roll back to version 1
-    parentControllerClient.rollbackToBackupVersion(storeName);
-    for (ControllerClient childControllerClient: childControllerClients) {
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
-        StoreResponse storeResponse = childControllerClient.getStore(storeName);
-        assertFalse(storeResponse.isError());
-        StoreInfo storeInfo = storeResponse.getStore();
-        assertEquals(storeInfo.getCurrentVersion(), 1);
-      });
-    }
-
-    // roll forward only in dc-0
-    parentControllerClient
-        .rollForwardToFutureVersion(storeName, multiRegionMultiClusterWrapper.getChildRegionNames().get(0));
-    for (ControllerClient childControllerClient: childControllerClients) {
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
-        StoreResponse storeResponse = childControllerClient.getStore(storeName);
-        assertFalse(storeResponse.isError());
-        StoreInfo storeInfo = storeResponse.getStore();
-        assertEquals(storeInfo.getCurrentVersion(), childControllerClient == childControllerClients.get(1) ? 1 : 2);
-      });
-    }
+      // roll forward only in dc-0
+      parentControllerClient
+          .rollForwardToFutureVersion(storeName, multiRegionMultiClusterWrapper.getChildRegionNames().get(0));
+      for (ControllerClient childControllerClient: childControllerClients) {
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+          StoreResponse storeResponse = childControllerClient.getStore(storeName);
+          assertFalse(storeResponse.isError());
+          StoreInfo storeInfo = storeResponse.getStore();
+          assertEquals(storeInfo.getCurrentVersion(), childControllerClient == childControllerClients.get(1) ? 1 : 2);
+        });
+      }
+    });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testEnableNativeReplicationForCluster() {
-    markAsTested("EnableNativeReplicationForCluster");
-    String storeName = setUpTestStore().getName();
+    runTestForEntryNames(new String[] { "EnableNativeReplicationForCluster" }, () -> {
+      String storeName = setUpTestStore().getName();
 
-    emptyPushToStore(parentControllerClient, storeName, 1);
+      emptyPushToStore(parentControllerClient, storeName, 1);
 
-    UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams().setNativeReplicationEnabled(true);
-    ControllerResponse response = parentControllerClient.updateStore(storeName, updateStoreQueryParams);
+      UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams().setNativeReplicationEnabled(true);
+      ControllerResponse response = parentControllerClient.updateStore(storeName, updateStoreQueryParams);
 
-    assertFalse(response.isError());
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
-      StoreResponse storeResponse = parentControllerClient.getStore(storeName);
-      assertFalse(storeResponse.isError());
-      StoreInfo storeInfo = storeResponse.getStore();
-      assertTrue(storeInfo.isNativeReplicationEnabled());
+      assertFalse(response.isError());
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+        StoreResponse storeResponse = parentControllerClient.getStore(storeName);
+        assertFalse(storeResponse.isError());
+        StoreInfo storeInfo = storeResponse.getStore();
+        assertTrue(storeInfo.isNativeReplicationEnabled());
+      });
     });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testEnableActiveActiveReplicationForCluster() {
-    markAsTested("EnableActiveActiveReplicationForCluster");
+    runTestForEntryNames(new String[] { "EnableActiveActiveReplicationForCluster" }, () -> {
+      String storeName = setUpTestStore().getName();
+      emptyPushToStore(parentControllerClient, storeName, 1);
 
-    String storeName = setUpTestStore().getName();
-    emptyPushToStore(parentControllerClient, storeName, 1);
+      UpdateStoreQueryParams updateStoreQueryParams =
+          new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true);
+      ControllerResponse response = parentControllerClient.updateStore(storeName, updateStoreQueryParams);
 
-    UpdateStoreQueryParams updateStoreQueryParams =
-        new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true);
-    ControllerResponse response = parentControllerClient.updateStore(storeName, updateStoreQueryParams);
-
-    assertFalse(response.isError());
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
-      StoreResponse storeResponse = parentControllerClient.getStore(storeName);
-      assertFalse(storeResponse.isError());
-      StoreInfo storeInfo = storeResponse.getStore();
-      assertTrue(storeInfo.isActiveActiveReplicationEnabled());
+      assertFalse(response.isError());
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+        StoreResponse storeResponse = parentControllerClient.getStore(storeName);
+        assertFalse(storeResponse.isError());
+        StoreInfo storeInfo = storeResponse.getStore();
+        assertTrue(storeInfo.isActiveActiveReplicationEnabled());
+      });
     });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testConfigureActiveActiveReplicationForCluster() {
-    markAsTested("ConfigureActiveActiveReplicationForCluster");
-    TestUtils.assertCommand(
-        parentControllerClient.configureActiveActiveReplicationForCluster(
-            true,
-            VeniceUserStoreType.BATCH_ONLY.toString(),
-            Optional.empty()),
-        "Failed to configure active-active replication for cluster " + clusterName);
+    runTestForEntryNames(new String[] { "ConfigureActiveActiveReplicationForCluster" }, () -> {
+      TestUtils.assertCommand(
+          parentControllerClient.configureActiveActiveReplicationForCluster(
+              true,
+              VeniceUserStoreType.BATCH_ONLY.toString(),
+              Optional.empty()),
+          "Failed to configure active-active replication for cluster " + clusterName);
+    });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testConfigureNativeReplicationForCluster() {
     // No usage found for this operation
     // Check @code{AdminExecutionTask#handleEnableNativeReplicationForCluster}
-    markAsTested("ConfigureNativeReplicationForCluster");
+    runTestForEntryNames(new String[] { "ConfigureNativeReplicationForCluster" }, () -> {
+      // Empty Runnable, does nothing
+    });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testConfigureIncrementalPushForCluster() {
     // No usage found for this operation
-    markAsTested("ConfigureIncrementalPushForCluster");
+    runTestForEntryNames(new String[] { "ConfigureIncrementalPushForCluster" }, () -> {
+      // Empty Runnable, does nothing
+    });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testMigrateStore() throws Exception {
-    markAsTested("MigrateStore");
-    markAsTested("AbortMigration");
+  public void testMigrateStore() {
+    runTestForEntryNames(new String[] { "MigrateStore", "AbortMigration" }, () -> {
+      String storeName = Utils.getUniqueString("test");
 
-    String storeName = Utils.getUniqueString("test");
+      String srcClusterName = CLUSTER_NAMES[0]; // venice-cluster0
+      String destClusterName = CLUSTER_NAMES[1]; // venice-cluster1
 
-    String srcClusterName = CLUSTER_NAMES[0]; // venice-cluster0
-    String destClusterName = CLUSTER_NAMES[1]; // venice-cluster1
+      try {
+        createAndPushStore(srcClusterName, storeName);
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+      String srcD2ServiceName = multiClusterWrapperRegion0.getClusterToD2().get(srcClusterName);
+      String destD2ServiceName = multiClusterWrapperRegion0.getClusterToD2().get(destClusterName);
+      D2Client d2Client = D2TestUtils
+          .getAndStartD2Client(multiClusterWrapperRegion0.getClusters().get(srcClusterName).getZk().getAddress());
+      ClientConfig clientConfig =
+          ClientConfig.defaultGenericClientConfig(storeName).setD2ServiceName(srcD2ServiceName).setD2Client(d2Client);
 
-    createAndPushStore(srcClusterName, storeName);
-    String srcD2ServiceName = multiClusterWrapperRegion0.getClusterToD2().get(srcClusterName);
-    String destD2ServiceName = multiClusterWrapperRegion0.getClusterToD2().get(destClusterName);
-    D2Client d2Client = D2TestUtils
-        .getAndStartD2Client(multiClusterWrapperRegion0.getClusters().get(srcClusterName).getZk().getAddress());
-    ClientConfig clientConfig =
-        ClientConfig.defaultGenericClientConfig(storeName).setD2ServiceName(srcD2ServiceName).setD2Client(d2Client);
+      String parentControllerUrl = multiRegionMultiClusterWrapper.getChildRegions().get(0).getControllerConnectString();
+      try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(clientConfig)) {
+        try {
+          readFromStore(client);
+        } catch (ExecutionException e) {
+          throw new RuntimeException(e);
+        } catch (InterruptedException e) {
+          throw new RuntimeException(e);
+        }
+        try {
+          StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
+        } catch (Exception e) {
+          throw new RuntimeException(e);
+        }
+        StoreMigrationTestUtil
+            .completeMigration(parentControllerUrl, storeName, srcClusterName, destClusterName, "dc-0");
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          // StoreConfig in router might not be up-to-date. Keep reading from the store. Finally, router will find that
+          // cluster discovery changes and redirect the request to dest store. Client's d2ServiceName will be updated.
+          readFromStore(client);
+          AbstractAvroStoreClient<String, Object> castClient =
+              (AbstractAvroStoreClient<String, Object>) ((StatTrackingStoreClient<String, Object>) client)
+                  .getInnerStoreClient();
+          assertTrue(castClient.toString().contains(destD2ServiceName));
+        });
+      }
 
-    String parentControllerUrl = multiRegionMultiClusterWrapper.getChildRegions().get(0).getControllerConnectString();
-    try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(clientConfig)) {
-      readFromStore(client);
-      StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
-      StoreMigrationTestUtil.completeMigration(parentControllerUrl, storeName, srcClusterName, destClusterName, "dc-0");
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        // StoreConfig in router might not be up-to-date. Keep reading from the store. Finally, router will find that
-        // cluster discovery changes and redirect the request to dest store. Client's d2ServiceName will be updated.
-        readFromStore(client);
-        AbstractAvroStoreClient<String, Object> castClient =
-            (AbstractAvroStoreClient<String, Object>) ((StatTrackingStoreClient<String, Object>) client)
-                .getInnerStoreClient();
-        assertTrue(castClient.toString().contains(destD2ServiceName));
-      });
-    }
-
-    // Test abort migration on parent controller
-    try (ControllerClient srcParentControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
-        ControllerClient destParentControllerClient = new ControllerClient(destClusterName, parentControllerUrl)) {
-      StoreMigrationTestUtil.abortMigration(parentControllerUrl, storeName, true, srcClusterName, destClusterName);
-      TestUtils.waitForNonDeterministicAssertion(
-          30,
-          TimeUnit.SECONDS,
-          () -> StoreMigrationTestUtil.checkStatusAfterAbortMigration(
-              srcParentControllerClient,
-              destParentControllerClient,
-              storeName,
-              srcClusterName));
-    }
+      // Test abort migration on parent controller
+      try (ControllerClient srcParentControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
+          ControllerClient destParentControllerClient = new ControllerClient(destClusterName, parentControllerUrl)) {
+        StoreMigrationTestUtil.abortMigration(parentControllerUrl, storeName, true, srcClusterName, destClusterName);
+        TestUtils.waitForNonDeterministicAssertion(
+            30,
+            TimeUnit.SECONDS,
+            () -> StoreMigrationTestUtil.checkStatusAfterAbortMigration(
+                srcParentControllerClient,
+                destParentControllerClient,
+                storeName,
+                srcClusterName));
+      }
+    });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testAddVersion() {
-    markAsTested("AddVersion");
+    runTestForEntryNames(new String[] { "AddVersion" }, () -> {
+      String storeName = setUpTestStore().getName();
+      String pushJobId = "test-push-job-id";
 
-    String storeName = setUpTestStore().getName();
-    String pushJobId = "test-push-job-id";
-
-    // Add version
-    veniceAdmin.addVersionAndStartIngestion(
-        clusterName,
-        storeName,
-        pushJobId,
-        1,
-        1,
-        Version.PushType.BATCH,
-        null,
-        -1,
-        1,
-        false,
-        -1);
-    assertNotNull(veniceAdmin.getStore(clusterName, storeName).getVersion(1));
-    assertEquals(
-        veniceAdmin.getStore(clusterName, storeName).getVersions().size(),
-        1,
-        "There should only be exactly one version added to the test-store");
+      // Add version
+      veniceAdmin.addVersionAndStartIngestion(
+          clusterName,
+          storeName,
+          pushJobId,
+          1,
+          1,
+          Version.PushType.BATCH,
+          null,
+          -1,
+          1,
+          false,
+          -1);
+      assertNotNull(veniceAdmin.getStore(clusterName, storeName).getVersion(1));
+      assertEquals(
+          veniceAdmin.getStore(clusterName, storeName).getVersions().size(),
+          1,
+          "There should only be exactly one version added to the test-store");
+    });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testMetadataSchemaCreation() {
-    markAsTested("MetadataSchemaCreation");
-    String storeName = Utils.getUniqueString("aa_store");
-    String recordSchemaStr = TestWriteUtils.USER_WITH_DEFAULT_SCHEMA.toString();
-    Schema metadataSchema = RmdSchemaGenerator.generateMetadataSchema(recordSchemaStr, 1);
+    runTestForEntryNames(new String[] { "MetadataSchemaCreation" }, () -> {
+      String storeName = Utils.getUniqueString("aa_store");
+      String recordSchemaStr = TestWriteUtils.USER_WITH_DEFAULT_SCHEMA.toString();
+      Schema metadataSchema = RmdSchemaGenerator.generateMetadataSchema(recordSchemaStr, 1);
 
-    veniceAdmin.createStore(clusterName, storeName, "storeOwner", KEY_SCHEMA, recordSchemaStr);
-    veniceAdmin.addReplicationMetadataSchema(clusterName, storeName, 1, 1, metadataSchema.toString());
-    Collection<RmdSchemaEntry> metadataSchemas = veniceAdmin.getReplicationMetadataSchemas(clusterName, storeName);
-    assertEquals(metadataSchemas.size(), 1);
-    assertEquals(metadataSchemas.iterator().next().getSchema(), metadataSchema);
+      veniceAdmin.createStore(clusterName, storeName, "storeOwner", KEY_SCHEMA, recordSchemaStr);
+      veniceAdmin.addReplicationMetadataSchema(clusterName, storeName, 1, 1, metadataSchema.toString());
+      Collection<RmdSchemaEntry> metadataSchemas = veniceAdmin.getReplicationMetadataSchemas(clusterName, storeName);
+      assertEquals(metadataSchemas.size(), 1);
+      assertEquals(metadataSchemas.iterator().next().getSchema(), metadataSchema);
+    });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testSupersetSchemaCreation() {
-    markAsTested("SupersetSchemaCreation");
+    runTestForEntryNames(new String[] { "SupersetSchemaCreation" }, () -> {
+      Schema valueSchemaV1 =
+          AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("valueSchema/supersetschemas/ValueV1.avsc"));
+      // Contains f2, f3
+      Schema valueSchemaV4 =
+          AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("valueSchema/supersetschemas/ValueV4.avsc"));
 
-    Schema valueSchemaV1 =
-        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("valueSchema/supersetschemas/ValueV1.avsc"));
-    // Contains f2, f3
-    Schema valueSchemaV4 =
-        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("valueSchema/supersetschemas/ValueV4.avsc"));
+      String storeName = Utils.getUniqueString("testSupersetSchemaCreation-store");
+      NewStoreResponse newStoreResponse = parentControllerClient
+          .retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", valueSchemaV1.toString()));
+      assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
 
-    String storeName = Utils.getUniqueString("testSupersetSchemaCreation-store");
-    NewStoreResponse newStoreResponse = parentControllerClient
-        .retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", valueSchemaV1.toString()));
-    assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+      ControllerResponse updateStoreResponse =
+          parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true));
+      assertFalse(updateStoreResponse.isError());
 
-    ControllerResponse updateStoreResponse =
-        parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true));
-    assertFalse(updateStoreResponse.isError());
+      SchemaResponse schemaResponse2 =
+          parentControllerClient.retryableRequest(5, c -> c.addValueSchema(storeName, valueSchemaV4.toString()));
+      assertFalse(schemaResponse2.isError(), "addValueSchema returned error: " + schemaResponse2.getError());
 
-    SchemaResponse schemaResponse2 =
-        parentControllerClient.retryableRequest(5, c -> c.addValueSchema(storeName, valueSchemaV4.toString()));
-    assertFalse(schemaResponse2.isError(), "addValueSchema returned error: " + schemaResponse2.getError());
+      // Verify superset schema id
+      StoreResponse storeResponse = parentControllerClient.getStore(storeName);
+      assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
+      assertEquals(
+          storeResponse.getStore().getLatestSuperSetValueSchemaId(),
+          3,
+          "Superset schema ID should be the last schema");
 
-    // Verify superset schema id
-    StoreResponse storeResponse = parentControllerClient.getStore(storeName);
-    assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
-    assertEquals(
-        storeResponse.getStore().getLatestSuperSetValueSchemaId(),
-        3,
-        "Superset schema ID should be the last schema");
-
-    // Get the value schema
-    SchemaResponse schemaResponse = parentControllerClient.getValueSchema(storeName, 3);
-    assertFalse(schemaResponse.isError());
-    String supersetSchemaString = schemaResponse.getSchemaStr();
-    assertTrue(supersetSchemaString.contains("f0"));
-    assertTrue(supersetSchemaString.contains("f1"));
-    assertTrue(supersetSchemaString.contains("f2"));
-    assertTrue(supersetSchemaString.contains("f3"));
+      // Get the value schema
+      SchemaResponse schemaResponse = parentControllerClient.getValueSchema(storeName, 3);
+      assertFalse(schemaResponse.isError());
+      String supersetSchemaString = schemaResponse.getSchemaStr();
+      assertTrue(supersetSchemaString.contains("f0"));
+      assertTrue(supersetSchemaString.contains("f1"));
+      assertTrue(supersetSchemaString.contains("f2"));
+      assertTrue(supersetSchemaString.contains("f3"));
+    });
   }
 
   private void emptyPushToStore(ControllerClient parentControllerClient, String storeName, int expectedVersion) {
@@ -790,16 +811,29 @@ public class TestAdminOperationWithPreviousVersion {
   }
 
   private Map<String, Boolean> getAllPayloadUnionTypes() {
-    Schema latestSchema =
-        AdminOperationSerializer.getSchema(AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    List<Schema> payloadUnionSchemas = latestSchema.getField("payloadUnion").schema().getTypes();
-    return payloadUnionSchemas.stream()
-        .filter(schema -> schema.getType() == Schema.Type.RECORD) // Filter only RECORD types
-        .collect(Collectors.toMap(Schema::getName, schema -> false));
+    List<String> payloadUnionNames = getPayloadUnionSchemaNames(
+        AdminOperationSerializer.getSchema(AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
+    return payloadUnionNames.stream().collect(Collectors.toMap(name -> name, name -> false));
   }
 
-  private void markAsTested(String operationType) {
-    operationTypeMap.put(operationType, true);
+  private static String[] getNewUnionEntries() {
+    List<String> latestSchemaNames =
+        getPayloadUnionSchemaNames(AdminOperationSerializer.getSchema((int) LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
+    List<String> previousSchemaNames =
+        getPayloadUnionSchemaNames(AdminOperationSerializer.getSchema((int) PREVIOUS_SCHEMA_ID_FOR_ADMIN_OPERATION));
+
+    return latestSchemaNames.stream().filter(name -> !previousSchemaNames.contains(name)).toArray(String[]::new);
+  }
+
+  private static List<String> getPayloadUnionSchemaNames(Schema schema) {
+    // Extract the payloadUnion field, filter for RECORD types, and map to names.
+    return schema.getField("payloadUnion")
+        .schema()
+        .getTypes()
+        .stream()
+        .filter(s -> s.getType() == Schema.Type.RECORD)
+        .map(Schema::getName)
+        .collect(Collectors.toList());
   }
 
   private void readFromStore(AvroGenericStoreClient<String, Object> client)
@@ -857,5 +891,46 @@ public class TestAdminOperationWithPreviousVersion {
     }
 
     return props;
+  }
+
+  /**
+   * Run the test for the given entry names. If the entry name is a new union entry, we expect an exception when running
+   * the test with previous version. If the entry name is not a new union entry, we expect the test to run successfully.
+   * @param entryNames: The entry names to run the test for
+   * @param testLogic: The logic to run the test
+   */
+  private void runTestForEntryNames(String[] entryNames, Runnable testLogic) {
+    for (String entryName: entryNames) {
+      // Mark the operation type as tested
+      operationTypeMap.put(entryName, true);
+    }
+
+    List<String> commonStrings = Arrays.stream(entryNames)
+        .filter(entryName -> Arrays.asList(NEW_UNION_ENTRIES).contains(entryName))
+        .collect(Collectors.toList());
+
+    if (commonStrings.size() > 0) {
+      // If the test is for new union entry, we expect an exception when running the test with previous version
+      assertThrows(VeniceProtocolException.class, testLogic::run);
+      // Pin the version to latest to test the full test
+      pinVersion(LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+      testLogic.run();
+
+      // Pin the version to previous version to revert the initial stage for the next test
+      pinVersion(PREVIOUS_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    } else {
+      // If this test is not for new union entry, we expect the test to run successfully
+      testLogic.run();
+    }
+  }
+
+  /**
+   * Pin admin operation protocol version to the given number
+   * @param number: desired protocol version number
+   */
+  public void pinVersion(long number) {
+    AdminTopicMetadataResponse updateProtocolVersionResponse =
+        parentControllerClient.updateAdminOperationProtocolVersion(clusterName, number);
+    assertFalse(updateProtocolVersionResponse.isError(), "Failed to update protocol version");
   }
 }
