@@ -1044,8 +1044,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           calculateLeaderUpstreamOffsetWithTopicSwitch(partitionConsumptionState, leaderTopic, Collections.emptyList())
               .getOrDefault(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, OffsetRecord.LOWEST_OFFSET);
     }
-    partitionConsumptionState.getOffsetRecord()
-        .setLeaderUpstreamOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, upstreamStartOffset);
 
     consumerSubscribe(leaderTopic, partitionConsumptionState, upstreamStartOffset, leaderSourceKafkaURL);
     syncConsumedUpstreamRTOffsetMapIfNeeded(
