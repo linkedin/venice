@@ -66,7 +66,6 @@ import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
@@ -852,12 +851,12 @@ public class TestAdminOperationWithPreviousVersion {
    * @return Set of all new union entries name
    */
   private static Set<String> getNewUnionEntries() {
-    Set<String> previousSchemaNames = new HashSet<>(getPayloadUnionSchemaNames(PREVIOUS_SCHEMA)); // Use Set for fast
-                                                                                                  // lookup
+    Set<String> previousSchemaNames = new HashSet<>(getPayloadUnionSchemaNames(PREVIOUS_SCHEMA));
+    Set<String> latestSchemaNames = new HashSet<>(getPayloadUnionSchemaNames(LATEST_SCHEMA));
 
-    return getPayloadUnionSchemaNames(LATEST_SCHEMA).stream()
-        .filter(name -> !previousSchemaNames.contains(name)) // Filter out new operation records
-        .collect(Collectors.toSet());
+    Set<String> difference = new HashSet<>(latestSchemaNames);
+    difference.removeAll(previousSchemaNames); // remove all previous schema names
+    return difference;
   }
 
   /**
@@ -867,13 +866,14 @@ public class TestAdminOperationWithPreviousVersion {
    */
   private static List<String> getPayloadUnionSchemaNames(Schema schema) {
     // Extract the payloadUnion field, filter for RECORD types, and map to names.
-    return schema.getField("payloadUnion")
-        .schema()
-        .getTypes()
-        .stream()
-        .filter(s -> s.getType() == Schema.Type.RECORD)
-        .map(Schema::getName)
-        .collect(Collectors.toList());
+    List<String> operationNames = new ArrayList<>();
+    List<Schema> payloadUnionSchemas = schema.getField("payloadUnion").schema().getTypes();
+    for (Schema operationSchema: payloadUnionSchemas) {
+      if (operationSchema.getType() == Schema.Type.RECORD) {
+        operationNames.add(operationSchema.getName());
+      }
+    }
+    return operationNames;
   }
 
   private void readFromStore(AvroGenericStoreClient<String, Object> client)
@@ -943,10 +943,15 @@ public class TestAdminOperationWithPreviousVersion {
     // Mark the operation type as tested
     testedOperations.addAll(entryNames);
 
-    List<String> newEntriesInLatestSchema =
-        entryNames.stream().filter(NEW_UNION_ENTRIES::contains).collect(Collectors.toList());
+    boolean isNewUnionEntry = false;
+    for (String entryName: entryNames) {
+      if (NEW_UNION_ENTRIES.contains(entryName)) {
+        isNewUnionEntry = true;
+        break;
+      }
+    }
 
-    if (!newEntriesInLatestSchema.isEmpty()) {
+    if (isNewUnionEntry) {
       // If the test is for new union entry, we expect an exception when running the test with previous version
       assertThrows(VeniceProtocolException.class, testLogic::run);
       // Pin the version to latest to test the full test
