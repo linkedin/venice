@@ -284,7 +284,7 @@ public class TestDeferredVersionSwap {
 
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
-        Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.PARTIALLY_ONLINE);
+        Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.ERROR);
       });
 
       // Verify that we can create a new version
@@ -373,7 +373,7 @@ public class TestDeferredVersionSwap {
         });
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
           StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
-          Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.PARTIALLY_ONLINE);
+          Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.ERROR);
         });
       }
 
