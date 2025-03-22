@@ -246,6 +246,8 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
      */
     setLargestUsedVersionNumber(store.getLargestUsedVersionNumber());
 
+    setLargestUsedRTVersionNumber(store.getLargestUsedRTVersionNumber());
+
     // Clone systemStores
     Map<String, SystemStoreAttributes> clonedSystemStores = new HashMap<>();
     store.getSystemStores().forEach((k, v) -> clonedSystemStores.put(k, v.clone()));
