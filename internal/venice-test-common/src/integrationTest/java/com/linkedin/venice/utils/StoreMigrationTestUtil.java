@@ -4,6 +4,7 @@ import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 
@@ -41,12 +42,32 @@ public class StoreMigrationTestUtil {
       String srcClusterName,
       String destClusterName,
       String fabric) {
-    String[] completeMigration0 = { "--complete-migration", "--url", controllerUrl, "--store", storeName,
+    String[] completeMigration = { "--complete-migration", "--url", controllerUrl, "--store", storeName,
         "--cluster-src", srcClusterName, "--cluster-dest", destClusterName, "--fabric", fabric };
 
     try (ControllerClient destParentControllerClient = new ControllerClient(destClusterName, controllerUrl)) {
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-        AdminTool.main(completeMigration0);
+        AdminTool.main(completeMigration);
+        // Store discovery should point to the new cluster after completing migration
+        ControllerResponse discoveryResponse = destParentControllerClient.discoverCluster(storeName);
+        Assert.assertEquals(discoveryResponse.getCluster(), destClusterName);
+      });
+    }
+  }
+
+  public static void completeMigration(
+      String controllerUrl,
+      String storeName,
+      String srcClusterName,
+      String destClusterName,
+      List<String> fabricList) {
+    try (ControllerClient destParentControllerClient = new ControllerClient(destClusterName, controllerUrl)) {
+      TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, () -> {
+        for (String fabric: fabricList) {
+          String[] completeMigration = { "--complete-migration", "--url", controllerUrl, "--store", storeName,
+              "--cluster-src", srcClusterName, "--cluster-dest", destClusterName, "--fabric", fabric };
+          AdminTool.main(completeMigration);
+        }
         // Store discovery should point to the new cluster after completing migration
         ControllerResponse discoveryResponse = destParentControllerClient.discoverCluster(storeName);
         Assert.assertEquals(discoveryResponse.getCluster(), destClusterName);
