@@ -52,9 +52,9 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_DICTIONARY_CRE
 
 import com.github.luben.zstd.Zstd;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.hadoop.PushJobSetting;
+import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
 import com.linkedin.venice.hadoop.input.kafka.ttl.TTLResolutionPolicy;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
@@ -70,7 +70,6 @@ import com.linkedin.venice.spark.utils.SparkScalaUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
-import java.util.Objects;
 import java.util.Properties;
 import java.util.UUID;
 import org.apache.kafka.clients.CommonClientConfigs;
@@ -88,6 +87,7 @@ import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder;
 import org.apache.spark.sql.catalyst.encoders.RowEncoder;
 import org.apache.spark.sql.functions;
+import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
@@ -105,7 +105,6 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
   private String jobGroupId;
   private SparkSession sparkSession;
-  private Dataset<Row> dataFrame;
   private DataWriterAccumulators accumulatorsForDataWriterJob;
   private SparkDataWriterTaskTracker taskTracker;
 
@@ -114,56 +113,11 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     this.props = props;
     this.pushJobSetting = pushJobSetting;
     setupDefaultSparkSessionForDataWriterJob(pushJobSetting, props);
-    setupSparkDataWriterJobFlow(pushJobSetting);
-  }
-
-  private void setupSparkDataWriterJobFlow(PushJobSetting pushJobSetting) {
-    ExpressionEncoder<Row> rowEncoder = RowEncoder.apply(DEFAULT_SCHEMA);
-    ExpressionEncoder<Row> rowEncoderWithPartition = RowEncoder.apply(DEFAULT_SCHEMA_WITH_PARTITION);
-    int numOutputPartitions = pushJobSetting.partitionCount;
-
-    // Load data from input path
-    Dataset<Row> dataFrameForDataWriterJob = getInputDataFrame();
-    Objects.requireNonNull(dataFrameForDataWriterJob, "The input data frame cannot be null");
 
     Properties jobProps = new Properties();
     sparkSession.conf().getAll().foreach(entry -> jobProps.setProperty(entry._1, entry._2));
-    if (pushJobSetting.materializedViewConfigFlatMap != null) {
-      jobProps.put(PUSH_JOB_VIEW_CONFIGS, pushJobSetting.materializedViewConfigFlatMap);
-      jobProps.put(VALUE_SCHEMA_DIR, pushJobSetting.valueSchemaDir);
-      jobProps.put(RMD_SCHEMA_DIR, pushJobSetting.rmdSchemaDir);
-    }
-    JavaSparkContext sparkContext = JavaSparkContext.fromSparkContext(sparkSession.sparkContext());
-    Broadcast<Properties> broadcastProperties = sparkContext.broadcast(jobProps);
     accumulatorsForDataWriterJob = new DataWriterAccumulators(sparkSession);
     taskTracker = new SparkDataWriterTaskTracker(accumulatorsForDataWriterJob);
-
-    // Validate the schema of the input data
-    validateDataFrameSchema(dataFrameForDataWriterJob);
-
-    // Convert all rows to byte[], byte[] pairs (compressed if compression is enabled)
-    // We could have worked with "map", but because of spraying all PartitionWriters, we need to use "flatMap"
-    dataFrameForDataWriterJob = dataFrameForDataWriterJob
-        .flatMap(new SparkInputRecordProcessorFactory(broadcastProperties, accumulatorsForDataWriterJob), rowEncoder);
-
-    // TODO: Add map-side combiner to reduce the data size before shuffling
-
-    // Partition the data using the custom partitioner and sort the data within that partition
-    dataFrameForDataWriterJob = SparkPartitionUtils.repartitionAndSortWithinPartitions(
-        dataFrameForDataWriterJob,
-        new VeniceSparkPartitioner(broadcastProperties, numOutputPartitions),
-        new PartitionSorter());
-
-    // Add a partition column to all rows based on the custom partitioner
-    dataFrameForDataWriterJob =
-        dataFrameForDataWriterJob.withColumn(PARTITION_COLUMN_NAME, functions.spark_partition_id());
-
-    // Write the data to PubSub
-    dataFrameForDataWriterJob = dataFrameForDataWriterJob.mapPartitions(
-        new SparkPartitionWriterFactory(broadcastProperties, accumulatorsForDataWriterJob),
-        rowEncoderWithPartition);
-
-    this.dataFrame = dataFrameForDataWriterJob;
   }
 
   /**
@@ -222,7 +176,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     jobConf.set(PARTITIONER_CLASS, pushJobSetting.partitionerClass);
     // flatten partitionerParams since RuntimeConfig class does not support set an object
     if (pushJobSetting.partitionerParams != null) {
-      pushJobSetting.partitionerParams.forEach((key, value) -> jobConf.set(key, value));
+      pushJobSetting.partitionerParams.forEach(jobConf::set);
     }
     jobConf.set(PARTITION_COUNT, pushJobSetting.partitionCount);
     if (pushJobSetting.sslToKafka) {
@@ -302,6 +256,12 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     jobConf.set(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, producerGuid.getMostSignificantBits());
     jobConf.set(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, producerGuid.getLeastSignificantBits());
 
+    if (pushJobSetting.materializedViewConfigFlatMap != null) {
+      jobConf.set(PUSH_JOB_VIEW_CONFIGS, pushJobSetting.materializedViewConfigFlatMap);
+      jobConf.set(VALUE_SCHEMA_DIR, pushJobSetting.valueSchemaDir);
+      jobConf.set(RMD_SCHEMA_DIR, pushJobSetting.rmdSchemaDir);
+    }
+
     /**
      * Override the configs following the rules:
      * <ul>
@@ -336,7 +296,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
    *   <li>Must not contain fields with names beginning with "_". These are reserved for internal use.</li>
    *   <li>Can contain fields that do not violate the above constraints</li>
    * </ul>
-   * @see {@link #validateDataFrameSchema(StructType)}
+   * @see {@link #validateDataFrame(Dataset)}
    *
    * @return The data frame based on the user's input data
    */
@@ -375,8 +335,42 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
   @Override
   protected void runComputeJob() {
+    // Load data from input path
+    Dataset<Row> dataFrame = getInputDataFrame();
+    validateDataFrame(dataFrame);
+
+    ExpressionEncoder<Row> rowEncoder = RowEncoder.apply(DEFAULT_SCHEMA);
+    ExpressionEncoder<Row> rowEncoderWithPartition = RowEncoder.apply(DEFAULT_SCHEMA_WITH_PARTITION);
+    int numOutputPartitions = pushJobSetting.partitionCount;
+
+    Properties jobProps = new Properties();
+    this.sparkSession.conf().getAll().foreach(entry -> jobProps.setProperty(entry._1, entry._2));
+    JavaSparkContext sparkContext = JavaSparkContext.fromSparkContext(sparkSession.sparkContext());
+    Broadcast<Properties> broadcastProperties = sparkContext.broadcast(jobProps);
+
     LOGGER.info("Triggering Spark job for data writer");
     try {
+      // Convert all rows to byte[], byte[] pairs (compressed if compression is enabled)
+      // We could have worked with "map", but because of spraying all PartitionWriters, we need to use "flatMap"
+      dataFrame = dataFrame
+          .flatMap(new SparkInputRecordProcessorFactory(broadcastProperties, accumulatorsForDataWriterJob), rowEncoder);
+
+      // TODO: Add map-side combiner to reduce the data size before shuffling
+
+      // Partition the data using the custom partitioner and sort the data within that partition
+      dataFrame = SparkPartitionUtils.repartitionAndSortWithinPartitions(
+          dataFrame,
+          new VeniceSparkPartitioner(broadcastProperties, numOutputPartitions),
+          new PartitionSorter());
+
+      // Add a partition column to all rows based on the custom partitioner
+      dataFrame = dataFrame.withColumn(PARTITION_COLUMN_NAME, functions.spark_partition_id());
+
+      // Write the data to PubSub
+      dataFrame = dataFrame.mapPartitions(
+          new SparkPartitionWriterFactory(broadcastProperties, accumulatorsForDataWriterJob),
+          rowEncoderWithPartition);
+
       // For VPJ, we don't care about the output from the DAG. ".count()" is an action that will trigger execution of
       // the DAG to completion and will not copy all the rows to the driver to be more memory efficient.
       dataFrame.count();
@@ -427,54 +421,62 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     LOGGER.info("  {}: {}", accumulator.name().get(), accumulator.value());
   }
 
-  private void validateDataFrameSchema(Dataset<Row> dataFrameForDataWriterJob) {
-    StructType dataSchema = dataFrameForDataWriterJob.schema();
-    if (!validateDataFrameSchema(dataSchema)) {
-      String errorMessage =
-          String.format("The provided input data schema is not supported. Provided schema: %s.", dataSchema);
-      throw new VeniceException(errorMessage);
+  private void validateDataFrame(Dataset<Row> dataFrameForDataWriterJob) {
+    if (dataFrameForDataWriterJob == null) {
+      throw new VeniceInvalidInputException("The input data frame cannot be null");
     }
-  }
 
-  private boolean validateDataFrameSchema(StructType dataSchema) {
+    StructType dataSchema = dataFrameForDataWriterJob.schema();
     StructField[] fields = dataSchema.fields();
 
     if (fields.length < 2) {
-      LOGGER.error("The provided input data schema does not have enough fields");
-      return false;
+      String errorMessage =
+          String.format("The provided input data does not have enough fields. Provided schema: %s.", dataSchema);
+      throw new VeniceInvalidInputException(errorMessage);
     }
 
     int keyFieldIndex = SparkScalaUtils.getFieldIndex(dataSchema, KEY_COLUMN_NAME);
 
     if (keyFieldIndex == -1) {
-      LOGGER.error("The provided input data schema does not have a {} field", KEY_COLUMN_NAME);
-      return false;
+      String errorMessage = String.format(
+          "The provided input data frame does not have a %s field. Provided schema: %s.",
+          KEY_COLUMN_NAME,
+          dataSchema);
+      throw new VeniceInvalidInputException(errorMessage);
     }
 
-    if (!fields[keyFieldIndex].dataType().equals(DataTypes.BinaryType)) {
-      LOGGER.error("The provided input key field's schema must be {}", DataTypes.BinaryType);
-      return false;
+    StructField keyField = fields[keyFieldIndex];
+    DataType keyType = keyField.dataType();
+    if (!keyType.equals(DataTypes.BinaryType)) {
+      String errorMessage =
+          String.format("The provided input key field's schema must be %s. Got: %s.", DataTypes.BinaryType, keyType);
+      throw new VeniceInvalidInputException(errorMessage);
     }
 
     int valueFieldIndex = SparkScalaUtils.getFieldIndex(dataSchema, VALUE_COLUMN_NAME);
 
     if (valueFieldIndex == -1) {
-      LOGGER.error("The provided input data schema does not have a {} field", VALUE_COLUMN_NAME);
-      return false;
+      String errorMessage = String.format(
+          "The provided input data frame does not have a %s field. Provided schema: %s.",
+          VALUE_COLUMN_NAME,
+          dataSchema);
+      throw new VeniceInvalidInputException(errorMessage);
     }
 
+    StructField valueField = fields[valueFieldIndex];
+    DataType valueType = valueField.dataType();
     if (!fields[valueFieldIndex].dataType().equals(DataTypes.BinaryType)) {
-      LOGGER.error("The provided input value field's schema must be {}", DataTypes.BinaryType);
-      return false;
+      String errorMessage = String
+          .format("The provided input value field's schema must be %s. Got: %s.", DataTypes.BinaryType, valueType);
+      throw new VeniceInvalidInputException(errorMessage);
     }
 
     for (StructField field: fields) {
       if (field.name().startsWith("_")) {
-        LOGGER.error("The provided input must not have fields that start with an underscore");
-        return false;
+        String errorMessage = String
+            .format("The provided input must not have fields that start with an underscore. Got: %s", field.name());
+        throw new VeniceInvalidInputException(errorMessage);
       }
     }
-
-    return true;
   }
 }
