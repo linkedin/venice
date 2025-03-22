@@ -13,7 +13,6 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.CHECK_RESOURCE_C
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLEANUP_INSTANCE_CUSTOMIZED_STATES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLUSTER_DISCOVERY;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLUSTER_HEALTH_STORES;
-import static com.linkedin.venice.controllerapi.ControllerRoute.COMPACT_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.COMPARE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.COMPLETE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER;
@@ -82,6 +81,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_DERIVED_S
 import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_NODE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_STORE_FROM_GRAVEYARD;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REPLICATE_META_DATA;
+import static com.linkedin.venice.controllerapi.ControllerRoute.REPUSH_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REQUEST_TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ROLLBACK_TO_BACKUP_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ROLL_FORWARD_TO_FUTURE_VERSION;
@@ -598,7 +598,7 @@ public class AdminSparkServer extends AbstractVeniceService {
         GET_STORES_FOR_COMPACTION.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getStoresForCompaction(admin)));
     httpService.post(
-        COMPACT_STORE.getPath(),
+        REPUSH_STORE.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.compactStore(admin)));
     httpService.get(
         GET_STORE_LARGEST_USED_VERSION.getPath(),
