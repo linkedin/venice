@@ -192,11 +192,8 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
     parentControllerClient
         .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
 
-    for (ControllerClient controllerClient: childControllerClients) {
-      Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 1);
-    }
-
     for (ControllerClient childControllerClient: childControllerClients) {
+      Assert.assertEquals(childControllerClient.getStore(storeName).getStore().getCurrentVersion(), 1);
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         verifyStoreState(
             childControllerClient,
@@ -285,12 +282,9 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
     parentControllerClient
         .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
 
-    for (ControllerClient controllerClient: childControllerClients) {
-      Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 2);
-    }
-
     for (int i = 0; i < childControllerClients.length; i++) {
       final int idx = i;
+      Assert.assertEquals(childControllerClients[idx].getStore(storeName).getStore().getCurrentVersion(), 2);
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         String expectedRealTimeTopicNameInBackupVersion = storeName + "_v1" + Version.REAL_TIME_TOPIC_SUFFIX;
         // because we updated partition count, rt version should increase to v2
@@ -299,7 +293,7 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
 
         // verify rt topic name
         verifyStoreState(
-            childControllerClients[0],
+            childControllerClients[idx],
             storeName,
             2,
             expectedRealTimeTopicNameInStore,
@@ -318,9 +312,6 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
 
     for (ControllerClient controllerClient: childControllerClients) {
       Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 3);
-    }
-
-    for (ControllerClient controllerClient: childControllerClients) {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         Assert.assertEquals(controllerClient.getStore(storeName).getStore().getVersions().size(), 2);
         // rt version should not change because there is no more partition count update
@@ -390,9 +381,6 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
 
     for (ControllerClient controllerClient: childControllerClients) {
       Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 4);
-    }
-
-    for (ControllerClient controllerClient: childControllerClients) {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         String expectedRealTimeTopicName = storeName + "_v3" + Version.REAL_TIME_TOPIC_SUFFIX;
         verifyStoreState(
@@ -445,11 +433,8 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
     parentControllerClient
         .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
 
-    for (ControllerClient controllerClient: childControllerClients) {
-      Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 6);
-    }
-
     for (ControllerClient childControllerClient: childControllerClients) {
+      Assert.assertEquals(childControllerClient.getStore(storeName).getStore().getCurrentVersion(), 6);
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         Assert.assertEquals(childControllerClient.getStore(storeName).getStore().getVersions().size(), 2);
 
