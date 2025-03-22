@@ -144,15 +144,6 @@ public abstract class DaVinciRecordTransformer<K, V, O> implements Closeable {
     return false;
   }
 
-  /**
-   * Lifecycle event triggered when a version swap is detected for partitionId
-   *
-   * By default, it performs no operation.
-   */
-  public void onVersionSwap(int currentVersion, int futureVersion, int partitionId) {
-    return;
-  }
-
   // Final methods below
 
   /**

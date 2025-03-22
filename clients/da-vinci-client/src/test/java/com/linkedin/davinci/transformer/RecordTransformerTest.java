@@ -19,6 +19,7 @@ import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.client.DaVinciRecordTransformerUtility;
+import com.linkedin.davinci.consumer.BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -199,9 +200,6 @@ public class RecordTransformerTest {
 
   @Test
   public void testBlockingRecordTransformer() {
-    int currentVersion = 1;
-    int futureVersion = 2;
-
     DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
             .build();
@@ -242,11 +240,8 @@ public class RecordTransformerTest {
     blockingRecordTransformer.processDelete(lazyKey, partitionId);
     verify(clientRecordTransformer).processDelete(lazyKey, partitionId);
 
-    blockingRecordTransformer.onVersionSwap(currentVersion, futureVersion, partitionId);
-    verify(clientRecordTransformer).onVersionSwap(currentVersion, futureVersion, partitionId);
-
-    blockingRecordTransformer.onEndVersionIngestion(futureVersion);
-    verify(clientRecordTransformer).onEndVersionIngestion(futureVersion);
+    blockingRecordTransformer.onEndVersionIngestion(storeVersion);
+    verify(clientRecordTransformer).onEndVersionIngestion(storeVersion);
 
     AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
     Lazy<VeniceCompressor> compressor = Lazy.of(() -> mock(VeniceCompressor.class));
@@ -255,5 +250,29 @@ public class RecordTransformerTest {
     when(storageEngine.getPartitionOffset(partitionId)).thenReturn(Optional.of(offsetRecord));
     blockingRecordTransformer.internalOnRecovery(storageEngine, partitionId, partitionStateSerializer, compressor);
     verify(clientRecordTransformer).onRecovery(storageEngine, partitionId, partitionStateSerializer, compressor);
+  }
+
+  @Test
+  public void testBlockingRecordTransformerVersionSwap() {
+    int currentVersion = 1;
+    int futureVersion = 2;
+
+    DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .build();
+
+    BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer clientRecordTransformer =
+        mock(
+            BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer.class);
+    BlockingDaVinciRecordTransformer<Integer, String, String> blockingRecordTransformer =
+        new BlockingDaVinciRecordTransformer<>(
+            clientRecordTransformer,
+            keySchema,
+            valueSchema,
+            valueSchema,
+            dummyRecordTransformerConfig);
+
+    blockingRecordTransformer.onVersionSwap(currentVersion, futureVersion, partitionId);
+    verify(clientRecordTransformer).onVersionSwap(currentVersion, futureVersion, partitionId);
   }
 }

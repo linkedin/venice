@@ -1,5 +1,6 @@
 package com.linkedin.davinci.client;
 
+import com.linkedin.davinci.consumer.BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -67,9 +68,16 @@ public class BlockingDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
     this.recordTransformer.onEndVersionIngestion(currentVersion);
   }
 
-  @Override
+  /**
+   * Lifecycle event triggered when a version swap is detected for partitionId
+   *
+   * It is used for DVRT CDC.
+   */
   public void onVersionSwap(int currentVersion, int futureVersion, int partitionId) {
-    this.recordTransformer.onVersionSwap(currentVersion, futureVersion, partitionId);
+    if (this.recordTransformer instanceof BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer) {
+      ((BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer) this.recordTransformer)
+          .onVersionSwap(currentVersion, futureVersion, partitionId);
+    }
   }
 
   public void internalOnRecovery(

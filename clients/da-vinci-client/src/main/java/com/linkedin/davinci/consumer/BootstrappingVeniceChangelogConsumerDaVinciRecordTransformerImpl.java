@@ -312,7 +312,6 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
       addMessageToBuffer(key.get(), null, partitionId);
     };
 
-    @Override
     public void onVersionSwap(int currentVersion, int futureVersion, int partitionId) {
       /*
        * ToDo: In the event of a version rollback, VSMs will be added to the VT again to the backup version.

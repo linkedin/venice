@@ -207,7 +207,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
 
   @Test
   public void testVersionSwap() {
-    DaVinciRecordTransformer futureRecordTransformer =
+    BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer futureRecordTransformer =
         bootstrappingVeniceChangelogConsumer.new DaVinciRecordTransformerBootstrappingChangelogConsumer(
             FUTURE_STORE_VERSION, keySchema, valueSchema, valueSchema, mockDaVinciRecordTransformerConfig);
 
