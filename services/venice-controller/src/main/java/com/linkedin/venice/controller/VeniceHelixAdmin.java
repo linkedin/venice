@@ -61,7 +61,6 @@ import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
-import com.linkedin.venice.controller.logcompaction.LogCompactionService;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
@@ -624,10 +623,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             repushOrchestratorClass,
             new Class[] { VeniceProperties.class },
             new Object[] { multiClusterConfigs.getRepushOrchestratorConfigs() });
+        LOGGER.info(RepushOrchestrator.class.getSimpleName() + " created successfully.");
         compactionManager =
             new CompactionManager(repushOrchestrator, multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS());
+        LOGGER.info(CompactionManager.class.getSimpleName() + " created successfully.");
       } catch (Exception e) {
-        LOGGER.error("Failed to enable " + LogCompactionService.class.getSimpleName(), e);
+        LOGGER.error(
+            "Failed to enable " + RepushOrchestrator.class.getSimpleName() + " or "
+                + CompactionManager.class.getSimpleName(),
+            e);
         throw new VeniceException(e);
       }
     }
