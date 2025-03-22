@@ -45,7 +45,7 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
   List<TopicManager> topicManagers;
   PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
-  @BeforeClass
+  @BeforeClass(alwaysRun = true)
   public void setUp() {
     Properties controllerProps = new Properties();
     controllerProps.put(DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID, 2);

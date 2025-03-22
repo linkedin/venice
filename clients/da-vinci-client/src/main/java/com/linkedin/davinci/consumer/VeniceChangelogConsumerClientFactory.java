@@ -27,6 +27,8 @@ public class VeniceChangelogConsumerClientFactory {
   private static final PubSubConsumerAdapterFactory kafkaConsumerAdapterFactory =
       new ApacheKafkaConsumerAdapterFactory();
   private final Map<String, VeniceChangelogConsumer> storeClientMap = new VeniceConcurrentHashMap<>();
+  private final Map<String, BootstrappingVeniceChangelogConsumer> storeBootstrappingClientMap =
+      new VeniceConcurrentHashMap<>();
 
   private final MetricsRepository metricsRepository;
 
@@ -131,20 +133,24 @@ public class VeniceChangelogConsumerClientFactory {
       String storeName,
       String consumerId,
       Class clazz) {
-    return (BootstrappingVeniceChangelogConsumer<K, V>) storeClientMap
-        .computeIfAbsent(suffixConsumerIdToStore(storeName, consumerId), name -> {
-          ChangelogClientConfig newStoreChangelogClientConfig =
-              getNewStoreChangelogClientConfig(storeName).setSpecificValue(clazz);
-          String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
-          String consumerName =
-              suffixConsumerIdToStore(storeName + "-" + viewClass.getClass().getSimpleName(), consumerId);
-          return new LocalBootstrappingVeniceChangelogConsumer(
-              newStoreChangelogClientConfig,
-              consumer != null
-                  ? consumer
-                  : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName),
-              consumerId);
-        });
+    return storeBootstrappingClientMap.computeIfAbsent(suffixConsumerIdToStore(storeName, consumerId), name -> {
+      ChangelogClientConfig newStoreChangelogClientConfig =
+          getNewStoreChangelogClientConfig(storeName).setSpecificValue(clazz);
+      String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
+      String consumerName = suffixConsumerIdToStore(storeName + "-" + viewClass.getClass().getSimpleName(), consumerId);
+
+      if (globalChangelogClientConfig.isExperimentalClientEnabled()) {
+        return new BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>(
+            newStoreChangelogClientConfig);
+      } else {
+        return new LocalBootstrappingVeniceChangelogConsumer<K, V>(
+            newStoreChangelogClientConfig,
+            consumer != null
+                ? consumer
+                : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName),
+            consumerId);
+      }
+    });
   }
 
   public <K, V> BootstrappingVeniceChangelogConsumer<K, V> getBootstrappingChangelogConsumer(

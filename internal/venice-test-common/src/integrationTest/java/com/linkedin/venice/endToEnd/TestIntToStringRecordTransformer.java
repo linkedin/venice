@@ -22,14 +22,14 @@ public class TestIntToStringRecordTransformer extends DaVinciRecordTransformer<I
   }
 
   @Override
-  public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<Integer> value) {
+  public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<Integer> value, int partitionId) {
     String valueStr = value.get().toString();
     String transformedValue = valueStr + "Transformed";
     return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.TRANSFORMED, transformedValue);
   }
 
   @Override
-  public void processPut(Lazy<Integer> key, Lazy<String> value) {
+  public void processPut(Lazy<Integer> key, Lazy<String> value, int partitionId) {
     return;
   }
 

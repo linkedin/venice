@@ -11,13 +11,7 @@ public class PubSubTopicImpl implements PubSubTopic {
   private final PubSubTopicType pubSubTopicType;
   private final String storeName;
 
-  /**
-   * N.B. leaving this constructor package-private, as the intent is not necessarily the instantiate this object
-   * from anywhere in the code. Most likely, it would be preferable to have some form of singleton topic-registry where
-   * instances can be gotten from, so that the internal state is computed just once, and then reused for the lifetime
-   * of the topic.
-   */
-  PubSubTopicImpl(String name) {
+  public PubSubTopicImpl(String name) {
     this.name = Objects.requireNonNull(name, "Topic name cannot be null");
     this.pubSubTopicType = PubSubTopicType.getPubSubTopicType(name);
     this.storeName = Version.parseStoreFromKafkaTopicName(name);

@@ -26,12 +26,16 @@ import org.apache.logging.log4j.Logger;
 public class DaVinciRecordTransformerUtility<K, O> {
   private static final Logger LOGGER = LogManager.getLogger(DaVinciRecordTransformerUtility.class);
   private final DaVinciRecordTransformer recordTransformer;
+  private final DaVinciRecordTransformerConfig recordTransformerConfig;
   private final AvroGenericDeserializer<K> keyDeserializer;
   private final AvroGenericDeserializer<O> outputValueDeserializer;
   private final AvroSerializer<O> outputValueSerializer;
 
-  public DaVinciRecordTransformerUtility(DaVinciRecordTransformer recordTransformer) {
+  public DaVinciRecordTransformerUtility(
+      DaVinciRecordTransformer recordTransformer,
+      DaVinciRecordTransformerConfig recordTransformerConfig) {
     this.recordTransformer = recordTransformer;
+    this.recordTransformerConfig = recordTransformerConfig;
 
     Schema keySchema = recordTransformer.getKeySchema();
     Schema outputValueSchema = recordTransformer.getOutputValueSchema();
@@ -83,6 +87,11 @@ public class DaVinciRecordTransformerUtility<K, O> {
    * @return true if transformer logic has changed since the last time the class was loaded
    */
   public boolean hasTransformerLogicChanged(int currentClassHash, OffsetRecord offsetRecord) {
+    if (recordTransformerConfig.shouldSkipCompatibilityChecks()) {
+      LOGGER.info("Skip compatability checks have been enabled for DaVinciRecordTransformer");
+      return false;
+    }
+
     Integer persistedClassHash = offsetRecord.getRecordTransformerClassHash();
 
     if (persistedClassHash != null && persistedClassHash == currentClassHash) {
@@ -141,7 +150,7 @@ public class DaVinciRecordTransformerUtility<K, O> {
           return outputValueDeserializer.deserialize(decompressedValueBytes);
         });
 
-        recordTransformer.processPut(lazyKey, lazyValue);
+        recordTransformer.processPut(lazyKey, lazyValue, partitionId);
       }
     }
   }
