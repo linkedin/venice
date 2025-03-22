@@ -142,7 +142,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       if (targetRegionStoreResponse.isError()) {
         String message = "Got error when fetching targetRegionStore: " + targetRegionStoreResponse.getStore();
         logMessageIfNotRedundant(message);
-        return true;
       }
 
       StoreInfo targetRegionStore = targetRegionStoreResponse.getStore();
@@ -152,22 +151,25 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         String message =
             "Unable to find version " + targetVersionNum + " for store: " + storeName + " in region " + region;
         logMessageIfNotRedundant(message);
-        return false;
       }
 
-      if (version.get().getIsDavinciHeartbeatReported()) {
-        String message = "Skipping version swap for store: " + storeName + " on version: " + targetVersionNum
-            + " as there is a davinci heartbeat in region: " + region;
-        logMessageIfNotRedundant(message);
-        return true;
+      if (version.isPresent()) {
+        if (version.get().getIsDavinciHeartbeatReported()) {
+          String message = "Skipping version swap for store: " + storeName + " on version: " + targetVersionNum
+              + " as there is a davinci heartbeat in region: " + region;
+          logMessageIfNotRedundant(message);
+          return true;
+        }
       }
 
       // Check the previous version for a dvc heartbeat if we can't find the target version number
-      if (!version.isPresent() && previousVersion.get().getIsDavinciHeartbeatReported()) {
-        String message = "Skipping version swap for store: " + storeName + " on the previous version: "
-            + previousVersion.get().getNumber() + " as there is a davinci heartbeat in region: " + region;
-        logMessageIfNotRedundant(message);
-        return true;
+      if (!version.isPresent() && previousVersion.isPresent()) {
+        if (previousVersion.get().getIsDavinciHeartbeatReported()) {
+          String message = "Skipping version swap for store: " + storeName + " on the previous version: "
+              + previousVersion.get().getNumber() + " as there is a davinci heartbeat in region: " + region;
+          logMessageIfNotRedundant(message);
+          return true;
+        }
       }
     }
 
