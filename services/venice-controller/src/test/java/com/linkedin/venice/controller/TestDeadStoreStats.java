@@ -18,7 +18,7 @@ public class TestDeadStoreStats {
   /**
    A simple fake implementation of DeadStoreStats for testing.
    Marks a store as dead if its name equals "dead" by setting the isStoreDead flag
-   and populating the reasonsStoreIsDead list.
+   and populating the storeDeadStatusReasons list.
    */
   public static class FakeDeadStoreStats implements DeadStoreStats {
     @Override

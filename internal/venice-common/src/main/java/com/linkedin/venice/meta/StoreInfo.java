@@ -324,9 +324,9 @@ public class StoreInfo {
   private boolean storageNodeReadQuotaEnabled;
 
   /**
-   * If isStoreDead is true, the store is considered dead and the reasonsStoreIsDead list contains the reasons why.
+   * Reasons for why or why not the store is dead
    */
-  private List<String> reasonsStoreIsDead = new ArrayList<>();
+  private List<String> storeDeadStatusReasons = new ArrayList<>();
 
   /**
    * flag to indicate if the store is dead
@@ -897,10 +897,10 @@ public class StoreInfo {
   }
 
   public void setStoreDeadStatusReasons(List<String> reasons) {
-    this.reasonsStoreIsDead = reasons == null ? Collections.emptyList() : new ArrayList<>(reasons);
+    this.storeDeadStatusReasons = reasons == null ? Collections.emptyList() : new ArrayList<>(reasons);
   }
 
   public List<String> getStoreDeadStatusReasons() {
-    return reasonsStoreIsDead;
+    return storeDeadStatusReasons;
   }
 }
