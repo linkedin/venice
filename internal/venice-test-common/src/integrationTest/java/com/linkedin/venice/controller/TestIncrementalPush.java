@@ -104,7 +104,8 @@ public class TestIncrementalPush {
                 Version.composeKafkaTopic(storeName, 1),
                 Optional.of(incPushTopic),
                 null,
-                null)
+                null,
+                false)
             .getExecutionStatus()
             .equals(ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED));
 
@@ -159,7 +160,7 @@ public class TestIncrementalPush {
         TimeUnit.SECONDS,
         () -> cluster.getLeaderVeniceController()
             .getVeniceAdmin()
-            .getOffLinePushStatus(cluster.getClusterName(), versionTopic1, Optional.of(incPushV1), null, null)
+            .getOffLinePushStatus(cluster.getClusterName(), versionTopic1, Optional.of(incPushV1), null, null, false)
             .getExecutionStatus()
             .equals(ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED));
 
@@ -187,7 +188,7 @@ public class TestIncrementalPush {
         TimeUnit.SECONDS,
         () -> cluster.getLeaderVeniceController()
             .getVeniceAdmin()
-            .getOffLinePushStatus(cluster.getClusterName(), versionTopic2, Optional.of(incPushV1), null, null)
+            .getOffLinePushStatus(cluster.getClusterName(), versionTopic2, Optional.of(incPushV1), null, null, false)
             .getExecutionStatus()
             .equals(ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED));
 
@@ -199,7 +200,7 @@ public class TestIncrementalPush {
         TimeUnit.SECONDS,
         () -> cluster.getLeaderVeniceController()
             .getVeniceAdmin()
-            .getOffLinePushStatus(cluster.getClusterName(), versionTopic2, Optional.of(incPush2), null, null)
+            .getOffLinePushStatus(cluster.getClusterName(), versionTopic2, Optional.of(incPush2), null, null, false)
             .getExecutionStatus()
             .equals(ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED));
   }

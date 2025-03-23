@@ -140,6 +140,12 @@ types (e.g., `-1` for a numeric value that is otherwise expected to be positive)
 denote emptiness. For more info, here are a good [video](https://www.youtube.com/watch?v=fBYhtvY19xA&t=2317s) and 
 [post](https://homes.cs.washington.edu/~mernst/advice/nothing-is-better-than-optional.html) on this subject.
 
+### Avoid Java Stream API in Hot Paths
+
+The Java Stream API (e.g., `list.stream().map(...)`) is quite expensive both in terms of CPU and memory allocation, and
+not necessarily more readable than traditional for loops. Use it sparingly, and only in code which is for sure not a hot
+path (e.g., it is fine for control plane logic, but not for read and write hot paths).
+
 ### Avoid Double Brace Initialization
 
 Java supports [anonymous classes](https://docs.oracle.com/javase/tutorial/java/javaOO/anonymousclasses.html), which are

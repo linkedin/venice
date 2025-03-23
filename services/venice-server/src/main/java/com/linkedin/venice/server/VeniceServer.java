@@ -2,8 +2,10 @@ package com.linkedin.venice.server;
 
 import com.linkedin.avro.fastserde.FastDeserializerGeneratorAccessor;
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
-import com.linkedin.davinci.blobtransfer.BlobTransferUtil;
+import com.linkedin.davinci.blobtransfer.BlobTransferManagerBuilder;
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
+import com.linkedin.davinci.blobtransfer.P2PBlobTransferConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -475,24 +477,33 @@ public class VeniceServer {
     /**
      * Initialize Blob transfer manager for Service
      */
-    if (serverConfig.isBlobTransferManagerEnabled()) {
+    if (serverConfig.isBlobTransferManagerEnabled() && serverConfig.isBlobTransferSslEnabled()
+        && serverConfig.isBlobTransferAclEnabled()) {
       aggVersionedBlobTransferStats = new AggVersionedBlobTransferStats(metricsRepository, metadataRepo, serverConfig);
-      blobTransferManager = BlobTransferUtil.getP2PBlobTransferManagerForServerAndStart(
+
+      P2PBlobTransferConfig p2PBlobTransferConfig = new P2PBlobTransferConfig(
           serverConfig.getDvcP2pBlobTransferServerPort(),
           serverConfig.getDvcP2pBlobTransferClientPort(),
           serverConfig.getRocksDBPath(),
-          customizedViewFuture,
-          storageMetadataService,
-          metadataRepo,
-          storageService.getStorageEngineRepository(),
           serverConfig.getMaxConcurrentSnapshotUser(),
           serverConfig.getSnapshotRetentionTimeInMin(),
           serverConfig.getBlobTransferMaxTimeoutInMin(),
-          aggVersionedBlobTransferStats,
           serverConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
               ? BlobTransferTableFormat.PLAIN_TABLE
               : BlobTransferTableFormat.BLOCK_BASED_TABLE,
-          serverConfig.getBlobTransferPeersConnectivityFreshnessInSeconds());
+          serverConfig.getBlobTransferPeersConnectivityFreshnessInSeconds(),
+          serverConfig.getBlobTransferClientReadLimitBytesPerSec(),
+          serverConfig.getBlobTransferServiceWriteLimitBytesPerSec());
+
+      blobTransferManager = new BlobTransferManagerBuilder().setBlobTransferConfig(p2PBlobTransferConfig)
+          .setCustomizedViewFuture(customizedViewFuture)
+          .setStorageMetadataService(storageMetadataService)
+          .setReadOnlyStoreRepository(metadataRepo)
+          .setStorageEngineRepository(storageService.getStorageEngineRepository())
+          .setAggVersionedBlobTransferStats(aggVersionedBlobTransferStats)
+          .setBlobTransferSSLFactory(sslFactory)
+          .setBlobTransferAclHandler(BlobTransferUtils.createAclHandler(veniceConfigLoader))
+          .build();
     } else {
       aggVersionedBlobTransferStats = null;
       blobTransferManager = null;

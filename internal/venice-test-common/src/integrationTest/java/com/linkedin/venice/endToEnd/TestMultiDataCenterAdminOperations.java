@@ -1,7 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.Admin;
@@ -50,7 +49,9 @@ public class TestMultiDataCenterAdminOperations {
   private static final Logger LOGGER = LogManager.getLogger(TestMultiDataCenterAdminOperations.class);
   private static final int TEST_TIMEOUT = 360 * Time.MS_PER_SECOND;
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
-  private static final int NUMBER_OF_CLUSTERS = 1;
+  private static final int NUMBER_OF_CLUSTERS = 2;
+
+  // Do not use venice-cluster1 as it is used for testing failed admin messages
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new); // ["venice-cluster0",
                                                                                                          // "venice-cluster1",
@@ -63,7 +64,7 @@ public class TestMultiDataCenterAdminOperations {
 
   private final byte[] emptyKeyBytes = new byte[] { 'a' };
 
-  @BeforeClass
+  @BeforeClass(alwaysRun = true)
   public void setUp() {
     Properties serverProperties = new Properties();
     serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
@@ -103,7 +104,7 @@ public class TestMultiDataCenterAdminOperations {
     }
   }
 
-  @AfterClass
+  @AfterClass(alwaysRun = true)
   public void cleanUp() {
     multiRegionMultiClusterWrapper.close();
   }
@@ -111,43 +112,48 @@ public class TestMultiDataCenterAdminOperations {
   @Test(timeOut = TEST_TIMEOUT)
   public void testHybridConfigPartitionerConfigConflict() {
     String clusterName = CLUSTER_NAMES[0];
-    String storeName = Utils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("test_conflict_store");
     String parentControllerUrl = multiRegionMultiClusterWrapper.getControllerConnectString();
 
     // Create store first
     ControllerClient controllerClient = new ControllerClient(clusterName, parentControllerUrl);
-    controllerClient.createNewStore(storeName, "test_owner", "\"int\"", "\"int\"");
+
+    TestUtils.assertCommand(controllerClient.createNewStore(storeName, "test_owner", "\"int\"", "\"int\""));
 
     // Make store from batch -> hybrid
-    ControllerResponse response = controllerClient.updateStore(
-        storeName,
-        new UpdateStoreQueryParams().setHybridRewindSeconds(259200).setHybridOffsetLagThreshold(1000));
-    assertFalse(response.isError(), "There is error in setting hybrid config");
+    TestUtils.assertCommand(
+        controllerClient.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setHybridRewindSeconds(259200).setHybridOffsetLagThreshold(1000)),
+        "There is error in setting hybrid config.");
 
     // Try to update partitioner config on hybrid store, expect to fail.
-    response =
-        controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setPartitionerClass("testClassName"));
-    Assert.assertTrue(response.isError(), "There should be error in setting partitioner config in hybrid store");
+    TestUtils.assertCommandFailure(
+        controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setPartitionerClass("testClassName")),
+        "There should be error in setting partitioner config in hybrid store.");
 
     // Try to make store back to non-hybrid store.
-    response = controllerClient.updateStore(
-        storeName,
-        new UpdateStoreQueryParams().setHybridRewindSeconds(-1).setHybridOffsetLagThreshold(-1));
-    assertFalse(response.isError(), "There is error in setting hybrid config");
+    TestUtils.assertCommand(
+        controllerClient.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setHybridRewindSeconds(-1).setHybridOffsetLagThreshold(-1)),
+        "There is error in setting hybrid config.");
 
     // Make sure store is not hybrid.
     Assert.assertNull(controllerClient.getStore(storeName).getStore().getHybridStoreConfig());
 
     // Try to update partitioner config on batch store, it should succeed now.
-    response = controllerClient.updateStore(
-        storeName,
-        new UpdateStoreQueryParams().setPartitionerClass("com.linkedin.venice.partitioner.DefaultVenicePartitioner"));
-    assertFalse(response.isError(), "There is error in setting partitioner config in non-hybrid store");
+    TestUtils.assertCommand(
+        controllerClient.updateStore(
+            storeName,
+            new UpdateStoreQueryParams()
+                .setPartitionerClass("com.linkedin.venice.partitioner.DefaultVenicePartitioner")),
+        "There is error in setting partitioner config in non-hybrid store.");
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testFailedAdminMessages() {
-    String clusterName = CLUSTER_NAMES[0];
+    String clusterName = CLUSTER_NAMES[1];
     VeniceControllerWrapper parentController =
         multiRegionMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName);
     Admin admin = parentController.getVeniceAdmin();
@@ -195,7 +201,7 @@ public class TestMultiDataCenterAdminOperations {
     });
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testAdminOperationMessageWithSpecificSchemaId() {
     String storeName = Utils.getUniqueString("test-store");
 

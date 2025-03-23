@@ -8,12 +8,10 @@ import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
 import com.linkedin.davinci.utils.IndexedHashMap;
 import com.linkedin.davinci.utils.IndexedMap;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -148,7 +146,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
           this::recordPartitionsPerConsumerSensor,
           this::handleUnsubscription);
 
-      Supplier<Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> pollFunction =
+      Supplier<Map<PubSubTopicPartition, List<DefaultPubSubMessage>>> pollFunction =
           liveConfigBasedKafkaThrottlingEnabled
               ? () -> kafkaClusterBasedRecordThrottler.poll(pubSubConsumer, kafkaUrl, readCycleDelayMs)
               : () -> pubSubConsumer.poll(readCycleDelayMs);
@@ -423,7 +421,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   public void startConsumptionIntoDataReceiver(
       PartitionReplicaIngestionContext partitionReplicaIngestionContext,
       long lastReadOffset,
-      ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumedDataReceiver) {
+      ConsumedDataReceiver<List<DefaultPubSubMessage>> consumedDataReceiver) {
     PubSubTopic versionTopic = consumedDataReceiver.destinationIdentifier();
     PubSubTopicPartition topicPartition = partitionReplicaIngestionContext.getPubSubTopicPartition();
     SharedKafkaConsumer consumer = assignConsumerFor(versionTopic, topicPartition);
@@ -558,9 +556,10 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       for (PubSubTopicPartition topicPartition: consumer.getAssignment()) {
         long offsetLag = consumer.getOffsetLag(topicPartition);
         long latestOffset = consumer.getLatestOffset(topicPartition);
-        double msgRate = consumptionTask.getMessageRate(topicPartition);
-        double byteRate = consumptionTask.getByteRate(topicPartition);
-        long lastSuccessfulPollTimestamp = consumptionTask.getLastSuccessfulPollTimestamp(topicPartition);
+        ConsumptionTask.PartitionStats partitionStats = consumptionTask.getPartitionStats(topicPartition);
+        double msgRate = partitionStats.getMessageRate();
+        double byteRate = partitionStats.getBytesRate();
+        long lastSuccessfulPollTimestamp = partitionStats.getLastSuccessfulPollTimestamp();
         long elapsedTimeSinceLastPollInMs = ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP;
         if (lastSuccessfulPollTimestamp != ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP) {
           elapsedTimeSinceLastPollInMs =

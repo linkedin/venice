@@ -152,10 +152,12 @@ import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -207,6 +209,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import com.linkedin.venice.writer.LeaderCompleteState;
@@ -389,6 +392,7 @@ public abstract class StoreIngestionTaskTest {
   private PubSubTopic pubSubTopic;
   private PubSubTopicPartition fooTopicPartition;
   private PubSubTopicPartition barTopicPartition;
+  private PubSubPosition mockedPubSubPosition;
 
   private Runnable runnableForKillNonCurrentVersion;
 
@@ -502,6 +506,7 @@ public abstract class StoreIngestionTaskTest {
     pubSubTopic = pubSubTopicRepository.getTopic(topic);
     fooTopicPartition = new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO);
     barTopicPartition = new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_BAR);
+    mockedPubSubPosition = mock(PubSubPosition.class);
 
     inMemoryLocalKafkaBroker = new InMemoryKafkaBroker("local");
     inMemoryLocalKafkaBroker.createTopic(topic, PARTITION_COUNT);
@@ -1594,16 +1599,15 @@ public abstract class StoreIngestionTaskTest {
 
   @Test(dataProvider = "aaConfigProvider")
   public void testNotifier(AAConfig aaConfig) throws Exception {
-    localVeniceWriter.broadcastStartOfPush(new HashMap<>());
+    localVeniceWriter.broadcastStartOfPush(Collections.emptyMap());
     long fooLastOffset = getOffset(localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     long barLastOffset = getOffset(localVeniceWriter.put(putKeyBar, putValue, SCHEMA_ID));
-    localVeniceWriter.broadcastEndOfPush(new HashMap<>());
-    localVeniceWriter.broadcastEndOfPush(new HashMap<>());
     doReturn(fooLastOffset + 1).when(mockTopicManager).getLatestOffsetCachedNonBlocking(any(), eq(PARTITION_FOO));
     doReturn(barLastOffset + 1).when(mockTopicManager).getLatestOffsetCachedNonBlocking(any(), eq(PARTITION_BAR));
+    localVeniceWriter.broadcastEndOfPush(Collections.emptyMap());
 
-    Utils.sleep(1000);
     runTest(Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {
+      Utils.sleep(1000);
       /**
        * Considering that the {@link VeniceWriter} will send an {@link ControlMessageType#END_OF_PUSH},
        * we need to add 1 to last data message offset.
@@ -3712,11 +3716,11 @@ public abstract class StoreIngestionTaskTest {
 
     PubSubMessageHeaders pubSubMessageHeaders = new PubSubMessageHeaders();
     pubSubMessageHeaders.add(VeniceWriter.getLeaderCompleteStateHeader(LEADER_COMPLETED));
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = new ImmutablePubSubMessage(
+    DefaultPubSubMessage pubSubMessage = new ImmutablePubSubMessage(
         KafkaKey.HEART_BEAT,
         kafkaMessageEnvelope,
         new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO),
-        0,
+        mockedPubSubPosition,
         0,
         0,
         pubSubMessageHeaders);
@@ -3910,11 +3914,7 @@ public abstract class StoreIngestionTaskTest {
       doReturn(1000L).when(mock).getLeaderOffset(anyString(), any());
       System.out.println(mockOR.getLeaderTopic(null));
       doReturn(1000L).when(mockOR).getUpstreamOffset(anyString());
-      if (aaConfig == AA_ON) {
-        doReturn(1000L).when(mock).getLatestProcessedUpstreamRTOffsetWithNoDefault(anyString());
-      } else {
-        doReturn(1000L).when(mock).getLatestProcessedUpstreamRTOffset(anyString());
-      }
+      doReturn(1000L).when(mock).getLatestProcessedUpstreamRTOffset(anyString());
       doReturn(mockOR).when(mock).getOffsetRecord();
       System.out.println("inside mock" + mockOR.getLeaderTopic(null));
       return mock;
@@ -3931,12 +3931,7 @@ public abstract class StoreIngestionTaskTest {
     Supplier<PartitionConsumptionState> mockPcsSupplier2 = () -> {
       PartitionConsumptionState mock = mockPcsSupplier.get();
       doReturn(-1L).when(mock).getLeaderOffset(anyString(), any());
-
-      if (aaConfig == AA_ON) {
-        doReturn(-1L).when(mock).getLatestProcessedUpstreamRTOffsetWithNoDefault(anyString());
-      } else {
-        doReturn(-1L).when(mock).getLatestProcessedUpstreamRTOffset(anyString());
-      }
+      doReturn(-1L).when(mock).getLatestProcessedUpstreamRTOffset(anyString());
       doReturn(new PubSubTopicPartitionImpl(rtTopic, 0)).when(mock).getSourceTopicPartition(any());
       return mock;
     };
@@ -4197,6 +4192,71 @@ public abstract class StoreIngestionTaskTest {
     runTest(config);
   }
 
+  public void testResubscribeForStaleVersion() throws Exception {
+    // Set up the environment.
+    StoreIngestionTaskFactory.Builder builder = mock(StoreIngestionTaskFactory.Builder.class);
+    StorageEngineRepository mockStorageEngineRepository = mock(StorageEngineRepository.class);
+    doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStorageEngineRepository)
+        .getLocalStorageEngine(anyString());
+    doReturn(mockStorageEngineRepository).when(builder).getStorageEngineRepository();
+
+    VeniceServerConfig veniceServerConfig = mock(VeniceServerConfig.class);
+    doReturn(VeniceProperties.empty()).when(veniceServerConfig).getClusterProperties();
+    doReturn(VeniceProperties.empty()).when(veniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
+    doReturn(VeniceProperties.empty()).when(veniceServerConfig).getKafkaConsumerConfigsForRemoteConsumption();
+    doReturn(Object2IntMaps.emptyMap()).when(veniceServerConfig).getKafkaClusterUrlToIdMap();
+    doReturn(veniceServerConfig).when(builder).getServerConfig();
+    doReturn(mock(ReadOnlyStoreRepository.class)).when(builder).getMetadataRepo();
+    doReturn(mock(ReadOnlySchemaRepository.class)).when(builder).getSchemaRepo();
+    doReturn(mock(AggKafkaConsumerService.class)).when(builder).getAggKafkaConsumerService();
+    doReturn(mockAggStoreIngestionStats).when(builder).getIngestionStats();
+    doReturn(pubSubTopicRepository).when(builder).getPubSubTopicRepository();
+
+    // Prepare the meaningful store version
+    Version version = mock(Version.class);
+    doReturn(1).when(version).getPartitionCount();
+    doReturn(null).when(version).getPartitionerConfig();
+    doReturn(VersionStatus.ONLINE).when(version).getStatus();
+    doReturn(true).when(version).isNativeReplicationEnabled();
+    doReturn("localhost").when(version).getPushStreamSourceAddress();
+    doReturn(true).when(version).isActiveActiveReplicationEnabled();
+
+    String versionTopicName = "testStore_v1";
+    doReturn(versionTopicName).when(version).kafkaTopicName();
+    Store store = mock(Store.class);
+    doReturn(version).when(store).getVersion(eq(1));
+    doReturn(Version.parseStoreFromVersionTopic(versionTopicName)).when(store).getName();
+    doReturn(Version.parseStoreFromVersionTopic(versionTopicName)).when(version).getStoreName();
+
+    VeniceStoreVersionConfig storeConfig = mock(VeniceStoreVersionConfig.class);
+    doReturn(Version.parseStoreFromVersionTopic(versionTopicName)).when(store).getName();
+    doReturn(versionTopicName).when(storeConfig).getStoreVersionName();
+
+    LeaderFollowerStoreIngestionTask ingestionTask = spy(
+        new LeaderFollowerStoreIngestionTask(
+            mock(StorageService.class),
+            builder,
+            store,
+            version,
+            mock(Properties.class),
+            mock(BooleanSupplier.class),
+            storeConfig,
+            -1,
+            false,
+            Optional.empty(),
+            null,
+            null));
+
+    // Simulate the version has been deleted.
+    ingestionTask.setVersionRole(PartitionReplicaIngestionContext.VersionRole.BACKUP);
+    doReturn(null).when(store).getVersion(eq(1));
+    ingestionTask.refreshIngestionContextIfChanged(store);
+    verify(ingestionTask, never()).resubscribeForAllPartitions();
+    doReturn(Store.NON_EXISTING_VERSION).when(store).getCurrentVersion();
+    ingestionTask.refreshIngestionContextIfChanged(store);
+    verify(ingestionTask, never()).resubscribeForAllPartitions();
+  }
+
   @Test(dataProvider = "aaConfigProvider")
   public void testWrappedInterruptExceptionDuringGracefulShutdown(AAConfig aaConfig) throws Exception {
     hybridStoreConfig = Optional.of(
@@ -4304,11 +4364,11 @@ public abstract class StoreIngestionTaskTest {
     put.replicationMetadataPayload = ByteBuffer.allocate(10);
     kafkaMessageEnvelope.payloadUnion = put;
     kafkaMessageEnvelope.producerMetadata = new ProducerMetadata();
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = new ImmutablePubSubMessage(
+    DefaultPubSubMessage pubSubMessage = new ImmutablePubSubMessage(
         kafkaKey,
         kafkaMessageEnvelope,
         new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO),
-        0,
+        mockedPubSubPosition,
         0,
         0);
 
@@ -4382,8 +4442,13 @@ public abstract class StoreIngestionTaskTest {
 
   @Test
   public void testShouldPersistRecord() throws Exception {
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage =
-        new ImmutablePubSubMessage(null, null, new PubSubTopicPartitionImpl(pubSubTopic, 1), 0, 0, 0);
+    DefaultPubSubMessage pubSubMessage = new ImmutablePubSubMessage(
+        null,
+        null,
+        new PubSubTopicPartitionImpl(pubSubTopic, 1),
+        mockedPubSubPosition,
+        0,
+        0);
 
     runTest(Collections.singleton(PARTITION_FOO), () -> {
       assertFalse(storeIngestionTaskUnderTest.shouldPersistRecord(pubSubMessage, null));
@@ -4430,8 +4495,13 @@ public abstract class StoreIngestionTaskTest {
       PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateSupplier.get();
       PubSubTopic wrongTopic = pubSubTopicRepository.getTopic("blah_v1");
 
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage2 =
-          new ImmutablePubSubMessage(null, null, new PubSubTopicPartitionImpl(wrongTopic, 1), 0, 0, 0);
+      DefaultPubSubMessage pubSubMessage2 = new ImmutablePubSubMessage(
+          null,
+          null,
+          new PubSubTopicPartitionImpl(wrongTopic, 1),
+          mockedPubSubPosition,
+          0,
+          0);
 
       when(partitionConsumptionState.getLeaderFollowerState()).thenReturn(STANDBY);
       assertFalse(storeIngestionTaskUnderTest.shouldPersistRecord(pubSubMessage2, partitionConsumptionState));
@@ -4851,11 +4921,11 @@ public abstract class StoreIngestionTaskTest {
     put.replicationMetadataPayload = ByteBuffer.allocate(10);
     kafkaMessageEnvelope.payloadUnion = put;
     kafkaMessageEnvelope.producerMetadata = new ProducerMetadata();
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = new ImmutablePubSubMessage(
+    DefaultPubSubMessage pubSubMessage = new ImmutablePubSubMessage(
         kafkaKey,
         kafkaMessageEnvelope,
         new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO),
-        0,
+        mockedPubSubPosition,
         0,
         0);
 
@@ -4933,11 +5003,11 @@ public abstract class StoreIngestionTaskTest {
     put.replicationMetadataPayload = ByteBuffer.allocate(10);
     kafkaMessageEnvelope.payloadUnion = put;
     kafkaMessageEnvelope.producerMetadata = new ProducerMetadata();
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = new ImmutablePubSubMessage(
+    DefaultPubSubMessage pubSubMessage = new ImmutablePubSubMessage(
         kafkaKey,
         kafkaMessageEnvelope,
         new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO),
-        0,
+        mockedPubSubPosition,
         0,
         0);
 
@@ -5003,11 +5073,11 @@ public abstract class StoreIngestionTaskTest {
     put.replicationMetadataPayload = ByteBuffer.allocate(10);
     kafkaMessageEnvelope.payloadUnion = put;
     kafkaMessageEnvelope.producerMetadata = new ProducerMetadata();
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = new ImmutablePubSubMessage(
+    DefaultPubSubMessage pubSubMessage = new ImmutablePubSubMessage(
         kafkaKey,
         kafkaMessageEnvelope,
         new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO),
-        0,
+        mockedPubSubPosition,
         0,
         0);
 
@@ -5082,11 +5152,12 @@ public abstract class StoreIngestionTaskTest {
     long expectedRecordSize = (long) numChunks * ChunkingTestUtils.CHUNK_LENGTH + putKeyFoo.length;
     int rmdSize = 5 * ByteUtils.BYTES_PER_KB; // arbitrary size
     PubSubTopicPartition tp = new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO);
-    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> messages = new ArrayList<>(numChunks + 1); // + manifest
+    List<DefaultPubSubMessage> messages = new ArrayList<>(numChunks + 1); // +
+                                                                          // manifest
     for (int i = 0; i < numChunks; i++) {
       messages.add(ChunkingTestUtils.createChunkedRecord(putKeyFoo, 1, 1, i, 0, tp));
     }
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> manifestMessage =
+    DefaultPubSubMessage manifestMessage =
         ChunkingTestUtils.createChunkValueManifestRecord(putKeyFoo, messages.get(0), numChunks, tp);
     messages.add(manifestMessage);
 
@@ -5097,7 +5168,7 @@ public abstract class StoreIngestionTaskTest {
               TimeUnit.SECONDS,
               () -> assertTrue(storeIngestionTaskUnderTest.hasAnySubscription()));
 
-          for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messages) {
+          for (DefaultPubSubMessage message: messages) {
             try {
               Put put = (Put) message.getValue().getPayloadUnion();
               if (put.schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
@@ -5209,7 +5280,7 @@ public abstract class StoreIngestionTaskTest {
     // No rewind, then nothing would happen
     LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
         mock(PartitionConsumptionState.class),
-        mock(PubSubMessage.class),
+        mock(DefaultPubSubMessage.class),
         11,
         10,
         mock(LeaderFollowerStoreIngestionTask.class));
@@ -5224,7 +5295,7 @@ public abstract class StoreIngestionTaskTest {
 
     LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
         mock(PartitionConsumptionState.class),
-        mock(PubSubMessage.class),
+        mock(DefaultPubSubMessage.class),
         10,
         11,
         mockTask1);
@@ -5232,6 +5303,7 @@ public abstract class StoreIngestionTaskTest {
 
     // Benign rewind
     final long messageOffset = 10;
+    PubSubPosition messagePosition = ApacheKafkaOffsetPosition.of(messageOffset);
     KafkaKey key = new KafkaKey(MessageType.PUT, "test_key".getBytes());
     KafkaMessageEnvelope messsageEnvelope = new KafkaMessageEnvelope();
     LeaderMetadata leaderMetadata = new LeaderMetadata();
@@ -5245,13 +5317,13 @@ public abstract class StoreIngestionTaskTest {
     put.putValue = ByteBuffer.wrap("test_value_suffix".getBytes(), 0, 10); // With trailing suffix.
     put.schemaId = 1;
     messsageEnvelope.payloadUnion = put;
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumedRecord = new ImmutablePubSubMessage<>(
+    DefaultPubSubMessage consumedRecord = new ImmutablePubSubMessage(
         key,
         messsageEnvelope,
         new PubSubTopicPartitionImpl(
             new TestPubSubTopic("test_store_v1", "test_store", PubSubTopicType.VERSION_TOPIC),
             1),
-        messageOffset,
+        messagePosition,
         -1,
         1000);
     AbstractStorageEngine mockStorageEngine2 = mock(AbstractStorageEngine.class);
@@ -5294,7 +5366,9 @@ public abstract class StoreIngestionTaskTest {
     assertTrue(
         exception.getMessage().contains("Failing the job because lossy rewind happens before receiving EndOfPush."));
     // Verify that the VT offset is also in the error message
-    assertTrue(exception.getMessage().contains("received message at offset: " + messageOffset));
+    assertTrue(
+        exception.getMessage().contains("received message at offset: " + messagePosition),
+        "Actual message: " + exception.getMessage());
     verify(mockStats2).recordPotentiallyLossyLeaderOffsetRewind(storeName, version);
   }
 
@@ -5419,7 +5493,7 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test
-  public void testShouldProcessRecordForGlobalRtDivMessage() throws Exception {
+  public void testShouldProcessRecordForGlobalRtDivMessage() {
     // Set up the environment.
     StoreIngestionTaskFactory.Builder builder = mock(StoreIngestionTaskFactory.Builder.class);
     StorageEngineRepository mockStorageEngineRepository = mock(StorageEngineRepository.class);
@@ -5479,8 +5553,8 @@ public abstract class StoreIngestionTaskTest {
 
     PubSubTopicPartition versionTopicPartition = new PubSubTopicPartitionImpl(versionTopic, PARTITION_FOO);
     PubSubTopicPartition rtPartition = new PubSubTopicPartitionImpl(rtTopic, PARTITION_FOO);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> vtRecord =
-        new ImmutablePubSubMessage<>(key, value, versionTopicPartition, 1, 0, 0);
+    DefaultPubSubMessage vtRecord =
+        new ImmutablePubSubMessage(key, value, versionTopicPartition, ApacheKafkaOffsetPosition.of(1), 0, 0);
 
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     when(pcs.getLeaderFollowerState()).thenReturn(LeaderFollowerStateType.LEADER);
@@ -5499,10 +5573,43 @@ public abstract class StoreIngestionTaskTest {
     assertTrue(ingestionTask.shouldProcessRecord(vtRecord), "RT DIV from local VT should be processed");
 
     doReturn(pubSubTopicRepository.getTopic(rtTopicName)).when(offsetRecord).getLeaderTopic(any());
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> rtRecord =
-        new ImmutablePubSubMessage<>(key, value, rtPartition, 0, 0, 0);
+    DefaultPubSubMessage rtRecord =
+        new ImmutablePubSubMessage(key, value, rtPartition, ApacheKafkaOffsetPosition.of(0), 0, 0);
     assertFalse(ingestionTask.shouldProcessRecord(rtRecord), "RT DIV from RT should not be processed");
+  }
 
+  /**
+   * Tests that the {@link StoreIngestionTask#isGlobalRtDivEnabled} feature flag stops the drainer from syncing
+   * OffsetRecord from {@link StoreIngestionTask#updateOffsetMetadataAndSyncOffset}, and the {@link ConsumptionTask}
+   * should send Global RT DIV in {@link LeaderFollowerStoreIngestionTask#sendGlobalRtDivMessage} instead.
+   */
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testShouldSendGlobalRtDiv(boolean isGlobalRtDivEnabled) {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    doCallRealMethod().when(storeIngestionTask).shouldSyncOffset(any(), any(), any());
+    doCallRealMethod().when(storeIngestionTask).shouldSendGlobalRtDiv(any(), any(), any());
+    doReturn(isGlobalRtDivEnabled).when(storeIngestionTask).isGlobalRtDivEnabled();
+    doReturn(1L).when(storeIngestionTask).getSyncBytesInterval(any()); // just needs to be greater than 0
+    DefaultPubSubMessage message = mock(DefaultPubSubMessage.class);
+    KafkaKey key = mock(KafkaKey.class);
+    doReturn(false).when(key).isControlMessage();
+    doReturn(key).when(message).getKey();
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(100L).when(pcs).getProcessedRecordSizeSinceLastSync(); // just needs to be greater than syncBytesInterval
+    VeniceConcurrentHashMap<String, Long> lastProcessedMap = new VeniceConcurrentHashMap<>();
+    String brokerUrl = "localhost:1234";
+    lastProcessedMap.put(brokerUrl, 100L); // just needs to be greater than syncBytesInterval
+    doReturn(lastProcessedMap).when(storeIngestionTask).getConsumedBytesSinceLastSync();
+
+    boolean shouldSendGlobalRtDiv = storeIngestionTask.shouldSendGlobalRtDiv(message, pcs, brokerUrl);
+    boolean shouldSyncOffset = storeIngestionTask.shouldSyncOffset(pcs, message, null);
+
+    // Feature flag should stop drainer from syncing OffsetRecord, and ConsumptionTask should send Global RT DIV
+    if (isGlobalRtDivEnabled) {
+      assertTrue(shouldSendGlobalRtDiv && !shouldSyncOffset);
+    } else {
+      assertTrue(shouldSyncOffset && !shouldSendGlobalRtDiv);
+    }
   }
 
   @Test
@@ -5740,6 +5847,48 @@ public abstract class StoreIngestionTaskTest {
       Assert.assertEquals(offsets.size(), 1);
       Assert.assertEquals(offsets.get(0).longValue(), 1000L);
     }
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testResubscribeAsLeaderFromVersionTopic(boolean aaEnabled) throws InterruptedException {
+    LeaderFollowerStoreIngestionTask ingestionTask =
+        aaEnabled ? mock(ActiveActiveStoreIngestionTask.class) : mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask).prepareOffsetCheckpointAndStartConsumptionAsLeader(any(), any());
+    PubSubTopicRepository topicRepository = new PubSubTopicRepository();
+    when(ingestionTask.getPubSubTopicRepository()).thenReturn(topicRepository);
+    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+    PubSubTopic pubSubTopic = topicRepository.getTopic("test_v1");
+    offsetRecord.setLeaderTopic(pubSubTopic);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.getOffsetRecord()).thenReturn(offsetRecord);
+    when(pcs.getReplicaId()).thenReturn("test_v1-1");
+    when(pcs.getPartition()).thenReturn(1);
+    when(ingestionTask.isActiveActiveReplicationEnabled()).thenReturn(aaEnabled);
+    Set<String> upstreamUrlSet = new HashSet<>();
+    upstreamUrlSet.add("dc-1");
+    if (aaEnabled) {
+      upstreamUrlSet.add("dc-2");
+      upstreamUrlSet.add("dc-3");
+    }
+    Map<String, Long> upstreamOffsetMap = new HashMap<>();
+    when(ingestionTask.getConsumptionSourceKafkaAddress(pcs)).thenReturn(upstreamUrlSet);
+    when(pcs.getLatestProcessedUpstreamRTOffsetMap()).thenReturn(upstreamOffsetMap);
+    doCallRealMethod().when(pcs).getLatestProcessedUpstreamRTOffset(anyString());
+    doCallRealMethod().when(pcs).getLeaderOffset(anyString(), any());
+    when(pcs.getLatestProcessedUpstreamVersionTopicOffset()).thenReturn(100L);
+    when(pcs.consumeRemotely()).thenReturn(true);
+    ingestionTask.prepareOffsetCheckpointAndStartConsumptionAsLeader(pubSubTopic, pcs);
+
+    if (aaEnabled) {
+      Assert.assertEquals(offsetRecord.getUpstreamOffset("dc-1"), -1);
+      Assert.assertEquals(offsetRecord.getUpstreamOffset("dc-2"), -1);
+      Assert.assertEquals(offsetRecord.getUpstreamOffset("dc-3"), -1);
+    } else {
+      Assert.assertEquals(offsetRecord.getUpstreamOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY), -1);
+    }
+
   }
 
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(

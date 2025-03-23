@@ -4,7 +4,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
-import com.linkedin.venice.controller.repush.RepushJobResponse;
+import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.service.AbstractVeniceService;
 import java.util.Set;

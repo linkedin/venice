@@ -1,12 +1,16 @@
 package com.linkedin.venice.pubsub.api;
 
+import com.linkedin.venice.annotation.RestrictedApi;
+import com.linkedin.venice.annotation.UnderDevelopment;
+import com.linkedin.venice.memory.ClassSizeEstimator;
+import com.linkedin.venice.memory.Measurable;
 import com.linkedin.venice.pubsub.PubSubPositionFactory;
 
 
 /**
  * Represents a position of a message in a partition of a topic.
  */
-public interface PubSubPosition {
+public interface PubSubPosition extends Measurable {
   /**
    * A special position representing the earliest available message in a partition. All pub-sub adapters must support
    * this position, and all pub-sub client implementations should interpret it as the earliest retrievable message in
@@ -14,6 +18,13 @@ public interface PubSubPosition {
    * in the underlying pub-sub system.
    */
   PubSubPosition EARLIEST = new PubSubPosition() {
+    private final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(PubSubPosition.class);
+
+    @Override
+    public int getHeapSize() {
+      return SHALLOW_CLASS_OVERHEAD;
+    }
+
     @Override
     public int comparePosition(PubSubPosition other) {
       throw new IllegalStateException("Cannot compare EARLIEST position");
@@ -43,6 +54,11 @@ public interface PubSubPosition {
     public int hashCode() {
       return -1;
     }
+
+    @Override
+    public long getNumericOffset() {
+      throw new IllegalStateException("Cannot get numeric offset for EARLIEST position");
+    }
   };
 
   /**
@@ -52,6 +68,13 @@ public interface PubSubPosition {
    * in the underlying pub-sub system.
    */
   PubSubPosition LATEST = new PubSubPosition() {
+    private final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(PubSubPosition.class);
+
+    @Override
+    public int getHeapSize() {
+      return SHALLOW_CLASS_OVERHEAD;
+    }
+
     @Override
     public int comparePosition(PubSubPosition other) {
       throw new IllegalStateException("Cannot compare LATEST position");
@@ -81,6 +104,11 @@ public interface PubSubPosition {
     public int hashCode() {
       return -2;
     }
+
+    @Override
+    public long getNumericOffset() {
+      throw new IllegalStateException("Cannot get numeric offset for LATEST position");
+    }
   };
 
   /**
@@ -89,16 +117,24 @@ public interface PubSubPosition {
    *          -1 if this position is less than the other position,
    *          and 1 if this position is greater than the other position
    */
+  @RestrictedApi("DO NOT USE THIS API for new code")
+  @UnderDevelopment("Compare API is under development and may change in the future.")
   int comparePosition(PubSubPosition other);
 
   /**
    * @return the difference between this position and the other position
    */
+  @RestrictedApi("DO NOT USE THIS API for new code")
+  @UnderDevelopment("Compare API is under development and may change in the future.")
   long diff(PubSubPosition other);
 
   boolean equals(Object obj);
 
   int hashCode();
+
+  @RestrictedApi("This API facilitates the transition from numeric offsets to PubSubPosition. "
+      + "It should be removed once the codebase fully adopts PubSubPosition.")
+  long getNumericOffset();
 
   /**
    * Position wrapper is used to wrap the position type and the position value.

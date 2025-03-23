@@ -4,7 +4,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Version;
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -34,10 +33,6 @@ public class ServerBlobFinder implements BlobFinder {
           .stream()
           .map(Instance::getHost)
           .collect(Collectors.toList());
-      // Shuffle the list to avoid always picking the same host
-      if (hostNames != null && !hostNames.isEmpty()) {
-        Collections.shuffle(hostNames);
-      }
       response.setDiscoveryResult(hostNames);
     } catch (VeniceException | InterruptedException | ExecutionException e) {
       response.setError(true);

@@ -101,7 +101,6 @@ public class PushStatusStoreReader implements Closeable {
       if (pushStatusValue == null) {
         return Collections.emptyMap();
       } else {
-        LOGGER.info(" {}/{} Instance status: {}", storeName, partitionId, pushStatusValue.instances);
         return pushStatusValue.instances;
       }
     } catch (Exception e) {

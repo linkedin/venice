@@ -3,7 +3,19 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_ON_START_VERSION_INGESTION_LATENCY;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYMANAGER_ALGORITHM;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_LOCATION;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_PASSWORD;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_TYPE;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEY_PASSWORD;
+import static com.linkedin.venice.CommonConfigKeys.SSL_SECURE_RANDOM_IMPLEMENTATION;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTMANAGER_ALGORITHM;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_PASSWORD;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_TYPE;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
@@ -31,6 +43,8 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
+import static com.linkedin.venice.utils.SslUtils.LOCAL_KEYSTORE_JKS;
+import static com.linkedin.venice.utils.SslUtils.LOCAL_PASSWORD;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
@@ -96,6 +110,7 @@ import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
@@ -1188,6 +1203,7 @@ public class DaVinciClientTest {
         Integer.toString(port1),
         Integer.toString(port2),
         StorageClass.DISK.toString(),
+        "false",
         "false");
     // Sleep long enough so the forked Da Vinci app process can finish ingestion.
     Thread.sleep(60000);
@@ -1265,7 +1281,8 @@ public class DaVinciClientTest {
         Integer.toString(port1),
         Integer.toString(port2),
         StorageClass.DISK.toString(),
-        "false");
+        "false",
+        "true");
 
     // Wait for the first DaVinci Client to complete ingestion
     Thread.sleep(60000);
@@ -1285,7 +1302,20 @@ public class DaVinciClientTest {
         .put(PUSH_STATUS_STORE_ENABLED, true)
         .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 1)
-        .put(BLOB_TRANSFER_MANAGER_ENABLED, true);
+        .put(BLOB_TRANSFER_MANAGER_ENABLED, true)
+        .put(BLOB_TRANSFER_SSL_ENABLED, true)
+        .put(BLOB_TRANSFER_ACL_ENABLED, true)
+        .put(SSL_KEYSTORE_TYPE, "JKS")
+        .put(SSL_KEYSTORE_LOCATION, SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS))
+        .put(SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD)
+        .put(SSL_TRUSTSTORE_TYPE, "JKS")
+        .put(SSL_TRUSTSTORE_LOCATION, SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS))
+        .put(SSL_TRUSTSTORE_PASSWORD, LOCAL_PASSWORD)
+        .put(SSL_KEY_PASSWORD, LOCAL_PASSWORD)
+        .put(SSL_KEYMANAGER_ALGORITHM, "SunX509")
+        .put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509")
+        .put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
+
     VeniceProperties backendConfig2 = configBuilder.build();
     DaVinciConfig dvcConfig = new DaVinciConfig().setIsolated(true);
 
@@ -1342,6 +1372,7 @@ public class DaVinciClientTest {
         Integer.toString(port1),
         Integer.toString(port2),
         storageClass,
+        "false",
         "false");
 
     // Wait for the first DaVinci Client to complete ingestion

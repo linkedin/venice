@@ -42,9 +42,11 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
+import com.linkedin.davinci.store.memory.InMemoryStorageEngine;
+import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.utils.ByteArrayKey;
-import com.linkedin.davinci.utils.ChunkAssembler;
+import com.linkedin.davinci.utils.InMemoryChunkAssembler;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
 import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.common.VeniceSystemStoreType;
@@ -88,6 +90,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -125,7 +128,6 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -173,8 +175,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private static final Logger LOGGER = LogManager.getLogger(StoreIngestionTask.class);
 
   private static final String CONSUMER_TASK_ID_FORMAT = "SIT-%s";
-  public static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES =
+  private static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES =
       Collections.singletonList(VeniceException.class);
+  private static final long POST_UNSUB_SLEEP_MS = 600L;
   public static long SCHEMA_POLLING_DELAY_MS = SECONDS.toMillis(5);
   public static long STORE_VERSION_POLLING_DELAY_MS = MINUTES.toMillis(1);
 
@@ -217,7 +220,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final PubSubTopic realTimeTopic;
   protected final PubSubTopic separateRealTimeTopic;
   protected final String storeName;
+  protected final boolean isSystemStore;
   private final boolean isUserSystemStore;
+
   protected final int versionNumber;
   protected final ReadOnlySchemaRepository schemaRepository;
   protected final ReadOnlyStoreRepository storeRepository;
@@ -256,6 +261,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * flushed to the metadata partition of the storage engine regularly in {@link #syncOffset(String, PartitionConsumptionState)}
    */
   private final KafkaDataIntegrityValidator kafkaDataIntegrityValidator;
+  /** Map of broker URL to the total bytes consumed by ConsumptionTask since the last Global RT DIV sync */
+  protected final VeniceConcurrentHashMap<String, Long> consumedBytesSinceLastSync;
   protected final HostLevelIngestionStats hostLevelIngestionStats;
   protected final AggVersionedDIVStats versionedDIVStats;
   protected final AggVersionedIngestionStats versionedIngestionStats;
@@ -326,7 +333,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected final IngestionNotificationDispatcher ingestionNotificationDispatcher;
 
-  protected final ChunkAssembler chunkAssembler;
+  protected final InMemoryChunkAssembler chunkAssembler;
   private final Optional<ObjectCacheBackend> cacheBackend;
   private final Schema recordTransformerInputValueSchema;
   private final AvroGenericDeserializer recordTransformerKeyDeserializer;
@@ -403,6 +410,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.versionTopic = pubSubTopicRepository.getTopic(kafkaVersionTopic);
     this.storeName = versionTopic.getStoreName();
     this.isUserSystemStore = VeniceSystemStoreUtils.isUserSystemStore(storeName);
+    this.isSystemStore = VeniceSystemStoreUtils.isSystemStore(storeName);
     this.realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(version));
     this.separateRealTimeTopic = version.isSeparateRealTimeTopicEnabled()
         ? pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(storeName))
@@ -429,6 +437,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // Could be accessed from multiple threads since there are multiple worker threads.
     this.kafkaDataIntegrityValidator =
         new KafkaDataIntegrityValidator(this.kafkaVersionTopic, DISABLED, producerStateMaxAgeMs);
+    this.consumedBytesSinceLastSync = new VeniceConcurrentHashMap<>();
     this.ingestionTaskName = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
     this.topicManagerRepository = builder.getTopicManagerRepository();
     this.readOnlyForBatchOnlyStoreEnabled = storeVersionConfig.isReadOnlyForBatchOnlyStoreEnabled();
@@ -482,10 +491,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.ingestionNotificationDispatcher =
         new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion);
     this.missingSOPCheckExecutor.execute(() -> waitForStateVersion(kafkaVersionTopic));
-    this.chunkAssembler = new ChunkAssembler(storeName);
     this.cacheBackend = cacheBackend;
 
     if (recordTransformerConfig != null && recordTransformerConfig.getRecordTransformerFunction() != null) {
+      this.chunkAssembler = new InMemoryChunkAssembler(new InMemoryStorageEngine(storeName));
       Schema keySchema = schemaRepository.getKeySchema(storeName).getSchema();
       this.recordTransformerKeyDeserializer = new AvroGenericDeserializer(keySchema, keySchema);
       this.recordTransformerInputValueSchema = schemaRepository.getSupersetOrLatestValueSchema(storeName).getSchema();
@@ -527,6 +536,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       this.recordTransformerKeyDeserializer = null;
       this.recordTransformerInputValueSchema = null;
       this.recordTransformerDeserializersByPutSchemaId = null;
+      this.chunkAssembler = null;
     }
 
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
@@ -551,8 +561,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         this::pauseConsumption,
         this::resumeConsumption);
     this.storeRepository.registerStoreDataChangedListener(this.storageUtilizationManager);
-    this.versionRole = PartitionReplicaIngestionContext.getStoreVersionRole(versionTopic, store);
-    this.workloadType = PartitionReplicaIngestionContext.getWorkloadType(versionTopic, store);
+    this.versionRole =
+        PartitionReplicaIngestionContext.determineStoreVersionRole(versionNumber, store.getCurrentVersion());
+    this.workloadType = PartitionReplicaIngestionContext
+        .determineWorkloadType(isActiveActiveReplicationEnabled, isWriteComputationEnabled);
     this.kafkaClusterUrlResolver = serverConfig.getKafkaClusterUrlResolver();
     Object2IntMap<String> kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
     this.localKafkaClusterId = kafkaClusterUrlToIdMap.getOrDefault(localKafkaServer, Integer.MIN_VALUE);
@@ -1133,7 +1145,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * @throws InterruptedException
    */
   protected void produceToStoreBufferService(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumedRecord,
+      DefaultPubSubMessage consumedRecord,
       LeaderProducedRecordContext leaderProducedRecordContext,
       int partition,
       String kafkaUrl,
@@ -1156,13 +1168,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  protected abstract Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> validateAndFilterOutDuplicateMessagesFromLeaderTopic(
-      Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records,
+  protected abstract Iterable<DefaultPubSubMessage> validateAndFilterOutDuplicateMessagesFromLeaderTopic(
+      Iterable<DefaultPubSubMessage> records,
       String kafkaUrl,
       PubSubTopicPartition topicPartition);
 
   private int handleSingleMessage(
-      PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> consumerRecordWrapper,
+      PubSubMessageProcessedResultWrapper consumerRecordWrapper,
       PubSubTopicPartition topicPartition,
       PartitionConsumptionState partitionConsumptionState,
       String kafkaUrl,
@@ -1171,7 +1183,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long beforeProcessingBatchRecordsTimestampMs,
       boolean metricsEnabled,
       ValueHolder<Double> elapsedTimeForPuttingIntoQueue) throws InterruptedException {
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = consumerRecordWrapper.getMessage();
+    DefaultPubSubMessage record = consumerRecordWrapper.getMessage();
     if (record.getKey().isControlMessage()) {
       ControlMessage controlMessage = (ControlMessage) record.getValue().payloadUnion;
       if (ControlMessageType.valueOf(controlMessage.controlMessageType) == ControlMessageType.START_OF_PUSH) {
@@ -1243,7 +1255,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * @throws InterruptedException
    */
   protected void produceToStoreBufferServiceOrKafka(
-      Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records,
+      Iterable<DefaultPubSubMessage> records,
       PubSubTopicPartition topicPartition,
       String kafkaUrl,
       int kafkaClusterId) throws InterruptedException {
@@ -1278,19 +1290,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     long beforeProcessingBatchRecordsTimestampMs = System.currentTimeMillis();
 
     partitionConsumptionState = partitionConsumptionStateMap.get(topicPartition.getPartitionNumber());
-    for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record: records) {
+    for (DefaultPubSubMessage record: records) {
       long beforeProcessingPerRecordTimestampNs = System.nanoTime();
       partitionConsumptionState.setLatestPolledMessageTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
       if (!shouldProcessRecord(record)) {
-        partitionConsumptionState.updateLatestIgnoredUpstreamRTOffset(kafkaUrl, record.getOffset());
+        partitionConsumptionState
+            .updateLatestIgnoredUpstreamRTOffset(kafkaUrl, record.getPosition().getNumericOffset());
         continue;
       }
 
       // Check schema id availability before putting consumer record to drainer queue
       waitReadyToProcessRecord(record);
 
-      totalBytesRead += handleSingleMessage(
-          new PubSubMessageProcessedResultWrapper<>(record),
+      int recordSize = handleSingleMessage(
+          new PubSubMessageProcessedResultWrapper(record),
           topicPartition,
           partitionConsumptionState,
           kafkaUrl,
@@ -1299,6 +1312,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           beforeProcessingBatchRecordsTimestampMs,
           metricsEnabled,
           elapsedTimeForPuttingIntoQueue);
+      totalBytesRead += recordSize;
+      if (isGlobalRtDivEnabled) {
+        consumedBytesSinceLastSync.compute(kafkaUrl, (k, v) -> (v == null) ? recordSize : v + recordSize);
+      }
     }
 
     /**
@@ -1321,7 +1338,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void produceToStoreBufferServiceOrKafkaInBatch(
-      Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records,
+      Iterable<DefaultPubSubMessage> records,
       PubSubTopicPartition topicPartition,
       PartitionConsumptionState partitionConsumptionState,
       String kafkaUrl,
@@ -1334,17 +1351,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Split the records into mini batches.
      */
     int batchSize = serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize();
-    List<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> batches = new ArrayList<>();
-    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> ongoingBatch = new ArrayList<>(batchSize);
-    Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> iter = records.iterator();
+    List<List<DefaultPubSubMessage>> batches = new ArrayList<>();
+    List<DefaultPubSubMessage> ongoingBatch = new ArrayList<>(batchSize);
+    Iterator<DefaultPubSubMessage> iter = records.iterator();
     while (iter.hasNext()) {
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = iter.next();
+      DefaultPubSubMessage record = iter.next();
       if (partitionConsumptionState != null) {
         partitionConsumptionState.setLatestPolledMessageTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
       }
       if (!shouldProcessRecord(record)) {
         if (partitionConsumptionState != null) {
-          partitionConsumptionState.updateLatestIgnoredUpstreamRTOffset(kafkaUrl, record.getOffset());
+          partitionConsumptionState
+              .updateLatestIgnoredUpstreamRTOffset(kafkaUrl, record.getPosition().getNumericOffset());
         }
         continue;
       }
@@ -1369,21 +1387,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /**
      * Process records batch by batch.
      */
-    for (List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> batch: batches) {
+    for (List<DefaultPubSubMessage> batch: batches) {
       NavigableMap<ByteArrayKey, ReentrantLock> keyLockMap = ingestionBatchProcessor.lockKeys(batch);
       try {
         long beforeProcessingPerRecordTimestampNs = System.nanoTime();
-        List<PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long>> processedResults =
-            ingestionBatchProcessor.process(
-                batch,
-                partitionConsumptionState,
-                topicPartition.getPartitionNumber(),
-                kafkaUrl,
-                kafkaClusterId,
-                beforeProcessingPerRecordTimestampNs,
-                beforeProcessingBatchRecordsTimestampMs);
+        List<PubSubMessageProcessedResultWrapper> processedResults = ingestionBatchProcessor.process(
+            batch,
+            partitionConsumptionState,
+            topicPartition.getPartitionNumber(),
+            kafkaUrl,
+            kafkaClusterId,
+            beforeProcessingPerRecordTimestampNs,
+            beforeProcessingBatchRecordsTimestampMs);
 
-        for (PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> processedRecord: processedResults) {
+        for (PubSubMessageProcessedResultWrapper processedRecord: processedResults) {
           totalBytesRead += handleSingleMessage(
               processedRecord,
               topicPartition,
@@ -1553,7 +1570,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
             LOGGER.info(msg);
           }
-          Thread.sleep(readCycleDelayMs * 20);
+          // long sleep here in case there are more consumer action to perform like KILL/subscription etc.
+          Thread.sleep(POST_UNSUB_SLEEP_MS);
           idleCounter = 0;
         } else {
           maybeCloseInactiveIngestionTask();
@@ -1563,8 +1581,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     idleCounter = 0;
     maybeUnsubscribeCompletedPartitions(store);
-    recordQuotaMetrics();
-    recordMaxIdleTime();
+    if (emitMetrics.get()) {
+      recordQuotaMetrics();
+      recordMaxIdleTime();
+    }
 
     /**
      * While using the shared consumer, we still need to check hybrid quota here since the actual disk usage could change
@@ -1579,31 +1599,42 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     Thread.sleep(readCycleDelayMs);
   }
 
-  protected void updateIngestionRoleIfStoreChanged(Store store) throws InterruptedException {
+  protected void refreshIngestionContextIfChanged(Store store) throws InterruptedException {
+    if (!serverConfig.isResubscriptionTriggeredByVersionIngestionContextChangeEnabled() || !isHybridMode()
+        || isSystemStore) {
+      return;
+    }
+    int currentVersionNumber = store.getCurrentVersion();
+    // If the store having no current version, we do not need to resubscribe.
+    if (currentVersionNumber == Store.NON_EXISTING_VERSION) {
+      return;
+    }
+
+    boolean isWriteComputeEnabled = store.isWriteComputationEnabled();
     PartitionReplicaIngestionContext.VersionRole newVersionRole =
-        PartitionReplicaIngestionContext.getStoreVersionRole(versionTopic, store);
+        PartitionReplicaIngestionContext.determineStoreVersionRole(versionNumber, currentVersionNumber);
     PartitionReplicaIngestionContext.WorkloadType newWorkloadType =
-        PartitionReplicaIngestionContext.getWorkloadType(versionTopic, store);
-    if (serverConfig.isResubscriptionTriggeredByVersionIngestionContextChangeEnabled() && isHybridMode()) {
-      if (!newVersionRole.equals(versionRole) || !newWorkloadType.equals(workloadType)) {
-        LOGGER.info(
-            "Trigger for version topic: {} due to  Previous: version role: {}, workload type: {} "
-                + "changed to New: version role: {}, workload type: {}",
-            versionTopic,
-            versionRole,
-            workloadType,
-            newVersionRole,
-            newWorkloadType);
-        versionRole = newVersionRole;
-        workloadType = newWorkloadType;
-        try {
-          resubscribeForAllPartitions();
-        } catch (Exception e) {
-          LOGGER.error("Error happened during resubscription when store version ingestion role changed.", e);
-          hostLevelIngestionStats.recordResubscriptionFailure();
-          throw e;
-        }
-      }
+        PartitionReplicaIngestionContext.determineWorkloadType(isActiveActiveReplicationEnabled, isWriteComputeEnabled);
+    if (newVersionRole.equals(versionRole) && newWorkloadType.equals(workloadType)) {
+      return;
+    }
+
+    LOGGER.info(
+        "Trigger for version topic: {} due to Previous: version role: {}, workload type: {} "
+            + "changed to New: version role: {}, workload type: {}",
+        versionTopic,
+        versionRole,
+        workloadType,
+        newVersionRole,
+        newWorkloadType);
+    versionRole = newVersionRole;
+    workloadType = newWorkloadType;
+    try {
+      resubscribeForAllPartitions();
+    } catch (Exception e) {
+      LOGGER.error("Error happened during resubscription when store version ingestion role changed.", e);
+      hostLevelIngestionStats.recordResubscriptionFailure();
+      throw e;
     }
   }
 
@@ -1631,21 +1662,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   private void recordMaxIdleTime() {
-    if (emitMetrics.get()) {
-      long curTime = System.currentTimeMillis(), oldest = curTime;
-      for (PartitionConsumptionState state: partitionConsumptionStateMap.values()) {
-        if (state != null) {
-          oldest = Math.min(oldest, state.getLatestPolledMessageTimestampInMs());
-        }
+    long curTime = System.currentTimeMillis();
+    long oldest = curTime;
+    for (PartitionConsumptionState state: partitionConsumptionStateMap.values()) {
+      if (state != null) {
+        oldest = Math.min(oldest, state.getLatestPolledMessageTimestampInMs());
       }
-      versionedIngestionStats.recordMaxIdleTime(storeName, versionNumber, curTime - oldest);
     }
+    versionedIngestionStats.recordMaxIdleTime(storeName, versionNumber, curTime - oldest);
   }
 
   private void recordQuotaMetrics() {
-    if (emitMetrics.get()) {
-      hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
-    }
+    hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
   }
 
   public boolean isIngestionTaskActive() {
@@ -1668,7 +1696,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       while (isRunning()) {
         Store store = storeRepository.getStoreOrThrow(storeName);
-        updateIngestionRoleIfStoreChanged(store);
+        refreshIngestionContextIfChanged(store);
         processConsumerActions(store);
         checkLongRunningTaskState();
         checkIngestionProgress(store);
@@ -1944,7 +1972,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Consumes the kafka actions messages in the queue.
    */
   void processConsumerActions(Store store) throws InterruptedException {
-    Instant startTime = Instant.now();
+    boolean metricsEnabled = emitMetrics.get();
+    long startTime = metricsEnabled ? System.currentTimeMillis() : 0;
     for (;;) {
       // Do not want to remove a message from the queue unless it has been processed.
       ConsumerAction action = consumerActionsQueue.peek();
@@ -1977,8 +2006,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
       }
     }
-    if (emitMetrics.get()) {
-      hostLevelIngestionStats.recordProcessConsumerActionLatency(Duration.between(startTime, Instant.now()).toMillis());
+    if (metricsEnabled) {
+      hostLevelIngestionStats.recordProcessConsumerActionLatency(LatencyUtils.getElapsedTimeFromMsToMs(startTime));
     }
   }
 
@@ -2404,7 +2433,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return offsetFromConsumer;
     }
     try {
-      return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
+      return RetryUtils.executeWithMaxAttemptAndExponentialBackoffNoLog(() -> {
         long offset = getTopicManager(kafkaUrl).getLatestOffsetCachedNonBlocking(pubSubTopic, partition);
         if (offset == UNKNOWN_LATEST_OFFSET) {
           throw new VeniceException("Latest offset is unknown. Check if the topic: " + topicPartition + " exists.");
@@ -2414,7 +2443,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           MAX_OFFSET_FETCH_ATTEMPTS,
           Duration.ofMillis(10),
           Duration.ofMillis(500),
-          Duration.ofSeconds(60),
+          Duration.ofSeconds(5),
           RETRY_FAILURE_TYPES);
     } catch (Exception e) {
       LOGGER.error(
@@ -2468,14 +2497,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Common record check for different state models:
    * check whether server continues receiving messages after EOP for a batch-only store.
    */
-  protected boolean shouldProcessRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
+  protected boolean shouldProcessRecord(DefaultPubSubMessage record) {
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(record.getPartition());
 
     if (partitionConsumptionState == null) {
       String msg = "PCS for replica: " + Utils.getReplicaId(kafkaVersionTopic, record.getPartition())
           + " is null. Skipping incoming record with topic-partition: {} and offset: {}";
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-        LOGGER.info(msg, record.getTopicPartition(), record.getOffset());
+        LOGGER.info(msg, record.getTopicPartition(), record.getPosition());
       }
       return false;
     }
@@ -2484,7 +2513,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       String msg = "Replica:  " + partitionConsumptionState.getReplicaId()
           + " is already errored. Skipping incoming record with topic-partition: {} and offset: {}";
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-        LOGGER.info(msg, record.getTopicPartition(), record.getOffset());
+        LOGGER.info(msg, record.getTopicPartition(), record.getPosition());
       }
       return false;
     }
@@ -2527,14 +2556,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected boolean shouldPersistRecord(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record,
+      DefaultPubSubMessage record,
       PartitionConsumptionState partitionConsumptionState) {
     int partitionId = record.getTopicPartition().getPartitionNumber();
     String replicaId = Utils.getReplicaId(kafkaVersionTopic, partitionId);
     if (failedPartitions.contains(partitionId)) {
       String msg = "Errors already exist for replica: " + replicaId + ", skipping incoming record";
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-        LOGGER.info("{} with topic-partition: {} and offset {}", msg, record.getTopicPartition(), record.getOffset());
+        LOGGER.info("{} with topic-partition: {} and offset {}", msg, record.getTopicPartition(), record.getPosition());
       }
       return false;
     }
@@ -2542,7 +2571,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       String msg = "PCS for replica: " + replicaId
           + " is null or it is not subscribed to any topic-partition. Skipping incoming record with topic-partition: {} and offset: {}";
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-        LOGGER.info(msg, record.getTopicPartition(), record.getOffset());
+        LOGGER.info(msg, record.getTopicPartition(), record.getPosition());
       }
       return false;
     }
@@ -2550,7 +2579,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (partitionConsumptionState.isErrorReported()) {
       String msg = "Replica: " + replicaId + " is already errored, skipping incoming record";
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-        LOGGER.info("{} with topic-partition: {} and offset {}", msg, record.getTopicPartition(), record.getOffset());
+        LOGGER.info("{} with topic-partition: {} and offset {}", msg, record.getTopicPartition(), record.getPosition());
       }
       return false;
     }
@@ -2559,7 +2588,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       String msg = "Skipping message as live update suppression is enabled and replica: " + replicaId
           + " is already ready to serve, these are buffered records in the queue. Incoming record with topic-partition: {} and offset: {}";
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-        LOGGER.info(msg, record.getTopicPartition(), record.getOffset());
+        LOGGER.info(msg, record.getTopicPartition(), record.getPosition());
       }
       return false;
     }
@@ -2574,7 +2603,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       String msg = "Skipping message as it is using ingestion isolation and replica: " + replicaId
           + " is already ready to serve, these are buffered records in the queue. Incoming record with topic-partition: {} and offset: {}";
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-        LOGGER.info(msg, record.getTopicPartition(), record.getOffset());
+        LOGGER.info(msg, record.getTopicPartition(), record.getPosition());
       }
       return false;
     }
@@ -2586,7 +2615,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * This function will be invoked in {@link StoreBufferService} to process buffered {@link PubSubMessage}.
    */
   public void processConsumerRecord(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record,
+      DefaultPubSubMessage record,
       LeaderProducedRecordContext leaderProducedRecordContext,
       int partition,
       String kafkaUrl,
@@ -2614,7 +2643,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       String replicaId = Utils.getReplicaId(versionTopic, faultyPartition);
       String errorMessage;
       errorMessage = FATAL_DATA_VALIDATION_ERROR + " for replica: " + replicaId + ". Incoming record topic-partition: "
-          + record.getTopicPartition() + " offset: " + record.getOffset();
+          + record.getTopicPartition() + " offset: " + record.getPosition();
       // TODO need a way to safeguard DIV errors from backup version that have once been current (but not anymore)
       // during re-balancing
       boolean needToUnsub = !(isCurrentVersion.getAsBoolean() || partitionConsumptionState.isEndOfPushReceived());
@@ -2632,7 +2661,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     } catch (VeniceMessageException | UnsupportedOperationException e) {
       throw new VeniceException(
           ingestionTaskName + " : Received an exception for message at partition: "
-              + record.getTopicPartition().getPartitionNumber() + ", offset: " + record.getOffset() + ". Bubbling up.",
+              + record.getTopicPartition().getPartitionNumber() + ", offset: " + record.getPosition()
+              + ". Bubbling up.",
           e);
     }
 
@@ -2643,7 +2673,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /*
      * Report ingestion throughput metric based on the store version
      */
-    if (!record.getKey().isControlMessage()) { // skip control messages
+    if (!record.getKey().isControlMessage() && !record.getKey().isGlobalRtDiv()) { // skip control messages and DIV
       // Still track record throughput to understand the performance benefits of disabling other record-level metrics.
       hostLevelIngestionStats.recordTotalRecordsConsumed();
       if (recordLevelMetricEnabled.get()) {
@@ -2663,9 +2693,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     reportIfCatchUpVersionTopicOffset(partitionConsumptionState);
 
-    long syncBytesInterval = partitionConsumptionState.isDeferredWrite()
-        ? databaseSyncBytesIntervalForDeferredWriteMode
-        : databaseSyncBytesIntervalForTransactionalMode;
+    long syncBytesInterval = getSyncBytesInterval(partitionConsumptionState);
     boolean recordsProcessedAboveSyncIntervalThreshold = (syncBytesInterval > 0
         && (partitionConsumptionState.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval));
     defaultReadyToServeChecker.apply(partitionConsumptionState, recordsProcessedAboveSyncIntervalThreshold);
@@ -2676,16 +2704,36 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Check whether offset metadata checkpoint will happen; if so, update the producer states recorded in OffsetRecord
      * with the updated producer states maintained in {@link #kafkaDataIntegrityValidator}
      */
-    if (shouldSyncOffset(partitionConsumptionState, syncBytesInterval, record, leaderProducedRecordContext)) {
+    if (shouldSyncOffset(partitionConsumptionState, record, leaderProducedRecordContext)) {
       updateOffsetMetadataAndSyncOffset(partitionConsumptionState);
     }
   }
 
+  long getSyncBytesInterval(PartitionConsumptionState pcs) {
+    return pcs.isDeferredWrite()
+        ? databaseSyncBytesIntervalForDeferredWriteMode
+        : databaseSyncBytesIntervalForTransactionalMode;
+  }
+
   protected void recordHeartbeatReceived(
       PartitionConsumptionState partitionConsumptionState,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       String kafkaUrl) {
     // No Op
+  }
+
+  protected boolean shouldSendGlobalRtDiv(DefaultPubSubMessage record, PartitionConsumptionState pcs, String kafkaUrl) {
+    if (!isGlobalRtDivEnabled()) {
+      return false;
+    }
+
+    // The Global RT DIV is sent on a per-broker basis, so divide the size limit by the number of brokers
+    final long syncBytesInterval = getSyncBytesInterval(pcs) / getConsumedBytesSinceLastSync().size();
+    boolean shouldSync = false;
+    if (!record.getKey().isControlMessage()) {
+      shouldSync = syncBytesInterval > 0 && (getConsumedBytesSinceLastSync().get(kafkaUrl) >= syncBytesInterval);
+    }
+    return shouldSync;
   }
 
   /**
@@ -2698,11 +2746,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * 1. Every ControlMessage
    * 2. Record count based strategy, which doesn't work well for stores with very small key/value pairs.
    */
-  private boolean shouldSyncOffset(
+  boolean shouldSyncOffset(
       PartitionConsumptionState pcs,
-      long syncBytesInterval,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record,
+      DefaultPubSubMessage record,
       LeaderProducedRecordContext leaderProducedRecordContext) {
+    if (isGlobalRtDivEnabled()) {
+      return false; // If Global RT DIV is enabled, OffsetRecord is synced by ConsumptionTask rather than the Drainer
+    }
+
+    final long syncBytesInterval = getSyncBytesInterval(pcs);
     boolean syncOffset = false;
     if (record.getKey().isControlMessage()) {
       ControlMessage controlMessage = (leaderProducedRecordContext == null
@@ -3257,7 +3309,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   protected abstract void updateLatestInMemoryProcessedOffset(
       PartitionConsumptionState partitionConsumptionState,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecordWrapper,
+      DefaultPubSubMessage consumerRecordWrapper,
       LeaderProducedRecordContext leaderProducedRecordContext,
       String kafkaUrl,
       boolean dryRun);
@@ -3268,7 +3320,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * @return the size of the data written to persistent storage.
    */
   private int internalProcessConsumerRecord(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       PartitionConsumptionState partitionConsumptionState,
       LeaderProducedRecordContext leaderProducedRecordContext,
       String kafkaUrl,
@@ -3328,7 +3380,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               "Encountered errors during updating metadata for 2nd round DIV validation "
                   + "after EOP consuming from: {} offset: {} replica: {} ExMsg: {}",
               consumerRecord.getTopicPartition(),
-              consumerRecord.getOffset(),
+              consumerRecord.getPosition(),
               partitionConsumptionState.getReplicaId(),
               fatalException.getMessage());
         }
@@ -3357,7 +3409,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             kafkaValue,
             controlMessage,
             consumerRecord.getTopicPartition().getPartitionNumber(),
-            consumerRecord.getOffset(),
+            consumerRecord.getPosition().getNumericOffset(),
             partitionConsumptionState);
         try {
           if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()
@@ -3399,7 +3451,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       divErrorMetricCallback.accept(e);
       LOGGER.debug(
           "Skipping a duplicate record at offset: {} from topic-partition: {} for replica: {}",
-          consumerRecord.getOffset(),
+          consumerRecord.getPosition(),
           consumerRecord.getTopicPartition(),
           partitionConsumptionState.getReplicaId());
     } catch (PersistenceFailureException ex) {
@@ -3408,7 +3460,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         LOGGER.error(
             "Met PersistenceFailureException for replica: {} while processing record with offset: {}, topic-partition: {}, meta data of the record: {}",
             partitionConsumptionState.getReplicaId(),
-            consumerRecord.getOffset(),
+            consumerRecord.getPosition(),
             consumerRecord.getTopicPartition(),
             consumerRecord.getValue().producerMetadata);
         throw ex;
@@ -3430,7 +3482,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           "PCS for replica: {} is null, will skip offset update. Processed record was from topic-partition: {} offset: {}",
           getReplicaId(versionTopic, consumerRecord.getPartition()),
           consumerRecord.getTopicPartition(),
-          consumerRecord.getOffset());
+          consumerRecord.getPosition());
     } else {
       OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
       /**
@@ -3472,7 +3524,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected void validateMessage(
       PartitionTracker.TopicType type,
       KafkaDataIntegrityValidator validator,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       boolean endOfPushReceived,
       PartitionConsumptionState partitionConsumptionState) {
     KafkaKey key = consumerRecord.getKey();
@@ -3514,7 +3566,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                 + "but consumption will continue since EOP is already received for replica: {}. Msg: {}",
             consumerRecord.getTopicPartition(),
             regionName == null || regionName.isEmpty() ? "" : "/" + regionName,
-            consumerRecord.getOffset(),
+            consumerRecord.getPosition(),
             partitionConsumptionState.getReplicaId(),
             warningException.getMessage());
       }
@@ -3659,7 +3711,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * 30 minutes according to the maximum value of the metric consumer_records_producing_to_write_buffer_latency.
    */
   void consumerUnSubscribeForStateTransition(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
-    Instant startTime = Instant.now();
+    long startTime = System.currentTimeMillis();
     int partitionId = partitionConsumptionState.getPartition();
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, partitionId);
     aggKafkaConsumerService
@@ -3668,16 +3720,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         "Consumer unsubscribed to topic-partition: {} for replica: {}. Took {} ms",
         topicPartition,
         partitionConsumptionState.getReplicaId(),
-        Instant.now().toEpochMilli() - startTime.toEpochMilli());
+        LatencyUtils.getElapsedTimeFromMsToMs(startTime));
   }
 
   public void consumerBatchUnsubscribe(Set<PubSubTopicPartition> topicPartitionSet) {
-    Instant startTime = Instant.now();
+    long startTime = System.currentTimeMillis();
     aggKafkaConsumerService.batchUnsubscribeConsumerFor(versionTopic, topicPartitionSet);
     LOGGER.info(
         "Consumer unsubscribed {} partitions. Took {} ms",
         topicPartitionSet.size(),
-        Instant.now().toEpochMilli() - startTime.toEpochMilli());
+        LatencyUtils.getElapsedTimeFromMsToMs(startTime));
   }
 
   public abstract void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState);
@@ -3738,7 +3790,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * @return the size of the data which was written to persistent storage.
    */
   private int processKafkaDataMessage(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       PartitionConsumptionState partitionConsumptionState,
       LeaderProducedRecordContext leaderProducedRecordContext,
       long currentTimeMs) {
@@ -3756,9 +3808,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     boolean metricsEnabled = emitMetrics.get();
     boolean traceEnabled = LOGGER.isTraceEnabled();
     long startTimeNs = (metricsEnabled || traceEnabled) ? System.nanoTime() : 0;
+    boolean emitRecordLevelMetrics = metricsEnabled && recordLevelMetricEnabled.get();
 
     switch (messageType) {
       case PUT:
+      case GLOBAL_RT_DIV:
         // If single-threaded, we can re-use (and clobber) the same Put instance. // TODO: explore GC tuning later.
         Put put;
         if (leaderProducedRecordContext == null) {
@@ -3772,40 +3826,38 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         keyLen = keyBytes.length;
         // update checksum for this PUT message if needed.
         partitionConsumptionState.maybeUpdateExpectedChecksum(keyBytes, put);
-        if (metricsEnabled && recordLevelMetricEnabled.get() && put.getSchemaId() == CHUNK_MANIFEST_SCHEMA_ID) {
+        if (emitRecordLevelMetrics && put.getSchemaId() == CHUNK_MANIFEST_SCHEMA_ID && messageType == MessageType.PUT) {
           // This must be done before the recordTransformer modifies the putValue, otherwise the size will be incorrect.
           recordAssembledRecordSize(keyLen, put.getPutValue(), put.getReplicationMetadataPayload(), currentTimeMs);
         }
 
-        // Check if put.getSchemaId is positive, if not default to 1
-        // TODO: Write a test for chunked records... it does not seem right to transform negative schemas IDs into 1
-        int putSchemaId = put.getSchemaId() > 0 ? put.getSchemaId() : 1;
+        int writerSchemaId = put.getSchemaId();
 
-        if (recordTransformer != null) {
+        if (recordTransformer != null && messageType == MessageType.PUT) {
           long recordTransformerStartTime = System.nanoTime();
-          ByteBuffer valueBytes = put.getPutValue();
-          ByteBuffer assembledObject = chunkAssembler.bufferAndAssembleRecord(
+          ByteBufferValueRecord<ByteBuffer> assembledRecord = chunkAssembler.bufferAndAssembleRecord(
               consumerRecord.getTopicPartition(),
-              putSchemaId,
+              put.getSchemaId(),
               keyBytes,
-              valueBytes,
-              consumerRecord.getOffset(),
-              putSchemaId,
+              put.getPutValue(),
+              consumerRecord.getPosition().getNumericOffset(),
               compressor.get());
 
           // Current record is a chunk. We only write to the storage engine for fully assembled records
-          if (assembledObject == null) {
+          if (assembledRecord == null) {
             return 0;
           }
 
+          ByteBuffer assembledObject = assembledRecord.value();
+          writerSchemaId = assembledRecord.writerSchemaId();
+          final int readerSchemaId = writerSchemaId;
           Lazy<Object> lazyKey = Lazy.of(() -> this.recordTransformerKeyDeserializer.deserialize(keyBytes));
           Lazy<Object> lazyValue = Lazy.of(() -> {
             try {
               ByteBuffer decompressedAssembledObject = compressor.get().decompress(assembledObject);
-
               RecordDeserializer recordDeserializer =
-                  this.recordTransformerDeserializersByPutSchemaId.computeIfAbsent(putSchemaId, i -> {
-                    Schema valueSchema = schemaRepository.getValueSchema(storeName, putSchemaId).getSchema();
+                  this.recordTransformerDeserializersByPutSchemaId.computeIfAbsent(readerSchemaId, i -> {
+                    Schema valueSchema = schemaRepository.getValueSchema(storeName, readerSchemaId).getSchema();
                     if (this.recordTransformer.useUniformInputValueSchema()) {
                       return new AvroGenericDeserializer<>(valueSchema, this.recordTransformerInputValueSchema);
                     } else {
@@ -3839,11 +3891,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           ByteBuffer transformedBytes;
           if (transformerResult.getResult() == DaVinciRecordTransformerResult.Result.UNCHANGED) {
             // Use original value if the record wasn't transformed
-            transformedBytes = recordTransformer.prependSchemaIdToHeader(assembledObject, putSchemaId);
+            transformedBytes = recordTransformer.prependSchemaIdToHeader(assembledObject, writerSchemaId);
           } else {
             // Serialize and compress the new record if it was transformed
-            transformedBytes =
-                recordTransformer.prependSchemaIdToHeader(transformerResult.getValue(), putSchemaId, compressor.get());
+            transformedBytes = recordTransformer
+                .prependSchemaIdToHeader(transformerResult.getValue(), writerSchemaId, compressor.get());
           }
 
           put.putValue = transformedBytes;
@@ -3864,10 +3916,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
         // grab the positive schema id (actual value schema id) to be used in schema warm-up value schema id.
         // for hybrid use case in read compute store in future we need revisit this as we can have multiple schemas.
-        if (putSchemaId > 0) {
-          valueSchemaId = putSchemaId;
+        if (writerSchemaId > 0) {
+          valueSchemaId = writerSchemaId;
         }
-        if (metricsEnabled && recordLevelMetricEnabled.get()) {
+        if (emitRecordLevelMetrics) {
           hostLevelIngestionStats
               .recordStorageEnginePutLatency(LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs), currentTimeMs);
         }
@@ -3920,7 +3972,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       case UPDATE:
         throw new VeniceMessageException(
             ingestionTaskName + ": Not expecting UPDATE message from: " + consumerRecord.getTopicPartition()
-                + ", Offset: " + consumerRecord.getOffset());
+                + ", Offset: " + consumerRecord.getPosition());
       default:
         throw new VeniceMessageException(
             ingestionTaskName + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
@@ -3950,7 +4002,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           kafkaKey.getKey());
     }
 
-    if (emitMetrics.get() && recordLevelMetricEnabled.get()) {
+    if (emitRecordLevelMetrics) {
       hostLevelIngestionStats.recordKeySize(keyLen, currentTimeMs);
       hostLevelIngestionStats.recordValueSize(valueLen, currentTimeMs);
     }
@@ -3963,8 +4015,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * needs to #checkValueSchemaAvail
    * @param record
    */
-  private void waitReadyToProcessRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record)
-      throws InterruptedException {
+  private void waitReadyToProcessRecord(DefaultPubSubMessage record) throws InterruptedException {
     KafkaMessageEnvelope kafkaValue = record.getValue();
     if (record.getKey().isControlMessage() || record.getKey().isGlobalRtDiv() || kafkaValue == null) {
       return;
@@ -3981,7 +4032,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               partitionConsumptionStateMap.get(record.getTopicPartition().getPartitionNumber());
           LeaderFollowerStateType state = pcs == null ? null : pcs.getLeaderFollowerState();
           throw new VeniceException(
-              "Failed to deserialize PUT for: " + record.getTopicPartition() + ", offset: " + record.getOffset()
+              "Failed to deserialize PUT for: " + record.getTopicPartition() + ", offset: " + record.getPosition()
                   + ", schema id: " + put.schemaId + ", LF state: " + state,
               e);
         }
@@ -4100,10 +4151,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    *    availableSchemaIds by {@link StoreIngestionTask#waitUntilValueSchemaAvailable}.
    * 2. Ingestion isolation is enabled, in which case ingestion happens on forked process instead of this main process.
    */
-  private void deserializeValue(
-      int schemaId,
-      ByteBuffer value,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) throws IOException {
+  private void deserializeValue(int schemaId, ByteBuffer value, DefaultPubSubMessage record) throws IOException {
     if (schemaId < 0 || deserializedSchemaIds.get(schemaId) != null || availableSchemaIds.get(schemaId) == null) {
       return;
     }
@@ -4470,7 +4518,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected abstract DelegateConsumerRecordResult delegateConsumerRecord(
-      PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> consumerRecordWrapper,
+      PubSubMessageProcessedResultWrapper consumerRecordWrapper,
       int partition,
       String kafkaUrl,
       int kafkaClusterId,
@@ -4613,7 +4661,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * @param consumerRecord
    * @return true, if the record is not null and contains a valid upstream offset, otherwise false.
    */
-  protected boolean shouldUpdateUpstreamOffset(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord) {
+  protected boolean shouldUpdateUpstreamOffset(DefaultPubSubMessage consumerRecord) {
     if (consumerRecord == null) {
       return false;
     }
@@ -4748,5 +4796,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (isHybridAggregateMode()) {
       getReadyToServeChecker().apply(partitionConsumptionState);
     }
+  }
+
+  VeniceConcurrentHashMap<String, Long> getConsumedBytesSinceLastSync() {
+    return consumedBytesSinceLastSync; // mainly for unit test mocks
+  }
+
+  boolean isGlobalRtDivEnabled() {
+    return isGlobalRtDivEnabled; // mainly for unit test mocks
   }
 }

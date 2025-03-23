@@ -5,9 +5,9 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
-import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.RepushInfo;
+import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
@@ -314,8 +314,6 @@ public interface Admin extends AutoCloseable, Closeable {
 
   RepushInfo getRepushInfo(String clusterNae, String storeName, Optional<String> fabricName);
 
-  Version peekNextVersion(String clusterName, String storeName);
-
   /**
    * Delete all of venice versions in given store(including venice resource, kafka topic, offline pushs and all related
    * resources).
@@ -451,6 +449,8 @@ public interface Admin extends AutoCloseable, Closeable {
 
   void setStoreLargestUsedVersion(String clusterName, String storeName, int versionNumber);
 
+  void setStoreLargestUsedRTVersion(String clusterName, String storeName, int versionNumber);
+
   void setStoreOwner(String clusterName, String storeName, String owner);
 
   void setStorePartitionCount(String clusterName, String storeName, int partitionCount);
@@ -497,7 +497,8 @@ public interface Admin extends AutoCloseable, Closeable {
       String kafkaTopic,
       Optional<String> incrementalPushVersion,
       String region,
-      String targetedRegions);
+      String targetedRegions,
+      boolean isTargetRegionPushWithDeferredSwap);
 
   /**
    * Return the ssl or non-ssl bootstrap servers based on the given flag.

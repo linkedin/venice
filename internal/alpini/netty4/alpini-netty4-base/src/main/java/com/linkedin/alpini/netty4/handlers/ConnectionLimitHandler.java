@@ -7,6 +7,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -26,17 +27,22 @@ public class ConnectionLimitHandler extends ChannelInboundHandlerAdapter {
 
   private final AtomicInteger _activeCount = new AtomicInteger();
   private IntSupplier _connectionLimit;
+  protected final Consumer<Integer> _connectionCountRecorder;
+  protected final Consumer<Integer> _rejectedConnectionCountRecorder;
 
   /**
    * Construct with a preset connection limit.
    * @param limit Maximum number of connections.
    */
-  public ConnectionLimitHandler(int limit) {
-    this(() -> limit);
-  }
-
-  public ConnectionLimitHandler(IntSupplier limit) {
+  public ConnectionLimitHandler(
+      IntSupplier limit,
+      Consumer<Integer> connectionCountRecorder,
+      Consumer<Integer> rejectedConnectionCountRecorder) {
     _connectionLimit = limit;
+    // Build a no-op recorder if the pass-in recorder is null
+    _connectionCountRecorder = (connectionCountRecorder == null) ? (ignored) -> {} : connectionCountRecorder;
+    _rejectedConnectionCountRecorder =
+        (rejectedConnectionCountRecorder == null) ? (ignored) -> {} : rejectedConnectionCountRecorder;
   }
 
   /**
@@ -75,9 +81,10 @@ public class ConnectionLimitHandler extends ChannelInboundHandlerAdapter {
   public void channelActive(ChannelHandlerContext ctx) throws Exception {
     int count = _activeCount.incrementAndGet();
     int limit = _connectionLimit.getAsInt();
-
+    _connectionCountRecorder.accept(count);
     if (count > limit) {
-      LOG.debug("Connection count {} exceeds {}", count, limit);
+      LOG.error("Connection count {} exceeds {}", count, limit);
+      _rejectedConnectionCountRecorder.accept(1);
 
       ctx.writeAndFlush(Unpooled.copiedBuffer(REJECT_MESSAGE, StandardCharsets.US_ASCII))
           .addListener(ChannelFutureListener.CLOSE);
@@ -97,7 +104,8 @@ public class ConnectionLimitHandler extends ChannelInboundHandlerAdapter {
    */
   @Override
   public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-    _activeCount.getAndDecrement();
+    int count = _activeCount.decrementAndGet();
+    _connectionCountRecorder.accept(count);
     super.channelInactive(ctx);
   }
 }

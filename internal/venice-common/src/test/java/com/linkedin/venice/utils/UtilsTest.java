@@ -19,6 +19,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -27,11 +28,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import org.apache.avro.Schema;
 import org.apache.http.HttpStatus;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -248,6 +251,29 @@ public class UtilsTest {
     assertEquals(Utils.resolveKafkaUrlForSepTopic(""), "");
     assertEquals(Utils.resolveKafkaUrlForSepTopic(originalKafkaUrlForSep), originalKafkaUrl);
     assertEquals(Utils.resolveKafkaUrlForSepTopic(originalKafkaUrl), originalKafkaUrl);
+  }
+
+  @Test
+  void testGetRealTimeTopicNames() {
+    Store mockStore = mock(Store.class);
+    List<Version> mockVersions = new ArrayList<>();
+    mockVersions.add(mock(Version.class));
+    mockVersions.add(mock(Version.class));
+    mockVersions.add(mock(Version.class));
+    HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
+
+    when(mockStore.getName()).thenReturn("StoreName");
+    when(mockStore.getVersions()).thenReturn(mockVersions);
+    when(mockStore.getCurrentVersion()).thenReturn(1);
+    when(mockStore.getHybridStoreConfig()).thenReturn(mockHybridConfig);
+    when(mockVersions.get(0).getHybridStoreConfig()).thenReturn(mockHybridConfig);
+    when(mockVersions.get(1).getHybridStoreConfig()).thenReturn(mockHybridConfig);
+    when(mockVersions.get(2).getHybridStoreConfig()).thenReturn(mockHybridConfig);
+
+    when(mockHybridConfig.getRealTimeTopicName()).thenReturn("StoreName_v1_rt", "StoreName_v2_rt", "StoreName_v3_rt");
+
+    Set<String> result = Utils.getAllRealTimeTopicNames(mockStore);
+    assertEquals(result, new HashSet<>(Arrays.asList("StoreName_v1_rt", "StoreName_v2_rt", "StoreName_v3_rt")));
   }
 
   @Test
@@ -575,5 +601,29 @@ public class UtilsTest {
     assertEquals(e.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST, "Invalid status code.");
     assertEquals(e.getMessage(), "Http Status 400 - testField must be a boolean, but value: " + value + " is invalid.");
     assertEquals(e.getErrorType(), ErrorType.BAD_REQUEST);
+  }
+
+  @Test
+  public void testGetAllSchemasFromResources() {
+
+    // Protocols to test
+    AvroProtocolDefinition[] avroProtocolDefinitions = new AvroProtocolDefinition[] {
+        AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE, AvroProtocolDefinition.PARTITION_STATE,
+        AvroProtocolDefinition.STORE_VERSION_STATE, AvroProtocolDefinition.SERVER_METADATA_RESPONSE,
+        AvroProtocolDefinition.SERVER_STORE_PROPERTIES_PAYLOAD, AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
+        AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE };
+
+    for (AvroProtocolDefinition avroProtocolDefinition: avroProtocolDefinitions) {
+      Map<Integer, Schema> schemaMap = Utils.getAllSchemasFromResources(avroProtocolDefinition);
+
+      Assert.assertNotNull(schemaMap, avroProtocolDefinition.getClassName());
+      Assert.assertNotEquals(schemaMap.size(), 0, avroProtocolDefinition.getClassName());
+      if (avroProtocolDefinition.currentProtocolVersion.isPresent()) {
+        Assert.assertEquals(
+            schemaMap.get(avroProtocolDefinition.currentProtocolVersion.get()),
+            avroProtocolDefinition.getCurrentProtocolVersionSchema(),
+            avroProtocolDefinition.getClassName());
+      }
+    }
   }
 }
