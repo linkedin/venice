@@ -144,6 +144,7 @@ import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushJobResponse;
+import com.linkedin.venice.controller.stats.DeadStoreStats;
 import com.linkedin.venice.controller.supersetschema.DefaultSupersetSchemaGenerator;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controller.util.ParentControllerConfigUpdateUtils;
@@ -361,6 +362,8 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private final IdentityParser identityParser;
 
+  private DeadStoreStats deadStoreStats;
+
   // New fabric controller client map per cluster per fabric
   private final Map<String, Map<String, ControllerClient>> newFabricControllerClientMap =
       new VeniceConcurrentHashMap<>();
@@ -531,6 +534,20 @@ public class VeniceParentHelixAdmin implements Admin {
                 updateStoreQueryParamsForHeartbeatSystemStore));
       } else {
         initRoutineForHeartbeatSystemStore.setAllowEmptyDelegateInitializationToSucceed();
+      }
+    }
+
+    if (multiClusterConfigs.isDeadStoreEndpointEnabled()) {
+      Class<? extends DeadStoreStats> deadStoreStatsClass =
+          ReflectUtils.loadClass(multiClusterConfigs.getDeadStoreStatsClassName());
+      try {
+        deadStoreStats = ReflectUtils.callConstructor(
+            deadStoreStatsClass,
+            new Class[] { VeniceProperties.class },
+            new Object[] { multiClusterConfigs.getDeadStoreStatsConfigs() });
+      } catch (Exception e) {
+        LOGGER.error("Failed to enable " + DeadStoreStats.class.getSimpleName(), e);
+        throw new VeniceException(e);
       }
     }
   }
@@ -4980,7 +4997,23 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public List<StoreInfo> getDeadStores(String clusterName, String storeName) {
-    throw new UnsupportedOperationException("This function is implemented in VeniceHelixAdmin.");
+    if (!multiClusterConfigs.isDeadStoreEndpointEnabled()) {
+      throw new VeniceUnsupportedOperationException("Dead store stats is not enabled.");
+    }
+
+    if (storeName == null) {
+      List<StoreInfo> clusterStoreInfos = getAllStores(clusterName).stream()
+          .filter(Objects::nonNull)
+          .map(StoreInfo::fromStore)
+          .collect(Collectors.toList());
+      return deadStoreStats.getDeadStores(clusterStoreInfos);
+    } else {
+      StoreInfo store = StoreInfo.fromStore(getStore(clusterName, storeName));
+      if (store == null) {
+        throw new VeniceNoStoreException(storeName, clusterName);
+      }
+      return deadStoreStats.getDeadStores(Collections.singletonList(store));
+    }
   }
 
   /**

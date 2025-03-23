@@ -896,11 +896,11 @@ public class StoreInfo {
     return this.isStoreDead;
   }
 
-  public void setReasonsStoreIsDead(List<String> reasons) {
+  public void setStoreDeadStatusReasons(List<String> reasons) {
     this.reasonsStoreIsDead = reasons == null ? Collections.emptyList() : new ArrayList<>(reasons);
   }
 
-  public List<String> getReasonsStoreIsDead() {
+  public List<String> getStoreDeadStatusReasons() {
     return reasonsStoreIsDead;
   }
 }
