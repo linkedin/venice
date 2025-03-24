@@ -165,7 +165,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   private Lazy<VeniceWriterFactory> veniceWriterFactory;
   private AbstractVeniceWriter<byte[], byte[], byte[]> veniceWriter = null;
   private VeniceWriter<byte[], byte[], byte[]> mainWriter = null;
-  private ComplexVeniceWriter[] childWriters = null;
+  private ComplexVeniceWriter<byte[], byte[], byte[]>[] childWriters = null;
   private int valueSchemaId = -1;
   private int derivedValueSchemaId = -1;
   private boolean enableWriteCompute = false;
@@ -431,7 +431,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       version.setRmdChunkingEnabled(rmdChunkingEnabled);
       // Default deser and decompress function for simple partitioner where value provider is never going to be used.
       BiFunction<byte[], Integer, GenericRecord> valueExtractor = (valueBytes, valueSchemaId) -> null;
-      boolean complexPartitionerConfigured = false;
+      boolean valueExtractorConfigured = false;
       int index = 0;
       for (ViewConfig viewConfig: viewConfigMap.values()) {
         VeniceView view = ViewUtils
@@ -439,9 +439,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         String viewTopic = view.getTopicNamesAndConfigsForVersion(versionNumber).keySet().stream().findAny().get();
         if (view instanceof MaterializedView) {
           MaterializedView materializedView = (MaterializedView) view;
-          if (materializedView.getViewPartitioner()
-              .getPartitionerType() == VenicePartitioner.VenicePartitionerType.COMPLEX
-              && !complexPartitionerConfigured) {
+          if (materializedView.isValueProviderNeeded() && !valueExtractorConfigured) {
             // Initialize value schemas, deser cache and other variables needed by ComplexVenicePartitioner
             initializeSchemaSourceAndDeserCache();
             compressor.get();
@@ -461,10 +459,19 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
                   .deserialize(decompressedBytes);
             };
             // We only need to configure these variables once per CompositeVeniceWriter
-            complexPartitionerConfigured = true;
+            valueExtractorConfigured = true;
           }
-          childWriters[index++] =
+          ComplexVeniceWriter<byte[], byte[], byte[]> complexVeniceWriter =
               factory.createComplexVeniceWriter(view.getWriterOptionsBuilder(viewTopic, version).build());
+          if (materializedView.getProjectionSchema() != null) {
+            // Configure writer for projection support
+            ViewUtils.configureWriterForProjection(
+                complexVeniceWriter,
+                materializedView.getViewName(),
+                compressor,
+                materializedView.getProjectionSchema());
+          }
+          childWriters[index++] = complexVeniceWriter;
         } else {
           throw new UnsupportedOperationException("Only materialized view is supported in VPJ");
         }

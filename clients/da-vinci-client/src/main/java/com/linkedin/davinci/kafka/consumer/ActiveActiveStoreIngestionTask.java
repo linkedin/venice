@@ -71,6 +71,7 @@ import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
@@ -456,7 +457,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             consumerRecord.getTopicPartition(),
             valueManifestContainer,
             beforeProcessingBatchRecordsTimestampMs));
-    if (hasChangeCaptureView || (hasComplexVenicePartitionerMaterializedView && msgType == MessageType.DELETE)) {
+    if (hasChangeCaptureView || hasFilterByFieldsMaterializedView
+        || (hasComplexVenicePartitionerMaterializedView && msgType == MessageType.DELETE)) {
       /**
        * Since this function will update the transient cache before writing the view, and if there is
        * a change capture view writer, we need to lookup first, otherwise the transient cache will be populated
@@ -655,8 +657,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       // following function
       // call in this context much less obtrusive, however, it implies that all views can only work for AA stores
 
-      // Write to views
-      Runnable produceToVersionTopic = () -> producePutOrDeleteToKafka(
+      // Write to views. In A/A ingestion we never need to delay VT writes. Using local variables is sufficient to
+      // define the produceToVersionTopic consumer.
+      Consumer<PubSubMessageProcessedResultWrapper> produceToVersionTopic = (ignored) -> producePutOrDeleteToKafka(
           mergeConflictResultWrapper,
           partitionConsumptionState,
           keyBytes,
@@ -676,25 +679,25 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         ByteBuffer oldValueBB = mergeConflictResultWrapper.getOldValueByteBufferProvider().get();
         int oldValueSchemaId =
             oldValueBB == null ? -1 : mergeConflictResultWrapper.getOldValueProvider().get().writerSchemaId();
-        Lazy<GenericRecord> valueProvider = mergeConflictResultWrapper.getValueProvider();
         // The helper function takes in a BiFunction but the parameter for view partition set will never be used and
         // always null for A/A ingestion of the RT topic.
         queueUpVersionTopicWritesWithViewWriters(
             partitionConsumptionState,
-            (viewWriter, ignored) -> viewWriter.processRecord(
+            (viewWriter) -> viewWriter.processRecord(
                 mergeConflictResultWrapper.getUpdatedValueBytes(),
                 oldValueBB,
                 keyBytes,
                 mergeConflictResult.getValueSchemaId(),
                 oldValueSchemaId,
                 mergeConflictResult.getRmdRecord(),
-                valueProvider),
-            null,
-            produceToVersionTopic);
+                mergeConflictResultWrapper.getValueProvider(),
+                mergeConflictResultWrapper.getDeserializedOldValueProvider()),
+            produceToVersionTopic,
+            Collections.singletonList(consumerRecordWrapper));
       } else {
         // This function may modify the original record in KME and it is unsafe to use the payload from KME directly
         // after this call.
-        produceToVersionTopic.run();
+        produceToVersionTopic.accept(consumerRecordWrapper);
       }
     }
   }

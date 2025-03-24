@@ -2,6 +2,7 @@ package com.linkedin.davinci.store.view;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -12,13 +13,13 @@ import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.MaterializedView;
+import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.ComplexVeniceWriter;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.nio.ByteBuffer;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -33,7 +34,7 @@ public class MaterializedViewWriter extends VeniceViewWriter {
   private final PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
   private final MaterializedView internalView;
   private final String materializedViewTopicName;
-  private Lazy<ComplexVeniceWriter> veniceWriter;
+  private Lazy<ComplexVeniceWriter<byte[], byte[], byte[]>> veniceWriter;
 
   public MaterializedViewWriter(
       VeniceConfigLoader props,
@@ -46,9 +47,22 @@ public class MaterializedViewWriter extends VeniceViewWriter {
         new MaterializedView(props.getCombinedProperties().toProperties(), version.getStoreName(), extraViewParameters);
     materializedViewTopicName =
         internalView.getTopicNamesAndConfigsForVersion(version.getNumber()).keySet().stream().findAny().get();
-    this.veniceWriter = Lazy.of(
+    veniceWriter = Lazy.of(
         () -> new VeniceWriterFactory(props.getCombinedProperties().toProperties(), pubSubProducerAdapterFactory, null)
             .createComplexVeniceWriter(buildWriterOptions()));
+  }
+
+  public void configureWriterForProjection(Lazy<VeniceCompressor> compressor) {
+    if (!isProjectionEnabled()) {
+      throw new VeniceException(
+          "Cannot configure writer for projection because projection is not enabled for view:"
+              + internalView.getViewName());
+    }
+    ViewUtils.configureWriterForProjection(
+        veniceWriter.get(),
+        getViewName(),
+        compressor,
+        internalView.getProjectionSchema());
   }
 
   /**
@@ -66,8 +80,9 @@ public class MaterializedViewWriter extends VeniceViewWriter {
       int newValueSchemaId,
       int oldValueSchemaId,
       GenericRecord replicationMetadataRecord,
-      Lazy<GenericRecord> valueProvider) {
-    return processRecord(newValue, key, newValueSchemaId, null, valueProvider);
+      Lazy<GenericRecord> valueProvider,
+      Lazy<GenericRecord> oldValueProvider) {
+    return processRecord(newValue, key, newValueSchemaId, valueProvider, oldValueProvider);
   }
 
   /**
@@ -79,24 +94,24 @@ public class MaterializedViewWriter extends VeniceViewWriter {
       ByteBuffer newValue,
       byte[] key,
       int newValueSchemaId,
-      Set<Integer> viewPartitionSet,
-      Lazy<GenericRecord> newValueProvider) {
-    byte[] newValueBytes = newValue == null ? null : ByteUtils.extractByteArray(newValue);
-    if (viewPartitionSet != null) {
-      if (newValue == null) {
-        // This is unexpected because we only attach view partition map for PUT records.
-        throw new VeniceException(
-            "Encountered a null PUT record while having view partition map in the message header");
-      }
-      // Forward the record to corresponding view partition without any processing (NR pass-through mode).
-      return veniceWriter.get().forwardPut(key, newValueBytes, newValueSchemaId, viewPartitionSet);
-    }
+      Lazy<GenericRecord> newValueProvider,
+      Lazy<GenericRecord> oldValueProvider) {
     if (newValue == null) {
-      // This is a delete operation. newValueProvider will contain the old value in a best effort manner. The old value
-      // might not be available if we are deleting a non-existing key.
-      return veniceWriter.get().complexDelete(key, newValueProvider);
+      // This is a delete operation. The old value might not be available if we are deleting a non-existing key.
+      return veniceWriter.get().complexDelete(key, oldValueProvider);
     }
-    return veniceWriter.get().complexPut(key, newValueBytes, newValueSchemaId, newValueProvider);
+    if (isFilterByFieldsEnabled()) {
+      // We only support one type of filter operation which is to skip records if the filter by fields didn't change
+      if (!ViewUtils.changeFilter(
+          oldValueProvider.get(),
+          newValueProvider.get(),
+          internalView.getFilterByFields(),
+          getViewName())) {
+        // Did not pass the change filter requirement, skip this record
+        return CompletableFuture.completedFuture(null);
+      }
+    }
+    return veniceWriter.get().complexPut(key, ByteUtils.extractByteArray(newValue), newValueSchemaId, newValueProvider);
   }
 
   @Override
@@ -131,5 +146,13 @@ public class MaterializedViewWriter extends VeniceViewWriter {
 
   public String getViewName() {
     return internalView.getViewName();
+  }
+
+  public boolean isProjectionEnabled() {
+    return internalView.getProjectionSchema() != null;
+  }
+
+  public boolean isFilterByFieldsEnabled() {
+    return !internalView.getFilterByFields().isEmpty();
   }
 }

@@ -5765,20 +5765,23 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   static Map<String, StoreViewConfigRecord> addNewViewConfigsIntoOldConfigs(
       Store oldStore,
-      String viewClass,
+      String viewName,
       ViewConfig viewConfig) throws VeniceException {
-    // Add new view config into the existing config map. The new configs will override existing ones which share the
-    // same key.
+    // Add new view config into the existing config map. For the safety of downstream consumers we do not allow in place
+    // updates to an existing view. Updates should be made by creating a new view and removing the old view.
     Map<String, ViewConfig> oldViewConfigMap = oldStore.getViewConfigs();
     if (oldViewConfigMap == null) {
       oldViewConfigMap = new HashMap<>();
+    } else if (oldViewConfigMap.containsKey(viewName)) {
+      throw new VeniceException(
+          "We do not support in place update of view configs for the safety of downstream consumers");
     }
     Map<String, StoreViewConfigRecord> mergedConfigs =
         StoreViewUtils.convertViewConfigMapToStoreViewRecordMap(oldViewConfigMap);
 
     StoreViewConfigRecord newStoreViewConfigRecord =
         StoreViewUtils.convertViewConfigToStoreViewConfigRecord(viewConfig);
-    mergedConfigs.put(viewClass, newStoreViewConfigRecord);
+    mergedConfigs.put(viewName, newStoreViewConfigRecord);
     return mergedConfigs;
   }
 

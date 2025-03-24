@@ -32,6 +32,7 @@ import java.util.Properties;
 public abstract class VeniceView {
   public static final String VIEW_STORE_PREFIX = "view_store_";
   public static final String VIEW_NAME_SEPARATOR = "_";
+  public static final String PROJECTION_SCHEMA_SUFFIX = "projection";
   protected final Properties props;
   protected final String storeName;
   protected final Map<String, String> viewParameters;
@@ -105,6 +106,10 @@ public abstract class VeniceView {
     return topicName.substring(0, Version.getLastIndexOfVersionSeparator(topicName));
   }
 
+  public static boolean isMaterializedViewTopic(String topicName) {
+    return topicName.endsWith(MaterializedView.MATERIALIZED_VIEW_TOPIC_SUFFIX);
+  }
+
   // TODO: see above TODO for isViewTopic function, same applies here
   public static int parseVersionFromViewTopic(String topicName) {
     if (!isViewTopic(topicName)) {
@@ -169,5 +174,9 @@ public abstract class VeniceView {
     } else {
       return storeName;
     }
+  }
+
+  public static String getProjectionSchemaName(String storeName, String viewName) {
+    return storeName + VIEW_NAME_SEPARATOR + viewName + PROJECTION_SCHEMA_SUFFIX;
   }
 }

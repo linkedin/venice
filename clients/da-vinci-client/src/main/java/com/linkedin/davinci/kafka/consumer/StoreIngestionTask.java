@@ -333,7 +333,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected final IngestionNotificationDispatcher ingestionNotificationDispatcher;
 
-  protected final InMemoryChunkAssembler chunkAssembler;
+  protected final Lazy<InMemoryChunkAssembler> chunkAssembler;
   private final Optional<ObjectCacheBackend> cacheBackend;
   private final Schema recordTransformerInputValueSchema;
   private final AvroGenericDeserializer recordTransformerKeyDeserializer;
@@ -492,9 +492,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion);
     this.missingSOPCheckExecutor.execute(() -> waitForStateVersion(kafkaVersionTopic));
     this.cacheBackend = cacheBackend;
+    this.chunkAssembler = Lazy.of(() -> new InMemoryChunkAssembler(new InMemoryStorageEngine(storeName)));
 
     if (recordTransformerConfig != null && recordTransformerConfig.getRecordTransformerFunction() != null) {
-      this.chunkAssembler = new InMemoryChunkAssembler(new InMemoryStorageEngine(storeName));
       Schema keySchema = schemaRepository.getKeySchema(storeName).getSchema();
       this.recordTransformerKeyDeserializer = new AvroGenericDeserializer(keySchema, keySchema);
       this.recordTransformerInputValueSchema = schemaRepository.getSupersetOrLatestValueSchema(storeName).getSchema();
@@ -536,7 +536,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       this.recordTransformerKeyDeserializer = null;
       this.recordTransformerInputValueSchema = null;
       this.recordTransformerDeserializersByPutSchemaId = null;
-      this.chunkAssembler = null;
     }
 
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
@@ -3835,13 +3834,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         if (recordTransformer != null && messageType == MessageType.PUT) {
           long recordTransformerStartTime = System.nanoTime();
-          ByteBufferValueRecord<ByteBuffer> assembledRecord = chunkAssembler.bufferAndAssembleRecord(
-              consumerRecord.getTopicPartition(),
-              put.getSchemaId(),
-              keyBytes,
-              put.getPutValue(),
-              consumerRecord.getPosition().getNumericOffset(),
-              compressor.get());
+          ByteBufferValueRecord<ByteBuffer> assembledRecord = chunkAssembler.get()
+              .bufferAndAssembleRecord(
+                  consumerRecord.getTopicPartition(),
+                  put.getSchemaId(),
+                  keyBytes,
+                  put.getPutValue(),
+                  consumerRecord.getPosition().getNumericOffset(),
+                  compressor.get());
 
           // Current record is a chunk. We only write to the storage engine for fully assembled records
           if (assembledRecord == null) {

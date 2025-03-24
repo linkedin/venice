@@ -27,7 +27,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -67,7 +66,8 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
       int newValueSchemaId,
       int oldValueSchemaId,
       GenericRecord replicationMetadataRecord,
-      Lazy<GenericRecord> valueProvider) {
+      Lazy<GenericRecord> valueProvider,
+      Lazy<GenericRecord> oldValueProvider) {
     // TODO: not sold about having currentValue in the interface but it VASTLY simplifies a lot of things with regards
     // to dealing with compression/chunking/etc. in the storage layer.
 
@@ -89,8 +89,8 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
       ByteBuffer newValue,
       byte[] key,
       int newValueSchemaId,
-      Set<Integer> viewPartitionSet,
-      Lazy<GenericRecord> newValueProvider) {
+      Lazy<GenericRecord> newValueProvider,
+      Lazy<GenericRecord> oldValueProvider) {
     // No op
     return CompletableFuture.completedFuture(null);
   }

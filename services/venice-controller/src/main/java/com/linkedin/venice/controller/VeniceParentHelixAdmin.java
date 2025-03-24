@@ -191,6 +191,7 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.PartitionerConfig;
+import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.RoutersClusterConfig;
@@ -244,6 +245,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
@@ -2423,7 +2425,8 @@ public class VeniceParentHelixAdmin implements Admin {
           }
           // If View parameter is not provided, use emtpy map instead. It does not inherit from existing config.
           ViewConfig viewConfig = new ViewConfigImpl(viewClassName.get(), viewParams.orElse(Collections.emptyMap()));
-          ViewConfig validatedViewConfig = validateAndDecorateStoreViewConfig(currStore, viewConfig, viewName.get());
+          ViewConfig validatedViewConfig =
+              validateAndDecorateStoreViewConfig(clusterName, currStore, viewConfig, viewName.get());
           updatedViewSettings =
               VeniceHelixAdmin.addNewViewConfigsIntoOldConfigs(currStore, viewName.get(), validatedViewConfig);
         } else {
@@ -2436,7 +2439,7 @@ public class VeniceParentHelixAdmin implements Admin {
       if (storeViewConfig.isPresent()) {
         // Validate and overwrite store views if they're getting set
         Map<String, ViewConfig> validatedViewConfigs =
-            validateAndDecorateStoreViewConfigs(storeViewConfig.get(), currStore);
+            validateAndDecorateStoreViewConfigs(clusterName, storeViewConfig.get(), currStore);
         setStore.views = StoreViewUtils.convertViewConfigMapToStoreViewRecordMap(validatedViewConfigs);
         updatedConfigsList.add(STORE_VIEW);
       }
@@ -2911,18 +2914,25 @@ public class VeniceParentHelixAdmin implements Admin {
     }
   }
 
-  private Map<String, ViewConfig> validateAndDecorateStoreViewConfigs(Map<String, String> stringMap, Store store) {
+  private Map<String, ViewConfig> validateAndDecorateStoreViewConfigs(
+      String clusterName,
+      Map<String, String> stringMap,
+      Store store) {
     Map<String, ViewConfig> configs = StoreViewUtils.convertStringMapViewToViewConfigMap(stringMap);
     Map<String, ViewConfig> validatedConfigs = new HashMap<>();
     for (Map.Entry<String, ViewConfig> viewConfigEntry: configs.entrySet()) {
       ViewConfig validatedViewConfig =
-          validateAndDecorateStoreViewConfig(store, viewConfigEntry.getValue(), viewConfigEntry.getKey());
+          validateAndDecorateStoreViewConfig(clusterName, store, viewConfigEntry.getValue(), viewConfigEntry.getKey());
       validatedConfigs.put(viewConfigEntry.getKey(), validatedViewConfig);
     }
     return validatedConfigs;
   }
 
-  private ViewConfig validateAndDecorateStoreViewConfig(Store store, ViewConfig viewConfig, String viewName) {
+  private ViewConfig validateAndDecorateStoreViewConfig(
+      String clusterName,
+      Store store,
+      ViewConfig viewConfig,
+      String viewName) {
     // TODO: Pass a proper properties object here. Today this isn't used in this context
     if (viewConfig.getViewClassName().equals(MaterializedView.class.getCanonicalName())) {
       if (viewName.contains(VERSION_SEPARATOR)) {
@@ -2944,7 +2954,46 @@ public class VeniceParentHelixAdmin implements Admin {
       if (!viewParams.containsKey(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name())) {
         decoratedViewParamBuilder.setPartitionCount(store.getPartitionCount());
       }
-      viewConfig.setViewParameters(decoratedViewParamBuilder.build());
+      viewParams = decoratedViewParamBuilder.build();
+
+      // Validate and decorate filter by and projection fields
+      Lazy<Schema> valueSchema = Lazy.of(() -> getSupersetOrLatestValueSchema(clusterName, store.getName()));
+      Set<String> filterByFields = new HashSet<>();
+      Set<String> projectionFields = new HashSet<>();
+      if (viewParams.containsKey(MaterializedViewParameters.MATERIALIZED_VIEW_FILTER_BY_FIELDS.name())) {
+        String filterByFieldsString =
+            viewParams.get(MaterializedViewParameters.MATERIALIZED_VIEW_FILTER_BY_FIELDS.name());
+        filterByFields.addAll(
+            MaterializedViewParameters.parsePropertyStringToList(
+                filterByFieldsString,
+                MaterializedViewParameters.MATERIALIZED_VIEW_FILTER_BY_FIELDS.name()));
+        ViewUtils.validateFilterByFields(valueSchema.get(), filterByFields);
+      }
+      if (viewParams.containsKey(MaterializedViewParameters.MATERIALIZED_VIEW_PROJECTION_FIELDS.name())) {
+        String projectionFieldsString =
+            viewParams.get(MaterializedViewParameters.MATERIALIZED_VIEW_PROJECTION_FIELDS.name());
+        projectionFields.addAll(
+            MaterializedViewParameters.parsePropertyStringToList(
+                projectionFieldsString,
+                MaterializedViewParameters.MATERIALIZED_VIEW_PROJECTION_FIELDS.name()));
+        if (projectionFields.isEmpty()) {
+          // Enabling projection with empty projection fields should be flagged as error.
+          throw new VeniceException("Projection fields cannot be set to an empty list");
+        }
+        // If projection and filtering are both enabled we would like to include the filtering fields as part of
+        // the projection fields.
+        if (!filterByFields.isEmpty()) {
+          projectionFields.addAll(filterByFields);
+        }
+      }
+      if (!projectionFields.isEmpty()) {
+        String projectionSchemaString = ViewUtils.validateAndGenerateProjectionSchema(
+            valueSchema.get(),
+            projectionFields,
+            VeniceView.getProjectionSchemaName(store.getName(), viewName));
+        viewParams.put(MaterializedViewParameters.MATERIALIZED_VIEW_PROJECTION_SCHEMA.name(), projectionSchemaString);
+      }
+      viewConfig.setViewParameters(viewParams);
     }
     VeniceView view = ViewUtils.getVeniceView(
         viewConfig.getViewClassName(),
@@ -2953,6 +3002,12 @@ public class VeniceParentHelixAdmin implements Admin {
         viewConfig.getViewParameters());
     view.validateConfigs(store);
     return viewConfig;
+  }
+
+  private Schema getSupersetOrLatestValueSchema(String clusterName, String storeName) {
+    getVeniceHelixAdmin().checkControllerLeadershipFor(clusterName);
+    ReadWriteSchemaRepository schemaRepo = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
+    return schemaRepo.getSupersetOrLatestValueSchema(storeName).getSchema();
   }
 
   private SupersetSchemaGenerator getSupersetSchemaGenerator(String clusterName) {

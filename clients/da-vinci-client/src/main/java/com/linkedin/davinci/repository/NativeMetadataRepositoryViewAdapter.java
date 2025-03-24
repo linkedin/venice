@@ -2,11 +2,14 @@ package com.linkedin.davinci.repository;
 
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ClusterInfoProvider;
+import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyViewStore;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
@@ -66,6 +69,31 @@ public class NativeMetadataRepositoryViewAdapter implements SubscriptionBasedRea
 
   @Override
   public SchemaEntry getValueSchema(String storeName, int id) {
+    if (VeniceView.isViewStore(storeName)) {
+      // We need to check if the view has projection enabled.
+      Store store = getStoreOrThrow(VeniceView.getStoreNameFromViewStoreName(storeName));
+      String viewName = VeniceView.getViewNameFromViewStoreName(storeName);
+      // Search through the versions because it's possible that the view config is removed in the store config but a
+      // consumer is still ingesting the current/backup version that had the config. Ideally, we should only delete a
+      // view once we are sure all consumers are stopped (DVC/CC clients) but we can't really enforce that.
+      // In addition, this only works because view configs are immutable, otherwise we will need to know exactly which
+      // store version is the value schema for in order to provide the correct projection schema.
+      for (Version version: store.getVersions()) {
+        if (version.getViewConfigs().containsKey(viewName)) {
+          ViewConfig viewConfig = version.getViewConfigs().get(viewName);
+          if (viewConfig.getViewParameters()
+              .containsKey(MaterializedViewParameters.MATERIALIZED_VIEW_PROJECTION_SCHEMA.name())) {
+            String projectionSchemaString = viewConfig.getViewParameters()
+                .get(MaterializedViewParameters.MATERIALIZED_VIEW_PROJECTION_SCHEMA.name());
+            return new SchemaEntry(id, projectionSchemaString);
+          } else {
+            // This view does not have projection enabled. The regular store value schema will be returned accordingly.
+            return nativeMetadataRepository.getValueSchema(VeniceView.getStoreName(storeName), id);
+          }
+        }
+      }
+      throw new VeniceNoStoreException(storeName);
+    }
     return nativeMetadataRepository.getValueSchema(VeniceView.getStoreName(storeName), id);
   }
 

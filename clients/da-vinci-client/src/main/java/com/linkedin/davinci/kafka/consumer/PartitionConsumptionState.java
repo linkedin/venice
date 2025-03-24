@@ -20,6 +20,7 @@ import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -225,6 +226,7 @@ public class PartitionConsumptionState {
 
   // veniceWriterLazyRef could be set and get in different threads, mark it volatile.
   private volatile Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriterLazyRef;
+  private final LinkedList<PubSubMessageProcessedResultWrapper> pendingMessagesToLocalVT;
 
   public PartitionConsumptionState(String replicaId, int partition, OffsetRecord offsetRecord, boolean hybrid) {
     this.replicaId = replicaId;
@@ -270,6 +272,7 @@ public class PartitionConsumptionState {
     this.leaderCompleteState = LeaderCompleteState.LEADER_NOT_COMPLETED;
     this.lastLeaderCompleteStateUpdateInMs = 0;
     this.pendingReportIncPushVersionList = offsetRecord.getPendingReportIncPushVersionList();
+    this.pendingMessagesToLocalVT = new LinkedList<>();
   }
 
   public int getPartition() {
@@ -895,5 +898,15 @@ public class PartitionConsumptionState {
   public void clearPendingReportIncPushVersionList() {
     pendingReportIncPushVersionList.clear();
     offsetRecord.setPendingReportIncPushVersionList(pendingReportIncPushVersionList);
+  }
+
+  public void addMessageToPendingMessages(PubSubMessageProcessedResultWrapper message) {
+    pendingMessagesToLocalVT.add(message);
+  }
+
+  public List<PubSubMessageProcessedResultWrapper> getAndClearPendingMessagesToLocalVT() {
+    LinkedList<PubSubMessageProcessedResultWrapper> pendingMessages = (LinkedList) pendingMessagesToLocalVT.clone();
+    pendingMessagesToLocalVT.clear();
+    return pendingMessages;
   }
 }

@@ -17,20 +17,23 @@ public class WriteComputeResultWrapper {
    */
   private final boolean skipProduce;
   private final Lazy<GenericRecord> valueProvider;
+  private final Lazy<GenericRecord> oldValueProvider;
 
   public WriteComputeResultWrapper(Put newPut, ChunkedValueManifest oldValueManifest, boolean skipProduce) {
-    this(newPut, oldValueManifest, skipProduce, Lazy.of(() -> null));
+    this(newPut, oldValueManifest, skipProduce, Lazy.of(() -> null), Lazy.of(() -> null));
   }
 
   public WriteComputeResultWrapper(
       Put newPut,
       ChunkedValueManifest oldValueManifest,
       boolean skipProduce,
-      Lazy<GenericRecord> valueProvider) {
+      Lazy<GenericRecord> valueProvider,
+      Lazy<GenericRecord> oldValueProvider) {
     this.newPut = newPut;
     this.oldValueManifest = oldValueManifest;
     this.skipProduce = skipProduce;
     this.valueProvider = valueProvider;
+    this.oldValueProvider = oldValueProvider;
   }
 
   public Put getNewPut() {
@@ -48,10 +51,17 @@ public class WriteComputeResultWrapper {
   /**
    * Return a best-effort value provider with the following behaviors:
    *   1. returns the new value provider for PUT and UPDATE.
-   *   2. returns the old value for DELETE (null for non-existent key).
-   *   3. returns null if the value is not available.
+   *   2. returns null if the value is not available.
    */
   public Lazy<GenericRecord> getValueProvider() {
-    return this.valueProvider;
+    return valueProvider;
+  }
+
+  /**
+   * Return a best-effort old value provider that returns the old value prior to the PUT/UPDATE/DELETE. Returns null if
+   * the k/v didn't exist or not available.
+   */
+  public Lazy<GenericRecord> getOldValueProvider() {
+    return oldValueProvider;
   }
 }

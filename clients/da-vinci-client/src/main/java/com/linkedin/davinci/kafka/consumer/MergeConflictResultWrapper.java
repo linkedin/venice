@@ -26,10 +26,14 @@ public class MergeConflictResultWrapper {
   private final ByteBuffer updatedRmdBytes;
 
   /**
-   * Best-effort deserialized value provider that provides the updated value for PUT/UPDATE and the old value for
-   * DELETE.
+   * Best-effort deserialized value provider that provides the updated value for PUT/UPDATE
    */
   private final Lazy<GenericRecord> valueProvider;
+  /**
+   * Best-effort deserialized value provider that provides the updated value for PUT/UPDATE/DELETE. Returns null if the
+   * key/value didn't exist
+   */
+  private final Lazy<GenericRecord> deserializedOldValueProvider;
 
   public MergeConflictResultWrapper(
       MergeConflictResult mergeConflictResult,
@@ -47,15 +51,21 @@ public class MergeConflictResultWrapper {
     this.oldValueManifestContainer = oldValueManifestContainer;
     this.updatedValueBytes = updatedValueBytes;
     this.updatedRmdBytes = updatedRmdBytes;
-    if (updatedValueBytes == null) {
-      // this is a DELETE
+
+    // We will always configure the deserializedOldValueProvider. Theoretically we could cache the deserialized old
+    // value in the UPDATE branch, but it will require a deep copy since the record is used for in-place update(s). To
+    // reduce complexity we are just going to deserialize the old bytes.
+    this.deserializedOldValueProvider = Lazy.of(() -> {
       ByteBufferValueRecord<ByteBuffer> oldValue = oldValueProvider.get();
       if (oldValue == null || oldValue.value() == null) {
-        this.valueProvider = Lazy.of(() -> null);
+        return null;
       } else {
-        this.valueProvider =
-            Lazy.of(() -> deserializerProvider.apply(oldValue.writerSchemaId()).deserialize(oldValue.value()));
+        return deserializerProvider.apply(oldValue.writerSchemaId()).deserialize(oldValue.value());
       }
+    });
+    if (updatedValueBytes == null) {
+      // this is a DELETE
+      this.valueProvider = Lazy.of(() -> null);
     } else {
       // this is a PUT or UPDATE
       if (mergeConflictResult.getDeserializedValue().isPresent()) {
@@ -100,10 +110,13 @@ public class MergeConflictResultWrapper {
   /**
    * Return a best-effort value provider with the following behaviors:
    *   1. returns the new value provider for PUT and UPDATE.
-   *   2. returns the old value for DELETE (null for non-existent key).
    *   3. returns null if the value is not available.
    */
   public Lazy<GenericRecord> getValueProvider() {
     return valueProvider;
+  }
+
+  public Lazy<GenericRecord> getDeserializedOldValueProvider() {
+    return deserializedOldValueProvider;
   }
 }

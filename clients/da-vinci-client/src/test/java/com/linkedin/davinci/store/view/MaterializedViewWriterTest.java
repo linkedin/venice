@@ -5,11 +5,9 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -19,7 +17,6 @@ import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.utils.UnitTestComplexPartitioner;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
@@ -34,22 +31,17 @@ import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.writer.ComplexVeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
-import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -139,39 +131,6 @@ public class MaterializedViewWriterTest {
     materializedViewWriter
         .processControlMessage(kafkaKey, kafkaMessageEnvelope, controlMessage, 1, partitionConsumptionState);
     verify(veniceWriter, never()).sendHeartbeat(anyString(), anyInt(), any(), any(), anyBoolean(), any(), anyLong());
-  }
-
-  @Test
-  public void testViewWriterCanForwardCorrectly() {
-    String storeName = "testStoreWithChunkedKeys";
-    String viewName = "testMaterializedViewWithChunkedKeys";
-    Version version = mock(Version.class);
-    doReturn(true).when(version).isChunkingEnabled();
-    doReturn(true).when(version).isRmdChunkingEnabled();
-    getMockStore(storeName, 1, version);
-    MaterializedViewParameters.Builder viewParamsBuilder = new MaterializedViewParameters.Builder(viewName);
-    viewParamsBuilder.setPartitionCount(6);
-    viewParamsBuilder.setPartitioner(DefaultVenicePartitioner.class.getCanonicalName());
-    Map<String, String> viewParamsMap = viewParamsBuilder.build();
-    VeniceConfigLoader props = getMockProps();
-    MaterializedViewWriter materializedViewWriter = new MaterializedViewWriter(props, version, SCHEMA, viewParamsMap);
-    ComplexVeniceWriter veniceWriter = mock(ComplexVeniceWriter.class);
-    doReturn(CompletableFuture.completedFuture(null)).when(veniceWriter).forwardPut(any(), any(), anyInt(), any());
-    materializedViewWriter.setVeniceWriter(veniceWriter);
-    byte[] keyBytes = new byte[5];
-    byte[] valueBytes = new byte[10];
-    ByteBuffer value = ByteBuffer.wrap(valueBytes);
-    Set<Integer> viewPartitionSet = new HashSet<>();
-    viewPartitionSet.add(1);
-    viewPartitionSet.add(4);
-    Lazy<GenericRecord> valueProvider = mock(Lazy.class);
-    Assert.assertThrows(
-        VeniceException.class,
-        () -> materializedViewWriter.processRecord(null, keyBytes, 1, viewPartitionSet, valueProvider));
-    materializedViewWriter.processRecord(value, keyBytes, 1, viewPartitionSet, valueProvider);
-    verify(veniceWriter, times(1)).forwardPut(eq(keyBytes), eq(valueBytes), eq(1), eq(viewPartitionSet));
-    verify(veniceWriter, never()).complexPut(any(), any(), anyInt(), any());
-    verify(veniceWriter, never()).complexDelete(any(), any());
   }
 
   @Test

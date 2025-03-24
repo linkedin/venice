@@ -15,7 +15,6 @@ import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -69,9 +68,9 @@ public abstract class VeniceViewWriter extends VeniceView {
    * @param key the key of the record that designates newValue and oldValue
    * @param newValueSchemaId the schemaId of the incoming record
    * @param oldValueSchemaId the schemaId of the old record
-   * @param replicationMetadataRecord the associated RMD for the incoming record.
-   * @param valueProvider to provide the corresponding deserialized newValue for PUT and UPDATE or the old value for the
-   *                      given key for DELETE.
+   * @param replicationMetadataRecord the associated RMD for the incoming record
+   * @param valueProvider to provide the deserialized new value
+   * @param oldValueProvider to provide the deserialized old value
    */
   public abstract CompletableFuture<Void> processRecord(
       ByteBuffer newValue,
@@ -80,7 +79,8 @@ public abstract class VeniceViewWriter extends VeniceView {
       int newValueSchemaId,
       int oldValueSchemaId,
       GenericRecord replicationMetadataRecord,
-      Lazy<GenericRecord> valueProvider);
+      Lazy<GenericRecord> valueProvider,
+      Lazy<GenericRecord> oldValueProvider);
 
   /**
    * To be called as a given ingestion task consumes each record. This is called prior to writing to a
@@ -89,18 +89,15 @@ public abstract class VeniceViewWriter extends VeniceView {
    * @param newValue the incoming fully specified value which hasn't yet been committed to Venice
    * @param key the key of the record that designates newValue and oldValue
    * @param newValueSchemaId the schemaId of the incoming record
-   * @param viewPartitionSet set of view partitions this record should be processed to. This is used in NR
-   *                                 pass-through when remote region leaders can forward record or chunks of a record
-   *                                 to the correct view partitions without the need to perform chunk assembly or
-   *                                 repartitioning.
-   * @param newValueProvider to provide the deserialized new value
+   * @param valueProvider to provide the deserialized new value
+   * @param oldValueProvider to provide the deserialized old value
    */
   public abstract CompletableFuture<Void> processRecord(
       ByteBuffer newValue,
       byte[] key,
       int newValueSchemaId,
-      Set<Integer> viewPartitionSet,
-      Lazy<GenericRecord> newValueProvider);
+      Lazy<GenericRecord> valueProvider,
+      Lazy<GenericRecord> oldValueProvider);
 
   public abstract ViewWriterType getViewWriterType();
 
