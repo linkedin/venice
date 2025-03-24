@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.meta.VersionStatus.ERROR;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
+import static com.linkedin.venice.meta.VersionStatus.PARTIALLY_ONLINE;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
@@ -178,7 +179,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
   /**
    * Roll forward to the specified version for a list of regions. Once the roll forward is done, traffic will be served from
-   * that version and the version status will be updated to ONLINE or ERROR
+   * that version and the version status will be updated to ONLINE or PARTIALLY_ONLINE
    * @param regions the list of regions to update the version status
    * @param store the store of the version to roll forward in
    * @param targetVersion the version to start serving traffic in
@@ -208,9 +209,12 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       repository.updateStore(store);
       LOGGER.info("Updated parent version status to ONLINE for version: {} in store: {}", targetVersionNum, storeName);
     } else {
-      store.updateVersionStatus(targetVersionNum, ERROR);
+      store.updateVersionStatus(targetVersionNum, VersionStatus.PARTIALLY_ONLINE);
       repository.updateStore(store);
-      LOGGER.info("Updated parent version status to ERROR for version: {} in store: {}", targetVersionNum, storeName);
+      LOGGER.info(
+          "Updated parent version status to PARTIALLY_ONLINE for version: {} in store: {}",
+          targetVersionNum,
+          storeName);
     }
   }
 
@@ -305,7 +309,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   /**
    * Gets a list of eligible regions to roll forward in. A region is eligible to be rolled forward if it's push status is
    * COMPLETED. If there are no eligible regions to roll forward in or if not all regions have reached a terminal status, null is
-   * returned and the version status is marked as ERROR as only the target regions are serving traffic from the new version
+   * returned and the version status is marked as PARTIALLY_ONLINE as only the target regions are serving traffic from the new version
    * @param nonTargetRegions list of regions to check eligibility for
    * @param pushStatusInfo wrapper containing push status information
    * @param repository repository to update store
@@ -327,7 +331,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           + "as push failed in all non target regions. Failed non target regions: " + failedNonTargetRegions
           + ", non target regions: " + nonTargetRegions;
       logMessageIfNotRedundant(message);
-      store.updateVersionStatus(targetVersionNum, ERROR);
+      store.updateVersionStatus(targetVersionNum, PARTIALLY_ONLINE);
       repository.updateStore(store);
       return null;
     } else if ((failedNonTargetRegions.size() + completedNonTargetRegions.size()) != nonTargetRegions.size()) {

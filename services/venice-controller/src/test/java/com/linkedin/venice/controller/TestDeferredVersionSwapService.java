@@ -407,10 +407,10 @@ public class TestDeferredVersionSwapService {
 
       // one target region, 2 non target regions: one succeeded, one failed -> swap
       verify(admin, atLeast(1)).rollForwardToFutureVersion(clusterName, storeName3, region2);
-      verify(store3, atLeast(1)).updateVersionStatus(3, VersionStatus.ERROR);
+      verify(store3, atLeast(1)).updateVersionStatus(3, VersionStatus.PARTIALLY_ONLINE);
 
       // one target region, 2 non target regions: both failed -> do not swap
-      verify(store4, atLeast(1)).updateVersionStatus(3, VersionStatus.ERROR);
+      verify(store4, atLeast(1)).updateVersionStatus(3, VersionStatus.PARTIALLY_ONLINE);
 
       // one target region, 2 non target regions: one failed, one in progress -> do not swap
       verify(admin, never())
@@ -418,7 +418,7 @@ public class TestDeferredVersionSwapService {
 
       // two target regions: 1 completed, 1 failed, 1 completed non target region -> swap
       verify(admin, atLeast(1)).rollForwardToFutureVersion(clusterName, storeName6, region3);
-      verify(store6, atLeast(1)).updateVersionStatus(3, VersionStatus.ERROR);
+      verify(store6, atLeast(1)).updateVersionStatus(3, VersionStatus.PARTIALLY_ONLINE);
     });
   }
 
