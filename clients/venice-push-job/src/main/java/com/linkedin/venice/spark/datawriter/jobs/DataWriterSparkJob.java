@@ -65,7 +65,9 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
     setInputConf(sparkSession, dataFrameReader, INPUT_PATH_PROP, new Path(pushJobSetting.inputURI).toString());
     setInputConf(sparkSession, dataFrameReader, KEY_FIELD_PROP, pushJobSetting.keyField);
     setInputConf(sparkSession, dataFrameReader, VALUE_FIELD_PROP, pushJobSetting.valueField);
-    setInputConf(sparkSession, dataFrameReader, OPTIONAL_TIMESTAMP_FIELD_PROP, pushJobSetting.timestampField);
+    if (pushJobSetting.timestampField != null) {
+      setInputConf(sparkSession, dataFrameReader, OPTIONAL_TIMESTAMP_FIELD_PROP, pushJobSetting.timestampField);
+    }
     if (pushJobSetting.etlValueSchemaTransformation != null) {
       setInputConf(
           sparkSession,

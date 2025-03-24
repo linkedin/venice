@@ -227,7 +227,11 @@ public class DataWriterMRJob extends DataWriterComputeJob {
 
       jobConf.set(KEY_FIELD_PROP, pushJobSetting.keyField);
       jobConf.set(VALUE_FIELD_PROP, pushJobSetting.valueField);
-      jobConf.set(OPTIONAL_TIMESTAMP_FIELD_PROP, pushJobSetting.timestampField);
+      if (pushJobSetting.timestampField != null) {
+        jobConf.set(OPTIONAL_TIMESTAMP_FIELD_PROP, pushJobSetting.timestampField);
+      } else {
+        jobConf.set(OPTIONAL_TIMESTAMP_FIELD_PROP, DEFAULT_OPTIONAL_TIMESTAMP_FIELD_PROP);
+      }
       if (pushJobSetting.etlValueSchemaTransformation != null) {
         jobConf.set(ETL_VALUE_SCHEMA_TRANSFORMATION, pushJobSetting.etlValueSchemaTransformation.name());
       }
