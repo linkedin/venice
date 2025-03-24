@@ -1550,6 +1550,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * We will unsubscribe all the errored partitions without killing the ingestion task.
      */
     processIngestionException();
+    maybeUnsubscribeCompletedPartitions(store);
 
     /**
      * Check whether current consumer has any subscription or not since 'poll' function will throw
@@ -1584,7 +1585,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
     idleCounter = 0;
-    maybeUnsubscribeCompletedPartitions(store);
     if (emitMetrics.get()) {
       recordQuotaMetrics();
       recordMaxIdleTime();
