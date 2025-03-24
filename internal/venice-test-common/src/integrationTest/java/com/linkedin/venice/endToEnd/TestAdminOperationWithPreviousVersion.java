@@ -68,8 +68,6 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.apache.samza.system.SystemProducer;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -104,7 +102,6 @@ import org.testng.annotations.Test;
  * </p>
  */
 public class TestAdminOperationWithPreviousVersion {
-  private static final Logger LOGGER = LogManager.getLogger(TestAdminOperationWithPreviousVersion.class);
   private static final int TEST_TIMEOUT = 360 * Time.MS_PER_SECOND;
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 2;
@@ -122,12 +119,11 @@ public class TestAdminOperationWithPreviousVersion {
   static final Schema PREVIOUS_SCHEMA = AdminOperationSerializer.getSchema(PREVIOUS_SCHEMA_ID_FOR_ADMIN_OPERATION);
   private static final Set<String> NEW_UNION_ENTRIES = getNewUnionEntries();
 
-  private List<VeniceControllerWrapper> parentControllers;
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private ControllerClient parentControllerClient;
   private String clusterName;
   private Admin veniceAdmin;
-  private List<ControllerClient> childControllerClients = new ArrayList<>();
+  private List<ControllerClient> childControllerClients;
   private VeniceMultiClusterWrapper multiClusterWrapperRegion0;
   private int countTestRun;
   private Set<String> testedOperations;
@@ -172,10 +168,12 @@ public class TestAdminOperationWithPreviousVersion {
     multiClusterWrapperRegion0 = multiRegionMultiClusterWrapper.getChildRegions().get(0);
 
     // Create controller and controllerClient
-    parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
+    List<VeniceControllerWrapper> parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
     VeniceControllerWrapper parentController = parentControllers.get(0);
     parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
 
+    // Create child controller clients
+    childControllerClients = new ArrayList<>();
     for (int i = 0; i < NUMBER_OF_CHILD_DATACENTERS; i++) {
       ControllerClient dcClient = ControllerClient.constructClusterControllerClient(
           clusterName,
@@ -203,11 +201,6 @@ public class TestAdminOperationWithPreviousVersion {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    AdminTopicMetadataResponse updateProtocolVersionResponse =
-        parentControllerClient.updateAdminOperationProtocolVersion(
-            clusterName,
-            (long) (AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
-    assertFalse(updateProtocolVersionResponse.isError(), "Failed to update protocol version");
     multiRegionMultiClusterWrapper.close();
 
     // If the countTestRun = 1, it means we are running one specific test only, no need to verify for all operations
@@ -422,10 +415,6 @@ public class TestAdminOperationWithPreviousVersion {
   @Test(timeOut = TEST_TIMEOUT)
   public void testUpdateStore() {
     runTestForEntryNames(Collections.singletonList("UpdateStore"), () -> {
-      clusterName = CLUSTER_NAMES[0];
-      VeniceControllerWrapper parentController = parentControllers.get(0);
-      parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
-
       // Create store
       String storeName = setUpTestStore().getName();
 
@@ -699,9 +688,7 @@ public class TestAdminOperationWithPreviousVersion {
       try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(clientConfig)) {
         try {
           readFromStore(client);
-        } catch (ExecutionException e) {
-          throw new RuntimeException(e);
-        } catch (InterruptedException e) {
+        } catch (ExecutionException | InterruptedException e) {
           throw new RuntimeException(e);
         }
         try {
@@ -882,7 +869,7 @@ public class TestAdminOperationWithPreviousVersion {
     client.get(Integer.toString(key)).get();
   }
 
-  private Properties createAndPushStore(String srcClusterName, String storeName) throws Exception {
+  private void createAndPushStore(String srcClusterName, String storeName) throws Exception {
     File inputDir = TestWriteUtils.getTempDataDirectory();
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     Properties props =
@@ -929,8 +916,6 @@ public class TestAdminOperationWithPreviousVersion {
         veniceProducer0.stop();
       }
     }
-
-    return props;
   }
 
   /**
