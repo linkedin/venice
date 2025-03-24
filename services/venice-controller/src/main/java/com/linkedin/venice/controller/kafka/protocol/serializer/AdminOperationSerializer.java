@@ -73,6 +73,9 @@ public class AdminOperationSerializer {
     // Get the writer schema.
     Schema targetSchema = getSchema(targetSchemaId);
 
+    // Validate non-default usage for new semantic
+    SemanticDetector.traverseAndValidate(object, LATEST_SCHEMA, targetSchema, "AdminOperation", null);
+
     // If writer schema is not the latest schema, we need to deserialize the serialized bytes to GenericRecord with
     // the writer schema, then serialize it to bytes with the writer schema.
     try {

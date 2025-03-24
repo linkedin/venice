@@ -369,7 +369,6 @@ public class AdminConsumptionTaskIntegrationTest {
       String owner,
       long executionId,
       int writerSchemaId) {
-    // TODO: Check back this step when we introduce the semantic check for new version in milestone 3
     UpdateStore updateStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
     updateStore.clusterName = clusterName;
     updateStore.storeName = storeName;
