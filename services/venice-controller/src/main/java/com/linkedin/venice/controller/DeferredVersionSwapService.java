@@ -20,7 +20,6 @@ import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RegionUtils;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -246,29 +245,24 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   }
 
   /**
-   * Given a list of regions and push statuses, return a list of regions whose push statuses are COMPLETED or ERROR
+   * Given a list of regions and push statuses and an expected status, return the number of regions in that status
    * @param regions list of regions to find the push status for
    * @param pushStatusInfo wrapper containing push status info
+   * @param status expected status to search for
    * @return
    */
-  private Map<String, Set<String>> getCompletedAndFailedRegions(
+  private int getRegionsWithPushStatusCount(
       Set<String> regions,
-      Admin.OfflinePushStatusInfo pushStatusInfo) {
-    Set<String> completedRegions = new HashSet<>();
-    Set<String> failedRegions = new HashSet<>();
+      Admin.OfflinePushStatusInfo pushStatusInfo,
+      ExecutionStatus status) {
+    int regionsWithStatus = 0;
     for (String region: regions) {
       String executionStatus = pushStatusInfo.getExtraInfo().get(region);
-      if (executionStatus.equals(ExecutionStatus.COMPLETED.toString())) {
-        completedRegions.add(region);
-      } else if (executionStatus.equals(ExecutionStatus.ERROR.toString())) {
-        failedRegions.add(region);
+      if (executionStatus.equals(status.toString())) {
+        regionsWithStatus += 1;
       }
     }
-
-    Map<String, Set<String>> completedAndFailedRegions = new HashMap<>();
-    completedAndFailedRegions.put(COMPLETED_REGIONS, completedRegions);
-    completedAndFailedRegions.put(FAILED_REGIONS, failedRegions);
-    return completedAndFailedRegions;
+    return regionsWithStatus;
   }
 
   /**
@@ -284,21 +278,21 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       ReadWriteStoreRepository repository,
       Store store,
       int targetVersionNum) {
-    Map<String, Set<String>> completedAndFailedRegions = getCompletedAndFailedRegions(targetRegions, pushStatusInfo);
-    Set<String> completedTargetRegions = completedAndFailedRegions.get(COMPLETED_REGIONS);
-    Set<String> failedTargetRegions = completedAndFailedRegions.get(FAILED_REGIONS);
-    if (failedTargetRegions.size() > targetRegions.size() / 2) {
+    int numCompletedTargetRegions =
+        getRegionsWithPushStatusCount(targetRegions, pushStatusInfo, ExecutionStatus.COMPLETED);
+    int numFailedTargetRegions = getRegionsWithPushStatusCount(targetRegions, pushStatusInfo, ExecutionStatus.ERROR);
+    if (numFailedTargetRegions > targetRegions.size() / 2) {
       String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
-          + " as push failed in the majority of target regions. Completed target regions: " + completedTargetRegions
-          + " , failed target regions: " + failedTargetRegions + ", target regions: " + targetRegions;
+          + " as push failed in the majority of target regions. Completed target regions: " + numCompletedTargetRegions
+          + " , failed target regions: " + numFailedTargetRegions + ", target regions: " + targetRegions;
       logMessageIfNotRedundant(message);
       store.updateVersionStatus(targetVersionNum, ERROR);
       repository.updateStore(store);
       return true;
-    } else if (failedTargetRegions.size() + completedTargetRegions.size() != targetRegions.size()) {
+    } else if (numFailedTargetRegions + numCompletedTargetRegions != targetRegions.size()) {
       String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
           + "as push is not in terminal status in all majority of target regions. Completed target regions: "
-          + completedTargetRegions + ", target regions: " + targetRegions;
+          + numCompletedTargetRegions + ", target regions: " + targetRegions;
       logMessageIfNotRedundant(message);
       return true;
     }
@@ -323,25 +317,32 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       ReadWriteStoreRepository repository,
       Store store,
       int targetVersionNum) {
-    Map<String, Set<String>> completedAndFailedRegions = getCompletedAndFailedRegions(nonTargetRegions, pushStatusInfo);
-    Set<String> completedNonTargetRegions = completedAndFailedRegions.get(COMPLETED_REGIONS);
-    Set<String> failedNonTargetRegions = completedAndFailedRegions.get(FAILED_REGIONS);
-    if (failedNonTargetRegions.size() == nonTargetRegions.size()) {
+    int numCompletedTargetRegions =
+        getRegionsWithPushStatusCount(nonTargetRegions, pushStatusInfo, ExecutionStatus.COMPLETED);
+    int numFailedTargetRegions = getRegionsWithPushStatusCount(nonTargetRegions, pushStatusInfo, ExecutionStatus.ERROR);
+    if (numFailedTargetRegions == nonTargetRegions.size()) {
       String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
-          + "as push failed in all non target regions. Failed non target regions: " + failedNonTargetRegions
+          + "as push failed in all non target regions. Failed non target regions: " + numFailedTargetRegions
           + ", non target regions: " + nonTargetRegions;
       logMessageIfNotRedundant(message);
       store.updateVersionStatus(targetVersionNum, PARTIALLY_ONLINE);
       repository.updateStore(store);
       return null;
-    } else if ((failedNonTargetRegions.size() + completedNonTargetRegions.size()) != nonTargetRegions.size()) {
+    } else if ((numFailedTargetRegions + numCompletedTargetRegions) != nonTargetRegions.size()) {
       String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
           + "as push is not in terminal status in all non target regions. Completed non target regions: "
-          + completedNonTargetRegions + ", non target regions: " + nonTargetRegions;
+          + numCompletedTargetRegions + ", non target regions: " + nonTargetRegions;
       logMessageIfNotRedundant(message);
       return null;
     }
 
+    Set<String> completedNonTargetRegions = new HashSet<>();
+    for (String region: nonTargetRegions) {
+      String executionStatus = pushStatusInfo.getExtraInfo().get(region);
+      if (executionStatus.equals(ExecutionStatus.COMPLETED.toString())) {
+        completedNonTargetRegions.add(region);
+      }
+    }
     return completedNonTargetRegions;
   }
 

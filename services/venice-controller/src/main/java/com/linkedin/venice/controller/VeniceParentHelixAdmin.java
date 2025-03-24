@@ -3789,7 +3789,6 @@ public class VeniceParentHelixAdmin implements Admin {
           }
           // status PUSHED is set when batch store's target region push is completed, but other region are yet to
           // complete
-          // somehow removing the outer if makes the status ERROR instead of KILLED
           if (currentReturnStatus.equals(ExecutionStatus.COMPLETED)) {
             if (isTargetRegionPush && !isVersionPushed) {
               parentStore.updateVersionStatus(versionNum, PUSHED);

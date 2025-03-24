@@ -254,7 +254,6 @@ public class TestDeferredVersionSwap {
 
       // Start push job with target region push enabled and check that it fails
       props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
-      props.put(TARGETED_REGION_PUSH_LIST, REGION3);
       try {
         TestWriteUtils.runPushJob("Test push job", props);
       } catch (Exception e) {
@@ -284,7 +283,7 @@ public class TestDeferredVersionSwap {
 
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
-        Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.ERROR);
+        Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.PARTIALLY_ONLINE);
       });
 
       // Verify that we can create a new version
@@ -418,7 +417,6 @@ public class TestDeferredVersionSwap {
 
       // Start push job with target region push enabled
       props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
-      props.put(TARGETED_REGION_PUSH_LIST, REGION1);
       TestWriteUtils.runPushJob("Test push job", props);
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 1),
@@ -432,7 +430,7 @@ public class TestDeferredVersionSwap {
             parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
 
         coloVersions.forEach((colo, version) -> {
-          if (colo.equals(REGION1)) {
+          if (colo.equals(REGION3)) {
             Assert.assertEquals((int) version, 1);
           } else {
             Assert.assertEquals((int) version, 0);
