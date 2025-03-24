@@ -945,12 +945,12 @@ public interface Admin extends AutoCloseable, Closeable {
 
   /**
    * triggers repush for storeName for log compaction of store topic implemented in
-   * {@link VeniceHelixAdmin#compactStore}
+   * {@link VeniceHelixAdmin#repushStore}
    *
    * @param repushJobRequest contains params for repush job
    * @return data model of repush job run info
    */
-  RepushJobResponse compactStore(RepushJobRequest repushJobRequest) throws Exception;
+  RepushJobResponse repushStore(RepushJobRequest repushJobRequest) throws Exception;
 
   public CompactionManager getCompactionManager();
 

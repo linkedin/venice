@@ -979,9 +979,9 @@ public class StoresRoutes extends AbstractRoute {
   }
 
   /**
-   * @see Admin#compactStore(RepushJobRequest)
+   * @see Admin#repushStore(RepushJobRequest)
    */
-  public Route compactStore(Admin admin) {
+  public Route repushStore(Admin admin) {
     return new VeniceRouteHandler<RepushJobResponse>(RepushJobResponse.class) {
       @Override
       public void internalHandle(Request request, RepushJobResponse veniceResponse) {
@@ -989,7 +989,7 @@ public class StoresRoutes extends AbstractRoute {
         String storeName = request.queryParams(STORE_NAME);
         String sourceRegion = request.queryParamOrDefault(SOURCE_REGION, null);
         try {
-          admin.compactStore(new RepushJobRequest(storeName, sourceRegion, RepushJobRequest.MANUAL_TRIGGER));
+          admin.repushStore(new RepushJobRequest(storeName, sourceRegion, RepushJobRequest.MANUAL_TRIGGER));
 
           veniceResponse.setName(storeName);
         } catch (Exception e) {
