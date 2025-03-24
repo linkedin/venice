@@ -309,17 +309,17 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
   @Test
   public void testMaxBufferSize() throws NoSuchFieldException, IllegalAccessException, InterruptedException {
     ReentrantLock bufferLock = Mockito.spy(new ReentrantLock());
-    Condition bufferFullCondition = Mockito.spy(bufferLock.newCondition());
+    Condition bufferIsFullCondition = Mockito.spy(bufferLock.newCondition());
 
     Field bufferLockField =
         BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("bufferLock");
     bufferLockField.setAccessible(true);
     bufferLockField.set(bootstrappingVeniceChangelogConsumer, bufferLock);
 
-    Field bufferFullConditionField =
-        BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("bufferFullCondition");
-    bufferFullConditionField.setAccessible(true);
-    bufferFullConditionField.set(bootstrappingVeniceChangelogConsumer, bufferFullCondition);
+    Field bufferIsFullConditionField = BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class
+        .getDeclaredField("bufferIsFullCondition");
+    bufferIsFullConditionField.setAccessible(true);
+    bufferIsFullConditionField.set(bootstrappingVeniceChangelogConsumer, bufferIsFullCondition);
 
     assertEquals(changelogClientConfig.getMaxBufferSize(), MAX_BUFFER_SIZE);
 
@@ -341,7 +341,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     // Buffer is full signal should be hit
     verify(bufferLock, atLeastOnce()).lock();
     verify(bufferLock, atLeastOnce()).unlock();
-    verify(bufferFullCondition, atLeastOnce()).signal();
+    verify(bufferIsFullCondition, atLeastOnce()).signal();
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       // Verify every CompletableFuture in completableFutureList is completed besides one
@@ -359,29 +359,29 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     });
 
     reset(bufferLock);
-    reset(bufferFullCondition);
+    reset(bufferIsFullCondition);
 
     // Buffer is full, so poll shouldn't await on the buffer full condition
     int timeoutInMs = 100;
     bootstrappingVeniceChangelogConsumer.poll(timeoutInMs);
-    verify(bufferFullCondition, never()).await(timeoutInMs, TimeUnit.MILLISECONDS);
+    verify(bufferIsFullCondition, never()).await(timeoutInMs, TimeUnit.MILLISECONDS);
 
     reset(bufferLock);
-    reset(bufferFullCondition);
+    reset(bufferIsFullCondition);
 
     // Empty the buffer and verify that all CompletableFutures are done
     bootstrappingVeniceChangelogConsumer.poll(timeoutInMs);
     verify(bufferLock).lock();
     verify(bufferLock).unlock();
     // Buffer isn't full, so poll should await on the buffer is full condition and timeout
-    verify(bufferFullCondition).await(timeoutInMs, TimeUnit.MILLISECONDS);
+    verify(bufferIsFullCondition).await(timeoutInMs, TimeUnit.MILLISECONDS);
 
     for (int i = 0; i <= MAX_BUFFER_SIZE; i++) {
       assertTrue(completableFutureList.get(i).isDone());
     }
 
     reset(bufferLock);
-    reset(bufferFullCondition);
+    reset(bufferIsFullCondition);
 
     /*
      * Test the case where the buffer isn't full initially, so poll awaits on the condition and doesn't hit the timeout
@@ -393,7 +393,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     });
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      verify(bufferFullCondition).await(timeoutInMs, TimeUnit.MILLISECONDS);
+      verify(bufferIsFullCondition).await(timeoutInMs, TimeUnit.MILLISECONDS);
     });
 
     for (int i = 0; i < MAX_BUFFER_SIZE; i++) {
@@ -404,7 +404,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     }
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      verify(bufferFullCondition).signal();
+      verify(bufferIsFullCondition).signal();
     });
   }
 

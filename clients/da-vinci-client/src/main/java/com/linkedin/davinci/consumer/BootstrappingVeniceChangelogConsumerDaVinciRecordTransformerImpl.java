@@ -85,7 +85,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   private final Set<Integer> subscribedPartitions = new HashSet<>();
   private final ApacheKafkaOffsetPosition placeHolderOffset = ApacheKafkaOffsetPosition.of(0);
   private final ReentrantLock bufferLock = new ReentrantLock();
-  private final Condition bufferFullCondition = bufferLock.newCondition();
+  private final Condition bufferIsFullCondition = bufferLock.newCondition();
 
   public BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl(ChangelogClientConfig changelogClientConfig) {
     this.changelogClientConfig = changelogClientConfig;
@@ -180,7 +180,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
 
       // Wait until pubSubMessages becomes full, or until the timeout is reached
       if (pubSubMessages.remainingCapacity() > 0) {
-        bufferFullCondition.await(timeoutInMs, TimeUnit.MILLISECONDS);
+        bufferIsFullCondition.await(timeoutInMs, TimeUnit.MILLISECONDS);
       }
     } catch (InterruptedException e) {
       LOGGER.info("Thread was interrupted", e);
@@ -318,7 +318,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
           if (pubSubMessages.remainingCapacity() == 0) {
             bufferLock.lock();
             try {
-              bufferFullCondition.signal();
+              bufferIsFullCondition.signal();
             } finally {
               bufferLock.unlock();
             }
