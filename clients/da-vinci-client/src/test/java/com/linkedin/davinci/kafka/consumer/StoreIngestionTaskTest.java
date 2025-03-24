@@ -2145,6 +2145,7 @@ public abstract class StoreIngestionTaskTest {
       doReturn(new VersionImpl("storeName", 1, Version.numberBasedDummyPushId(1))).when(mockStore).getVersion(1);
       doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
       doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO);
+      doAnswer(invocation -> false).when(aggKafkaConsumerService).hasAnyConsumerAssignedForVersionTopic(any());
     }).setHybridStoreConfig(this.hybridStoreConfig).setExtraServerProperties(extraServerProperties);
     runTest(config);
   }
@@ -3283,6 +3284,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(5L).when(mockTopicManager).getLatestOffsetCached(any(), anyInt());
     doReturn(150L).when(mockTopicManagerRemoteKafka).getLatestOffsetCached(any(), anyInt());
     doReturn(150L).when(aggKafkaConsumerService).getLatestOffsetBasedOnMetrics(anyString(), any(), any());
+
     long endOffset =
         storeIngestionTaskUnderTest.getTopicPartitionEndOffSet(localKafkaConsumerService.kafkaUrl, pubSubTopic, 1);
     assertEquals(endOffset, 150L);
