@@ -52,6 +52,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -79,8 +82,10 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   // issues in the default ForkJoinPool
   private final ExecutorService completableFutureThreadPool = Executors.newFixedThreadPool(1);
 
-  private Set<Integer> subscribedPartitions = new HashSet<>();
+  private final Set<Integer> subscribedPartitions = new HashSet<>();
   private final ApacheKafkaOffsetPosition placeHolderOffset = ApacheKafkaOffsetPosition.of(0);
+  private final ReentrantLock bufferLock = new ReentrantLock();
+  private final Condition bufferFullCondition = bufferLock.newCondition();
 
   public BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl(ChangelogClientConfig changelogClientConfig) {
     this.changelogClientConfig = changelogClientConfig;
@@ -171,11 +176,18 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   @Override
   public Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(long timeoutInMs) {
     try {
-      Thread.sleep(timeoutInMs);
+      bufferLock.lock();
+
+      // Wait until pubSubMessages becomes full, or until the timeout is reached
+      if (pubSubMessages.remainingCapacity() > 0) {
+        bufferFullCondition.await(timeoutInMs, TimeUnit.MILLISECONDS);
+      }
     } catch (InterruptedException e) {
       LOGGER.info("Thread was interrupted", e);
       // Restore the interrupt status
       Thread.currentThread().interrupt();
+    } finally {
+      bufferLock.unlock();
     }
 
     List<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> drainedPubSubMessages = new ArrayList<>();
@@ -292,6 +304,25 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
                   0,
                   0,
                   false));
+
+          /*
+           * pubSubMessages is full, signal to a poll thread awaiting on bufferFullCondition.
+           * Not signaling to all threads, because if multiple poll threads try to read pubSubMessages at
+           * the same time, all other poll threads besides the first reader will get any messages.
+           * Also, don't acquire the locker before inserting into pubSubMessages. If we acquire the lock before,
+           * and pubSubMessages is full, the put will be blocked, and we won't be able to release the lock. Leading
+           * to a deadlock. We also shouldn't signal before insertion either, because when the buffer is full multiple
+           * drainer threads will send a signal out at once. This leads to the original issue described at the
+           * beginning of this comment block.
+           */
+          if (pubSubMessages.remainingCapacity() == 0) {
+            bufferLock.lock();
+            try {
+              bufferFullCondition.signal();
+            } finally {
+              bufferLock.unlock();
+            }
+          }
 
           startLatch.countDown();
         } catch (InterruptedException e) {

@@ -2,8 +2,11 @@ package com.linkedin.davinci.consumer;
 
 import static com.linkedin.venice.client.store.ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -36,7 +39,10 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
 import org.apache.avro.Schema;
+import org.mockito.Mockito;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -301,7 +307,20 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
   }
 
   @Test
-  public void testMaxBufferSize() {
+  public void testMaxBufferSize() throws NoSuchFieldException, IllegalAccessException, InterruptedException {
+    ReentrantLock bufferLock = Mockito.spy(new ReentrantLock());
+    Condition bufferFullCondition = Mockito.spy(bufferLock.newCondition());
+
+    Field bufferLockField =
+        BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("bufferLock");
+    bufferLockField.setAccessible(true);
+    bufferLockField.set(bootstrappingVeniceChangelogConsumer, bufferLock);
+
+    Field bufferFullConditionField =
+        BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("bufferFullCondition");
+    bufferFullConditionField.setAccessible(true);
+    bufferFullConditionField.set(bootstrappingVeniceChangelogConsumer, bufferFullCondition);
+
     assertEquals(changelogClientConfig.getMaxBufferSize(), MAX_BUFFER_SIZE);
 
     bootstrappingVeniceChangelogConsumer.start();
@@ -319,6 +338,11 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
       }));
     }
 
+    // Buffer is full signal should be hit
+    verify(bufferLock, atLeastOnce()).lock();
+    verify(bufferLock, atLeastOnce()).unlock();
+    verify(bufferFullCondition, atLeastOnce()).signal();
+
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       // Verify every CompletableFuture in completableFutureList is completed besides one
       int completedFutures = 0;
@@ -334,12 +358,53 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
       assertEquals(uncompletedFutures, 1);
     });
 
-    TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, () -> {
-      // Empty the buffer and verify that all CompletableFutures are done
-      bootstrappingVeniceChangelogConsumer.poll(100);
-      for (int i = 0; i <= MAX_BUFFER_SIZE; i++) {
-        assertTrue(completableFutureList.get(i).isDone());
-      }
+    reset(bufferLock);
+    reset(bufferFullCondition);
+
+    // Buffer is full, so poll shouldn't await on the buffer full condition
+    int timeoutInMs = 100;
+    bootstrappingVeniceChangelogConsumer.poll(timeoutInMs);
+    verify(bufferFullCondition, never()).await(timeoutInMs, TimeUnit.MILLISECONDS);
+
+    reset(bufferLock);
+    reset(bufferFullCondition);
+
+    // Empty the buffer and verify that all CompletableFutures are done
+    bootstrappingVeniceChangelogConsumer.poll(timeoutInMs);
+    verify(bufferLock).lock();
+    verify(bufferLock).unlock();
+    // Buffer isn't full, so poll should await on the buffer is full condition and timeout
+    verify(bufferFullCondition).await(timeoutInMs, TimeUnit.MILLISECONDS);
+
+    for (int i = 0; i <= MAX_BUFFER_SIZE; i++) {
+      assertTrue(completableFutureList.get(i).isDone());
+    }
+
+    reset(bufferLock);
+    reset(bufferFullCondition);
+
+    /*
+     * Test the case where the buffer isn't full initially, so poll awaits on the condition and doesn't hit the timeout
+     * due to the condition being signaled after the processPut calls fill up the buffer.
+     */
+    CompletableFuture.supplyAsync(() -> {
+      bootstrappingVeniceChangelogConsumer.poll(timeoutInMs);
+      return null;
+    });
+
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      verify(bufferFullCondition).await(timeoutInMs, TimeUnit.MILLISECONDS);
+    });
+
+    for (int i = 0; i < MAX_BUFFER_SIZE; i++) {
+      CompletableFuture.supplyAsync(() -> {
+        recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId);
+        return null;
+      });
+    }
+
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      verify(bufferFullCondition).signal();
     });
   }
 
