@@ -37,6 +37,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -74,6 +75,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -179,11 +181,15 @@ public class TestMaterializedViewEndToEnd {
           TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
       rePushProps.setProperty(SOURCE_KAFKA, "true");
       rePushProps.setProperty(KAFKA_INPUT_BROKER_URL, childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
-      TestWriteUtils.runPushJob("Run push job", rePushProps);
+      TestWriteUtils.runPushJob("Run re-push job", rePushProps);
       String rePushViewTopicName =
           Version.composeKafkaTopic(storeName, 2) + VIEW_NAME_SEPARATOR + testViewName + MATERIALIZED_VIEW_TOPIC_SUFFIX;
       String rePushVersionTopicName = Version.composeKafkaTopic(storeName, 2);
       validateViewTopicAndVersionTopic(rePushViewTopicName, rePushVersionTopicName, 6, 3, 100);
+
+      // Perform another push v3 to ensure view resources for v1 are cleaned up
+      TestWriteUtils.runPushJob("Run push job v3", props);
+      verifyVersionAndViewTopicDeletion(viewTopicName, versionTopicName);
     }
   }
 
@@ -632,9 +638,8 @@ public class TestMaterializedViewEndToEnd {
       }
     }
 
-    // TODO investigate DuplicateDataException in internalProcessConsumerRecord causing 2/3 of the keys to be missing
     // Verify projection with DVC in all regions
-    /*for (VeniceMultiClusterWrapper region : multiRegionMultiClusterWrapper.getChildRegions()) {
+    for (VeniceMultiClusterWrapper region: multiRegionMultiClusterWrapper.getChildRegions()) {
       VeniceProperties backendConfig = getBasicBackendConfigForDVC();
       DaVinciConfig daVinciConfig = new DaVinciConfig();
       D2Client daVinciD2RemoteFabric = D2TestUtils.getAndStartD2Client(region.getZkServerWrapper().getAddress());
@@ -655,7 +660,7 @@ public class TestMaterializedViewEndToEnd {
       } finally {
         D2ClientUtils.shutdownClient(daVinciD2RemoteFabric);
       }
-    }*/
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -761,6 +766,75 @@ public class TestMaterializedViewEndToEnd {
     }
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testFailedMaterializedViewPushCanBeCleanedUp() throws IOException {
+    // Create a store with materialized view and start a batch push
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("batchStore");
+    Properties props =
+        TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(false)
+        .setChunkingEnabled(true)
+        .setRmdChunkingEnabled(true)
+        .setNativeReplicationEnabled(true)
+        .setNativeReplicationSourceFabric(childDatacenters.get(0).getRegionName())
+        .setPartitionCount(3);
+    String testViewName = "MaterializedViewTest";
+    try (ControllerClient controllerClient =
+        IntegrationTestPushUtils.createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms)) {
+      MaterializedViewParameters.Builder viewParamBuilder =
+          new MaterializedViewParameters.Builder(testViewName).setPartitionCount(1);
+      UpdateStoreQueryParams updateViewParam = new UpdateStoreQueryParams().setViewName(testViewName)
+          .setViewClassName(MaterializedView.class.getCanonicalName())
+          .setViewClassParams(viewParamBuilder.build());
+      controllerClient
+          .retryableRequest(5, controllerClient1 -> controllerClient.updateStore(storeName, updateViewParam));
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
+        Map<String, ViewConfig> viewConfigMap = controllerClient.getStore(storeName).getStore().getViewConfigs();
+        Assert.assertEquals(viewConfigMap.size(), 1);
+        Assert.assertEquals(
+            viewConfigMap.get(testViewName).getViewClassName(),
+            MaterializedView.class.getCanonicalName());
+      });
+      VersionCreationResponse versionCreationResponse = controllerClient.requestTopicForWrites(
+          storeName,
+          1000,
+          Version.PushType.BATCH,
+          "controller-client-started-test-push",
+          true,
+          true,
+          false,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          false,
+          -1);
+      Assert.assertFalse(versionCreationResponse.isError());
+      int newVersion = versionCreationResponse.getVersion();
+      String versionTopicName = Version.composeKafkaTopic(storeName, newVersion);
+      String viewTopicName = Version.composeKafkaTopic(storeName, newVersion) + VIEW_NAME_SEPARATOR + testViewName
+          + MATERIALIZED_VIEW_TOPIC_SUFFIX;
+      // Wait and verify the resources are created
+      for (VeniceMultiClusterWrapper veniceMultiClusterWrapper: childDatacenters) {
+        VeniceHelixAdmin admin = veniceMultiClusterWrapper.getRandomController().getVeniceHelixAdmin();
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+          Assert.assertTrue(admin.getStore(clusterName, storeName).containsVersion(newVersion));
+          Assert.assertTrue(
+              admin.getTopicManager().containsTopic(admin.getPubSubTopicRepository().getTopic(versionTopicName)));
+          Assert.assertTrue(
+              admin.getTopicManager().containsTopic(admin.getPubSubTopicRepository().getTopic(viewTopicName)));
+        });
+      }
+      // Kill the push job and ensure resources are cleaned up
+      controllerClient.killOfflinePushJob(versionTopicName);
+      verifyVersionAndViewTopicDeletion(viewTopicName, versionTopicName);
+    }
+  }
+
   private Map<String, GenericRecord> getChangeLogConsumerAndPollEvents(
       String storeName,
       String viewName,
@@ -842,6 +916,25 @@ public class TestMaterializedViewEndToEnd {
       }
       Assert.assertTrue(versionTopicRecords > minRecordCount, "Version topic records size: " + versionTopicRecords);
       Assert.assertTrue(records > minRecordCount, "View topic records size: " + records);
+    }
+  }
+
+  private void verifyVersionAndViewTopicDeletion(String viewTopicName, String versionTopicName) {
+    String storeName = Version.parseStoreFromVersionTopic(versionTopicName);
+    int versionNumber = Version.parseVersionFromVersionTopicName(versionTopicName);
+    for (VeniceMultiClusterWrapper veniceClusterWrapper: childDatacenters) {
+      VeniceHelixAdmin admin = veniceClusterWrapper.getRandomController().getVeniceHelixAdmin();
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        Assert.assertFalse(admin.getStore(clusterName, storeName).containsVersion(versionNumber));
+      });
+      PubSubTopic versionPubSubTopic = admin.getPubSubTopicRepository().getTopic(versionTopicName);
+      if (admin.getTopicManager().containsTopic(versionPubSubTopic)) {
+        Assert.assertTrue(admin.isTopicTruncated(versionTopicName));
+      }
+      PubSubTopic viewPubSubTopic = admin.getPubSubTopicRepository().getTopic(viewTopicName);
+      if (admin.getTopicManager().containsTopic(viewPubSubTopic)) {
+        Assert.assertTrue(admin.isTopicTruncated(viewTopicName));
+      }
     }
   }
 
