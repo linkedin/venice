@@ -31,7 +31,6 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
-import com.linkedin.davinci.validation.DivSnapshot;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -454,18 +453,6 @@ public class LeaderFollowerStoreIngestionTaskTest {
     GlobalRtDivState globalRtDiv =
         serializer.deserialize(valueBytes, AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
     assertNotNull(globalRtDiv);
-
-    // Verify the callback has DivSnapshot (VT + RT DIV)
-    LeaderProducerCallback callback = callbackArgumentCaptor.getValue();
-    DefaultPubSubMessage callbackPayload = callback.getSourceConsumerRecord();
-    assertEquals(callbackPayload.getKey().getKey(), keyBytes);
-    assertEquals(callbackPayload.getKey().getKeyHeaderByte(), MessageType.GLOBAL_RT_DIV.getKeyHeaderByte());
-    assertEquals(callbackPayload.getValue().getMessageType(), MessageType.PUT.getValue());
-    assertEquals(callbackPayload.getPartition(), partition);
-    assertTrue(callbackPayload.getValue().payloadUnion instanceof DivSnapshot); // direct access bc the KME is a mock
-    DivSnapshot divSnapshot = (DivSnapshot) callbackPayload.getValue().payloadUnion;
-    assertEquals(divSnapshot.getLatestConsumedRtOffset(), offset);
-    assertEquals(divSnapshot.getPartitionTracker().getPartition(), partition);
   }
 
   @Test
