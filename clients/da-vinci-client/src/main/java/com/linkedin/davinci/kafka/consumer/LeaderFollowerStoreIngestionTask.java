@@ -1398,7 +1398,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       GetLastKnownUpstreamTopicOffset lastKnownUpstreamTopicOffsetSupplier,
       Supplier<String> sourceKafkaUrlSupplier,
       boolean dryRun) {
-
     // Only update the metadata if this replica should NOT produce to version topic.
     if (!shouldProduceToVersionTopic(partitionConsumptionState)) {
       PubSubTopic consumedTopic = consumerRecord.getTopicPartition().getPubSubTopic();
@@ -1714,6 +1713,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     produceFunction.accept(callback, leaderMetadataWrapper);
     getHostLevelIngestionStats()
         .recordLeaderProduceLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeProduceTimestampNS));
+
+    if (shouldSendGlobalRtDiv(consumerRecord, partitionConsumptionState, kafkaUrl)) {
+      sendGlobalRtDivMessage(
+          consumerRecord,
+          partitionConsumptionState,
+          partition,
+          kafkaUrl,
+          beforeProcessingRecordTimestampNs,
+          leaderMetadataWrapper,
+          leaderProducedRecordContext);
+    }
   }
 
   @Override
@@ -3499,17 +3509,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                         newPut.schemaId,
                         callback,
                         leaderMetadataWrapper);
-
-                if (shouldSendGlobalRtDiv(consumerRecord, partitionConsumptionState, kafkaUrl)) {
-                  sendGlobalRtDivMessage(
-                      consumerRecord,
-                      partitionConsumptionState,
-                      partition,
-                      kafkaUrl,
-                      beforeProcessingRecordTimestampNs,
-                      leaderMetadataWrapper,
-                      leaderProducedRecordContext);
-                }
               }
             },
             partition,
@@ -3621,6 +3620,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     // Snapshot the RT DIV (single broker URL) in preparation to be produced
     PartitionTracker divClone = consumerDiv.cloneProducerStates(partition, brokerUrl);
+    Map<CharSequence, ProducerPartitionState> vtDiv = divClone.getPartitionStates(TopicType.of(VERSION_TOPIC_TYPE));
     Map<CharSequence, ProducerPartitionState> rtDiv = divClone.getPartitionStates(realTimeTopicType);
 
     // Create GlobalRtDivState (RT DIV + latest RT Offset) which will be serialized into a byte array
@@ -3639,6 +3639,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     // Create PubSubMessage for the LeaderProducerCallback
+    final int schemaId = AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
     KafkaKey divKey = new KafkaKey(MessageType.GLOBAL_RT_DIV, keyBytes);
     KafkaMessageEnvelope divEnvelope = getVeniceWriter(partitionConsumptionState).get()
         .getKafkaMessageEnvelope(
@@ -3648,7 +3649,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             true,
             DEFAULT_LEADER_METADATA_WRAPPER,
             APP_DEFAULT_LOGICAL_TS);
-    divEnvelope.payloadUnion = valueBytes;
+    Put put = new Put();
+    put.putValue = ByteUtils.prependIntHeaderToByteBuffer(ByteBuffer.wrap(valueBytes), schemaId);
+    put.schemaId = schemaId;
+    put.replicationMetadataPayload = VeniceWriter.EMPTY_BYTE_BUFFER;
+    divEnvelope.payloadUnion = put;
     DefaultPubSubMessage divMessage = new ImmutablePubSubMessage(
         divKey,
         divEnvelope,
@@ -3666,10 +3671,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     // Get the old value manifest which contains the list of old chunks, so they can be deleted
     ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
-    final int schemaId = AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
     readStoredValueRecord(partitionConsumptionState, keyBytes, schemaId, topicPartition, valueManifestContainer);
 
-    // Produce to local VT for the Global RT DIV + latestOffset (GlobalRtDivState)
+    // Produce to local VT for the Global RT DIV + latest RT offset (GlobalRtDivState)
     // Internally, VeniceWriter.put() will schedule DELETEs for the old chunks in the old manifest after the new PUTs
     getVeniceWriter(partitionConsumptionState).get()
         .put(
