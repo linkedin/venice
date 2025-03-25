@@ -37,14 +37,9 @@ import org.apache.avro.Schema;
 
 
 public class RequestBasedMetaRepository extends NativeMetadataRepository {
-
-  // cluster -> client
-  private final VeniceConcurrentHashMap<String, D2TransportClient> d2TransportClientMap =
-      new VeniceConcurrentHashMap<>();
-
-  // storeName -> T
   VeniceConcurrentHashMap<String, SchemaData> storeSchemaMap = new VeniceConcurrentHashMap<>();
 
+  VeniceConcurrentHashMap<String, D2TransportClient> d2TransportClientMap = new VeniceConcurrentHashMap<>();
   private final ICProvider icProvider;
   private final D2TransportClient d2DiscoveryTransportClient;
   private D2ServiceDiscovery d2ServiceDiscovery;
@@ -101,7 +96,7 @@ public class RequestBasedMetaRepository extends NativeMetadataRepository {
   @Override
   protected Store fetchStoreFromRemote(String storeName, String clusterName) {
     // Fetch store, bypass cache
-    StoreMetaValue storeMetaValue = fetchAndCacheStoreMetaValueWithICProvider(storeName);
+    StoreMetaValue storeMetaValue = fetchAndCacheStorePropertiesWithICProvider(storeName);
     StoreProperties storeProperties = storeMetaValue.storeProperties;
     return new ZKStore(storeProperties);
   }
@@ -110,36 +105,47 @@ public class RequestBasedMetaRepository extends NativeMetadataRepository {
   protected SchemaData getSchemaData(String storeName) {
     if (!storeSchemaMap.containsKey(storeName)) {
       // Cache miss
-      fetchAndCacheStoreMetaValueWithICProvider(storeName);
+      fetchAndCacheStorePropertiesWithICProvider(storeName);
     }
     return storeSchemaMap.get(storeName);
   }
 
-  protected StoreMetaValue fetchAndCacheStoreMetaValueWithICProvider(String storeName) {
-    final Callable<StoreMetaValue> fetchAndCache = () -> fetchAndCacheStoreMetaValue(storeName);
-    final Callable<StoreMetaValue> icWrappedFetchAndCache =
-        icProvider == null ? fetchAndCache : () -> icProvider.call(getClass().getCanonicalName(), fetchAndCache);
+  protected StoreMetaValue fetchAndCacheStorePropertiesWithICProvider(String storeName) {
 
-    StoreMetaValue storeMetaValue = RetryUtils.executeWithMaxAttempt(() -> {
+    // Wrap with IC Provider
+    final Callable<TransportClientResponse> fetch = () -> fetchStoreProperties(storeName);
+    final Callable<TransportClientResponse> icWrappedFetch =
+        icProvider == null ? fetch : () -> icProvider.call(getClass().getCanonicalName(), fetch);
+
+    // Fetch
+    TransportClientResponse response = RetryUtils.executeWithMaxAttempt(() -> {
       try {
-        return icWrappedFetchAndCache.call();
+        return icWrappedFetch.call();
       } catch (ServiceDiscoveryException e) {
         throw e;
       } catch (Exception e) {
-        throw new VeniceRetriableException(
-            "Failed to get data from meta store using request based for store: " + storeName,
-            e);
+        // Trigger rediscovery on retry
+        d2TransportClientMap.remove(storeName);
+        throw new VeniceRetriableException("Failed to get data from server using request for store: " + storeName, e);
       }
-    }, 10, Duration.ofSeconds(1), Collections.singletonList(VeniceRetriableException.class));
-
-    if (storeMetaValue == null) {
-      throw new RuntimeException("Encountered an error while fetching meta value: " + storeName);
+    }, 3, Duration.ofSeconds(1), Collections.singletonList(VeniceRetriableException.class));
+    if (response == null) {
+      throw new RuntimeException("Encountered an error while fetching store properties: " + storeName);
     }
+
+    // Deserialize
+    StorePropertiesPayloadRecord record =
+        getStorePropertiesDeserializer(response.getSchemaId()).deserialize(response.getBody());
+    StoreMetaValue storeMetaValue =
+        getStoreMetaValueDeserializer(record.storeMetaValueSchemaVersion).deserialize(record.getStoreMetaValueAvro());
+
+    // Cache
+    cacheStoreSchema(storeName, storeMetaValue);
 
     return storeMetaValue;
   }
 
-  protected StoreMetaValue fetchAndCacheStoreMetaValue(String storeName) {
+  protected TransportClientResponse fetchStoreProperties(String storeName) {
 
     // Request params
     int maxValueSchemaId = getMaxValueSchemaId(storeName);
@@ -159,32 +165,14 @@ public class RequestBasedMetaRepository extends NativeMetadataRepository {
               + ": " + e);
     }
 
-    // Deserialize StorePropertiesPayloadRecord
-    StorePropertiesPayloadRecord record =
-        getStorePropertiesDeserializer(response.getSchemaId()).deserialize(response.getBody());
-
-    // Deserialize StoreMetaValue
-    StoreMetaValue storeMetaValue =
-        getStoreMetaValueDeserializer(record.storeMetaValueSchemaVersion).deserialize(record.getStoreMetaValueAvro());
-
-    // Cache
-    cacheStoreSchema(storeName, storeMetaValue);
-
-    return storeMetaValue;
+    return response;
   }
 
   D2TransportClient getD2TransportClient(String storeName) {
-    synchronized (this) {
-      // Get cluster for store
-      String serverD2ServiceName =
-          d2ServiceDiscovery.find(d2DiscoveryTransportClient, storeName, true).getServerD2Service();
-      if (d2TransportClientMap.containsKey(serverD2ServiceName)) {
-        return d2TransportClientMap.get(serverD2ServiceName);
-      }
-      D2TransportClient d2TransportClient = new D2TransportClient(serverD2ServiceName, clientConfig.getD2Client());
-      d2TransportClientMap.put(serverD2ServiceName, d2TransportClient);
-      return d2TransportClient;
-    }
+    return d2TransportClientMap.computeIfAbsent(storeName, (key) -> {
+      String serviceName = d2ServiceDiscovery.find(d2DiscoveryTransportClient, key, true).getServerD2Service();
+      return new D2TransportClient(serviceName, clientConfig.getD2Client());
+    });
   }
 
   protected int getMaxValueSchemaId(String storeName) {
