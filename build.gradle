@@ -318,9 +318,6 @@ subprojects {
     doFirst {
       def versionOverrides = [
 //        project(':internal:venice-common').file('src/main/resources/avro/StoreVersionState/v5', PathValidation.DIRECTORY)
-        project(':services:venice-controller').file('src/main/resources/avro/AdminOperation/v85', PathValidation.DIRECTORY),
-        project(':internal:venice-common').file('src/main/resources/avro/StoreMetaValue/v28', PathValidation.DIRECTORY),
-        project(':internal:venice-common').file('src/main/resources/avro/PartitionState/v15', PathValidation.DIRECTORY),
         project(':internal:venice-common').file('src/main/resources/avro/KafkaMessageEnvelope/v11', PathValidation.DIRECTORY)
       ]
 
