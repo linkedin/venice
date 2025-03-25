@@ -148,10 +148,7 @@ public class ParticipantStoreTest {
     });
 
     // restart routers to discard in-memory throttler info
-    for (VeniceRouterWrapper router: veniceLocalCluster.getVeniceRouters()) {
-      veniceLocalCluster.stopVeniceRouter(router.getPort());
-      veniceLocalCluster.restartVeniceRouter(router.getPort());
-    }
+    veniceLocalCluster.stopAndRestartAllVeniceRouters();
     // Verify still can read from participant stores.
     ParticipantMessageKey key = new ParticipantMessageKey();
     key.resourceName = topicName;
