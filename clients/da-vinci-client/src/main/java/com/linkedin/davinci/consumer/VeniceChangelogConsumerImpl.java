@@ -689,10 +689,18 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       boolean includeControlMessage) {
     List<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
     Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messagesMap = Collections.EMPTY_MAP;
+    boolean lockAcquired = false;
     try {
+      // the pubsubconsumer internally is completely unthreadsafe, so we need an exclusive lock to poll (ugh)
+      subscriptionLock.writeLock().tryLock(timeoutInMs, TimeUnit.MILLISECONDS);
+      lockAcquired = true;
       messagesMap = pubSubConsumer.poll(timeoutInMs);
     } catch (Exception e) {
       LOGGER.error("Error polling records with exception:", e);
+    } finally {
+      if (lockAcquired) {
+        subscriptionLock.writeLock().unlock();
+      }
     }
     for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: messagesMap.entrySet()) {
       PubSubTopicPartition pubSubTopicPartition = entry.getKey();
