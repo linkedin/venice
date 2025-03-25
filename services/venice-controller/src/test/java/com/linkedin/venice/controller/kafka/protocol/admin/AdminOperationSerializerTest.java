@@ -11,7 +11,6 @@ import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
-import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.VeniceProtocolException;
 import java.nio.ByteBuffer;
 import java.util.Collections;
@@ -24,9 +23,9 @@ public class AdminOperationSerializerTest {
 
   @Test
   public void testGetSchema() {
-    expectThrows(VeniceMessageException.class, () -> AdminOperationSerializer.getSchema(0));
+    expectThrows(VeniceProtocolException.class, () -> AdminOperationSerializer.getSchema(0));
     expectThrows(
-        VeniceMessageException.class,
+        VeniceProtocolException.class,
         () -> AdminOperationSerializer.getSchema(AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION + 1));
   }
 

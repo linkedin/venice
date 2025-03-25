@@ -7604,11 +7604,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * Update the version of admin operation protocol in admin topic metadata
+   * Unsupported operation in the child controller.
    */
   public void updateAdminOperationProtocolVersion(String clusterName, Long adminOperationProtocolVersion) {
-    getAdminConsumerService(clusterName)
-        .updateAdminOperationProtocolVersion(clusterName, adminOperationProtocolVersion);
+    throw new VeniceUnsupportedOperationException(
+        "updateAdminOperationProtocolVersion is not supported for child controller");
   }
 
   /**

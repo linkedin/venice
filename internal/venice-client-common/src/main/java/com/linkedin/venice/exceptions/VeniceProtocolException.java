@@ -5,4 +5,8 @@ public class VeniceProtocolException extends VeniceException {
     super(message);
     super.errorType = ErrorType.PROTOCOL_ERROR;
   }
+
+  public VeniceProtocolException(String message, Throwable throwable) {
+    super(message, throwable, ErrorType.PROTOCOL_ERROR);
+  }
 }
