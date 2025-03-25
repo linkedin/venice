@@ -353,20 +353,6 @@ public class UtilsTest {
   }
 
   @Test
-  void testGetRealTimeTopicNameWithExceptionHandling() {
-    Version mockVersion1 = mock(Version.class);
-    Version mockVersion2 = mock(Version.class);
-
-    when(mockVersion1.isHybrid()).thenReturn(true);
-    when(mockVersion1.getHybridStoreConfig()).thenThrow(new VeniceException("Test Exception"));
-
-    when(mockVersion2.isHybrid()).thenReturn(false);
-
-    String result = Utils.getRealTimeTopicName(STORE_NAME, Lists.newArrayList(mockVersion1, mockVersion2), 1, null);
-    assertEquals(result, STORE_NAME + Version.REAL_TIME_TOPIC_SUFFIX);
-  }
-
-  @Test
   void testGetRealTimeTopicNameWithHybridVersion() {
     Version mockVersion = mock(Version.class);
     HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);

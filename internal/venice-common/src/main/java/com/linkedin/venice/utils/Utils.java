@@ -88,6 +88,7 @@ public class Utils {
   public static final AtomicBoolean SUPPRESS_SYSTEM_EXIT = new AtomicBoolean();
   public static final String SEPARATE_TOPIC_SUFFIX = "_sep";
   public static final String FATAL_DATA_VALIDATION_ERROR = "fatal data validation problem";
+  public static final String REAL_TIME_TOPIC_TEMPLATE = "%s_v%d" + Version.REAL_TIME_TOPIC_SUFFIX;
 
   /**
    * Print an error and exit with error code 1
@@ -578,7 +579,7 @@ public class Utils {
   }
 
   public static String composeRealTimeTopic(String storeName, int versionNumber) {
-    return storeName + "_v" + versionNumber + Version.REAL_TIME_TOPIC_SUFFIX;
+    return String.format(REAL_TIME_TOPIC_TEMPLATE, storeName, versionNumber);
   }
 
   /**
@@ -634,34 +635,28 @@ public class Utils {
       return composeRealTimeTopic(storeName);
     }
 
-    Optional<Version> currentVersion =
-        versions.stream().filter(version -> version.getNumber() == currentVersionNumber).findFirst();
-    if (currentVersion.isPresent() && currentVersion.get().isHybrid()) {
-      String realTimeTopicName = currentVersion.get().getHybridStoreConfig().getRealTimeTopicName();
-      if (StringUtils.isNotBlank(realTimeTopicName)) {
-        return realTimeTopicName;
-      }
-    }
-
     Set<String> realTimeTopicNames = new HashSet<>();
 
     for (Version version: versions) {
-      try {
-        if (version.isHybrid()) {
-          String realTimeTopicName = version.getHybridStoreConfig().getRealTimeTopicName();
-          if (StringUtils.isNotBlank(realTimeTopicName)) {
+      if (version.isHybrid()) {
+        String realTimeTopicName = version.getHybridStoreConfig().getRealTimeTopicName();
+        if (StringUtils.isNotBlank(realTimeTopicName)) {
+          if (version.getNumber() == currentVersionNumber) {
+            return realTimeTopicName;
+          } else {
             realTimeTopicNames.add(realTimeTopicName);
           }
         }
-      } catch (VeniceException e) {
-        // just try another version
       }
     }
 
     if (realTimeTopicNames.size() > 1) {
       LOGGER.warn(
-          "Store " + storeName + " and current version are not hybrid, yet " + realTimeTopicNames.size()
-              + " older versions are using real time topics. Will return one of them.");
+          "Current version({}) of store {} is not hybrid, yet {} older version(s) is/are using real "
+              + "time topic(s). Will return one of them.",
+          currentVersionNumber,
+          storeName,
+          realTimeTopicNames.size());
     }
 
     if (!realTimeTopicNames.isEmpty()) {
