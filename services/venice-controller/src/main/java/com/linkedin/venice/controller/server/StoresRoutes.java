@@ -989,9 +989,8 @@ public class StoresRoutes extends AbstractRoute {
         String storeName = request.queryParams(STORE_NAME);
         String sourceRegion = request.queryParamOrDefault(SOURCE_REGION, null);
         try {
-          admin.repushStore(new RepushJobRequest(storeName, sourceRegion, RepushJobRequest.MANUAL_TRIGGER));
-
-          veniceResponse.setName(storeName);
+          veniceResponse =
+              admin.repushStore(new RepushJobRequest(storeName, sourceRegion, RepushJobRequest.MANUAL_TRIGGER));
         } catch (Exception e) {
           veniceResponse.setError("Failed to compact store: " + storeName, e);
         }
