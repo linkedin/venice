@@ -2736,16 +2736,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (shouldSyncOffset(partitionConsumptionState, record, leaderProducedRecordContext)) {
       updateOffsetMetadataAndSyncOffset(partitionConsumptionState);
     }
-
-    if (record.getKey().isGlobalRtDiv()) {
-      processGlobalRtDiv(record, partitionConsumptionState, kafkaUrl);
-    }
   }
-
-  protected abstract void processGlobalRtDiv(
-      DefaultPubSubMessage record,
-      PartitionConsumptionState partitionConsumptionState,
-      String kafkaUrl);
 
   long getSyncBytesInterval(PartitionConsumptionState pcs) {
     return pcs.isDeferredWrite()

@@ -13,36 +13,18 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT
 
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.kafka.protocol.GUID;
-import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
-import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
-import com.linkedin.venice.kafka.validation.SegmentStatus;
-import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.venice.utils.ByteUtils;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
-import com.linkedin.venice.writer.VeniceWriterOptions;
-import java.nio.ByteBuffer;
-import java.security.SecureRandom;
 import java.util.AbstractMap;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Properties;
-import java.util.concurrent.ExecutionException;
 import java.util.stream.IntStream;
-import org.apache.avro.util.Utf8;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.annotations.AfterClass;
@@ -54,8 +36,6 @@ public class TestGlobalRtDiv {
   private static final Logger LOGGER = LogManager.getLogger(TestGlobalRtDiv.class);
 
   private VeniceClusterWrapper sharedVenice;
-
-  SecureRandom random = new SecureRandom();
 
   @BeforeClass
   public void setUp() {
@@ -141,67 +121,7 @@ public class TestGlobalRtDiv {
     veniceWriterProperties.putAll(
         PubSubBrokerWrapper
             .getBrokerDetailsForClients(Collections.singletonList(sharedVenice.getPubSubBrokerWrapper())));
-    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
-        sharedVenice.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
 
-    try (VeniceWriter<byte[], byte[], byte[]> versionTopicWriter =
-        TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
-            .createVeniceWriter(new VeniceWriterOptions.Builder(Version.composeKafkaTopic(storeName, 1)).build())) {
-
-      InternalAvroSpecificSerializer<GlobalRtDivState> serializer =
-          AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer();
-
-      GlobalRtDivState state = createGlobalRtDivState("localhost:9090", false);
-      versionTopicWriter
-          .sendGlobalRtDivMessage(
-              0,
-              "NonChunkedKey".getBytes(),
-              ByteUtils.extractByteArray(serializer.serialize(state)))
-          .get();
-      LOGGER.info("Sent non-chunked div message");
-
-      state = createGlobalRtDivState("localhost:9092", true);
-      versionTopicWriter
-          .sendGlobalRtDivMessage(0, "ChunkedKey".getBytes(), ByteUtils.extractByteArray(serializer.serialize(state)))
-          .get();
-      LOGGER.info("Sent chunked div message");
-
-      // TODO: Add more verification steps later.
-    } catch (ExecutionException | InterruptedException e) {
-      throw new RuntimeException(e);
-    }
-  }
-
-  private GlobalRtDivState createGlobalRtDivState(String srcUrl, boolean isChunked) {
-    GlobalRtDivState state = new GlobalRtDivState();
-    state.producerStates = new HashMap<>();
-    state.setSrcUrl(srcUrl);
-    state.setLatestPubSubPosition(ByteBuffer.wrap(new byte[0]));
-
-    final int entryCount = (isChunked) ? 20000 : 1; // Create a large state with 20k entries to trigger chunking
-    for (int i = 0; i < entryCount; i++) {
-      byte[] bytes = new byte[256];
-      random.nextBytes(bytes);
-      GUID guid = new GUID(bytes);
-      state.producerStates.put(guidToUtf8(guid), createProducerPartitionState(i, i));
-    }
-    return state;
-  }
-
-  private CharSequence guidToUtf8(GUID guid) {
-    return new Utf8(GuidUtils.getCharSequenceFromGuid(guid));
-  }
-
-  private ProducerPartitionState createProducerPartitionState(int segment, int sequence) {
-    ProducerPartitionState ppState = new ProducerPartitionState();
-    ppState.segmentNumber = segment;
-    ppState.segmentStatus = SegmentStatus.IN_PROGRESS.getValue();
-    ppState.messageSequenceNumber = sequence;
-    ppState.messageTimestamp = System.currentTimeMillis();
-    ppState.checksumType = CheckSumType.NONE.getValue();
-    ppState.checksumState = ByteBuffer.allocate(0);
-    ppState.aggregates = new HashMap<>();
-    ppState.debugInfo = new HashMap<>();
-    return ppState;
+    // TODO: integration test
   }
 }
