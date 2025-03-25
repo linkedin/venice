@@ -3689,23 +3689,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   * When the drainer receives a Global RT DIV, that is the signal to sync the VT DIV to the OffsetRecord.
-   * If the Global RT DIV is chunked, it will be split into chunks and manifest, so just trigger when the manifest
-   * is received.
-   */
-  protected void processGlobalRtDiv(
-      DefaultPubSubMessage record,
-      PartitionConsumptionState partitionConsumptionState,
-      String kafkaUrl) {
-    KafkaMessageEnvelope kme = record.getValue();
-    if (kme.getSchema() == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersionSchema()) {
-      return;
-    }
-
-    updateOffsetMetadataAndSyncOffset(consumerDiv, partitionConsumptionState);
-  }
-
-  /**
    * Read the existing value. If a value for this key is found from the transient map then use that value, otherwise read
    * it from the storage engine.
    * @return {@link Optional#empty} if the value
