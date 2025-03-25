@@ -36,6 +36,7 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   String VENICE_RE_PUSH_PUSH_ID_PREFIX = "venice_re_push_";
 
   String VENICE_TTL_RE_PUSH_PUSH_ID_PREFIX = "venice_ttl_re_push_";
+  int DEFAULT_RT_VERSION_NUMBER = 0;
 
   /**
    * Producer type for writing data to Venice

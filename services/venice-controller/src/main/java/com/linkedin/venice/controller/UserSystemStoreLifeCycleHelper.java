@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.common.VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE;
 import static com.linkedin.venice.common.VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE;
+import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
 
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.authorization.Resource;
@@ -107,7 +108,8 @@ public class UserSystemStoreLifeCycleHelper {
           Optional.empty(),
           false,
           null,
-          -1);
+          -1,
+          DEFAULT_RT_VERSION_NUMBER);
     }
     parentAdmin.writeEndOfPush(clusterName, systemStoreName, version.getNumber(), true);
     return version;

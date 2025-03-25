@@ -85,9 +85,13 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
@@ -102,6 +106,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   private static final int MAX_SUBSCRIBE_RETRIES = 5;
   private static final String ROCKSDB_BUFFER_FOLDER = "rocksdb-chunk-buffer";
   protected long subscribeTime = Long.MAX_VALUE;
+
+  protected final ReadWriteLock subscriptionLock = new ReentrantReadWriteLock();
 
   protected static final VeniceCompressor NO_OP_COMPRESSOR = new NoopCompressor();
 
@@ -137,6 +143,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final String storeName;
 
   protected final PubSubConsumerAdapter pubSubConsumer;
+  protected final ExecutorService seekExecutorService;
 
   // This member is a map of maps in order to accommodate view topics. If the message we consume has the appropriate
   // footer then we'll use that to infer entry into the wrapped map and compare with it, otherwise we'll infer it from
@@ -157,6 +164,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       ChangelogClientConfig changelogClientConfig,
       PubSubConsumerAdapter pubSubConsumer) {
     this.pubSubConsumer = pubSubConsumer;
+    seekExecutorService = Executors.newFixedThreadPool(10);
 
     // TODO: putting the change capture case here is a little bit weird. The view abstraction should probably
     // accommodate
@@ -294,7 +302,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         topicToSubscribe = topic;
       }
 
-      synchronized (pubSubConsumer) {
+      subscriptionLock.writeLock().lock();
+      try {
         Set<PubSubTopicPartition> topicPartitionSet = getTopicAssignment();
         for (PubSubTopicPartition topicPartition: topicPartitionSet) {
           if (partitions.contains(topicPartition.getPartitionNumber())) {
@@ -320,6 +329,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           pubSubConsumer.subscribe(topicPartition, OffsetRecord.LOWEST_OFFSET);
           currentVersionLastHeartbeat.put(topicPartition.getPartitionNumber(), System.currentTimeMillis());
         }
+      } finally {
+        subscriptionLock.writeLock().unlock();
       }
       if (changeCaptureStats != null) {
         if (!heartbeatReporterThread.isAlive()) {
@@ -328,7 +339,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       }
       isSubscribed.set(true);
       return null;
-    });
+    }, seekExecutorService);
   }
 
   protected VeniceCompressor getVersionCompressor(PubSubTopicPartition topicPartition) {
@@ -388,15 +399,17 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public void resume(Set<Integer> partitions) {
-    synchronized (pubSubConsumer) {
+    // We're not changing the subscription set, so we can just lock the read lock
+    subscriptionLock.readLock().lock();
+    try {
       Set<PubSubTopicPartition> currentSubscriptions = getTopicAssignment();
-      synchronized (currentSubscriptions) {
-        for (PubSubTopicPartition partition: currentSubscriptions) {
-          if (partitions.contains(partition.getPartitionNumber())) {
-            pubSubConsumer.resume(partition);
-          }
+      for (PubSubTopicPartition partition: currentSubscriptions) {
+        if (partitions.contains(partition.getPartitionNumber())) {
+          pubSubConsumer.resume(partition);
         }
       }
+    } finally {
+      subscriptionLock.readLock().unlock();
     }
   }
 
@@ -411,7 +424,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public void pause(Set<Integer> partitions) {
-    synchronized (pubSubConsumer) {
+    subscriptionLock.readLock().lock();
+    try {
       Set<PubSubTopicPartition> currentSubscriptions = getTopicAssignment();
       synchronized (currentSubscriptions) {
         for (PubSubTopicPartition partition: currentSubscriptions) {
@@ -420,6 +434,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           }
         }
       }
+    } finally {
+      subscriptionLock.readLock().unlock();
     }
   }
 
@@ -468,17 +484,21 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   public CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints)
       throws VeniceCoordinateOutOfRangeException {
     return CompletableFuture.supplyAsync(() -> {
-      for (VeniceChangeCoordinate coordinate: checkpoints) {
-        checkLiveVersion(coordinate.getTopic());
-        PubSubTopic topic = pubSubTopicRepository.getTopic(coordinate.getTopic());
-        PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(topic, coordinate.getPartition());
-        internalSeek(Collections.singleton(coordinate.getPartition()), topic, foo -> {
-          Long topicOffset = coordinate.getPosition().getNumericOffset();
-          pubSubConsumerSeek(pubSubTopicPartition, topicOffset);
-        }).join();
-      }
+      synchronousSeekToCheckpoint(checkpoints);
       return null;
-    });
+    }, seekExecutorService);
+  }
+
+  protected void synchronousSeekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints) {
+    for (VeniceChangeCoordinate coordinate: checkpoints) {
+      checkLiveVersion(coordinate.getTopic());
+      PubSubTopic topic = pubSubTopicRepository.getTopic(coordinate.getTopic());
+      PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(topic, coordinate.getPartition());
+      synchronousSeek(Collections.singleton(coordinate.getPartition()), topic, foo -> {
+        Long topicOffset = coordinate.getPosition().getNumericOffset();
+        pubSubConsumerSeek(pubSubTopicPartition, topicOffset);
+      });
+    }
   }
 
   void checkLiveVersion(String topicName) {
@@ -495,8 +515,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     // Offset the seek to next operation inside venice pub sub consumer adapter subscription logic.
     long targetOffset = offset == OffsetRecord.LOWEST_OFFSET ? OffsetRecord.LOWEST_OFFSET : offset - 1;
     try {
-      synchronized (pubSubConsumer) {
+      subscriptionLock.writeLock().lock();
+      try {
         pubSubConsumer.subscribe(topicPartition, targetOffset);
+      } finally {
+        subscriptionLock.writeLock().unlock();
       }
     } catch (PubSubTopicDoesNotExistException ex) {
       throw new VeniceCoordinateOutOfRangeException(
@@ -559,36 +582,40 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return partitionToBootstrapState;
   }
 
+  // TODO: We can probably delete this function with some refactoring
   protected CompletableFuture<Void> internalSeek(
       Set<Integer> partitions,
       PubSubTopic targetTopic,
       SeekFunction seekAction) {
     return CompletableFuture.supplyAsync(() -> {
-      synchronized (pubSubConsumer) {
-        // Prune out current subscriptions
-        Set<PubSubTopicPartition> assignments = getTopicAssignment();
-        synchronized (assignments) {
-          for (PubSubTopicPartition topicPartition: assignments) {
-            currentVersionHighWatermarks.remove(topicPartition.getPartitionNumber());
-            if (partitions.contains(topicPartition.getPartitionNumber())) {
-              pubSubConsumer.unSubscribe(topicPartition);
-            }
-          }
-        }
-
-        List<PubSubTopicPartition> topicPartitionListToSeek =
-            getPartitionListToSubscribe(partitions, Collections.EMPTY_SET, targetTopic);
-        for (PubSubTopicPartition topicPartition: topicPartitionListToSeek) {
-          if (!topicPartition.getPubSubTopic().getName().endsWith(ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX)) {
-            compressorMap.put(topicPartition.getPartitionNumber(), getVersionCompressor(topicPartition));
-          }
-          seekAction.apply(topicPartition);
-
-        }
-
-      }
+      synchronousSeek(partitions, targetTopic, seekAction);
       return null;
-    });
+    }, seekExecutorService);
+  }
+
+  protected void synchronousSeek(Set<Integer> partitions, PubSubTopic targetTopic, SeekFunction seekAction) {
+    subscriptionLock.writeLock().lock();
+    try {
+      // Prune out current subscriptions
+      Set<PubSubTopicPartition> assignments = getTopicAssignment();
+      for (PubSubTopicPartition topicPartition: assignments) {
+        currentVersionHighWatermarks.remove(topicPartition.getPartitionNumber());
+        if (partitions.contains(topicPartition.getPartitionNumber())) {
+          pubSubConsumer.unSubscribe(topicPartition);
+        }
+      }
+
+      List<PubSubTopicPartition> topicPartitionListToSeek =
+          getPartitionListToSubscribe(partitions, Collections.EMPTY_SET, targetTopic);
+      for (PubSubTopicPartition topicPartition: topicPartitionListToSeek) {
+        if (!topicPartition.getPubSubTopic().getName().endsWith(ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX)) {
+          compressorMap.put(topicPartition.getPartitionNumber(), getVersionCompressor(topicPartition));
+        }
+        seekAction.apply(topicPartition);
+      }
+    } finally {
+      subscriptionLock.writeLock().unlock();
+    }
   }
 
   @FunctionalInterface
@@ -596,7 +623,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     void apply(PubSubTopicPartition partitionToSeek) throws VeniceCoordinateOutOfRangeException;
   }
 
-  private List<PubSubTopicPartition> getPartitionListToSubscribe(
+  protected List<PubSubTopicPartition> getPartitionListToSubscribe(
       Set<Integer> partitions,
       Set<PubSubTopicPartition> topicPartitionSet,
       PubSubTopic topic) {
@@ -616,18 +643,20 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     if (partitions.isEmpty()) {
       return;
     }
-    synchronized (pubSubConsumer) {
+    // write lock
+    subscriptionLock.writeLock().lock();
+    try {
       Set<PubSubTopicPartition> topicPartitionSet = getTopicAssignment();
       Set<PubSubTopicPartition> topicPartitionsToUnsub = new HashSet<>();
-      synchronized (topicPartitionSet) {
-        for (PubSubTopicPartition topicPartition: topicPartitionSet) {
-          if (partitions.contains(topicPartition.getPartitionNumber())) {
-            topicPartitionsToUnsub.add(topicPartition);
-            currentVersionLastHeartbeat.remove(topicPartition.getPartitionNumber());
-          }
+      for (PubSubTopicPartition topicPartition: topicPartitionSet) {
+        if (partitions.contains(topicPartition.getPartitionNumber())) {
+          topicPartitionsToUnsub.add(topicPartition);
+          currentVersionLastHeartbeat.remove(topicPartition.getPartitionNumber());
         }
       }
       pubSubConsumer.batchUnsubscribe(topicPartitionsToUnsub);
+    } finally {
+      subscriptionLock.writeLock().unlock();
     }
   }
 
@@ -659,9 +688,18 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       String topicSuffix,
       boolean includeControlMessage) {
     List<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
-    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messagesMap;
-    synchronized (pubSubConsumer) {
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messagesMap = Collections.EMPTY_MAP;
+    boolean lockAcquired = false;
+    try {
+      // the pubsubconsumer internally is completely unthreadsafe, so we need an exclusive lock to poll (ugh)
+      lockAcquired = subscriptionLock.writeLock().tryLock(timeoutInMs, TimeUnit.MILLISECONDS);
       messagesMap = pubSubConsumer.poll(timeoutInMs);
+    } catch (Exception e) {
+      LOGGER.error("Error polling records with exception:", e);
+    } finally {
+      if (lockAcquired) {
+        subscriptionLock.writeLock().unlock();
+      }
     }
     for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: messagesMap.entrySet()) {
       PubSubTopicPartition pubSubTopicPartition = entry.getKey();
@@ -1068,9 +1106,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   protected Set<PubSubTopicPartition> getTopicAssignment() {
-    synchronized (pubSubConsumer) {
-      return Collections.synchronizedSet(pubSubConsumer.getAssignment());
-    }
+    return Collections.synchronizedSet(pubSubConsumer.getAssignment());
   }
 
   protected boolean switchToNewTopic(PubSubTopic newTopic, String topicSuffix, Integer partition) {
@@ -1096,10 +1132,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public void close() {
-    this.unsubscribeAll();
-    synchronized (pubSubConsumer) {
-      LOGGER.info("Closing Changelog Consumer with name: " + changelogClientConfig.getConsumerName());
+    LOGGER.info("Closing Changelog Consumer with name: " + changelogClientConfig.getConsumerName());
+    subscriptionLock.writeLock().lock();
+    try {
+      this.unsubscribeAll();
       pubSubConsumer.close();
+    } finally {
+      subscriptionLock.writeLock().unlock();
     }
   }
 
@@ -1124,12 +1163,15 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         throw new VeniceException(
             "Cannot get latest coordinate position for partition " + partition + "! Consumer isn't subscribed!");
       }
-      synchronized (pubSubConsumer) {
+      subscriptionLock.readLock().lock();
+      try {
         long offset = pubSubConsumer.endOffset(topicPartition.get()) - 1;
         return new VeniceChangeCoordinate(
             topicPartition.get().getPubSubTopic().getName(),
             new ApacheKafkaOffsetPosition(offset),
             partition);
+      } finally {
+        subscriptionLock.readLock().unlock();
       }
     }
   }
@@ -1145,10 +1187,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       }
       return topicPartition.get();
     }
-  }
-
-  protected PubSubConsumerAdapter getPubSubConsumer() {
-    return pubSubConsumer;
   }
 
   protected ChangelogClientConfig getChangelogClientConfig() {

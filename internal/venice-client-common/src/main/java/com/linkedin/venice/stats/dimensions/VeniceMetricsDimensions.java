@@ -15,7 +15,7 @@ public enum VeniceMetricsDimensions {
   /** {@link com.linkedin.venice.read.RequestType} */
   VENICE_REQUEST_METHOD("venice.request.method"),
 
-  /** {@link io.netty.handler.codec.http.HttpResponseStatus} ie. 200, 400, etc */
+  /** {@link HttpResponseStatusEnum} ie. 200, 400, etc */
   HTTP_RESPONSE_STATUS_CODE("http.response.status_code"),
 
   /** {@link HttpResponseStatusCodeCategory} ie. 1xx, 2xx, etc */

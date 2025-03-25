@@ -27,6 +27,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_DAVINCI_HEARTBEAT_REPORTED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_RT_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LATEST_SUPERSET_SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_COMPACTION_LAG_SECONDS;
@@ -1043,6 +1044,7 @@ public class VeniceParentHelixAdmin implements Admin {
       int repushSourceVersion) {
     // Parent controller will always pick the replicationMetadataVersionId from configs.
     final int replicationMetadataVersionId = getRmdVersionID(storeName, clusterName);
+    int largestUsedRTVersionNumber = getStore(clusterName, storeName).getLargestUsedRTVersionNumber();
     Version version = getVeniceHelixAdmin().addVersionOnly(
         clusterName,
         storeName,
@@ -1052,13 +1054,23 @@ public class VeniceParentHelixAdmin implements Admin {
         pushType,
         remoteKafkaBootstrapServers,
         rewindTimeInSecondsOverride,
-        replicationMetadataVersionId);
+        replicationMetadataVersionId,
+        largestUsedRTVersionNumber);
     if (version.isActiveActiveReplicationEnabled()) {
       updateReplicationMetadataSchemaForAllValueSchema(clusterName, storeName);
     }
     acquireAdminMessageLock(clusterName, storeName);
     try {
-      sendAddVersionAdminMessage(clusterName, storeName, pushJobId, version, numberOfPartitions, pushType, null, -1);
+      sendAddVersionAdminMessage(
+          clusterName,
+          storeName,
+          pushJobId,
+          version,
+          numberOfPartitions,
+          pushType,
+          null,
+          -1,
+          largestUsedRTVersionNumber);
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
     }
@@ -1482,6 +1494,7 @@ public class VeniceParentHelixAdmin implements Admin {
       boolean versionSwapDeferred,
       String targetedRegions,
       int repushSourceVersion) {
+    Store store = getStore(clusterName, storeName);
 
     // For target region pushes with deferred swap enabled, check if we should skip target region push for dvc clients
     // A store with dvc clients can be skipped if there is a dvc heartbeat reported for the current version and
@@ -1513,7 +1526,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
     if (currentPushTopic.isPresent()) {
       int currentPushVersion = Version.parseVersionFromKafkaTopicName(currentPushTopic.get());
-      Store store = getStore(clusterName, storeName);
       Version version = store.getVersion(currentPushVersion);
       if (version == null) {
         throw new VeniceException(
@@ -1606,7 +1618,8 @@ public class VeniceParentHelixAdmin implements Admin {
           emergencySourceRegion,
           versionSwapDeferred,
           targetedRegions,
-          repushSourceVersion);
+          repushSourceVersion,
+          store.getLargestUsedRTVersionNumber());
     }
     cleanupHistoricalVersions(clusterName, storeName);
     if (VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
@@ -1659,7 +1672,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
       String targetedRegions,
-      int repushSourceVersion) {
+      int repushSourceVersion,
+      int largestUsedRTVersionNumber) {
     final int replicationMetadataVersionId = getRmdVersionID(storeName, clusterName);
     Pair<Boolean, Version> result = getVeniceHelixAdmin().addVersionAndTopicOnly(
         clusterName,
@@ -1679,7 +1693,8 @@ public class VeniceParentHelixAdmin implements Admin {
         emergencySourceRegion,
         versionSwapDeferred,
         targetedRegions,
-        repushSourceVersion);
+        repushSourceVersion,
+        largestUsedRTVersionNumber);
     Version newVersion = result.getSecond();
     if (result.getFirst()) {
       if (newVersion.isActiveActiveReplicationEnabled()) {
@@ -1696,7 +1711,8 @@ public class VeniceParentHelixAdmin implements Admin {
             numberOfPartitions,
             pushType,
             targetedRegions,
-            repushSourceVersion);
+            repushSourceVersion,
+            largestUsedRTVersionNumber);
       } finally {
         releaseAdminMessageLock(clusterName, storeName);
       }
@@ -1713,7 +1729,8 @@ public class VeniceParentHelixAdmin implements Admin {
       int numberOfPartitions,
       Version.PushType pushType,
       String targetedRegions,
-      int repushSourceVersion) {
+      int repushSourceVersion,
+      int largestUsedRTVersion) {
     AdminOperation message = new AdminOperation();
     message.operationType = AdminMessageType.ADD_VERSION.getValue();
     message.payloadUnion = getAddVersionMessage(
@@ -1724,7 +1741,8 @@ public class VeniceParentHelixAdmin implements Admin {
         numberOfPartitions,
         pushType,
         targetedRegions,
-        repushSourceVersion);
+        repushSourceVersion,
+        largestUsedRTVersion);
     sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
   }
 
@@ -1736,7 +1754,8 @@ public class VeniceParentHelixAdmin implements Admin {
       int numberOfPartitions,
       Version.PushType pushType,
       String targetedRegions,
-      int repushSourceVersion) {
+      int repushSourceVersion,
+      int largestUsedRTVersion) {
     AddVersion addVersion = (AddVersion) AdminMessageType.ADD_VERSION.getNewInstance();
     addVersion.clusterName = clusterName;
     addVersion.storeName = storeName;
@@ -1760,6 +1779,7 @@ public class VeniceParentHelixAdmin implements Admin {
     addVersion.timestampMetadataVersionId = version.getRmdVersionId();
     addVersion.versionSwapDeferred = version.isVersionSwapDeferred();
     addVersion.repushSourceVersion = repushSourceVersion;
+    addVersion.currentRTVersionNumber = largestUsedRTVersion;
     return addVersion;
   }
 
@@ -2119,6 +2139,16 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
+   * Unsupported operation in the parent controller.
+   */
+  @Override
+  public void setStoreLargestUsedRTVersion(String clusterName, String storeName, int versionNumber) {
+    throw new VeniceUnsupportedOperationException(
+        "setStoreLargestUsedRTVersion",
+        "This is only supported in the Child Controller.");
+  }
+
+  /**
    * Update the owner of a specified store by sending {@link AdminMessageType#SET_STORE_OWNER SET_STORE_OWNER} admin message
    * to the admin topic.
    */
@@ -2272,6 +2302,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Long> readQuotaInCU = params.getReadQuotaInCU();
       Optional<Integer> currentVersion = params.getCurrentVersion();
       Optional<Integer> largestUsedVersionNumber = params.getLargestUsedVersionNumber();
+      Optional<Integer> largestUsedRTVersionNumber = params.getLargestUsedRTVersionNumber();
       Optional<Long> hybridRewindSeconds = params.getHybridRewindSeconds();
       Optional<Long> hybridOffsetLagThreshold = params.getHybridOffsetLagThreshold();
       Optional<Long> hybridTimeLagThreshold = params.getHybridTimeLagThreshold();
@@ -2637,6 +2668,10 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.largestUsedVersionNumber =
           largestUsedVersionNumber.map(addToUpdatedConfigList(updatedConfigsList, LARGEST_USED_VERSION_NUMBER))
               .orElseGet(currStore::getLargestUsedVersionNumber);
+
+      setStore.largestUsedRTVersionNumber =
+          largestUsedRTVersionNumber.map(addToUpdatedConfigList(updatedConfigsList, LARGEST_USED_RT_VERSION_NUMBER))
+              .orElse(null);
 
       setStore.backupVersionRetentionMs =
           backupVersionRetentionMs.map(addToUpdatedConfigList(updatedConfigsList, BACKUP_VERSION_RETENTION_MS))
@@ -4336,7 +4371,9 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public void updateAdminOperationProtocolVersion(String clusterName, Long adminOperationProtocolVersion) {
-    getVeniceHelixAdmin().updateAdminOperationProtocolVersion(clusterName, adminOperationProtocolVersion);
+    getVeniceHelixAdmin().checkControllerLeadershipFor(clusterName);
+    getVeniceHelixAdmin().getAdminConsumerService(clusterName)
+        .updateAdminOperationProtocolVersion(clusterName, adminOperationProtocolVersion);
   }
 
   /**

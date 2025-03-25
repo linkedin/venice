@@ -21,7 +21,6 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.DefaultFileRegion;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.DefaultHttpResponse;
@@ -33,8 +32,6 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
-import io.netty.handler.codec.http.LastHttpContent;
-import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.stream.ChunkedFile;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
@@ -55,7 +52,6 @@ import org.apache.logging.log4j.Logger;
 public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
   private static final Logger LOGGER = LogManager.getLogger(P2PFileTransferServerHandler.class);
   private static final String TRANSFER_TIMEOUT_ERROR_MSG_FORMAT = "Timeout for transferring blob %s file %s";
-  private boolean useZeroCopy = false;
   private final String baseDir;
   // Maximum timeout for blob transfer in minutes per partition
   private final int blobTransferMaxTimeoutInMin;
@@ -68,15 +64,6 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     this.baseDir = baseDir;
     this.blobTransferMaxTimeoutInMin = blobTransferMaxTimeoutInMin;
     this.blobSnapshotManager = blobSnapshotManager;
-  }
-
-  @Override
-  public void channelActive(ChannelHandlerContext ctx) {
-    LOGGER.trace("Channel {} active", ctx.channel());
-    if (ctx.pipeline().get(SslHandler.class) == null) {
-      useZeroCopy = true;
-      LOGGER.debug("SSL not enabled. Use Zero-Copy for file transfer");
-    }
   }
 
   /**
@@ -228,13 +215,8 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
 
     ctx.write(response);
 
-    if (useZeroCopy) {
-      sendFileFuture = ctx.writeAndFlush(new DefaultFileRegion(raf.getChannel(), 0, length));
-      lastContentFuture = ctx.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT);
-    } else {
-      sendFileFuture = ctx.writeAndFlush(new HttpChunkedInput(new ChunkedFile(raf)));
-      lastContentFuture = sendFileFuture;
-    }
+    sendFileFuture = ctx.writeAndFlush(new HttpChunkedInput(new ChunkedFile(raf)));
+    lastContentFuture = sendFileFuture;
 
     sendFileFuture.addListener(future -> {
       if (future.isSuccess()) {

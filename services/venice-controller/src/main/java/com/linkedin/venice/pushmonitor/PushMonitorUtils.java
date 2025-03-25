@@ -3,9 +3,12 @@ package com.linkedin.venice.pushmonitor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -20,6 +23,8 @@ import org.apache.logging.log4j.Logger;
  */
 public class PushMonitorUtils {
   private static long daVinciErrorInstanceWaitTime = 5;
+  protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
+      new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(10));
 
   private static final Map<String, Long> storeVersionToDVCDeadInstanceTimeMap = new ConcurrentHashMap<>();
   private static final Logger LOGGER = LogManager.getLogger(PushMonitorUtils.class);
@@ -94,10 +99,6 @@ public class PushMonitorUtils {
         PushStatusStoreReader.InstanceStatus instanceStatus =
             reader.getInstanceStatus(storeName, entry.getKey().toString());
         if (instanceStatus.equals(PushStatusStoreReader.InstanceStatus.BOOTSTRAPPING)) {
-          LOGGER.info(
-              "Skipping ingestion status report from bootstrapping instance: {} for topic: {}",
-              entry.getKey().toString(),
-              topicName);
           continue;
         }
         ExecutionStatus status = ExecutionStatus.valueOf(entry.getValue());
@@ -272,11 +273,11 @@ public class PushMonitorUtils {
         if (instancesToIgnore.contains(entry.getKey())) {
           totalReplicaCount--;
           // Log about this decision
-          LOGGER.debug(
-              "Skipping ingestion status report from instance: {} for topic: {}, partition: {}",
-              entry.getKey().toString(),
-              topicName,
-              partitionId);
+          String msg = "Skipping ingestion status report from instance: " + entry.getKey() + " for topic: " + topicName
+              + " partition: " + partitionId;
+          if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+            LOGGER.info(msg);
+          }
           continue;
         }
         String instanceName = entry.getKey().toString();
@@ -285,11 +286,11 @@ public class PushMonitorUtils {
         if (instanceStatus.equals(PushStatusStoreReader.InstanceStatus.BOOTSTRAPPING)) {
           // Don't count bootstrapping instance status report.
           totalReplicaCount--;
-          LOGGER.info(
-              "Skipping ingestion status report from bootstrapping node: {} for topic: {}, partition: {}",
-              entry.getKey().toString(),
-              topicName,
-              partitionId);
+          String msg = "Skipping ingestion status report from bootstrapping instance: " + entry.getKey()
+              + " for topic: " + topicName + " partition: " + partitionId;
+          if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+            LOGGER.info(msg);
+          }
           continue;
         }
 
@@ -378,9 +379,10 @@ public class PushMonitorUtils {
           .append(totalReplicaCount);
     }
     int incompleteSize = incompletePartition.size();
-    if (incompleteSize > 0 && incompleteSize <= 5) {
-      statusDetailStringBuilder.append(". Following partitions still not complete ")
-          .append(incompletePartition)
+    if (incompleteSize > 0) {
+      List<Integer> list = new ArrayList<>(incompletePartition);
+      statusDetailStringBuilder.append(". Following partitions still not complete (capped at 10) ")
+          .append(list.subList(0, Math.min(10, list.size())))
           .append(". Live replica count: ")
           .append(liveReplicaCount)
           .append(", completed replica count: ")

@@ -856,10 +856,9 @@ public class VeniceControllerClusterConfig {
 
     this.fatalDataValidationFailureRetentionMs =
         props.getLong(FATAL_DATA_VALIDATION_FAILURE_TOPIC_RETENTION_MS, TimeUnit.DAYS.toMillis(2));
-
+    // 30 seconds
     this.topicCleanupSleepIntervalBetweenTopicListFetchMs =
-        props.getLong(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, TimeUnit.SECONDS.toMillis(30)); // 30
-                                                                                                                // seconds
+        props.getLong(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, TimeUnit.SECONDS.toMillis(30));
     this.topicCleanupDelayFactor = props.getInt(TOPIC_CLEANUP_DELAY_FACTOR, 20); // thisFactor *
                                                                                  // topicCleanupSleepIntervalBetweenTopicListFetchMs
                                                                                  // = delayBeforeTopicDeletion
