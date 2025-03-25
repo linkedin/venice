@@ -4688,6 +4688,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (store.isHybrid()
           && multiClusterConfigs.getControllerConfig(clusterName).isHybridStorePartitionCountUpdateEnabled()) {
         generateAndUpdateRealTimeTopicName(store);
+        LOGGER.info(
+            "Updated largestUsedRTVersionNumber to {} for store {} in cluster {}",
+            store.getLargestUsedRTVersionNumber(),
+            storeName,
+            clusterName);
       }
       if (partitionCount != 0) {
         store.setPartitionCount(partitionCount);
@@ -4749,15 +4754,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private void generateAndUpdateRealTimeTopicName(Store store) {
     String newRealTimeTopicName = Utils.isRTVersioningApplicable(store.getName())
-        ? store.getName() + "_v" + (store.getLargestUsedRTVersionNumber() + 1) + Version.REAL_TIME_TOPIC_SUFFIX
+        ? Utils.composeRealTimeTopic(store.getName(), store.getLargestUsedRTVersionNumber() + 1)
         : DEFAULT_REAL_TIME_TOPIC_NAME;
 
     store.getHybridStoreConfig().setRealTimeTopicName(newRealTimeTopicName);
-    // after partition count update, new VT, if is hybrid, has to use a new RT with the same partition count, so we
-    // increase
-    // `largestUsedRTVersionNumber`; this will ensure that a new RT is created when/if needed
+    /*
+       After partition count update, new VT, if is hybrid, has to use a new RT with the same partition count, so we
+       increase `largestUsedRTVersionNumber`; this will ensure that a new RT is created when/if needed
+     */
     store.setLargestUsedRTVersionNumber(store.getLargestUsedRTVersionNumber() + 1);
-    LOGGER.info("updated largestUsedRTVersionNumber to " + store.getLargestUsedRTVersionNumber());
   }
 
   void setStorePartitionerConfig(String clusterName, String storeName, PartitionerConfig partitionerConfig) {
@@ -5746,7 +5751,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       String newRealTimeTopicName = oldStore.getLargestUsedRTVersionNumber() > DEFAULT_RT_VERSION_NUMBER
           && Utils.isRTVersioningApplicable(oldStore.getName())
-              ? oldStore.getName() + "_v" + oldStore.getLargestUsedRTVersionNumber() + Version.REAL_TIME_TOPIC_SUFFIX
+              ? Utils.composeRealTimeTopic(oldStore.getName(), oldStore.getLargestUsedRTVersionNumber())
               : DEFAULT_REAL_TIME_TOPIC_NAME;
 
       mergedHybridStoreConfig = new HybridStoreConfigImpl(

@@ -174,13 +174,14 @@ public abstract class AbstractStore implements Store {
 
       HybridStoreConfig hybridStoreConfig = getHybridStoreConfig();
       if (hybridStoreConfig != null) {
-        version.setHybridStoreConfig(hybridStoreConfig.clone());
+        HybridStoreConfig clonedHybridStoreConfig = hybridStoreConfig.clone();
         if (currentRTVersionNumber > DEFAULT_RT_VERSION_NUMBER) {
           String newRealTimeTopicName = Utils.isRTVersioningApplicable(getName())
-              ? getName() + "_v" + currentRTVersionNumber + Version.REAL_TIME_TOPIC_SUFFIX
+              ? Utils.composeRealTimeTopic(getName(), currentRTVersionNumber)
               : DEFAULT_REAL_TIME_TOPIC_NAME;
-          version.getHybridStoreConfig().setRealTimeTopicName(newRealTimeTopicName);
+          clonedHybridStoreConfig.setRealTimeTopicName(newRealTimeTopicName);
         }
+        version.setHybridStoreConfig(clonedHybridStoreConfig);
       }
 
       version.setUseVersionLevelHybridConfig(true);

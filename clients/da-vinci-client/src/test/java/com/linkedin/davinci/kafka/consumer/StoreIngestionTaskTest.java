@@ -222,6 +222,7 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
+import java.lang.reflect.Field;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.ByteBuffer;
@@ -5623,7 +5624,7 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test
-  public void testResolveTopicPartitionWithKafkaURL() {
+  public void testResolveTopicPartitionWithKafkaURL() throws NoSuchFieldException, IllegalAccessException {
     StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
     Function<String, String> resolver = Utils::resolveKafkaUrlForSepTopic;
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
@@ -5640,6 +5641,10 @@ public abstract class StoreIngestionTaskTest {
     PubSubTopic separateRealTimeTopic =
         pubSubTopicRepository.getTopic(Utils.getSeparateRealTimeTopicName(realTimeTopic.getName()));
     PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(store, 1));
+    Field field = storeIngestionTask.getClass().getSuperclass().getDeclaredField("separateRealTimeTopic");
+    field.setAccessible(true);
+    field.set(storeIngestionTask, separateRealTimeTopic);
+
     Assert.assertEquals(
         storeIngestionTask.resolveTopicPartitionWithKafkaURL(realTimeTopic, pcs, kafkaUrl).getPubSubTopic(),
         realTimeTopic);
@@ -5653,7 +5658,7 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test
-  public void testUnsubscribeFromTopic() {
+  public void testUnsubscribeFromTopic() throws IllegalAccessException, NoSuchFieldException {
     StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     doCallRealMethod().when(storeIngestionTask).unsubscribeFromTopic(any(), any());
@@ -5665,6 +5670,9 @@ public abstract class StoreIngestionTaskTest {
     PubSubTopic separateRealTimeTopic =
         pubSubTopicRepository.getTopic(Utils.getSeparateRealTimeTopicName(realTimeTopic.getName()));
     PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(store, 1));
+    Field field = storeIngestionTask.getClass().getSuperclass().getDeclaredField("separateRealTimeTopic");
+    field.setAccessible(true);
+    field.set(storeIngestionTask, separateRealTimeTopic);
 
     doReturn(true).when(storeIngestionTask).isSeparatedRealtimeTopicEnabled();
     storeIngestionTask.unsubscribeFromTopic(realTimeTopic, pcs);

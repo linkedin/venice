@@ -3720,8 +3720,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected void unsubscribeFromTopic(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
     consumerUnSubscribeForStateTransition(topic, partitionConsumptionState);
     if (isSeparatedRealtimeTopicEnabled() && topic.isRealTime()) {
-      PubSubTopic separateRealTimeTopic =
-          getPubSubTopicRepository().getTopic(Utils.getSeparateRealTimeTopicName(topic.getName()));
       consumerUnSubscribeForStateTransition(separateRealTimeTopic, partitionConsumptionState);
     }
   }
@@ -4779,7 +4777,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   PubSubTopic resolveTopicWithKafkaURL(PubSubTopic topic, String kafkaURL) {
     if (topic.isRealTime() && getKafkaClusterUrlResolver() != null
         && !kafkaURL.equals(getKafkaClusterUrlResolver().apply(kafkaURL))) {
-      return getPubSubTopicRepository().getTopic(Utils.getSeparateRealTimeTopicName(topic.getName()));
+      return separateRealTimeTopic;
     }
     return topic;
   }
