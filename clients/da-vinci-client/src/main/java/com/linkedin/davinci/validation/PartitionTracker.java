@@ -193,7 +193,7 @@ public class PartitionTracker {
     }
 
     for (Map.Entry<String, VeniceConcurrentHashMap<GUID, Segment>> entry: rtSegments.entrySet()) {
-      if (brokerUrl != null && !brokerUrl.equals(entry.getKey())) {
+      if (!brokerUrl.isEmpty() && !brokerUrl.equals(entry.getKey())) {
         continue; // filter by brokerUrl if specified
       }
       for (Map.Entry<GUID, Segment> rtEntry: entry.getValue().entrySet()) {

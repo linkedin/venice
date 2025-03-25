@@ -2687,7 +2687,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             // do nothing
             break;
         }
-        if (!isSegmentControlMsg(controlMessageType)) {
+        if (!controlMessageType.isSegmentControlMessage()) {
           LOGGER.info(
               "Replica: {} hasProducedToKafka: {}; ControlMessage: {}; Incoming record topic-partition: {}; offset: {}",
               partitionConsumptionState.getReplicaId(),
@@ -3632,7 +3632,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     try {
       valueBytes = compressor.get().compress(valueBytes);
     } catch (IOException e) {
-      LOGGER.error("Failed to compress GlobalRtDivState. Will proceed without {} compression", compressionStrategy, e);
+      LOGGER.error(
+          "Failed to compress GlobalRtDivState for topic: {}. Will proceed without {} compression.",
+          topicPartition.getTopicName(),
+          compressionStrategy,
+          e);
     }
 
     // Create PubSubMessage for the LeaderProducerCallback

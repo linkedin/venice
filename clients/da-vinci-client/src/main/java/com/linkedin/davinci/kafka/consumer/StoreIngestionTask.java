@@ -2793,7 +2793,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState pcs,
       DefaultPubSubMessage record,
       LeaderProducedRecordContext leaderProducedRecordContext) {
-    final long syncBytesInterval = getSyncBytesInterval(pcs);
     boolean syncOffset = false;
     if (record.getKey().isControlMessage()) {
       ControlMessage controlMessage = (leaderProducedRecordContext == null
@@ -2813,7 +2812,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * TODO: if we know some other types of Control Messages are frequent as START_OF_SEGMENT and END_OF_SEGMENT in the future,
        * we need to consider to exclude them to avoid the issue described above.
        */
-      if (controlMessageType != START_OF_SEGMENT && controlMessageType != ControlMessageType.END_OF_SEGMENT) {
+      if (!controlMessageType.isSegmentControlMessage()) {
         syncOffset = true;
       }
     } else {
@@ -2821,6 +2820,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         return false; // for the Global RT DIV feature, size-based sync is by ConsumptionTask rather than Drainer
       }
 
+      final long syncBytesInterval = getSyncBytesInterval(pcs);
       syncOffset = (syncBytesInterval > 0 && (pcs.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval));
     }
     return syncOffset;
@@ -3285,7 +3285,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * model; incremental push is also a mutually exclusive feature with hybrid stores.
      */
     final ControlMessageType type = ControlMessageType.valueOf(controlMessage);
-    if (!isSegmentControlMsg(type)) {
+    if (!type.isSegmentControlMessage()) {
       LOGGER.info(
           "Received {} control message. Replica: {}, Offset: {}",
           type.name(),
@@ -4681,10 +4681,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected void recordProcessedRecordStats(
       PartitionConsumptionState partitionConsumptionState,
       int processedRecordSize) {
-  }
-
-  protected boolean isSegmentControlMsg(ControlMessageType msgType) {
-    return START_OF_SEGMENT.equals(msgType) || ControlMessageType.END_OF_SEGMENT.equals(msgType);
   }
 
   /**
