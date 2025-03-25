@@ -597,7 +597,8 @@ public abstract class TestRead {
 
       getAggregateRouterMetricValue(".total--multiget_throttled_request_latency.Max");
       for (VeniceRouterWrapper routerWrapper: veniceCluster.getVeniceRouters()) {
-        routerWrapper.getRouter().stop();
+        veniceCluster.stopVeniceRouter(routerWrapper.getPort());
+        veniceCluster.restartVeniceRouter(routerWrapper.getPort());
       }
       for (VeniceRouterWrapper routerWrapper: veniceCluster.getVeniceRouters()) {
         Assert.assertEquals(routerWrapper.getRouter().getInFlightRequestRate(), 0.0);
