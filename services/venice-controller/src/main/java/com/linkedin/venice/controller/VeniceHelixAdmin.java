@@ -7661,6 +7661,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
+   * @see Admin#discoverActiveParentControllerRegion()
+   */
+  @Override
+  public String discoverActiveParentControllerRegion() {
+    if (multiClusterConfigs.isParent()
+        && multiClusterConfigs.getParentControllerRegionState() == ParentControllerRegionState.ACTIVE) {
+      return multiClusterConfigs.getRegionName();
+    }
+    throw new VeniceException("The controller is not an active parent controller");
+  }
+
+  /**
    * @see Admin#discoverCluster(String)
    */
   @Override
