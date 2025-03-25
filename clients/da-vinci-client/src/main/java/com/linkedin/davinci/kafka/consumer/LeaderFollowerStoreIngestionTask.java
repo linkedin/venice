@@ -2419,10 +2419,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           partitionConsumptionState.setVeniceWriterLazyRef(veniceWriterForRealTime);
         }
 
-        if (isGlobalRtDivEnabled() && !consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()
-            && msgType != MessageType.GLOBAL_RT_DIV) {
-          final long offset = consumerRecord.getPosition().getNumericOffset();
-          getConsumerDiv().updateLatestConsumedVtOffset(partition, offset);
+        // Update the latest consumed VT offset since we're consuming from the version topic
+        if (isGlobalRtDivEnabled()) {
+          getConsumerDiv().updateLatestConsumedVtOffset(partition, consumerRecord.getPosition().getNumericOffset());
         }
 
         /**

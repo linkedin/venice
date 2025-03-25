@@ -194,10 +194,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private static final int CONSUMER_ACTION_QUEUE_INIT_CAPACITY = 11;
   protected static final long KILL_WAIT_TIME_MS = 5000L;
   private static final int MAX_KILL_CHECKING_ATTEMPTS = 10;
+  private static final int CHUNK_SCHEMA_ID = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
   private static final int CHUNK_MANIFEST_SCHEMA_ID =
       AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
-  private static final int GLOBAL_RT_DIV_STATE_SCHEMA_ID =
-      AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
 
   protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
@@ -1863,7 +1862,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void updateOffsetMetadataAndSyncOffset(PartitionConsumptionState pcs) {
-    updateOffsetMetadataAndSyncOffset(this.drainerDiv, pcs);
+    updateOffsetMetadataAndSyncOffset(isGlobalRtDivEnabled() ? this.consumerDiv : this.drainerDiv, pcs);
   }
 
   protected void updateOffsetMetadataAndSyncOffset(KafkaDataIntegrityValidator div, PartitionConsumptionState pcs) {
@@ -3390,7 +3389,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         recordWriterStats(currentTimeMs, producerBrokerLatencyMs, brokerConsumerLatencyMs, partitionConsumptionState);
       }
 
-      // Validation is only on the ConsumptionTask side if Global RT DIV is enabled, so we don't need to validate here
+      // Only the ConsumptionTask validates messages if Global RT DIV is enabled, so we don't need to validate here
       if (!isGlobalRtDivEnabled()) {
         drainerValidateMessage(consumerRecord, partitionConsumptionState, leaderProducedRecordContext);
       }
@@ -3429,6 +3428,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         } catch (Exception e) {
           LOGGER.error("Failed to record Record heartbeat with message: ", e);
         }
+
+        // When Global RT DIV is enabled, VT DIV should be synced to OffsetRecord for non-segment control messages
+        if (isGlobalRtDivEnabled()
+            && shouldSyncOffset(partitionConsumptionState, consumerRecord, leaderProducedRecordContext)) {
+          updateOffsetMetadataAndSyncOffset(partitionConsumptionState);
+        }
       } else {
         updateLatestInMemoryProcessedOffset(
             partitionConsumptionState,
@@ -3448,6 +3453,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               partitionConsumptionState,
               kafkaValue,
               leaderProducedRecordContext);
+        }
+
+        // The signal to sync the VT DIV to the OffsetRecord is the presence of a Global RT DIV in the drainer
+        if (isGlobalRtDivEnabled() && kafkaKey.isGlobalRtDiv()) {
+          Put put = (Put) kafkaValue.getPayloadUnion();
+          if (put.schemaId != CHUNK_SCHEMA_ID) {
+            updateOffsetMetadataAndSyncOffset(partitionConsumptionState);
+          }
         }
       }
       if (recordLevelMetricEnabled.get()) {
@@ -4155,8 +4168,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
 
-    if (schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()
-        || schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
+    if (schemaId == CHUNK_SCHEMA_ID || schemaId == CHUNK_MANIFEST_SCHEMA_ID) {
       StoreVersionState storeVersionState = waitVersionStateAvailable(kafkaVersionTopic);
       if (!storeVersionState.chunked) {
         throw new VeniceException(
