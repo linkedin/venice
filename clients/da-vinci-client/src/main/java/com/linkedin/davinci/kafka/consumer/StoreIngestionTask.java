@@ -2751,6 +2751,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // No Op
   }
 
+  protected void updateAndSyncOffsetFromSnapshot(PartitionTracker vtDivSnapshot, PubSubTopicPartition topicPartition) {
+    PartitionConsumptionState pcs = getPartitionConsumptionState(topicPartition.getPartitionNumber());
+    vtDivSnapshot.updateOffsetRecord(PartitionTracker.VERSION_TOPIC, pcs.getOffsetRecord());
+    updateOffsetMetadataInOffsetRecord(pcs);
+    syncOffset(kafkaVersionTopic, pcs);
+  }
+
   protected boolean shouldSendGlobalRtDiv(DefaultPubSubMessage record, PartitionConsumptionState pcs, String kafkaUrl) {
     if (!isGlobalRtDivEnabled()) {
       return false;
