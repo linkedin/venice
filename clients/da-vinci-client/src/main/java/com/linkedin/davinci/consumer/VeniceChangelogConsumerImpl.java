@@ -692,8 +692,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     boolean lockAcquired = false;
     try {
       // the pubsubconsumer internally is completely unthreadsafe, so we need an exclusive lock to poll (ugh)
-      subscriptionLock.writeLock().tryLock(timeoutInMs, TimeUnit.MILLISECONDS);
-      lockAcquired = true;
+      lockAcquired = subscriptionLock.writeLock().tryLock(timeoutInMs, TimeUnit.MILLISECONDS);
       messagesMap = pubSubConsumer.poll(timeoutInMs);
     } catch (Exception e) {
       LOGGER.error("Error polling records with exception:", e);
