@@ -2,6 +2,7 @@ package com.linkedin.davinci.repository;
 
 import static com.linkedin.venice.client.store.ClientConfig.defaultGenericClientConfig;
 
+import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
 import com.linkedin.venice.client.store.AvroGenericStoreClientImpl;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -9,6 +10,7 @@ import com.linkedin.venice.client.store.D2ServiceDiscovery;
 import com.linkedin.venice.client.store.InternalAvroStoreClient;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
+import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
@@ -19,13 +21,18 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.systemstore.schemas.StoreClusterConfig;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.time.Duration;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.Callable;
 import org.apache.avro.Schema;
 
 
@@ -38,6 +45,7 @@ public class RequestBasedMetaRepository extends NativeMetadataRepository {
   // storeName -> T
   VeniceConcurrentHashMap<String, SchemaData> storeSchemaMap = new VeniceConcurrentHashMap<>();
 
+  private final ICProvider icProvider;
   private final D2TransportClient d2DiscoveryTransportClient;
   private D2ServiceDiscovery d2ServiceDiscovery;
 
@@ -51,8 +59,11 @@ public class RequestBasedMetaRepository extends NativeMetadataRepository {
   VeniceConcurrentHashMap<Integer, RecordDeserializer<StoreMetaValue>> storeMetaValueDeserializers =
       new VeniceConcurrentHashMap<>();
 
-  public RequestBasedMetaRepository(ClientConfig clientConfig, VeniceProperties backendConfig) {
+  public RequestBasedMetaRepository(ClientConfig clientConfig, VeniceProperties backendConfig, ICProvider icProvider) {
     super(clientConfig, backendConfig);
+
+    // Invocation Context
+    this.icProvider = icProvider;
 
     // D2 Transport Client
     this.d2ServiceDiscovery = new D2ServiceDiscovery();
@@ -90,7 +101,7 @@ public class RequestBasedMetaRepository extends NativeMetadataRepository {
   @Override
   protected Store fetchStoreFromRemote(String storeName, String clusterName) {
     // Fetch store, bypass cache
-    StoreMetaValue storeMetaValue = fetchAndCacheStoreMetaValue(storeName);
+    StoreMetaValue storeMetaValue = fetchAndCacheStoreMetaValueWithICProvider(storeName);
     StoreProperties storeProperties = storeMetaValue.storeProperties;
     return new ZKStore(storeProperties);
   }
@@ -99,9 +110,33 @@ public class RequestBasedMetaRepository extends NativeMetadataRepository {
   protected SchemaData getSchemaData(String storeName) {
     if (!storeSchemaMap.containsKey(storeName)) {
       // Cache miss
-      fetchAndCacheStoreMetaValue(storeName);
+      fetchAndCacheStoreMetaValueWithICProvider(storeName);
     }
     return storeSchemaMap.get(storeName);
+  }
+
+  protected StoreMetaValue fetchAndCacheStoreMetaValueWithICProvider(String storeName) {
+    final Callable<StoreMetaValue> fetchAndCache = () -> fetchAndCacheStoreMetaValue(storeName);
+    final Callable<StoreMetaValue> icWrappedFetchAndCache =
+        icProvider == null ? fetchAndCache : () -> icProvider.call(getClass().getCanonicalName(), fetchAndCache);
+
+    StoreMetaValue storeMetaValue = RetryUtils.executeWithMaxAttempt(() -> {
+      try {
+        return icWrappedFetchAndCache.call();
+      } catch (ServiceDiscoveryException e) {
+        throw e;
+      } catch (Exception e) {
+        throw new VeniceRetriableException(
+            "Failed to get data from meta store using request based for store: " + storeName,
+            e);
+      }
+    }, 10, Duration.ofSeconds(1), Collections.singletonList(VeniceRetriableException.class));
+
+    if (storeMetaValue == null) {
+      throw new RuntimeException("Encountered an error while fetching meta value: " + storeName);
+    }
+
+    return storeMetaValue;
   }
 
   protected StoreMetaValue fetchAndCacheStoreMetaValue(String storeName) {
