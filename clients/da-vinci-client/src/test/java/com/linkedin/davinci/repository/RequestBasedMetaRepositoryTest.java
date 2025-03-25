@@ -118,6 +118,19 @@ public class RequestBasedMetaRepositoryTest {
     Assert.assertEquals(storeMetaValue.getStoreProperties().getVersions().size(), store.getVersions().size());
     Assert.assertEquals(storeMetaValue.getStoreKeySchemas().getKeySchemaMap().size(), 1);
     Assert.assertEquals(storeMetaValue.getStoreValueSchemas().getValueSchemaMap().size(), 2);
+
+    // Test icProvicer
+    when(requestBasedMetaRepository.fetchAndCacheStoreMetaValueWithICProvider(store.getName())).thenCallRealMethod();
+
+    // Test FetchAndCacheStoreMetaValue
+    storeMetaValue = requestBasedMetaRepository.fetchAndCacheStoreMetaValueWithICProvider(store.getName());
+    Assert.assertNotNull(storeMetaValue);
+    Assert.assertNotNull(storeMetaValue.getStoreProperties());
+    Assert.assertEquals(storeMetaValue.getStoreProperties().getName().toString(), store.getName());
+    Assert.assertEquals(storeMetaValue.getStoreProperties().getOwner().toString(), store.getOwner());
+    Assert.assertEquals(storeMetaValue.getStoreProperties().getVersions().size(), store.getVersions().size());
+    Assert.assertEquals(storeMetaValue.getStoreKeySchemas().getKeySchemaMap().size(), 1);
+    Assert.assertEquals(storeMetaValue.getStoreValueSchemas().getValueSchemaMap().size(), 2);
   }
 
   @Test
