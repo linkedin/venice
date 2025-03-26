@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
@@ -56,6 +57,7 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
     controllerProps.put(DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID, 2);
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 3);
     controllerProps.put(DEFAULT_PARTITION_SIZE, 1024);
+    controllerProps.put(CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING, true);
     controllerProps.put(CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE, true);
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
@@ -235,7 +237,7 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
 
     for (ControllerClient childControllerClient: childControllerClients) {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        String expectedRealTimeTopicName = storeName + "_v1" + Version.REAL_TIME_TOPIC_SUFFIX;
+        String expectedRealTimeTopicName = Utils.composeRealTimeTopic(storeName, 1);
         verifyStoreState(childControllerClient, storeName, 1, expectedRealTimeTopicName, null, null);
       });
     }
@@ -245,7 +247,7 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
         .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
 
     for (ControllerClient childControllerClient: childControllerClients) {
-      String expectedRealTimeTopicName = storeName + "_v1" + Version.REAL_TIME_TOPIC_SUFFIX;
+      String expectedRealTimeTopicName = Utils.composeRealTimeTopic(storeName, 1);
       StoreInfo storeInfo = childControllerClient.getStore(storeName).getStore();
       Assert.assertEquals(storeInfo.getCurrentVersion(), 1);
       verifyStoreState(
@@ -262,8 +264,8 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
     for (int i = 0; i < childControllerClients.length; i++) {
       final int index = i;
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        String expectedRealTimeTopicNameInVersion = storeName + "_v1" + Version.REAL_TIME_TOPIC_SUFFIX;
-        String expectedRealTimeTopicNameInStore = storeName + "_v2" + Version.REAL_TIME_TOPIC_SUFFIX;
+        String expectedRealTimeTopicNameInVersion = Utils.composeRealTimeTopic(storeName, 1);
+        String expectedRealTimeTopicNameInStore = Utils.composeRealTimeTopic(storeName, 2);
         verifyStoreState(
             childControllerClients[0],
             storeName,
@@ -286,10 +288,10 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
       final int idx = i;
       Assert.assertEquals(childControllerClients[idx].getStore(storeName).getStore().getCurrentVersion(), 2);
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        String expectedRealTimeTopicNameInBackupVersion = storeName + "_v1" + Version.REAL_TIME_TOPIC_SUFFIX;
+        String expectedRealTimeTopicNameInBackupVersion = Utils.composeRealTimeTopic(storeName, 1);
         // because we updated partition count, rt version should increase to v2
-        String expectedRealTimeTopicNameInStore = storeName + "_v2" + Version.REAL_TIME_TOPIC_SUFFIX;
-        String expectedRealTimeTopicNameInVersion = storeName + "_v2" + Version.REAL_TIME_TOPIC_SUFFIX;
+        String expectedRealTimeTopicNameInStore = Utils.composeRealTimeTopic(storeName, 2);
+        String expectedRealTimeTopicNameInVersion = Utils.composeRealTimeTopic(storeName, 2);
 
         // verify rt topic name
         verifyStoreState(
@@ -370,7 +372,7 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       for (ControllerClient controllerClient: childControllerClients) {
-        String expectedRealTimeTopicName = storeName + "_v3" + Version.REAL_TIME_TOPIC_SUFFIX;
+        String expectedRealTimeTopicName = Utils.composeRealTimeTopic(storeName, 3);
         verifyStoreState(controllerClient, storeName, 3, expectedRealTimeTopicName, null, null);
       }
     });
@@ -382,7 +384,7 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
     for (ControllerClient controllerClient: childControllerClients) {
       Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 4);
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        String expectedRealTimeTopicName = storeName + "_v3" + Version.REAL_TIME_TOPIC_SUFFIX;
+        String expectedRealTimeTopicName = Utils.composeRealTimeTopic(storeName, 3);
         verifyStoreState(
             controllerClient,
             storeName,
@@ -412,7 +414,7 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
 
         String expectedRealTimeTopicNameInBackupVersion = storeName + "_v3" + Version.REAL_TIME_TOPIC_SUFFIX;
         // because we updated partition count, rt version should increase to v2
-        String expectedRealTimeTopicName = storeName + "_v4" + Version.REAL_TIME_TOPIC_SUFFIX;
+        String expectedRealTimeTopicName = Utils.composeRealTimeTopic(storeName, 4);
 
         PubSubTopic newRtPubSubTopic = pubSubTopicRepository.getTopic(expectedRealTimeTopicName);
         // verify rt topic is created with the updated partition count = 2
@@ -439,7 +441,7 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
         Assert.assertEquals(childControllerClient.getStore(storeName).getStore().getVersions().size(), 2);
 
         // rt version should not change because there is no more partition count update
-        String expectedRealTimeTopicName = storeName + "_v4" + Version.REAL_TIME_TOPIC_SUFFIX;
+        String expectedRealTimeTopicName = Utils.composeRealTimeTopic(storeName, 4);
         verifyStoreState(
             childControllerClient,
             storeName,

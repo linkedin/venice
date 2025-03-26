@@ -145,6 +145,7 @@ public class TestAdminOperationWithPreviousVersion {
         ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS,
         String.valueOf(Long.MAX_VALUE));
     parentControllerProperties.setProperty(ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS, "180000");
+    parentControllerProperties.setProperty(ConfigKeys.CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING, "false");
 
     Properties serverProperties = new Properties();
     serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));

@@ -356,7 +356,7 @@ public class UtilsTest {
   void testGetRealTimeTopicNameWithHybridVersion() {
     Version mockVersion = mock(Version.class);
     HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
-    String expectedRealTimeTopicName = STORE_NAME + "_v1" + Version.REAL_TIME_TOPIC_SUFFIX;
+    String expectedRealTimeTopicName = Utils.composeRealTimeTopic(STORE_NAME, 1);
 
     when(mockVersion.isHybrid()).thenReturn(true);
     when(mockVersion.getHybridStoreConfig()).thenReturn(mockHybridConfig);
