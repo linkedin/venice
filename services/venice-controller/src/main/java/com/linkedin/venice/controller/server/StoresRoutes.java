@@ -991,6 +991,9 @@ public class StoresRoutes extends AbstractRoute {
         try {
           veniceResponse =
               admin.repushStore(new RepushJobRequest(storeName, sourceRegion, RepushJobRequest.MANUAL_TRIGGER));
+          if (veniceResponse.isError()) {
+            throw new VeniceException("Got error!!!!!", veniceResponse.getErrorType());
+          }
         } catch (Exception e) {
           veniceResponse.setError("Failed to compact store: " + storeName, e);
         }
