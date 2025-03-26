@@ -260,7 +260,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
           clusterName,
           newStoreName,
           new UpdateStoreQueryParams().setStoreMigration(false).setEnableReads(false).setEnableWrites(false));
-      PubSubTopic newRtTopic = pubSubTopicRepository.getTopic(newStoreName + "_v1" + Version.REAL_TIME_TOPIC_SUFFIX);
+      PubSubTopic newRtTopic = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(newStoreName, 1));
       veniceAdmin.getTopicManager().createTopic(newRtTopic, 1, 1, true);
       abort = false;
       Assert.assertTrue(veniceAdmin.getTopicManager().containsTopic(newRtTopic));

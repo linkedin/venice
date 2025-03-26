@@ -211,7 +211,7 @@ public class TestStoreMigration {
     Assert.assertEquals(storeInfo.getLargestUsedRTVersionNumber(), 2);
     Assert.assertEquals(
         storeInfo.getHybridStoreConfig().getRealTimeTopicName(),
-        storeName + "_v1" + Version.REAL_TIME_TOPIC_SUFFIX);
+        Utils.composeRealTimeTopic(storeName, 1));
     // we set largestUsedRTVersionNumber=2 before VPJ, so the version would have rt=<store_name>_v2_rt
     Assert.assertEquals(
         storeInfo.getVersions().get(0).getHybridStoreConfig().getRealTimeTopicName(),
@@ -543,7 +543,7 @@ public class TestStoreMigration {
             .setHybridOffsetLagThreshold(2L)
             .setHybridStoreDiskQuotaEnabled(true)
             .setLargestUsedRTVersionNumber(2)
-            .setRealTimeTopicName(props.getProperty(VENICE_STORE_NAME_PROP) + "_v1" + Version.REAL_TIME_TOPIC_SUFFIX)
+            .setRealTimeTopicName(Utils.composeRealTimeTopic(props.getProperty(VENICE_STORE_NAME_PROP), 1))
             .setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT)
             .setStorageNodeReadQuotaEnabled(true); // enable this for using fast client
     IntegrationTestPushUtils.createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreQueryParams)

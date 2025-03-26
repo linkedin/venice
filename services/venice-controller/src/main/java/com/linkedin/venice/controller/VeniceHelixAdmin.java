@@ -1092,7 +1092,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     newStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
     /* If this store existed previously, we do not want to use the same RT topic name that was used by the previous
     store. To ensure this, increase largestUsedRTVersionNumber and new RT name will be different */
-    newStore.setLargestUsedRTVersionNumber(largestUsedRTVersionNumber + 1);
+    if (getMultiClusterConfigs().isRealTimeTopicVersioningEnabled()) {
+      newStore.setLargestUsedRTVersionNumber(largestUsedRTVersionNumber + 1);
+    }
   }
 
   /**
