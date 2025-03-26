@@ -37,6 +37,11 @@ import org.apache.logging.log4j.Logger;
 /**
  * This service is in charge of swapping to a new version after a specified wait time in the remaining regions of a target region push if enabled.
  * The wait time is specified through a store/version level config (target_swap_region_wait_time) and the default wait time is 60m.
+ * This service also updates the parent version status of a store w/ a terminal push status after performing the swap
+ * or deeming it ineligible for a version swap and the statuses mean:
+ * 1. ONLINE - all regions are serving the target version
+ * 2. PARTIALLY_ONLINE - 1+ regions are serving the target version, but 1+ regions' pushes failed & are serving the old version
+ * 3. ERROR - all regions are serving the old version. the push failed in target regions
  */
 public class DeferredVersionSwapService extends AbstractVeniceService {
   private final AtomicBoolean stop = new AtomicBoolean(false);
@@ -48,8 +53,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER =
       new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(10));
   private static final Logger LOGGER = LogManager.getLogger(DeferredVersionSwapService.class);
-  private static final String COMPLETED_REGIONS = "completed_regions";
-  private static final String FAILED_REGIONS = "failed_regions";
   private Cache<String, Map<String, Long>> storePushCompletionTimeCache =
       Caffeine.newBuilder().expireAfterWrite(2, TimeUnit.HOURS).build();
 
@@ -202,7 +205,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
     // Update parent version status after roll forward, so we don't check this store version again
     // If push was successful (version status is PUSHED), the parent version is marked as ONLINE
-    // if push was successful in some regions (version status is KILLED), the parent version is marked ERROR
+    // if push was successful in some regions (version status is KILLED), the parent version is marked PARTIALLY_ONLINE
     if (targetVersion.getStatus() == VersionStatus.PUSHED) {
       store.updateVersionStatus(targetVersionNum, ONLINE);
       repository.updateStore(store);
@@ -236,7 +239,10 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
     // The store is eligible for a version swap if its push job is in terminal status. For a target region
     // push, the parent version status is set to PUSHED in getOfflinePushStatus when this happens or KILLED if the push
-    // failed
+    // failed. PUSHED represents when a push successfully completes in all regions and KILLED represents when a push
+    // fails in
+    // 1+ regions. KILLED is still eligible for a version swap because some non target regions may have succeeded and we
+    // need to perform a version swap for those regions
     if (targetVersion.getStatus() != VersionStatus.PUSHED && targetVersion.getStatus() != VersionStatus.KILLED) {
       return false;
     }
@@ -356,10 +362,10 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               continue;
             }
 
-            List<Store> stores = veniceParentHelixAdmin.getAllStores(cluster);
-            for (Store store: stores) {
-              int targetVersionNum = store.getLargestUsedVersionNumber();
-              Version targetVersion = store.getVersion(targetVersionNum);
+            List<Store> parentStores = veniceParentHelixAdmin.getAllStores(cluster);
+            for (Store parentStore: parentStores) {
+              int targetVersionNum = parentStore.getLargestUsedVersionNumber();
+              Version targetVersion = parentStore.getVersion(targetVersionNum);
 
               // Check if the target version is eligible for a deferred swap w/ target region push
               if (!isEligibleForDeferredSwap(targetVersion)) {
@@ -367,7 +373,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               }
 
               // Check if the cached waitTime (if any) for the target version has elapsed
-              String storeName = store.getName();
+              String storeName = parentStore.getName();
               String kafkaTopicName = Version.composeKafkaTopic(storeName, targetVersionNum);
               Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetVersion.getTargetSwapRegion());
               Map<String, Long> storePushCompletionTimes = storePushCompletionTimeCache.getIfPresent(kafkaTopicName);
@@ -375,7 +381,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                 if (!didWaitTimeElapseInTargetRegions(
                     storePushCompletionTimes,
                     targetRegions,
-                    store,
+                    parentStore,
                     targetVersionNum)) {
                   continue;
                 }
@@ -399,13 +405,18 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               Set<String> remainingRegions = getRegionsForVersionSwap(coloToVersions, targetRegions);
 
               // Check if push is successful in majority target regions
-              if (didPushFailInTargetRegions(targetRegions, pushStatusInfo, repository, store, targetVersionNum)) {
+              if (didPushFailInTargetRegions(
+                  targetRegions,
+                  pushStatusInfo,
+                  repository,
+                  parentStore,
+                  targetVersionNum)) {
                 continue;
               }
 
               // Get eligible non target regions to roll forward in
               Set<String> nonTargetRegionsCompleted =
-                  getRegionsToRollForward(remainingRegions, pushStatusInfo, repository, store, targetVersionNum);
+                  getRegionsToRollForward(remainingRegions, pushStatusInfo, repository, parentStore, targetVersionNum);
               if (nonTargetRegionsCompleted == null) {
                 continue;
               }
@@ -414,7 +425,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               if (!didWaitTimeElapseInTargetRegions(
                   pushStatusInfo.getExtraInfoUpdateTimestamp(),
                   targetRegions,
-                  store,
+                  parentStore,
                   targetVersionNum)) {
                 continue;
               }
@@ -422,7 +433,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               // TODO add call for postStoreVersionSwap() once it is implemented
 
               // Switch to the target version in the completed non target regions
-              rollForwardToTargetVersion(nonTargetRegionsCompleted, store, targetVersion, cluster, repository);
+              rollForwardToTargetVersion(nonTargetRegionsCompleted, parentStore, targetVersion, cluster, repository);
             }
           }
         } catch (Exception e) {

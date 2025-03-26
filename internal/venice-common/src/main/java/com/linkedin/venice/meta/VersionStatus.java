@@ -16,8 +16,11 @@ public enum VersionStatus implements VeniceEnumValue {
   // serve read request because the writes to this store is disabled.
   PUSHED(2),
   // Version has been pushed to venice and is ready to serve read request.
-  ONLINE(3), ERROR(4),
+  ONLINE(3),
   // Version is created and persisted inside ZK, but controller hasn't finished preparation works yet.
+  ERROR(4),
+  // Version is created and persisted inside ZK, but controller hasn't finished preparation works yet.
+  // For parent version status, ERROR also means that push failed in all regions, and it is not being served
   CREATED(5),
   // Version has been pushed to Venice and is ready to serve in some regions, but failed in other regions.
   // This version status only exists in parent.
