@@ -10,13 +10,16 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUS
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.StoreInfo;
@@ -31,6 +34,7 @@ import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.io.IOException;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -54,6 +58,7 @@ public class TestDeferredVersionSwap {
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
   private static final int TEST_TIMEOUT = 120_000;
+  private List<VeniceMultiClusterWrapper> childDatacenters;
 
   @BeforeClass
   public void setUp() {
@@ -76,6 +81,7 @@ public class TestDeferredVersionSwap {
             .serverProperties(serverProperties);
     multiRegionMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
+    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
   }
 
   @AfterClass(alwaysRun = true)
@@ -157,6 +163,16 @@ public class TestDeferredVersionSwap {
         StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
         Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.ONLINE);
       });
+
+      // Check that child version status is marked as ONLINE if it didn't fail
+      for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
+        ControllerClient childControllerClient =
+            new ControllerClient(CLUSTER_NAMES[0], childDatacenter.getControllerConnectString());
+        StoreResponse store = childControllerClient.getStore(storeName);
+        Optional<Version> version = store.getStore().getVersion(1);
+        assertNotNull(version);
+        assertEquals(version.get().getStatus(), VersionStatus.ONLINE);
+      }
     }
   }
 
@@ -286,6 +302,18 @@ public class TestDeferredVersionSwap {
         Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.PARTIALLY_ONLINE);
       });
 
+      // Check that child version status is marked as ONLINE if it didn't fail
+      for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
+        ControllerClient childControllerClient =
+            new ControllerClient(CLUSTER_NAMES[0], childDatacenter.getControllerConnectString());
+        if (!failingRegionsList.contains(childDatacenter.getRegionName())) {
+          StoreResponse store = childControllerClient.getStore(storeName);
+          Optional<Version> version = store.getStore().getVersion(1);
+          assertNotNull(version);
+          assertEquals(version.get().getStatus(), VersionStatus.ONLINE);
+        }
+      }
+
       // Verify that we can create a new version
       VersionCreationResponse versionCreationResponse = parentControllerClient.requestTopicForWrites(
           storeName,
@@ -370,10 +398,23 @@ public class TestDeferredVersionSwap {
             }
           });
         });
+
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
           StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
           Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.PARTIALLY_ONLINE);
         });
+
+        // Check that child version status is marked as ONLINE if it didn't fail
+        for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
+          ControllerClient childControllerClient =
+              new ControllerClient(CLUSTER_NAMES[0], childDatacenter.getControllerConnectString());
+          if (!failingRegionsList.contains(childDatacenter.getRegionName())) {
+            StoreResponse store = childControllerClient.getStore(storeName);
+            Optional<Version> version = store.getStore().getVersion(1);
+            assertNotNull(version);
+            assertEquals(version.get().getStatus(), VersionStatus.ONLINE);
+          }
+        }
       }
 
       // Verify that we can create a new version
