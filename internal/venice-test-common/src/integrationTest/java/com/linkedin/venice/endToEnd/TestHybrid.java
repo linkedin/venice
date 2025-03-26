@@ -1098,7 +1098,7 @@ public class TestHybrid {
       throw new RuntimeException(e);
     }
 
-    // ok, now run run repush manually with the controller client.
+    // ok, now run repush manually with the controller client.
     // this call should be synchronous and the count down will trigger immediately..
     TestRepushOrchestratorImpl.latch = new CountDownLatch(1);
     sharedVenice.useControllerClient(client -> {
@@ -1110,7 +1110,7 @@ public class TestHybrid {
   }
 
   public static class TestRepushOrchestratorImpl implements RepushOrchestrator {
-    static CountDownLatch latch = new CountDownLatch(1);
+    public static CountDownLatch latch = new CountDownLatch(1);
 
     public TestRepushOrchestratorImpl(VeniceProperties props) {
     }
