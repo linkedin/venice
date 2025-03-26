@@ -2,7 +2,11 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.ConfigKeys.ALLOW_CLUSTER_WIPE;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
+import static com.linkedin.venice.ConfigKeys.REPUSH_ORCHESTRATOR_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_DELAY_FACTOR;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
 import static org.testng.Assert.assertFalse;
 
 import com.linkedin.venice.AdminTool;
@@ -15,6 +19,7 @@ import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.endToEnd.TestHybrid;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlyLiveClusterConfigRepository;
@@ -33,10 +38,14 @@ import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import java.util.AbstractMap;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -45,9 +54,13 @@ import org.testng.annotations.Test;
 
 public class TestAdminToolEndToEnd {
   private static final int TEST_TIMEOUT = 30 * Time.MS_PER_SECOND;
+  private static final Logger LOGGER = LogManager.getLogger(TestAdminToolEndToEnd.class);
 
   String clusterName;
   VeniceClusterWrapper venice;
+
+  // Constants for repush store test
+  private static final long TEST_LOG_COMPACTION_TIMEOUT = TimeUnit.SECONDS.toMillis(10); // ms
 
   @BeforeClass
   public void setUp() {
@@ -55,6 +68,11 @@ public class TestAdminToolEndToEnd {
     properties.setProperty(LOCAL_REGION_NAME, "dc-0");
     properties.setProperty(ALLOW_CLUSTER_WIPE, "true");
     properties.setProperty(TOPIC_CLEANUP_DELAY_FACTOR, "0");
+
+    // repushStore() configs
+    properties.setProperty(REPUSH_ORCHESTRATOR_CLASS_NAME, TestHybrid.TestRepushOrchestratorImpl.class.getName());
+    properties.setProperty(LOG_COMPACTION_ENABLED, "true");
+
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfServers(1)
         .numberOfRouters(1)
@@ -182,6 +200,41 @@ public class TestAdminToolEndToEnd {
       versionCreationResponse = controllerClient.emptyPush(testStoreName1, Utils.getUniqueString("empty-push-1"), 1L);
       Assert.assertFalse(versionCreationResponse.isError());
       Assert.assertEquals(versionCreationResponse.getVersion(), 1);
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testRepushStoreCommand() throws Exception {
+    // create test store
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams()
+        // set hybridRewindSecond to a big number so following versions won't ignore old records in RT
+        .setHybridRewindSeconds(2000000)
+        .setHybridOffsetLagThreshold(0)
+        .setPartitionCount(2);
+    String storeName = Utils.getUniqueString("repush-test-store");
+    venice.useControllerClient(client -> {
+      client.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
+      client.updateStore(storeName, params);
+    });
+    venice.createVersion(
+        storeName,
+        DEFAULT_KEY_SCHEMA,
+        DEFAULT_VALUE_SCHEMA,
+        IntStream.range(0, 10).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i)));
+
+    // Test: send admin command
+    String[] repushStoreArgs =
+        { "--repush-store", "--url", venice.getLeaderVeniceController().getControllerUrl(), "--store", storeName };
+    AdminTool.main(repushStoreArgs);
+
+    // Validate repush triggered
+    try {
+      if (TestHybrid.TestRepushOrchestratorImpl.latch.await(TEST_LOG_COMPACTION_TIMEOUT, TimeUnit.MILLISECONDS)) {
+        LOGGER.info("Log compaction job triggered");
+      }
+    } catch (InterruptedException e) {
+      LOGGER.error("Log compaction job failed");
+      throw new RuntimeException(e);
     }
   }
 
