@@ -2,6 +2,8 @@ package com.linkedin.venice.controller.server;
 
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.spy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.ConfigKeys;
@@ -10,6 +12,7 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.InstanceRemovableStatuses;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
+import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -24,6 +27,7 @@ import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
 import com.linkedin.venice.controllerapi.MultiVersionResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
+import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -1104,6 +1108,19 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   public void controllerClientReturns404ForNonexistentStoreQuery() {
     StoreResponse storeResponse = controllerClient.getStore("nonexistent");
     Assert.assertTrue(storeResponse.getError().contains("Http Status 404"));
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testRepushStoreWithErrorResponse() throws Exception {
+    String testStoreName = "repush-test-store";
+    RepushJobResponse errorResponse = new RepushJobResponse();
+    errorResponse.setError("AH!");
+    Assert.assertTrue(errorResponse.isError());
+    Admin admin = spy(parentController.getVeniceAdmin());
+    doReturn(errorResponse).when(admin)
+        .repushStore(new RepushJobRequest(testStoreName, RepushJobRequest.MANUAL_TRIGGER));
+
+    controllerClient.repushStore(testStoreName);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
