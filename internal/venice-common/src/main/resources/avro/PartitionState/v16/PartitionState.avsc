@@ -6,11 +6,16 @@
   "fields": [
     {
       "name": "offset",
-      "doc": "The last Kafka offset consumed successfully in this partition from version topic.",
+      "doc": "The last Kafka offset processed successfully in this partition from version topic.",
       "type": "long"
     }, {
       "name": "lastProcessedVersionTopicPubSubPosition",
-      "doc": "The last PubSub position consumed successfully in this partition from version topic",
+      "doc": "The last PubSub position processed successfully in this partition from version topic",
+      "type": "bytes",
+      "default": ""
+    }, {
+      "name": "lastConsumedVersionTopicPubSubPosition",
+      "doc": "The last PubSub position consumed successfully in this partition from the version topic",
       "type": "bytes",
       "default": ""
     }, {

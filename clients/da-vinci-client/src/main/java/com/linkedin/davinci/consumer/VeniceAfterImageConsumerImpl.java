@@ -113,7 +113,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       return CompletableFuture.completedFuture(null);
     }
     return CompletableFuture.supplyAsync(() -> {
-      subscriptionLock.writeLock().lock();
+      boolean lockAcquired = false;
       Map<Integer, VeniceChangeCoordinate> checkpoints = new HashMap<>();
       try {
         // TODO: This implementation basically just scans the version topic until it finds the EOP message. The
@@ -203,13 +203,17 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
           LOGGER.info(
               "Seeking to EOP for partitions: " + partitions.toString() + " for version topic: "
                   + targetTopic.getName());
+          subscriptionLock.writeLock().lock();
+          lockAcquired = true;
           this.synchronousSeekToCheckpoint(new HashSet<>(checkpoints.values()));
           LOGGER.info(
               "Seeked to EOP for partitions: " + partitions.toString() + " for version topic: "
                   + targetTopic.getName());
         }
       } finally {
-        subscriptionLock.writeLock().unlock();
+        if (lockAcquired) {
+          subscriptionLock.writeLock().unlock();
+        }
       }
       return null;
     }, seekExecutorService);

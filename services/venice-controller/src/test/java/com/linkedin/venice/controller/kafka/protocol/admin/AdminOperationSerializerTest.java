@@ -5,12 +5,13 @@ import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
-import com.linkedin.venice.exceptions.VeniceMessageException;
+import com.linkedin.venice.exceptions.VeniceProtocolException;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import org.mockito.Mockito;
@@ -22,9 +23,9 @@ public class AdminOperationSerializerTest {
 
   @Test
   public void testGetSchema() {
-    expectThrows(VeniceMessageException.class, () -> AdminOperationSerializer.getSchema(0));
+    expectThrows(VeniceProtocolException.class, () -> AdminOperationSerializer.getSchema(0));
     expectThrows(
-        VeniceMessageException.class,
+        VeniceProtocolException.class,
         () -> AdminOperationSerializer.getSchema(AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION + 1));
   }
 
@@ -41,7 +42,7 @@ public class AdminOperationSerializerTest {
     updateStore.enableWrites = true;
     updateStore.replicateAllConfigs = true;
     updateStore.updatedConfigsList = Collections.emptyList();
-    // Purposely set to true. This field doesn't exist in v74, will be dropped during serialization
+    // Purposely set to true. This field doesn't exist in v74, so it should throw an exception.
     // Default value of this field is False.
     updateStore.separateRealTimeTopicEnabled = true;
     AdminOperation adminMessage = new AdminOperation();
@@ -53,10 +54,20 @@ public class AdminOperationSerializerTest {
     doCallRealMethod().when(adminOperationSerializer).deserialize(any(), anyInt());
 
     // Serialize the AdminOperation object with writer schema id v74
-    byte[] serializedBytes = adminOperationSerializer.serialize(adminMessage, 74);
+    try {
+      adminOperationSerializer.serialize(adminMessage, 74);
+    } catch (VeniceProtocolException e) {
+      String expectedMessage =
+          "Field AdminOperation.payloadUnion.UpdateStore.separateRealTimeTopicEnabled: Boolean value true is not the default value false or false";
+      assertEquals(e.getMessage(), expectedMessage);
+    }
 
-    // Deserialize the serialized bytes back into an AdminOperation object
-    // TODO: test that all the new fields only have default values, after the final deserialization.
+    // Set the separateRealTimeTopicEnabled to false
+    updateStore.separateRealTimeTopicEnabled = false;
+    adminMessage.payloadUnion = updateStore;
+
+    // Serialize the AdminOperation object with writer schema id v74, should not fail
+    byte[] serializedBytes = adminOperationSerializer.serialize(adminMessage, 74);
     AdminOperation deserializedOperation = adminOperationSerializer.deserialize(ByteBuffer.wrap(serializedBytes), 74);
     UpdateStore deserializedOperationPayloadUnion = (UpdateStore) deserializedOperation.getPayloadUnion();
     assertEquals(deserializedOperationPayloadUnion.clusterName.toString(), "clusterName");
@@ -68,7 +79,17 @@ public class AdminOperationSerializerTest {
     assertTrue(deserializedOperationPayloadUnion.enableWrites);
     assertTrue(deserializedOperationPayloadUnion.replicateAllConfigs);
     assertEquals(deserializedOperationPayloadUnion.updatedConfigsList, Collections.emptyList());
-    // The field separateRealTimeTopicEnabled should be set to false (default value) after deserialization
+
+    // Check value of new semantics are all set to default value
     assertFalse(deserializedOperationPayloadUnion.separateRealTimeTopicEnabled);
+    assertEquals(deserializedOperationPayloadUnion.maxRecordSizeBytes, -1);
+    assertEquals(deserializedOperationPayloadUnion.maxNearlineRecordSizeBytes, -1);
+    assertFalse(deserializedOperationPayloadUnion.unusedSchemaDeletionEnabled);
+    assertFalse(deserializedOperationPayloadUnion.blobTransferEnabled);
+    assertTrue(deserializedOperationPayloadUnion.nearlineProducerCompressionEnabled);
+    assertEquals(deserializedOperationPayloadUnion.nearlineProducerCountPerWriter, 1);
+    assertNull(deserializedOperationPayloadUnion.targetSwapRegion);
+    assertEquals(deserializedOperationPayloadUnion.targetSwapRegionWaitTime, 60);
+    assertFalse(deserializedOperationPayloadUnion.isDaVinciHeartBeatReported);
   }
 }
