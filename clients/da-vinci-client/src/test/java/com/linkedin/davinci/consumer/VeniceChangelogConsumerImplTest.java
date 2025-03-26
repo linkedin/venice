@@ -432,7 +432,7 @@ public class VeniceChangelogConsumerImplTest {
     Set<PubSubTopicPartition> topicPartitionSet = new HashSet<>();
     topicPartitionSet.add(topicPartition);
     Mockito.when(mockConsumer.getTopicAssignment()).thenReturn(topicPartitionSet);
-    Mockito.when(mockConsumer.internalSeekToEndOfPush(Mockito.anySet(), Mockito.any()))
+    Mockito.when(mockConsumer.internalSeekToEndOfPush(Mockito.anySet(), Mockito.any(), Mockito.any()))
         .thenReturn(CompletableFuture.completedFuture(null));
 
     String storeName = "Leppalúði_store";
@@ -450,7 +450,7 @@ public class VeniceChangelogConsumerImplTest {
     VersionSwapDataChangeListener changeListener =
         new VersionSwapDataChangeListener(mockConsumer, mockRepository, storeName, "");
     changeListener.handleStoreChanged(mockStore);
-    Mockito.verify(mockConsumer).internalSeekToEndOfPush(Mockito.anySet(), Mockito.any());
+    Mockito.verify(mockConsumer).internalSeekToEndOfPush(Mockito.anySet(), Mockito.any(), Mockito.any());
 
   }
 
