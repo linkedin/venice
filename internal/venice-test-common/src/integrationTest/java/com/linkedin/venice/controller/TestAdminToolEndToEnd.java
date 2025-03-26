@@ -203,6 +203,7 @@ public class TestAdminToolEndToEnd {
     }
   }
 
+  /** similar test logic to {@link TestHybrid#testHybridStoreLogCompaction()} & shares {@link com.linkedin.venice.endToEnd.TestHybrid.TestRepushOrchestratorImpl} */
   @Test(timeOut = TEST_TIMEOUT)
   public void testRepushStoreCommand() throws Exception {
     // create test store
