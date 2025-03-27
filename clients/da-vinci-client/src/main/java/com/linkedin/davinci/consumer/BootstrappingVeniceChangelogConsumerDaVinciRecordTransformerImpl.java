@@ -352,6 +352,14 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
        */
 
       /*
+       * ToDo: If the user doesn't call poll frequently enough, it's possible that the future version can get ahead
+       *  of the current version. This is because when the user doesn't call poll, the buffer will reach capacity and
+       *  the threads trying to insert into it will get blocked until the buffer is drained. When this happens,
+       *  we will consume the VSM in the future version before the current version could consume it. Therefore, we
+       *  would perform a version swap too early.
+       */
+
+      /*
        * Only the futureVersion should act on the version swap message (VSM).
        * The previousVersion will consume the VSM earlier than the futureVersion, leading to an early version swap.
        * This early swap causes the buffer to fill with records before the EOP, which is undesirable.
