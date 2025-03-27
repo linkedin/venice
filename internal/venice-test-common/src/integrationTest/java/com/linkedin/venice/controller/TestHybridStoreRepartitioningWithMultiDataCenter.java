@@ -317,7 +317,7 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         Assert.assertEquals(controllerClient.getStore(storeName).getStore().getVersions().size(), 2);
         // rt version should not change because there is no more partition count update
-        String expectedRealTimeTopicName = storeName + "_v2" + Version.REAL_TIME_TOPIC_SUFFIX;
+        String expectedRealTimeTopicName = Utils.composeRealTimeTopic(storeName, 2);
         // verify rt topic name
         verifyStoreState(
             childControllerClients[0],
@@ -412,7 +412,7 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
         StoreInfo storeInfo = childControllerClients[idx].getStore(storeName).getStore();
         Assert.assertEquals(storeInfo.getVersions().size(), 2);
 
-        String expectedRealTimeTopicNameInBackupVersion = storeName + "_v3" + Version.REAL_TIME_TOPIC_SUFFIX;
+        String expectedRealTimeTopicNameInBackupVersion = Utils.composeRealTimeTopic(storeName, 3);
         // because we updated partition count, rt version should increase to v2
         String expectedRealTimeTopicName = Utils.composeRealTimeTopic(storeName, 4);
 

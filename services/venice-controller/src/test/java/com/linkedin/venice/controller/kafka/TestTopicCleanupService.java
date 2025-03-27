@@ -201,7 +201,7 @@ public class TestTopicCleanupService {
   @Test
   public void testCleanupVeniceTopics() {
     String clusterName = "clusterName";
-    String rtVersionPrefix = "_v1" + Version.REAL_TIME_TOPIC_SUFFIX;
+    String rtVersionPrefix = Version.REAL_TIME_TOPIC_SUFFIX + "_v1";
     String storeName1 = Utils.getUniqueString("store1");
     String storeName2 = Utils.getUniqueString("store2");
     String storeName3 = Utils.getUniqueString("store3");
