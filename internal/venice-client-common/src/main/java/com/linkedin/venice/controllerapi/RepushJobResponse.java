@@ -20,4 +20,13 @@ public class RepushJobResponse extends ControllerResponse {
   public String getExecutionId() {
     return executionId;
   }
+
+  /** This method copies the values of another RepushJobInstance. This is to
+   * 1. put up with StoresRoutes::repushStore() and VeniceRouteHandler::internalHandle receiving the response through a
+   * response instance passed into the method rather than a return value
+   * 2. centralise the object field value duplication in this class to ensure all information are copied */
+  public void copyValueOf(RepushJobResponse response) {
+    super.copyValueOf(response);
+    this.executionId = response.getExecutionId();
+  }
 }
