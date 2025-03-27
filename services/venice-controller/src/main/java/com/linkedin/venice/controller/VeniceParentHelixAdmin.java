@@ -1644,6 +1644,11 @@ public class VeniceParentHelixAdmin implements Admin {
       StoreInfo childStore = getStoreInChildRegion(region, clusterName, storeName);
       Optional<Version> currentVersionInChild = childStore.getVersion(childStore.getCurrentVersion());
       if (currentVersionInChild.isPresent()) {
+        LOGGER.info(
+            "isDavinciHeartbeatReported: {}, region: {}, storeName: {}",
+            currentVersionInChild.get().getIsDavinciHeartbeatReported(),
+            region,
+            storeName);
         if (currentVersionInChild.get().getIsDavinciHeartbeatReported()) {
           return true;
         }

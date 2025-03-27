@@ -221,13 +221,13 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   }
 
   /**
-   * Checks if a store version is eligible for a version swap. It is eligible if the version config targetSwapRegion is not
+   * Checks if a store version is in a terminal state. It is in a terminal state & eligible for a version swap if targetSwapRegion is not
    * empty and the push job for the current version is completed. It is completed if the version status is either PUSHED or
    * KILLED (see VeniceParentHelixAdmin.getOfflinePushStatus)
    * @param targetVersion the version to check eligibility for
    * @return
    */
-  private boolean isEligibleForDeferredSwap(Version targetVersion) {
+  private boolean isPushInTerminalState(Version targetVersion) {
     if (targetVersion == null) {
       return false;
     }
@@ -295,12 +295,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       store.updateVersionStatus(targetVersionNum, ERROR);
       repository.updateStore(store);
       return true;
-    } else if (numFailedTargetRegions + numCompletedTargetRegions != targetRegions.size()) {
-      String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
-          + "as push is not in terminal status in all majority of target regions. Completed target regions: "
-          + numCompletedTargetRegions + ", target regions: " + targetRegions;
-      logMessageIfNotRedundant(message);
-      return true;
     }
 
     return false;
@@ -326,6 +320,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     int numCompletedTargetRegions =
         getRegionsWithPushStatusCount(nonTargetRegions, pushStatusInfo, ExecutionStatus.COMPLETED);
     int numFailedTargetRegions = getRegionsWithPushStatusCount(nonTargetRegions, pushStatusInfo, ExecutionStatus.ERROR);
+    Set<String> completedNonTargetRegions = new HashSet<>();
     if (numFailedTargetRegions == nonTargetRegions.size()) {
       String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
           + "as push failed in all non target regions. Failed non target regions: " + numFailedTargetRegions
@@ -333,16 +328,15 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       logMessageIfNotRedundant(message);
       store.updateVersionStatus(targetVersionNum, PARTIALLY_ONLINE);
       repository.updateStore(store);
-      return null;
+      return completedNonTargetRegions;
     } else if ((numFailedTargetRegions + numCompletedTargetRegions) != nonTargetRegions.size()) {
       String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
           + "as push is not in terminal status in all non target regions. Completed non target regions: "
           + numCompletedTargetRegions + ", non target regions: " + nonTargetRegions;
       logMessageIfNotRedundant(message);
-      return null;
+      return completedNonTargetRegions;
     }
 
-    Set<String> completedNonTargetRegions = new HashSet<>();
     for (String region: nonTargetRegions) {
       String executionStatus = pushStatusInfo.getExtraInfo().get(region);
       if (executionStatus.equals(ExecutionStatus.COMPLETED.toString())) {
@@ -367,8 +361,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               int targetVersionNum = parentStore.getLargestUsedVersionNumber();
               Version targetVersion = parentStore.getVersion(targetVersionNum);
 
-              // Check if the target version is eligible for a deferred swap w/ target region push
-              if (!isEligibleForDeferredSwap(targetVersion)) {
+              // Check if the target version is in a terminal state (push job completed or failed)
+              // TODO rename function to isPushInTerminalState
+              if (!isPushInTerminalState(targetVersion)) {
                 continue;
               }
 
@@ -404,14 +399,17 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
               Set<String> remainingRegions = getRegionsForVersionSwap(coloToVersions, targetRegions);
 
-              // Check if push is successful in majority target regions
-              if (didPushFailInTargetRegions(
-                  targetRegions,
-                  pushStatusInfo,
-                  repository,
-                  parentStore,
-                  targetVersionNum)) {
-                continue;
+              // If version status is marked as KILLED (push timeout, user killed push job, etc), check if target
+              // regions failed
+              if (targetVersion.getStatus() == VersionStatus.KILLED) {
+                if (didPushFailInTargetRegions(
+                    targetRegions,
+                    pushStatusInfo,
+                    repository,
+                    parentStore,
+                    targetVersionNum)) {
+                  continue;
+                }
               }
 
               // Get eligible non target regions to roll forward in

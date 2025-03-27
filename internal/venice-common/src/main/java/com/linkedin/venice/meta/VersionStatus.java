@@ -8,24 +8,51 @@ import java.util.Map;
 
 
 /**
- * Enums of status of verion.
+ * Enums of status of version.
  */
 public enum VersionStatus implements VeniceEnumValue {
-  NOT_CREATED(0), STARTED(1),
-  // Version has been pushed to venice(offline job related to this version has been completed), but is not ready to
-  // serve read request because the writes to this store is disabled.
+  /**
+   * This version hasn't been created yet. It is not persisted in ZK
+   */
+  NOT_CREATED(0),
+
+  /**
+   * Version has been pushed to venice(offline job related to this version has been completed), but is not ready to
+   * serve read request because the writes to this store is disabled
+   */
+  STARTED(1),
+
+  /**
+   * Version has been pushed to venice and is ready to serve read request. Intermediate status after a push job succeeds before DeferredVersionSwapService
+   * flips the status to ONLINE. This status only exists in the parent
+   */
   PUSHED(2),
-  // Version has been pushed to venice and is ready to serve read request.
+
+  /**
+   * Version is serving read requests
+   */
   ONLINE(3),
-  // Version is created and persisted inside ZK, but controller hasn't finished preparation works yet.
+
+  /**
+   * Version is not serving read requests, and it's relevant push job has failed
+   */
   ERROR(4),
-  // Version is created and persisted inside ZK, but controller hasn't finished preparation works yet.
-  // For parent version status, ERROR also means that push failed in all regions, and it is not being served
+
+  /**
+   * Version is created and persisted inside ZK. Currently not used
+   */
   CREATED(5),
-  // Version has been pushed to Venice and is ready to serve in some regions, but failed in other regions.
-  // This version status only exists in parent.
+
+  /**
+   * Version has been pushed to Venice and is serving read traffic in some regions, but failed in other regions.
+   * This status only exists in the parent
+   */
   PARTIALLY_ONLINE(6),
-  // This version has been killed.
+
+  /**
+   * Version is killed. Intermediate status after a push job is killed or fails before DeferredVersionSwapService flips the status to
+   * either ERROR or PARTIALLY_ONLINE
+   */
   KILLED(7);
 
   private final int value;
