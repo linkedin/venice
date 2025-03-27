@@ -276,11 +276,7 @@ public class StoresRoutesTest {
     queryMap.put(ControllerApiConstants.NAME, new String[] { TEST_STORE_NAME });
     doReturn(queryMap).when(queryParamsMap).toMap();
 
-    RepushJobResponse errorResponse = new RepushJobResponse();
-    errorResponse.setError("AH!");
-    Assert.assertTrue(errorResponse.isError());
-
-    when(mockAdmin.repushStore(any())).thenReturn(errorResponse);
+    when(mockAdmin.repushStore(any())).thenThrow(mock(Exception.class));
 
     RepushJobResponse repushJobResponse = ObjectMapperFactory.getInstance()
         .readValue(repushStoreRoute.handle(request, mock(Response.class)).toString(), RepushJobResponse.class);
