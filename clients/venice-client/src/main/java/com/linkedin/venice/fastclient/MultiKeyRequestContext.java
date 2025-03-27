@@ -46,7 +46,9 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
 
   private int fanoutSize;
 
-  MultiKeyRequestContext(int numKeysInRequest, boolean isPartialSuccessAllowed) {
+  private Set<K> keys;
+
+  public MultiKeyRequestContext(int numKeysInRequest, boolean isPartialSuccessAllowed) {
     this.routeRequests = new VeniceConcurrentHashMap<>();
     this.firstRequestSentTS = new AtomicLong(-1);
     this.firstResponseReceivedTS = new AtomicLong(-1);
@@ -59,13 +61,21 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
     this.completed = false;
   }
 
-  void addKey(String route, K key, byte[] serializedKey, int partitionId) {
+  public void setKeys(Set<K> keys) {
+    this.keys = keys;
+  }
+
+  public Set<K> getKeys() {
+    return this.keys;
+  }
+
+  public void addKey(String route, K key, byte[] serializedKey, int partitionId) {
     Validate.notNull(route);
     routeRequests.computeIfAbsent(route, r -> new RouteRequestContext<>()).addKeyInfo(key, serializedKey, partitionId);
     routesForPartition.computeIfAbsent(partitionId, (k) -> new HashSet<>()).add(route);
   }
 
-  Set<String> getRoutes() {
+  public Set<String> getRoutes() {
     return routeRequests.keySet();
   }
 

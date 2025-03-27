@@ -23,9 +23,9 @@ public class LeastLoadedClientRoutingStrategy extends AbstractClientRoutingStrat
   }
 
   @Override
-  public List<String> getReplicas(long ignored, List<String> replicas, int requiredReplicaCount) {
+  public String getReplicas(long requestId, int groupId, List<String> replicas) {
     if (replicas.isEmpty()) {
-      return Collections.emptyList();
+      return null;
     }
     List<String> availReplicas = new ArrayList<>();
     /**
@@ -37,19 +37,14 @@ public class LeastLoadedClientRoutingStrategy extends AbstractClientRoutingStrat
         availReplicas.add(replica);
       }
     }
-    availReplicas.sort(Comparator.comparingInt(instanceHealthMonitor::getPendingRequestCounter));
-
-    if (requiredReplicaCount < availReplicas.size()) {
-      List<String> selectedReplicas = new ArrayList<>();
-
-      for (int i = 0; i < requiredReplicaCount; ++i) {
-        String currentReplica = availReplicas.get(i);
-        selectedReplicas.add(currentReplica);
-      }
-
-      return selectedReplicas;
-    } else {
-      return availReplicas;
+    if (availReplicas.isEmpty()) {
+      return null;
     }
+    /**
+     * TODO: maybe we can apply the response-waiting-time-based rather than pending request counter based least-loaded strategy here
+     * since application QPS normally is much lower and pending request count can be very low.
+     */
+    availReplicas.sort(Comparator.comparingInt(instanceHealthMonitor::getPendingRequestCounter));
+    return availReplicas.get(0);
   }
 }

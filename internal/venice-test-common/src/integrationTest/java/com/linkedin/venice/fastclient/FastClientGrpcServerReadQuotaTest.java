@@ -37,7 +37,6 @@ public class FastClientGrpcServerReadQuotaTest extends AbstractClientEndToEndSet
             .setR2Client(r2Client)
             .setUseGrpc(true)
             .setGrpcClientConfig(grpcClientConfig)
-            .setSpeculativeQueryEnabled(false)
             .setInstanceHealthMonitor(
                 new InstanceHealthMonitor(
                     InstanceHealthMonitorConfig.builder()
