@@ -38,7 +38,7 @@ public class HelixScatterGatherRoutingStrategy extends AbstractClientRoutingStra
           return selectedReplicas;
         }
         if (helixGroupInfo.getHelixGroupInfoMap().get(replica) == groupId
-            && !instanceHealthMonitor.isInstanceBlocked(replica) && instanceHealthMonitor.isInstanceHealthy(replica)) {
+            && instanceHealthMonitor.isRequestAllowed(replica)) {
           selectedReplicas.add(replica);
         }
       }
