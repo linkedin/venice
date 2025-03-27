@@ -952,7 +952,7 @@ public interface Admin extends AutoCloseable, Closeable {
    */
   RepushJobResponse repushStore(RepushJobRequest repushJobRequest) throws Exception;
 
-  public CompactionManager getCompactionManager();
+  CompactionManager getCompactionManager();
 
   /**
    * @return the largest used version number for the given store from store graveyard.
