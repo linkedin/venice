@@ -1110,7 +1110,7 @@ public class TestHybrid {
   }
 
   public static class TestRepushOrchestratorImpl implements RepushOrchestrator {
-    public static CountDownLatch latch = new CountDownLatch(1);
+    static CountDownLatch latch = new CountDownLatch(1);
 
     public TestRepushOrchestratorImpl(VeniceProperties props) {
     }
@@ -1120,6 +1120,10 @@ public class TestHybrid {
       latch.countDown();
       LOGGER.info("Repush job triggered for store: " + repushJobRequest.toString());
       return new RepushJobResponse(Utils.getUniqueString("repush-execId"));
+    }
+
+    public static CountDownLatch getLatch() {
+      return latch;
     }
   }
 

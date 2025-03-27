@@ -230,7 +230,7 @@ public class TestAdminToolEndToEnd {
 
     // Validate repush triggered
     try {
-      if (TestHybrid.TestRepushOrchestratorImpl.latch.await(TEST_LOG_COMPACTION_TIMEOUT, TimeUnit.MILLISECONDS)) {
+      if (TestHybrid.TestRepushOrchestratorImpl.getLatch().await(TEST_LOG_COMPACTION_TIMEOUT, TimeUnit.MILLISECONDS)) {
         LOGGER.info("Log compaction job triggered");
       }
     } catch (InterruptedException e) {
