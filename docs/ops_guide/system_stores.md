@@ -46,15 +46,24 @@ do contain data. Their global nature makes them convenient to store data about a
 clusters are not isolated from one another as far as this kind of system store is concerned. Therefore, it is best for
 this type of system store to serve only in "best effort" purposes, so that if for any reason they become unavailable,
 critical operations can still continue. An example of this would be to store heuristics or other non-critical data.
+These include:
+
+- Push Job Details Store
+- Batch Job Heartbeat Store
 
 ### Cluster System Stores
 
 These are stores created once per cluster, and which do contain data. It is appropriate to use such stores for critical
-operations, given that one cluster's availability issues would not bleed into other clusters.
+operations, given that one cluster's availability issues would not bleed into other clusters. These include:
+
+- Participant Store
 
 ### Per-store System Stores
 
-These are stores created once per user store, and which do contain data.
+These are stores created once per user store, and which do contain data. These include:
+
+- Da Vinci Push Status Store
+- Meta Store
 
 ## System Store List
 

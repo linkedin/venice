@@ -42,6 +42,8 @@ import org.apache.avro.specific.SpecificRecord;
  *
  * Having these definitions in a single place makes it easy to ensure that magic bytes
  * are defined only once and do not conflict with each other.
+ *
+ * @see <a href="https://venicedb.org/docs/ops_guide/system_stores#schema-system-stores">System Stores in the docs</a>
  */
 public enum AvroProtocolDefinition {
   /**
