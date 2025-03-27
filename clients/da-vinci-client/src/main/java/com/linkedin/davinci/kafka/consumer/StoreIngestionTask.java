@@ -3689,7 +3689,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * consumption in leader is ahead of drainer, leaders and drainers are processing messages at different paces.
    */
   protected void cloneProducerStates(int partition, KafkaDataIntegrityValidator validator) {
-    this.drainerDiv.cloneProducerStates(partition, validator);
+    this.drainerDiv.cloneRtProducerStates(partition, validator);
   }
 
   /**

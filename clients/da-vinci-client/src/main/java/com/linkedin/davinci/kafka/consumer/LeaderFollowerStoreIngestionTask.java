@@ -3619,14 +3619,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     TopicType realTimeTopicType = TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
 
     // Snapshot the RT DIV (single broker URL) in preparation to be produced
-    PartitionTracker divClone = consumerDiv.cloneProducerStates(partition, brokerUrl);
-    Map<CharSequence, ProducerPartitionState> vtDiv = divClone.getPartitionStates(TopicType.of(VERSION_TOPIC_TYPE));
-    Map<CharSequence, ProducerPartitionState> rtDiv = divClone.getPartitionStates(realTimeTopicType);
+    PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition);
+    PartitionTracker rtDiv = consumerDiv.cloneRtProducerStates(partition, brokerUrl);
+    Map<CharSequence, ProducerPartitionState> rtDivPartitionStates = rtDiv.getPartitionStates(realTimeTopicType);
 
     // Create GlobalRtDivState (RT DIV + latest RT Offset) which will be serialized into a byte array
     ByteBuffer emptyBuffer = ByteBuffer.allocate(0); // TODO: replace this for latestOffset in GlobalRtDivState
     final long offset = previousMessage.getPosition().getNumericOffset();
-    GlobalRtDivState globalRtDiv = new GlobalRtDivState(brokerUrl, rtDiv, offset, emptyBuffer);
+    GlobalRtDivState globalRtDiv = new GlobalRtDivState(brokerUrl, rtDivPartitionStates, offset, emptyBuffer);
     byte[] valueBytes = ByteUtils.extractByteArray(serializer.serialize(globalRtDiv));
     try {
       valueBytes = compressor.get().compress(valueBytes);
@@ -3764,6 +3764,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private void restoreProducerStatesForLeaderConsumption(int partition) {
     consumerDiv.clearPartition(partition);
     cloneProducerStates(partition, consumerDiv);
+    // TODO: the Global RT DIV version needs to be implemented in a future PR
   }
 
   /**

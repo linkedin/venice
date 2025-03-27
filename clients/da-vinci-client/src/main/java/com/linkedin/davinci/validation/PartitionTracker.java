@@ -185,13 +185,18 @@ public class PartitionTracker {
   }
 
   /**
-   * Clone both vtSegment and rtSegment to the destination PartitionTracker. May be called concurrently.
+   * Clone the vtSegments to the destination PartitionTracker. Filter by brokerUrl. May be called concurrently.
    */
-  public void cloneProducerStates(PartitionTracker destProducerTracker, String brokerUrl) {
+  public void cloneVtProducerStates(PartitionTracker destProducerTracker) {
     for (Map.Entry<GUID, Segment> entry: vtSegments.entrySet()) {
       destProducerTracker.setSegment(PartitionTracker.VERSION_TOPIC, entry.getKey(), new Segment(entry.getValue()));
     }
+  }
 
+  /**
+   * Clone the rtSegments to the destination PartitionTracker. Filter by brokerUrl. May be called concurrently.
+   */
+  public void cloneRtProducerStates(PartitionTracker destProducerTracker, String brokerUrl) {
     for (Map.Entry<String, VeniceConcurrentHashMap<GUID, Segment>> entry: rtSegments.entrySet()) {
       if (!brokerUrl.isEmpty() && !brokerUrl.equals(entry.getKey())) {
         continue; // filter by brokerUrl if specified
