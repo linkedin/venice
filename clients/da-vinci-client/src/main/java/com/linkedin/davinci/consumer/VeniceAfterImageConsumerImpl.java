@@ -10,6 +10,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -104,13 +105,40 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     return internalSeekToTail(partitions, "");
   }
 
-  protected CompletableFuture<Void> internalSeekToEndOfPush(Set<Integer> partitions, PubSubTopic targetTopic) {
+  protected static void adjustSeekCheckPointsBasedOnHeartbeats(
+      Map<Integer, VeniceChangeCoordinate> checkpoints,
+      Map<Integer, Long> currentVersionLastHeartbeat,
+      PubSubConsumerAdapter consumerAdapter,
+      List<PubSubTopicPartition> topicPartitionList) {
+    for (PubSubTopicPartition topicPartition: topicPartitionList) {
+      Long currentVersionTimestamp = currentVersionLastHeartbeat.get(topicPartition.getPartitionNumber());
+      if (currentVersionTimestamp == null) {
+        continue;
+      }
+      PubSubPosition heartbeatTimestampPosition =
+          consumerAdapter.getPositionByTimestamp(topicPartition, currentVersionTimestamp);
+      PubSubPosition eopPosition = checkpoints.get(topicPartition.getPartitionNumber()).getPosition();
+      if (heartbeatTimestampPosition.comparePosition(eopPosition) > 0) {
+        checkpoints.put(
+            topicPartition.getPartitionNumber(),
+            new VeniceChangeCoordinate(
+                topicPartition.getPubSubTopic().getName(),
+                heartbeatTimestampPosition,
+                topicPartition.getPartitionNumber()));
+      }
+    }
+  }
+
+  protected CompletableFuture<Void> internalSeekToEndOfPush(
+      Set<Integer> partitions,
+      PubSubTopic targetTopic,
+      boolean trackHeartbeats) {
     if (partitions.isEmpty()) {
       return CompletableFuture.completedFuture(null);
     }
     return CompletableFuture.supplyAsync(() -> {
       boolean lockAcquired = false;
-      Set<VeniceChangeCoordinate> checkpoints = new HashSet<>();
+      Map<Integer, VeniceChangeCoordinate> checkpoints = new HashMap<>();
       try {
         // TODO: This implementation basically just scans the version topic until it finds the EOP message. The
         // approach
@@ -126,7 +154,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
               getPartitionListToSubscribe(partitions, Collections.EMPTY_SET, targetTopic);
 
           for (PubSubTopicPartition topicPartition: topicPartitionList) {
-            consumerAdapter.subscribe(topicPartition, OffsetRecord.LOWEST_OFFSET);
+            consumerAdapter.subscribe(topicPartition, OffsetRecord.LOWEST_OFFSET_LAG);
           }
           Map<PubSubTopicPartition, List<DefaultPubSubMessage>> polledResults;
           Map<Integer, Boolean> endOfPushConsumedPerPartitionMap = new HashMap<>();
@@ -156,7 +184,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
                         pubSubTopicPartition.getPubSubTopic().getName(),
                         message.getPosition(),
                         pubSubTopicPartition.getPartitionNumber());
-                    checkpoints.add(coordinate);
+                    checkpoints.put(pubSubTopicPartition.getPartitionNumber(), coordinate);
                     // No need to look at the rest of the messages for this partition that we might have polled
                     consumerAdapter.unSubscribe(pubSubTopicPartition);
                     break;
@@ -169,13 +197,27 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
               // We polled all EOP messages, stop polling!
               break;
             }
+
+            if (trackHeartbeats) {
+              // One last step. We track heartbeats for each partition and check their positions. The time recorded in
+              // the
+              // last received heartbeat is absolutely the earliest possible time for that heartbeat to be processed
+              // on a server. If the message nearest that heartbeat in the new version is at on offset higher then the
+              // EOP message, then we swap it out in order to play less events back to the user.
+              // first, check and see if all partitions are already after EOP
+              adjustSeekCheckPointsBasedOnHeartbeats(
+                  checkpoints,
+                  new HashMap<>(currentVersionLastHeartbeat),
+                  consumerAdapter,
+                  topicPartitionList);
+            }
           }
           LOGGER.info(
               "Seeking to EOP for partitions: " + partitions.toString() + " for version topic: "
                   + targetTopic.getName());
           subscriptionLock.writeLock().lock();
           lockAcquired = true;
-          this.synchronousSeekToCheckpoint(checkpoints);
+          this.synchronousSeekToCheckpoint(new HashSet<>(checkpoints.values()));
           LOGGER.info(
               "Seeked to EOP for partitions: " + partitions.toString() + " for version topic: "
                   + targetTopic.getName());
@@ -194,7 +236,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     if (partitions.isEmpty()) {
       return CompletableFuture.completedFuture(null);
     }
-    return internalSeekToEndOfPush(partitions, getCurrentServingVersionTopic());
+    return internalSeekToEndOfPush(partitions, getCurrentServingVersionTopic(), false);
   }
 
   public boolean subscribed() {
