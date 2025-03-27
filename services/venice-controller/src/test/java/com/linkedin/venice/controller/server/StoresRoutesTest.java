@@ -266,15 +266,15 @@ public class StoresRoutesTest {
     Route repushStoreRoute = new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).repushStore(mockAdmin);
 
     Request request = mock(Request.class);
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
     doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.NAME));
 
     QueryParamsMap queryParamsMap = mock(QueryParamsMap.class);
+    doReturn(queryParamsMap).when(request).queryMap();
 
     Map<String, String[]> queryMap = new HashMap<>(1);
     queryMap.put(ControllerApiConstants.NAME, new String[] { TEST_STORE_NAME });
-
     doReturn(queryMap).when(queryParamsMap).toMap();
-    doReturn(queryParamsMap).when(request).queryMap();
 
     RepushJobResponse errorResponse = new RepushJobResponse();
     errorResponse.setError("AH!");
