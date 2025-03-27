@@ -105,6 +105,30 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     return internalSeekToTail(partitions, "");
   }
 
+  protected static void adjustSeekCheckPointsBasedOnHeartbeats(
+      Map<Integer, VeniceChangeCoordinate> checkpoints,
+      Map<Integer, Long> currentVersionLastHeartbeat,
+      PubSubConsumerAdapter consumerAdapter,
+      List<PubSubTopicPartition> topicPartitionList) {
+    for (PubSubTopicPartition topicPartition: topicPartitionList) {
+      Long currentVersionTimestamp = currentVersionLastHeartbeat.get(topicPartition.getPartitionNumber());
+      if (currentVersionTimestamp == null) {
+        continue;
+      }
+      PubSubPosition heartbeatTimestampPosition =
+          consumerAdapter.getPositionByTimestamp(topicPartition, currentVersionTimestamp);
+      PubSubPosition eopPosition = checkpoints.get(topicPartition.getPartitionNumber()).getPosition();
+      if (heartbeatTimestampPosition.comparePosition(eopPosition) > 0) {
+        checkpoints.put(
+            topicPartition.getPartitionNumber(),
+            new VeniceChangeCoordinate(
+                topicPartition.getPubSubTopic().getName(),
+                heartbeatTimestampPosition,
+                topicPartition.getPartitionNumber()));
+      }
+    }
+  }
+
   protected CompletableFuture<Void> internalSeekToEndOfPush(
       Set<Integer> partitions,
       PubSubTopic targetTopic,
@@ -181,23 +205,11 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
               // on a server. If the message nearest that heartbeat in the new version is at on offset higher then the
               // EOP message, then we swap it out in order to play less events back to the user.
               // first, check and see if all partitions are already after EOP
-              for (PubSubTopicPartition topicPartition: topicPartitionList) {
-                Long currentVersionTimestamp = currentVersionLastHeartbeat.get(topicPartition.getPartitionNumber());
-                if (currentVersionTimestamp == null) {
-                  continue;
-                }
-                PubSubPosition heartbeatTimestampPosition =
-                    consumerAdapter.getPositionByTimestamp(topicPartition, currentVersionTimestamp);
-                PubSubPosition eopPosition = checkpoints.get(topicPartition.getPartitionNumber()).getPosition();
-                if (heartbeatTimestampPosition.comparePosition(eopPosition) > 0) {
-                  checkpoints.put(
-                      topicPartition.getPartitionNumber(),
-                      new VeniceChangeCoordinate(
-                          topicPartition.getPubSubTopic().getName(),
-                          heartbeatTimestampPosition,
-                          topicPartition.getPartitionNumber()));
-                }
-              }
+              adjustSeekCheckPointsBasedOnHeartbeats(
+                  checkpoints,
+                  new HashMap<>(currentVersionLastHeartbeat),
+                  consumerAdapter,
+                  topicPartitionList);
             }
           }
           LOGGER.info(
