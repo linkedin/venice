@@ -9,26 +9,6 @@
       "doc": "The last Kafka offset processed successfully in this partition from version topic.",
       "type": "long"
     }, {
-      "name": "lastProcessedVersionTopicPubSubPosition",
-      "doc": "The last PubSub position processed successfully in this partition from version topic",
-      "type": "bytes",
-      "default": ""
-    }, {
-      "name": "lastConsumedVersionTopicPubSubPosition",
-      "doc": "The last PubSub position consumed successfully in this partition from the version topic",
-      "type": "bytes",
-      "default": ""
-    }, {
-      "name": "latestObservedTermId",
-      "doc": "The most recent termId observed by this replica.",
-      "type": "long",
-      "default": -1
-    }, {
-      "name": "currentTermStartPubSubPosition",
-      "doc": "The pubsub position marking the start of the current leader's term in the version topic.",
-      "type": "bytes",
-      "default": ""
-    }, {
       "name": "offsetLag",
       "doc": "The last Kafka offset lag in this partition for fast online transition in server restart.",
       "type": "long",
@@ -230,6 +210,26 @@
         "int"
       ],
       "default": null
+    }, {
+      "name": "lastProcessedVersionTopicPubSubPosition",
+      "doc": "The last PubSub position processed successfully in this partition from version topic",
+      "type": "bytes",
+      "default": ""
+    }, {
+      "name": "lastConsumedVersionTopicPubSubPosition",
+      "doc": "The last PubSub position consumed successfully in this partition from the version topic. This is used during resubscription when the Global RT DIV feature is enabled.",
+      "type": "bytes",
+      "default": ""
+    }, {
+      "name": "latestObservedTermId",
+      "doc": "The most recent termId observed by this replica.",
+      "type": "long",
+      "default": -1
+    }, {
+      "name": "currentTermStartPubSubPosition",
+      "doc": "The pubsub position marking the start of the current leader's term in the version topic.",
+      "type": "bytes",
+      "default": ""
     }
   ]
 }
