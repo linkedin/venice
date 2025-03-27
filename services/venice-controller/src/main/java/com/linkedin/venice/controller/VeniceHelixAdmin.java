@@ -8131,6 +8131,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
+   * @see Admin#getDeadStores(String)
+   */
+  @Override
+  public List<StoreInfo> getDeadStores(String clusterName, String storeName) {
+    throw new UnsupportedOperationException("This function is implemented in VeniceParentHelixAdmin.");
+  }
+
+  /**
    * @return <code>RegionPushDetails</code> object containing the specified store's push status.
    */
   @Override
