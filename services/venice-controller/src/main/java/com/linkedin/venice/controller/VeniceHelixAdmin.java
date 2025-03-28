@@ -1090,7 +1090,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       newStore.setNativeReplicationSourceFabric(config.getNativeReplicationSourceFabricAsDefaultForBatchOnly());
     }
     newStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
-    newStore.setLargestUsedRTVersionNumber(largestUsedRTVersionNumber);
+    /* If this store existed previously, we do not want to use the same RT topic name that was used by the previous
+    store. To ensure this, increase largestUsedRTVersionNumber and new RT name will be different */
+    if (getMultiClusterConfigs().isRealTimeTopicVersioningEnabled()) {
+      newStore.setLargestUsedRTVersionNumber(largestUsedRTVersionNumber + 1);
+    }
   }
 
   /**
@@ -3163,7 +3167,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         store.getName(),
         version.getNumber(),
         clusterName);
-    String storeName = store.getName();
     // Create real-time topic if it doesn't exist; otherwise, update the retention time if necessary
     PubSubTopic realTimeTopic = getPubSubTopicRepository().getTopic(Utils.getRealTimeTopicName(version));
     createOrUpdateRealTimeTopic(clusterName, store, version, realTimeTopic);
@@ -3175,7 +3178,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           clusterName,
           store,
           version,
-          getPubSubTopicRepository().getTopic(Version.composeSeparateRealTimeTopic(storeName)));
+          getPubSubTopicRepository().getTopic(Utils.getSeparateRealTimeTopicName(version)));
     }
   }
 
@@ -3582,7 +3585,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String pushJobId) {
     PubSubTopicRepository topicRepository = getPubSubTopicRepository();
     if (referenceHybridVersion.isSeparateRealTimeTopicEnabled()) {
-      PubSubTopic separateRtTopic = topicRepository.getTopic(Version.composeSeparateRealTimeTopic(store.getName()));
+      PubSubTopic separateRtTopic =
+          topicRepository.getTopic(Utils.getSeparateRealTimeTopicName(referenceHybridVersion));
       validateTopicPresenceAndState(
           clusterName,
           store.getName(),
@@ -3898,10 +3902,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             executor.shutdownNow();
           }
         }
-      }
-      PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
-      if (!store.isHybrid() && getTopicManager().containsTopic(rtTopic)) {
-        safeDeleteRTTopic(clusterName, storeName);
+
+        PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(deletedVersion.get()));
+        if (!store.isHybrid() && getTopicManager().containsTopic(rtTopic)) {
+          safeDeleteRTTopic(clusterName, deletedVersion.get());
+        }
       }
     }
   }
@@ -3916,27 +3921,29 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  private void safeDeleteRTTopic(String clusterName, String storeName) {
-    boolean rtDeletionPermitted = isRTTopicDeletionPermittedByAllControllers(clusterName, storeName);
+  private void safeDeleteRTTopic(String clusterName, Version version) {
+    String realTimeTopicName = Utils.getRealTimeTopicName(version);
+    boolean rtDeletionPermitted = isRTTopicDeletionPermittedByAllControllers(clusterName, realTimeTopicName);
+
     if (rtDeletionPermitted) {
-      String rtTopicToDelete = Utils.composeRealTimeTopic(storeName);
-      deleteRTTopicFromAllFabrics(rtTopicToDelete, clusterName);
+      deleteRTTopicFromAllFabrics(realTimeTopicName, clusterName);
       // Check if there is incremental push topic exist. If yes, delete it and send out to let other controller to
       // delete it.
-      String incrementalPushRTTopicToDelete = Version.composeSeparateRealTimeTopic(storeName);
+      String incrementalPushRTTopicToDelete = Utils.getSeparateRealTimeTopicName(version);
       if (getTopicManager().containsTopic(pubSubTopicRepository.getTopic(incrementalPushRTTopicToDelete))) {
         deleteRTTopicFromAllFabrics(incrementalPushRTTopicToDelete, clusterName);
       }
     }
   }
 
-  public boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, String storeName) {
+  public boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, String rtTopicName) {
     // Perform RT cleanup checks for batch only store that used to be hybrid. Check versions
     // to see if any version is still using RT before deleting the RT.
     // Since we perform this check everytime when a store version is deleted we can afford to do best effort
     // approach if some fabrics are unavailable or out of sync (temporarily).
-    String rtTopicName = Utils.composeRealTimeTopic(storeName);
     Map<String, ControllerClient> controllerClientMap = getControllerClientMap(clusterName);
+    String storeName = Version.parseStoreFromRealTimeTopic(rtTopicName);
+
     for (Map.Entry<String, ControllerClient> controllerClientEntry: controllerClientMap.entrySet()) {
       StoreResponse storeResponse;
       try {
@@ -4683,6 +4690,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (store.isHybrid()
           && multiClusterConfigs.getControllerConfig(clusterName).isHybridStorePartitionCountUpdateEnabled()) {
         generateAndUpdateRealTimeTopicName(store);
+        LOGGER.info(
+            "Updated largestUsedRTVersionNumber to {} for store {} in cluster {}",
+            store.getLargestUsedRTVersionNumber(),
+            storeName,
+            clusterName);
       }
       if (partitionCount != 0) {
         store.setPartitionCount(partitionCount);
@@ -4743,17 +4755,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private void generateAndUpdateRealTimeTopicName(Store store) {
-    // get oldRealTimeTopicName from the store config because that will be more (or equally) recent than any version
-    // config
-    String oldRealTimeTopicName = Utils.getRealTimeTopicNameFromStoreConfig(store);
-    String newRealTimeTopicName = Utils.createNewRealTimeTopicName(oldRealTimeTopicName);
-    PubSubTopic newRealTimeTopic = getPubSubTopicRepository().getTopic(newRealTimeTopicName);
-
-    if (getTopicManager().containsTopic(newRealTimeTopic)) {
-      throw new VeniceException("Topic " + newRealTimeTopic + " should not exist.");
-    }
+    String newRealTimeTopicName = Utils.isRTVersioningApplicable(store.getName())
+        ? Utils.composeRealTimeTopic(store.getName(), store.getLargestUsedRTVersionNumber() + 1)
+        : DEFAULT_REAL_TIME_TOPIC_NAME;
 
     store.getHybridStoreConfig().setRealTimeTopicName(newRealTimeTopicName);
+    /*
+       After partition count update, new VT, if is hybrid, has to use a new RT with the same partition count, so we
+       increase `largestUsedRTVersionNumber`; this will ensure that a new RT is created when/if needed
+     */
+    store.setLargestUsedRTVersionNumber(store.getLargestUsedRTVersionNumber() + 1);
   }
 
   void setStorePartitionerConfig(String clusterName, String storeName, PartitionerConfig partitionerConfig) {
@@ -5739,6 +5750,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             oldStore.getName() + " was not a hybrid store.  In order to make it a hybrid store both "
                 + " rewind time in seconds and offset or time lag threshold must be specified");
       }
+
+      String newRealTimeTopicName = oldStore.getLargestUsedRTVersionNumber() > DEFAULT_RT_VERSION_NUMBER
+          && Utils.isRTVersioningApplicable(oldStore.getName())
+              ? Utils.composeRealTimeTopic(oldStore.getName(), oldStore.getLargestUsedRTVersionNumber())
+              : DEFAULT_REAL_TIME_TOPIC_NAME;
+
       mergedHybridStoreConfig = new HybridStoreConfigImpl(
           hybridRewindSeconds.get(),
           // If not specified, offset/time lag threshold will be -1 and will not be used to determine whether
@@ -5747,7 +5764,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           hybridTimeLagThreshold.orElse(DEFAULT_HYBRID_TIME_LAG_THRESHOLD),
           hybridDataReplicationPolicy.orElse(DataReplicationPolicy.NON_AGGREGATE),
           bufferReplayPolicy.orElse(BufferReplayPolicy.REWIND_FROM_EOP),
-          realTimeTopicName.orElse(DEFAULT_REAL_TIME_TOPIC_NAME));
+          realTimeTopicName.orElse(newRealTimeTopicName));
     }
     if (mergedHybridStoreConfig.getRewindTimeInSeconds() > 0
         && mergedHybridStoreConfig.getOffsetLagThresholdToGoOnline() < 0
