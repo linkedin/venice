@@ -470,7 +470,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
 
     if (decompressedSize > 0 && decompressionTimeInNs > 0) {
       AggRouterHttpRequestStats stats = routerStats.getStatsByType(RequestType.MULTI_GET);
-      stats.recordCompressedResponseSize(storeName, decompressedSize);
+      stats.recordDecompressedResponseSize(storeName, decompressedSize);
       /**
        * The following metric is actually measuring the deserialization/decompression/re-serialization.
        * Since all the overhead is introduced by the value compression, it might be fine to track them altogether.
