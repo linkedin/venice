@@ -310,8 +310,11 @@ public class DataWriterMRJob extends DataWriterComputeJob {
       jobConf.set(PUSH_JOB_VIEW_CONFIGS, pushJobSetting.materializedViewConfigFlatMap);
       jobConf.set(VALUE_SCHEMA_DIR, pushJobSetting.valueSchemaDir);
       jobConf.set(RMD_SCHEMA_DIR, pushJobSetting.rmdSchemaDir);
+      // Disable speculative execution regardless of user config if materialized view is present
+      jobConf.setReduceSpeculativeExecution(false);
+    } else {
+      jobConf.setReduceSpeculativeExecution(vpjProperties.getBoolean(REDUCER_SPECULATIVE_EXECUTION_ENABLE, false));
     }
-    jobConf.setReduceSpeculativeExecution(vpjProperties.getBoolean(REDUCER_SPECULATIVE_EXECUTION_ENABLE, false));
     int partitionCount = pushJobSetting.partitionCount;
     jobConf.setInt(PARTITION_COUNT, partitionCount);
     jobConf.setNumReduceTasks(partitionCount);

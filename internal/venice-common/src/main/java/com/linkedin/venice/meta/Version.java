@@ -393,6 +393,11 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
       return parseStoreFromStreamReprocessingTopic(kafkaTopic);
     } else if (isVersionTopic(kafkaTopic)) {
       return parseStoreFromVersionTopic(kafkaTopic);
+    } else if (VeniceView.isMaterializedViewTopic(kafkaTopic)) {
+      // We have store view adapters for metadata repositories in view consumers (CC and DVC) that expects the store
+      // view name to be in certain format in order to differentiate and retrieve the correct metadata. These adapters
+      // are generic and can be leveraged by other view types too but as of now only materialized view is using it.
+      return VeniceView.parseStoreAndViewFromViewTopic(kafkaTopic);
     } else if (VeniceView.isViewTopic(kafkaTopic)) {
       return VeniceView.parseStoreFromViewTopic(kafkaTopic);
     }

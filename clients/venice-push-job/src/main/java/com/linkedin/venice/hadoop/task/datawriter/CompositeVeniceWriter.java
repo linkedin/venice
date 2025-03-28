@@ -140,8 +140,8 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
     Map<String, Set<Integer>> viewPartitionMap = new HashMap<>();
     int index = 0;
     for (ComplexVeniceWriter<K, V, U> writer: childWriters) {
-      // There should be an entry for every materialized view, even if the partition set is empty. This way we can
-      // differentiate between skipped view write and missing view partition info unexpectedly.
+      // There should be an entry for every materialized view in the view partition map, even if the partition set is
+      // empty. This way we can differentiate between skipped view write and missing view partition info unexpectedly.
       childFutures[index++] = writer.complexPut(
           key,
           value,
