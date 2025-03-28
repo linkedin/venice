@@ -280,6 +280,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   @JsonIgnore
   void setRmdVersionId(int replicationMetadataVersionId);
 
+  boolean isGlobalRtDivEnabled();
+
+  void setGlobalRtDivEnabled(boolean globalRtDivEnabled);
+
   /**
    * Kafka topic name is composed by store name and version.
    * <p>
