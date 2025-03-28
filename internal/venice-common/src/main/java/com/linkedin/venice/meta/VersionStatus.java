@@ -17,14 +17,13 @@ public enum VersionStatus implements VeniceEnumValue {
   NOT_CREATED(0),
 
   /**
-   * Version has been pushed to venice(offline job related to this version has been completed), but is not ready to
-   * serve read request because the writes to this store is disabled
+   * Version has been created and started to ingest new data, but has not completed ingestion and is not ready to serve read traffic
    */
   STARTED(1),
 
   /**
-   * Version has been pushed to venice and is ready to serve read request. Intermediate status after a push job succeeds before DeferredVersionSwapService
-   * flips the status to ONLINE. This status only exists in the parent
+   * Version has been pushed to venice and is ready to serve read request. Intermediate status after a push job succeeds in all child regions
+   * before DeferredVersionSwapService flips the status to ONLINE. This status only exists in the parent
    */
   PUSHED(2),
 
