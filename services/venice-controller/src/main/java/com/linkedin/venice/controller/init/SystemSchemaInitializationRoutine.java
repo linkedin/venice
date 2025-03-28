@@ -110,7 +110,10 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
           storeMetadataUpdate.ifPresent(
               updateStoreQueryParams -> admin.updateStore(clusterToInit, systemStoreName, updateStoreQueryParams));
 
-          LOGGER.info("System store '{}' has been created.", systemStoreName);
+          LOGGER.info(
+              "System store: {} has been created and updated with query params: {}",
+              systemStoreName,
+              storeMetadataUpdate.orElse(null));
         } else {
           /**
            * Unexpected, but should not be a problem, so we can still continue with the verification that

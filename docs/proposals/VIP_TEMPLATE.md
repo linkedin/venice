@@ -1,9 +1,8 @@
 ---
 layout: default
-title: VIP Template # Replace this with "VIP-{VIP_Number} {VIP_Title}"
+title: VIP Template # Replace with: VIP-{VIP_Number} {VIP_Title}
 parent: Proposals
-
-permalink: /docs/proposals/vip_template
+permalink: /docs/proposals/vip_template # Replace with: /docs/proposals/vip-{VIP_Number}
 ---
 
 # VIP-`$VIP_Number`: `$VIP_Title`
@@ -64,7 +63,7 @@ we could think about what will happen if we don’t solve the problem, and we co
 12. Security improvement.
 13. Etc.
 
-## Functional specification
+## Functional Specification
 
 _If this is a development of a functionality/product for users, specify what it should look like from the user's point of view.
 It may include:_

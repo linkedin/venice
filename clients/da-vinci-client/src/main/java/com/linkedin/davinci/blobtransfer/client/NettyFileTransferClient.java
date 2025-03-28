@@ -1,13 +1,17 @@
 package com.linkedin.davinci.blobtransfer.client;
 
 import com.linkedin.alpini.base.concurrency.Executors;
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.exceptions.VenicePeersConnectionException;
+import com.linkedin.venice.listener.VerifySslHandler;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
@@ -19,13 +23,16 @@ import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpClientCodec;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
+import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.timeout.IdleStateHandler;
+import io.netty.handler.traffic.GlobalChannelTrafficShapingHandler;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -42,11 +49,13 @@ public class NettyFileTransferClient {
   private static final int MAX_METADATA_CONTENT_LENGTH = 1024 * 1024 * 100;
   private static final int REQUEST_TIMEOUT_IN_MINUTES = 5;
   private static final int CONNECTION_TIMEOUT_IN_MINUTES = 1;
+  // Maximum time that Netty will wait to establish the initial connection before failing.
+  private static final int CONNECTION_ESTABLISHMENT_TIMEOUT_MS = 30 * 1000;
   EventLoopGroup workerGroup;
   Bootstrap clientBootstrap;
   private final String baseDir;
   private final int serverPort;
-  private final int peersConnectivityFreshnessInSeconds;
+  private final int peersConnectivityFreshnessInSeconds; // the freshness of the peers connectivity records
   private StorageMetadataService storageMetadataService;
   private final ExecutorService hostConnectExecutorService;
   private final ScheduledExecutorService connectTimeoutScheduler;
@@ -56,13 +65,16 @@ public class NettyFileTransferClient {
   private VeniceConcurrentHashMap<String, Long> unconnectableHostsToTimestamp = new VeniceConcurrentHashMap<>();
   private VeniceConcurrentHashMap<String, Long> connectedHostsToTimestamp = new VeniceConcurrentHashMap<>();
 
-  // TODO 1: move tunable configs to a config class
-  // TODO 2: consider either increasing worker threads or have a dedicated thread pool to handle requests.
+  private final VerifySslHandler verifySsl = new VerifySslHandler();
+
+  // TODO: consider either increasing worker threads or have a dedicated thread pool to handle requests.
   public NettyFileTransferClient(
       int serverPort,
       String baseDir,
       StorageMetadataService storageMetadataService,
-      int peersConnectivityFreshnessInSeconds) {
+      int peersConnectivityFreshnessInSeconds,
+      GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler,
+      Optional<SSLFactory> sslFactory) {
     this.baseDir = baseDir;
     this.serverPort = serverPort;
     this.storageMetadataService = storageMetadataService;
@@ -73,10 +85,20 @@ public class NettyFileTransferClient {
     clientBootstrap.group(workerGroup);
     clientBootstrap.channel(NioSocketChannel.class);
     clientBootstrap.option(ChannelOption.SO_KEEPALIVE, true);
+    clientBootstrap.option(ChannelOption.CONNECT_TIMEOUT_MILLIS, CONNECTION_ESTABLISHMENT_TIMEOUT_MS);
     clientBootstrap.handler(new ChannelInitializer<SocketChannel>() {
       @Override
       public void initChannel(SocketChannel ch) {
+        SslHandler sslHandler = BlobTransferUtils.createBlobTransferClientSslHandler(sslFactory);
+        ch.pipeline().addLast("ssl", sslHandler);
+
+        // globalChannelTrafficShapingHandler is shared across all network channels to enforce global rate limits
+        ch.pipeline().addLast("globalTrafficShaper", globalChannelTrafficShapingHandler);
         ch.pipeline().addLast(new HttpClientCodec());
+
+        if (sslHandler != null) {
+          ch.pipeline().addLast(verifySsl);
+        }
       }
     });
     this.hostConnectExecutorService =
@@ -128,7 +150,15 @@ public class NettyFileTransferClient {
           if (channel != null && channel.isActive()) {
             // Mark the host as connected
             connectedHostsToTimestamp.put(host, System.currentTimeMillis());
-            channel.close(); // this is only for checking connectivity no need to open it.
+            // this is only for checking connectivity no need to open it.
+            channel.close().addListener((ChannelFuture channelCloseFuture) -> {
+              if (!channelCloseFuture.isSuccess()) {
+                // this host connection is not closed properly due to unexpect error
+                LOGGER.error("Failed to close the active channel for host: {}", host);
+                connectedHostsToTimestamp.remove(host);
+                unconnectableHostsToTimestamp.put(host, System.currentTimeMillis());
+              }
+            });
             return host;
           } else {
             LOGGER.warn(
@@ -183,6 +213,9 @@ public class NettyFileTransferClient {
         LOGGER.error("Error getting result from future", e);
       }
     }
+    // 6. Removed the unconnectable hosts from the result again,
+    // because some connectable host may fail to close the channel
+    connectableHostsResult.removeAll(unconnectableHostsToTimestamp.keySet());
 
     return connectableHostsResult;
   }
@@ -214,6 +247,19 @@ public class NettyFileTransferClient {
       // Must open a new connection for each request (per store per version per partition level),
       // Otherwise response will be mixed up
       Channel ch = connectToHost(host, storeName, version, partition);
+
+      // Check if the channel already has a P2PFileTransferClientHandler/P2PMetadataTransferHandler
+      if (ch.pipeline().get(P2PFileTransferClientHandler.class) != null
+          || ch.pipeline().get(P2PMetadataTransferHandler.class) != null) {
+        inputStream.toCompletableFuture()
+            .completeExceptionally(
+                new VenicePeersConnectionException(
+                    "The host " + host
+                        + " channel already have P2PFileTransferClientHandler/P2PMetadataTransferHandler for "
+                        + storeName + " version " + version + " partition " + partition + " table format "
+                        + requestedTableFormat));
+        return inputStream;
+      }
 
       // Request to get the blob file and metadata
       // Attach the file handler to the pipeline

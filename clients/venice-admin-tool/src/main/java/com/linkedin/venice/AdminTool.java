@@ -87,8 +87,8 @@ import com.linkedin.venice.meta.ServerAdminAction;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.metadata.payload.StorePropertiesPayloadRecord;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
-import com.linkedin.venice.metadata.response.StorePropertiesResponseRecord;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -177,9 +177,6 @@ public class AdminTool {
   private static final String STATUS = "status";
   private static final String ERROR = "error";
   private static final String SUCCESS = "success";
-
-  private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
-
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
   private static ControllerClient controllerClient;
@@ -197,6 +194,8 @@ public class AdminTool {
       "zookeeper.ssl.trustStore.type");
   private static final String DEFAULT_DATE_FORMAT = "yyyy-MM-dd hh:mm:ss";
   private static final String PST_TIME_ZONE = "America/Los_Angeles";
+
+  static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
 
   public static void main(String[] args) throws Exception {
     // Generate PubSubClientsFactory from java system properties, apache kafka adapter is the default one.
@@ -341,6 +340,9 @@ public class AdminTool {
           break;
         case SET_OWNER:
           setStoreOwner(cmd);
+          break;
+        case GET_PARTITION_ID:
+          getPartitionIdForKey(cmd);
           break;
         case SET_PARTITION_COUNT:
           setStorePartition(cmd);
@@ -1147,6 +1149,14 @@ public class AdminTool {
     String partitionNum = getRequiredArgument(cmd, Arg.PARTITION_COUNT, Command.SET_PARTITION_COUNT);
     PartitionResponse response = controllerClient.setStorePartitionCount(storeName, partitionNum);
     printSuccess(response);
+  }
+
+  private static void getPartitionIdForKey(CommandLine cmd) {
+    String storeName = getRequiredArgument(cmd, Arg.STORE, Command.GET_PARTITION_ID);
+    String key = getRequiredArgument(cmd, Arg.KEY, Command.GET_PARTITION_ID);
+    int version = Integer.parseInt(getOptionalArgument(cmd, Arg.VERSION, "-1"));
+    String keySchemaStr = controllerClient.getKeySchema(storeName).getSchemaStr();
+    TopicMessageFinder.findPartitionIdForKey(controllerClient, storeName, version, key, keySchemaStr);
   }
 
   private static void integerParam(CommandLine cmd, Arg param, Consumer<Integer> setter, Set<Arg> argSet) {
@@ -3213,7 +3223,7 @@ public class AdminTool {
       getAndPrintRequestBasedStoreProperties(
           transportClient,
           () -> ControllerClientFactory.discoverAndConstructControllerClient(
-              AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE.getSystemStoreName(),
+              AvroProtocolDefinition.SERVER_STORE_PROPERTIES_PAYLOAD.getSystemStoreName(),
               url,
               sslFactory,
               1),
@@ -3469,23 +3479,23 @@ public class AdminTool {
           e);
     }
     Schema writerSchema;
-    if (writerSchemaId != AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE.getCurrentProtocolVersion()) {
+    if (writerSchemaId != AvroProtocolDefinition.SERVER_STORE_PROPERTIES_PAYLOAD.getCurrentProtocolVersion()) {
       SchemaResponse schemaResponse = controllerClientSupplier.get()
-          .getValueSchema(AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE.getSystemStoreName(), writerSchemaId);
+          .getValueSchema(AvroProtocolDefinition.SERVER_STORE_PROPERTIES_PAYLOAD.getSystemStoreName(), writerSchemaId);
       if (schemaResponse.isError()) {
         throw new VeniceException(
             "Failed to fetch store properties response schema from controller, error: " + schemaResponse.getError());
       }
       writerSchema = parseSchemaFromJSONLooseValidation(schemaResponse.getSchemaStr());
     } else {
-      writerSchema = StorePropertiesResponseRecord.SCHEMA$;
+      writerSchema = StorePropertiesPayloadRecord.SCHEMA$;
     }
-    RecordDeserializer<GenericRecord> storePropertiesResponseDeserializer =
+    RecordDeserializer<GenericRecord> storePropertiesPayloadDeserializer =
         FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema, writerSchema);
-    GenericRecord storePropertiesResponse = storePropertiesResponseDeserializer.deserialize(body);
+    GenericRecord storePropertiesPayload = storePropertiesPayloadDeserializer.deserialize(body);
     // Using the jsonWriter to print Avro objects directly does not handle the collection types (List and Map) well.
     // Use the Avro record's toString() instead and pretty print it.
-    Object printObject = ObjectMapperFactory.getInstance().readValue(storePropertiesResponse.toString(), Object.class);
+    Object printObject = ObjectMapperFactory.getInstance().readValue(storePropertiesPayload.toString(), Object.class);
     System.out.println(jsonWriter.writeValueAsString(printObject));
   }
 

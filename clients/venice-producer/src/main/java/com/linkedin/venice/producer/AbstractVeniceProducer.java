@@ -3,6 +3,7 @@ package com.linkedin.venice.producer;
 import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_THREAD_NUM;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 
@@ -114,8 +115,10 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     if (versionCreationResponse.isEnableSSL()) {
       writerProps.put(KAFKA_OVER_SSL, "true");
       writerProps.put(SSL_KAFKA_BOOTSTRAP_SERVERS, versionCreationResponse.getKafkaBootstrapServers());
+      writerProps.put(PUBSUB_BROKER_ADDRESS, versionCreationResponse.getKafkaBootstrapServers());
     } else {
       writerProps.put(KAFKA_BOOTSTRAP_SERVERS, versionCreationResponse.getKafkaBootstrapServers());
+      writerProps.put(PUBSUB_BROKER_ADDRESS, versionCreationResponse.getKafkaBootstrapServers());
     }
 
     return getVeniceWriter(versionCreationResponse, writerProps);

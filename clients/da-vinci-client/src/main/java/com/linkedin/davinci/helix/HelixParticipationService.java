@@ -341,6 +341,9 @@ public class HelixParticipationService extends AbstractVeniceService
     VeniceProperties veniceProperties = veniceServerConfig.getClusterProperties();
     PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
         veniceServerConfig.getPubSubClientsFactory().getProducerAdapterFactory();
+    /**
+     * TODO: Remove this VW factory creation from here and replace it with the one created in {@link KafkaStoreIngestionService}
+     */
     VeniceWriterFactory writerFactory =
         new VeniceWriterFactory(veniceProperties.toProperties(), pubSubProducerAdapterFactory, null);
     SchemaEntry valueSchemaEntry;

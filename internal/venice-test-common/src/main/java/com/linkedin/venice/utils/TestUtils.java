@@ -461,8 +461,8 @@ public class TestUtils {
       Stream<Map.Entry> batchData) {
 
     try (VeniceWriter<Object, Object, byte[]> writer = writerFactory.createVeniceWriter(
-        new VeniceWriterOptions.Builder(kafkaTopic).setKeySerializer(new VeniceAvroKafkaSerializer(keySchema))
-            .setValueSerializer(new VeniceAvroKafkaSerializer(valueSchema))
+        new VeniceWriterOptions.Builder(kafkaTopic).setKeyPayloadSerializer(new VeniceAvroKafkaSerializer(keySchema))
+            .setValuePayloadSerializer(new VeniceAvroKafkaSerializer(valueSchema))
             .setPartitionCount(partitionCount)
             .setPartitioner(venicePartitioner)
             .build())) {
@@ -740,6 +740,11 @@ public class TestUtils {
 
   public static <T extends ControllerResponse> T assertCommand(T response, String assertionErrorMessage) {
     Assert.assertFalse(response.isError(), assertionErrorMessage + ": " + response.getError());
+    return response;
+  }
+
+  public static <T extends ControllerResponse> T assertCommandFailure(T response, String assertionErrorMessage) {
+    Assert.assertTrue(response.isError(), assertionErrorMessage + ": " + response.getError());
     return response;
   }
 

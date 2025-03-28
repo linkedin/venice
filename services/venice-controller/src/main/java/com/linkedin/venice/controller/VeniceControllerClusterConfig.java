@@ -141,6 +141,7 @@ import static com.linkedin.venice.ConfigKeys.LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE
 import static com.linkedin.venice.ConfigKeys.LEAKED_RESOURCE_ALLOWED_LINGER_TIME_MS;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_INTERVAL_MS;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_SCHEDULING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_CONCURRENCY;
 import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_TIMEOUT_MS;
@@ -579,6 +580,7 @@ public class VeniceControllerClusterConfig {
    * Configs for log compaction
    */
   private final boolean isLogCompactionEnabled;
+  private final boolean isLogCompactionSchedulingEnabled;
   private final int logCompactionThreadCount;
   private final long logCompactionIntervalMS;
   private final long timeSinceLastLogCompactionThresholdMS;
@@ -854,10 +856,9 @@ public class VeniceControllerClusterConfig {
 
     this.fatalDataValidationFailureRetentionMs =
         props.getLong(FATAL_DATA_VALIDATION_FAILURE_TOPIC_RETENTION_MS, TimeUnit.DAYS.toMillis(2));
-
+    // 30 seconds
     this.topicCleanupSleepIntervalBetweenTopicListFetchMs =
-        props.getLong(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, TimeUnit.SECONDS.toMillis(30)); // 30
-                                                                                                                // seconds
+        props.getLong(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, TimeUnit.SECONDS.toMillis(30));
     this.topicCleanupDelayFactor = props.getInt(TOPIC_CLEANUP_DELAY_FACTOR, 20); // thisFactor *
                                                                                  // topicCleanupSleepIntervalBetweenTopicListFetchMs
                                                                                  // = delayBeforeTopicDeletion
@@ -1034,6 +1035,7 @@ public class VeniceControllerClusterConfig {
     this.pushJobUserErrorCheckpoints = parsePushJobUserErrorCheckpoints(props);
 
     this.isLogCompactionEnabled = props.getBoolean(LOG_COMPACTION_ENABLED, false);
+    this.isLogCompactionSchedulingEnabled = props.getBoolean(LOG_COMPACTION_SCHEDULING_ENABLED, false);
     if (this.isLogCompactionEnabled) {
       try {
         this.repushOrchestratorClassName = props.getString(REPUSH_ORCHESTRATOR_CLASS_NAME);
@@ -1966,6 +1968,10 @@ public class VeniceControllerClusterConfig {
 
   public boolean isLogCompactionEnabled() {
     return isLogCompactionEnabled;
+  }
+
+  public boolean isLogCompactionSchedulingEnabled() {
+    return isLogCompactionEnabled && isLogCompactionSchedulingEnabled;
   }
 
   public int getLogCompactionThreadCount() {

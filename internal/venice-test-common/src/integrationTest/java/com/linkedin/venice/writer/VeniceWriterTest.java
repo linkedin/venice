@@ -22,8 +22,8 @@ import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -130,11 +130,11 @@ public class VeniceWriterTest {
       consumer.subscribe(pubSubTopicPartition, -1);
       int lastSeenSequenceNumber = -1;
       int lastSeenSegmentNumber = -1;
-      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages;
+      Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages;
       do {
         messages = consumer.poll(10 * Time.MS_PER_SECOND);
         if (messages.containsKey(pubSubTopicPartition)) {
-          for (final PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messages.get(pubSubTopicPartition)) {
+          for (final DefaultPubSubMessage message: messages.get(pubSubTopicPartition)) {
             ProducerMetadata producerMetadata = message.getValue().producerMetadata;
             int currentSegmentNumber = producerMetadata.segmentNumber;
             int currentSequenceNumber = producerMetadata.messageSequenceNumber;

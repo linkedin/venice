@@ -1,5 +1,6 @@
 package com.linkedin.venice.pubsub.adapter;
 
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 
 
@@ -10,18 +11,34 @@ public class SimplePubSubProduceResultImpl implements PubSubProduceResult {
   private final String topic;
   private final int partition;
   private final long offset;
+  private final PubSubPosition pubSubPosition;
   private final int serializedSize;
 
   public SimplePubSubProduceResultImpl(String topic, int partition, long offset, int serializedSize) {
+    this(topic, partition, offset, null, serializedSize);
+  }
+
+  public SimplePubSubProduceResultImpl(
+      String topic,
+      int partition,
+      long offset,
+      PubSubPosition pubSubPosition,
+      int serializedSize) {
     this.topic = topic;
     this.partition = partition;
     this.offset = offset;
+    this.pubSubPosition = pubSubPosition;
     this.serializedSize = serializedSize;
   }
 
   @Override
   public long getOffset() {
     return offset;
+  }
+
+  @Override
+  public PubSubPosition getPubSubPosition() {
+    return pubSubPosition;
   }
 
   @Override
@@ -41,7 +58,7 @@ public class SimplePubSubProduceResultImpl implements PubSubProduceResult {
 
   @Override
   public String toString() {
-    return "[Topic: " + topic + "," + "Partition: " + partition + "," + "Offset: " + offset + "," + "SerializedSize: "
-        + serializedSize + "]";
+    return "[Topic: " + topic + ", " + "Partition: " + partition + ", " + "Offset: " + offset + ", "
+        + "PubSubPosition: " + pubSubPosition + ", " + "SerializedSize: " + serializedSize + "]";
   }
 }

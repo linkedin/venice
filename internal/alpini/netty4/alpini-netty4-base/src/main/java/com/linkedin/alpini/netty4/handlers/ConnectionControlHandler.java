@@ -5,9 +5,11 @@ import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.function.Consumer;
 import java.util.function.IntSupplier;
-import javax.annotation.Nonnegative;
 import javax.annotation.Nonnull;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -32,27 +34,33 @@ import javax.annotation.Nonnull;
  */
 @ChannelHandler.Sharable
 public class ConnectionControlHandler extends ConnectionLimitHandler {
+  private static final Logger LOGGER = LogManager.getLogger(ConnectionControlHandler.class);
   private final LongAdder _activeCount = new LongAdder();
   private final LongAdder _inactiveCount = new LongAdder();
   private final Semaphore _activeSemaphore = new Semaphore(1);
   private final Semaphore _inactiveSemaphore = new Semaphore(1);
 
-  public ConnectionControlHandler(@Nonnegative int connectionLimit) {
-    this(() -> connectionLimit);
-  }
-
-  public ConnectionControlHandler(@Nonnull IntSupplier connectionLimit) {
-    super(connectionLimit);
+  public ConnectionControlHandler(
+      @Nonnull IntSupplier connectionLimit,
+      Consumer<Integer> connectionCountRecorder,
+      Consumer<Integer> rejectedConnectionCountRecorder) {
+    super(connectionLimit, connectionCountRecorder, rejectedConnectionCountRecorder);
   }
 
   @Override
   public void channelActive(ChannelHandlerContext ctx) throws Exception {
     _activeCount.increment();
+    _connectionCountRecorder.accept(getConnectedCount());
 
     Channel parent = ctx.channel().parent();
     if (parent != null && _activeSemaphore.tryAcquire()) {
       parent.eventLoop().submit(() -> {
         if (getConnectedCount() > getConnectionLimit()) {
+          LOGGER.error(
+              "Connection limit exceeded! Active connections: {}, Limit: {}",
+              getConnectedCount(),
+              getConnectionLimit());
+          _rejectedConnectionCountRecorder.accept(1);
           parent.config().setAutoRead(false);
         }
       }).addListener(ignored -> _activeSemaphore.release());
@@ -64,6 +72,7 @@ public class ConnectionControlHandler extends ConnectionLimitHandler {
   @Override
   public void channelInactive(ChannelHandlerContext ctx) throws Exception {
     _inactiveCount.increment();
+    _connectionCountRecorder.accept(getConnectedCount());
 
     Channel parent = ctx.channel().parent();
     if (parent != null && _inactiveSemaphore.tryAcquire()) {

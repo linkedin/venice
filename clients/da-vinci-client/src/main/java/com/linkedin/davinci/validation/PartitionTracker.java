@@ -21,8 +21,8 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.Segment;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -37,7 +37,9 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -71,9 +73,20 @@ public class PartitionTracker {
   private final Logger logger;
   private final String topicName;
   private final int partition;
+  // TODO: clear vtSegments
+  /**
+   * There should only be one {@link ConsumptionTask} for VT, so there shouldn't need to be any locking.
+   */
   private final VeniceConcurrentHashMap<GUID, Segment> vtSegments = new VeniceConcurrentHashMap<>();
+  /**
+   * The equivalent for RT is not stored. It's the instantaneous offset when a DIV sync is triggered.
+   */
+  private final AtomicLong latestConsumedVtOffset = new AtomicLong(0L);
 
-  // rtSegments is a map of source Kafka URL to a map of GUID to Segment.
+  /**
+   * rtSegments is a map of source broker URL to a map of GUID to Segment.
+   * There should only be one {@link ConsumptionTask} for each broker URL, so there shouldn't need to be any locking.
+   */
   private final VeniceConcurrentHashMap<String, VeniceConcurrentHashMap<GUID, Segment>> rtSegments =
       new VeniceConcurrentHashMap<>();
 
@@ -85,6 +98,14 @@ public class PartitionTracker {
 
   public int getPartition() {
     return partition;
+  }
+
+  public long getLatestConsumedVtOffset() {
+    return latestConsumedVtOffset.get();
+  }
+
+  public void updateLatestConsumedVtOffset(long offset) {
+    latestConsumedVtOffset.updateAndGet(current -> Math.max(current, offset));
   }
 
   public final String toString() {
@@ -137,6 +158,15 @@ public class PartitionTracker {
     }
   }
 
+  public Map<CharSequence, ProducerPartitionState> getPartitionStates(TopicType type) {
+    return getSegments(type).entrySet()
+        .stream()
+        .collect(
+            Collectors.toMap(
+                entry -> GuidUtils.getCharSequenceFromGuid(entry.getKey()),
+                entry -> entry.getValue().toProducerPartitionState()));
+  }
+
   private void setSegment(TopicType type, GUID guid, Segment segment) {
     Segment previousSegment = getSegments(type).put(guid, segment);
     if (previousSegment == null) {
@@ -150,13 +180,18 @@ public class PartitionTracker {
     }
   }
 
-  // Clone both vtSegment and rtSegment to the destination PartitionTracker.
-  public void cloneProducerStates(PartitionTracker destProducerTracker) {
+  /**
+   * Clone both vtSegment and rtSegment to the destination PartitionTracker. May be called concurrently.
+   */
+  public void cloneProducerStates(PartitionTracker destProducerTracker, String brokerUrl) {
     for (Map.Entry<GUID, Segment> entry: vtSegments.entrySet()) {
       destProducerTracker.setSegment(PartitionTracker.VERSION_TOPIC, entry.getKey(), new Segment(entry.getValue()));
     }
 
     for (Map.Entry<String, VeniceConcurrentHashMap<GUID, Segment>> entry: rtSegments.entrySet()) {
+      if (brokerUrl != null && !brokerUrl.equals(entry.getKey())) {
+        continue; // filter by brokerUrl if specified
+      }
       for (Map.Entry<GUID, Segment> rtEntry: entry.getValue().entrySet()) {
         destProducerTracker.setSegment(
             TopicType.of(TopicType.REALTIME_TOPIC_TYPE, entry.getKey()),
@@ -243,7 +278,7 @@ public class PartitionTracker {
    */
   public void validateMessage(
       TopicType type,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       boolean endOfPushReceived,
       Lazy<Boolean> tolerateMissingMsgs) throws DataValidationException {
     Segment segment = getSegment(type, consumerRecord.getValue().getProducerMetadata().getProducerGUID());
@@ -252,7 +287,7 @@ public class PartitionTracker {
     trackSequenceNumber(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs, hasPreviousSegment);
     // This is the last step, because we want failures in the previous steps to short-circuit execution.
     trackCheckSum(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs);
-    segment.setLastSuccessfulOffset(consumerRecord.getOffset());
+    segment.setLastSuccessfulOffset(consumerRecord.getPosition().getNumericOffset());
     segment.setNewSegment(false);
   }
 
@@ -272,7 +307,7 @@ public class PartitionTracker {
   private Segment trackSegment(
       TopicType type,
       Segment previousSegment,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       boolean endOfPushReceived,
       Lazy<Boolean> tolerateMissingMsgs) throws DuplicateDataException {
     int incomingSegmentNumber = consumerRecord.getValue().producerMetadata.segmentNumber;
@@ -319,7 +354,7 @@ public class PartitionTracker {
    */
   private Segment initializeNewSegment(
       TopicType type,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       boolean endOfPushReceived,
       boolean tolerateAnyMessageType) {
     CheckSumType checkSumType = CheckSumType.NONE;
@@ -374,7 +409,7 @@ public class PartitionTracker {
    */
   private void handleUnregisteredProducer(
       String scenario,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       Segment segment,
       boolean endOfPushReceived,
       boolean tolerateAnyMessageType) {
@@ -409,7 +444,7 @@ public class PartitionTracker {
    */
   private void trackSequenceNumber(
       Segment segment,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       boolean endOfPushReceived,
       Lazy<Boolean> tolerateMissingMsgs,
       boolean hasPreviousSegment) throws MissingDataException, DuplicateDataException {
@@ -503,7 +538,7 @@ public class PartitionTracker {
    */
   private void trackCheckSum(
       Segment segment,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       boolean endOfPushReceived,
       Lazy<Boolean> tolerateMissingMsgs) throws CorruptDataException {
     /**
@@ -572,7 +607,7 @@ public class PartitionTracker {
    */
   private void validateSequenceNumber(
       Segment segment,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       long logCompactionDelayInMs,
       Optional<DIVErrorMetricCallback> errorMetricCallback) throws MissingDataException {
     int previousSequenceNumber = segment.getSequenceNumber();
@@ -626,7 +661,7 @@ public class PartitionTracker {
 
   public void checkMissingMessage(
       TopicType type,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       Optional<PartitionTracker.DIVErrorMetricCallback> errorMetricCallback,
       long kafkaLogCompactionDelayInMs) throws DataValidationException {
     Segment segment = getSegment(type, consumerRecord.getValue().getProducerMetadata().getProducerGUID());
@@ -750,16 +785,11 @@ public class PartitionTracker {
       this.exceptionSupplier = exceptionSupplier;
     }
 
-    DataValidationException getNewException(
-        Segment segment,
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord) {
+    DataValidationException getNewException(Segment segment, DefaultPubSubMessage consumerRecord) {
       return getNewException(segment, consumerRecord, null);
     }
 
-    DataValidationException getNewException(
-        Segment segment,
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-        String extraInfo) {
+    DataValidationException getNewException(Segment segment, DefaultPubSubMessage consumerRecord, String extraInfo) {
       ProducerMetadata producerMetadata = consumerRecord.getValue().producerMetadata;
       MessageType messageType = MessageType.valueOf(consumerRecord.getValue());
       String previousSegment, previousSequenceNumber;
@@ -788,7 +818,7 @@ public class PartitionTracker {
         sb.append("; previous successful offset (in same segment): ").append(segment.getLastSuccessfulOffset());
       }
       sb.append("; incoming offset: ")
-          .append(consumerRecord.getOffset())
+          .append(consumerRecord.getPosition())
           .append("; previous segment: ")
           .append(previousSegment)
           .append("; incoming segment: ")

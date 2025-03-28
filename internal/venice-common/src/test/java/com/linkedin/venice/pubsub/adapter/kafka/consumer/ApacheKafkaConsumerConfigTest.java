@@ -3,7 +3,11 @@ package com.linkedin.venice.pubsub.adapter.kafka.consumer;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.SSL_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.SSL_TO_KAFKA_LEGACY;
+import static org.apache.kafka.clients.consumer.ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG;
+import static org.apache.kafka.clients.consumer.ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
@@ -13,6 +17,7 @@ import java.util.Properties;
 import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.testng.annotations.Test;
 
 
@@ -32,11 +37,11 @@ public class ApacheKafkaConsumerConfigTest {
     props.put("kafka.sasl.jaas.config", SASL_JAAS_CONFIG);
     props.put("kafka.sasl.mechanism", SASL_MECHANISM);
     props.put("kafka.security.protocol", "SASL_SSL");
-    ApacheKafkaProducerConfig apacheKafkaProducerConfig = new ApacheKafkaProducerConfig(props);
-    Properties producerProperties = apacheKafkaProducerConfig.getProducerProperties();
-    assertEquals(SASL_JAAS_CONFIG, producerProperties.get("sasl.jaas.config"));
-    assertEquals(SASL_MECHANISM, producerProperties.get("sasl.mechanism"));
-    assertEquals("SASL_SSL", producerProperties.get("security.protocol"));
+    ApacheKafkaConsumerConfig consumerConfig = new ApacheKafkaConsumerConfig(new VeniceProperties(props), null);
+    Properties consumerProps = consumerConfig.getConsumerProperties();
+    assertEquals(SASL_JAAS_CONFIG, consumerProps.get("sasl.jaas.config"));
+    assertEquals(SASL_MECHANISM, consumerProps.get("sasl.mechanism"));
+    assertEquals("SASL_SSL", consumerProps.get("security.protocol"));
   }
 
   @Test
@@ -72,5 +77,35 @@ public class ApacheKafkaConsumerConfigTest {
     assertNotNull(consumerProps);
     assertTrue(consumerProps.containsKey(ConsumerConfig.RECEIVE_BUFFER_CONFIG));
     assertEquals(consumerProps.get(ConsumerConfig.RECEIVE_BUFFER_CONFIG), "98765");
+  }
+
+  /**
+   * Ensures that the Kafka consumer's key and value serializer configurations remain unchanged.
+   * This test helps catch unintended modifications that could lead to serialization issues in
+   * certain environments. A failure here indicates that the serializer configurations may work
+   * in the test environment but could cause issues in other runtime environments.
+   */
+  @Test
+  public void testKeyAndValueDeserializerConfigConsistency() {
+    Properties props = new Properties();
+    ApacheKafkaConsumerConfig apacheKafkaConsumerConfig =
+        new ApacheKafkaConsumerConfig(new VeniceProperties(props), "test");
+    Properties consumerProps = apacheKafkaConsumerConfig.getConsumerProperties();
+    assertNotNull(consumerProps);
+
+    // Ensure the deserializer is not incorrectly set as a String
+    assertNotEquals(consumerProps.get(KEY_DESERIALIZER_CLASS_CONFIG), ByteArrayDeserializer.class.getName());
+    assertFalse(
+        consumerProps.get(KEY_DESERIALIZER_CLASS_CONFIG) instanceof String,
+        "Key deserializer should not be a string class name");
+
+    assertNotEquals(consumerProps.get(VALUE_DESERIALIZER_CLASS_CONFIG), ByteArrayDeserializer.class.getName());
+    assertFalse(
+        consumerProps.get(VALUE_DESERIALIZER_CLASS_CONFIG) instanceof String,
+        "Value deserializer should not be a string class name");
+
+    // Ensure the deserializer is set as a class
+    assertEquals(consumerProps.get(KEY_DESERIALIZER_CLASS_CONFIG), ByteArrayDeserializer.class);
+    assertEquals(consumerProps.get(VALUE_DESERIALIZER_CLASS_CONFIG), ByteArrayDeserializer.class);
   }
 }

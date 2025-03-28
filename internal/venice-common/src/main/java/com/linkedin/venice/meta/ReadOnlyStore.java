@@ -1399,7 +1399,7 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
-  public void addVersion(Version version, boolean isClonedVersion) {
+  public void addVersion(Version version, boolean isClonedVersion, int currentRTVersionNumber) {
     throw new UnsupportedOperationException();
   }
 
@@ -1429,8 +1429,8 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
-  public Version peekNextVersion() {
-    return this.delegate.peekNextVersion();
+  public int peekNextVersionNumber() {
+    return this.delegate.peekNextVersionNumber();
   }
 
   @Override

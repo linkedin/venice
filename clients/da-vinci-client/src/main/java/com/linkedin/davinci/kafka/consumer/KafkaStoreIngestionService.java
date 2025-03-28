@@ -26,6 +26,7 @@ import com.linkedin.davinci.notifier.PushStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
+import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.ParticipantStoreConsumptionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
@@ -34,6 +35,7 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
 import com.linkedin.venice.SSLConfig;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -188,14 +190,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final ResourceAutoClosableLockManager<String> topicLockManager;
 
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-  private KafkaValueSerializer kafkaValueSerializer;
+  private final KafkaValueSerializer kafkaValueSerializer;
   private final IngestionThrottler ingestionThrottler;
   private final ExecutorService aaWCWorkLoadProcessingThreadPool;
   private final AdaptiveThrottlerSignalService adaptiveThrottlerSignalService;
 
-  private VeniceServerConfig serverConfig;
+  private final VeniceServerConfig serverConfig;
 
-  private Lazy<ZKHelixAdmin> zkHelixAdmin;
+  private final Lazy<ZKHelixAdmin> zkHelixAdmin;
 
   private final ExecutorService aaWCIngestionStorageLookupThreadPool;
 
@@ -245,8 +247,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     producerAdapterFactory = pubSubClientsFactory.getProducerAdapterFactory();
     VeniceWriterFactory veniceWriterFactory =
         new VeniceWriterFactory(veniceWriterProperties, producerAdapterFactory, metricsRepository);
-    VeniceWriterFactory veniceWriterFactoryForMetaStoreWriter =
-        new VeniceWriterFactory(veniceWriterProperties, producerAdapterFactory, null);
     this.adaptiveThrottlerSignalService = adaptiveThrottlerSignalService;
     this.ingestionThrottler = new IngestionThrottler(
         isDaVinciClient,
@@ -301,7 +301,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     if (zkSharedSchemaRepository.isPresent()) {
       this.metaStoreWriter = new MetaStoreWriter(
           topicManagerRepository.getLocalTopicManager(),
-          veniceWriterFactoryForMetaStoreWriter,
+          veniceWriterFactory,
           zkSharedSchemaRepository.get(),
           pubSubTopicRepository,
           serverConfig.getMetaStoreWriterCloseTimeoutInMS(),
@@ -345,20 +345,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     }
     this.kafkaMessageEnvelopeSchemaReader = kafkaMessageEnvelopeSchemaReader;
 
-    if (clientConfig.isPresent()) {
-      String clusterName = veniceConfigLoader.getVeniceClusterConfig().getClusterName();
-      participantStoreConsumptionTask = new ParticipantStoreConsumptionTask(
-          this,
-          clusterInfoProvider,
-          new ParticipantStoreConsumptionStats(metricsRepository, clusterName),
-          ClientConfig.cloneConfig(clientConfig.get()).setMetricsRepository(metricsRepository),
-          serverConfig.getParticipantMessageConsumptionDelayMs(),
-          icProvider);
-    } else {
-      LOGGER.info(
-          "Unable to start participant store consumption task because client config is not provided, jobs "
-              + "may not be killed if admin helix messaging channel is disabled");
-    }
+    this.participantStoreConsumptionTask = initializeParticipantStoreConsumptionTask(
+        serverConfig,
+        clientConfig,
+        clusterInfoProvider,
+        metricsRepository,
+        icProvider);
 
     /**
      * Register a callback function to handle the case when a new KME value schema is encountered when the server
@@ -465,6 +457,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         "Enabled a thread pool for AA/WC ingestion lookup with {} threads.",
         serverConfig.getAaWCIngestionStorageLookupThreadPoolSize());
 
+    AggVersionedDaVinciRecordTransformerStats recordTransformerStats = null;
+    if (recordTransformerConfig != null) {
+      recordTransformerStats =
+          new AggVersionedDaVinciRecordTransformerStats(metricsRepository, metadataRepo, serverConfig);
+    }
+
     ingestionTaskFactory = StoreIngestionTaskFactory.builder()
         .setVeniceWriterFactory(veniceWriterFactory)
         .setStorageEngineRepository(storageService.getStorageEngineRepository())
@@ -475,6 +473,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setTopicManagerRepository(topicManagerRepository)
         .setHostLevelIngestionStats(hostLevelIngestionStats)
         .setVersionedDIVStats(versionedDIVStats)
+        .setDaVinciRecordTransformerStats(recordTransformerStats)
         .setVersionedIngestionStats(versionedIngestionStats)
         .setStoreBufferService(storeBufferService)
         .setServerConfig(serverConfig)
@@ -493,6 +492,31 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setAAWCWorkLoadProcessingThreadPool(aaWCWorkLoadProcessingThreadPool)
         .setAAWCIngestionStorageLookupThreadPool(aaWCIngestionStorageLookupThreadPool)
         .build();
+  }
+
+  @VisibleForTesting
+  ParticipantStoreConsumptionTask initializeParticipantStoreConsumptionTask(
+      VeniceServerConfig serverConfig,
+      Optional<ClientConfig> clientConfig,
+      ClusterInfoProvider clusterInfoProvider,
+      MetricsRepository metricsRepository,
+      ICProvider icProvider) {
+
+    if (!serverConfig.isParticipantMessageStoreEnabled() || !clientConfig.isPresent()) {
+      LOGGER.warn(
+          "Unable to start participant store consumption task because {}. Jobs may not be killed if the "
+              + "admin Helix messaging channel is disabled.",
+          clientConfig.isPresent() ? "participant message store is disabled" : "client config is missing");
+      return null;
+    }
+
+    return new ParticipantStoreConsumptionTask(
+        this,
+        clusterInfoProvider,
+        new ParticipantStoreConsumptionStats(metricsRepository, serverConfig.getClusterName()),
+        ClientConfig.cloneConfig(clientConfig.get()).setMetricsRepository(metricsRepository),
+        serverConfig.getParticipantMessageConsumptionDelayMs(),
+        icProvider);
   }
 
   /**
@@ -1153,23 +1177,28 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   private VeniceProperties getPubSubSSLPropertiesFromServerConfig(String kafkaBootstrapUrls) {
-    if (!kafkaBootstrapUrls.equals(serverConfig.getKafkaBootstrapServers())) {
+    final VeniceServerConfig serverConfigForPubSubCluster;
+    if (kafkaBootstrapUrls.equals(serverConfig.getKafkaBootstrapServers())) {
+      serverConfigForPubSubCluster = serverConfig;
+    } else {
       Properties clonedProperties = serverConfig.getClusterProperties().toProperties();
       clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrls);
-      serverConfig = new VeniceServerConfig(new VeniceProperties(clonedProperties), serverConfig.getKafkaClusterMap());
+      serverConfigForPubSubCluster =
+          new VeniceServerConfig(new VeniceProperties(clonedProperties), serverConfig.getKafkaClusterMap());
     }
-    VeniceProperties clusterProperties = serverConfig.getClusterProperties();
-    Properties properties = serverConfig.getClusterProperties().getPropertiesCopy();
+
+    VeniceProperties clusterProperties = serverConfigForPubSubCluster.getClusterProperties();
+    Properties properties = serverConfigForPubSubCluster.getClusterProperties().getPropertiesCopy();
     ApacheKafkaProducerConfig.copyKafkaSASLProperties(clusterProperties, properties, false);
-    kafkaBootstrapUrls = serverConfig.getKafkaBootstrapServers();
-    String resolvedKafkaUrl = serverConfig.getKafkaClusterUrlResolver().apply(kafkaBootstrapUrls);
+    kafkaBootstrapUrls = serverConfigForPubSubCluster.getKafkaBootstrapServers();
+    String resolvedKafkaUrl = serverConfigForPubSubCluster.getKafkaClusterUrlResolver().apply(kafkaBootstrapUrls);
     if (resolvedKafkaUrl != null) {
       kafkaBootstrapUrls = resolvedKafkaUrl;
     }
     properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrls);
-    PubSubSecurityProtocol securityProtocol = serverConfig.getKafkaSecurityProtocol(kafkaBootstrapUrls);
+    PubSubSecurityProtocol securityProtocol = serverConfigForPubSubCluster.getKafkaSecurityProtocol(kafkaBootstrapUrls);
     if (ApacheKafkaUtils.isKafkaSSLProtocol(securityProtocol)) {
-      Optional<SSLConfig> sslConfig = serverConfig.getSslConfig();
+      Optional<SSLConfig> sslConfig = serverConfigForPubSubCluster.getSslConfig();
       if (!sslConfig.isPresent()) {
         throw new VeniceException("SSLConfig should be present when Kafka SSL is enabled");
       }

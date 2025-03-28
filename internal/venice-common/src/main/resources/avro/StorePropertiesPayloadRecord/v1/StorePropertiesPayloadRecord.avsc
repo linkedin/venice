@@ -1,0 +1,47 @@
+{
+  "type": "record",
+  "name": "StorePropertiesPayloadRecord",
+  "namespace": "com.linkedin.venice.metadata.payload",
+  "doc": "This record will store store properties",
+  "fields": [
+    {
+      "name": "storeMetaValueSchemaVersion",
+      "doc": "Store metadata schema version",
+      "type": "int",
+      "default": 1
+    },
+    {
+      "name": "storeMetaValueAvro",
+      "doc": "Store metadata, serialization of com.linkedin.venice.systemstore.schemas.StoreMetaValue",
+      "type": "bytes",
+      "default": ""
+    },
+    {
+      "name": "helixGroupInfo",
+      "doc": "Helix group information, maps replicas to their respective groups",
+      "type": [
+        "null",
+        {
+          "type": "map",
+          "values": "int"
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "routingInfo",
+      "doc": "Routing table information, maps resource to partition ID to a list of replicas",
+      "type": [
+        "null",
+        {
+          "type": "map",
+          "values": {
+            "type": "array",
+            "items": "string"
+          }
+        }
+      ],
+      "default": null
+    }
+  ]
+}

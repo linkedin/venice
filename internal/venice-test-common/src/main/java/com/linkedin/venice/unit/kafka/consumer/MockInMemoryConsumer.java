@@ -1,11 +1,9 @@
 package com.linkedin.venice.unit.kafka.consumer;
 
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -100,10 +98,8 @@ public class MockInMemoryConsumer implements PubSubConsumerAdapter {
   }
 
   @Override
-  public synchronized Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> poll(
-      long timeout) {
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> delegatePolledMessages =
-        delegate.poll(timeout);
+  public synchronized Map<PubSubTopicPartition, List<DefaultPubSubMessage>> poll(long timeout) {
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> delegatePolledMessages = delegate.poll(timeout);
     if (delegatePolledMessages != null && !delegatePolledMessages.isEmpty()) {
       throw new IllegalArgumentException(
           "The MockInMemoryConsumer's delegate can only be used to verify calls, not to return arbitrary instances.");
@@ -118,7 +114,7 @@ public class MockInMemoryConsumer implements PubSubConsumerAdapter {
       }
     }
 
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> pubSubMessages =
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> pubSubMessages =
         pollStrategy.poll(broker, offsetsToPoll, timeout);
     for (Map.Entry<PubSubTopicPartition, Long> entry: offsetsToPoll.entrySet()) {
       PubSubTopicPartition topicPartition = entry.getKey();

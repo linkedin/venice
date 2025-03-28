@@ -28,9 +28,9 @@ public class VeniceWriterOptionsTest {
     VeniceWriterOptions options = new VeniceWriterOptions.Builder("store_v1").build();
     assertNotNull(options);
     assertEquals(options.getTopicName(), "store_v1");
-    assertTrue(options.getKeySerializer() instanceof DefaultSerializer);
-    assertTrue(options.getValueSerializer() instanceof DefaultSerializer);
-    assertTrue(options.getWriteComputeSerializer() instanceof DefaultSerializer);
+    assertTrue(options.getKeyPayloadSerializer() instanceof DefaultSerializer);
+    assertTrue(options.getValuePayloadSerializer() instanceof DefaultSerializer);
+    assertTrue(options.getWriteComputePayloadSerializer() instanceof DefaultSerializer);
     assertTrue(options.getPartitioner() instanceof DefaultVenicePartitioner);
     assertEquals(options.getTime(), SystemTime.INSTANCE);
     assertNull(options.getPartitionCount());
@@ -47,8 +47,8 @@ public class VeniceWriterOptionsTest {
     Time time = new SystemTime();
 
     VeniceWriterOptions options = new VeniceWriterOptions.Builder("store_v1").setUseKafkaKeySerializer(true)
-        .setValueSerializer(valSer)
-        .setWriteComputeSerializer(wcSer)
+        .setValuePayloadSerializer(valSer)
+        .setWriteComputePayloadSerializer(wcSer)
         .setPartitioner(venicePartitioner)
         .setTime(time)
         .setPartitionCount(20)
@@ -63,9 +63,9 @@ public class VeniceWriterOptionsTest {
 
     assertNotNull(options);
     assertEquals(options.getTopicName(), "store_v1");
-    assertTrue(options.getKeySerializer() instanceof KafkaKeySerializer);
-    assertEquals(options.getValueSerializer(), valSer);
-    assertEquals(options.getWriteComputeSerializer(), wcSer);
+    assertTrue(options.getKeyPayloadSerializer() instanceof KafkaKeySerializer);
+    assertEquals(options.getValuePayloadSerializer(), valSer);
+    assertEquals(options.getWriteComputePayloadSerializer(), wcSer);
     assertEquals(options.getPartitioner(), venicePartitioner);
     assertEquals(options.getTime(), time);
     assertEquals((int) options.getPartitionCount(), 20);
@@ -81,8 +81,8 @@ public class VeniceWriterOptionsTest {
   @Test
   public void testVeniceWriterOptionsCanSetKeySer() {
     VeniceAvroKafkaSerializer keySer = new VeniceAvroKafkaSerializer("\"string\"");
-    VeniceWriterOptions options = new VeniceWriterOptions.Builder("store_v1").setKeySerializer(keySer).build();
+    VeniceWriterOptions options = new VeniceWriterOptions.Builder("store_v1").setKeyPayloadSerializer(keySer).build();
     assertNotNull(options);
-    assertEquals(options.getKeySerializer(), keySer);
+    assertEquals(options.getKeyPayloadSerializer(), keySer);
   }
 }

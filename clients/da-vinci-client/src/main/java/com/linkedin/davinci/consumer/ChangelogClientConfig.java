@@ -25,6 +25,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
 
   private String bootstrapFileSystemPath;
   private long versionSwapDetectionIntervalTimeInSeconds = 60L;
+  private int seekThreadPoolSize = 10;
 
   /**
    * This will be used in BootstrappingVeniceChangelogConsumer to determine when to sync updates with the underlying
@@ -33,9 +34,17 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   private long databaseSyncBytesInterval = 32 * 1024 * 1024L;
 
   /**
-   * RocksDB block cache size per BootstrappingVeniceChangelogConsumer. Default is 1 MB.
+   * RocksDB block cache size per BootstrappingVeniceChangelogConsumer. Default is 64 MB. This config is used for both
+   * the internal bootstrapping change log consumer and chunk assembler's RocksDB usage.
    */
-  private long rocksDBBlockCacheSizeInBytes = 1024 * 1024L;
+  private long rocksDBBlockCacheSizeInBytes = 64 * 1024 * 1024L;
+
+  /**
+   * Whether to skip failed to assemble records or fail the consumption by throwing errors. Default is set to true.
+   * This is acceptable for now because we allow user to provide a {@link VeniceChangeCoordinate} to seek to. The seek
+   * could land in-between chunks. Partially consumed chunked records cannot be assembled and will be skipped.
+   */
+  private boolean skipFailedToAssembleRecords = true;
 
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
@@ -175,6 +184,15 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  public int getSeekThreadPoolSize() {
+    return seekThreadPoolSize;
+  }
+
+  public ChangelogClientConfig setSeekThreadPoolSize(int seekThreadPoolSize) {
+    this.seekThreadPoolSize = seekThreadPoolSize;
+    return this;
+  }
+
   /**
    * Gets the databaseSyncBytesInterval.
    */
@@ -204,6 +222,15 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  public ChangelogClientConfig setShouldSkipFailedToAssembleRecords(boolean skipFailedToAssembleRecords) {
+    this.skipFailedToAssembleRecords = skipFailedToAssembleRecords;
+    return this;
+  }
+
+  public boolean shouldSkipFailedToAssembleRecords() {
+    return skipFailedToAssembleRecords;
+  }
+
   public static <V extends SpecificRecord> ChangelogClientConfig<V> cloneConfig(ChangelogClientConfig<V> config) {
     ChangelogClientConfig<V> newConfig = new ChangelogClientConfig<V>().setStoreName(config.getStoreName())
         .setLocalD2ZkHosts(config.getLocalD2ZkHosts())
@@ -221,7 +248,9 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setConsumerName(config.consumerName)
         .setDatabaseSyncBytesInterval(config.getDatabaseSyncBytesInterval())
         .setShouldCompactMessages(config.shouldCompactMessages())
-        .setIsBeforeImageView(config.isBeforeImageView());
+        .setIsBeforeImageView(config.isBeforeImageView())
+        .setSeekThreadPoolSize(config.getSeekThreadPoolSize())
+        .setShouldSkipFailedToAssembleRecords(config.shouldSkipFailedToAssembleRecords());
     return newConfig;
   }
 

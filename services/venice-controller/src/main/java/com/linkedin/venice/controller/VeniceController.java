@@ -65,7 +65,7 @@ public class VeniceController {
   private final VeniceControllerService controllerService;
   private final AdminSparkServer adminServer;
   private final AdminSparkServer secureAdminServer;
-  private LogCompactionService logCompactionService;
+  private final Optional<LogCompactionService> logCompactionService;
   private VeniceGrpcServer adminGrpcServer;
   private VeniceGrpcServer adminSecureGrpcServer;
   private final TopicCleanupService topicCleanupService;
@@ -164,6 +164,7 @@ public class VeniceController {
     this.adminServer = createAdminServer(false);
     this.secureAdminServer = sslEnabled ? createAdminServer(true) : null;
     this.topicCleanupService = createTopicCleanupService();
+    this.logCompactionService = createLogCompactionService();
     this.storeBackupVersionCleanupService = createStoreBackupVersionCleanupService();
     this.disabledPartitionEnablerService = createDisabledPartitionEnablerService();
     this.unusedValueSchemaCleanupService = createUnusedValueSchemaCleanupService();
@@ -223,10 +224,6 @@ public class VeniceController {
 
   private TopicCleanupService createTopicCleanupService() {
     Admin admin = controllerService.getVeniceHelixAdmin();
-    if (multiClusterConfigs.isLogCompactionEnabled()) {
-      logCompactionService = new LogCompactionService(admin, multiClusterConfigs);
-      LOGGER.info(LogCompactionService.class.getSimpleName() + " is initialised");
-    }
 
     if (multiClusterConfigs.isParent()) {
       return new TopicCleanupServiceForParentController(
@@ -243,6 +240,14 @@ public class VeniceController {
           new TopicCleanupServiceStats(metricsRepository),
           pubSubClientsFactory);
     }
+  }
+
+  private Optional<LogCompactionService> createLogCompactionService() {
+    if (multiClusterConfigs.isLogCompactionSchedulingEnabled()) {
+      Admin admin = controllerService.getVeniceHelixAdmin();
+      return Optional.of(new LogCompactionService(admin, multiClusterConfigs));
+    }
+    return Optional.empty();
   }
 
   private Optional<StoreBackupVersionCleanupService> createStoreBackupVersionCleanupService() {
@@ -388,11 +393,9 @@ public class VeniceController {
     if (sslEnabled) {
       secureAdminServer.start();
     }
-    if (multiClusterConfigs.isLogCompactionEnabled()) {
-      logCompactionService.start();
-    }
 
     topicCleanupService.start();
+    logCompactionService.ifPresent(LogCompactionService::start);
     storeBackupVersionCleanupService.ifPresent(AbstractVeniceService::start);
     storeGraveyardCleanupService.ifPresent(AbstractVeniceService::start);
     unusedValueSchemaCleanupService.ifPresent(AbstractVeniceService::start);
@@ -461,6 +464,7 @@ public class VeniceController {
     systemStoreRepairService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     storeGraveyardCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     unusedValueSchemaCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
+    logCompactionService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     storeBackupVersionCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     disabledPartitionEnablerService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     deferredVersionSwapService.ifPresent(Utils::closeQuietlyWithErrorLogged);
@@ -473,9 +477,6 @@ public class VeniceController {
     if (grpcExecutor != null) {
       LOGGER.info("Shutting down gRPC executor");
       grpcExecutor.shutdown();
-    }
-    if (multiClusterConfigs.isLogCompactionEnabled()) {
-      Utils.closeQuietlyWithErrorLogged(logCompactionService);
     }
     Utils.closeQuietlyWithErrorLogged(topicCleanupService);
     Utils.closeQuietlyWithErrorLogged(secureAdminServer);

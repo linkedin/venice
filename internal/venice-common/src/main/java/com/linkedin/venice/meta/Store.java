@@ -264,7 +264,7 @@ public interface Store {
 
   void addVersion(Version version);
 
-  void addVersion(Version version, boolean isClonedVersion);
+  void addVersion(Version version, boolean isClonedVersion, int currentRTVersionNumber);
 
   void forceAddVersion(Version version, boolean isClonedVersion);
 
@@ -276,7 +276,7 @@ public interface Store {
 
   void updateVersionStatus(int versionNumber, VersionStatus status);
 
-  Version peekNextVersion();
+  int peekNextVersionNumber();
 
   /**
    * @param versionNumber for which to get the {@link Version}

@@ -1,6 +1,7 @@
 package com.linkedin.venice.pubsub.adapter.kafka.producer;
 
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterContext;
 import com.linkedin.venice.utils.VeniceProperties;
 
 
@@ -13,12 +14,22 @@ public class ApacheKafkaProducerAdapterFactory implements PubSubProducerAdapterF
   private static final String NAME = "ApacheKafkaProducer";
 
   @Override
+  @Deprecated
   public ApacheKafkaProducerAdapter create(
       VeniceProperties veniceProperties,
       String producerName,
       String brokerAddressToOverride) {
-    return new ApacheKafkaProducerAdapter(
-        new ApacheKafkaProducerConfig(veniceProperties, brokerAddressToOverride, producerName, true));
+    return create(
+        new PubSubProducerAdapterContext.Builder().setVeniceProperties(veniceProperties)
+            .setBrokerAddress(brokerAddressToOverride)
+            .setShouldValidateProducerConfigStrictly(true)
+            .setProducerName(producerName)
+            .build());
+  }
+
+  @Override
+  public ApacheKafkaProducerAdapter create(PubSubProducerAdapterContext context) {
+    return new ApacheKafkaProducerAdapter(new ApacheKafkaProducerConfig(context));
   }
 
   @Override

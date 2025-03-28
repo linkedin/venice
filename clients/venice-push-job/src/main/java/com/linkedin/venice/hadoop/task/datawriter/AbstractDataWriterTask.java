@@ -4,7 +4,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.ValidateSchemaAndBuildDictMapper;
 import com.linkedin.venice.hadoop.engine.EngineTaskConfigProvider;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputFormatCombiner;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
@@ -17,7 +16,7 @@ import java.util.Properties;
 
 /**
  * Class for commonalities between {@link AbstractInputRecordProcessor}, {@link AbstractPartitionWriter},
- * {@link KafkaInputFormatCombiner} and {@link ValidateSchemaAndBuildDictMapper}.
+ * and {@link KafkaInputFormatCombiner}.
  */
 public abstract class AbstractDataWriterTask {
   protected static final int TASK_ID_NOT_SET = -1;

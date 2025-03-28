@@ -76,8 +76,6 @@ public class StoreBackend {
       setDaVinciCurrentVersion(null);
       version.close();
     }
-
-    backend.getStoreRepository().unsubscribe(storeName);
   }
 
   synchronized void delete() {

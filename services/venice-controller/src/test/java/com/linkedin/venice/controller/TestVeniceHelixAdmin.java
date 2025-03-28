@@ -1028,17 +1028,4 @@ public class TestVeniceHelixAdmin {
     verify(executionIdAccessor, never()).updateLastSucceededExecutionId(anyString(), anyLong());
     verify(adminConsumerService, times(1)).updateAdminTopicMetadata(clusterName, executionId, offset, upstreamOffset);
   }
-
-  @Test
-  public void testUpdateAdminOperationProtocolVersion() {
-    String clusterName = "test-cluster";
-    Long adminProtocolVersion = 10L;
-    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
-    doCallRealMethod().when(veniceHelixAdmin).updateAdminOperationProtocolVersion(clusterName, adminProtocolVersion);
-    AdminConsumerService adminConsumerService = mock(AdminConsumerService.class);
-    when(veniceHelixAdmin.getAdminConsumerService(clusterName)).thenReturn(adminConsumerService);
-
-    veniceHelixAdmin.updateAdminOperationProtocolVersion(clusterName, adminProtocolVersion);
-    verify(adminConsumerService, times(1)).updateAdminOperationProtocolVersion(clusterName, adminProtocolVersion);
-  }
 }

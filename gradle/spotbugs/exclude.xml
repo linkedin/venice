@@ -415,6 +415,7 @@
     <Or>
       <Class name="com.linkedin.venice.integration.utils.ZkServerWrapper"/>
       <Class name="com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest"/>
+      <Class name="com.linkedin.venice.endToEnd.TestHybrid"/>
     </Or>
   </Match>
   <Match>

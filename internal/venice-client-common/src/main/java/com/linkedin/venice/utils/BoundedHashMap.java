@@ -2,11 +2,13 @@ package com.linkedin.venice.utils;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import javax.annotation.concurrent.NotThreadSafe;
 
 
 /**
  * A map implementation with a bounded size.
  */
+@NotThreadSafe
 public class BoundedHashMap<K, V> extends LinkedHashMap<K, V> {
   private static final long serialVersionUID = 1L;
   private static final float DEFAULT_LOAD_FACTOR = 0.75f;

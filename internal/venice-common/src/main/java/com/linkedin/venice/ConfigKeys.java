@@ -56,6 +56,8 @@ public class ConfigKeys {
    */
   public static final String PUBSUB_CLIENT_CONFIG_PREFIX = PubSubConstants.PUBSUB_CLIENT_CONFIG_PREFIX;
 
+  public static final String PUBSUB_BROKER_ADDRESS = PubSubConstants.PUBSUB_BROKER_ADDRESS;
+
   public static final String KAFKA_CONFIG_PREFIX = ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX;
   public static final String KAFKA_BOOTSTRAP_SERVERS = ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS;
   public static final String SSL_KAFKA_BOOTSTRAP_SERVERS = ApacheKafkaProducerConfig.SSL_KAFKA_BOOTSTRAP_SERVERS;
@@ -305,6 +307,11 @@ public class ConfigKeys {
    * Whether log compaction is enabled for stores in this Venice controller
    */
   public static final String LOG_COMPACTION_ENABLED = "log.compaction.enabled";
+
+  /**
+   * Whether log compaction scheduling is enabled for stores in this Venice controller
+   */
+  public static final String LOG_COMPACTION_SCHEDULING_ENABLED = "log.compaction.scheduling.enabled";
   /**
    * Number of threads to use for log compaction
    */
@@ -841,6 +848,8 @@ public class ConfigKeys {
   public static final String SERVER_RESET_ERROR_REPLICA_ENABLED = "server.reset.error.replica.enabled";
 
   public static final String SERVER_ADAPTIVE_THROTTLER_ENABLED = "server.adaptive.throttler.enabled";
+
+  public static final String SERVER_SKIP_CHECK_AFTER_UNSUB_ENABLED = "server.skip.check.after.unsub.enabled";
   public static final String SERVER_ADAPTIVE_THROTTLER_SIGNAL_IDLE_THRESHOLD =
       "server.adaptive.throttler.signal.idle.threshold";
   public static final String SERVER_ADAPTIVE_THROTTLER_SINGLE_GET_LATENCY_THRESHOLD =
@@ -1056,6 +1065,7 @@ public class ConfigKeys {
    */
   public static final String ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ = "router.max.key_count.in.multiget.req";
   public static final String ROUTER_CONNECTION_LIMIT = "router.connection.limit";
+  public static final String ROUTER_CONNECTION_HANDLE_MODE = "router.connection.handle.mode";
   /**
    * The http client pool size being used in one Router;
    */
@@ -1861,6 +1871,20 @@ public class ConfigKeys {
   // if the connectivity is not fresh, then retry the connection.
   public static final String BLOB_TRANSFER_PEERS_CONNECTIVITY_FRESHNESS_IN_SECONDS =
       "blob.transfer.peers.connectivity.freshness.in.seconds";
+  // This is the maximum allowed read speed (in bytes per sec) for the Netty client when receiving data from the remote
+  // peer.
+  public static final String BLOB_TRANSFER_CLIENT_READ_LIMIT_BYTES_PER_SEC =
+      "blob.transfer.client.read.limit.bytes.per.sec";
+  // This is the maximum allowed write speed (in bytes per sec) for the file transfer service when sending out data to
+  // the remote peer.
+  public static final String BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC =
+      "blob.transfer.service.write.limit.bytes.per.sec";
+
+  // Enable ssl for the blob transfer
+  public static final String BLOB_TRANSFER_SSL_ENABLED = "blob.transfer.ssl.enabled";
+
+  // Enable acl for the blob transfer between Da Vinci peers, or server peers
+  public static final String BLOB_TRANSFER_ACL_ENABLED = "blob.transfer.acl.enabled";
 
   // Port used by peer-to-peer transfer service. It should be used by both server and client
   public static final String DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT = "davinci.p2p.blob.transfer.server.port";
@@ -1908,16 +1932,21 @@ public class ConfigKeys {
   public static final String ROUTER_CLIENT_SSL_HANDSHAKE_THREADS = "router.client.ssl.handshake.threads";
 
   /**
-   * Config to control if DNS resolution should be done before SSL handshake between clients and a router.
-   * If this is enabled, the above SSL handshake thread pool will be used to perform DNS resolution, because
-   * DNS resolution before SSL and separate SSL handshake thread pool are mutually exclusive features.
+   * Config to control the number of threads used for DNS resolution.
+   * If the value is positive, DNS resolution would be done before SSL handshake between clients and a router.
+   * 0 will disable the dns resolution but does not affect the SSL handshake.
    */
-  public static final String ROUTER_RESOLVE_BEFORE_SSL = "router.resolve.before.ssl";
+  public static final String ROUTER_RESOLVE_THREADS = "router.resolve.threads";
+
+  /**
+   * Config to control the queue capacity for the thread pool executor used for DNS resolution.
+   */
+  public static final String ROUTER_RESOLVE_QUEUE_CAPACITY = "router.resolve.queue.capacity";
 
   /**
    * Config to control the maximum number of concurrent DNS resolutions that can be done by the router.
    */
-  public static final String ROUTER_MAX_CONCURRENT_RESOLUTIONS = "router.max.concurrent.resolutions";
+  public static final String ROUTER_MAX_CONCURRENT_SSL_HANDSHAKES = "router.max.concurrent.ssl.handshakes";
 
   /**
    * Config to control the maximum number of attempts to resolve a client host name before giving up.
@@ -2309,6 +2338,26 @@ public class ConfigKeys {
    */
   public static final String SERVER_CONSUMER_POOL_SIZE_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER =
       "server.consumer.pool.size.for.non.current.version.non.aa.wc.leader";
+
+  /**
+   * A string of comma separated number to specify different factors multiplying basic throttling limit
+   * KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND, the factors will be comma separated numbers with ascending order,
+   * but we should include 1.0 as basic setting. For example, a string as: "0.8, 1.0, 1.2" means the basic setting is
+   * 1.0, and the max setting is 1.2 * basic throttling limit.
+   */
+  public static final String KAFKA_FETCH_THROTTLER_FACTORS_PER_SECOND = "kafka.fetch.throttler.factors.per.second";
+  public static final String SERVER_THROTTLER_FACTORS_FOR_AA_WC_LEADER = "server_throttler_factors_for_aa_wc_leader";
+  public static final String SERVER_THROTTLER_FACTORS_FOR_SEP_RT_LEADER = "server.throttler.factors.for.sep.rt.leader";
+  public static final String SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_AA_WC_LEADER =
+      "server.throttler.factors.for.current.version.aa.wc.leader";
+  public static final String SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_SEPARATE_RT_LEADER =
+      "server.throttler.factors.for.current.version.separate.rt.leader";
+  public static final String SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_AA_WC_LEADER =
+      "server.throttler.factors.for.non.current.version.aa.wc.leader";
+  public static final String SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_NON_AA_WC_LEADER =
+      "server.throttler.factors.for.current.version.non.aa.wc.leader";
+  public static final String SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER =
+      "server.throttler.factors.for.non.current.version.non.aa.wc.leader";
 
   /**
    * Whether to enable record-level metrics when bootstrapping current version.

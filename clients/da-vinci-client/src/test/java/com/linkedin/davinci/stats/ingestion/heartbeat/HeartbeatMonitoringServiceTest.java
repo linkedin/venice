@@ -1,5 +1,10 @@
 package com.linkedin.davinci.stats.ingestion.heartbeat;
 
+import static com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatStatReporter.CATCHUP_UP_FOLLOWER_METRIC_PREFIX;
+import static com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatStatReporter.FOLLOWER_METRIC_PREFIX;
+import static com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatStatReporter.LEADER_METRIC_PREFIX;
+import static com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatStatReporter.MAX;
+import static com.linkedin.venice.utils.Utils.SEPARATE_TOPIC_SUFFIX;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -18,6 +23,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
@@ -140,8 +146,8 @@ public class HeartbeatMonitoringServiceTest {
 
   }
 
-  @Test
-  public void testAddLeaderLagMonitor() {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testAddLeaderLagMonitor(boolean enableSepRT) {
 
     // Default hybrid store config
     HybridStoreConfig hybridStoreConfig =
@@ -154,6 +160,9 @@ public class HeartbeatMonitoringServiceTest {
     futureVersion.setHybridStoreConfig(hybridStoreConfig);
 
     currentVersion.setActiveActiveReplicationEnabled(true);
+    if (enableSepRT) {
+      currentVersion.setSeparateRealTimeTopicEnabled(true);
+    }
 
     Store mockStore = mock(Store.class);
     Mockito.when(mockStore.getName()).thenReturn(TEST_STORE);
@@ -170,6 +179,7 @@ public class HeartbeatMonitoringServiceTest {
     Set<String> regions = new HashSet<>();
     regions.add(LOCAL_FABRIC);
     regions.add(REMOTE_FABRIC);
+    regions.add(REMOTE_FABRIC + SEPARATE_TOPIC_SUFFIX);
     HeartbeatMonitoringService heartbeatMonitoringService =
         new HeartbeatMonitoringService(mockMetricsRepository, mockReadOnlyRepository, regions, LOCAL_FABRIC, null);
 
@@ -282,6 +292,14 @@ public class HeartbeatMonitoringServiceTest {
     Assert.assertNull(
         heartbeatMonitoringService.getLeaderHeartbeatTimeStamps().get(TEST_STORE).get(backupVersion.getNumber()));
 
+    Assert.assertEquals(
+        heartbeatMonitoringService.getLeaderHeartbeatTimeStamps()
+            .get(TEST_STORE)
+            .get(currentVersion.getNumber())
+            .get(1)
+            .size(),
+        2 + (enableSepRT ? 1 : 0));
+
     // Go back to follower
     heartbeatMonitoringService.addFollowerLagMonitor(currentVersion, 1);
     heartbeatMonitoringService.addFollowerLagMonitor(backupVersion, 1);
@@ -361,5 +379,37 @@ public class HeartbeatMonitoringServiceTest {
             .get(1));
 
     heartbeatMonitoringService.record();
+  }
+
+  @Test
+  public void testHeartbeatReporter() {
+    MetricsRepository repository = new MetricsRepository();
+    String regionName = "dc-0";
+    Set<String> regionSet = new HashSet<>();
+    regionSet.add(regionName);
+    regionSet.add(regionName + SEPARATE_TOPIC_SUFFIX);
+    String storeName = "abc";
+    HeartbeatStatReporter heartbeatStatReporter = new HeartbeatStatReporter(repository, storeName, regionSet);
+    // Leader should not register separate region metric.
+
+    String leaderMetricName = "." + storeName + "--" + LEADER_METRIC_PREFIX + regionName + MAX + ".Gauge";
+    String leaderMetricNameForSepRT = "." + storeName + "--" + LEADER_METRIC_PREFIX + regionName + MAX + ".Gauge";
+    Assert.assertTrue(heartbeatStatReporter.getMetricsRepository().metrics().containsKey(leaderMetricName));
+    Assert.assertTrue(heartbeatStatReporter.getMetricsRepository().metrics().containsKey(leaderMetricNameForSepRT));
+    // Follower should not register separate region metric.
+    String followerMetricName = "." + storeName + "--" + FOLLOWER_METRIC_PREFIX + regionName + MAX + ".Gauge";
+    String followerMetricNameForSepRT =
+        "." + storeName + "--" + FOLLOWER_METRIC_PREFIX + regionName + SEPARATE_TOPIC_SUFFIX + MAX + ".Gauge";
+    Assert.assertTrue(heartbeatStatReporter.getMetricsRepository().metrics().containsKey(followerMetricName));
+    Assert.assertFalse(heartbeatStatReporter.getMetricsRepository().metrics().containsKey(followerMetricNameForSepRT));
+
+    // Catching-Up Follower should not register separate region metric.
+    String catchingUpFollowerMetricName =
+        "." + storeName + "--" + CATCHUP_UP_FOLLOWER_METRIC_PREFIX + regionName + MAX + ".Gauge";
+    String catchingUpFollowerMetricNameForSepRT = "." + storeName + "--" + CATCHUP_UP_FOLLOWER_METRIC_PREFIX
+        + regionName + SEPARATE_TOPIC_SUFFIX + MAX + ".Gauge";
+    Assert.assertTrue(heartbeatStatReporter.getMetricsRepository().metrics().containsKey(catchingUpFollowerMetricName));
+    Assert.assertFalse(
+        heartbeatStatReporter.getMetricsRepository().metrics().containsKey(catchingUpFollowerMetricNameForSepRT));
   }
 }

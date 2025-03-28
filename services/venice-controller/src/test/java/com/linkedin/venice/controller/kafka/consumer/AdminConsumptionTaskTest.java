@@ -19,6 +19,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
+import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
@@ -211,9 +212,9 @@ public class AdminConsumptionTaskTest {
     Properties props = new Properties();
     props.put(VeniceWriter.CHECK_SUM_TYPE, CheckSumType.NONE.name());
     VeniceWriterOptions veniceWriterOptions =
-        new VeniceWriterOptions.Builder(topicName).setKeySerializer(new DefaultSerializer())
-            .setValueSerializer(new DefaultSerializer())
-            .setWriteComputeSerializer(new DefaultSerializer())
+        new VeniceWriterOptions.Builder(topicName).setKeyPayloadSerializer(new DefaultSerializer())
+            .setValuePayloadSerializer(new DefaultSerializer())
+            .setWriteComputePayloadSerializer(new DefaultSerializer())
             .setPartitioner(new SimplePartitioner())
             .setTime(SystemTime.INSTANCE)
             .build();
@@ -987,7 +988,8 @@ public class AdminConsumptionTaskTest {
     adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
     adminMessage.payloadUnion = setStore;
     adminMessage.executionId = 2;
-    byte[] message = adminOperationSerializer.serialize(adminMessage);
+    byte[] message =
+        adminOperationSerializer.serialize(adminMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
     veniceWriter.put(emptyKeyBytes, message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
@@ -1177,7 +1179,8 @@ public class AdminConsumptionTaskTest {
             1,
             false,
             "",
-            0);
+            0,
+            DEFAULT_RT_VERSION_NUMBER);
     // isLeaderController() is called once every consumption cycle (1000ms) and for every message processed in
     // AdminExecutionTask.
     // Provide a sufficient number of true -> false -> true to mimic a transfer of leaderShip and resubscribed behavior
@@ -1335,7 +1338,8 @@ public class AdminConsumptionTaskTest {
             1,
             false,
             "",
-            0);
+            0,
+            DEFAULT_RT_VERSION_NUMBER);
     Future<PubSubProduceResult> future = veniceWriter.put(
         emptyKeyBytes,
         getAddVersionMessage(clusterName, storeName, mockPushJobId, versionNumber, numberOfPartitions, 1L),
@@ -1408,7 +1412,8 @@ public class AdminConsumptionTaskTest {
     adminMessage.operationType = AdminMessageType.DERIVED_SCHEMA_CREATION.getValue();
     adminMessage.payloadUnion = derivedSchemaCreation;
     adminMessage.executionId = 2;
-    byte[] message = adminOperationSerializer.serialize(adminMessage);
+    byte[] message =
+        adminOperationSerializer.serialize(adminMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
     veniceWriter.put(emptyKeyBytes, message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
@@ -1491,7 +1496,8 @@ public class AdminConsumptionTaskTest {
           1,
           false,
           "dc-0",
-          0);
+          0,
+          DEFAULT_RT_VERSION_NUMBER);
     });
 
     task.close();
@@ -1536,7 +1542,8 @@ public class AdminConsumptionTaskTest {
           1,
           true,
           "dc-1",
-          0);
+          0,
+          DEFAULT_RT_VERSION_NUMBER);
     });
 
     task.close();
@@ -1565,7 +1572,8 @@ public class AdminConsumptionTaskTest {
     adminMessage.operationType = AdminMessageType.STORE_CREATION.getValue();
     adminMessage.payloadUnion = storeCreation;
     adminMessage.executionId = executionId;
-    return adminOperationSerializer.serialize(adminMessage);
+    return adminOperationSerializer
+        .serialize(adminMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
   }
 
   private byte[] getKillOfflinePushJobMessage(String clusterName, String kafkaTopic, long executionId) {
@@ -1576,7 +1584,8 @@ public class AdminConsumptionTaskTest {
     adminMessage.operationType = AdminMessageType.KILL_OFFLINE_PUSH_JOB.getValue();
     adminMessage.payloadUnion = killJob;
     adminMessage.executionId = executionId;
-    return adminOperationSerializer.serialize(adminMessage);
+    return adminOperationSerializer
+        .serialize(adminMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
   }
 
   private byte[] getAddVersionMessage(
@@ -1623,7 +1632,8 @@ public class AdminConsumptionTaskTest {
     adminMessage.operationType = AdminMessageType.ADD_VERSION.getValue();
     adminMessage.payloadUnion = addVersion;
     adminMessage.executionId = executionId;
-    return adminOperationSerializer.serialize(adminMessage);
+    return adminOperationSerializer
+        .serialize(adminMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
   }
 
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Admin topic remote consumption is enabled but no config found for the source Kafka bootstrap server url")

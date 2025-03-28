@@ -775,6 +775,13 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     restartVeniceComponent(veniceServerWrappers, port);
   }
 
+  public synchronized void stopAndRestartAllVeniceRouters() {
+    for (VeniceRouterWrapper router: getVeniceRouters()) {
+      stopVeniceRouter(router.getPort());
+      restartVeniceRouter(router.getPort());
+    }
+  }
+
   private <T extends ProcessWrapper> void stopVeniceComponent(Map<Integer, T> components, int port) {
     if (components.containsKey(port)) {
       T component = components.get(port);
@@ -844,8 +851,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
 
     return factory.createVeniceWriter(
-        new VeniceWriterOptions.Builder(storeVersionName).setKeySerializer(keySerializer)
-            .setValueSerializer(valueSerializer)
+        new VeniceWriterOptions.Builder(storeVersionName).setKeyPayloadSerializer(keySerializer)
+            .setValuePayloadSerializer(valueSerializer)
             .build());
   }
 
@@ -862,8 +869,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
 
     return factory.createVeniceWriter(
-        new VeniceWriterOptions.Builder(storeVersionName).setKeySerializer(keySerializer)
-            .setValueSerializer(valueSerializer)
+        new VeniceWriterOptions.Builder(storeVersionName).setKeyPayloadSerializer(keySerializer)
+            .setValuePayloadSerializer(valueSerializer)
             .build());
   }
 

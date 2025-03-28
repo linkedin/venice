@@ -1,5 +1,7 @@
 package com.linkedin.venice.meta;
 
+import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
+
 import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -78,17 +80,17 @@ public abstract class AbstractStore implements Store {
 
   @Override
   public void addVersion(Version version) {
-    addVersion(version, true, false);
+    addVersion(version, true, false, DEFAULT_RT_VERSION_NUMBER);
   }
 
   @Override
-  public void addVersion(Version version, boolean isClonedVersion) {
-    addVersion(version, true, isClonedVersion);
+  public void addVersion(Version version, boolean isClonedVersion, int currentRTVersionNumber) {
+    addVersion(version, true, isClonedVersion, currentRTVersionNumber);
   }
 
   @Override
   public void forceAddVersion(Version version, boolean isClonedVersion) {
-    addVersion(version, false, isClonedVersion);
+    addVersion(version, false, isClonedVersion, DEFAULT_RT_VERSION_NUMBER);
   }
 
   @Override
@@ -107,7 +109,11 @@ public abstract class AbstractStore implements Store {
    *                        any store level config on it; if false, the version being added is new version, so the new version
    *                        config should be the same as store config.
    */
-  private void addVersion(Version version, boolean checkDisableWrite, boolean isClonedVersion) {
+  private void addVersion(
+      Version version,
+      boolean checkDisableWrite,
+      boolean isClonedVersion,
+      int currentRTVersionNumber) {
     checkVersionSupplier();
     if (checkDisableWrite) {
       checkDisableStoreWrite("add", version.getNumber());
@@ -220,8 +226,10 @@ public abstract class AbstractStore implements Store {
   }
 
   @Override
-  public Version peekNextVersion() {
-    return increaseVersion(Version.guidBasedDummyPushId(), false);
+  public int peekNextVersionNumber() {
+    int nextVersionNumber = getLargestUsedVersionNumber() + 1;
+    checkDisableStoreWrite("increase", nextVersionNumber);
+    return nextVersionNumber;
   }
 
   @Override
@@ -255,18 +263,6 @@ public abstract class AbstractStore implements Store {
     }
 
     return version.getStatus();
-  }
-
-  private Version increaseVersion(String pushJobId, boolean createNewVersion) {
-    int versionNumber = getLargestUsedVersionNumber() + 1;
-    checkDisableStoreWrite("increase", versionNumber);
-    Version version = new VersionImpl(getName(), versionNumber, pushJobId);
-    if (createNewVersion) {
-      addVersion(version);
-      return version.cloneVersion();
-    } else {
-      return version;
-    }
   }
 
   @Override

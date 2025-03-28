@@ -133,8 +133,8 @@ public class DaVinciLiveUpdateSuppressionTest {
     int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
 
     try (VeniceWriter<Object, Object, byte[]> batchProducer = vwFactory.createVeniceWriter(
-        new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
-            .setValueSerializer(valueSerializer)
+        new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(keySerializer)
+            .setValuePayloadSerializer(valueSerializer)
             .build())) {
       batchProducer.broadcastStartOfPush(Collections.emptyMap());
       for (int i = 0; i < KEY_COUNT; i++) {
@@ -159,8 +159,9 @@ public class DaVinciLiveUpdateSuppressionTest {
     try (CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory();
         DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient();
         VeniceWriter<Object, Object, byte[]> realTimeProducer = vwFactory.createVeniceWriter(
-            new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo.get())).setKeySerializer(keySerializer)
-                .setValueSerializer(valueSerializer)
+            new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo.get()))
+                .setKeyPayloadSerializer(keySerializer)
+                .setValuePayloadSerializer(valueSerializer)
                 .build())) {
       client.subscribe(Collections.singleton(0)).get();
       writerFutures = new Future[KEY_COUNT];

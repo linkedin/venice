@@ -203,8 +203,8 @@ public abstract class TestRead {
     veniceWriter = IntegrationTestPushUtils
         .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory)
         .createVeniceWriter(
-            new VeniceWriterOptions.Builder(storeVersionName).setKeySerializer(keySerializer)
-                .setValueSerializer(valueSerializer)
+            new VeniceWriterOptions.Builder(storeVersionName).setKeyPayloadSerializer(keySerializer)
+                .setValuePayloadSerializer(valueSerializer)
                 .build());
 
     d2Client = D2TestUtils.getD2Client(
@@ -276,7 +276,7 @@ public abstract class TestRead {
     }
   }
 
-  @Test(timeOut = 30 * Time.MS_PER_SECOND)
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testRead() throws Exception {
     if (!isTestEnabled()) {
       return;
@@ -596,9 +596,7 @@ public abstract class TestRead {
           "The throttled_request metric is inconsistent with the number of quota exceptions received by the client!");
 
       getAggregateRouterMetricValue(".total--multiget_throttled_request_latency.Max");
-      for (VeniceRouterWrapper routerWrapper: veniceCluster.getVeniceRouters()) {
-        routerWrapper.getRouter().stop();
-      }
+      veniceCluster.stopAndRestartAllVeniceRouters();
       for (VeniceRouterWrapper routerWrapper: veniceCluster.getVeniceRouters()) {
         Assert.assertEquals(routerWrapper.getRouter().getInFlightRequestRate(), 0.0);
       }

@@ -36,12 +36,13 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
@@ -53,6 +54,7 @@ import javax.net.ssl.SSLParameters;
 import javax.net.ssl.SSLSession;
 import javax.net.ssl.SSLSessionContext;
 import javax.security.auth.x500.X500Principal;
+import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -75,6 +77,7 @@ public class SslInitializer extends ChannelInitializer<Channel> {
       AttributeKey.valueOf(SslInitializer.class, "sslEngine");
   private static final AttributeKey<Long> SSL_HANDSHAKE_START_TS =
       AttributeKey.valueOf(SslInitializer.class, "sslHandshakeStartTs");
+  private static final AttributeKey<Long> DNS_START_TS = AttributeKey.valueOf(SslInitializer.class, "dnsStartTs");
 
   private static final String SSL_DETECT_NAME = "ssl-detect";
   private static final String SSL_HANDLER_NAME = "ssl-handler";
@@ -88,7 +91,8 @@ public class SslInitializer extends ChannelInitializer<Channel> {
   private final ChannelHandler _postHandshakeHandler;
   private boolean _resolveClient;
   private EventExecutorGroup _resolveExecutor;
-  private Executor _sslExecutor;
+  private ThreadPoolExecutor _sslExecutor;
+  private Consumer<Integer> _queuedTaskNumberRecorder;
   private int _resolveAttempts;
   private long _resolveBackOffMillis;
   private final Queue<ChannelPromise> _pendingHandshake = new ConcurrentLinkedQueue<>();
@@ -241,8 +245,13 @@ public class SslInitializer extends ChannelInitializer<Channel> {
    * @param executor Executor to perform SslHandler tasks
    * @return this
    */
-  public SslInitializer enableSslTaskExecutor(Executor executor) {
+  public SslInitializer enableSslTaskExecutor(ThreadPoolExecutor executor) {
+    return enableSslTaskExecutor(executor, (ignored) -> {});
+  }
+
+  public SslInitializer enableSslTaskExecutor(ThreadPoolExecutor executor, Consumer<Integer> queuedTaskNumberRecorder) {
     _sslExecutor = Objects.requireNonNull(executor);
+    _queuedTaskNumberRecorder = queuedTaskNumberRecorder;
     return this;
   }
 
@@ -293,13 +302,16 @@ public class SslInitializer extends ChannelInitializer<Channel> {
   private class HandshakeComplete extends ChannelInboundHandlerAdapter {
     @Override
     public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+      // Step 5: This function is triggered when the SSL handshake completes.
       if (evt instanceof SslHandshakeCompletionEvent) {
         ctx.pipeline().remove(this);
         boolean succeed = ((SslHandshakeCompletionEvent) evt).isSuccess();
+        Throwable failedCause = null;
         if (succeed) {
           _handshakesSuccessful.increment();
         } else {
           _handshakesFailed.increment();
+          failedCause = ((SslHandshakeCompletionEvent) evt).cause();
         }
         if (ctx.channel().hasAttr(SSL_HANDSHAKE_START_TS)) {
           SslHandler handler = ctx.pipeline().get(SslHandler.class);
@@ -323,12 +335,18 @@ public class SslInitializer extends ChannelInitializer<Channel> {
           } catch (Throwable ex) {
             LOG.warn("Unable to obtain remote CN for {}", ctx.channel().remoteAddress(), ex);
           }
-          LOG.info(
-              "SSL Handshake with {} ({}) {} in {} ms.",
-              ctx.channel().remoteAddress(),
-              remoteCN != null ? remoteCN : "unknown principal",
-              succeed ? "succeeded" : "failed",
-              (Time.nanoTime() - ctx.channel().attr(SSL_HANDSHAKE_START_TS).getAndSet(null)) / 1000000);
+          StringBuilder logMessage = new StringBuilder();
+          logMessage.append("SSL Handshake with ")
+              .append(ctx.channel().remoteAddress())
+              .append(" (")
+              .append(remoteCN != null ? remoteCN : "unknown principal")
+              .append(") ")
+              .append(succeed ? "succeeded" : "failed")
+              .append(" in ")
+              .append((Time.nanoTime() - ctx.channel().attr(SSL_HANDSHAKE_START_TS).getAndSet(null)) / 1000000)
+              .append(" ms.")
+              .append(succeed ? "" : " Failed cause: " + failedCause);
+          LOG.log(succeed ? Level.INFO : Level.WARN, logMessage.toString(), failedCause);
         }
       }
 
@@ -361,6 +379,11 @@ public class SslInitializer extends ChannelInitializer<Channel> {
       if (!ctx.isRemoved()) {
         next(ctx);
       }
+      if (ctx.channel().attr(SSL_HANDSHAKE_START_TS).get() != null) {
+        // If SSL_HANDSHAKE_START_TS is set, then the handshake was started.
+        // If the connection closes mid-handshake, userEventTriggered might never fire.
+        _handshakesFailed.increment();
+      }
       super.channelInactive(ctx);
     }
 
@@ -383,6 +406,15 @@ public class SslInitializer extends ChannelInitializer<Channel> {
   @Override
   protected void initChannel(Channel ch) throws Exception {
     if (_sslEnabled) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("SSL enabled for channel: {}", ch.remoteAddress());
+      }
+      if (_sslExecutor != null) {
+        // Noticed that SSL handshake task is not submitted yet, but here is the beginning of SSL initialization for
+        // each
+        // request
+        _queuedTaskNumberRecorder.accept(_sslExecutor.getQueue().size());
+      }
       class SslDetect extends ByteToMessageDecoder implements Callable<String>, FutureListener<String> {
         private ChannelHandlerContext _channelHandlerContext;
         private ChannelPromise _resolvePromise;
@@ -446,11 +478,14 @@ public class SslInitializer extends ChannelInitializer<Channel> {
 
         @Override
         public void channelReadComplete(ChannelHandlerContext ctx) throws Exception {
+          // Step 2.5: Only runs when _resolveClient == true. This schedules DNS resolution.
           super.channelReadComplete(ctx);
           if (_startResolve) {
             if (ctx.pipeline().get(HandshakeRelease.class) == null) {
               ChannelPromise promise = ctx.channel().newPromise().addListener(future -> {
                 try {
+                  long dnsStartTime = Time.nanoTime();
+                  ctx.channel().attr(DNS_START_TS).set(dnsStartTime);
                   _resolveExecutor.submit(this).addListener(this);
                 } catch (RejectedExecutionException ex) {
                   executorFailure(_resolvePromise, ex);
@@ -486,11 +521,13 @@ public class SslInitializer extends ChannelInitializer<Channel> {
 
         @Override
         protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
+          // Step 1: This function is called when data arrives.
           if (in.readableBytes() < 5) {
             return;
           }
           ChannelPipeline pipeline = ctx.pipeline();
           if (SslHandler.isEncrypted(in)) {
+            // Step 2: SSL detected. Decide whether to resolve DNS first or start SSL handshake directly
             if (_resolveClient) {
               ctx.channel().config().setAutoRead(false);
               _startResolve = true;
@@ -521,6 +558,8 @@ public class SslInitializer extends ChannelInitializer<Channel> {
          * see {@linkplain ByteToMessageDecoder#handlerRemoved(ChannelHandlerContext)}
          */
         private void replaceWithSslHandler(ChannelPipeline pipeline) {
+          // Step 4: This function is called after DNS resolution succeeds (if enabled), otherwise right after detecting
+          // SSL in decode function
           SSLEngine engine;
           if (pipeline.channel().hasAttr(SSL_ENGINE_ATTRIBUTE_KEY)) {
             engine = pipeline.channel().attr(SSL_ENGINE_ATTRIBUTE_KEY).get();
@@ -535,6 +574,7 @@ public class SslInitializer extends ChannelInitializer<Channel> {
             sslHandler = new FusedSslHandler(engine);
           }
 
+          LOG.debug("SSL Handshake starting for client: {}", pipeline.channel().remoteAddress());
           if (_postHandshakeHandler != null) {
             pipeline.addAfter(
                 NettyUtils.executorGroup(pipeline),
@@ -548,11 +588,10 @@ public class SslInitializer extends ChannelInitializer<Channel> {
 
         @Override
         public void operationComplete(Future<String> future) {
-          // This is executed on the resolveExecutor thread
+          // Step 3: This is executed after DNS resolution completes in _resolveExecutor thread.
           assert inResolveExecutorEventLoop() : "Not in resolveExecutor event executor";
 
           if (future.isSuccess()) {
-            LOG.debug("Resolve successful: {}", future.getNow());
             _resolvePromise.setSuccess();
           } else if (_remainingAttempts-- > 0 && isActive()) {
             LOG.info("Check failure, remaining attempts {}", _remainingAttempts + 1, future.cause());
@@ -568,9 +607,19 @@ public class SslInitializer extends ChannelInitializer<Channel> {
         }
 
         private void resolved(Future<? super Void> future) {
+          // Step 3.5: This function is called after DNS resolution completes (if _resolveClient enabled); next step is
+          // to replace itself with SSL handler. If _resolveClient not enabled, SslDetect would be replaced
+          // with SSL handler at the decode function directly, before it has a chance to reach this function.
           // This is executed on the channel executor thread
           assert _channelHandlerContext.channel().eventLoop().inEventLoop();
 
+          Long dnsStartTime = (Long) _channelHandlerContext.channel().attr(DNS_START_TS).get();
+          long dnsLatencyMs = TimeUnit.NANOSECONDS.toMillis(Time.nanoTime() - dnsStartTime);
+          LOG.log(
+              dnsLatencyMs > 5000 ? Level.WARN : Level.DEBUG,
+              "DNS resolution for {} took {} ms",
+              _channelHandlerContext.channel().remoteAddress(),
+              dnsLatencyMs);
           if (!future.isSuccess()) {
             LOG.warn("Resolve failure of client {}", _channelHandlerContext.channel().remoteAddress(), future.cause());
           }

@@ -16,7 +16,10 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapter;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
+import com.linkedin.venice.pubsub.api.PubSubMessageSerializer;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterContext;
 import com.linkedin.venice.serialization.DefaultSerializer;
+import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -169,27 +172,33 @@ public abstract class ConsumerIntegrationTest {
   }
 
   VeniceWriterWithNewerProtocol getVeniceWriterWithNewerProtocol(Schema overrideProtocolSchema, String topicName) {
-    Properties javaProps = new Properties();
-    javaProps
-        .put(ApacheKafkaProducerConfig.KAFKA_VALUE_SERIALIZER, KafkaValueSerializerWithNewerProtocol.class.getName());
-    javaProps.put(ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS, cluster.getPubSubBrokerWrapper().getAddress());
-    VeniceProperties props = new VeniceProperties(javaProps);
+    VeniceProperties props = new VeniceProperties(new Properties());
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
     VenicePartitioner partitioner = new DefaultVenicePartitioner(props);
     Time time = new SystemTime();
-
-    VeniceWriterOptions veniceWriterOptions = new VeniceWriterOptions.Builder(topicName).setKeySerializer(keySerializer)
-        .setValueSerializer(valueSerializer)
-        .setWriteComputeSerializer(new DefaultSerializer())
-        .setTime(time)
-        .setPartitioner(partitioner)
-        .build();
+    PubSubMessageSerializer pubSubMessageSerializer =
+        new PubSubMessageSerializer(new KafkaKeySerializer(), new KafkaValueSerializerWithNewerProtocol());
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(topicName).setKeyPayloadSerializer(keySerializer)
+            .setBrokerAddress(cluster.getPubSubBrokerWrapper().getAddress())
+            .setValuePayloadSerializer(valueSerializer)
+            .setWriteComputePayloadSerializer(new DefaultSerializer())
+            .setPubSubMessageSerializer(pubSubMessageSerializer)
+            .setTime(time)
+            .setPartitioner(partitioner)
+            .build();
+    PubSubProducerAdapterContext context =
+        new PubSubProducerAdapterContext.Builder().setShouldValidateProducerConfigStrictly(false)
+            .setVeniceProperties(props)
+            .setPubSubMessageSerializer(pubSubMessageSerializer)
+            .setBrokerAddress(cluster.getPubSubBrokerWrapper().getAddress())
+            .build();
     return new VeniceWriterWithNewerProtocol(
         veniceWriterOptions,
         props,
-        new ApacheKafkaProducerWithNewerProtocolAdapter(props),
+        new ApacheKafkaProducerAdapter(new ApacheKafkaProducerConfig(context)),
         overrideProtocolSchema);
   }
 
@@ -276,12 +285,6 @@ public abstract class ConsumerIntegrationTest {
         }
       }
       throw new IllegalStateException("Missing a field called '" + NEW_FIELD_NAME + "' in the schema!");
-    }
-  }
-
-  private static class ApacheKafkaProducerWithNewerProtocolAdapter extends ApacheKafkaProducerAdapter {
-    public ApacheKafkaProducerWithNewerProtocolAdapter(VeniceProperties props) {
-      super(new ApacheKafkaProducerConfig(props, null, null, false));
     }
   }
 
