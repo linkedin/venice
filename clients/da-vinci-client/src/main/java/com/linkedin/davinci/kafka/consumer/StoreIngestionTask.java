@@ -2701,12 +2701,23 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       partitionConsumptionState.incrementProcessedRecordSizeSinceLastSync(recordSize);
     }
-    reportIfCatchUpVersionTopicOffset(partitionConsumptionState);
 
-    long syncBytesInterval = getSyncBytesInterval(partitionConsumptionState);
-    boolean recordsProcessedAboveSyncIntervalThreshold = (syncBytesInterval > 0
-        && (partitionConsumptionState.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval));
-    defaultReadyToServeChecker.apply(partitionConsumptionState, recordsProcessedAboveSyncIntervalThreshold);
+    try {
+      reportIfCatchUpVersionTopicOffset(partitionConsumptionState);
+      long syncBytesInterval = getSyncBytesInterval(partitionConsumptionState);
+      boolean recordsProcessedAboveSyncIntervalThreshold = (syncBytesInterval > 0
+          && (partitionConsumptionState.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval));
+      defaultReadyToServeChecker.apply(partitionConsumptionState, recordsProcessedAboveSyncIntervalThreshold);
+    } catch (Exception e) {
+      if (!partitionConsumptionState.isCompletionReported()) {
+        throw new VeniceException(
+            ingestionTaskName + " : Received an exception while fetching offset for partition: "
+                + record.getTopicPartition().getPartitionNumber() + ", offset: " + record.getPosition()
+                + ". Bubbling up.",
+            e);
+      }
+      LOGGER.error("Received exception while fetching offset, ignoring as partition is completed.", e);
+    }
 
     /**
      * Syncing offset checking in syncOffset() should be the very last step for processing a record.
