@@ -36,6 +36,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
+import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.SslUtils.LOCAL_KEYSTORE_JKS;
@@ -346,8 +347,7 @@ public class DaVinciClientRecordTransformerTest {
   public void testRecordTransformerChunking() throws Exception {
     DaVinciConfig clientConfig = new DaVinciConfig();
     // Construct a large string to trigger chunking
-    // (2MB = 2 * 1024 * 1024 bytes)
-    int sizeInBytes = 2 * 1024 * 1024;
+    int sizeInBytes = 2 * BYTES_PER_MB;
     StringBuilder stringBuilder = new StringBuilder(sizeInBytes);
     while (stringBuilder.length() < sizeInBytes) {
       stringBuilder.append("a");
@@ -357,7 +357,7 @@ public class DaVinciClientRecordTransformerTest {
     String storeName = Utils.getUniqueString("test-store");
     boolean pushStatusStoreEnabled = true;
     boolean chunkingEnabled = true;
-    CompressionStrategy compressionStrategy = CompressionStrategy.GZIP;
+    CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
     int numKeys = 10;
 
     setUpStore(storeName, pushStatusStoreEnabled, chunkingEnabled, compressionStrategy, largeString, numKeys);
