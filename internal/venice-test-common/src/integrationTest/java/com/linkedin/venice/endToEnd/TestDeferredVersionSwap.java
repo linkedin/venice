@@ -22,11 +22,11 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
@@ -547,7 +547,7 @@ public class TestDeferredVersionSwap {
     VeniceClusterWrapper cluster1 = childDatacenters.get(0).getClusters().get(CLUSTER_NAMES[0]);
     VeniceProperties backendConfig = DaVinciTestContext.getDaVinciPropertyBuilder(cluster1.getZk().getAddress())
         .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
-        .put(LOCAL_REGION_NAME, TARGET_REGION)
+        .put(LOCAL_REGION_NAME, REGION1)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .build();
     DaVinciClient<Object, Object> client1 =
@@ -568,7 +568,7 @@ public class TestDeferredVersionSwap {
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath2, storeName);
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
       props2.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
-      props2.put(TARGETED_REGION_PUSH_LIST, TARGET_REGION);
+      props2.put(TARGETED_REGION_PUSH_LIST, REGION1);
       TestWriteUtils.runPushJob("Test push job", props2);
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 2),
@@ -582,7 +582,7 @@ public class TestDeferredVersionSwap {
             parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
 
         coloVersions.forEach((colo, version) -> {
-          if (colo.equals(TARGET_REGION)) {
+          if (colo.equals(REGION1)) {
             Assert.assertEquals((int) version, 2);
           } else {
             Assert.assertEquals((int) version, 1);
