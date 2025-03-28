@@ -24,7 +24,7 @@ import org.apache.logging.log4j.Logger;
  * 1. schedules {@link LogCompactionTask} periodically to perform log compaction for all stores in the cluster
  * controlled by the {@link com.linkedin.venice.controller.VeniceController} instance that runs this LogCompactionService instance
  * 2. checks for stores that are ready for log compaction with function {@link VeniceHelixAdmin#getStoresForCompaction(String)}
- * 3. triggers compaction for each store with function {@link VeniceHelixAdmin#compactStore(RepushJobRequest)}
+ * 3. triggers compaction for each store with function {@link VeniceHelixAdmin#repushStore(RepushJobRequest)}
  *
  * See {@link CompactionManager} for the logic to determine if a store is ready for compaction
  */
@@ -91,7 +91,7 @@ public class LogCompactionService extends AbstractVeniceService {
         for (StoreInfo storeInfo: admin.getStoresForCompaction(clusterName)) {
           try {
             RepushJobResponse response =
-                admin.compactStore(new RepushJobRequest(storeInfo.getName(), RepushJobRequest.SCHEDULED_TRIGGER));
+                admin.repushStore(new RepushJobRequest(storeInfo.getName(), RepushJobRequest.SCHEDULED_TRIGGER));
             LOGGER.info(
                 "log compaction triggered for cluster: {} store: {} | execution ID: {}",
                 clusterName,

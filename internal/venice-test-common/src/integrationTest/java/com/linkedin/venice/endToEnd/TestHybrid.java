@@ -1098,11 +1098,11 @@ public class TestHybrid {
       throw new RuntimeException(e);
     }
 
-    // ok, now run run repush manually with the controller client.
+    // ok, now run repush manually with the controller client.
     // this call should be synchronous and the count down will trigger immediately..
     TestRepushOrchestratorImpl.latch = new CountDownLatch(1);
     sharedVenice.useControllerClient(client -> {
-      RepushJobResponse response = client.triggerRepush(storeName, null);
+      RepushJobResponse response = client.repushStore(storeName);
       Assert.assertFalse(response.isError(), "Repush failed with error: " + response.getError());
       // No waiting this time, this should countdown immediately
       Assert.assertEquals(TestRepushOrchestratorImpl.latch.getCount(), 0);
@@ -1120,6 +1120,10 @@ public class TestHybrid {
       latch.countDown();
       LOGGER.info("Repush job triggered for store: " + repushJobRequest.toString());
       return new RepushJobResponse(Utils.getUniqueString("repush-execId"));
+    }
+
+    public static CountDownLatch getLatch() {
+      return latch;
     }
   }
 

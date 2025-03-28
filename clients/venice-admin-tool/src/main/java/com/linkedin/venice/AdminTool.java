@@ -55,6 +55,7 @@ import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.PubSubTopicConfigResponse;
 import com.linkedin.venice.controllerapi.ReadyForDataRecoveryResponse;
+import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.RoutersClusterConfigResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoragePersonaResponse;
@@ -502,6 +503,9 @@ public class AdminTool {
           break;
         case LIST_CLUSTER_STALE_STORES:
           listClusterStaleStores(cmd);
+          break;
+        case REPUSH_STORE:
+          repushStore(cmd);
           break;
         case COMPARE_STORE:
           compareStore(cmd);
@@ -2815,6 +2819,12 @@ public class AdminTool {
     String clusterParam = getRequiredArgument(cmd, Arg.CLUSTER);
     String urlParam = getRequiredArgument(cmd, Arg.URL);
     ClusterStaleDataAuditResponse response = controllerClient.getClusterStaleStores(clusterParam, urlParam);
+    printObject(response);
+  }
+
+  private static void repushStore(CommandLine cmd) {
+    String storeName = getRequiredArgument(cmd, Arg.STORE);
+    RepushJobResponse response = controllerClient.repushStore(storeName);
     printObject(response);
   }
 
