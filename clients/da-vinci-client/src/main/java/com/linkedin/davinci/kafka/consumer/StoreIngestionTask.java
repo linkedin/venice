@@ -412,9 +412,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.storeName = versionTopic.getStoreName();
     this.isUserSystemStore = VeniceSystemStoreUtils.isUserSystemStore(storeName);
     this.isSystemStore = VeniceSystemStoreUtils.isSystemStore(storeName);
-    this.realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(version));
-    this.separateRealTimeTopic = version.isSeparateRealTimeTopicEnabled()
-        ? pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(storeName))
+    // if version is not hybrid, it is not possible to create pub sub realTimeTopic, users of this field should do a
+    // nullability check
+    this.realTimeTopic = version.getHybridStoreConfig() != null
+        ? pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(version))
+        : null;
+    this.separateRealTimeTopic = version.isSeparateRealTimeTopicEnabled() && version.getHybridStoreConfig() != null
+        ? pubSubTopicRepository.getTopic(Utils.getSeparateRealTimeTopicName(version))
         : null;
     this.versionNumber = Version.parseVersionFromKafkaTopicName(kafkaVersionTopic);
     this.consumerActionsQueue = new PriorityBlockingQueue<>(CONSUMER_ACTION_QUEUE_INIT_CAPACITY);
@@ -3708,8 +3712,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected void unsubscribeFromTopic(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
     consumerUnSubscribeForStateTransition(topic, partitionConsumptionState);
     if (isSeparatedRealtimeTopicEnabled() && topic.isRealTime()) {
-      PubSubTopic separateRealTimeTopic =
-          getPubSubTopicRepository().getTopic(Version.composeSeparateRealTimeTopic(topic.getStoreName()));
       consumerUnSubscribeForStateTransition(separateRealTimeTopic, partitionConsumptionState);
     }
   }
@@ -4767,7 +4769,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   PubSubTopic resolveTopicWithKafkaURL(PubSubTopic topic, String kafkaURL) {
     if (topic.isRealTime() && getKafkaClusterUrlResolver() != null
         && !kafkaURL.equals(getKafkaClusterUrlResolver().apply(kafkaURL))) {
-      return getPubSubTopicRepository().getTopic(Version.composeSeparateRealTimeTopic(topic.getStoreName()));
+      return separateRealTimeTopic;
     }
     return topic;
   }

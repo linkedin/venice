@@ -97,6 +97,7 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLIN
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE_RATIO;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_NUMBER_OF_PARTITION;
@@ -559,8 +560,9 @@ public class VeniceControllerClusterConfig {
   private final Set<String> childDatacenters;
   private final long serviceDiscoveryRegistrationRetryMS;
 
-  private Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
-  private boolean isHybridStorePartitionCountUpdateEnabled;
+  private final Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
+  private final boolean isRealTimeTopicVersioningEnabled;
+  private final boolean isHybridStorePartitionCountUpdateEnabled;
   private final long deferredVersionSwapSleepMs;
   private final boolean deferredVersionSwapServiceEnabled;
   private final boolean skipDeferredVersionSwapForDVCEnabled;
@@ -1051,6 +1053,9 @@ public class VeniceControllerClusterConfig {
     this.timeSinceLastLogCompactionThresholdMS =
         props.getLong(TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS, TimeUnit.HOURS.toMillis(24));
 
+    this.isRealTimeTopicVersioningEnabled = props.getBoolean(
+        ConfigKeys.CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING,
+        DEFAULT_CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING);
     this.isHybridStorePartitionCountUpdateEnabled =
         props.getBoolean(ConfigKeys.CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE, false);
 
@@ -1927,6 +1932,10 @@ public class VeniceControllerClusterConfig {
 
   public boolean isHybridStorePartitionCountUpdateEnabled() {
     return isHybridStorePartitionCountUpdateEnabled;
+  }
+
+  public boolean getRealTimeTopicVersioningEnabled() {
+    return isRealTimeTopicVersioningEnabled;
   }
 
   /**

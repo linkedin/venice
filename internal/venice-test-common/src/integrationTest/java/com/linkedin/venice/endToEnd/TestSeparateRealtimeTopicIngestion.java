@@ -47,6 +47,7 @@ import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -189,8 +190,10 @@ public class TestSeparateRealtimeTopicIngestion {
 
       // Run one time Incremental Push
       String childControllerUrl = childDatacenters.get(0).getRandomController().getControllerUrl();
+      StoreInfo storeInfo;
       try (ControllerClient childControllerClient = new ControllerClient(CLUSTER_NAME, childControllerUrl)) {
         runVPJ(vpjProperties, 1, childControllerClient);
+        storeInfo = childControllerClient.getStore(storeName).getStore();
       }
       VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
       validateData(storeName, veniceClusterWrapper);
@@ -215,9 +218,9 @@ public class TestSeparateRealtimeTopicIngestion {
         // total key count.
         Assert.assertTrue(offsetVector.get(3) >= 100);
       });
-      PubSubTopic realTimeTopic = PUB_SUB_TOPIC_REPOSITORY.getTopic(Utils.composeRealTimeTopic(storeName));
+      PubSubTopic realTimeTopic = PUB_SUB_TOPIC_REPOSITORY.getTopic(Utils.getRealTimeTopicName(storeInfo));
       PubSubTopic separateRealtimeTopic =
-          PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeSeparateRealTimeTopic(storeName));
+          PUB_SUB_TOPIC_REPOSITORY.getTopic(Utils.getSeparateRealTimeTopicName(realTimeTopic.getName()));
       PubSubTopic versionTopicV1 = PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeKafkaTopic(storeName, 1));
       PubSubTopic versionTopicV2 = PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeKafkaTopic(storeName, 2));
       PubSubTopicPartition versionV1TopicPartition = new PubSubTopicPartitionImpl(versionTopicV1, 0);

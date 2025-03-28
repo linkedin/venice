@@ -122,7 +122,7 @@ public class TestParentControllerWithMultiDataCenter {
         newStoreResponse.isError(),
         "The NewStoreResponse returned an error: " + newStoreResponse.getError());
 
-    StoreInfo store = TestUtils.assertCommand(parentControllerClient.getStore(storeName)).getStore();
+    TestUtils.assertCommand(parentControllerClient.getStore(storeName));
 
     String metaSystemStoreTopic =
         Version.composeKafkaTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), 1);
@@ -148,12 +148,15 @@ public class TestParentControllerWithMultiDataCenter {
     topicManagers
         .add(childDatacenters.get(1).getControllers().values().iterator().next().getVeniceAdmin().getTopicManager());
 
+    StoreInfo store = parentControllerClient.getStore(storeName).getStore();
     String rtTopicName = Utils.getRealTimeTopicName(store);
     PubSubTopic rtPubSubTopic = pubSubTopicRepository.getTopic(rtTopicName);
+
     for (TopicManager topicManager: topicManagers) {
       Assert.assertTrue(topicManager.containsTopic(versionPubsubTopic));
       Assert.assertTrue(topicManager.containsTopic(rtPubSubTopic));
     }
+
     for (ControllerClient controllerClient: childControllerClients) {
       Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 1);
     }
@@ -208,12 +211,12 @@ public class TestParentControllerWithMultiDataCenter {
     // now both the versions should be batch-only, so rt topic should get deleted by TopicCleanupService
     for (TopicManager topicManager: topicManagers) {
       Assert.assertTrue(topicManager.containsTopic(versionPubsubTopic));
-      TestUtils.waitForNonDeterministicAssertion(
-          30,
-          TimeUnit.SECONDS,
-          true,
-          true,
-          () -> Assert.assertFalse(topicManager.containsTopic(rtPubSubTopic)));
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+        StoreInfo finalStore = parentControllerClient.getStore(storeName).getStore();
+        String finalRtTopicName = Utils.getRealTimeTopicName(finalStore);
+        PubSubTopic finalRtPubSubTopic = pubSubTopicRepository.getTopic(finalRtTopicName);
+        Assert.assertFalse(topicManager.containsTopic(finalRtPubSubTopic));
+      });
     }
 
     /*
@@ -609,6 +612,7 @@ public class TestParentControllerWithMultiDataCenter {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("testDeleteStore");
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
         ControllerClient dc0Client =
             new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
@@ -622,7 +626,9 @@ public class TestParentControllerWithMultiDataCenter {
       ControllerResponse response = parentControllerClient.updateStore(
           storeName,
           new UpdateStoreQueryParams().setHybridOffsetLagThreshold(1).setHybridRewindSeconds(60));
+
       Assert.assertFalse(response.isError(), "Update hybrid store returned an error");
+
       List<ControllerClient> childControllerClients = new ArrayList<>();
       childControllerClients.add(dc0Client);
       childControllerClients.add(dc1Client);
@@ -632,25 +638,29 @@ public class TestParentControllerWithMultiDataCenter {
           .add(childDatacenters.get(0).getControllers().values().iterator().next().getVeniceAdmin().getTopicManager());
       childDatacenterTopicManagers
           .add(childDatacenters.get(1).getControllers().values().iterator().next().getVeniceAdmin().getTopicManager());
+
+      StoreInfo storeInfo = parentControllerClient.getStore(storeName).getStore();
+      String storeRT = Utils.getRealTimeTopicName(storeInfo);
       String pushStatusSystemStoreRT =
           Utils.composeRealTimeTopic(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName));
       String metaSystemStoreRT = Utils.composeRealTimeTopic(VeniceSystemStoreUtils.getMetaStoreName(storeName));
+
       // Ensure all the RT topics are created in all child datacenters
       TestUtils.waitForNonDeterministicAssertion(300, TimeUnit.SECONDS, false, true, () -> {
         for (TopicManager topicManager: childDatacenterTopicManagers) {
-          Assert.assertTrue(
-              topicManager.containsTopic(pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(storeName))));
+          Assert.assertTrue(topicManager.containsTopic(pubSubTopicRepository.getTopic(storeRT)));
           Assert.assertTrue(topicManager.containsTopic(pubSubTopicRepository.getTopic(pushStatusSystemStoreRT)));
           Assert.assertTrue(topicManager.containsTopic(pubSubTopicRepository.getTopic(metaSystemStoreRT)));
         }
       });
+
       response = parentControllerClient.disableAndDeleteStore(storeName);
       Assert.assertFalse(response.isError(), "Delete store returned an error");
+
       // Ensure all the RT topics are deleted in all child datacenters
       TestUtils.waitForNonDeterministicAssertion(600, TimeUnit.SECONDS, false, true, () -> {
         for (TopicManager topicManager: childDatacenterTopicManagers) {
-          Assert.assertFalse(
-              topicManager.containsTopic(pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(storeName))));
+          Assert.assertFalse(topicManager.containsTopic(pubSubTopicRepository.getTopic(storeRT)));
           Assert.assertFalse(topicManager.containsTopic(pubSubTopicRepository.getTopic(pushStatusSystemStoreRT)));
           Assert.assertFalse(topicManager.containsTopic(pubSubTopicRepository.getTopic(metaSystemStoreRT)));
         }
