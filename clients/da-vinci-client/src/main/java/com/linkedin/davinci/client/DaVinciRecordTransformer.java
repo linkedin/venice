@@ -85,7 +85,7 @@ public abstract class DaVinciRecordTransformer<K, V, O> implements Closeable {
     // ToDo: Make use of inputValueSchema to support reader/writer schemas
     this.inputValueSchema = inputValueSchema;
     this.outputValueSchema = outputValueSchema;
-    this.recordTransformerUtility = new DaVinciRecordTransformerUtility<>(this);
+    this.recordTransformerUtility = new DaVinciRecordTransformerUtility<>(this, recordTransformerConfig);
   }
 
   /**
@@ -94,18 +94,19 @@ public abstract class DaVinciRecordTransformer<K, V, O> implements Closeable {
    *
    * @param key the key of the record to be transformed
    * @param value the value of the record to be transformed
+   * @param partitionId what partition the record came from
    * @return {@link DaVinciRecordTransformerResult}
    */
-  public abstract DaVinciRecordTransformerResult<O> transform(Lazy<K> key, Lazy<V> value);
+  public abstract DaVinciRecordTransformerResult<O> transform(Lazy<K> key, Lazy<V> value, int partitionId);
 
   /**
    * Implement this method to manage custom state outside the Da Vinci Client.
    *
    * @param key the key of the record to be put
-   * @param value the value of the record to be put,
-   *              derived from the output of {@link #transform(Lazy key, Lazy value)}
+   * @param value the value of the record to be put, derived from the output of {@link #transform(Lazy key, Lazy value, int partitionId)}
+   * @param partitionId what partition the record came from
    */
-  public abstract void processPut(Lazy<K> key, Lazy<O> value);
+  public abstract void processPut(Lazy<K> key, Lazy<O> value, int partitionId);
 
   /**
    * Override this method to customize the behavior for record deletions.
@@ -113,8 +114,9 @@ public abstract class DaVinciRecordTransformer<K, V, O> implements Closeable {
    * By default, it performs no operation.
    *
    * @param key the key of the record to be deleted
+   * @param partitionId what partition the record is being deleted from
    */
-  public void processDelete(Lazy<K> key) {
+  public void processDelete(Lazy<K> key, int partitionId) {
     return;
   };
 
@@ -149,18 +151,19 @@ public abstract class DaVinciRecordTransformer<K, V, O> implements Closeable {
    *
    * @param key the key of the record to be put
    * @param value the value of the record to be put
+   * @param partitionId what partition the record came from
    * @return {@link DaVinciRecordTransformerResult}
    */
-  public final DaVinciRecordTransformerResult<O> transformAndProcessPut(Lazy<K> key, Lazy<V> value) {
-    DaVinciRecordTransformerResult<O> transformerResult = transform(key, value);
+  public final DaVinciRecordTransformerResult<O> transformAndProcessPut(Lazy<K> key, Lazy<V> value, int partitionId) {
+    DaVinciRecordTransformerResult<O> transformerResult = transform(key, value, partitionId);
     DaVinciRecordTransformerResult.Result result = transformerResult.getResult();
     if (result == DaVinciRecordTransformerResult.Result.SKIP) {
       return null;
     } else if (result == DaVinciRecordTransformerResult.Result.UNCHANGED) {
-      processPut(key, (Lazy<O>) value);
+      processPut(key, (Lazy<O>) value, partitionId);
     } else {
       O transformedRecord = transformerResult.getValue();
-      processPut(key, Lazy.of(() -> transformedRecord));
+      processPut(key, Lazy.of(() -> transformedRecord), partitionId);
     }
 
     if (!storeRecordsInDaVinci) {
