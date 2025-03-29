@@ -125,6 +125,7 @@ public class PushJobSetting implements Serializable {
   public int derivedSchemaId = -1;
   public String keyField;
   public String valueField;
+  public String timestampField;
 
   public Schema inputDataSchema;
   public String inputDataSchemaString;

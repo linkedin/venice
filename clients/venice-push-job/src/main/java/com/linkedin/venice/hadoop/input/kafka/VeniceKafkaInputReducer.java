@@ -7,6 +7,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
+import static com.linkedin.venice.writer.VeniceWriter.*;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
@@ -126,6 +127,7 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
   protected AbstractPartitionWriter.VeniceWriterMessage extract(
       byte[] key,
       Iterator<byte[]> valueIterator,
+      Iterator<Long> rmdIterator,
       DataWriterTaskTracker dataWriterTaskTracker) {
     KafkaInputMapperKey mapperKey = KAFKA_INPUT_MAPPER_KEY_AVRO_SPECIFIC_DESERIALIZER.deserialize(key);
     byte[] keyBytes = ByteUtils.extractByteArray(mapperKey.key);
@@ -133,6 +135,7 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
       throw new VeniceException("There is no value corresponding to key bytes: " + ByteUtils.toHexString(keyBytes));
     }
 
+    // We don't support a field override in KIF today, so we don't need to pass the rmdIterator
     return extractor.extract(keyBytes, valueIterator, dataWriterTaskTracker);
   }
 
@@ -185,6 +188,7 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
       return new AbstractPartitionWriter.VeniceWriterMessage(
           keyBytes,
           compress(value.getBytes()),
+          APP_DEFAULT_LOGICAL_TS,
           value.getSchemaID(),
           value.getReplicationMetadataVersionId(),
           value.getReplicationMetadataPayload(),
@@ -211,6 +215,7 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
         return new AbstractPartitionWriter.VeniceWriterMessage(
             keyBytes,
             null,
+            APP_DEFAULT_LOGICAL_TS,
             latestMapperValue.schemaId,
             latestMapperValue.replicationMetadataVersionId,
             latestMapperValue.replicationMetadataPayload,
@@ -225,6 +230,7 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
       return new AbstractPartitionWriter.VeniceWriterMessage(
           keyBytes,
           compress(valueBytes),
+          APP_DEFAULT_LOGICAL_TS,
           latestMapperValue.schemaId,
           latestMapperValue.replicationMetadataVersionId,
           latestMapperValue.replicationMetadataPayload,
