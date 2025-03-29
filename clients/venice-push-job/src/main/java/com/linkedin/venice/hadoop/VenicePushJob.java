@@ -1077,9 +1077,9 @@ public class VenicePushJob implements AutoCloseable {
     long lastModificationTime = getInputDataInfoProvider().getInputLastModificationTime(pushJobSetting.inputURI);
     if (lastModificationTime > inputDataInfo.getInputModificationTime()) {
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.DATASET_CHANGED);
-      String error = "Dataset changed during the push job. Please investigate if the change caused the failure and "
-          + "rerun the job without changing the dataset while the job is running.";
-      LOGGER.error(error);
+      LOGGER.error(
+          "Dataset changed during the push job. Please investigate if the change caused the failure and "
+              + "rerun the job without changing the dataset while the job is running.");
     }
   }
 
