@@ -295,6 +295,13 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
       if (partitionToVersionToServe.get(partitionId) == getStoreVersion()) {
         ChangeEvent<V> changeEvent = new ChangeEvent<>(null, value);
         try {
+          /*
+           * ToDo: The placeholders used here are fine bootstrapping changelog consumer but we will need to fill them in
+           *  for real when creating an implementation for VeniceChangeLogConsumer.
+           *
+           * ToDo: Add metrics for number of records consumed and heartbeat lag. We might be able to leverage
+           *  StoreIngestionTask::recordHeartbeatReceived.
+           */
           pubSubMessages.put(
               new ImmutableChangeCapturePubSubMessage<>(
                   key,
