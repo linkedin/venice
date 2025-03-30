@@ -1224,6 +1224,12 @@ public abstract class AbstractPushMonitor
                 store.getName(),
                 versionNumber,
                 regionName);
+
+            // For target region push w/ deferred version swap, mark status as PUSHED as it will be marked ONLINE after
+            // roll forward
+            if (!isDeferredSwap) {
+              store.updateVersionStatus(versionNumber, VersionStatus.PUSHED);
+            }
           }
         } else {
           LOGGER.info(
