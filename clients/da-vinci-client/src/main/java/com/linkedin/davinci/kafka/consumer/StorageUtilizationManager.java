@@ -358,7 +358,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
         consumingTopics.add(offsetRecord.getLeaderTopic());
         // For separate RT topic enabled SIT, we should include separate RT topic, if leader topic is a RT topic.
         if (isSeparateRealtimeTopicEnabled && Version.isRealTimeTopic(offsetRecord.getLeaderTopic())) {
-          consumingTopics.add(offsetRecord.getLeaderTopic() + Utils.SEPARATE_TOPIC_SUFFIX);
+          consumingTopics.add(Utils.getSeparateRealTimeTopicName(offsetRecord.getLeaderTopic()));
         }
       }
     }
