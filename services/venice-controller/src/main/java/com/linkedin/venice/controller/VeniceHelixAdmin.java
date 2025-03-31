@@ -8137,7 +8137,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @see Admin#getDeadStores(String)
+   * @see Admin#getDeadStores(String, String, boolean)
    */
   @Override
   public List<StoreInfo> getDeadStores(String clusterName, String storeName, boolean includeSystemStores) {

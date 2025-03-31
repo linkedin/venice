@@ -1016,7 +1016,7 @@ public class StoresRoutes extends AbstractRoute {
   }
 
   /**
-   * @see Admin#getDeadStores(String)
+   * @see Admin#getDeadStores(String, String, boolean)
    */
   public Route getDeadStores(Admin admin) {
     return new VeniceRouteHandler<MultiStoreInfoResponse>(MultiStoreInfoResponse.class) {

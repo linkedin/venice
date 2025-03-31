@@ -19,7 +19,7 @@ public class DeadStoreStatsPreFetchTaskTest {
   private Store mockStore;
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     mockAdmin = mock(VeniceParentHelixAdmin.class);
     mockStats = mock(DeadStoreStats.class);
     mockStore = mock(Store.class);
