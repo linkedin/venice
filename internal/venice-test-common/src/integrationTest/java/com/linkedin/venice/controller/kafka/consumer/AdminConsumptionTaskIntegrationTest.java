@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.ADMIN_CONSUMPTION_MAX_WORKER_THREAD
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
@@ -39,6 +40,7 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -248,9 +250,11 @@ public class AdminConsumptionTaskIntegrationTest {
   public void testGetSmallestLocalAdminOperationProtocolVersionForAllConsumers() {
     // Get the parent controller
     VeniceControllerWrapper controller = venice.getParentControllers().get(0);
-    Admin admin = controller.getVeniceAdmin();
-
-    String clusterName = venice.getClusterNames()[0];
+    VeniceParentHelixAdmin admin = (VeniceParentHelixAdmin) controller.getVeniceAdmin();
+    Set<String> allClusters = admin.getMultiClusterConfigs().getClusters();
+    System.out.println("Clusters in the admin: " + allClusters);
+    String clusterName = admin.getControllerClusterName();
+    System.out.println("Current cluster name: " + clusterName);
 
     Long version = admin.getSmallestLocalAdminOperationProtocolVersionForAllConsumers(clusterName);
     System.out.println("Current Local Admin Operation Protocol Version for all consumers: " + version);

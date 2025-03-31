@@ -5264,7 +5264,7 @@ public class VeniceParentHelixAdmin implements Admin {
     return veniceHelixAdmin;
   }
 
-  public String getControllerName() {
+  public String getControllerClusterName() {
     return getVeniceHelixAdmin().getControllerClusterName();
   }
 
@@ -5552,7 +5552,7 @@ public class VeniceParentHelixAdmin implements Admin {
     return lingeringStoreVersionChecker;
   }
 
-  VeniceControllerMultiClusterConfig getMultiClusterConfigs() {
+  public VeniceControllerMultiClusterConfig getMultiClusterConfigs() {
     return multiClusterConfigs;
   }
 
