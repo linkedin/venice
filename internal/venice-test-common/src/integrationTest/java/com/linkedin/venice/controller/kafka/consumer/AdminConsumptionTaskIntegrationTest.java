@@ -36,11 +36,12 @@ import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -251,12 +252,9 @@ public class AdminConsumptionTaskIntegrationTest {
     // Get the parent controller
     VeniceControllerWrapper controller = venice.getParentControllers().get(0);
     VeniceParentHelixAdmin admin = (VeniceParentHelixAdmin) controller.getVeniceAdmin();
-    Set<String> allClusters = admin.getMultiClusterConfigs().getClusters();
-    System.out.println("Clusters in the admin: " + allClusters);
-    String clusterName = admin.getControllerClusterName();
-    System.out.println("Current cluster name: " + clusterName);
+    List<String> allClusters = new ArrayList<>(admin.getMultiClusterConfigs().getClusters());
 
-    Long version = admin.getSmallestLocalAdminOperationProtocolVersionForAllConsumers(clusterName);
+    Long version = admin.getLocalAdminOperationProtocolVersion(allClusters.get(0));
     System.out.println("Current Local Admin Operation Protocol Version for all consumers: " + version);
   }
 

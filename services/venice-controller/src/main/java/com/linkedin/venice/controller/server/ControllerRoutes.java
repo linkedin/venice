@@ -21,6 +21,7 @@ import com.linkedin.venice.controllerapi.AggregatedHealthStatusRequest;
 import com.linkedin.venice.controllerapi.ChildAwareResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
+import com.linkedin.venice.controllerapi.LocalAdminOperationProtocolVersionResponse;
 import com.linkedin.venice.controllerapi.PubSubTopicConfigResponse;
 import com.linkedin.venice.controllerapi.StoppableNodeStatusResponse;
 import com.linkedin.venice.exceptions.ErrorType;
@@ -241,6 +242,22 @@ public class ControllerRoutes extends AbstractRoute {
       String responseContent = AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
       LOGGER.info("[AggregatedHealthStatus] Response: {}", responseContent);
       return responseContent;
+    };
+  }
+
+  public Route getLocalAdminOperationProtocolVersion(Admin admin) {
+    return (request, response) -> {
+      LocalAdminOperationProtocolVersionResponse responseObject = new LocalAdminOperationProtocolVersionResponse();
+      response.type(HttpConstants.JSON);
+      try {
+        String clusterName = request.queryParams(CLUSTER);
+        responseObject.setCluster(clusterName);
+        responseObject.setAdminOperationProtocolVersion(admin.getLocalAdminOperationProtocolVersion(clusterName));
+      } catch (Throwable e) {
+        responseObject.setError(e);
+        AdminSparkServer.handleError(e, request, response);
+      }
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 

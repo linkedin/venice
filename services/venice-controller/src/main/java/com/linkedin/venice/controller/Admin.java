@@ -979,7 +979,7 @@ public interface Admin extends AutoCloseable, Closeable {
 
   void updateAdminOperationProtocolVersion(String clusterName, Long adminOperationProtocolVersion);
 
-  Long getSmallestLocalAdminOperationProtocolVersionForAllConsumers(String clusterName);
+  Long getLocalAdminOperationProtocolVersion(String clusterName);
 
   void createStoragePersona(
       String clusterName,

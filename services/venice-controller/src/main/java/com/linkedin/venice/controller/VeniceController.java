@@ -313,7 +313,7 @@ public class VeniceController {
       // Only create the ProtocolVersionDetectionService if this is a parent controller
       // and the feature is enabled in the configuration.
       Admin admin = controllerService.getVeniceHelixAdmin();
-      return Optional.of(new ProtocolVersionDetectionService((VeniceParentHelixAdmin) admin));
+      return Optional.of(new ProtocolVersionDetectionService((VeniceParentHelixAdmin) admin, multiClusterConfigs));
     }
     return Optional.empty();
   }

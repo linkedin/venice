@@ -3,6 +3,8 @@ package com.linkedin.venice.controller.kafka.protocol.serializer;
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.LocalAdminOperationProtocolVersionResponse;
 import com.linkedin.venice.service.AbstractVeniceService;
 import java.util.Map;
 import java.util.Objects;
@@ -65,7 +67,7 @@ public class ProtocolVersionDetectionService extends AbstractVeniceService {
 
     @Override
     public void run() {
-      for (String clusterName: clusters) {
+      for (String clusterName: admin.getClustersLeaderOf()) {
         if (admin.isLeaderControllerFor(clusterName)) {
           Long currentGoodVersion = getLocalAdminOperationProtocolVersionForAllConsumers(clusterName);
           Long upstreamVersion = getAdminOperationProtocolVersionInZK(clusterName);
@@ -78,8 +80,30 @@ public class ProtocolVersionDetectionService extends AbstractVeniceService {
       }
     }
 
-    public Long getLocalAdminOperationProtocolVersionForAllConsumers(String clusterName) {
-      return admin.getSmallestLocalAdminOperationProtocolVersionForAllConsumers(clusterName);
+    /**
+     * Get the smallest local admin operation protocol version for all consumers in the given cluster.
+     * This will help to ensure that all consumers are on the same page regarding the protocol version.
+     *
+     * @param clusterName The name of the cluster to check.
+     * @return The smallest local admin operation protocol version for all consumers in the cluster.
+     */
+    public long getLocalAdminOperationProtocolVersionForAllConsumers(String clusterName) {
+      // TODO: Need to get all parent controllers as well
+      Map<String, ControllerClient> controllerClientMap =
+          admin.getVeniceHelixAdmin().getControllerClientMap(clusterName);
+
+      long goodVersion = Long.MAX_VALUE;
+      for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
+        String consumerName = entry.getKey();
+        ControllerClient controllerClient = entry.getValue();
+        LocalAdminOperationProtocolVersionResponse response =
+            controllerClient.getLocalAdminOperationProtocolVersion(clusterName);
+        long protocolVersion = response.getAdminOperationProtocolVersion();
+        LOGGER.info("Consumer: {} has protocol version: {}", consumerName, protocolVersion);
+        goodVersion = Math.min(protocolVersion, goodVersion);
+      }
+
+      return goodVersion;
     }
 
     public Long getAdminOperationProtocolVersionInZK(String clusterName) {
