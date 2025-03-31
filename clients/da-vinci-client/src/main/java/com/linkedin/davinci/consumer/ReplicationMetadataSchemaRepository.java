@@ -5,6 +5,8 @@ import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.utils.SparseConcurrentList;
+import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 
 
 public class ReplicationMetadataSchemaRepository {
@@ -18,11 +20,20 @@ public class ReplicationMetadataSchemaRepository {
 
   public RmdSchemaEntry getReplicationMetadataSchemaById(String storeName, int replicationMetadataSchemaId) {
     if (cachedReplicationMetadataSchemas.get(replicationMetadataSchemaId) == null) {
-      MultiSchemaResponse multiReplicationSchemaResponse = controllerClient.getAllReplicationMetadataSchemas(storeName);
-      if (multiReplicationSchemaResponse.isError()) {
-        throw new VeniceException(
-            "Failed to get store replication info for store: " + storeName + " with error: "
-                + multiReplicationSchemaResponse.getError());
+      MultiSchemaResponse multiReplicationSchemaResponse = null;
+      int attempts = 0;
+      while (true) {
+        multiReplicationSchemaResponse = controllerClient.getAllReplicationMetadataSchemas(storeName);
+        if (multiReplicationSchemaResponse.isError()) {
+          if (attempts++ < 5) {
+            Utils.sleep(Time.MS_PER_SECOND * (attempts + 1L));
+            continue;
+          }
+          throw new VeniceException(
+              "Failed to get store replication info for store: " + storeName + " with error: "
+                  + multiReplicationSchemaResponse.getError());
+        }
+        break;
       }
 
       for (MultiSchemaResponse.Schema schema: multiReplicationSchemaResponse.getSchemas()) {
