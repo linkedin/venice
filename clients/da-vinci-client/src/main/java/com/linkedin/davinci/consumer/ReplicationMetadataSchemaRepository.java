@@ -26,7 +26,7 @@ public class ReplicationMetadataSchemaRepository {
         multiReplicationSchemaResponse = controllerClient.getAllReplicationMetadataSchemas(storeName);
         if (multiReplicationSchemaResponse.isError()) {
           if (attempts++ < 5) {
-            Utils.sleep(Time.MS_PER_SECOND);
+            Utils.sleep(Time.MS_PER_SECOND * (attempts + 1));
             continue;
           }
           throw new VeniceException(
