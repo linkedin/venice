@@ -234,6 +234,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setTargetSwapRegion(store.getTargetSwapRegion());
     setTargetSwapRegionWaitTime(store.getTargetSwapRegionWaitTime());
     setIsDavinciHeartbeatReported(store.getIsDavinciHeartbeatReported());
+    setGlobalRtDivEnabled(store.isGlobalRtDivEnabled());
 
     for (Version storeVersion: store.getVersions()) {
       forceAddVersion(storeVersion.cloneVersion(), true);
@@ -969,6 +970,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public boolean getIsDavinciHeartbeatReported() {
     return this.storeProperties.isDaVinciHeartBeatReported;
+  }
+
+  @Override
+  public void setGlobalRtDivEnabled(boolean globalRtDivEnabled) {
+    this.storeProperties.globalRtDivEnabled = globalRtDivEnabled;
+  }
+
+  @Override
+  public boolean isGlobalRtDivEnabled() {
+    return this.storeProperties.globalRtDivEnabled;
   }
 
   /**

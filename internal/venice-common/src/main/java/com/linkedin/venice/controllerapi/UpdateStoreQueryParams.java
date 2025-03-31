@@ -22,6 +22,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_ST
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.GLOBAL_RT_DIV_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_OVERHEAD_BYPASS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
@@ -149,6 +150,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setMaxNearlineRecordSizeBytes(srcStore.getMaxNearlineRecordSizeBytes())
             .setTargetRegionSwap(srcStore.getTargetRegionSwap())
             .setTargetRegionSwapWaitTime(srcStore.getTargetRegionSwapWaitTime())
+            .setGlobalRtDivEnabled(srcStore.isGlobalRtDivEnabled())
             // TODO: This needs probably some refinement, but since we only support one kind of view type today, this is
             // still easy to parse
             .setStoreViews(
@@ -781,6 +783,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Boolean> getIsDavinciHeartbeatReported() {
     return getBoolean(IS_DAVINCI_HEARTBEAT_REPORTED);
+  }
+
+  public UpdateStoreQueryParams setGlobalRtDivEnabled(boolean globalRtDivEnabled) {
+    return putBoolean(GLOBAL_RT_DIV_ENABLED, globalRtDivEnabled);
+  }
+
+  public Optional<Boolean> isGlobalRtDivEnabled() {
+    return getBoolean(GLOBAL_RT_DIV_ENABLED);
   }
 
   // ***************** above this line are getters and setters *****************

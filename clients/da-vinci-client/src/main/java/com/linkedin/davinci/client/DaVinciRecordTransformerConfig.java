@@ -1,6 +1,7 @@
 package com.linkedin.davinci.client;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.Optional;
 import org.apache.avro.Schema;
 
@@ -14,6 +15,7 @@ public class DaVinciRecordTransformerConfig {
   private final Schema outputValueSchema;
   private final boolean storeRecordsInDaVinci;
   private final boolean alwaysBootstrapFromVersionTopic;
+  private final boolean skipCompatibilityChecks;
 
   public DaVinciRecordTransformerConfig(Builder builder) {
     this.recordTransformerFunction = Optional.ofNullable(builder.recordTransformerFunction)
@@ -26,8 +28,9 @@ public class DaVinciRecordTransformerConfig {
       throw new VeniceException("outputValueClass and outputValueSchema must be defined together");
     }
 
-    this.storeRecordsInDaVinci = Optional.ofNullable(builder.storeRecordsInDaVinci).orElse(true);
-    this.alwaysBootstrapFromVersionTopic = Optional.ofNullable(builder.alwaysBootstrapFromVersionTopic).orElse(false);
+    this.storeRecordsInDaVinci = builder.storeRecordsInDaVinci;
+    this.alwaysBootstrapFromVersionTopic = builder.alwaysBootstrapFromVersionTopic;
+    this.skipCompatibilityChecks = builder.skipCompatibilityChecks;
   }
 
   /**
@@ -65,12 +68,20 @@ public class DaVinciRecordTransformerConfig {
     return alwaysBootstrapFromVersionTopic;
   }
 
+  /**
+   * @return {@link #skipCompatibilityChecks}
+   */
+  public boolean shouldSkipCompatibilityChecks() {
+    return skipCompatibilityChecks;
+  }
+
   public static class Builder {
     private DaVinciRecordTransformerFunctionalInterface recordTransformerFunction;
     private Class outputValueClass;
     private Schema outputValueSchema;
-    private Boolean storeRecordsInDaVinci;
-    private Boolean alwaysBootstrapFromVersionTopic;
+    private Boolean storeRecordsInDaVinci = true;
+    private Boolean alwaysBootstrapFromVersionTopic = false;
+    private Boolean skipCompatibilityChecks = false;
 
     /**
      * @param recordTransformerFunction the functional interface for creating a {@link DaVinciRecordTransformer}
@@ -115,6 +126,21 @@ public class DaVinciRecordTransformerConfig {
      */
     public Builder setAlwaysBootstrapFromVersionTopic(boolean alwaysBootstrapFromVersionTopic) {
       this.alwaysBootstrapFromVersionTopic = alwaysBootstrapFromVersionTopic;
+      return this;
+    }
+
+    /**
+     * @param skipCompatibilityChecks set this to true if {@link DaVinciRecordTransformer#transform(Lazy, Lazy, int)}
+     *                                returns {@link DaVinciRecordTransformerResult.Result#UNCHANGED}.
+     *                                Additionally, if you are making frequent changes to your
+     *                                {@link DaVinciRecordTransformer} implementation without modifying the transform
+     *                                logic, setting this to true will prevent your local data from being wiped
+     *                                everytime a change is deployed. Remember to set this to false once your
+     *                                changes have stabilized.
+     *                                Default is false.
+     */
+    public Builder setSkipCompatibilityChecks(boolean skipCompatibilityChecks) {
+      this.skipCompatibilityChecks = skipCompatibilityChecks;
       return this;
     }
 

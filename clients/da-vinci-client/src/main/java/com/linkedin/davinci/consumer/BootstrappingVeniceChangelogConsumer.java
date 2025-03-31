@@ -1,5 +1,6 @@
 package com.linkedin.davinci.consumer;
 
+import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import java.util.Collection;
 import java.util.Set;
@@ -19,6 +20,7 @@ import java.util.concurrent.CompletableFuture;
  * @param <K>
  * @param <V>
  */
+@Experimental
 public interface BootstrappingVeniceChangelogConsumer<K, V> {
   /**
    * Start performs both a topic subscription and catch up. The client will look at the latest offset in the server and

@@ -1882,6 +1882,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     });
   }
 
+  private StoreInfo getStoreInfo(String storeName, String clusterName) {
+    ControllerClient controllerClient = getControllerClientMap(clusterName).get(getRegionName());
+    if (controllerClient == null) {
+      throw new VeniceException(
+          "Failed to constructed controller client for cluster " + clusterName + " and region " + getRegionName());
+    }
+    StoreResponse storeResponse = controllerClient.getStore(storeName);
+    if (storeResponse.isError()) {
+      throw new VeniceException(
+          "Failed to get store " + storeName + " from cluster " + clusterName + " and region " + getRegionName()
+              + " with error " + storeResponse.getError());
+    }
+    return storeResponse.getStore();
+  }
+
   /**
    * @see #updateClusterDiscovery(String, String, String, String)
    */
@@ -2722,7 +2737,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     LOGGER.info(
         "During store migration, version configs from source cluster {}: {}",
         migrationSourceCluster,
-        srcStoreResponse.getStore().getVersion(versionNumber).get());
+        srcStoreInfo.getVersion(versionNumber).get());
     return srcStoreResponse.getStore().getVersion(versionNumber);
   }
 
@@ -2799,14 +2814,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             throwStoreDoesNotExist(clusterName, storeName);
           }
           currentVersionBeforePush = store.getCurrentVersion();
+
           // Dest child controllers skip the version whose kafka topic is truncated
           if (store.isMigrating() && skipMigratingVersion(clusterName, storeName, versionNumber)) {
+
             if (versionNumber > store.getLargestUsedVersionNumber()) {
               store.setLargestUsedVersionNumber(versionNumber);
               repository.updateStore(store);
             }
             LOGGER.warn(
-                "Skip adding version: {} for store: {} in cluster: {} because the version topic is truncated",
+                "Skip adding version: {} for store: {} in cluster: {} because the version topic is truncated/deleted",
                 versionNumber,
                 storeName,
                 clusterName);
@@ -3261,6 +3278,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * During store migration, skip a version if:
    * This is the child controller of the destination cluster
    * And the kafka topic of related store and version is truncated
+   * And kafka topic doesn't exist and the version is smaller than the largest used version number which means the version is already deleted in the source cluster.
    *
    * @param clusterName the name of the cluster
    * @param storeName the name of the store
@@ -3275,8 +3293,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     String destCluster = storeConfig.getMigrationDestCluster();
     if (clusterName.equals(destCluster)) {
       PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, versionNumber));
+      String migrationSourceCluster = storeConfig.getMigrationSrcCluster();
       // If the topic doesn't exist, we don't know whether it's not created or already deleted, so we don't skip
-      return getTopicManager().containsTopic(versionTopic) && isTopicTruncated(versionTopic.getName());
+      return getTopicManager().containsTopic(versionTopic) && isTopicTruncated(versionTopic.getName()) ||
+      // The topic doesn't exist and less/equal than the largest used version number in the source, it's deleted
+          !getTopicManager().containsTopic(versionTopic)
+              && (versionNumber <= getStoreInfo(storeName, migrationSourceCluster).getLargestUsedVersionNumber());
     }
     return false;
   }
@@ -5255,6 +5277,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<String> targetSwapRegion = params.getTargetSwapRegion();
     Optional<Integer> targetSwapRegionWaitTime = params.getTargetRegionSwapWaitTime();
     Optional<Boolean> isDavinciHeartbeatReported = params.getIsDavinciHeartbeatReported();
+    Optional<Boolean> globalRtDivEnabled = params.isGlobalRtDivEnabled();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -5565,6 +5588,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       isDavinciHeartbeatReported.ifPresent(aBool -> storeMetadataUpdate(clusterName, storeName, store -> {
         store.setIsDavinciHeartbeatReported(aBool);
+        return store;
+      }));
+
+      globalRtDivEnabled.ifPresent(aBool -> storeMetadataUpdate(clusterName, storeName, store -> {
+        store.setGlobalRtDivEnabled(aBool);
         return store;
       }));
 
@@ -7582,11 +7610,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * Update the version of admin operation protocol in admin topic metadata
+   * Unsupported operation in the child controller.
    */
   public void updateAdminOperationProtocolVersion(String clusterName, Long adminOperationProtocolVersion) {
-    getAdminConsumerService(clusterName)
-        .updateAdminOperationProtocolVersion(clusterName, adminOperationProtocolVersion);
+    throw new VeniceUnsupportedOperationException(
+        "updateAdminOperationProtocolVersion is not supported for child controller");
   }
 
   /**

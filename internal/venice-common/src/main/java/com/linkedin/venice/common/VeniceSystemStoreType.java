@@ -27,6 +27,8 @@ import java.util.Map;
  * Enum used to differentiate the different types of Venice system stores when access their metadata. Currently only
  * the store metadata system stores are treated differently because they are sharing metadata in Zookeeper. Future system
  * store types should be added here especially if they also would like to share metadata in Zookeeper.
+ *
+ * @see <a href="https://venicedb.org/docs/ops_guide/system_stores">System Stores in the docs</a>
  */
 public enum VeniceSystemStoreType {
   DAVINCI_PUSH_STATUS_STORE(

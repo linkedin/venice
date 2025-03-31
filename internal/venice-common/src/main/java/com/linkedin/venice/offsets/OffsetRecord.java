@@ -13,6 +13,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -75,6 +76,11 @@ public class OffsetRecord {
     emptyPartitionState.upstreamVersionTopicOffset = DEFAULT_UPSTREAM_OFFSET;
     emptyPartitionState.pendingReportIncrementalPushVersions = new ArrayList<>();
     emptyPartitionState.setRealtimeTopicProducerStates(new VeniceConcurrentHashMap<>());
+    emptyPartitionState.currentTermStartPubSubPosition = ByteBuffer.allocate(0);
+    emptyPartitionState.lastProcessedVersionTopicPubSubPosition = ByteBuffer.allocate(0);
+    emptyPartitionState.lastConsumedVersionTopicPubSubPosition = ByteBuffer.allocate(0);
+    emptyPartitionState.upstreamRealTimeTopicPubSubPositionMap = new VeniceConcurrentHashMap<>();
+    emptyPartitionState.upstreamVersionTopicPubSubPosition = ByteBuffer.allocate(0);
     return emptyPartitionState;
   }
 

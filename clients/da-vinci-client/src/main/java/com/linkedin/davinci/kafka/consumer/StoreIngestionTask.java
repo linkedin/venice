@@ -76,6 +76,7 @@ import com.linkedin.venice.kafka.protocol.StartOfIncrementalPush;
 import com.linkedin.venice.kafka.protocol.StartOfPush;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.Update;
+import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -377,6 +378,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected Lazy<CountDownLatch> gracefulShutdownLatch = Lazy.of(() -> new CountDownLatch(1));
   protected Lazy<ZKHelixAdmin> zkHelixAdmin;
   protected final String hostName;
+  private boolean skipAfterBatchPushUnsubEnabled = false;
 
   public StoreIngestionTask(
       StorageService storageService,
@@ -586,7 +588,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.recordLevelMetricEnabled = new AtomicBoolean(
         serverConfig.isRecordLevelMetricWhenBootstrappingCurrentVersionEnabled()
             || !this.isCurrentVersion.getAsBoolean());
-    this.isGlobalRtDivEnabled = serverConfig.isGlobalRtDivEnabled();
+    this.isGlobalRtDivEnabled = version.isGlobalRtDivEnabled();
     if (!this.recordLevelMetricEnabled.get()) {
       LOGGER.info("Disabled record-level metric when ingesting current version: {}", kafkaVersionTopic);
     }
@@ -1549,6 +1551,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * We will unsubscribe all the errored partitions without killing the ingestion task.
      */
     processIngestionException();
+    maybeUnsubscribeCompletedPartitions(store);
 
     /**
      * Check whether current consumer has any subscription or not since 'poll' function will throw
@@ -1573,6 +1576,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           // long sleep here in case there are more consumer action to perform like KILL/subscription etc.
           Thread.sleep(POST_UNSUB_SLEEP_MS);
           idleCounter = 0;
+          if (serverConfig.isSkipChecksAfterUnSubEnabled()) {
+            skipAfterBatchPushUnsubEnabled = true;
+          }
         } else {
           maybeCloseInactiveIngestionTask();
         }
@@ -1580,7 +1586,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
     idleCounter = 0;
-    maybeUnsubscribeCompletedPartitions(store);
     if (emitMetrics.get()) {
       recordQuotaMetrics();
       recordMaxIdleTime();
@@ -1694,14 +1699,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.info("Running {}", ingestionTaskName);
       versionedIngestionStats.resetIngestionTaskPushTimeoutGauge(storeName, versionNumber);
 
+      Store store = null;
       while (isRunning()) {
-        Store store = storeRepository.getStoreOrThrow(storeName);
-        refreshIngestionContextIfChanged(store);
-        processConsumerActions(store);
-        checkLongRunningTaskState();
-        checkIngestionProgress(store);
-        maybeSendIngestionHeartbeat();
-        mayResumeRecordLevelMetricsForCurrentVersion();
+        if (!skipAfterBatchPushUnsubEnabled) {
+          store = storeRepository.getStoreOrThrow(storeName);
+          refreshIngestionContextIfChanged(store);
+          processConsumerActions(store);
+          checkLongRunningTaskState();
+          checkIngestionProgress(store);
+          maybeSendIngestionHeartbeat();
+          mayResumeRecordLevelMetricsForCurrentVersion();
+        } else {
+          processConsumerActions(store);
+          checkIngestionProgress(store);
+        }
       }
 
       List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>(partitionConsumptionStateMap.size());
@@ -3260,11 +3271,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         processEndOfPush(kafkaMessageEnvelope, partition, offset, partitionConsumptionState);
         break;
       case START_OF_SEGMENT:
+        break;
       case END_OF_SEGMENT:
+        break;
       case VERSION_SWAP:
-        /**
-         * Nothing to do here as all the processing is being done in {@link StoreIngestionTask#delegateConsumerRecord(ConsumerRecord, int, String)}.
-         */
+        if (recordTransformer != null) {
+          VersionSwap versionSwap = (VersionSwap) controlMessage.controlMessageUnion;
+          int currentVersion =
+              Version.parseVersionFromVersionTopicName(versionSwap.getOldServingVersionTopic().toString());
+          int futureVersion =
+              Version.parseVersionFromVersionTopicName(versionSwap.getNewServingVersionTopic().toString());
+          recordTransformer.onVersionSwap(currentVersion, futureVersion, partition);
+        }
         break;
       case START_OF_INCREMENTAL_PUSH:
         processStartOfIncrementalPush(controlMessage, partitionConsumptionState);
@@ -3873,7 +3891,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
           DaVinciRecordTransformerResult transformerResult;
           try {
-            transformerResult = recordTransformer.transformAndProcessPut(lazyKey, lazyValue);
+            transformerResult = recordTransformer.transformAndProcessPut(lazyKey, lazyValue, producedPartition);
           } catch (Exception e) {
             daVinciRecordTransformerStats.recordPutError(storeName, versionNumber, currentTimeMs);
             String errorMessage =
@@ -3940,7 +3958,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
           long startTime = System.nanoTime();
           try {
-            recordTransformer.processDelete(lazyKey);
+            recordTransformer.processDelete(lazyKey, producedPartition);
           } catch (Exception e) {
             daVinciRecordTransformerStats.recordDeleteError(storeName, versionNumber, currentTimeMs);
             String errorMessage = "DaVinciRecordTransformer experienced an error when deleting key: " + lazyKey.get();

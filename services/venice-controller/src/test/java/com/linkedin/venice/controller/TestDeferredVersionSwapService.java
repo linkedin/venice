@@ -162,6 +162,7 @@ public class TestDeferredVersionSwapService {
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
     Map<String, ControllerClient> controllerClientMap = new HashMap<>();
     controllerClientMap.put(region1, controllerClient);
+    controllerClientMap.put(region2, controllerClient);
     StoreResponse storeResponse = new StoreResponse();
     StoreInfo storeInfo = new StoreInfo();
     List<Version> versionList = new ArrayList<>();
@@ -262,6 +263,9 @@ public class TestDeferredVersionSwapService {
     versions.put(completedVersionNum, VersionStatus.ONLINE);
     versions.put(davinciVersionNum, VersionStatus.PUSHED);
     versions.put(targetVersionNum, VersionStatus.PUSHED);
+    Map<Integer, VersionStatus> killedVersionsList = new HashMap<>();
+    killedVersionsList.put(davinciVersionNum, VersionStatus.PUSHED);
+    killedVersionsList.put(targetVersionNum, VersionStatus.KILLED);
     String storeName1 = "testStore";
     String storeName2 = "testStore2";
     String storeName3 = "testStore3";
@@ -270,10 +274,10 @@ public class TestDeferredVersionSwapService {
     String storeName6 = "testStore6";
     Store store1 = mockStore(davinciVersionNum, 60, region1, versions, storeName1);
     Store store2 = mockStore(davinciVersionNum, 60, region1, versions, storeName2);
-    Store store3 = mockStore(davinciVersionNum, 60, region1, versions, storeName3);
-    Store store4 = mockStore(davinciVersionNum, 60, region1, versions, storeName4);
-    Store store5 = mockStore(davinciVersionNum, 60, region1, versions, storeName5);
-    Store store6 = mockStore(davinciVersionNum, 60, region1 + "," + region2, versions, storeName6);
+    Store store3 = mockStore(davinciVersionNum, 60, region1, killedVersionsList, storeName3);
+    Store store4 = mockStore(davinciVersionNum, 60, region1, killedVersionsList, storeName4);
+    Store store5 = mockStore(davinciVersionNum, 60, region1, killedVersionsList, storeName5);
+    Store store6 = mockStore(davinciVersionNum, 60, region1 + "," + region2, killedVersionsList, storeName6);
 
     Long time = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
     List<Store> storeList = new ArrayList<>();
@@ -298,6 +302,7 @@ public class TestDeferredVersionSwapService {
     Map<String, ControllerClient> controllerClientMap = new HashMap<>();
     controllerClientMap.put(region1, controllerClient);
     controllerClientMap.put(region2, controllerClient);
+    controllerClientMap.put(region3, controllerClient);
     StoreResponse storeResponse = new StoreResponse();
     StoreInfo storeInfo = new StoreInfo();
     List<Version> versionList = new ArrayList<>();
@@ -402,10 +407,10 @@ public class TestDeferredVersionSwapService {
 
       // one target region, 2 non target regions: one succeeded, one failed -> swap
       verify(admin, atLeast(1)).rollForwardToFutureVersion(clusterName, storeName3, region2);
-      verify(store3, atLeast(1)).updateVersionStatus(3, VersionStatus.ONLINE);
+      verify(store3, atLeast(1)).updateVersionStatus(3, VersionStatus.PARTIALLY_ONLINE);
 
       // one target region, 2 non target regions: both failed -> do not swap
-      verify(store4, atLeast(1)).updateVersionStatus(3, VersionStatus.ERROR);
+      verify(store4, atLeast(1)).updateVersionStatus(3, VersionStatus.PARTIALLY_ONLINE);
 
       // one target region, 2 non target regions: one failed, one in progress -> do not swap
       verify(admin, never())
@@ -413,7 +418,7 @@ public class TestDeferredVersionSwapService {
 
       // two target regions: 1 completed, 1 failed, 1 completed non target region -> swap
       verify(admin, atLeast(1)).rollForwardToFutureVersion(clusterName, storeName6, region3);
-      verify(store6, atLeast(1)).updateVersionStatus(3, VersionStatus.ONLINE);
+      verify(store6, atLeast(1)).updateVersionStatus(3, VersionStatus.PARTIALLY_ONLINE);
     });
   }
 

@@ -848,6 +848,8 @@ public class ConfigKeys {
   public static final String SERVER_RESET_ERROR_REPLICA_ENABLED = "server.reset.error.replica.enabled";
 
   public static final String SERVER_ADAPTIVE_THROTTLER_ENABLED = "server.adaptive.throttler.enabled";
+
+  public static final String SERVER_SKIP_CHECK_AFTER_UNSUB_ENABLED = "server.skip.check.after.unsub.enabled";
   public static final String SERVER_ADAPTIVE_THROTTLER_SIGNAL_IDLE_THRESHOLD =
       "server.adaptive.throttler.signal.idle.threshold";
   public static final String SERVER_ADAPTIVE_THROTTLER_SINGLE_GET_LATENCY_THRESHOLD =
@@ -2581,4 +2583,10 @@ public class ConfigKeys {
    * (Only matters if CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED true) Prefix of configs to configure the DeadStoreStats implementation
    */
   public static final String CONTROLLER_DEAD_STORE_STATS_PREFIX = "controller.dead.store.stats.";
+
+  /**
+   * Enables / disables the Global RT DIV feature. Default value is disabled. The DIV will be centralized in the
+   * ConsumptionTask, and leaders will periodically replicate the RT DIV to followers via VT.
+   */
+  public static final String GLOBAL_RT_DIV_ENABLED = "global.rt.div.enabled";
 }

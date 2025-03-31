@@ -82,6 +82,7 @@ public class StoreInfo {
     storeInfo.setTargetRegionSwap(store.getTargetSwapRegion());
     storeInfo.setTargetRegionSwapWaitTime(store.getTargetSwapRegionWaitTime());
     storeInfo.setIsDavinciHeartbeatReported(store.getIsDavinciHeartbeatReported());
+    storeInfo.setGlobalRtDivEnabled(store.isGlobalRtDivEnabled());
     return storeInfo;
   }
 
@@ -350,6 +351,7 @@ public class StoreInfo {
   private String targetRegionSwap;
   private int targetRegionSwapWaitTime;
   private boolean isDavinciHeartbeatReported;
+  private boolean globalRtDivEnabled = false;
 
   public StoreInfo() {
   }
@@ -902,5 +904,12 @@ public class StoreInfo {
 
   public List<String> getStoreDeadStatusReasons() {
     return storeDeadStatusReasons;
+
+  public void setGlobalRtDivEnabled(boolean globalRtDivEnabled) {
+    this.globalRtDivEnabled = globalRtDivEnabled;
+  }
+
+  public boolean isGlobalRtDivEnabled() {
+    return this.globalRtDivEnabled;
   }
 }

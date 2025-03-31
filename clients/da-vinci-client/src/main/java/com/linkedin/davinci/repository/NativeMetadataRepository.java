@@ -119,7 +119,7 @@ public abstract class NativeMetadataRepository
       ICProvider icProvider) {
     NativeMetadataRepository nativeMetadataRepository;
     if (clientConfig.isUseRequestBasedMetaRepository()) {
-      nativeMetadataRepository = new RequestBasedMetaRepository(clientConfig, backendConfig);
+      nativeMetadataRepository = new RequestBasedMetaRepository(clientConfig, backendConfig, icProvider);
     } else {
       nativeMetadataRepository = new ThinClientMetaStoreBasedRepository(clientConfig, backendConfig, icProvider);
     }
