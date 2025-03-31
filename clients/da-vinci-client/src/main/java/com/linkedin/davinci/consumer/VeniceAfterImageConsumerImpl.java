@@ -208,20 +208,19 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
               // We polled all EOP messages, stop polling!
               break;
             }
-
-            if (trackHeartbeats) {
-              // One last step. We track heartbeats for each partition and check their positions. The time recorded in
-              // the
-              // last received heartbeat is absolutely the earliest possible time for that heartbeat to be processed
-              // on a server. If the message nearest that heartbeat in the new version is at on offset higher then the
-              // EOP message, then we swap it out in order to play less events back to the user.
-              // first, check and see if all partitions are already after EOP
-              adjustSeekCheckPointsBasedOnHeartbeats(
-                  checkpoints,
-                  new HashMap<>(currentVersionLastHeartbeat),
-                  consumerAdapter,
-                  topicPartitionList);
-            }
+          }
+          if (trackHeartbeats) {
+            // One last step. We track heartbeats for each partition and check their positions. The time recorded in
+            // the
+            // last received heartbeat is absolutely the earliest possible time for that heartbeat to be processed
+            // on a server. If the message nearest that heartbeat in the new version is at on offset higher then the
+            // EOP message, then we swap it out in order to play less events back to the user.
+            // first, check and see if all partitions are already after EOP
+            adjustSeekCheckPointsBasedOnHeartbeats(
+                checkpoints,
+                new HashMap<>(currentVersionLastHeartbeat),
+                consumerAdapter,
+                topicPartitionList);
           }
           LOGGER.info(
               "Seeking to EOP for partitions: " + partitions.toString() + " for version topic: "
