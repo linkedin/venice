@@ -357,6 +357,16 @@ public class VeniceChangelogConsumerImplTest {
     Assert.assertNotEquals(checkpoints.get(0), aheadCoordinate);
     Assert.assertEquals(checkpoints.get(1), behindCoordinate);
     Assert.assertEquals(checkpoints.get(2), otherCoordinate);
+
+    checkpoints.remove(1);
+
+    VeniceAfterImageConsumerImpl.adjustSeekCheckPointsBasedOnHeartbeats(
+        checkpoints,
+        currentVersionLastHeartbeat,
+        mockConsumer,
+        topicPartitionList);
+
+    Assert.assertNotEquals(checkpoints.get(0), aheadCoordinate);
   }
 
   @Test
