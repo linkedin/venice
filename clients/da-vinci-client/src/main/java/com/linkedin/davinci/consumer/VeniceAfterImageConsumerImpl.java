@@ -113,10 +113,21 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     for (PubSubTopicPartition topicPartition: topicPartitionList) {
       Long currentVersionTimestamp = currentVersionLastHeartbeat.get(topicPartition.getPartitionNumber());
       if (currentVersionTimestamp == null) {
+        LOGGER.warn("No heartbeat checkpoint found for partition: {}", topicPartition.getPartitionNumber());
         continue;
       }
       PubSubPosition heartbeatTimestampPosition =
           consumerAdapter.getPositionByTimestamp(topicPartition, currentVersionTimestamp);
+      if (checkpoints.get(topicPartition.getPartitionNumber()) == null) {
+        LOGGER.warn("No EOP checkpoint found for partition: {}", topicPartition.getPartitionNumber());
+        checkpoints.put(
+            topicPartition.getPartitionNumber(),
+            new VeniceChangeCoordinate(
+                topicPartition.getPubSubTopic().getName(),
+                heartbeatTimestampPosition,
+                topicPartition.getPartitionNumber()));
+        continue;
+      }
       PubSubPosition eopPosition = checkpoints.get(topicPartition.getPartitionNumber()).getPosition();
       if (heartbeatTimestampPosition.comparePosition(eopPosition) > 0) {
         checkpoints.put(
