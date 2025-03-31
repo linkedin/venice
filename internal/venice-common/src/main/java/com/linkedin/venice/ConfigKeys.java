@@ -2572,7 +2572,13 @@ public class ConfigKeys {
   public static final String CONTROLLER_DEAD_STORE_STATS_CLASS_NAME = "controller.dead.store.stats.class.name";
 
   /**
-   * Prefix of configs to configure the DeadStoreStats implementation
+   * (Only matters if CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED true) Amount of time in milliseconds to wait before refetching the dead store stats
+   */
+  public static final String CONTROLLER_DEAD_STORE_STATS_PRE_FETCH_INTERVAL_MS =
+      "controller.dead.store.stats.pre.fetch.interval.ms";
+
+  /**
+   * (Only matters if CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED true) Prefix of configs to configure the DeadStoreStats implementation
    */
   public static final String CONTROLLER_DEAD_STORE_STATS_PREFIX = "controller.dead.store.stats.";
 }

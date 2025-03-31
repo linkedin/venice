@@ -8112,7 +8112,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @see Admin#getDeadStores(String)
    */
   @Override
-  public List<StoreInfo> getDeadStores(String clusterName, String storeName) {
+  public List<StoreInfo> getDeadStores(String clusterName, String storeName, boolean includeSystemStores) {
     throw new UnsupportedOperationException("This function is implemented in VeniceParentHelixAdmin.");
   }
 

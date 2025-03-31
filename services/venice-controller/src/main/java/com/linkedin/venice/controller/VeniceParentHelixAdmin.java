@@ -363,7 +363,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private final IdentityParser identityParser;
 
-  private DeadStoreStats deadStoreStats;
+  DeadStoreStats deadStoreStats;
 
   // New fabric controller client map per cluster per fabric
   private final Map<String, Map<String, ControllerClient>> newFabricControllerClientMap =
@@ -5047,7 +5047,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public List<StoreInfo> getDeadStores(String clusterName, String storeName) {
+  public List<StoreInfo> getDeadStores(String clusterName, String storeName, boolean includeSystemStores) {
     if (!multiClusterConfigs.isDeadStoreEndpointEnabled()) {
       throw new VeniceUnsupportedOperationException("Dead store stats is not enabled.");
     }
@@ -5055,6 +5055,7 @@ public class VeniceParentHelixAdmin implements Admin {
     if (storeName == null) {
       List<StoreInfo> clusterStoreInfos = getAllStores(clusterName).stream()
           .filter(Objects::nonNull)
+          .filter(store -> includeSystemStores || !store.isSystemStore())
           .map(StoreInfo::fromStore)
           .collect(Collectors.toList());
       return deadStoreStats.getDeadStores(clusterStoreInfos);

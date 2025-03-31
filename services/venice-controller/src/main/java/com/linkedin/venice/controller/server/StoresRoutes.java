@@ -1025,7 +1025,8 @@ public class StoresRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, GET_DEAD_STORES.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
-        List<StoreInfo> storeList = admin.getDeadStores(cluster, storeName);
+        boolean includeSystemStores = Boolean.parseBoolean(request.queryParams(INCLUDE_SYSTEM_STORES));
+        List<StoreInfo> storeList = admin.getDeadStores(cluster, storeName, includeSystemStores);
         veniceResponse.setStoreInfoList(storeList);
       }
     };

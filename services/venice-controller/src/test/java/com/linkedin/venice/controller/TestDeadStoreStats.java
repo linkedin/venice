@@ -37,6 +37,13 @@ public class TestDeadStoreStats {
       }
       return deadStores;
     }
+
+    @Override
+    public void preFetchStats(List<StoreInfo> storeInfos) {
+      // This is a no-op for the fake implementation.
+      // In a real implementation, this would pre-fetch and cache the dead store stats.
+      System.out.println("Pre-fetching stats for testing purposes. No actual operation performed.");
+    }
   }
 
   /**

@@ -590,6 +590,7 @@ public class VeniceControllerClusterConfig {
    */
   private final boolean isdeadStoreEndpointEnabled;
   private final String deadStoreStatsClassName;
+  private final long deadStoreStatsPreFetchIntervalInMs;
   private final VeniceProperties deadStoreStatsConfigs;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
@@ -1061,6 +1062,8 @@ public class VeniceControllerClusterConfig {
 
     this.isdeadStoreEndpointEnabled = props.getBoolean(ConfigKeys.CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED, false);
     this.deadStoreStatsClassName = props.getString(ConfigKeys.CONTROLLER_DEAD_STORE_STATS_CLASS_NAME, "");
+    this.deadStoreStatsPreFetchIntervalInMs =
+        props.getLong(ConfigKeys.CONTROLLER_DEAD_STORE_STATS_PRE_FETCH_INTERVAL_MS, 24 * 60 * 60 * 1000);
     this.deadStoreStatsConfigs = props.clipAndFilterNamespace(ConfigKeys.CONTROLLER_DEAD_STORE_STATS_PREFIX);
 
     this.isHybridStorePartitionCountUpdateEnabled =
@@ -2004,6 +2007,10 @@ public class VeniceControllerClusterConfig {
 
   public String getDeadStoreStatsClassName() {
     return deadStoreStatsClassName;
+  }
+
+  public long getDeadStoreStatsPreFetchRefreshIntervalInMs() {
+    return deadStoreStatsPreFetchIntervalInMs;
   }
 
   public VeniceProperties getDeadStoreStatsConfigs() {
