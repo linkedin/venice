@@ -1033,9 +1033,9 @@ public class PartialUpdateTest {
       veniceProducer.stop();
     }
 
-    String baseMetricName = AbstractVeniceStats.getSensorFullName(storeName, ASSEMBLED_RMD_SIZE_IN_BYTES);
-    List<Double> assembledRmdSizes = MetricsUtils.getAvgMax(baseMetricName, veniceCluster.getVeniceServers());
-    MetricsUtils.validateMetricRange(assembledRmdSizes, 290000, 740000);
+    String metricName = AbstractVeniceStats.getSensorFullName(storeName, ASSEMBLED_RMD_SIZE_IN_BYTES) + ".Max";
+    double assembledRmdSize = MetricsUtils.getMax(metricName, veniceCluster.getVeniceServers());
+    assertTrue(assembledRmdSize >= 290000 && assembledRmdSize <= 740000);
   }
 
   @Test(timeOut = TEST_TIMEOUT_MS * 3)
