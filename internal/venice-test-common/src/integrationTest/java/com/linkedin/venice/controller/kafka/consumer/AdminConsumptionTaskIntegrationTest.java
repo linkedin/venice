@@ -244,6 +244,18 @@ public class AdminConsumptionTaskIntegrationTest {
     });
   }
 
+  @Test
+  public void testGetSmallestLocalAdminOperationProtocolVersionForAllConsumers() {
+    // Get the parent controller
+    VeniceControllerWrapper controller = venice.getParentControllers().get(0);
+    Admin admin = controller.getVeniceAdmin();
+
+    String clusterName = venice.getClusterNames()[0];
+
+    Long version = admin.getSmallestLocalAdminOperationProtocolVersionForAllConsumers(clusterName);
+    System.out.println("Current Local Admin Operation Protocol Version for all consumers: " + version);
+  }
+
   @Test(timeOut = 2 * TIMEOUT)
   public void testAdminConsumptionTaskWithSpecificWriterId() {
     for (int i = 1; i <= 5; i++) {

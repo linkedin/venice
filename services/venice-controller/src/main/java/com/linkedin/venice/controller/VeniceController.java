@@ -15,6 +15,7 @@ import com.linkedin.venice.controller.grpc.server.interceptor.ControllerGrpcSslS
 import com.linkedin.venice.controller.grpc.server.interceptor.ParentControllerRegionValidationInterceptor;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
+import com.linkedin.venice.controller.kafka.protocol.serializer.ProtocolVersionDetectionService;
 import com.linkedin.venice.controller.logcompaction.LogCompactionService;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.server.VeniceControllerGrpcServiceImpl;
@@ -76,6 +77,7 @@ public class VeniceController {
 
   private final Optional<StoreGraveyardCleanupService> storeGraveyardCleanupService;
   private final Optional<SystemStoreRepairService> systemStoreRepairService;
+  private final Optional<ProtocolVersionDetectionService> protocolVersionDetectionService;
 
   private Optional<DeferredVersionSwapService> deferredVersionSwapService;
 
@@ -171,6 +173,7 @@ public class VeniceController {
     this.storeGraveyardCleanupService = createStoreGraveyardCleanupService();
     this.systemStoreRepairService = createSystemStoreRepairService();
     this.deferredVersionSwapService = createDeferredVersionSwapService();
+    this.protocolVersionDetectionService = createProtocolVersionDetectionService();
     if (multiClusterConfigs.isGrpcServerEnabled()) {
       initializeGrpcServer();
     }
@@ -301,6 +304,19 @@ public class VeniceController {
               (VeniceParentHelixAdmin) admin,
               multiClusterConfigs,
               new DeferredVersionSwapStats(metricsRepository)));
+    }
+    return Optional.empty();
+  }
+
+  private Optional<ProtocolVersionDetectionService> createProtocolVersionDetectionService() {
+    if (multiClusterConfigs.isParent()) {
+      // Only create the ProtocolVersionDetectionService if this is a parent controller
+      // and the feature is enabled in the configuration.
+      Admin admin = controllerService.getVeniceHelixAdmin();
+      return Optional.of(
+          new ProtocolVersionDetectionService(
+              (VeniceParentHelixAdmin) admin,
+              multiClusterConfigs.getControllerConfig(multiClusterConfigs.getSystemSchemaClusterName())));
     }
     return Optional.empty();
   }

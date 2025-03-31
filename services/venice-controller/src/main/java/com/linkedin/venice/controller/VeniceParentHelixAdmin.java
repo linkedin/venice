@@ -4402,6 +4402,20 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
+   * Get the smallest local admin operation protocol version for all consumers in the given cluster.
+   * This will help to ensure that all consumers are on the same page regarding the protocol version.
+   *
+   * @param clusterName The name of the cluster to check.
+   * @return The smallest local admin operation protocol version for all consumers in the cluster.
+   */
+  public Long getSmallestLocalAdminOperationProtocolVersionForAllConsumers(String clusterName) {
+    // TODO: Get all consumers controller client and get the smallest local version
+    Map<String, ControllerClient> map = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+
+    return getVeniceHelixAdmin().getAdminConsumerService(clusterName).getLocalAdminOperationProtocolVersion();
+  }
+
+  /**
    * Unsupported operation in the parent controller.
    */
   @Override

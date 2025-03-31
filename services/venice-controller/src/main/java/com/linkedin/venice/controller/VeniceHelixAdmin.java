@@ -7609,6 +7609,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
+  public Long getSmallestLocalAdminOperationProtocolVersionForAllConsumers(String clusterName) {
+    throw new VeniceUnsupportedOperationException(
+        "getLocalAdminOperationProtocolVersionForAllConsumers is not supported for child controller");
+  }
+
   /**
    * Unsupported operation in the child controller.
    */
