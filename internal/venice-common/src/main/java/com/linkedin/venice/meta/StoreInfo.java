@@ -904,6 +904,7 @@ public class StoreInfo {
 
   public List<String> getStoreDeadStatusReasons() {
     return storeDeadStatusReasons;
+  }
 
   public void setGlobalRtDivEnabled(boolean globalRtDivEnabled) {
     this.globalRtDivEnabled = globalRtDivEnabled;
