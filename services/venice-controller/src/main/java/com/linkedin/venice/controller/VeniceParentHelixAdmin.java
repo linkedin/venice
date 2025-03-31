@@ -5264,6 +5264,10 @@ public class VeniceParentHelixAdmin implements Admin {
     return veniceHelixAdmin;
   }
 
+  public String getControllerName() {
+    return getVeniceHelixAdmin().getControllerClusterName();
+  }
+
   private <T> Function<T, T> addToUpdatedConfigList(List<CharSequence> updatedConfigList, String config) {
     return (configValue) -> {
       updatedConfigList.add(config);

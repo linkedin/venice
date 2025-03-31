@@ -1,8 +1,6 @@
 package com.linkedin.venice.controller.kafka.protocol.serializer;
 
-import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
-import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.service.AbstractVeniceService;
 import java.util.Map;
@@ -17,20 +15,18 @@ import org.apache.logging.log4j.Logger;
 
 public class ProtocolVersionDetectionService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(ProtocolVersionDetectionService.class);
-  private final Admin admin;
-  private final VeniceControllerClusterConfig clusterConfig;
+  private final VeniceParentHelixAdmin admin;
   final ScheduledExecutorService executor;
 
-  public ProtocolVersionDetectionService(VeniceParentHelixAdmin admin, VeniceControllerClusterConfig clusterConfig) {
+  public ProtocolVersionDetectionService(VeniceParentHelixAdmin admin) {
     this.admin = admin;
-    this.clusterConfig = clusterConfig;
     executor = Executors.newScheduledThreadPool(1);
   }
 
   @Override
   public boolean startInner() throws Exception {
     executor.scheduleAtFixedRate(
-        new ProtocolVersionDetectionTask(clusterConfig.getClusterName()),
+        new ProtocolVersionDetectionTask(admin.getControllerName()),
         0,
         TimeUnit.MINUTES.toMillis(10),
         TimeUnit.MILLISECONDS);
