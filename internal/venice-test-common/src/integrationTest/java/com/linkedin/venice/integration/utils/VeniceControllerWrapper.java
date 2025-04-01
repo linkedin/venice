@@ -61,13 +61,15 @@ import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controller.VeniceControllerContext;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
+import com.linkedin.venice.controller.stats.ControllerMetricEntity;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.d2.D2Server;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
-import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -77,6 +79,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -99,6 +102,12 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   public static final String D2_SERVICE_NAME = "ChildController";
   public static final String PARENT_D2_CLUSTER_NAME = "ParentControllerD2Cluster";
   public static final String PARENT_D2_SERVICE_NAME = "ParentController";
+
+  public static final String CONTROLLER_SERVICE_METRIC_PREFIX = "controller";
+  public static final Collection<MetricEntity> CONTROLLER_SERVICE_METRIC_ENTITIES = Collections.unmodifiableList(
+      Arrays.stream(ControllerMetricEntity.values())
+          .map(ControllerMetricEntity::getMetricEntity)
+          .collect(Collectors.toList()));
 
   public static final String SUPERSET_SCHEMA_GENERATOR = "SupersetSchemaGenerator";
 
@@ -354,7 +363,12 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       }
 
       D2Client d2Client = D2TestUtils.getAndStartD2Client(options.getZkAddress());
-      MetricsRepository metricsRepository = TehutiUtils.getMetricsRepository(D2_SERVICE_NAME);
+      MetricsRepository metricsRepository = VeniceMetricsRepository.getVeniceMetricsRepository(
+          D2_SERVICE_NAME,
+          CONTROLLER_SERVICE_METRIC_PREFIX,
+          CONTROLLER_SERVICE_METRIC_ENTITIES,
+          propertiesList.get(0).getAsMap() // TODO repush otel: not sure if properties is accessed this way
+      );
 
       Optional<ClientConfig> consumerClientConfig = Optional.empty();
       Object clientConfig = options.getExtraProperties().get(VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER);
