@@ -14,20 +14,17 @@ import java.util.Set;
 
 
 /**
- * This provides a flexible, generic and non-caching implementation of {@link MetricEntityState} for
- * 0 to n dynamic dimensions, where the dimensions can be enums or arbitrary strings.
+ * Provides a flexible, generic, and non-caching implementation of {@link MetricEntityState} for zero or more
+ * dynamic dimensions, where the dimensions can be enums or arbitrary strings
  *
- * This implementation is particularly useful in control-path components (such as controllers) where:
- * 1. Performance constraints are lenient enough with infrequent metric recording making efficiency from
- *    caching attribute combinations negligible.
- * 2. suitable for scenarios where the metric entity has an arbitrary number of dynamic dimensions without
- *    predefined enums.
+ * This implementation should be used only in certain control-path components (such as controllers) where:
+ * 1. Performance constraints are lenient, and metric recording is infrequent.
+ * 2. The metric entity requires an arbitrary number of dynamic dimensions without predefined enums.
+ * This approach also helps reduce code complexity and avoids the proliferation of specialized subclasses (like
+ * MetricEntityStateOneEnum or MetricEntityStateTwoEnums) for different dynamic dimension combinations when
+ * attribute caching is not necessary.
  *
- * This also helps reducing code complexity and avoiding proliferation of specialized subclasses (like
- * {@link MetricEntityStateOneEnum} or {@link MetricEntityStateTwoEnums}) for different dynamic dimension
- * combinations where the caching of attributes is not necessary.
- *
- * This class provides less compile-time type safety compared to enum-based subclasses, as it does not enforce
+ * Compared to enum-based subclasses, this class provides less compile-time type safety, as it does not enforce
  * dynamic dimensions to be enums and does not require explicit dimension types during instantiation.
  */
 public class MetricEntityStateGeneric extends MetricEntityState {
