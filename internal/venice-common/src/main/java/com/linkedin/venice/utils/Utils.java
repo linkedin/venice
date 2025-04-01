@@ -89,7 +89,6 @@ public class Utils {
   public static final AtomicBoolean SUPPRESS_SYSTEM_EXIT = new AtomicBoolean();
   public static final String SEPARATE_TOPIC_SUFFIX = "_sep";
   public static final String FATAL_DATA_VALIDATION_ERROR = "fatal data validation problem";
-  public static final String REAL_TIME_TOPIC_TEMPLATE = "%s" + REAL_TIME_TOPIC_SUFFIX + "_v%d";
 
   /**
    * Print an error and exit with error code 1
@@ -580,7 +579,7 @@ public class Utils {
   }
 
   public static String composeRealTimeTopic(String storeName, int versionNumber) {
-    return String.format(REAL_TIME_TOPIC_TEMPLATE, storeName, versionNumber);
+    return String.format(Version.REAL_TIME_TOPIC_TEMPLATE, storeName, versionNumber);
   }
 
   /**

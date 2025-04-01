@@ -24,6 +24,7 @@ import java.util.Map;
 public interface Version extends Comparable<Version>, DataModelBackedStructure<StoreVersion> {
   String VERSION_SEPARATOR = "_v";
   String REAL_TIME_TOPIC_SUFFIX = "_rt";
+  String REAL_TIME_TOPIC_TEMPLATE = "%s_rt_v%d";
   String STREAM_REPROCESSING_TOPIC_SUFFIX = "_sr";
   String SEPARATE_REAL_TIME_TOPIC_SUFFIX = "_rt_sep";
   /**
@@ -301,7 +302,15 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   }
 
   static String removeRTVersionSuffix(String kafkaTopic) {
-    int lastIndexOfVersionSeparator = getLastIndexOfVersionSeparator(kafkaTopic);
+    int lastIndexOfVersionSeparator = kafkaTopic.lastIndexOf(VERSION_SEPARATOR);
+
+    if (lastIndexOfVersionSeparator == 0) {
+      throw new IllegalArgumentException(
+          "There is nothing prior to the version separator '" + VERSION_SEPARATOR + "' in the provided topic name: '"
+              + kafkaTopic + "'");
+    } else if (lastIndexOfVersionSeparator == -1) {
+      return kafkaTopic;
+    }
 
     int start = lastIndexOfVersionSeparator + VERSION_SEPARATOR.length();
     int end = kafkaTopic.length();
@@ -433,12 +442,7 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   }
 
   static boolean isRealTimeTopic(String kafkaTopic) {
-    String topicWithoutVersionSuffix = kafkaTopic;
-    try {
-      topicWithoutVersionSuffix = removeRTVersionSuffix(kafkaTopic);
-    } catch (IllegalArgumentException e) {
-      // nothing to do, it could be an old styled real time topic
-    }
+    String topicWithoutVersionSuffix = removeRTVersionSuffix(kafkaTopic);
     return topicWithoutVersionSuffix.endsWith(REAL_TIME_TOPIC_SUFFIX)
         || topicWithoutVersionSuffix.endsWith(SEPARATE_REAL_TIME_TOPIC_SUFFIX);
   }
