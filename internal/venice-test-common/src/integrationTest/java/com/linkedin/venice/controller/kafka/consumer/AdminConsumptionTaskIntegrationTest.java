@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.ADMIN_CONSUMPTION_MAX_WORKER_THREAD
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
@@ -35,7 +36,9 @@ import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -77,9 +80,9 @@ public class AdminConsumptionTaskIntegrationTest {
     parentControllerProps.put(ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS, 3000);
     venice = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
-            .numberOfClusters(1)
-            .numberOfParentControllers(1)
-            .numberOfChildControllers(1)
+            .numberOfClusters(3)
+            .numberOfParentControllers(3)
+            .numberOfChildControllers(3)
             .numberOfServers(1)
             .numberOfRouters(1)
             .replicationFactor(1)
@@ -242,6 +245,31 @@ public class AdminConsumptionTaskIntegrationTest {
       Assert.assertTrue(adminTopicMetadata.containsKey("adminOperationProtocolVersion"));
       Assert.assertEquals(adminTopicMetadata.get("adminOperationProtocolVersion"), newVersion);
     });
+  }
+
+  @Test
+  public void testGetSmallestLocalAdminOperationProtocolVersionForAllConsumers() {
+    // Get the parent controller
+    VeniceControllerWrapper controller = null;
+    for (int i = 0; i < 3; i++) {
+      controller = venice.getParentControllers().get(i);
+      if (controller.isLeaderController(clusterName)) {
+        break;
+      }
+    }
+
+    VeniceParentHelixAdmin admin = (VeniceParentHelixAdmin) controller.getVeniceAdmin();
+    List<String> allClusters = new ArrayList<>(admin.getMultiClusterConfigs().getClusters());
+    System.out.println("All clusters: " + allClusters);
+
+    Long version = admin.getLocalAdminOperationProtocolVersion(allClusters.get(0));
+    System.out.println("Current Local Admin Operation Protocol Version for all consumers: " + version);
+
+    // ExternalView externalView = admin.getExternalView(allClusters.get(0));
+    // String partitionName = HelixUtils.getPartitionName(clusterName, 0);
+    // System.out.println("statemap: " + externalView.getStateMap(partitionName));
+
+    admin.getLocalAdminOperationProtocolVersionForAllConsumers(allClusters.get(0));
   }
 
   @Test(timeOut = 2 * TIMEOUT)

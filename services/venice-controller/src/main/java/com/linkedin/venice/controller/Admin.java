@@ -583,6 +583,8 @@ public interface Admin extends AutoCloseable, Closeable {
    */
   Instance getLeaderController(String clusterName);
 
+  List<Instance> getControllerInstances(String clusterName);
+
   void addInstanceToAllowlist(String clusterName, String helixNodeId);
 
   void removeInstanceFromAllowList(String clusterName, String helixNodeId);
@@ -936,6 +938,8 @@ public interface Admin extends AutoCloseable, Closeable {
 
   Map<String, StoreDataAudit> getClusterStaleStores(String clusterName);
 
+  String getControllerClusterName();
+
   /**
    * implemented in {@link VeniceHelixAdmin#getStoresForCompaction}
    * @param clusterName, the name of the cluster to search for stores that are ready for compaction
@@ -976,6 +980,10 @@ public interface Admin extends AutoCloseable, Closeable {
       Optional<Long> upstreamOffset);
 
   void updateAdminOperationProtocolVersion(String clusterName, Long adminOperationProtocolVersion);
+
+  Long getLocalAdminOperationProtocolVersion(String clusterName);
+
+  Long getSmallestAdminOperationProtocolVersion(String clusterName);
 
   void createStoragePersona(
       String clusterName,
