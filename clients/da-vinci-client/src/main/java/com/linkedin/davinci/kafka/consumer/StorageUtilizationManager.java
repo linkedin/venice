@@ -11,6 +11,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.util.ArrayList;
@@ -357,7 +358,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
         consumingTopics.add(offsetRecord.getLeaderTopic());
         // For separate RT topic enabled SIT, we should include separate RT topic, if leader topic is a RT topic.
         if (isSeparateRealtimeTopicEnabled && Version.isRealTimeTopic(offsetRecord.getLeaderTopic())) {
-          consumingTopics.add(Version.composeSeparateRealTimeTopic(storeName));
+          consumingTopics.add(Utils.getSeparateRealTimeTopicName(offsetRecord.getLeaderTopic()));
         }
       }
     }

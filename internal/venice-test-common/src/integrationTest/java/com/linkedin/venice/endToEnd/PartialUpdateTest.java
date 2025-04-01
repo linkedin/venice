@@ -1368,10 +1368,7 @@ public class PartialUpdateTest {
       assertCommand(
           parentControllerClient
               .createNewStore(storeName, "test_owner", STRING_SCHEMA.toString(), valueSchema.toString()));
-      StoreInfo storeInfo = TestUtils.assertCommand(parentControllerClient.getStore(storeName)).getStore();
-      String realTimeTopicName = Utils.getRealTimeTopicName(storeInfo);
-      PubSubTopic realTimeTopic = PUB_SUB_TOPIC_REPOSITORY.getTopic(realTimeTopicName);
-      realTimeTopicPartition = new PubSubTopicPartitionImpl(realTimeTopic, 0);
+      TestUtils.assertCommand(parentControllerClient.getStore(storeName)).getStore();
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setPartitionCount(1)
@@ -1395,6 +1392,12 @@ public class PartialUpdateTest {
           parentControllerClient,
           30,
           TimeUnit.SECONDS);
+
+      StoreInfo storeInfo = TestUtils.assertCommand(parentControllerClient.getStore(storeName)).getStore();
+      String realTimeTopicName = Utils.getRealTimeTopicName(storeInfo);
+      PubSubTopic realTimeTopic = PUB_SUB_TOPIC_REPOSITORY.getTopic(realTimeTopicName);
+      realTimeTopicPartition = new PubSubTopicPartitionImpl(realTimeTopic, 0);
+
       TestUtils.waitForNonDeterministicAssertion(ASSERTION_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
         verifyConsumerThreadPoolFor(
             multiRegionMultiClusterWrapper,
@@ -1413,6 +1416,7 @@ public class PartialUpdateTest {
             1,
             REPLICATION_FACTOR - 1);
       });
+
       // Enable write-compute for v1:
       // leader: CURRENT_VERSION_NON_AAWC_LEADER => CURRENT_VERSION_AAWC_LEADER
       // follower: CURRENT_VERSION_NON_AAWC_LEADER
