@@ -742,6 +742,16 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public void setGlobalRtDivEnabled(boolean globalRtDivEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean isGlobalRtDivEnabled() {
+    return zkSharedStore.isGlobalRtDivEnabled();
+  }
+
+  @Override
   public Store cloneStore() {
     return new SystemStore(zkSharedStore.cloneStore(), systemStoreType, veniceStore.cloneStore());
   }

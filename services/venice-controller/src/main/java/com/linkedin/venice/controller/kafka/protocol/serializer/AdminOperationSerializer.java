@@ -2,7 +2,7 @@ package com.linkedin.venice.controller.kafka.protocol.serializer;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
-import com.linkedin.venice.exceptions.VeniceMessageException;
+import com.linkedin.venice.exceptions.VeniceProtocolException;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Utils;
 import java.io.ByteArrayInputStream;
@@ -73,6 +73,9 @@ public class AdminOperationSerializer {
     // Get the writer schema.
     Schema targetSchema = getSchema(targetSchemaId);
 
+    // Validate non-default usage for new semantic
+    SemanticDetector.traverseAndValidate(object, LATEST_SCHEMA, targetSchema, "AdminOperation", null);
+
     // If writer schema is not the latest schema, we need to deserialize the serialized bytes to GenericRecord with
     // the writer schema, then serialize it to bytes with the writer schema.
     try {
@@ -82,7 +85,7 @@ public class AdminOperationSerializer {
       GenericRecord genericRecord = datumReader.read(null, decoder);
       return serialize(genericRecord, targetSchema, targetSchemaId);
     } catch (IOException e) {
-      throw new VeniceMessageException(
+      throw new VeniceProtocolException(
           "Could not deserialize bytes back into GenericRecord object with reader version: " + targetSchema,
           e);
     }
@@ -96,7 +99,7 @@ public class AdminOperationSerializer {
     try {
       return reader.read(null, decoder);
     } catch (IOException e) {
-      throw new VeniceMessageException(
+      throw new VeniceProtocolException(
           "Could not deserialize bytes back into AdminOperation object with schema id: " + writerSchemaId,
           e);
     }
@@ -110,13 +113,13 @@ public class AdminOperationSerializer {
       }
       return protocolSchemaMap;
     } catch (IOException e) {
-      throw new VeniceMessageException("Could not initialize " + AdminOperationSerializer.class.getSimpleName(), e);
+      throw new VeniceProtocolException("Could not initialize " + AdminOperationSerializer.class.getSimpleName(), e);
     }
   }
 
   public static Schema getSchema(int schemaId) {
     if (!PROTOCOL_MAP.containsKey(schemaId)) {
-      throw new VeniceMessageException("Admin operation schema version: " + schemaId + " doesn't exist");
+      throw new VeniceProtocolException("Admin operation schema version: " + schemaId + " doesn't exist");
     }
     return PROTOCOL_MAP.get(schemaId);
   }
@@ -133,7 +136,7 @@ public class AdminOperationSerializer {
       encoder.flush();
       return byteArrayOutputStream.toByteArray();
     } catch (IOException e) {
-      throw new VeniceMessageException(
+      throw new VeniceProtocolException(
           "Could not serialize object: " + object.getClass().getTypeName() + " with writer schema id: "
               + writerSchemaId,
           e);

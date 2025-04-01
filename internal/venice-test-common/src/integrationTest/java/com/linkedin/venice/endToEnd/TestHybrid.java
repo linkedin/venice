@@ -6,6 +6,7 @@ import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_INTERVAL_MS;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_SCHEDULING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.REPUSH_ORCHESTRATOR_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY;
@@ -51,10 +52,10 @@ import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
-import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -149,7 +150,7 @@ public class TestHybrid {
 
   // Log compaction test constants
   private static final long TEST_LOG_COMPACTION_INTERVAL_MS = TimeUnit.SECONDS.toMillis(1);
-  private static final long TEST_LOG_COMPACTION_TIMEOUT = TEST_LOG_COMPACTION_INTERVAL_MS * 5; // ms
+  private static final long TEST_LOG_COMPACTION_TIMEOUT = TEST_LOG_COMPACTION_INTERVAL_MS * 10; // ms
   private static final long TEST_TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS = 0;
 
   /**
@@ -1096,6 +1097,16 @@ public class TestHybrid {
       LOGGER.error("Log compaction job failed");
       throw new RuntimeException(e);
     }
+
+    // ok, now run run repush manually with the controller client.
+    // this call should be synchronous and the count down will trigger immediately..
+    TestRepushOrchestratorImpl.latch = new CountDownLatch(1);
+    sharedVenice.useControllerClient(client -> {
+      RepushJobResponse response = client.triggerRepush(storeName, null);
+      Assert.assertFalse(response.isError(), "Repush failed with error: " + response.getError());
+      // No waiting this time, this should countdown immediately
+      Assert.assertEquals(TestRepushOrchestratorImpl.latch.getCount(), 0);
+    });
   }
 
   public static class TestRepushOrchestratorImpl implements RepushOrchestrator {
@@ -1243,7 +1254,6 @@ public class TestHybrid {
 
       try (
           ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties)) {
-        StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
         // Have 1 partition only, so that all keys are produced to the same partition
         ControllerResponse response = controllerClient.updateStore(
             storeName,
@@ -1274,6 +1284,8 @@ public class TestHybrid {
         AvroSerializer<String> stringSerializer = new AvroSerializer(STRING_SCHEMA);
         AvroGenericDeserializer<String> stringDeserializer =
             new AvroGenericDeserializer<>(STRING_SCHEMA, STRING_SCHEMA);
+        StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
+
         try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter =
             TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
                 .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
@@ -1431,7 +1443,6 @@ public class TestHybrid {
     try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
         AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
-      StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
       // Have 1 partition only, so that all keys are produced to the same partition
       ControllerResponse response = controllerClient.updateStore(
           storeName,
@@ -1458,6 +1469,8 @@ public class TestHybrid {
       String prefix = "foo_object_";
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
           venice.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+      StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
+
       for (int i = 0; i < 2; i++) {
         try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter =
             TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
@@ -1506,7 +1519,6 @@ public class TestHybrid {
     try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
         AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
-      StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
       // Have 1 partition only, so that all keys are produced to the same partition
       ControllerResponse response = controllerClient.updateStore(
           storeName,
@@ -1528,6 +1540,7 @@ public class TestHybrid {
       String prefix = "hybrid_DIV_enhancement_";
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
           venice.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+      StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
 
       // chunk the data into 2 parts and send each part by different producers. Also, close the producers
       // as soon as it finishes writing. This makes sure that closing or switching producers won't
@@ -1561,8 +1574,6 @@ public class TestHybrid {
 
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testHybridWithPartitionWiseConsumer() throws Exception {
-    final Properties extraProperties = new Properties();
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
     // Using partition count of 4 to trigger realtime topics from different store versions' store ingestion task will
     // share one consumer.
     final int partitionCount = 4;
@@ -1786,6 +1797,7 @@ public class TestHybrid {
     // log compaction controller configs
     extraProperties.setProperty(REPUSH_ORCHESTRATOR_CLASS_NAME, TestHybrid.TestRepushOrchestratorImpl.class.getName());
     extraProperties.setProperty(LOG_COMPACTION_ENABLED, "true");
+    extraProperties.setProperty(LOG_COMPACTION_SCHEDULING_ENABLED, "true");
     extraProperties.setProperty(LOG_COMPACTION_INTERVAL_MS, String.valueOf(TEST_LOG_COMPACTION_INTERVAL_MS));
     extraProperties.setProperty(
         TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS,

@@ -171,7 +171,7 @@ public class TestChangelogConsumer {
   }
 
   // This is a beefier test, so giving it a bit more time
-  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  @Test(timeOut = TEST_TIMEOUT * 3, priority = 3)
   public void testVersionSwapInALoop() throws Exception {
     // create a active-active enabled store and run batch push job
     // batch job contains 100 records
@@ -273,7 +273,7 @@ public class TestChangelogConsumer {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT * 10, priority = 3)
+  @Test(timeOut = TEST_TIMEOUT, priority = 3)
   public void testAAIngestionWithStoreView() throws Exception {
     // Set up the store
     Long timestamp = System.currentTimeMillis();

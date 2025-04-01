@@ -37,6 +37,11 @@ public class LongAdderRateGauge extends Gauge {
   }
 
   @Override
+  public void record(double value, long now) {
+    this.adder.add((long) value);
+  }
+
+  @Override
   public double measure(MetricConfig config, long currentTimeMs) {
     return getRate(currentTimeMs);
   }

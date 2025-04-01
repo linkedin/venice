@@ -4,6 +4,7 @@ import com.linkedin.alpini.base.concurrency.AsyncFuture;
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.alpini.base.registry.ResourceRegistry;
 import com.linkedin.alpini.base.registry.ShutdownableResource;
+import com.linkedin.alpini.netty4.handlers.ConnectionHandleMode;
 import com.linkedin.alpini.router.api.Netty;
 import com.linkedin.alpini.router.api.ResourcePath;
 import com.linkedin.alpini.router.api.RouterTimeoutProcessor;
@@ -106,6 +107,12 @@ public interface Router extends ShutdownableResource {
     Builder connectionLimit(@Nonnegative int connectionLimit);
 
     Builder connectionLimit(@Nonnull IntSupplier connectionLimit);
+
+    Builder connectionCountRecorder(@Nonnull Consumer<Integer> recorder);
+
+    Builder rejectedConnectionCountRecorder(@Nonnull Consumer<Integer> recorder);
+
+    Builder connectionHandleMode(@Nonnull ConnectionHandleMode connectionHandleMode);
 
     Builder serverSocketOptions(Map<String, Object> serverSocketOptions);
 

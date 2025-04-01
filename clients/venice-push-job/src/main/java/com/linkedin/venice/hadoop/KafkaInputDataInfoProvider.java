@@ -30,7 +30,7 @@ public class KafkaInputDataInfoProvider implements InputDataInfoProvider {
   }
 
   @Override
-  public void initZstdConfig(int numFiles) {
+  public PushJobZstdConfig initZstdConfig(int numFiles) {
     throw new VeniceUnsupportedOperationException("Zstd for KafkaInputDataInfoProvider");
   }
 

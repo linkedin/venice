@@ -8,6 +8,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.views.VeniceView;
 import java.time.Duration;
 import java.util.HashMap;
@@ -36,6 +37,7 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   String VENICE_RE_PUSH_PUSH_ID_PREFIX = "venice_re_push_";
 
   String VENICE_TTL_RE_PUSH_PUSH_ID_PREFIX = "venice_ttl_re_push_";
+  int DEFAULT_RT_VERSION_NUMBER = 0;
 
   /**
    * Producer type for writing data to Venice
@@ -279,6 +281,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   @JsonIgnore
   void setRmdVersionId(int replicationMetadataVersionId);
 
+  boolean isGlobalRtDivEnabled();
+
+  void setGlobalRtDivEnabled(boolean globalRtDivEnabled);
+
   /**
    * Kafka topic name is composed by store name and version.
    * <p>
@@ -340,10 +346,16 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
     return storeName + VERSION_SEPARATOR + versionNumber;
   }
 
+  /**
+   * @Deprecated Use {@link Utils#composeRealTimeTopic(String)} instead.
+   */
   static String composeRealTimeTopic(String storeName) {
     return storeName + REAL_TIME_TOPIC_SUFFIX;
   }
 
+  /**
+   * @Deprecated Use overloaded methods {@link Utils#getSeparateRealTimeTopicName(String)} instead.
+   */
   static String composeSeparateRealTimeTopic(String storeName) {
     return storeName + SEPARATE_REAL_TIME_TOPIC_SUFFIX;
   }
@@ -367,10 +379,14 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
     if (!isRealTimeTopic(kafkaTopic)) {
       throw new VeniceException("Kafka topic: " + kafkaTopic + " is not a real-time topic");
     }
-    if (kafkaTopic.endsWith(REAL_TIME_TOPIC_SUFFIX)) {
-      return kafkaTopic.substring(0, kafkaTopic.length() - REAL_TIME_TOPIC_SUFFIX.length());
+
+    int lastIndexOfVersionSeparator = kafkaTopic.lastIndexOf(VERSION_SEPARATOR);
+    // we only care about the prefix, so providing topic in place of store should work
+    if (lastIndexOfVersionSeparator != -1 && Utils.isRTVersioningApplicable(kafkaTopic)) {
+      return kafkaTopic.substring(0, lastIndexOfVersionSeparator);
     }
-    return kafkaTopic.substring(0, kafkaTopic.length() - SEPARATE_REAL_TIME_TOPIC_SUFFIX.length());
+
+    return kafkaTopic.substring(0, kafkaTopic.length() - REAL_TIME_TOPIC_SUFFIX.length());
   }
 
   static String parseStoreFromStreamReprocessingTopic(String kafkaTopic) {

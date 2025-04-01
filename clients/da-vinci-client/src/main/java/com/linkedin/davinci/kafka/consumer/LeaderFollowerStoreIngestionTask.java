@@ -1044,8 +1044,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           calculateLeaderUpstreamOffsetWithTopicSwitch(partitionConsumptionState, leaderTopic, Collections.emptyList())
               .getOrDefault(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, OffsetRecord.LOWEST_OFFSET);
     }
-    partitionConsumptionState.getOffsetRecord()
-        .setLeaderUpstreamOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, upstreamStartOffset);
 
     consumerSubscribe(leaderTopic, partitionConsumptionState, upstreamStartOffset, leaderSourceKafkaURL);
     syncConsumedUpstreamRTOffsetMapIfNeeded(
@@ -2657,7 +2655,23 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 beforeProcessingPerRecordTimestampNs);
             break;
           case VERSION_SWAP:
-            return DelegateConsumerRecordResult.QUEUED_TO_DRAINER;
+            produceToLocalKafka(
+                consumerRecord,
+                partitionConsumptionState,
+                leaderProducedRecordContext,
+                (callback, leaderMetadataWrapper) -> partitionConsumptionState.getVeniceWriterLazyRef()
+                    .get()
+                    .asyncSendControlMessage(
+                        controlMessage,
+                        consumerRecord.getTopicPartition().getPartitionNumber(),
+                        new HashMap<>(),
+                        callback,
+                        DEFAULT_LEADER_METADATA_WRAPPER),
+                partition,
+                kafkaUrl,
+                kafkaClusterId,
+                beforeProcessingPerRecordTimestampNs);
+            return DelegateConsumerRecordResult.PRODUCED_TO_KAFKA;
           default:
             // do nothing
             break;
@@ -3163,7 +3177,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return false; // Not leader, don't compress
     }
     PubSubTopic leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
-    if (!realTimeTopic.equals(leaderTopic)) {
+    if (realTimeTopic != null && !realTimeTopic.equals(leaderTopic)) {
       return false; // We're consuming from version topic (don't compress it)
     }
     return !compressionStrategy.equals(CompressionStrategy.NO_OP);

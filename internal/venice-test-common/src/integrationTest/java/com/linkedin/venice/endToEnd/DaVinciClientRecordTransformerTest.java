@@ -9,7 +9,19 @@ import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TR
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_PUT_LATENCY;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYMANAGER_ALGORITHM;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_LOCATION;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_PASSWORD;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_TYPE;
+import static com.linkedin.venice.CommonConfigKeys.SSL_KEY_PASSWORD;
+import static com.linkedin.venice.CommonConfigKeys.SSL_SECURE_RANDOM_IMPLEMENTATION;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTMANAGER_ALGORITHM;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_PASSWORD;
+import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_TYPE;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
@@ -24,8 +36,11 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
+import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
+import static com.linkedin.venice.utils.SslUtils.LOCAL_KEYSTORE_JKS;
+import static com.linkedin.venice.utils.SslUtils.LOCAL_PASSWORD;
 import static com.linkedin.venice.utils.TestWriteUtils.DEFAULT_USER_DATA_RECORD_COUNT;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithIntToIntSchema;
@@ -57,6 +72,7 @@ import com.linkedin.venice.producer.online.OnlineVeniceProducer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
@@ -95,9 +111,6 @@ public class DaVinciClientRecordTransformerTest {
         .numberOfServers(2)
         .numberOfRouters(1)
         .replicationFactor(2)
-        .partitionSize(100)
-        .sslToStorageNodes(false)
-        .sslToKafka(false)
         .extraProperties(clusterConfig)
         .build();
     cluster = ServiceFactory.getVeniceCluster(options);
@@ -334,8 +347,7 @@ public class DaVinciClientRecordTransformerTest {
   public void testRecordTransformerChunking() throws Exception {
     DaVinciConfig clientConfig = new DaVinciConfig();
     // Construct a large string to trigger chunking
-    // (2MB = 2 * 1024 * 1024 bytes)
-    int sizeInBytes = 2 * 1024 * 1024;
+    int sizeInBytes = 2 * BYTES_PER_MB;
     StringBuilder stringBuilder = new StringBuilder(sizeInBytes);
     while (stringBuilder.length() < sizeInBytes) {
       stringBuilder.append("a");
@@ -345,7 +357,7 @@ public class DaVinciClientRecordTransformerTest {
     String storeName = Utils.getUniqueString("test-store");
     boolean pushStatusStoreEnabled = true;
     boolean chunkingEnabled = true;
-    CompressionStrategy compressionStrategy = CompressionStrategy.GZIP;
+    CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
     int numKeys = 10;
 
     setUpStore(storeName, pushStatusStoreEnabled, chunkingEnabled, compressionStrategy, largeString, numKeys);
@@ -617,6 +629,7 @@ public class DaVinciClientRecordTransformerTest {
         Integer.toString(port1),
         Integer.toString(port2),
         StorageClass.DISK.toString(),
+        "true",
         "true");
 
     // Wait for the first DaVinci Client to complete ingestion
@@ -636,7 +649,19 @@ public class DaVinciClientRecordTransformerTest {
         .put(PUSH_STATUS_STORE_ENABLED, true)
         .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 1)
-        .put(BLOB_TRANSFER_MANAGER_ENABLED, true);
+        .put(BLOB_TRANSFER_MANAGER_ENABLED, true)
+        .put(BLOB_TRANSFER_SSL_ENABLED, true)
+        .put(BLOB_TRANSFER_ACL_ENABLED, true)
+        .put(SSL_KEYSTORE_TYPE, "JKS")
+        .put(SSL_KEYSTORE_LOCATION, SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS))
+        .put(SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD)
+        .put(SSL_TRUSTSTORE_TYPE, "JKS")
+        .put(SSL_TRUSTSTORE_LOCATION, SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS))
+        .put(SSL_TRUSTSTORE_PASSWORD, LOCAL_PASSWORD)
+        .put(SSL_KEY_PASSWORD, LOCAL_PASSWORD)
+        .put(SSL_KEYMANAGER_ALGORITHM, "SunX509")
+        .put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509")
+        .put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
     VeniceProperties backendConfig2 = configBuilder.build();
 
     try (CachingDaVinciClientFactory factory2 = new CachingDaVinciClientFactory(
@@ -653,7 +678,7 @@ public class DaVinciClientRecordTransformerTest {
         Assert.assertTrue(Files.exists(Paths.get(snapshotPath)));
       }
 
-      // All of the records should have already been transformed due to blob transfer
+      // All the records should have already been transformed due to blob transfer
       assertEquals(recordTransformer.getTransformInvocationCount(), 0);
 
       // Test single-get access
@@ -762,7 +787,6 @@ public class DaVinciClientRecordTransformerTest {
         .setCompressionStrategy(compressionStrategy)
         .setHybridOffsetLagThreshold(10)
         .setHybridRewindSeconds(1);
-    ;
 
     paramsConsumer.accept(params);
 

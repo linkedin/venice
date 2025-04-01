@@ -503,10 +503,21 @@ public class VeniceChunkedResponse {
      */
     @Override
     public void operationProgressed(ChannelProgressiveFuture future, long progress, long total) {
-      while (chunksAwaitingCallback.peek() != null
-          && progress >= chunksAwaitingCallback.peek().writeCompleteThreshold) {
-        chunksAwaitingCallback.poll().resolveChunk(null);
-      }
+      /**
+       * The netty version being used doesn't seem to provide the progress correctly when H2 is enabled, so we are not going
+       * to release any chunks here, but until the full write is complete.
+       *
+       * If we release the chunks early while the underlying write is still in progress, Router would end up
+       * with such exception:
+       * io.netty.util.IllegalReferenceCountException: refCnt: 0
+       *         at io.netty.buffer.AbstractByteBuf.ensureAccessible(AbstractByteBuf.java:1489) ~[io.netty.netty-all-4.1.52.Final.jar:4.1.52.Final]
+       *         at io.netty.buffer.AbstractByteBuf.checkReadableBytes0(AbstractByteBuf.java:1475) ~[io.netty.netty-all-4.1.52.Final.jar:4.1.52.Final]
+       *         at io.netty.buffer.AbstractByteBuf.checkReadableBytes(AbstractByteBuf.java:1463) ~[io.netty.netty-all-4.1.52.Final.jar:4.1.52.Final]
+       *         at io.netty.buffer.AbstractByteBuf.readRetainedSlice(AbstractByteBuf.java:888) ~[io.netty.netty-all-4.1.52.Final.jar:4.1.52.Final]
+       *         at io.netty.handler.codec.http2.DefaultHttp2FrameWriter.writeData(DefaultHttp2FrameWriter.java:158) [io.netty.netty-all-4.1.52.Final.jar:4.1.52.Final]
+       *         at io.netty.handler.codec.http2.Http2OutboundFrameLogger.writeData(Http2OutboundFrameLogger.java:44) [io.netty.netty-all-4.1.52.Final.jar:4.1.52.Final]
+       *         at io.netty.handler.codec.http2.DefaultHttp2ConnectionEncoder$FlowControlledData.write(DefaultHttp2ConnectionEncoder.java:508) [io.netty.netty-all-4.1.52.Final.jar:4.1.52.Final]
+       */
     }
 
     /**
@@ -564,8 +575,6 @@ public class VeniceChunkedResponse {
     final boolean isLast;
     /** bytes to be writen for this chunk */
     final long bytesToBeWritten;
-    /** threshold to decide whether this chunk is done or not */
-    final long writeCompleteThreshold;
 
     public Chunk(ByteBuf buffer, boolean isLast, StreamingCallback<Long> streamingCallback) {
       this.buffer = buffer;
@@ -573,7 +582,7 @@ public class VeniceChunkedResponse {
       this.callback = streamingCallback;
 
       this.bytesToBeWritten = buffer.readableBytes();
-      this.writeCompleteThreshold = totalBytesReceived.addAndGet(bytesToBeWritten);
+      totalBytesReceived.addAndGet(bytesToBeWritten);
     }
 
     /**

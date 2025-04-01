@@ -159,11 +159,12 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
   }
 
   @Override
-  public void initZstdConfig(int numFiles) {
+  public PushJobZstdConfig initZstdConfig(int numFiles) {
     if (pushJobZstdConfig != null) {
-      return;
+      return pushJobZstdConfig;
     }
     pushJobZstdConfig = new PushJobZstdConfig(props, numFiles);
+    return pushJobZstdConfig;
   }
 
   // Vson-based file store key / value schema string as separated properties in file header

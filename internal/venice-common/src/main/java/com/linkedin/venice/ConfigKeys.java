@@ -307,6 +307,11 @@ public class ConfigKeys {
    * Whether log compaction is enabled for stores in this Venice controller
    */
   public static final String LOG_COMPACTION_ENABLED = "log.compaction.enabled";
+
+  /**
+   * Whether log compaction scheduling is enabled for stores in this Venice controller
+   */
+  public static final String LOG_COMPACTION_SCHEDULING_ENABLED = "log.compaction.scheduling.enabled";
   /**
    * Number of threads to use for log compaction
    */
@@ -843,6 +848,8 @@ public class ConfigKeys {
   public static final String SERVER_RESET_ERROR_REPLICA_ENABLED = "server.reset.error.replica.enabled";
 
   public static final String SERVER_ADAPTIVE_THROTTLER_ENABLED = "server.adaptive.throttler.enabled";
+
+  public static final String SERVER_SKIP_CHECK_AFTER_UNSUB_ENABLED = "server.skip.check.after.unsub.enabled";
   public static final String SERVER_ADAPTIVE_THROTTLER_SIGNAL_IDLE_THRESHOLD =
       "server.adaptive.throttler.signal.idle.threshold";
   public static final String SERVER_ADAPTIVE_THROTTLER_SINGLE_GET_LATENCY_THRESHOLD =
@@ -1058,6 +1065,7 @@ public class ConfigKeys {
    */
   public static final String ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ = "router.max.key_count.in.multiget.req";
   public static final String ROUTER_CONNECTION_LIMIT = "router.connection.limit";
+  public static final String ROUTER_CONNECTION_HANDLE_MODE = "router.connection.handle.mode";
   /**
    * The http client pool size being used in one Router;
    */
@@ -1872,6 +1880,12 @@ public class ConfigKeys {
   public static final String BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC =
       "blob.transfer.service.write.limit.bytes.per.sec";
 
+  // Enable ssl for the blob transfer
+  public static final String BLOB_TRANSFER_SSL_ENABLED = "blob.transfer.ssl.enabled";
+
+  // Enable acl for the blob transfer between Da Vinci peers, or server peers
+  public static final String BLOB_TRANSFER_ACL_ENABLED = "blob.transfer.acl.enabled";
+
   // Port used by peer-to-peer transfer service. It should be used by both server and client
   public static final String DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT = "davinci.p2p.blob.transfer.server.port";
   // Ideally this config should NOT be used but for testing purpose on a single host, we need to separate the ports.
@@ -1918,16 +1932,21 @@ public class ConfigKeys {
   public static final String ROUTER_CLIENT_SSL_HANDSHAKE_THREADS = "router.client.ssl.handshake.threads";
 
   /**
-   * Config to control if DNS resolution should be done before SSL handshake between clients and a router.
-   * If this is enabled, the above SSL handshake thread pool will be used to perform DNS resolution, because
-   * DNS resolution before SSL and separate SSL handshake thread pool are mutually exclusive features.
+   * Config to control the number of threads used for DNS resolution.
+   * If the value is positive, DNS resolution would be done before SSL handshake between clients and a router.
+   * 0 will disable the dns resolution but does not affect the SSL handshake.
    */
-  public static final String ROUTER_RESOLVE_BEFORE_SSL = "router.resolve.before.ssl";
+  public static final String ROUTER_RESOLVE_THREADS = "router.resolve.threads";
+
+  /**
+   * Config to control the queue capacity for the thread pool executor used for DNS resolution.
+   */
+  public static final String ROUTER_RESOLVE_QUEUE_CAPACITY = "router.resolve.queue.capacity";
 
   /**
    * Config to control the maximum number of concurrent DNS resolutions that can be done by the router.
    */
-  public static final String ROUTER_MAX_CONCURRENT_RESOLUTIONS = "router.max.concurrent.resolutions";
+  public static final String ROUTER_MAX_CONCURRENT_SSL_HANDSHAKES = "router.max.concurrent.ssl.handshakes";
 
   /**
    * Config to control the maximum number of attempts to resolve a client host name before giving up.
@@ -2473,6 +2492,10 @@ public class ConfigKeys {
 
   public static final String SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP =
       "server.delete.unassigned.partitions.on.startup";
+  public static final String CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING =
+      "controller.enable.realtime.topic.versioning";
+
+  public static final boolean DEFAULT_CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING = false;
   public static final String CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE =
       "controller.enable.hybrid.store.partition.count.update";
   public static final String PUSH_JOB_VIEW_CONFIGS = "push.job.view.configs";
@@ -2543,4 +2566,10 @@ public class ConfigKeys {
    * controls the TTL of the cache per entry.
    */
   public static final String ACL_IN_MEMORY_CACHE_TTL_MS = "acl.in.memory.cache.ttl.ms";
+
+  /**
+   * Enables / disables the Global RT DIV feature. Default value is disabled. The DIV will be centralized in the
+   * ConsumptionTask, and leaders will periodically replicate the RT DIV to followers via VT.
+   */
+  public static final String GLOBAL_RT_DIV_ENABLED = "global.rt.div.enabled";
 }

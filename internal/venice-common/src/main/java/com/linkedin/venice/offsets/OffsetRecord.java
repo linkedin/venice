@@ -13,6 +13,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -75,6 +76,11 @@ public class OffsetRecord {
     emptyPartitionState.upstreamVersionTopicOffset = DEFAULT_UPSTREAM_OFFSET;
     emptyPartitionState.pendingReportIncrementalPushVersions = new ArrayList<>();
     emptyPartitionState.setRealtimeTopicProducerStates(new VeniceConcurrentHashMap<>());
+    emptyPartitionState.currentTermStartPubSubPosition = ByteBuffer.allocate(0);
+    emptyPartitionState.lastProcessedVersionTopicPubSubPosition = ByteBuffer.allocate(0);
+    emptyPartitionState.lastConsumedVersionTopicPubSubPosition = ByteBuffer.allocate(0);
+    emptyPartitionState.upstreamRealTimeTopicPubSubPositionMap = new VeniceConcurrentHashMap<>();
+    emptyPartitionState.upstreamVersionTopicPubSubPosition = ByteBuffer.allocate(0);
     return emptyPartitionState;
   }
 
@@ -213,8 +219,6 @@ public class OffsetRecord {
 
   public void setLeaderUpstreamOffset(String upstreamKafkaURL, long leaderOffset) {
     partitionState.upstreamOffsetMap.put(upstreamKafkaURL, leaderOffset);
-    // Set this field as well so that we can rollback
-    partitionState.leaderOffset = leaderOffset;
   }
 
   public void setLeaderGUID(GUID guid) {
@@ -250,15 +254,7 @@ public class OffsetRecord {
    * call this API to get the latest upstream offset.
    */
   public long getUpstreamOffset(String kafkaURL) {
-    Long upstreamOffset = getUpstreamOffsetFromPartitionState(this.partitionState, kafkaURL);
-    if (upstreamOffset == null) {
-      return partitionState.leaderOffset;
-    }
-    return upstreamOffset;
-  }
-
-  public Long getUpstreamOffsetWithNoDefault(String kafkaURL) {
-    return getUpstreamOffsetFromPartitionState(this.partitionState, kafkaURL);
+    return partitionState.upstreamOffsetMap.getOrDefault(kafkaURL, -1L);
   }
 
   /**
@@ -346,10 +342,6 @@ public class OffsetRecord {
   }
 
   private String getPartitionUpstreamOffsetString() {
-    if (this.partitionState.upstreamOffsetMap.isEmpty()) {
-      // Fall back to use the "leaderOffset" field
-      return Long.toString(this.partitionState.leaderOffset);
-    }
     return this.partitionState.upstreamOffsetMap.toString();
   }
 
@@ -404,12 +396,5 @@ public class OffsetRecord {
    */
   public byte[] toBytes() {
     return serializer.serialize(PARTITION_STATE_STRING, partitionState);
-  }
-
-  /**
-   * Return the single entry value from upstreamOffsetMap in native replication.
-   */
-  private Long getUpstreamOffsetFromPartitionState(PartitionState partitionState, String kafkaURL) {
-    return partitionState.upstreamOffsetMap.get(kafkaURL);
   }
 }
