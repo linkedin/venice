@@ -305,7 +305,7 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
     int lastIndexOfVersionSeparator = kafkaTopic.lastIndexOf(VERSION_SEPARATOR);
 
     if (lastIndexOfVersionSeparator == 0) {
-      throw new IllegalArgumentException(
+      throw new VeniceException(
           "There is nothing prior to the version separator '" + VERSION_SEPARATOR + "' in the provided topic name: '"
               + kafkaTopic + "'");
     } else if (lastIndexOfVersionSeparator == -1) {
@@ -402,12 +402,7 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
     if (!isRealTimeTopic(kafkaTopic)) {
       throw new VeniceException("Kafka topic: " + kafkaTopic + " is not a real-time topic");
     }
-    String topicWithoutRTVersionSuffix = kafkaTopic;
-    try {
-      topicWithoutRTVersionSuffix = removeRTVersionSuffix(kafkaTopic);
-    } catch (IllegalArgumentException e) {
-      // nothing to do, it could be an old styled real time topic
-    }
+    String topicWithoutRTVersionSuffix = removeRTVersionSuffix(kafkaTopic);
     if (topicWithoutRTVersionSuffix.endsWith(REAL_TIME_TOPIC_SUFFIX)) {
       return topicWithoutRTVersionSuffix
           .substring(0, topicWithoutRTVersionSuffix.length() - REAL_TIME_TOPIC_SUFFIX.length());

@@ -96,7 +96,7 @@ public class TestVersion {
     try {
       Version.parseStoreFromRealTimeTopic(invalidRealTimeTopic2);
       Assert.fail("VeniceException should be thrown for invalid real-time topic");
-    } catch (IllegalArgumentException e) {
+    } catch (VeniceException e) {
 
     }
   }
