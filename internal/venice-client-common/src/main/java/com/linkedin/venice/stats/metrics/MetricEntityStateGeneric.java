@@ -79,8 +79,7 @@ public class MetricEntityStateGeneric extends MetricEntityState {
   /**
    * Validates whether the provided dimension list matches the dimensions defined by the MetricEntity.
    * This method performs additional runtime checks compared to other {@link MetricEntityState} subclasses
-   * to ensure that the supplied dimensions are appropriate,
-   * .
+   * to ensure that the supplied dimensions are appropriate for the metric entity.
    */
   Attributes getAttributes(Map<VeniceMetricsDimensions, String> dimensions) {
     if (!emitOpenTelemetryMetrics()) {
