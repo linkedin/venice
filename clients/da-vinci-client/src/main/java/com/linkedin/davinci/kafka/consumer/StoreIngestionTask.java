@@ -2751,10 +2751,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // No Op
   }
 
+  /**
+   * This version of the method syncs using a PartitionTracker object which contains the vtSegments and LCVO
+   */
   protected void updateAndSyncOffsetFromSnapshot(PartitionTracker vtDivSnapshot, PubSubTopicPartition topicPartition) {
     PartitionConsumptionState pcs = getPartitionConsumptionState(topicPartition.getPartitionNumber());
     vtDivSnapshot.updateOffsetRecord(PartitionTracker.VERSION_TOPIC, pcs.getOffsetRecord());
     updateOffsetMetadataInOffsetRecord(pcs);
+    pcs.getOffsetRecord().setLatestConsumedVtOffset(vtDivSnapshot.getLatestConsumedVtOffset());
     syncOffset(kafkaVersionTopic, pcs);
   }
 
