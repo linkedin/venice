@@ -694,6 +694,10 @@ public class TestMetaDataHandler {
     Assert.assertEquals(d2ServiceResponse.getD2Service(), d2Service);
     Assert.assertEquals(d2ServiceResponse.getName(), storeName);
     Assert.assertFalse(d2ServiceResponse.isError());
+    Assert.assertEquals(
+        metricsRepository.getMetric(".d2_store_discovery--" + storeName + "-success_request_count.Count").value(),
+        1.0,
+        "Request count should be 1 after first request");
 
     FullHttpResponse response2 = passRequestToMetadataHandler(
         "http://myRouterHost:4567/discover_cluster?store_name=" + storeName,
@@ -713,8 +717,8 @@ public class TestMetaDataHandler {
     Assert.assertFalse(d2ServiceResponse2.isError());
     Assert.assertEquals(
         metricsRepository.getMetric(".d2_store_discovery--" + storeName + "-success_request_count.Count").value(),
-        1.0,
-        "Request count should be 1 after first request");
+        2.0,
+        "Request count should be 2 after second request");
   }
 
   @Test
