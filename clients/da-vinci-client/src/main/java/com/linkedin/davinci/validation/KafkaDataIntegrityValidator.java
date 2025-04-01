@@ -123,7 +123,7 @@ public class KafkaDataIntegrityValidator {
   }
 
   /**
-   * Returns the VT DIV state for a given partition.
+   * Returns the VT DIV state and latest consumed vt offset for a given partition.
    */
   public PartitionTracker cloneVtProducerStates(int partition) {
     PartitionTracker clonedPartitionTracker = partitionTrackerCreator.apply(partition);

@@ -185,12 +185,13 @@ public class PartitionTracker {
   }
 
   /**
-   * Clone the vtSegments to the destination PartitionTracker. Filter by brokerUrl. May be called concurrently.
+   * Clone the vtSegments and LCVO to the destination PartitionTracker. May be called concurrently.
    */
   public void cloneVtProducerStates(PartitionTracker destProducerTracker) {
     for (Map.Entry<GUID, Segment> entry: vtSegments.entrySet()) {
       destProducerTracker.setSegment(PartitionTracker.VERSION_TOPIC, entry.getKey(), new Segment(entry.getValue()));
     }
+    destProducerTracker.updateLatestConsumedVtOffset(latestConsumedVtOffset.get());
   }
 
   /**

@@ -117,6 +117,10 @@ public class ApacheKafkaOffsetPosition implements PubSubPosition {
     return new ApacheKafkaOffsetPosition(offset);
   }
 
+  public static ApacheKafkaOffsetPosition of(ByteBuffer buffer) throws IOException {
+    return new ApacheKafkaOffsetPosition(buffer);
+  }
+
   /**
    * Position wrapper is used to wrap the position type and the position value.
    * This is used to serialize and deserialize the position object when sending and receiving it over the wire.

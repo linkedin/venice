@@ -30,10 +30,8 @@ import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
-import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
-import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.view.ChangeCaptureViewWriter;
 import com.linkedin.davinci.store.view.MaterializedViewWriter;
@@ -82,7 +80,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
-import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -695,22 +692,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              * to the real-time topic, so `isReadyToServe()` check will never be invoked.
              */
             maybeApplyReadyToServeCheck(partitionConsumptionState);
-
-            kafkaClusterIdToUrlMap.forEach((clusterId, kafkaUrl) -> {
-              byte[] key = getGlobalRtDivKeyName(kafkaUrl).getBytes();
-              final ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
-              ByteBufferValueRecord<ByteBuffer> originalValue = RawBytesChunkingAdapter.INSTANCE.getWithSchemaId(
-                  storageEngine,
-                  partition,
-                  ByteBuffer.wrap(key),
-                  isChunked,
-                  null,
-                  null,
-                  RawBytesStoreDeserializerCache.getInstance(),
-                  compressor.get(),
-                  valueManifestContainer);
-            });
-
           }
           break;
 
@@ -3619,7 +3600,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     TopicType realTimeTopicType = TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
 
     // Snapshot the RT DIV (single broker URL) in preparation to be produced
-    PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition);
+    PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition); // includes latest consumed vt offset
     PartitionTracker rtDiv = consumerDiv.cloneRtProducerStates(partition, brokerUrl);
     Map<CharSequence, ProducerPartitionState> rtDivPartitionStates = rtDiv.getPartitionStates(realTimeTopicType);
 
@@ -3668,6 +3649,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         partition,
         brokerUrl,
         beforeProcessingRecordTimestampNs);
+
+    // After producing RT DIV to local VT, the VT DIV should be sent to the drainer to sync to the OffsetRecord
+    divCallback.setOnCompletionFunction(() -> {
+      try {
+        storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, this);
+      } catch (InterruptedException e) {
+        LOGGER.error("Failed to sync VT DIV to OffsetRecord for topic: {}", topicPartition.getTopicName(), e);
+      }
+    });
 
     // Get the old value manifest which contains the list of old chunks, so they can be deleted
     ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
