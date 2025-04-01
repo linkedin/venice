@@ -13,6 +13,7 @@ import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -124,6 +125,10 @@ public class DefaultIngestionBackend implements IngestionBackend {
     }
 
     String storeName = store.getName();
+
+    // Clean up existed files before bootstrapping from blobs.
+    RocksDBUtils.deletePartitionDir(serverConfig.getRocksDBPath(), storeName, versionNumber, partitionId);
+
     return blobTransferManager.get(storeName, versionNumber, partitionId, tableFormat)
         .handle((inputStream, throwable) -> {
           updateBlobTransferResponseStats(throwable == null, storeName, versionNumber);
