@@ -403,12 +403,12 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
       throw new VeniceException("Kafka topic: " + kafkaTopic + " is not a real-time topic");
     }
     String topicWithoutRTVersionSuffix = removeRTVersionSuffix(kafkaTopic);
-    if (topicWithoutRTVersionSuffix.endsWith(REAL_TIME_TOPIC_SUFFIX)) {
-      return topicWithoutRTVersionSuffix
-          .substring(0, topicWithoutRTVersionSuffix.length() - REAL_TIME_TOPIC_SUFFIX.length());
-    }
-    return topicWithoutRTVersionSuffix
-        .substring(0, topicWithoutRTVersionSuffix.length() - SEPARATE_REAL_TIME_TOPIC_SUFFIX.length());
+
+    String suffix = topicWithoutRTVersionSuffix.endsWith(REAL_TIME_TOPIC_SUFFIX)
+        ? REAL_TIME_TOPIC_SUFFIX
+        : SEPARATE_REAL_TIME_TOPIC_SUFFIX;
+
+    return topicWithoutRTVersionSuffix.substring(0, topicWithoutRTVersionSuffix.length() - suffix.length());
   }
 
   static String parseStoreFromStreamReprocessingTopic(String kafkaTopic) {
