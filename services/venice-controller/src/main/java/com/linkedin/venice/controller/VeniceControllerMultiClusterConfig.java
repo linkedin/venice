@@ -342,4 +342,8 @@ public class VeniceControllerMultiClusterConfig {
   public long getTimeSinceLastLogCompactionThresholdMS() {
     return getCommonConfig().getTimeSinceLastLogCompactionThresholdMS();
   }
+
+  public boolean isRealTimeTopicVersioningEnabled() {
+    return getCommonConfig().getRealTimeTopicVersioningEnabled();
+  }
 }

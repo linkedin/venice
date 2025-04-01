@@ -18,6 +18,7 @@ import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING;
 import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
@@ -166,6 +167,7 @@ public class DaVinciClientTest {
   private VeniceClusterWrapper cluster;
   private D2Client d2Client;
   private PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
+  private final boolean REAL_TIME_TOPIC_VERSIONING_ENABLED = true;
 
   @BeforeClass
   public void setUp() {
@@ -174,6 +176,7 @@ public class DaVinciClientTest {
     clusterConfig.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     clusterConfig.put(PUSH_STATUS_STORE_ENABLED, true);
     clusterConfig.put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 3);
+    clusterConfig.put(CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING, REAL_TIME_TOPIC_VERSIONING_ENABLED);
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfServers(2)
         .numberOfRouters(1)
@@ -1493,7 +1496,9 @@ public class DaVinciClientTest {
   }
 
   private void runIncrementalPush(String storeName, String incrementalPushVersion, int keyCount) throws Exception {
-    String realTimeTopicName = Version.composeRealTimeTopic(storeName);
+    String realTimeTopicName = REAL_TIME_TOPIC_VERSIONING_ENABLED
+        ? Utils.composeRealTimeTopic(storeName, 1)
+        : Utils.composeRealTimeTopic(storeName);
     VeniceWriterFactory vwFactory =
         IntegrationTestPushUtils.getVeniceWriterFactory(cluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory);
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);
