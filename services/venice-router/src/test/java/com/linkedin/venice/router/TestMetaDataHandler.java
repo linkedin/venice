@@ -74,6 +74,7 @@ import io.netty.handler.codec.http.EmptyHttpHeaders;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -97,6 +98,8 @@ public class TestMetaDataHandler {
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
   private final HelixHybridStoreQuotaRepository hybridStoreQuotaRepository =
       Mockito.mock(HelixHybridStoreQuotaRepository.class);
+
+  private final MetricsRepository metricsRepository = new MetricsRepository();
 
   public FullHttpResponse passRequestToMetadataHandler(
       String requestUri,
@@ -191,7 +194,8 @@ public class TestMetaDataHandler {
         KAFKA_BOOTSTRAP_SERVERS,
         false,
         null,
-        pushStatusStoreReader);
+        pushStatusStoreReader,
+        metricsRepository);
     handler.channelRead0(ctx, httpRequest);
     ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
     Mockito.verify(ctx).writeAndFlush(captor.capture());
@@ -707,6 +711,10 @@ public class TestMetaDataHandler {
     Assert.assertEquals(d2ServiceResponse2.getD2Service(), d2Service);
     Assert.assertEquals(d2ServiceResponse2.getName(), storeName);
     Assert.assertFalse(d2ServiceResponse2.isError());
+    Assert.assertEquals(
+        metricsRepository.getMetric(".d2_store_discovery--" + storeName + "-success_request_count.Count").value(),
+        1.0,
+        "Request count should be 1 after first request");
   }
 
   @Test
@@ -723,6 +731,10 @@ public class TestMetaDataHandler {
         Collections.emptyMap());
 
     Assert.assertEquals(response.status(), HttpResponseStatus.NOT_FOUND);
+    Assert.assertEquals(
+        metricsRepository.getMetric(".d2_store_discovery--" + storeName + "-failure_request_count.Count").value(),
+        1.0,
+        "Failure request count should be incremented when no cluster found");
   }
 
   @Test
@@ -964,7 +976,8 @@ public class TestMetaDataHandler {
         KAFKA_BOOTSTRAP_SERVERS,
         false,
         null,
-        pushStatusStoreReader);
+        pushStatusStoreReader,
+        metricsRepository);
     handler.channelRead0(ctx, httpRequest);
     // '/storage' request should be handled by upstream, instead of current MetaDataHandler
     Mockito.verify(ctx, Mockito.times(1)).fireChannelRead(Mockito.any());
