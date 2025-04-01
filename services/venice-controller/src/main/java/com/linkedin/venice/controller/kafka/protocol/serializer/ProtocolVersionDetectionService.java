@@ -88,22 +88,20 @@ public class ProtocolVersionDetectionService extends AbstractVeniceService {
      * @return The smallest local admin operation protocol version for all consumers in the cluster.
      */
     public long getLocalAdminOperationProtocolVersionForAllConsumers(String clusterName) {
-      // TODO: Need to get all parent controllers as well
+      Long smallestParentVersion = admin.getSmallestAdminOperationProtocolVersion(clusterName);
+
       Map<String, ControllerClient> controllerClientMap =
           admin.getVeniceHelixAdmin().getControllerClientMap(clusterName);
 
-      long goodVersion = Long.MAX_VALUE;
       for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
-        String consumerName = entry.getKey();
         ControllerClient controllerClient = entry.getValue();
+
         LocalAdminOperationProtocolVersionResponse response =
-            controllerClient.getLocalAdminOperationProtocolVersion(clusterName);
-        long protocolVersion = response.getAdminOperationProtocolVersion();
-        LOGGER.info("Consumer: {} has protocol version: {}", consumerName, protocolVersion);
-        goodVersion = Math.min(protocolVersion, goodVersion);
+            controllerClient.getSmallestAdminOperationProtocolVersion(clusterName);
+        smallestParentVersion = Math.min(smallestParentVersion, response.getAdminOperationProtocolVersion());
       }
 
-      return goodVersion;
+      return smallestParentVersion;
     }
 
     public Long getAdminOperationProtocolVersionInZK(String clusterName) {

@@ -296,6 +296,9 @@ public enum ControllerRoute {
   ),
   GET_LOCAL_ADMIN_OPERATION_PROTOCOL_VERSION(
       "/get_local_admin_operation_protocol_version", HttpMethod.GET, Collections.singletonList(CLUSTER)
+  ),
+  GET_SMALLEST_ADMIN_OPERATION_PROTOCOL_VERSION(
+      "/get_local_admin_operation_protocol_version", HttpMethod.GET, Collections.singletonList(CLUSTER)
   ), DELETE_KAFKA_TOPIC("/delete_kafka_topic", HttpMethod.POST, Arrays.asList(CLUSTER, TOPIC)),
 
   CREATE_STORAGE_PERSONA(

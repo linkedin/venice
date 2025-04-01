@@ -583,6 +583,8 @@ public interface Admin extends AutoCloseable, Closeable {
    */
   Instance getLeaderController(String clusterName);
 
+  List<Instance> getControllerInstances(String clusterName);
+
   void addInstanceToAllowlist(String clusterName, String helixNodeId);
 
   void removeInstanceFromAllowList(String clusterName, String helixNodeId);
@@ -980,6 +982,8 @@ public interface Admin extends AutoCloseable, Closeable {
   void updateAdminOperationProtocolVersion(String clusterName, Long adminOperationProtocolVersion);
 
   Long getLocalAdminOperationProtocolVersion(String clusterName);
+
+  Long getSmallestAdminOperationProtocolVersion(String clusterName);
 
   void createStoragePersona(
       String clusterName,

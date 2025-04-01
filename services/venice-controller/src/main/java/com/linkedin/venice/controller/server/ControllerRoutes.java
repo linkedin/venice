@@ -261,6 +261,22 @@ public class ControllerRoutes extends AbstractRoute {
     };
   }
 
+  public Route getSmallestLocalAdminOperationProtocolVersion(Admin admin) {
+    return (request, response) -> {
+      LocalAdminOperationProtocolVersionResponse responseObject = new LocalAdminOperationProtocolVersionResponse();
+      response.type(HttpConstants.JSON);
+      try {
+        String clusterName = request.queryParams(CLUSTER);
+        responseObject.setCluster(clusterName);
+        responseObject.setAdminOperationProtocolVersion(admin.getSmallestAdminOperationProtocolVersion(clusterName));
+      } catch (Throwable e) {
+        responseObject.setError(e);
+        AdminSparkServer.handleError(e, request, response);
+      }
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+    };
+  }
+
   @FunctionalInterface
   interface UpdateTopicConfigFunction {
     void apply(Request request);

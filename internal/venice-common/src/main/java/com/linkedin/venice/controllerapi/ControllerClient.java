@@ -1198,6 +1198,34 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  public LocalAdminOperationProtocolVersionResponse getLocalAdminOperationProtocolVersion(
+      String clusterName,
+      String controllerUrl) {
+    QueryParams params = newParams().add(CLUSTER, clusterName);
+
+    try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
+      return transport.request(
+          controllerUrl,
+          ControllerRoute.GET_LOCAL_ADMIN_OPERATION_PROTOCOL_VERSION,
+          params,
+          LocalAdminOperationProtocolVersionResponse.class);
+    } catch (Exception e) {
+      return makeErrorResponse(
+          "Failed to get stale stores in cluster: " + clusterName,
+          e,
+          LocalAdminOperationProtocolVersionResponse.class);
+    }
+  }
+
+  public LocalAdminOperationProtocolVersionResponse getSmallestAdminOperationProtocolVersion(String clusterName) {
+    QueryParams params = newParams().add(CLUSTER, clusterName);
+
+    return request(
+        ControllerRoute.GET_SMALLEST_ADMIN_OPERATION_PROTOCOL_VERSION,
+        params,
+        LocalAdminOperationProtocolVersionResponse.class);
+  }
+
   public MultiStoreInfoResponse getClusterStores(String clusterName) {
     QueryParams params = newParams().add(CLUSTER, clusterName);
     return request(ControllerRoute.GET_STORES_IN_CLUSTER, params, MultiStoreInfoResponse.class);
@@ -1410,14 +1438,6 @@ public class ControllerClient implements Closeable {
     QueryParams params =
         newParams().add(CLUSTER, clusterName).add(ADMIN_OPERATION_PROTOCOL_VERSION, adminOperationProtocolVersion);
     return request(ControllerRoute.UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION, params, AdminTopicMetadataResponse.class);
-  }
-
-  public LocalAdminOperationProtocolVersionResponse getLocalAdminOperationProtocolVersion(String clusterName) {
-    QueryParams params = newParams().add(CLUSTER, clusterName);
-    return request(
-        ControllerRoute.GET_LOCAL_ADMIN_OPERATION_PROTOCOL_VERSION,
-        params,
-        LocalAdminOperationProtocolVersionResponse.class);
   }
 
   public ControllerResponse deleteKafkaTopic(String topicName) {

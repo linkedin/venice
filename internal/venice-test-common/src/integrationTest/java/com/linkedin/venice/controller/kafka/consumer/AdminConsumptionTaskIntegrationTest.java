@@ -80,9 +80,9 @@ public class AdminConsumptionTaskIntegrationTest {
     parentControllerProps.put(ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS, 3000);
     venice = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
-            .numberOfClusters(1)
-            .numberOfParentControllers(1)
-            .numberOfChildControllers(1)
+            .numberOfClusters(3)
+            .numberOfParentControllers(3)
+            .numberOfChildControllers(3)
             .numberOfServers(1)
             .numberOfRouters(1)
             .replicationFactor(1)
@@ -250,12 +250,26 @@ public class AdminConsumptionTaskIntegrationTest {
   @Test
   public void testGetSmallestLocalAdminOperationProtocolVersionForAllConsumers() {
     // Get the parent controller
-    VeniceControllerWrapper controller = venice.getParentControllers().get(0);
+    VeniceControllerWrapper controller = null;
+    for (int i = 0; i < 3; i++) {
+      controller = venice.getParentControllers().get(i);
+      if (controller.isLeaderController(clusterName)) {
+        break;
+      }
+    }
+
     VeniceParentHelixAdmin admin = (VeniceParentHelixAdmin) controller.getVeniceAdmin();
     List<String> allClusters = new ArrayList<>(admin.getMultiClusterConfigs().getClusters());
+    System.out.println("All clusters: " + allClusters);
 
     Long version = admin.getLocalAdminOperationProtocolVersion(allClusters.get(0));
     System.out.println("Current Local Admin Operation Protocol Version for all consumers: " + version);
+
+    // ExternalView externalView = admin.getExternalView(allClusters.get(0));
+    // String partitionName = HelixUtils.getPartitionName(clusterName, 0);
+    // System.out.println("statemap: " + externalView.getStateMap(partitionName));
+
+    admin.getLocalAdminOperationProtocolVersionForAllConsumers(allClusters.get(0));
   }
 
   @Test(timeOut = 2 * TIMEOUT)

@@ -8,6 +8,8 @@ public class LocalAdminOperationProtocolVersionResponse extends ControllerRespon
   }
 
   public void setAdminOperationProtocolVersion(long adminOperationProtocolVersion) {
+    System.out
+        .println("Setting version in LocalAdminOperationProtocolVersionResponse: " + adminOperationProtocolVersion);
     this.adminOperationProtocolVersion = adminOperationProtocolVersion;
   }
 }

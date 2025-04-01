@@ -70,6 +70,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
+import com.linkedin.venice.controllerapi.LocalAdminOperationProtocolVersionResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.RepushInfo;
@@ -105,6 +106,7 @@ import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
+import com.linkedin.venice.helix.SafeHelixDataAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
@@ -927,6 +929,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
     }
     throw new VeniceException("Timed out when waiting for the external view of cluster resource: " + clusterName);
+  }
+
+  public ExternalView getExternalView(String clusterName) {
+    PropertyKey.Builder keyBuilder = new PropertyKey.Builder(controllerClusterName);
+    SafeHelixDataAccessor helixDataAccessor = helixManager.getHelixDataAccessor();
+    ExternalView externalView = helixDataAccessor.getProperty(keyBuilder.externalView(clusterName));
+    return externalView;
   }
 
   private boolean isResourceStillAlive(String clusterName, String resourceName) {
@@ -7253,6 +7262,57 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     throw new VeniceException(message);
   }
 
+  @Override
+  public List<Instance> getControllerInstances(String clusterName) {
+    List<Instance> controllersInstanceList = new ArrayList<>();
+
+    if (!multiClusterConfigs.getClusters().contains(clusterName)) {
+      throw new VeniceNoClusterException(clusterName);
+    }
+    final int maxAttempts = 10;
+    PropertyKey.Builder keyBuilder = new PropertyKey.Builder(controllerClusterName);
+    String partitionName = HelixUtils.getPartitionName(clusterName, 0);
+    for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
+      ExternalView externalView = helixManager.getHelixDataAccessor().getProperty(keyBuilder.externalView(clusterName));
+      if (externalView == null || externalView.getStateMap(partitionName) == null) {
+        // Assignment is incomplete, try again later
+        continue;
+      }
+      Map<String, String> veniceClusterStateMap = externalView.getStateMap(partitionName);
+      LOGGER.info("Venice cluster state map: " + veniceClusterStateMap);
+      for (Map.Entry<String, String> instanceNameAndState: veniceClusterStateMap.entrySet()) {
+        if (instanceNameAndState.getValue().equals(HelixState.LEADER_STATE)
+            || instanceNameAndState.getValue().equals(HelixState.STANDBY_STATE)) {
+          String id = instanceNameAndState.getKey();
+          controllersInstanceList.add(
+              new Instance(
+                  id,
+                  Utils.parseHostFromHelixNodeIdentifier(id),
+                  Utils.parsePortFromHelixNodeIdentifier(id),
+                  multiClusterConfigs.getAdminSecurePort(),
+                  multiClusterConfigs.getAdminGrpcPort(),
+                  multiClusterConfigs.getAdminSecureGrpcPort()));
+        }
+      }
+      if (!controllersInstanceList.isEmpty()) {
+        return controllersInstanceList;
+      }
+      if (attempt < maxAttempts) {
+        LOGGER.warn(
+            "Venice controller leader does not exist for cluster: {}, attempt: {}/{}",
+            clusterName,
+            attempt,
+            maxAttempts);
+        Utils.sleep(5 * Time.MS_PER_SECOND);
+      }
+    }
+
+    String message =
+        "Unable to find Venice controller leader for cluster: " + clusterName + " after " + maxAttempts + " attempts";
+    LOGGER.error(message);
+    throw new VeniceException(message);
+  }
+
   /**
    * Add the given helix nodeId into the allowlist in ZK.
    */
@@ -7614,8 +7674,28 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   public Long getLocalAdminOperationProtocolVersion(String clusterName) {
-    throw new VeniceUnsupportedOperationException(
-        "getLocalAdminOperationProtocolVersion is not supported for child controller");
+    return getAdminConsumerService(clusterName).getLocalAdminOperationProtocolVersion();
+  }
+
+  public Long getSmallestAdminOperationProtocolVersion(String clusterName) {
+    LOGGER.info("Getting the smallest admin operation protocol version for cluster: " + clusterName);
+    checkControllerLeadershipFor(clusterName);
+    long smallestVersion = Long.MAX_VALUE;
+
+    // get all controllers in the same region with this cluster
+    List<Instance> controllerInstances = getControllerInstances(clusterName);
+    LOGGER.info("Number of controller instances: " + controllerInstances.size());
+    for (Instance controllerInstance: controllerInstances) {
+      String controllerUrl = controllerInstance.getUrl(false);
+      LOGGER.info("Controller URL: " + controllerUrl);
+      ControllerClient controllerClient =
+          ControllerClient.constructClusterControllerClient(clusterName, controllerUrl, sslFactory);
+      LocalAdminOperationProtocolVersionResponse response =
+          controllerClient.getLocalAdminOperationProtocolVersion(clusterName, controllerUrl);
+      LOGGER.info("Received LocalAdminOperationProtocolVersionResponse: " + response);
+      smallestVersion = Math.min(smallestVersion, response.getAdminOperationProtocolVersion());
+    }
+    return smallestVersion;
   }
 
   /**

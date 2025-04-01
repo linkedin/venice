@@ -153,6 +153,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.LocalAdminOperationProtocolVersionResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
@@ -283,6 +284,7 @@ import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
+import org.apache.helix.model.ExternalView;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -2118,6 +2120,10 @@ public class VeniceParentHelixAdmin implements Admin {
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
     }
+  }
+
+  public ExternalView getExternalView(String s) {
+    return getVeniceHelixAdmin().getExternalView(s);
   }
 
   @FunctionalInterface
@@ -4233,6 +4239,11 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().getLeaderController(clusterName);
   }
 
+  @Override
+  public List<Instance> getControllerInstances(String clusterName) {
+    return getVeniceHelixAdmin().getControllerInstances(clusterName);
+  }
+
   /**
    * Unsupported operation in the parent controller.
    */
@@ -4402,7 +4413,35 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   public Long getLocalAdminOperationProtocolVersion(String clusterName) {
-    return getVeniceHelixAdmin().getAdminConsumerService(clusterName).getLocalAdminOperationProtocolVersion();
+    return getVeniceHelixAdmin().getLocalAdminOperationProtocolVersion(clusterName);
+  }
+
+  public Long getSmallestAdminOperationProtocolVersion(String clusterName) {
+    return getVeniceHelixAdmin().getSmallestAdminOperationProtocolVersion(clusterName);
+  }
+
+  /**
+   * Get the smallest local admin operation protocol version for all consumers in the given cluster.
+   * This will help to ensure that all consumers are on the same page regarding the protocol version.
+   *
+   * @param clusterName The name of the cluster to check.
+   * @return The smallest local admin operation protocol version for all consumers in the cluster.
+   */
+  public long getLocalAdminOperationProtocolVersionForAllConsumers(String clusterName) {
+    Long smallestParentVersion = getSmallestAdminOperationProtocolVersion(clusterName);
+    LOGGER.info("smallestParentVersion: " + smallestParentVersion);
+
+    Map<String, ControllerClient> controllerClientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+
+    for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
+      ControllerClient controllerClient = entry.getValue();
+      LOGGER.info("Making call to controller client: " + entry.getKey());
+      LocalAdminOperationProtocolVersionResponse response =
+          controllerClient.getSmallestAdminOperationProtocolVersion(clusterName);
+      smallestParentVersion = Math.min(smallestParentVersion, response.getAdminOperationProtocolVersion());
+    }
+
+    return smallestParentVersion;
   }
 
   /**
