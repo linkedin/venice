@@ -119,18 +119,16 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
       // For new versions, download dictionary.
       dictionaryDownloadCandidates.addAll(
           versions.stream()
-              .filter(
-                  version -> version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT
-                      && version.getStatus() == VersionStatus.ONLINE)
+              .filter(version -> version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT)
               .filter(version -> !downloadingDictionaryFutures.containsKey(version.kafkaTopicName()))
               .map(Version::kafkaTopicName)
               .collect(Collectors.toList()));
 
-      // For versions that went into non ONLINE states, delete dictionary.
+      // For versions that went into nonONLINE states, delete dictionary.
       versions.stream()
           .filter(
-              version -> version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT
-                  && version.getStatus() != VersionStatus.ONLINE)
+              version -> version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT && version
+                  .getStatus() != VersionStatus.ONLINE /*TODO: do not delete future versions. either status==STARTED or check version number > current*/)
           .forEach(
               version -> handleVersionRetirement(version.kafkaTopicName(), "Version status " + version.getStatus()));
 
