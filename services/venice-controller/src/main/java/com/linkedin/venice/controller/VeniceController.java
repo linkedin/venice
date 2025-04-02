@@ -276,8 +276,7 @@ public class VeniceController {
   }
 
   private Optional<SystemStoreRepairService> createSystemStoreRepairService() {
-    if (multiClusterConfigs.isParent()
-        && multiClusterConfigs.getCommonConfig().isParentSystemStoreRepairServiceEnabled()) {
+    if (multiClusterConfigs.isParent()) {
       Admin admin = controllerService.getVeniceHelixAdmin();
       return Optional
           .of(new SystemStoreRepairService((VeniceParentHelixAdmin) admin, multiClusterConfigs, metricsRepository));
