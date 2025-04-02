@@ -42,19 +42,21 @@ public class HelixLeastLoadedGroupRoutingStrategy extends HelixGroupRoutingStrat
     if (groupCnt <= 0) {
       throw new VeniceClientException("Unexpected group count: " + groupCnt);
     }
+    int startPos = (int) (requestId % groupCnt);
     double minLatency = Double.MAX_VALUE;
     Map<Integer, Double> groupLatencyMapping = new HashMap<>();
     for (int i = 0; i < groupCnt; ++i) {
-      if (i == groupIdForOriginalRequest) {
+      int tmpGroupId = (startPos + i) % groupCnt;
+      if (tmpGroupId == groupIdForOriginalRequest) {
         // Skip the original request group to avoid routing back to the same group.
         continue;
       }
       double avgGroupLatency = helixGroupStats.getGroupResponseWaitingTimeAvg(i);
       if (avgGroupLatency <= 0) {
         // No datapoint, which means this group hasn't received any traffic so far, so just return it.
-        return i;
+        return tmpGroupId;
       }
-      groupLatencyMapping.put(i, avgGroupLatency);
+      groupLatencyMapping.put(tmpGroupId, avgGroupLatency);
       if (avgGroupLatency < minLatency) {
         minLatency = avgGroupLatency;
       }

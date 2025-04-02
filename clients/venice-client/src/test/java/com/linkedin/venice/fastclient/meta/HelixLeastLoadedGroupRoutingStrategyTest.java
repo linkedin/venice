@@ -47,5 +47,15 @@ public class HelixLeastLoadedGroupRoutingStrategyTest {
     doReturn(7.5d).when(stats).getGroupResponseWaitingTimeAvg(2);
     groupId = strategy.getHelixGroupId(0, 0);
     assertTrue(groupId == 1 || groupId == 2);
+
+    // Test no data points in the past for any group
+    doReturn(-1d).when(stats).getGroupResponseWaitingTimeAvg(0);
+    doReturn(-1d).when(stats).getGroupResponseWaitingTimeAvg(1);
+    doReturn(-1d).when(stats).getGroupResponseWaitingTimeAvg(2);
+    assertEquals(strategy.getHelixGroupId(0, -1), 0);
+    assertEquals(strategy.getHelixGroupId(1, -1), 1);
+    assertEquals(strategy.getHelixGroupId(2, -1), 2);
+    assertEquals(strategy.getHelixGroupId(3, -1), 0);
+    assertEquals(strategy.getHelixGroupId(3, 0), 1);
   }
 }
