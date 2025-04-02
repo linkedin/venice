@@ -39,8 +39,7 @@ public class HelixScatterGatherRoutingStrategyTest {
   @BeforeMethod
   public void setUp() {
     instanceHealthMonitor = mock(InstanceHealthMonitor.class);
-    doReturn(false).when(instanceHealthMonitor).isInstanceBlocked(any());
-    doReturn(true).when(instanceHealthMonitor).isInstanceHealthy(any());
+    doReturn(true).when(instanceHealthMonitor).isRequestAllowed(any());
   }
 
   public void runTest(List<String> replicas, long requestId, int requiredReplicaCount, List<String> expectedReplicas) {
@@ -66,10 +65,10 @@ public class HelixScatterGatherRoutingStrategyTest {
 
   @Test
   public void testGetReplicaWithBlockedInstances() {
-    doReturn(true).when(instanceHealthMonitor).isInstanceBlocked(instance1);
-    doReturn(true).when(instanceHealthMonitor).isInstanceBlocked(instance4);
-    doReturn(true).when(instanceHealthMonitor).isInstanceBlocked(instance5);
-    doReturn(true).when(instanceHealthMonitor).isInstanceBlocked(instance6);
+    doReturn(false).when(instanceHealthMonitor).isRequestAllowed(instance1);
+    doReturn(false).when(instanceHealthMonitor).isRequestAllowed(instance4);
+    doReturn(false).when(instanceHealthMonitor).isRequestAllowed(instance5);
+    doReturn(false).when(instanceHealthMonitor).isRequestAllowed(instance6);
     List<String> replicas = Arrays.asList(instance1, instance2, instance3, instance4, instance5, instance6);
     runTest(replicas, 0, 2, Arrays.asList(instance2, instance3));
     // 1, 4, 5, 6 are all blocked. Can only get 2 and 3 in order to meet the required replica of 2.
