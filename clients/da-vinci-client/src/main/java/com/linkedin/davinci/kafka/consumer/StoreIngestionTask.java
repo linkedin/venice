@@ -1879,6 +1879,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     syncOffset(kafkaVersionTopic, pcs);
   }
 
+  /**
+   * This version of the method syncs using a PartitionTracker object which contains the vtSegments and LCVO
+   */
+  protected void updateAndSyncOffsetFromSnapshot(PartitionTracker vtDivSnapshot, PubSubTopicPartition topicPartition) {
+    PartitionConsumptionState pcs = getPartitionConsumptionState(topicPartition.getPartitionNumber());
+    vtDivSnapshot.updateOffsetRecord(PartitionTracker.VERSION_TOPIC, pcs.getOffsetRecord());
+    updateOffsetMetadataInOffsetRecord(pcs);
+    syncOffset(kafkaVersionTopic, pcs);
+  }
+
   private void handleIngestionException(Exception e) {
     LOGGER.error("{} has failed.", ingestionTaskName, e);
     reportError(partitionConsumptionStateMap.values(), errorPartitionId, "Caught Exception during ingestion.", e);
@@ -2751,17 +2761,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // No Op
   }
 
-  /**
-   * This version of the method syncs using a PartitionTracker object which contains the vtSegments and LCVO
-   */
-  protected void updateAndSyncOffsetFromSnapshot(PartitionTracker vtDivSnapshot, PubSubTopicPartition topicPartition) {
-    PartitionConsumptionState pcs = getPartitionConsumptionState(topicPartition.getPartitionNumber());
-    vtDivSnapshot.updateOffsetRecord(PartitionTracker.VERSION_TOPIC, pcs.getOffsetRecord());
-    updateOffsetMetadataInOffsetRecord(pcs);
-    pcs.getOffsetRecord().setLatestConsumedVtOffset(vtDivSnapshot.getLatestConsumedVtOffset());
-    syncOffset(kafkaVersionTopic, pcs);
-  }
-
   protected boolean shouldSendGlobalRtDiv(DefaultPubSubMessage record, PartitionConsumptionState pcs, String kafkaUrl) {
     if (!isGlobalRtDivEnabled()) {
       return false;
@@ -3614,8 +3613,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       boolean tolerateMissingMessagesForRealTimeTopic) {
     KafkaKey key = consumerRecord.getKey();
     if (key.isControlMessage() && Arrays.equals(KafkaKey.HEART_BEAT.getKey(), key.getKey())) {
-      // Skip DIV for ingestion heartbeat records.
-      return;
+      return; // Skip validation for ingestion heartbeat records.
+    } else if (key.isGlobalRtDiv()) {
+      return; // Skip validation for Global RT DIV messages.
     }
 
     Lazy<Boolean> tolerateMissingMsgs = Lazy.of(() -> {
@@ -3693,7 +3693,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * consumption in leader is ahead of drainer, leaders and drainers are processing messages at different paces.
    */
   protected void cloneProducerStates(int partition, KafkaDataIntegrityValidator validator) {
-    this.drainerDiv.cloneRtProducerStates(partition, validator);
+    this.drainerDiv.cloneVtProducerStates(partition, validator);
   }
 
   /**

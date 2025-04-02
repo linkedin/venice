@@ -107,7 +107,7 @@ public class KafkaDataIntegrityValidator {
     }
   }
 
-  public void cloneRtProducerStates(int partition, KafkaDataIntegrityValidator newValidator) {
+  public void cloneVtProducerStates(int partition, KafkaDataIntegrityValidator newValidator) {
     PartitionTracker destPartitionTracker = newValidator.registerPartition(partition);
     registerPartition(partition).cloneVtProducerStates(destPartitionTracker);
   }
