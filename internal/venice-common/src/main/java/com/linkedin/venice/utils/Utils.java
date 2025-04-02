@@ -1,6 +1,7 @@
 package com.linkedin.venice.utils;
 
 import static com.linkedin.venice.HttpConstants.LOCALHOST;
+import static com.linkedin.venice.meta.Version.REAL_TIME_TOPIC_SUFFIX;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -88,7 +89,6 @@ public class Utils {
   public static final AtomicBoolean SUPPRESS_SYSTEM_EXIT = new AtomicBoolean();
   public static final String SEPARATE_TOPIC_SUFFIX = "_sep";
   public static final String FATAL_DATA_VALIDATION_ERROR = "fatal data validation problem";
-  public static final String REAL_TIME_TOPIC_TEMPLATE = "%s_v%d" + Version.REAL_TIME_TOPIC_SUFFIX;
 
   /**
    * Print an error and exit with error code 1
@@ -575,11 +575,11 @@ public class Utils {
    * {@link Utils#getRealTimeTopicName(Version)}
    */
   public static String composeRealTimeTopic(String storeName) {
-    return storeName + Version.REAL_TIME_TOPIC_SUFFIX;
+    return storeName + REAL_TIME_TOPIC_SUFFIX;
   }
 
   public static String composeRealTimeTopic(String storeName, int versionNumber) {
-    return String.format(REAL_TIME_TOPIC_TEMPLATE, storeName, versionNumber);
+    return String.format(Version.REAL_TIME_TOPIC_TEMPLATE, storeName, versionNumber);
   }
 
   /**

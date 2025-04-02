@@ -774,7 +774,7 @@ public class CreateVersionTest {
 
     // Test Case 1: Real-time topic returns NO_OP
     Version mockVersion1 = mock(Version.class);
-    String responseTopic1 = "test_store_v1" + Version.REAL_TIME_TOPIC_SUFFIX;
+    String responseTopic1 = Utils.composeRealTimeTopic("test_store", 1);
     CompressionStrategy result1 = createVersion.getCompressionStrategy(mockVersion1, responseTopic1);
     assertEquals(result1, CompressionStrategy.NO_OP);
 

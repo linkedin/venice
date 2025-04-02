@@ -15,6 +15,7 @@ import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
 import static com.linkedin.venice.meta.Version.PushType;
+import static com.linkedin.venice.meta.Version.REAL_TIME_TOPIC_SUFFIX;
 import static com.linkedin.venice.meta.VersionStatus.ERROR;
 import static com.linkedin.venice.meta.VersionStatus.KILLED;
 import static com.linkedin.venice.meta.VersionStatus.NOT_CREATED;
@@ -217,7 +218,6 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.ReflectUtils;
-import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.StoreUtils;
@@ -1026,11 +1026,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
        * Get the largestUsedVersionNumber from graveyard to avoid resource conflict.
        */
       int largestUsedStoreVersion = storeGraveyard.getLargestUsedVersionNumber(storeName);
-      if (largestUsedStoreVersion == Store.NON_EXISTING_VERSION) {
+      if (largestUsedStoreVersion == NON_EXISTING_VERSION) {
         LOGGER.info(
             "Store: {} does NOT exist in the store graveyard. Will initialize the new store at version: {}.",
             storeName,
-            Store.NON_EXISTING_VERSION);
+            NON_EXISTING_VERSION);
       } else {
         LOGGER.info(
             "Found store: {} in the store graveyard. Will initialize the new store at version: {}.",
@@ -1039,11 +1039,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
 
       int largestUsedRTStoreVersion = storeGraveyard.getLargestUsedRTVersionNumber(storeName);
-      if (largestUsedRTStoreVersion == Store.NON_EXISTING_VERSION) {
+      if (largestUsedRTStoreVersion == NON_EXISTING_VERSION) {
         LOGGER.info(
             "Store: {} does NOT exist in the store graveyard. Will initialize the RT version to {}.",
             storeName,
-            Store.NON_EXISTING_VERSION);
+            NON_EXISTING_VERSION);
       } else {
         LOGGER.info(
             "Found store: {} in the store graveyard. Will initialize the RT version to {}.",
@@ -2062,6 +2062,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private void checkStoreNameConflict(String storeName, boolean allowSystemStore) {
+    if (storeName.endsWith(REAL_TIME_TOPIC_SUFFIX)) {
+      throw new VeniceException(
+          "Store name: " + storeName + " ends with a keyword - `" + REAL_TIME_TOPIC_SUFFIX + "`"
+              + " reserved for internal usage, please change it.");
+    }
+
     if (storeName.equals(AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT)) {
       throw new VeniceException("Store name: " + storeName + " clashes with the internal usage, please change it");
     }
@@ -2246,7 +2252,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String pushJobId,
       int versionNumber,
       int numberOfPartitions,
-      Version.PushType pushType,
+      PushType pushType,
       String remoteKafkaBootstrapServers,
       long rewindTimeInSecondsOverride,
       int replicationMetadataVersionId) {
@@ -2368,7 +2374,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String pushJobId,
       int versionNumber,
       int numberOfPartitions,
-      Version.PushType pushType,
+      PushType pushType,
       String remoteKafkaBootstrapServers,
       long rewindTimeInSecondsOverride,
       int replicationMetadataVersionId,
@@ -2893,7 +2899,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (version.isNativeReplicationEnabled()) {
               if (remoteKafkaBootstrapServers != null) {
                 /**
-                 * AddVersion is invoked by {@link com.linkedin.venice.controller.kafka.consumer.AdminExecutionTask}
+                 * AddVersion is invoked by {@link AdminExecutionTask}
                  * which is processing an AddVersion message that contains remote Kafka bootstrap servers url.
                  */
                 version.setPushStreamSourceAddress(remoteKafkaBootstrapServers);
@@ -3674,7 +3680,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (store.isEnableReads()) {
       return store.getCurrentVersion();
     } else {
-      return Store.NON_EXISTING_VERSION;
+      return NON_EXISTING_VERSION;
     }
   }
 
@@ -3778,7 +3784,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       // Set current version to NON_VERSION_AVAILABLE. Otherwise after this store is enabled again, as all of
       // version were deleted, router will get a current version which does not exist actually.
       store.setEnableWrites(true);
-      store.setCurrentVersion(Store.NON_EXISTING_VERSION);
+      store.setCurrentVersion(NON_EXISTING_VERSION);
       store.setEnableWrites(false);
       repository.updateStore(store);
       List<Version> deletingVersionSnapshot = new ArrayList<>(store.getVersions());
@@ -3942,15 +3948,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // Since we perform this check everytime when a store version is deleted we can afford to do best effort
     // approach if some fabrics are unavailable or out of sync (temporarily).
     Map<String, ControllerClient> controllerClientMap = getControllerClientMap(clusterName);
-    String storeName = Version.parseStoreFromRealTimeTopic(rtTopicName);
 
     for (Map.Entry<String, ControllerClient> controllerClientEntry: controllerClientMap.entrySet()) {
       StoreResponse storeResponse;
+      String storeName = null;
       try {
+        storeName = Version.parseStoreFromRealTimeTopic(rtTopicName);
+        String finalStoreName = storeName;
         storeResponse = RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
-          StoreResponse response = controllerClientEntry.getValue().getStore(storeName);
+          StoreResponse response = controllerClientEntry.getValue().getStore(finalStoreName);
           if (response.isError() && response.getError().contains(DOES_NOT_EXISTS)) {
-            throw new VeniceNoStoreException(storeName);
+            throw new VeniceNoStoreException(finalStoreName);
           }
           return response;
         },
@@ -3980,6 +3988,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         LOGGER.warn(
             "Store {} does not exist in cluster {} in fabric {}, probably deleted already, skipping RT check",
             storeName,
+            clusterName,
+            controllerClientEntry.getKey());
+        continue;
+      } catch (VeniceException e) {
+        LOGGER.warn(
+            "Could not parse store name from RT topic {} in cluster {} in fabric {}.",
+            rtTopicName,
             clusterName,
             controllerClientEntry.getKey());
         continue;
@@ -4368,7 +4383,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
        *
        * The reason to check whether the to-be-deleted version is smaller than the largest used version of current store or not:
        * 1. Topic could be created either by Kafka MM or addVersion function call (triggered by
-       * {@link com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask};
+       * {@link AdminConsumptionTask};
        * 2. If the topic is created by Kafka MM and the actual version creation gets delayed for some reason, the following
        * scenario could happen (assuming the current version is n):
        *   a. Topics: store_v(n-2), store_v(n-1), store_v(n), store_v(n+1) could exist at the same time because of the actual
@@ -4534,8 +4549,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     storeMetadataUpdate(clusterName, storeName, store -> {
-      if (store.getCurrentVersion() != Store.NON_EXISTING_VERSION) {
-        if (versionNumber != Store.NON_EXISTING_VERSION && !store.containsVersion(versionNumber)) {
+      if (store.getCurrentVersion() != NON_EXISTING_VERSION) {
+        if (versionNumber != NON_EXISTING_VERSION && !store.containsVersion(versionNumber)) {
           throw new VeniceException("Version: " + versionNumber + " does not exist for store:" + storeName);
         }
 
@@ -4570,7 +4585,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
     }
     int futureVersion = getOnlineFutureVersion(clusterName, storeName);
-    if (futureVersion == Store.NON_EXISTING_VERSION) {
+    if (futureVersion == NON_EXISTING_VERSION) {
       return;
     }
     storeMetadataUpdate(clusterName, storeName, store -> {
@@ -4615,7 +4630,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             "Unable to update store:" + storeName + " current version since store does not enable write");
       }
       int backupVersion = getBackupVersionNumber(store.getVersions(), store.getCurrentVersion());
-      if (backupVersion == Store.NON_EXISTING_VERSION) {
+      if (backupVersion == NON_EXISTING_VERSION) {
         return store;
       }
       int previousVersion = store.getCurrentVersion();
@@ -4633,7 +4648,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public int getBackupVersionNumber(List<Version> versions, int currentVersion) {
     versions.sort(Comparator.comparingInt(Version::getNumber).reversed());
     for (Version v: versions) {
-      if (v.getNumber() < currentVersion && VersionStatus.ONLINE.equals(v.getStatus())) {
+      if (v.getNumber() < currentVersion && ONLINE.equals(v.getStatus())) {
         return v.getNumber();
       }
     }
@@ -6397,7 +6412,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return;
     }
     SystemStoreAttributes systemStoreAttributes = store.getSystemStores().get(systemStoreType.getPrefix());
-    if (systemStoreAttributes.getCurrentVersion() == Store.NON_EXISTING_VERSION) {
+    if (systemStoreAttributes.getCurrentVersion() == NON_EXISTING_VERSION) {
       int latestVersionNumber = systemStoreAttributes.getLargestUsedVersionNumber();
       List<Version> filteredVersionList = systemStoreAttributes.getVersions()
           .stream()
@@ -6989,7 +7004,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return sourceFabric;
     }
 
-    Set<String> regions = targetedRegions != null ? RegionUtils.parseRegionsFilterList(targetedRegions) : null;
+    Set<String> regions = targetedRegions != null ? parseRegionsFilterList(targetedRegions) : null;
 
     if (sourceGridFabric.isPresent()) {
       sourceFabric = getPreferredRegion(sourceGridFabric.get(), regions);
@@ -7386,7 +7401,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           // Update version status to KILLED on ZkNode.
           ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
           Store store = repository.getStore(storeName);
-          store.updateVersionStatus(version.getNumber(), VersionStatus.KILLED);
+          store.updateVersionStatus(version.getNumber(), KILLED);
           repository.updateStore(store);
         }
       }
@@ -7721,7 +7736,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Map<String, String> result = new HashMap<>();
     // Find all ongoing offline pushes at first.
     PushMonitor monitor = getHelixVeniceClusterResources(clusterName).getPushMonitor();
-    monitor.getTopicsOfOngoingOfflinePushes().forEach(topic -> result.put(topic, VersionStatus.STARTED.toString()));
+    monitor.getTopicsOfOngoingOfflinePushes().forEach(topic -> result.put(topic, STARTED.toString()));
     // Find the versions which had been ONLINE, but some of replicas are still bootstrapping due to:
     // 1. As we use N-1 strategy, so there might be some slow replicas caused by kafka or other issues.
     // 2. Storage node was added/removed/disconnected, so replicas need to bootstrap again on the same or other node.
@@ -7984,7 +7999,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
 
       /**
-       * The function is invoked by {@link com.linkedin.venice.controller.kafka.consumer.AdminExecutionTask} if the
+       * The function is invoked by {@link AdminExecutionTask} if the
        * storeName is present.
        */
       Store originalStore = getStore(clusterName, storeName.get());
@@ -8103,7 +8118,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * - intermediary between {@link com.linkedin.venice.controller.logcompaction.LogCompactionService} and {@link CompactionManager}
+   * - intermediary between {@link LogCompactionService} and {@link CompactionManager}
    * - injects the child controller's {@link ControllerClient} into the function {@link CompactionManager#getStoresForCompaction(String, Map)}
    * - serves as API endpoint to query stores ready for log compaction
    * @param clusterName
@@ -8123,7 +8138,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   /**
    * triggers repush for storeName for log compaction of store topic
    * <p>
-   * - intermediary between {@link com.linkedin.venice.controller.logcompaction.LogCompactionService} and
+   * - intermediary between {@link LogCompactionService} and
    * {@link CompactionManager} - serves as API endpoint to trigger scheduled & adhoc log compaction
    *
    * @param repushJobRequest@return
