@@ -280,6 +280,7 @@ public class BlobP2PTransferAmongServersTest {
     serverProperties.setProperty(ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED, "true");
     serverProperties.setProperty(ConfigKeys.BLOB_TRANSFER_SSL_ENABLED, "true");
     serverProperties.setProperty(ConfigKeys.BLOB_TRANSFER_ACL_ENABLED, "true");
+    serverProperties.setProperty(ConfigKeys.BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, "-1000000");
 
     Properties serverFeatureProperties = new Properties();
     serverFeatureProperties.put(VeniceServerWrapper.SERVER_ENABLE_SSL, "true");
@@ -390,6 +391,16 @@ public class BlobP2PTransferAmongServersTest {
 
     // cleanup and stop server 1
     cluster.stopVeniceServer(server1Port);
+    // verify that the server 1 is stopped but the files are retained.
+    for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+      File file = new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
+      Boolean fileExisted = Files.exists(file.toPath());
+      Assert.assertTrue(fileExisted);
+      // ensure that the snapshot is not generated.
+      File snapshotFile = new File(RocksDBUtils.composeSnapshotDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
+      Boolean snapshotFileExisted = Files.exists(snapshotFile.toPath());
+      Assert.assertFalse(snapshotFileExisted);
+    }
 
     // send records to server 2 only
     SystemProducer veniceProducer = null;
