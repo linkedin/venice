@@ -581,7 +581,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           consumerSubscribe(
               topic,
               partitionConsumptionState,
-              partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset(),
+              partitionConsumptionState.getLocalVtSubscribeOffset(isGlobalRtDivEnabled()),
               localKafkaServer);
           /**
            * When switching leader to follower, we may adjust the underlying storage partition to optimize the performance.
@@ -777,7 +777,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             consumerSubscribe(
                 currentLeaderTopic,
                 partitionConsumptionState,
-                partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset(),
+                partitionConsumptionState.getLocalVtSubscribeOffset(isGlobalRtDivEnabled()),
                 localKafkaServer);
           }
 
@@ -974,7 +974,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * this case, the newly selected leader will resume the consumption from RT specified in TS at the offset
      * checkpointed in leader offset metadata.
      */
-
     final int partition = partitionConsumptionState.getPartition();
     final OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
     if (isNativeReplicationEnabled) {
@@ -4197,12 +4196,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     consumerSubscribe(
         versionTopic,
         partitionConsumptionState,
-        latestProcessedLocalVersionTopicOffset,
+        partitionConsumptionState.getLocalVtSubscribeOffset(isGlobalRtDivEnabled()),
         localKafkaServer);
     LOGGER.info(
         "Follower replica: {} resubscribe to offset: {}",
         partitionConsumptionState.getReplicaId(),
-        latestProcessedLocalVersionTopicOffset);
+        partitionConsumptionState.getLocalVtSubscribeOffset(isGlobalRtDivEnabled()));
   }
 
   protected void resubscribeAsLeader(PartitionConsumptionState partitionConsumptionState) throws InterruptedException {

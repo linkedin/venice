@@ -2324,12 +2324,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         reportStoreVersionTopicOffsetRewindMetrics(newPartitionConsumptionState);
 
         // Subscribe to local version topic.
+        long subscribeOffset = newPartitionConsumptionState.getLocalVtSubscribeOffset(isGlobalRtDivEnabled());
         consumerSubscribe(
             topicPartition.getPubSubTopic(),
             newPartitionConsumptionState,
-            offsetRecord.getLocalVersionTopicOffset(),
+            subscribeOffset,
             localKafkaServer);
-        LOGGER.info("Subscribed to: {} Offset {}", topicPartition, offsetRecord.getLocalVersionTopicOffset());
+        LOGGER.info("Subscribed to: {} Offset {}", topicPartition, subscribeOffset);
         storageUtilizationManager.initPartition(partition);
         break;
       case UNSUBSCRIBE:
