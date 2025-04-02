@@ -22,6 +22,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROC
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_HEARTBEAT_INTERVAL_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_MAX_IDLE_COUNT;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LOCAL_CONSUMER_CONFIG_PREFIX;
@@ -221,6 +222,7 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
+import java.lang.reflect.Field;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.ByteBuffer;
@@ -517,6 +519,7 @@ public abstract class StoreIngestionTaskTest {
 
     mockStorageEngineRepository = mock(StorageEngineRepository.class);
     storeInfo = mock(StoreInfo.class, RETURNS_DEEP_STUBS);
+    when(storeInfo.getName()).thenReturn(storeNameWithoutVersionInfo);
     when(storeInfo.getHybridStoreConfig().getRealTimeTopicName())
         .thenReturn(Utils.composeRealTimeTopic(storeNameWithoutVersionInfo));
 
@@ -2128,6 +2131,7 @@ public abstract class StoreIngestionTaskTest {
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     Map<String, Object> extraServerProperties = new HashMap<>();
     extraServerProperties.put(SERVER_UNSUB_AFTER_BATCHPUSH, true);
+    extraServerProperties.put(SERVER_INGESTION_TASK_MAX_IDLE_COUNT, 0);
 
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
       verify(mockLogNotifier, timeout(LONG_TEST_TIMEOUT)).completed(topic, PARTITION_FOO, offset, "STANDBY");
@@ -2145,6 +2149,7 @@ public abstract class StoreIngestionTaskTest {
       doReturn(new VersionImpl("storeName", 1, Version.numberBasedDummyPushId(1))).when(mockStore).getVersion(1);
       doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
       doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO);
+      doAnswer(invocation -> false).when(aggKafkaConsumerService).hasAnyConsumerAssignedForVersionTopic(any());
     }).setHybridStoreConfig(this.hybridStoreConfig).setExtraServerProperties(extraServerProperties);
     runTest(config);
   }
@@ -3283,6 +3288,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(5L).when(mockTopicManager).getLatestOffsetCached(any(), anyInt());
     doReturn(150L).when(mockTopicManagerRemoteKafka).getLatestOffsetCached(any(), anyInt());
     doReturn(150L).when(aggKafkaConsumerService).getLatestOffsetBasedOnMetrics(anyString(), any(), any());
+
     long endOffset =
         storeIngestionTaskUnderTest.getTopicPartitionEndOffSet(localKafkaConsumerService.kafkaUrl, pubSubTopic, 1);
     assertEquals(endOffset, 150L);
@@ -3838,6 +3844,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(versionTopic).when(mockVeniceStoreVersionConfig).getStoreVersionName();
 
     Version mockVersion = mock(Version.class);
+    doReturn(storeName).when(mockVersion).getStoreName();
     doReturn(1).when(mockVersion).getPartitionCount();
     doReturn(VersionStatus.STARTED).when(mockVersion).getStatus();
 
@@ -3967,6 +3974,7 @@ public abstract class StoreIngestionTaskTest {
 
     Version version = mock(Version.class);
     doReturn(1).when(version).getPartitionCount();
+    doReturn("store").when(version).getStoreName();
     doReturn(null).when(version).getPartitionerConfig();
     doReturn(VersionStatus.ONLINE).when(version).getStatus();
     doReturn(true).when(version).isNativeReplicationEnabled();
@@ -4593,6 +4601,7 @@ public abstract class StoreIngestionTaskTest {
   public void testBatchOnlyStoreDataRecovery() {
     Version version = mock(Version.class);
     doReturn(1).when(version).getPartitionCount();
+    doReturn("store").when(version).getStoreName();
     doReturn(VersionStatus.STARTED).when(version).getStatus();
     doReturn(true).when(version).isNativeReplicationEnabled();
     DataRecoveryVersionConfig dataRecoveryVersionConfig = new DataRecoveryVersionConfigImpl("dc-0", false, 1);
@@ -4684,6 +4693,7 @@ public abstract class StoreIngestionTaskTest {
     VeniceStoreVersionConfig mockVeniceStoreVersionConfig = mock(VeniceStoreVersionConfig.class);
     doReturn(versionTopic).when(mockVeniceStoreVersionConfig).getStoreVersionName();
     Version mockVersion = mock(Version.class);
+    doReturn(storeName).when(mockVersion).getStoreName();
     doReturn(1).when(mockVersion).getPartitionCount();
     doReturn(VersionStatus.STARTED).when(mockVersion).getStatus();
     doReturn(true).when(mockVersion).isUseVersionLevelHybridConfig();
@@ -4776,6 +4786,7 @@ public abstract class StoreIngestionTaskTest {
     VeniceStoreVersionConfig mockVeniceStoreVersionConfig = mock(VeniceStoreVersionConfig.class);
     doReturn(versionTopic).when(mockVeniceStoreVersionConfig).getStoreVersionName();
     Version mockVersion = mock(Version.class);
+    doReturn(storeName).when(mockVersion).getStoreName();
     doReturn(2).when(mockVersion).getPartitionCount();
     doReturn(VersionStatus.STARTED).when(mockVersion).getStatus();
     doReturn(true).when(mockVersion).isUseVersionLevelHybridConfig();
@@ -5613,7 +5624,7 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test
-  public void testResolveTopicPartitionWithKafkaURL() {
+  public void testResolveTopicPartitionWithKafkaURL() throws NoSuchFieldException, IllegalAccessException {
     StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
     Function<String, String> resolver = Utils::resolveKafkaUrlForSepTopic;
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
@@ -5627,8 +5638,13 @@ public abstract class StoreIngestionTaskTest {
     String store = "test_store";
     String kafkaUrl = "localhost:1234";
     PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(store));
-    PubSubTopic separateRealTimeTopic = pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(store));
+    PubSubTopic separateRealTimeTopic =
+        pubSubTopicRepository.getTopic(Utils.getSeparateRealTimeTopicName(realTimeTopic.getName()));
     PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(store, 1));
+    Field field = storeIngestionTask.getClass().getSuperclass().getDeclaredField("separateRealTimeTopic");
+    field.setAccessible(true);
+    field.set(storeIngestionTask, separateRealTimeTopic);
+
     Assert.assertEquals(
         storeIngestionTask.resolveTopicPartitionWithKafkaURL(realTimeTopic, pcs, kafkaUrl).getPubSubTopic(),
         realTimeTopic);
@@ -5642,7 +5658,7 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test
-  public void testUnsubscribeFromTopic() {
+  public void testUnsubscribeFromTopic() throws IllegalAccessException, NoSuchFieldException {
     StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     doCallRealMethod().when(storeIngestionTask).unsubscribeFromTopic(any(), any());
@@ -5651,8 +5667,12 @@ public abstract class StoreIngestionTaskTest {
     String store = "test_store";
     String kafkaUrl = "localhost:1234";
     PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(store));
-    PubSubTopic separateRealTimeTopic = pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(store));
+    PubSubTopic separateRealTimeTopic =
+        pubSubTopicRepository.getTopic(Utils.getSeparateRealTimeTopicName(realTimeTopic.getName()));
     PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(store, 1));
+    Field field = storeIngestionTask.getClass().getSuperclass().getDeclaredField("separateRealTimeTopic");
+    field.setAccessible(true);
+    field.set(storeIngestionTask, separateRealTimeTopic);
 
     doReturn(true).when(storeIngestionTask).isSeparatedRealtimeTopicEnabled();
     storeIngestionTask.unsubscribeFromTopic(realTimeTopic, pcs);
@@ -5695,6 +5715,7 @@ public abstract class StoreIngestionTaskTest {
 
     Version version = mock(Version.class);
     doReturn(1).when(version).getPartitionCount();
+    doReturn("store").when(version).getStoreName();
     doReturn(VersionStatus.STARTED).when(version).getStatus();
     doReturn(true).when(version).isNativeReplicationEnabled();
     DataRecoveryVersionConfig dataRecoveryVersionConfig = new DataRecoveryVersionConfigImpl("dc-0", false, 1);

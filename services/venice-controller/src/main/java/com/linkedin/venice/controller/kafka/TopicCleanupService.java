@@ -242,7 +242,7 @@ public class TopicCleanupService extends AbstractVeniceService {
         continue;
       }
 
-      if (!topic.isRealTime() || admin.isRTTopicDeletionPermittedByAllControllers(clusterDiscovered, storeName)) {
+      if (!topic.isRealTime() || admin.isRTTopicDeletionPermittedByAllControllers(clusterDiscovered, topic.getName())) {
         // delete if it is a VT topic or an RT topic eligible for deletion by the above condition
         deleteTopic(topic);
       } else {

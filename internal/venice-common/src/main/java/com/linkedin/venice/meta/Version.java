@@ -8,6 +8,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.views.VeniceView;
 import java.time.Duration;
 import java.util.HashMap;
@@ -23,6 +24,7 @@ import java.util.Map;
 public interface Version extends Comparable<Version>, DataModelBackedStructure<StoreVersion> {
   String VERSION_SEPARATOR = "_v";
   String REAL_TIME_TOPIC_SUFFIX = "_rt";
+  String REAL_TIME_TOPIC_TEMPLATE = "%s_rt_v%d";
   String STREAM_REPROCESSING_TOPIC_SUFFIX = "_sr";
   String SEPARATE_REAL_TIME_TOPIC_SUFFIX = "_rt_sep";
   /**
@@ -280,6 +282,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   @JsonIgnore
   void setRmdVersionId(int replicationMetadataVersionId);
 
+  boolean isGlobalRtDivEnabled();
+
+  void setGlobalRtDivEnabled(boolean globalRtDivEnabled);
+
   /**
    * Kafka topic name is composed by store name and version.
    * <p>
@@ -293,6 +299,28 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   static String parseStoreFromVersionTopic(String kafkaTopic) {
     return kafkaTopic.substring(0, getLastIndexOfVersionSeparator(kafkaTopic));
+  }
+
+  static String removeRTVersionSuffix(String kafkaTopic) {
+    int lastIndexOfVersionSeparator = kafkaTopic.lastIndexOf(VERSION_SEPARATOR);
+
+    if (lastIndexOfVersionSeparator == 0) {
+      throw new VeniceException(
+          "There is nothing prior to the version separator '" + VERSION_SEPARATOR + "' in the provided topic name: '"
+              + kafkaTopic + "'");
+    } else if (lastIndexOfVersionSeparator == -1) {
+      return kafkaTopic;
+    }
+
+    int start = lastIndexOfVersionSeparator + VERSION_SEPARATOR.length();
+    int end = kafkaTopic.length();
+
+    for (int i = start; i < end; i++) {
+      if (!isDigit(kafkaTopic.charAt(i))) {
+        return kafkaTopic;
+      }
+    }
+    return kafkaTopic.substring(0, lastIndexOfVersionSeparator);
   }
 
   /**
@@ -341,10 +369,16 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
     return storeName + VERSION_SEPARATOR + versionNumber;
   }
 
+  /**
+   * @Deprecated Use {@link Utils#composeRealTimeTopic(String)} instead.
+   */
   static String composeRealTimeTopic(String storeName) {
     return storeName + REAL_TIME_TOPIC_SUFFIX;
   }
 
+  /**
+   * @Deprecated Use overloaded methods {@link Utils#getSeparateRealTimeTopicName(String)} instead.
+   */
   static String composeSeparateRealTimeTopic(String storeName) {
     return storeName + SEPARATE_REAL_TIME_TOPIC_SUFFIX;
   }
@@ -368,10 +402,13 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
     if (!isRealTimeTopic(kafkaTopic)) {
       throw new VeniceException("Kafka topic: " + kafkaTopic + " is not a real-time topic");
     }
-    if (kafkaTopic.endsWith(REAL_TIME_TOPIC_SUFFIX)) {
-      return kafkaTopic.substring(0, kafkaTopic.length() - REAL_TIME_TOPIC_SUFFIX.length());
-    }
-    return kafkaTopic.substring(0, kafkaTopic.length() - SEPARATE_REAL_TIME_TOPIC_SUFFIX.length());
+    String topicWithoutRTVersionSuffix = removeRTVersionSuffix(kafkaTopic);
+
+    String suffix = topicWithoutRTVersionSuffix.endsWith(REAL_TIME_TOPIC_SUFFIX)
+        ? REAL_TIME_TOPIC_SUFFIX
+        : SEPARATE_REAL_TIME_TOPIC_SUFFIX;
+
+    return topicWithoutRTVersionSuffix.substring(0, topicWithoutRTVersionSuffix.length() - suffix.length());
   }
 
   static String parseStoreFromStreamReprocessingTopic(String kafkaTopic) {
@@ -400,7 +437,9 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   }
 
   static boolean isRealTimeTopic(String kafkaTopic) {
-    return kafkaTopic.endsWith(REAL_TIME_TOPIC_SUFFIX) || kafkaTopic.endsWith(SEPARATE_REAL_TIME_TOPIC_SUFFIX);
+    String topicWithoutVersionSuffix = removeRTVersionSuffix(kafkaTopic);
+    return topicWithoutVersionSuffix.endsWith(REAL_TIME_TOPIC_SUFFIX)
+        || topicWithoutVersionSuffix.endsWith(SEPARATE_REAL_TIME_TOPIC_SUFFIX);
   }
 
   static boolean isStreamReprocessingTopic(String kafkaTopic) {

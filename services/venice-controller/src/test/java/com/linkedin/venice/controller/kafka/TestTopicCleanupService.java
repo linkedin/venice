@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.kafka;
 
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
@@ -200,6 +201,7 @@ public class TestTopicCleanupService {
   @Test
   public void testCleanupVeniceTopics() {
     String clusterName = "clusterName";
+    String rtVersionPrefix = Version.REAL_TIME_TOPIC_SUFFIX + "_v1";
     String storeName1 = Utils.getUniqueString("store1");
     String storeName2 = Utils.getUniqueString("store2");
     String storeName3 = Utils.getUniqueString("store3");
@@ -212,32 +214,32 @@ public class TestTopicCleanupService {
     storeTopics.put(getPubSubTopic(storeName1, "_v2"), 1000L);
     storeTopics.put(getPubSubTopic(storeName1, "_v3"), Long.MAX_VALUE);
     storeTopics.put(getPubSubTopic(storeName1, "_v4"), 1000L);
-    storeTopics.put(getPubSubTopic(storeName1, "_rt"), Long.MAX_VALUE);
-    storeTopics.put(getPubSubTopic(storeName2, "_rt"), 1000L);
+    storeTopics.put(getPubSubTopic(storeName1, rtVersionPrefix), Long.MAX_VALUE);
+    storeTopics.put(getPubSubTopic(storeName2, rtVersionPrefix), 1000L);
     storeTopics.put(getPubSubTopic(storeName2, "_v1"), 1000L);
-    storeTopics.put(getPubSubTopic(storeName3, "_rt"), 1000L);
+    storeTopics.put(getPubSubTopic(storeName3, rtVersionPrefix), 1000L);
     storeTopics.put(getPubSubTopic(storeName3, "_v100"), Long.MAX_VALUE);
-    storeTopics.put(getPubSubTopic(storeName4, "_rt"), Long.MAX_VALUE);
+    storeTopics.put(getPubSubTopic(storeName4, rtVersionPrefix), Long.MAX_VALUE);
     storeTopics.put(getPubSubTopic(storeName5, "_v1"), Long.MAX_VALUE);
-    storeTopics.put(getPubSubTopic(storeName6, "_rt"), 1000L);
+    storeTopics.put(getPubSubTopic(storeName6, rtVersionPrefix), 1000L);
     storeTopics.put(getPubSubTopic(storeName6, "_v1"), Long.MAX_VALUE);
     storeTopics.put(getPubSubTopic(storeName6, "_v2"), Long.MAX_VALUE);
     storeTopics.put(getPubSubTopic(PubSubTopicType.ADMIN_TOPIC_PREFIX, "_cluster"), Long.MAX_VALUE);
 
     Map<PubSubTopic, Long> storeTopics2 = new HashMap<>();
     storeTopics2.put(getPubSubTopic(storeName1, "_v3"), Long.MAX_VALUE);
-    storeTopics2.put(getPubSubTopic(storeName1, "_rt"), Long.MAX_VALUE);
-    storeTopics2.put(getPubSubTopic(storeName2, "_rt"), 1000L);
-    storeTopics2.put(getPubSubTopic(storeName3, "_rt"), 1000L);
+    storeTopics2.put(getPubSubTopic(storeName1, rtVersionPrefix), Long.MAX_VALUE);
+    storeTopics2.put(getPubSubTopic(storeName2, rtVersionPrefix), 1000L);
+    storeTopics2.put(getPubSubTopic(storeName3, rtVersionPrefix), 1000L);
 
     Map<PubSubTopic, Long> remoteTopics = new HashMap<>();
-    remoteTopics.put(getPubSubTopic(storeName2, "_rt"), 1000L);
-    remoteTopics.put(getPubSubTopic(storeName3, "_rt"), 1000L);
-    remoteTopics.put(getPubSubTopic(storeName3, "_v1"), 1000L);
+    remoteTopics.put(getPubSubTopic(storeName2, rtVersionPrefix), 1000L);
+    remoteTopics.put(getPubSubTopic(storeName3, rtVersionPrefix), 1000L);
+    remoteTopics.put(getPubSubTopic(storeName3, rtVersionPrefix), 1000L);
 
     Map<PubSubTopic, Long> remoteTopics2 = new HashMap<>();
-    remoteTopics2.put(getPubSubTopic(storeName2, "_rt"), 1000L);
-    remoteTopics2.put(getPubSubTopic(storeName3, "_rt"), 1000L);
+    remoteTopics2.put(getPubSubTopic(storeName2, rtVersionPrefix), 1000L);
+    remoteTopics2.put(getPubSubTopic(storeName3, rtVersionPrefix), 1000L);
 
     when(topicManager.getAllTopicRetentions()).thenReturn(storeTopics).thenReturn(storeTopics2);
     when(remoteTopicManager.listTopics()).thenReturn(remoteTopics.keySet()).thenReturn(remoteTopics2.keySet());
@@ -252,7 +254,7 @@ public class TestTopicCleanupService {
     Set<PubSubTopic> pubSubTopicSet = new HashSet<>();
     pubSubTopicSet.addAll(storeTopics.keySet());
     pubSubTopicSet.remove(getPubSubTopic(storeName3, "_v100"));
-    pubSubTopicSet.remove(getPubSubTopic(storeName4, "_rt"));
+    pubSubTopicSet.remove(getPubSubTopic(storeName4, rtVersionPrefix));
     pubSubTopicSet.remove(getPubSubTopic(storeName5, "_v1"));
     pubSubTopicSet.remove(getPubSubTopic(PubSubTopicType.ADMIN_TOPIC_PREFIX, "_cluster"));
 
@@ -299,24 +301,31 @@ public class TestTopicCleanupService {
     doReturn(Collections.singletonList(hybridVersion)).when(store3).getVersions();
     doReturn(Collections.singletonList(batchVersion)).when(store6).getVersions();
     // simulating blocked delete
-    doReturn(false).when(admin).isRTTopicDeletionPermittedByAllControllers(anyString(), eq(storeName1));
-    doReturn(false).when(admin).isRTTopicDeletionPermittedByAllControllers(anyString(), eq(storeName2));
-    doReturn(false).when(admin).isRTTopicDeletionPermittedByAllControllers(anyString(), eq(storeName3));
-    doReturn(true).when(admin).isRTTopicDeletionPermittedByAllControllers(anyString(), eq(storeName4));
-    doReturn(true).when(admin).isRTTopicDeletionPermittedByAllControllers(anyString(), eq(storeName5));
-    doReturn(true).when(admin).isRTTopicDeletionPermittedByAllControllers(anyString(), eq(storeName6));
+    doReturn(false).when(admin)
+        .isRTTopicDeletionPermittedByAllControllers(anyString(), argThat(arg -> arg.startsWith(storeName1)));
+    doReturn(false).when(admin)
+        .isRTTopicDeletionPermittedByAllControllers(anyString(), argThat(arg -> arg.startsWith(storeName2)));
+    doReturn(false).when(admin)
+        .isRTTopicDeletionPermittedByAllControllers(anyString(), argThat(arg -> arg.startsWith(storeName3)));
+    doReturn(true).when(admin)
+        .isRTTopicDeletionPermittedByAllControllers(anyString(), argThat(arg -> arg.startsWith(storeName4)));
+    doReturn(true).when(admin)
+        .isRTTopicDeletionPermittedByAllControllers(anyString(), argThat(arg -> arg.startsWith(storeName5)));
+    doReturn(true).when(admin)
+        .isRTTopicDeletionPermittedByAllControllers(anyString(), argThat(arg -> arg.startsWith(storeName6)));
 
     topicCleanupService.cleanupVeniceTopics();
 
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, "_rt"));
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, rtVersionPrefix));
     verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, "_v1"));
     verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, "_v2"));
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, "_v3"));
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, "_v4"));
     verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName2, "_v1"));
-    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName6, "_rt"));
+    verify(topicManager, atLeastOnce())
+        .ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName6, rtVersionPrefix));
     // Delete should be blocked by local VT
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName2, "_rt"));
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName2, rtVersionPrefix));
     // Delete should be blocked by remote VT
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName3, "_rt"));
     verify(topicCleanupServiceStats, atLeastOnce()).recordDeletableTopicsCount(9);
@@ -324,17 +333,22 @@ public class TestTopicCleanupService {
     verify(topicCleanupServiceStats, atLeastOnce()).recordTopicDeleted();
 
     verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName3, "_v100"));
-    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName4, "_rt"));
+    verify(topicManager, atLeastOnce())
+        .ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName4, rtVersionPrefix));
     verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName5, "_v1"));
 
-    doReturn(true).when(admin).isRTTopicDeletionPermittedByAllControllers(anyString(), eq(storeName2));
-    doReturn(true).when(admin).isRTTopicDeletionPermittedByAllControllers(anyString(), eq(storeName3));
+    doReturn(true).when(admin)
+        .isRTTopicDeletionPermittedByAllControllers(anyString(), argThat(arg -> arg.startsWith(storeName2)));
+    doReturn(true).when(admin)
+        .isRTTopicDeletionPermittedByAllControllers(anyString(), argThat(arg -> arg.startsWith(storeName3)));
     topicCleanupService.cleanupVeniceTopics();
 
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, "_v3"));
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, "_rt"));
-    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName2, "_rt"));
-    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName3, "_rt"));
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, rtVersionPrefix));
+    verify(topicManager, atLeastOnce())
+        .ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName2, rtVersionPrefix));
+    verify(topicManager, atLeastOnce())
+        .ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName3, rtVersionPrefix));
     verify(topicCleanupServiceStats, atLeastOnce()).recordDeletableTopicsCount(2);
     verify(topicCleanupServiceStats, never()).recordTopicDeletionError();
   }

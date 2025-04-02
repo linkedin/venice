@@ -71,7 +71,7 @@ public class RequestBasedMetaRepositoryTest {
   }
 
   @Test
-  public void testRequestBasedMetaRepositoryFetchStoreConfigFromRemote() {
+  public void testFetchStoreConfigFromRemote() {
 
     // Mock RequestBasedMetaRepository
     RequestBasedMetaRepository requestBasedMetaRepository = getMockRequestBasedMetaRepository();
@@ -87,7 +87,7 @@ public class RequestBasedMetaRepositoryTest {
   }
 
   @Test
-  public void testRequestBasedMetaRepositoryFetchStoreFromRemote() {
+  public void testFetchStoreFromRemote() {
 
     // Mock RequestBasedMetaRepository
     RequestBasedMetaRepository requestBasedMetaRepository = getMockRequestBasedMetaRepository();
@@ -103,14 +103,16 @@ public class RequestBasedMetaRepositoryTest {
   }
 
   @Test
-  public void testRequestBasedMetaRepositoryFetchAndCacheStorePropertiesPayloadRecord() {
+  public void testFetchAndCacheStorePropertiesPayloadRecordWithICProvider() {
 
     // Mock RequestBasedMetaRepository
     RequestBasedMetaRepository requestBasedMetaRepository = getMockRequestBasedMetaRepository();
-    when(requestBasedMetaRepository.fetchAndCacheStoreMetaValue(store.getName())).thenCallRealMethod();
+    when(requestBasedMetaRepository.fetchStoreProperties(store.getName())).thenCallRealMethod();
+    when(requestBasedMetaRepository.fetchAndCacheStorePropertiesWithICProvider(store.getName())).thenCallRealMethod();
 
-    // Test FetchAndCacheStoreMetaValue
-    StoreMetaValue storeMetaValue = requestBasedMetaRepository.fetchAndCacheStoreMetaValue(store.getName());
+    // Test fetchAndCacheStorePropertiesWithICProvider
+    StoreMetaValue storeMetaValue =
+        requestBasedMetaRepository.fetchAndCacheStorePropertiesWithICProvider(store.getName());
     Assert.assertNotNull(storeMetaValue);
     Assert.assertNotNull(storeMetaValue.getStoreProperties());
     Assert.assertEquals(storeMetaValue.getStoreProperties().getName().toString(), store.getName());
@@ -121,7 +123,7 @@ public class RequestBasedMetaRepositoryTest {
   }
 
   @Test
-  public void testRequestBasedMetaRepositoryGetMaxValueSchemaId() {
+  public void testGetMaxValueSchemaId() {
 
     // Mock RequestBasedMetaRepository
     RequestBasedMetaRepository requestBasedMetaRepository = getMockRequestBasedMetaRepository();
@@ -146,7 +148,7 @@ public class RequestBasedMetaRepositoryTest {
   }
 
   @Test
-  public void testRequestBasedMetaRepositoryCacheStoreSchema() {
+  public void testCacheStoreSchema() {
 
     // Mock RequestBasedMetaRepository
     RequestBasedMetaRepository requestBasedMetaRepository = getMockRequestBasedMetaRepository();
@@ -165,7 +167,9 @@ public class RequestBasedMetaRepositoryTest {
 
     // Initialize class variables
     requestBasedMetaRepository.storeSchemaMap = new VeniceConcurrentHashMap<>();
+    requestBasedMetaRepository.d2TransportClientMap = new VeniceConcurrentHashMap<>();
     requestBasedMetaRepository.schemaMap = new VeniceConcurrentHashMap<>();
+    ;
     requestBasedMetaRepository.storeMetaValueSchemaReader =
         getMockRouterBackedSchemaReader(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE);
     requestBasedMetaRepository.storePropertiesSchemaReader =

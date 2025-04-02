@@ -97,6 +97,7 @@ import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceResourceAccessException;
+import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputDictTrainer;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.jobs.DataWriterMRJob;
 import com.linkedin.venice.hadoop.mapreduce.engine.DefaultJobClientWrapper;
@@ -806,7 +807,7 @@ public class VenicePushJob implements AutoCloseable {
             pushJobSetting,
             pushJobSetting.targetedRegions,
             pushJobSetting.isTargetedRegionPushEnabled,
-            false);
+            pushJobSetting.isTargetRegionPushWithDeferredSwapEnabled);
       }
 
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
@@ -1054,6 +1055,10 @@ public class VenicePushJob implements AutoCloseable {
           throw new VeniceException(
               "Data writer job failed unexpectedly with status: " + dataWriterComputeJob.getStatus());
         } else {
+          if (t instanceof VeniceInvalidInputException) {
+            updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INVALID_INPUT_FILE);
+          }
+
           throwVeniceException(t);
         }
       } else {
@@ -1069,19 +1074,12 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   private void checkLastModificationTimeAndLog() throws IOException {
-    checkLastModificationTimeAndLog(false);
-  }
-
-  private void checkLastModificationTimeAndLog(boolean throwExceptionOnDataSetChange) throws IOException {
     long lastModificationTime = getInputDataInfoProvider().getInputLastModificationTime(pushJobSetting.inputURI);
     if (lastModificationTime > inputDataInfo.getInputModificationTime()) {
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.DATASET_CHANGED);
-      String error = "Dataset changed during the push job. Please check above logs to see if the change "
-          + "caused the MapReduce failure and rerun the job without dataset change.";
-      LOGGER.error(error);
-      if (throwExceptionOnDataSetChange) {
-        throw new VeniceException(error);
-      }
+      LOGGER.error(
+          "Dataset changed during the push job. Please investigate if the change caused the failure and "
+              + "rerun the job without changing the dataset while the job is running.");
     }
   }
 

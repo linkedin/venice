@@ -253,12 +253,12 @@ public class CreateVersion extends AbstractRoute {
     if (pushType == PushType.INCREMENTAL) {
       // If incremental push with a dedicated real-time topic is enabled then use the separate real-time topic
       if (version.isSeparateRealTimeTopicEnabled() && request.isSeparateRealTimeTopicEnabled()) {
-        responseTopic = Version.composeSeparateRealTimeTopic(storeName);
+        responseTopic = Utils.getSeparateRealTimeTopicName(version);
       } else {
         responseTopic = Utils.getRealTimeTopicName(version);
       }
     } else if (pushType == PushType.STREAM) {
-      responseTopic = Version.composeRealTimeTopic(storeName);
+      responseTopic = Utils.getRealTimeTopicName(version);
     } else if (pushType == PushType.STREAM_REPROCESSING) {
       responseTopic = Version.composeStreamReprocessingTopic(storeName, version.getNumber());
     } else {
@@ -378,7 +378,7 @@ public class CreateVersion extends AbstractRoute {
     }
     response.setPartitions(referenceHybridVersion.getPartitionCount());
     response.setCompressionStrategy(CompressionStrategy.NO_OP);
-    response.setKafkaTopic(Version.composeRealTimeTopic(store.getName()));
+    response.setKafkaTopic(Utils.getRealTimeTopicName(referenceHybridVersion));
   }
 
   /**

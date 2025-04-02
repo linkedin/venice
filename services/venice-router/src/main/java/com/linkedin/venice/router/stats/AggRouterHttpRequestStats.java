@@ -200,6 +200,11 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
     recordStoreStats(storeName, stats -> stats.recordCompressedResponseSize(compressedResponseSize));
   }
 
+  public void recordDecompressedResponseSize(String storeName, double decompressedResponseSize) {
+    totalStats.recordDecompressedResponseSize(decompressedResponseSize);
+    recordStoreStats(storeName, stats -> stats.recordDecompressedResponseSize(decompressedResponseSize));
+  }
+
   public void recordResponseSize(String storeName, double valueSize) {
     totalStats.recordResponseSize(valueSize);
     recordStoreStats(storeName, stats -> stats.recordResponseSize(valueSize));
