@@ -1066,7 +1066,7 @@ public class VeniceControllerClusterConfig {
     this.deadStoreStatsPreFetchIntervalInMs =
         props.getLong(ConfigKeys.CONTROLLER_DEAD_STORE_STATS_PRE_FETCH_INTERVAL_MS, 24 * 60 * 60 * 1000);
     this.deadStoreStatsConfigs = props.clipAndFilterNamespace(ConfigKeys.CONTROLLER_DEAD_STORE_STATS_PREFIX);
-    
+
     this.isRealTimeTopicVersioningEnabled = props.getBoolean(
         ConfigKeys.CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING,
         DEFAULT_CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING);

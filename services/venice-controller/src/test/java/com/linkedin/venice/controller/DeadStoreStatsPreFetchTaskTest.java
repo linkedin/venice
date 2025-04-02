@@ -42,6 +42,24 @@ public class DeadStoreStatsPreFetchTaskTest {
   }
 
   @Test
+  public void testFullRunLifecycle() throws InterruptedException {
+    DeadStoreStatsPreFetchTask task = new DeadStoreStatsPreFetchTask("test-cluster", mockAdmin, 200);
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+
+    executor.submit(task);
+
+    // Wait a bit longer than 1 cycle
+    Thread.sleep(500);
+
+    shutdownTask(task, executor);
+
+    // 1 call should happen immediately (before loop)
+    // at least 1 additional call should happen from loop
+    verify(mockStats, atLeast(2)).preFetchStats(any(List.class));
+    verify(mockAdmin, atLeast(2)).getAllStores("test-cluster");
+  }
+
+  @Test
   public void testFetchRepeatsUntilClosed() throws InterruptedException {
     DeadStoreStatsPreFetchTask task = new DeadStoreStatsPreFetchTask("test-cluster", mockAdmin, 100);
     ExecutorService executor = Executors.newSingleThreadExecutor();
