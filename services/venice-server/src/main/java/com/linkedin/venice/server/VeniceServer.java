@@ -477,8 +477,7 @@ public class VeniceServer {
     /**
      * Initialize Blob transfer manager for Service
      */
-    if (serverConfig.isBlobTransferManagerEnabled() && serverConfig.isBlobTransferSslEnabled()
-        && serverConfig.isBlobTransferAclEnabled()) {
+    if (BlobTransferUtils.isBlobTransferManagerEnabled(serverConfig, false)) {
       aggVersionedBlobTransferStats = new AggVersionedBlobTransferStats(metricsRepository, metadataRepo, serverConfig);
 
       P2PBlobTransferConfig p2PBlobTransferConfig = new P2PBlobTransferConfig(
