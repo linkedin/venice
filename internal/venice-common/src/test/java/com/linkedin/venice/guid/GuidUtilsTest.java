@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 import java.util.function.Function;
+import org.apache.avro.util.Utf8;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
@@ -49,23 +50,46 @@ public class GuidUtilsTest {
   }
 
   @Test(dataProvider = "byteArrays")
-  public void testCharSeqToGuidConversionAndBack(ByteArray arrayUnderTest) {
-    LOGGER.info("array: {}", arrayUnderTest);
-    CharSequence originalCharSequence = new String(arrayUnderTest.get(), GuidUtils.CHARSET);
+  public void testStringToGuidConversionAndBack(ByteArray arrayUnderTest) {
+    testCharSeqToGuidConversionAndBack(
+        new String(arrayUnderTest.get(), GuidUtils.CHARSET),
+        GuidUtils::getCharSequenceFromGuid);
+  }
+
+  @Test(dataProvider = "byteArrays")
+  public void testGuidToStringConversionAndBack(ByteArray arrayUnderTest) {
+    testGuidToCharSeqConversionAndBack(arrayUnderTest, GuidUtils::getCharSequenceFromGuid);
+  }
+
+  @Test(dataProvider = "byteArrays")
+  public void testUtf8ToGuidConversionAndBack(ByteArray arrayUnderTest) {
+    testCharSeqToGuidConversionAndBack(
+        new Utf8(new String(arrayUnderTest.get(), GuidUtils.CHARSET)),
+        GuidUtils::getUtf8FromGuid);
+  }
+
+  @Test(dataProvider = "byteArrays")
+  public void testGuidToUtf8ConversionAndBack(ByteArray arrayUnderTest) {
+    testGuidToCharSeqConversionAndBack(arrayUnderTest, GuidUtils::getUtf8FromGuid);
+  }
+
+  public void testCharSeqToGuidConversionAndBack(
+      CharSequence originalCharSequence,
+      Function<GUID, CharSequence> guidToCharSeq) {
+    LOGGER.info("input: {}", originalCharSequence);
     GUID convertedGuid = GuidUtils.getGuidFromCharSequence(originalCharSequence);
-    CharSequence resultingCharSequence = GuidUtils.getCharSequenceFromGuid(convertedGuid);
+    CharSequence resultingCharSequence = guidToCharSeq.apply(convertedGuid);
     Assert.assertEquals(
         resultingCharSequence,
         originalCharSequence,
         "A CharSequence converted into GUID and back should be the same as previously!");
   }
 
-  @Test(dataProvider = "byteArrays")
-  public void testGuidToCharSeqConversionAndBack(ByteArray arrayUnderTest) {
+  public void testGuidToCharSeqConversionAndBack(ByteArray arrayUnderTest, Function<GUID, CharSequence> guidToCharSeq) {
     LOGGER.info("ByteArray: {}", arrayUnderTest);
     GUID originalGuid = new GUID();
     originalGuid.bytes(arrayUnderTest.get());
-    CharSequence convertedCharSequence = GuidUtils.getCharSequenceFromGuid(originalGuid);
+    CharSequence convertedCharSequence = guidToCharSeq.apply(originalGuid);
     GUID resultingGuid = GuidUtils.getGuidFromCharSequence(convertedCharSequence);
     Assert.assertEquals(
         resultingGuid,

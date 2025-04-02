@@ -86,6 +86,10 @@ public class PartitionTracker {
   /**
    * rtSegments is a map of source broker URL to a map of GUID to Segment.
    * There should only be one {@link ConsumptionTask} for each broker URL, so there shouldn't need to be any locking.
+   *
+   * TODO: Refactor this so the {@link #rtSegments} map is keyed by region ID (numeric), rather than URL. URLs could
+   *       change over time but the ID should remain fixed. It is also more compact (and the outer collection could even
+   *       become just an array).
    */
   private final VeniceConcurrentHashMap<String, VeniceConcurrentHashMap<GUID, Segment>> rtSegments =
       new VeniceConcurrentHashMap<>();
@@ -414,8 +418,7 @@ public class PartitionTracker {
       boolean endOfPushReceived,
       boolean tolerateAnyMessageType) {
     if (endOfPushReceived && tolerateAnyMessageType) {
-      String errorMsgIdentifier = consumerRecord.getTopicPartition().getPubSubTopic().getName() + "-"
-          + consumerRecord.getTopicPartition().getPartitionNumber() + "-" + DataFaultType.UNREGISTERED_PRODUCER;
+      String errorMsgIdentifier = consumerRecord.getTopicPartition() + "-" + DataFaultType.UNREGISTERED_PRODUCER;
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(errorMsgIdentifier)) {
         logger.warn("Will {}, endOfPushReceived=true, tolerateAnyMessageType=true", scenario);
       }
@@ -500,7 +503,6 @@ public class PartitionTracker {
     if (incomingSequenceNumber > previousSequenceNumber + 1) {
       // There is a gap in the sequence, so we are missing some data!
 
-      DataValidationException dataMissingException = DataFaultType.MISSING.getNewException(segment, consumerRecord);
       /**
        * We will swallow {@link DataFaultType.MISSING} in either of the two scenarios:
        * 1. The segment was sent by unregistered producers after EOP
@@ -517,7 +519,7 @@ public class PartitionTracker {
         return;
       }
 
-      throw dataMissingException;
+      throw DataFaultType.MISSING.getNewException(segment, consumerRecord);
     }
 
     // Defensive coding, to prevent regressions in the above code from causing silent failures
@@ -546,6 +548,22 @@ public class PartitionTracker {
      * memory allocation.
      * TODO: we could disable checksum validation if we think it is not necessary any more later on.
      */
+    if (!segment.isRegistered()) {
+      /**
+       * Checksums only work for full segments. The unregistered segments are those which we first saw after the
+       * {@link StartOfSegment}, so there is no point in expending effort computing the checksum in those cases.
+       */
+      KafkaMessageEnvelope messageEnvelope = consumerRecord.getValue();
+      if (MessageType.valueOf(messageEnvelope) == MessageType.CONTROL_MESSAGE) {
+        ControlMessage controlMessage = (ControlMessage) messageEnvelope.getPayloadUnion();
+        if (ControlMessageType.valueOf(controlMessage) == ControlMessageType.END_OF_SEGMENT) {
+          EndOfSegment incomingEndOfSegment = (EndOfSegment) controlMessage.controlMessageUnion;
+          segment.end(incomingEndOfSegment.finalSegment);
+        }
+      }
+      return;
+    }
+
     boolean update = true;
     try {
       /**
@@ -569,13 +587,12 @@ public class PartitionTracker {
         // We're good, the expected checksum matches the one we computed on the receiving end (:
         segment.end(incomingEndOfSegment.finalSegment);
       } else {
-        DataValidationException dataCorruptException = DataFaultType.CORRUPT.getNewException(segment, consumerRecord);
         /**
          * We will swallow {@link DataFaultType.CORRUPT} in either of the two scenarios:
-         * 1. The segment was sent by unregistered producers after EOP
+         * 1. The segment was sent by unregistered producers after EOP (handled at the top of the function)
          * 2. The topic might have been compacted for the record so that tolerateMissingMsgs is true
          */
-        if ((endOfPushReceived && !segment.isRegistered()) || tolerateMissingMsgs.get()) {
+        if (tolerateMissingMsgs.get()) {
           segment.end(incomingEndOfSegment.finalSegment);
         } else {
           if (endOfPushReceived) {
@@ -586,7 +603,7 @@ public class PartitionTracker {
              */
             segment.end(incomingEndOfSegment.finalSegment);
           }
-          throw dataCorruptException;
+          throw DataFaultType.CORRUPT.getNewException(segment, consumerRecord);
         }
       }
     }
@@ -744,6 +761,9 @@ public class PartitionTracker {
     throw new IllegalArgumentException("Unsupported TopicType: " + type);
   }
 
+  private static final DuplicateDataException SINGLETON_DUPLICATE_DATA_EXCEPTION =
+      new DuplicateDataException("Duplicate message will be skipped!");
+
   enum DataFaultType {
     /**
      * A given producer sent a message with a sequence number smaller or equal to the previously received
@@ -790,6 +810,11 @@ public class PartitionTracker {
     }
 
     DataValidationException getNewException(Segment segment, DefaultPubSubMessage consumerRecord, String extraInfo) {
+      if (this == DUPLICATE) {
+        // We don't care about getting details for duplicate data, and we don't even want to allocate a stacktrace.
+        return SINGLETON_DUPLICATE_DATA_EXCEPTION;
+      }
+
       ProducerMetadata producerMetadata = consumerRecord.getValue().producerMetadata;
       MessageType messageType = MessageType.valueOf(consumerRecord.getValue());
       String previousSegment, previousSequenceNumber;
@@ -917,6 +942,21 @@ public class PartitionTracker {
 
     public static boolean isVersionTopic(TopicType type) {
       return type.getValue() == VERSION_TOPIC_TYPE;
+    }
+
+    public String toString() {
+      switch (this.val) {
+        case VERSION_TOPIC_TYPE:
+          return toString("VERSION_TOPIC");
+        case REALTIME_TOPIC_TYPE:
+          return toString("REALTIME_TOPIC");
+        default:
+          return toString("INVALID_TOPIC");
+      }
+    }
+
+    private String toString(String type) {
+      return type + (this.kafkaUrl == null ? "" : "(" + this.kafkaUrl + ")");
     }
   }
 }

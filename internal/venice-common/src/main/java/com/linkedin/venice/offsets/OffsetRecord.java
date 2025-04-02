@@ -317,6 +317,7 @@ public class OffsetRecord {
    * @return a {@link Utf8} instance corresponding to the {@link GUID} that was passed in
    */
   CharSequence guidToUtf8(GUID guid) {
+    /** TODO: Consider replacing with {@link GuidUtils#getUtf8FromGuid(GUID)}, which might be more efficient. */
     return new Utf8(GuidUtils.getCharSequenceFromGuid(guid));
   }
 
