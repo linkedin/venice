@@ -11,6 +11,7 @@ import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_PASSWORD;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_TYPE;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
@@ -81,6 +82,7 @@ public class ChangelogConsumerDaVinciRecordTransformerUserApp {
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
     consumerProperties.put(CLUSTER_NAME, clusterName);
     consumerProperties.put(ZOOKEEPER_ADDRESS, zkUrl);
+    consumerProperties.put(BLOB_TRANSFER_MANAGER_ENABLED, true);
     consumerProperties.put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, blobTransferServerPort);
     consumerProperties.put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, blobTransferClientPort);
     consumerProperties.put(BLOB_TRANSFER_SSL_ENABLED, true);
@@ -113,8 +115,7 @@ public class ChangelogConsumerDaVinciRecordTransformerUserApp {
             .setControllerRequestRetryCount(3)
             .setBootstrapFileSystemPath(baseDataPath)
             .setD2Client(d2Client)
-            .setIsExperimentalClientEnabled(true)
-            .setIsBlobTransferEnabled(true);
+            .setIsExperimentalClientEnabled(true);
 
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);

@@ -12,6 +12,7 @@ import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_PASSWORD;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_TYPE;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
@@ -398,6 +399,7 @@ public class TestBootstrappingChangelogConsumer {
       consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
       consumerProperties.put(CLUSTER_NAME, clusterName);
       consumerProperties.put(ZOOKEEPER_ADDRESS, zkAddress);
+      consumerProperties.put(BLOB_TRANSFER_MANAGER_ENABLED, true);
       consumerProperties.put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, port1);
       consumerProperties.put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, port2);
       consumerProperties.put(BLOB_TRANSFER_SSL_ENABLED, true);
@@ -423,8 +425,8 @@ public class TestBootstrappingChangelogConsumer {
               .setControllerRequestRetryCount(3)
               .setBootstrapFileSystemPath(inputDirPath1)
               .setD2Client(d2Client)
-              .setIsExperimentalClientEnabled(true)
-              .setIsBlobTransferEnabled(true);
+              .setIsExperimentalClientEnabled(true);
+
       VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
           new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
       List<BootstrappingVeniceChangelogConsumer<Utf8, Utf8>> bootstrappingVeniceChangelogConsumerList =
