@@ -294,7 +294,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected final SparseConcurrentList<Object> availableSchemaIds = new SparseConcurrentList<>();
   protected final SparseConcurrentList<Object> deserializedSchemaIds = new SparseConcurrentList<>();
-  protected int idleCounter = 0;
+  protected AtomicInteger idleCounter = new AtomicInteger(0);
 
   private final StorageUtilizationManager storageUtilizationManager;
 
@@ -1576,7 +1576,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * {@link IllegalStateException} with empty subscription.
      */
     if (!consumerHasAnySubscription() && !hasAnyPendingSubscription()) {
-      if (++idleCounter <= getMaxIdleCounter()) {
+      if (idleCounter.incrementAndGet() <= getMaxIdleCounter()) {
         String message = ingestionTaskName + " Not subscribed to any partitions ";
         if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
           LOGGER.info(message);
@@ -1593,7 +1593,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           }
           // long sleep here in case there are more consumer action to perform like KILL/subscription etc.
           Thread.sleep(POST_UNSUB_SLEEP_MS);
-          idleCounter = 0;
+          idleCounter.set(0);
           if (serverConfig.isSkipChecksAfterUnSubEnabled()) {
             skipAfterBatchPushUnsubEnabled = true;
           }
@@ -1603,7 +1603,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       return;
     }
-    idleCounter = 0;
+    idleCounter.set(0);
     if (emitMetrics.get()) {
       recordQuotaMetrics();
       recordMaxIdleTime();
@@ -4240,11 +4240,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   void resetIdleCounter() {
-    idleCounter = 0;
+    idleCounter.set(0);
   }
 
   int getIdleCounter() {
-    return idleCounter;
+    return idleCounter.get();
   }
 
   int getMaxIdleCounter() {
