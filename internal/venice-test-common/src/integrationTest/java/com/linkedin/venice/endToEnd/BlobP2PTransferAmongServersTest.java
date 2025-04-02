@@ -392,14 +392,11 @@ public class BlobP2PTransferAmongServersTest {
     // cleanup and stop server 1
     cluster.stopVeniceServer(server1Port);
     // verify that the server 1 is stopped but the files are retained.
+    // No need to check the snapshot as when server 1 and 2 initially started, blob transfer is not generated.
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
       File file = new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
       Boolean fileExisted = Files.exists(file.toPath());
       Assert.assertTrue(fileExisted);
-      // ensure that the snapshot is not generated.
-      File snapshotFile = new File(RocksDBUtils.composeSnapshotDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
-      Boolean snapshotFileExisted = Files.exists(snapshotFile.toPath());
-      Assert.assertFalse(snapshotFileExisted);
     }
 
     // send records to server 2 only
@@ -412,8 +409,8 @@ public class BlobP2PTransferAmongServersTest {
       veniceProducer.stop();
     }
 
-    cluster.restartVeniceServer(server1.getPort());
     // restart server 1
+    cluster.restartVeniceServer(server1.getPort());
     TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
       Assert.assertTrue(server1.isRunning());
     });
@@ -431,12 +428,12 @@ public class BlobP2PTransferAmongServersTest {
       });
     });
 
+    // Verify server 1 blob transfer is completed, and the snapshot is not generated.
     TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
       for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
         File file = new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
         Boolean fileExisted = Files.exists(file.toPath());
         Assert.assertTrue(fileExisted);
-        // ensure that the snapshot is not generated.
         File snapshotFile =
             new File(RocksDBUtils.composeSnapshotDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
         Boolean snapshotFileExisted = Files.exists(snapshotFile.toPath());
