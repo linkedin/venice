@@ -83,6 +83,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
     if (!storeAndVersion.getFirst().isBlobTransferEnabled() || blobTransferManager == null) {
       runnable.run();
     } else {
+      // Open store for lag check and later metadata update for offset/StoreVersionState
       storageService.openStore(storeConfig, svsSupplier);
 
       BlobTransferTableFormat requestTableFormat =
