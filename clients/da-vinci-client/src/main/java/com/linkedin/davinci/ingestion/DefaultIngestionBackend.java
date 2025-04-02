@@ -13,6 +13,7 @@ import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -124,6 +125,18 @@ public class DefaultIngestionBackend implements IngestionBackend {
     }
 
     String storeName = store.getName();
+
+    // After decide to bootstrap from blobs transfer, close the partition, clean up the offset and partition folder.
+    String kafkaTopic = Version.composeKafkaTopic(storeName, versionNumber);
+    if (storageService.getStorageEngine(kafkaTopic).containsPartition(partitionId)) {
+      storageService.getStorageEngine(kafkaTopic).closePartition(partitionId);
+      LOGGER.info("Closed partition {} for store {} before bootstrap from blob transfer", partitionId, storeName);
+    }
+    // Clean up the offset and partition folder.
+    storageMetadataService.clearOffset(kafkaTopic, partitionId);
+    RocksDBUtils.deletePartitionDir(serverConfig.getRocksDBPath(), storeName, versionNumber, partitionId);
+    LOGGER.info("Clean up the offset and delete partition folder for store {} partition {}", storeName, partitionId);
+
     return blobTransferManager.get(storeName, versionNumber, partitionId, tableFormat)
         .handle((inputStream, throwable) -> {
           updateBlobTransferResponseStats(throwable == null, storeName, versionNumber);
