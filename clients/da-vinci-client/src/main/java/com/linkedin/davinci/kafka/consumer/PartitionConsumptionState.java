@@ -819,15 +819,8 @@ public class PartitionConsumptionState {
     return this.latestProcessedLocalVersionTopicOffset;
   }
 
-  /**
-   * When Global RT DIV is enabled, the latest consumed VT offset (LCVO) should be used during subscription.
-   * Otherwise, the drainer's latest processed VT offset is traditionally used.
-   */
-  public long getLocalVtSubscribeOffset(boolean isGlobalRtDivEnabled) {
-    // TODO: fallback to latestProcessed if LCVO == -1?
-    return (isGlobalRtDivEnabled)
-        ? offsetRecord.getLatestConsumedVtOffset()
-        : getLatestProcessedLocalVersionTopicOffset();
+  public long getLatestConsumedVtOffset() {
+    return offsetRecord.getLatestConsumedVtOffset();
   }
 
   public void updateLatestProcessedUpstreamVersionTopicOffset(long offset) {

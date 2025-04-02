@@ -2324,7 +2324,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         reportStoreVersionTopicOffsetRewindMetrics(newPartitionConsumptionState);
 
         // Subscribe to local version topic.
-        long subscribeOffset = newPartitionConsumptionState.getLocalVtSubscribeOffset(isGlobalRtDivEnabled());
+        long subscribeOffset = getLocalVtSubscribeOffset(newPartitionConsumptionState);
         consumerSubscribe(
             topicPartition.getPubSubTopic(),
             newPartitionConsumptionState,
@@ -4935,5 +4935,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   boolean isGlobalRtDivEnabled() {
     return isGlobalRtDivEnabled; // mainly for unit test mocks
+  }
+
+  /**
+   * When Global RT DIV is enabled, the latest consumed VT offset (LCVO) should be used during subscription.
+   * Otherwise, the drainer's latest processed VT offset is traditionally used.
+   */
+  long getLocalVtSubscribeOffset(PartitionConsumptionState pcs) {
+    // TODO: fallback to latestProcessed if LCVO == -1?
+    return (isGlobalRtDivEnabled()) ? pcs.getLatestConsumedVtOffset() : pcs.getLatestProcessedLocalVersionTopicOffset();
   }
 }
