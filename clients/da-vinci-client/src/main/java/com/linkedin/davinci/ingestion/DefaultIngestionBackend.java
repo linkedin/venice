@@ -129,8 +129,9 @@ public class DefaultIngestionBackend implements IngestionBackend {
     // After decide to bootstrap from blobs transfer, close the partition, clean up the offset and partition folder,
     // but the metadata partition is not removed.
     String kafkaTopic = Version.composeKafkaTopic(storeName, versionNumber);
-    if (storageService.getStorageEngine(kafkaTopic) != null) {
-      storageService.getStorageEngine(kafkaTopic).dropPartitionAndWholeStore(partitionId, false);
+    AbstractStorageEngine storageEngine = storageService.getStorageEngine(kafkaTopic);
+    if (storageEngine != null) {
+      storageEngine.dropPartition(partitionId, false);
     }
     LOGGER.info("Clean up the offset and delete partition folder for topic {} partition {}", kafkaTopic, partitionId);
 

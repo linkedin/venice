@@ -173,7 +173,7 @@ public class DefaultIngestionBackendTest {
   public void testStartConsumptionWithClosePartition() {
     AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
     when(storageEngine.containsPartition(PARTITION)).thenReturn(true);
-    doNothing().when(storageEngine).dropPartitionAndWholeStore(PARTITION, false);
+    doNothing().when(storageEngine).dropPartition(PARTITION, false);
 
     String kafkaTopic = Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER);
     when(store.isBlobTransferEnabled()).thenReturn(true);

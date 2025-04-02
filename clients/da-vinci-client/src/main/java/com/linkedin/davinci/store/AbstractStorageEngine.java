@@ -272,16 +272,16 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    * @param partitionId - id of partition to retrieve and remove
    */
   public synchronized void dropPartition(int partitionId) {
-    dropPartitionAndWholeStore(partitionId, true);
+    dropPartition(partitionId, true);
   }
 
   /**
    * Removes and returns a partition from the current store
    *
    * @param partitionId - id of partition to retrieve and remove
-   * @param dropWholeStore - if true, the whole store will be dropped if ALL partitions are removed
+   * @param dropMetadataPartitionWhenEmpty - if true, the whole store will be dropped if ALL partitions are removed
    */
-  public synchronized void dropPartitionAndWholeStore(int partitionId, boolean dropWholeStore) {
+  public synchronized void dropPartition(int partitionId, boolean dropMetadataPartitionWhenEmpty) {
     /**
      * The caller of this method should ensure that:
      * 1. The SimpleKafkaConsumerTask associated with this partition is shutdown
@@ -308,7 +308,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     AbstractStoragePartition partition = this.partitionList.remove(partitionId);
     partition.drop();
 
-    if (getNumberOfPartitions() == 0 && dropWholeStore) {
+    if (getNumberOfPartitions() == 0 && dropMetadataPartitionWhenEmpty) {
       if (!suppressLogs) {
         LOGGER.info("All Partitions deleted for Store {}", getStoreVersionName());
       }
