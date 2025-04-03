@@ -207,11 +207,9 @@ public class HelixVeniceClusterResources implements VeniceResource {
           config.getErrorPartitionProcessingCycleDelay());
     }
 
-    if (config.isDeadStoreEndpointEnabled() && config.isParent()) {
-      deadStoreStatsPreFetchTask = new DeadStoreStatsPreFetchTask(
-          clusterName,
-          (VeniceParentHelixAdmin) (Admin) admin,
-          config.getDeadStoreStatsPreFetchRefreshIntervalInMs());
+    if (config.isParent() && config.isDeadStoreEndpointEnabled() && config.isPreFetchDeadStoreStatsEnabled()) {
+      deadStoreStatsPreFetchTask =
+          new DeadStoreStatsPreFetchTask(clusterName, admin, config.getDeadStoreStatsPreFetchRefreshIntervalInMs());
     }
     veniceAdminStats = new VeniceAdminStats(metricsRepository, "venice-admin-" + clusterName);
     this.storagePersonaRepository =

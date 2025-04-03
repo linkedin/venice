@@ -590,8 +590,9 @@ public class VeniceControllerClusterConfig {
   /**
    * Configs for Dead Store Endpoint
    */
-  private final boolean isdeadStoreEndpointEnabled;
+  private final boolean isDeadStoreEndpointEnabled;
   private final String deadStoreStatsClassName;
+  private final boolean isPreFetchDeadStoreStatsEnabled;
   private final long deadStoreStatsPreFetchIntervalInMs;
   private final VeniceProperties deadStoreStatsConfigs;
 
@@ -1061,8 +1062,10 @@ public class VeniceControllerClusterConfig {
     this.timeSinceLastLogCompactionThresholdMS =
         props.getLong(TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS, TimeUnit.HOURS.toMillis(24));
 
-    this.isdeadStoreEndpointEnabled = props.getBoolean(ConfigKeys.CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED, false);
+    this.isDeadStoreEndpointEnabled = props.getBoolean(ConfigKeys.CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED, false);
     this.deadStoreStatsClassName = props.getString(ConfigKeys.CONTROLLER_DEAD_STORE_STATS_CLASS_NAME, "");
+    this.isPreFetchDeadStoreStatsEnabled =
+        props.getBoolean(ConfigKeys.CONTROLLER_DEAD_STORE_STATS_PRE_FETCH_ENABLED, false);
     this.deadStoreStatsPreFetchIntervalInMs =
         props.getLong(ConfigKeys.CONTROLLER_DEAD_STORE_STATS_PRE_FETCH_INTERVAL_MS, 24 * 60 * 60 * 1000);
     this.deadStoreStatsConfigs = props.clipAndFilterNamespace(ConfigKeys.CONTROLLER_DEAD_STORE_STATS_PREFIX);
@@ -2010,11 +2013,15 @@ public class VeniceControllerClusterConfig {
   }
 
   public boolean isDeadStoreEndpointEnabled() {
-    return isdeadStoreEndpointEnabled;
+    return isDeadStoreEndpointEnabled;
   }
 
   public String getDeadStoreStatsClassName() {
     return deadStoreStatsClassName;
+  }
+
+  public boolean isPreFetchDeadStoreStatsEnabled() {
+    return isPreFetchDeadStoreStatsEnabled;
   }
 
   public long getDeadStoreStatsPreFetchRefreshIntervalInMs() {

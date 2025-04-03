@@ -2578,7 +2578,13 @@ public class ConfigKeys {
   public static final String CONTROLLER_DEAD_STORE_STATS_CLASS_NAME = "controller.dead.store.stats.class.name";
 
   /**
-   * (Only matters if CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED true) Amount of time in milliseconds to wait before refetching the dead store stats
+   * (Only matters if CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED true) Allow the controller to pre-fetch dead store stats before the endpoint is called
+   */
+  public static final String CONTROLLER_DEAD_STORE_STATS_PRE_FETCH_ENABLED =
+      "controller.dead.store.stats.pre.fetch.enabled";
+
+  /**
+   * (Only matters if CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED and CONTROLLER_DEAD_STORE_STATS_PRE_FETCH_ENABLED are true) Amount of time in milliseconds to wait before refetching the dead store stats
    */
   public static final String CONTROLLER_DEAD_STORE_STATS_PRE_FETCH_INTERVAL_MS =
       "controller.dead.store.stats.pre.fetch.interval.ms";
