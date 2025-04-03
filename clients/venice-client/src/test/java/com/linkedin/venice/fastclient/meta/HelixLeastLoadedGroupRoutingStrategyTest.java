@@ -57,5 +57,11 @@ public class HelixLeastLoadedGroupRoutingStrategyTest {
     assertEquals(strategy.getHelixGroupId(2, -1), 2);
     assertEquals(strategy.getHelixGroupId(3, -1), 0);
     assertEquals(strategy.getHelixGroupId(3, 0), 1);
+
+    // Retry should choose the least loaded group, but not the group chosen by the original request.
+    doReturn(5d).when(stats).getGroupResponseWaitingTimeAvg(0);
+    doReturn(12d).when(stats).getGroupResponseWaitingTimeAvg(1);
+    doReturn(12d).when(stats).getGroupResponseWaitingTimeAvg(2);
+    assertEquals(strategy.getHelixGroupId(1, 1), 0);
   }
 }

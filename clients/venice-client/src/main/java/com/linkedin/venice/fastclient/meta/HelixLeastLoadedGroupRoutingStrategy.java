@@ -51,7 +51,7 @@ public class HelixLeastLoadedGroupRoutingStrategy extends HelixGroupRoutingStrat
         // Skip the original request group to avoid routing back to the same group.
         continue;
       }
-      double avgGroupLatency = helixGroupStats.getGroupResponseWaitingTimeAvg(i);
+      double avgGroupLatency = helixGroupStats.getGroupResponseWaitingTimeAvg(tmpGroupId);
       if (avgGroupLatency <= 0) {
         // No datapoint, which means this group hasn't received any traffic so far, so just return it.
         return tmpGroupId;
@@ -68,8 +68,7 @@ public class HelixLeastLoadedGroupRoutingStrategy extends HelixGroupRoutingStrat
     final double minLatencyFinal = minLatency;
     groupLatencyMapping.forEach((groupIdTmp, avgLatency) -> {
       // Only consider groups that have a latency not more than 50% higher than the minimum latency
-      if (avgLatency <= minLatencyFinal * AVG_LATENCY_SPECTRUM_FOR_GROUP_SELECTION
-          && groupIdTmp != groupIdForOriginalRequest) {
+      if (avgLatency <= minLatencyFinal * AVG_LATENCY_SPECTRUM_FOR_GROUP_SELECTION) {
         candidateGroups.add(groupIdTmp);
       }
     });
