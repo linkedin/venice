@@ -25,6 +25,7 @@ import com.linkedin.davinci.ingestion.LagType;
 import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.davinci.schema.merge.MergeRecordHelper;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
@@ -495,9 +496,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           heartbeatMonitoringService.updateLagMonitor(
               getKafkaVersionTopic(),
               partitionConsumptionState.getPartition(),
-              heartbeatMonitoringService::addFollowerLagMonitor,
-              false,
-              "Pause state transition from STANDBY to LEADER for replica as this store is undergoing migration");
+              HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
           partitionConsumptionState.setLeaderFollowerState(PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER);
           LOGGER.warn(
               "State transition from STANDBY to LEADER is paused for replica: {} as this store is undergoing migration",
@@ -643,9 +642,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             heartbeatMonitoringService.updateLagMonitor(
                 getKafkaVersionTopic(),
                 partitionConsumptionState.getPartition(),
-                heartbeatMonitoringService::addLeaderLagMonitor,
-                false,
-                "Resumed state transition from STANDBY to LEADER for replica as store migration is done.");
+                HeartbeatLagMonitorAction.SET_LEADER_MONITOR);
             partitionConsumptionState.setLeaderFollowerState(IN_TRANSITION_FROM_STANDBY_TO_LEADER);
             LOGGER.info(
                 "Resumed state transition from STANDBY to LEADER for replica: {}",

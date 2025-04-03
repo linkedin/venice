@@ -12,8 +12,10 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
@@ -26,6 +28,7 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
+import java.time.Duration;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -175,13 +178,17 @@ public class HeartbeatMonitoringServiceTest {
     MetricsRepository mockMetricsRepository = new MetricsRepository();
     ReadOnlyStoreRepository mockReadOnlyRepository = mock(ReadOnlyStoreRepository.class);
     Mockito.when(mockReadOnlyRepository.getStoreOrThrow(TEST_STORE)).thenReturn(mockStore);
-
     Set<String> regions = new HashSet<>();
     regions.add(LOCAL_FABRIC);
     regions.add(REMOTE_FABRIC);
     regions.add(REMOTE_FABRIC + SEPARATE_TOPIC_SUFFIX);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    doReturn(regions).when(serverConfig).getRegionNames();
+    doReturn(LOCAL_FABRIC).when(serverConfig).getRegionName();
+    doReturn(Duration.ofSeconds(5)).when(serverConfig).getServerMaxWaitForVersionInfo();
+
     HeartbeatMonitoringService heartbeatMonitoringService =
-        new HeartbeatMonitoringService(mockMetricsRepository, mockReadOnlyRepository, regions, LOCAL_FABRIC, null);
+        new HeartbeatMonitoringService(mockMetricsRepository, mockReadOnlyRepository, serverConfig, null);
 
     // Let's emit some heartbeats that don't exist in the registry yet
     heartbeatMonitoringService.recordLeaderHeartbeat(TEST_STORE, 1, 0, LOCAL_FABRIC, 1000L, true);

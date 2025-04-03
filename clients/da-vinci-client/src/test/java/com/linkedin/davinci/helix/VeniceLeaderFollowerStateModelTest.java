@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
@@ -12,6 +13,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.venice.meta.Store;
@@ -19,6 +21,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.utils.Pair;
 import io.tehuti.metrics.MetricsRepository;
+import java.time.Duration;
 import java.util.HashSet;
 import java.util.concurrent.CompletableFuture;
 import org.mockito.Mockito;
@@ -31,12 +34,12 @@ public class VeniceLeaderFollowerStateModelTest extends
 
   @Override
   protected LeaderFollowerPartitionStateModel getParticipantStateModel() {
-    HeartbeatMonitoringService heartbeatMonitoringService = new HeartbeatMonitoringService(
-        new MetricsRepository(),
-        mockReadOnlyStoreRepository,
-        new HashSet<>(),
-        "local",
-        null);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    doReturn(new HashSet<>()).when(serverConfig).getRegionNames();
+    doReturn("local").when(serverConfig).getRegionName();
+    doReturn(Duration.ofSeconds(5)).when(serverConfig).getServerMaxWaitForVersionInfo();
+    HeartbeatMonitoringService heartbeatMonitoringService =
+        new HeartbeatMonitoringService(new MetricsRepository(), mockReadOnlyStoreRepository, serverConfig, null);
     spyHeartbeatMonitoringService = spy(heartbeatMonitoringService);
     return new LeaderFollowerPartitionStateModel(
         mockIngestionBackend,

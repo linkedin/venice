@@ -1,5 +1,6 @@
 package com.linkedin.davinci.stats.ingestion.heartbeat;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.ReplicaHeartbeatInfo;
 import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
@@ -17,7 +18,6 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import java.util.function.BiConsumer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -47,7 +47,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   public static final long DEFAULT_STALE_HEARTBEAT_LOG_THRESHOLD_MILLIS = TimeUnit.MINUTES.toMillis(10);
 
   private static final Logger LOGGER = LogManager.getLogger(HeartbeatMonitoringService.class);
-
   private final ReadOnlyStoreRepository metadataRepository;
   private final Thread reportingThread;
   private final Thread lagLoggingThread;
@@ -60,16 +59,16 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   private final Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> leaderHeartbeatTimeStamps;
   private final HeartbeatVersionedStats versionStatsReporter;
   private final HeartbeatMonitoringServiceStats heartbeatMonitoringServiceStats;
-  private final Duration serverMaxWaitForVersionInfo = Duration.ofMillis(5000);
+  private final Duration maxWaitForVersionInfo;
 
   public HeartbeatMonitoringService(
       MetricsRepository metricsRepository,
       ReadOnlyStoreRepository metadataRepository,
-      Set<String> regionNames,
-      String localRegionName,
+      VeniceServerConfig serverConfig,
       HeartbeatMonitoringServiceStats heartbeatMonitoringServiceStats) {
-    this.regionNames = regionNames;
-    this.localRegionName = localRegionName;
+    this.regionNames = serverConfig.getRegionNames();
+    this.localRegionName = serverConfig.getRegionName();
+    this.maxWaitForVersionInfo = serverConfig.getServerMaxWaitForVersionInfo();
     this.reportingThread = new HeartbeatReporterThread();
     this.lagLoggingThread = new HeartbeatLagLoggingThread();
     this.followerHeartbeatTimeStamps = new VeniceConcurrentHashMap<>();
@@ -285,6 +284,59 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     recordHeartbeat(store, version, partition, region, timestamp, followerHeartbeatTimeStamps, isReadyToServe, true);
   }
 
+  /**
+   * Update lag monitor for a given resource replica based on different heartbeat lag monitor action.
+   */
+  public void updateLagMonitor(
+      String resourceName,
+      int partitionId,
+      HeartbeatLagMonitorAction heartbeatLagMonitorAction) {
+    try {
+      String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+      int storeVersion = Version.parseVersionFromKafkaTopicName(resourceName);
+      Pair<Store, Version> res = metadataRepository.waitVersion(storeName, storeVersion, maxWaitForVersionInfo, 200);
+      Store store = res.getFirst();
+      Version version = res.getSecond();
+      if (store == null) {
+        logger.error(
+            "Failed to get store for resource: {} with trigger: {}. Will not update lag monitor.",
+            Utils.getReplicaId(resourceName, partitionId),
+            heartbeatLagMonitorAction.getTrigger());
+        return;
+      }
+      if (version == null) {
+        if (!HeartbeatLagMonitorAction.REMOVE_MONITOR.equals(heartbeatLagMonitorAction)) {
+          logger.error(
+              "Failed to get version for resource: {} with trigger: {}. Will not update lag monitor.",
+              Utils.getReplicaId(resourceName, partitionId),
+              heartbeatLagMonitorAction.getTrigger());
+          return;
+        }
+        // During version deletion, the version will be deleted from ZK prior to servers perform resource deletion.
+        // It's valid to have null version when trying to remove lag monitor for the deleted resource.
+        version = new VersionImpl(storeName, storeVersion, "");
+      }
+      switch (heartbeatLagMonitorAction) {
+        case SET_LEADER_MONITOR:
+          addLeaderLagMonitor(version, partitionId);
+          break;
+        case SET_FOLLOWER_MONITOR:
+          addFollowerLagMonitor(version, partitionId);
+          break;
+        case REMOVE_MONITOR:
+          removeLagMonitor(version, partitionId);
+          break;
+        default:
+      }
+    } catch (Exception e) {
+      logger.error(
+          "Failed to update lag monitor for replica: {} with trigger: {}",
+          Utils.getReplicaId(resourceName, partitionId),
+          heartbeatLagMonitorAction.getTrigger(),
+          e);
+    }
+  }
+
   private void recordHeartbeat(
       String store,
       int version,
@@ -299,7 +351,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         perVersionMap.computeIfPresent(version, (versionKey, perPartitionMap) -> {
           perPartitionMap.computeIfPresent(partition, (partitionKey, perRegionMap) -> {
             // If we are retaining only the highest timestamp for a given heartbeat, if the current held heartbeat
-            // is of a higher value AND was an entry was consumed (not a place holder value by the process) then
+            // is of a higher value AND was an entry was consumed (not a placeholder value by the process) then
             // we will No-Op in favor of retaining that higher timestamp. This behavior is specific to follower
             // nodes because the intent of this metric is to only show the lag of the follower relative to the leader
             if (retainHighestTimeStamp && perRegionMap.get(region) != null
@@ -383,48 +435,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
           }
         }
       }
-    }
-  }
-
-  public void updateLagMonitor(
-      String resourceName,
-      int partitionId,
-      BiConsumer<Version, Integer> lagMonFunction,
-      boolean isNullVersionValid,
-      String trigger) {
-    try {
-      String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
-      int storeVersion = Version.parseVersionFromKafkaTopicName(resourceName);
-      Pair<Store, Version> res =
-          metadataRepository.waitVersion(storeName, storeVersion, serverMaxWaitForVersionInfo, 200);
-      Store store = res.getFirst();
-      Version version = res.getSecond();
-      if (store == null) {
-        logger.error(
-            "Failed to get store for resource: {} with trigger: {}. Will not update lag monitor.",
-            Utils.getReplicaId(resourceName, partitionId),
-            trigger);
-        return;
-      }
-      if (version == null && !isNullVersionValid) {
-        logger.error(
-            "Failed to get version for resource: {} with trigger: {}. Will not update lag monitor.",
-            Utils.getReplicaId(resourceName, partitionId),
-            trigger);
-        return;
-      }
-      if (version == null) {
-        // During version deletion, the version will be deleted from ZK prior to servers perform resource deletion.
-        // It's valid to have null version when trying to remove lag monitor for the deleted resource.
-        version = new VersionImpl(storeName, storeVersion, "");
-      }
-      lagMonFunction.accept(version, partitionId);
-    } catch (Exception e) {
-      logger.error(
-          "Failed to update lag monitor for replica: {} with trigger: {}",
-          Utils.getReplicaId(resourceName, partitionId),
-          trigger,
-          e);
     }
   }
 

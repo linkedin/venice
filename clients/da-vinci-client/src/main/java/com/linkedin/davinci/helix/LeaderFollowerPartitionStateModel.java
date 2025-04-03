@@ -4,6 +4,7 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -36,7 +37,7 @@ import org.apache.helix.participant.statemachine.Transition;
  * There is an optional latch between Offline to Follower transition. The latch is only placed if the
  * version state model served is the current version. (During cluster rebalancing or SN rebouncing)
  * Since Helix rebalancer only refers to state model to determine the rebalancing time. The latch is
- * a safe guard to prevent Helix "over-rebalancing" the cluster and failing the read traffic. The
+ * a safeguard to prevent Helix "over-rebalancing" the cluster and failing the read traffic. The
  * latch is released when ingestion has caught up the lag or the ingestion has reached the last known
  * offset of VT.
  */
@@ -117,12 +118,8 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       if (isRegularStoreCurrentVersion) {
         waitConsumptionCompleted(resourceName, notifier);
       }
-      heartbeatMonitoringService.updateLagMonitor(
-          message.getResourceName(),
-          getPartition(),
-          heartbeatMonitoringService::addFollowerLagMonitor,
-          false,
-          messageToString(message));
+      heartbeatMonitoringService
+          .updateLagMonitor(message.getResourceName(), getPartition(), HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
     });
   }
 
@@ -131,15 +128,11 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
     LeaderSessionIdChecker checker = new LeaderSessionIdChecker(leaderSessionId.incrementAndGet(), leaderSessionId);
     /**
      * We set up the lag monitor first for leader transitions because we want to monitor the amount of time
-     * where a slice doesn't have a replicating leader.  While this state transition executes, there should be no
+     * when a slice doesn't have a replicating leader.  While this state transition executes, there should be no
      * other leader in the slice.
      */
-    heartbeatMonitoringService.updateLagMonitor(
-        message.getResourceName(),
-        getPartition(),
-        heartbeatMonitoringService::addLeaderLagMonitor,
-        false,
-        messageToString(message));
+    heartbeatMonitoringService
+        .updateLagMonitor(message.getResourceName(), getPartition(), HeartbeatLagMonitorAction.SET_LEADER_MONITOR);
     executeStateTransition(
         message,
         context,
@@ -150,12 +143,8 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.LEADER_STATE)
   public void onBecomeStandbyFromLeader(Message message, NotificationContext context) {
     LeaderSessionIdChecker checker = new LeaderSessionIdChecker(leaderSessionId.incrementAndGet(), leaderSessionId);
-    heartbeatMonitoringService.updateLagMonitor(
-        message.getResourceName(),
-        getPartition(),
-        heartbeatMonitoringService::addFollowerLagMonitor,
-        false,
-        messageToString(message));
+    heartbeatMonitoringService
+        .updateLagMonitor(message.getResourceName(), getPartition(), HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
     executeStateTransition(
         message,
         context,
@@ -165,12 +154,8 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
 
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeOfflineFromStandby(Message message, NotificationContext context) {
-    heartbeatMonitoringService.updateLagMonitor(
-        message.getResourceName(),
-        getPartition(),
-        heartbeatMonitoringService::removeLagMonitor,
-        true,
-        messageToString(message));
+    heartbeatMonitoringService
+        .updateLagMonitor(message.getResourceName(), getPartition(), HeartbeatLagMonitorAction.REMOVE_MONITOR);
     executeStateTransition(message, context, () -> stopConsumption(true));
   }
 
@@ -233,10 +218,6 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   public void onBecomeOfflineFromError(Message message, NotificationContext context) {
     // Venice is not supporting automatically partition recovery. No-oped here.
     logger.warn("unexpected state transition from ERROR to OFFLINE");
-  }
-
-  private String messageToString(Message message) {
-    return message.getFromState() + "->" + message.getToState();
   }
 
   /**
