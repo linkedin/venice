@@ -777,7 +777,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             consumerSubscribe(
                 currentLeaderTopic,
                 partitionConsumptionState,
-                getLocalVtSubscribeOffset(partitionConsumptionState),
+                partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset(),
                 localKafkaServer);
           }
 
@@ -4192,12 +4192,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     LOGGER.info(
         "Follower replica: {} unsubscribe finished for future resubscribe.",
         partitionConsumptionState.getReplicaId());
-    long subscribeOffset = getLocalVtSubscribeOffset(partitionConsumptionState);
-    consumerSubscribe(versionTopic, partitionConsumptionState, subscribeOffset, localKafkaServer);
+    consumerSubscribe(
+        versionTopic,
+        partitionConsumptionState,
+        partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset(),
+        localKafkaServer);
     LOGGER.info(
         "Follower replica: {} resubscribe to offset: {}",
         partitionConsumptionState.getReplicaId(),
-        subscribeOffset);
+        partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset());
   }
 
   protected void resubscribeAsLeader(PartitionConsumptionState partitionConsumptionState) throws InterruptedException {

@@ -2294,14 +2294,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
 
-        /**
-         * TODO:
-         * 'kafkaDataIntegrityValidator' is used by drainer threads and we need to transfer its full responsibility to the
-         * consumer DIV which resides in the consumer thread and then gradually retire the use of drainer DIV.
-         * However, given that DIV heartbeat is yet implemented, so keep drainer DIV the way as is today and let the
-         * VERSION_TOPIC to contain both rt and vt messages.
-         */
-        drainerDiv.setPartitionState(PartitionTracker.VERSION_TOPIC, partition, offsetRecord);
+        // Load the VT segments from the offset record into the appropriate data integrity validator
+        final KafkaDataIntegrityValidator div = (isGlobalRtDivEnabled()) ? consumerDiv : drainerDiv;
+        div.setPartitionState(PartitionTracker.VERSION_TOPIC, partition, offsetRecord);
 
         long consumptionStatePrepTimeStart = System.currentTimeMillis();
         if (!checkDatabaseIntegrity(partition, topic, offsetRecord, newPartitionConsumptionState)) {

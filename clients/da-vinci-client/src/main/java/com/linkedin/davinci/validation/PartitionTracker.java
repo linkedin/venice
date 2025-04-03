@@ -139,8 +139,15 @@ public class PartitionTracker {
   public void setPartitionState(TopicType type, OffsetRecord offsetRecord, long maxAgeInMs) {
     long minimumRequiredRecordProducerTimestamp =
         maxAgeInMs == DISABLED ? DISABLED : offsetRecord.getMaxMessageTimeInMs() - maxAgeInMs;
+    setPartitionState(type, offsetRecord.getProducerPartitionStateMap(), minimumRequiredRecordProducerTimestamp);
+  }
+
+  public void setPartitionState(
+      TopicType type,
+      Map<CharSequence, ProducerPartitionState> producerPartitionStateMap,
+      long minimumRequiredRecordProducerTimestamp) {
     Iterator<Map.Entry<CharSequence, ProducerPartitionState>> iterator =
-        offsetRecord.getProducerPartitionStateMap().entrySet().iterator();
+        producerPartitionStateMap.entrySet().iterator();
     Map.Entry<CharSequence, ProducerPartitionState> entry;
     GUID producerGuid;
     ProducerPartitionState producerPartitionState;
