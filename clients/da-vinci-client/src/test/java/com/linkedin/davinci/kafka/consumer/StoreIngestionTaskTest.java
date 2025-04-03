@@ -2252,8 +2252,7 @@ public abstract class StoreIngestionTaskTest {
       waitForNonDeterministicCompletion(
           TEST_TIMEOUT_MS,
           TimeUnit.MILLISECONDS,
-          () -> !storeIngestionTaskUnderTest.hasAnySubscription()
-              && !storeIngestionTaskUnderTest.hasAnyPendingSubscription());
+          () -> !storeIngestionTaskUnderTest.hasAnySubscription());
       // Verify offset has not been processed. Because consumption task should process kill action at first.
       // offSetManager.clearOffset should only be invoked one time during clean up after killing this task.
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).clearOffset(topic, PARTITION_FOO);
@@ -4392,7 +4391,7 @@ public abstract class StoreIngestionTaskTest {
       TestUtils.waitForNonDeterministicAssertion(
           5,
           TimeUnit.SECONDS,
-          () -> assertTrue(storeIngestionTaskUnderTest.hasAnySubscription()));
+          () -> assertFalse(storeIngestionTaskUnderTest.getPartitionConsumptionStateMap().isEmpty()));
 
       Runnable produce = () -> {
         try {
@@ -4961,7 +4960,7 @@ public abstract class StoreIngestionTaskTest {
       TestUtils.waitForNonDeterministicAssertion(
           5,
           TimeUnit.SECONDS,
-          () -> assertTrue(storeIngestionTaskUnderTest.hasAnySubscription()));
+          () -> assertFalse(storeIngestionTaskUnderTest.getPartitionConsumptionStateMap().isEmpty()));
 
       try {
         storeIngestionTaskUnderTest.produceToStoreBufferService(
@@ -5043,7 +5042,7 @@ public abstract class StoreIngestionTaskTest {
       TestUtils.waitForNonDeterministicAssertion(
           5,
           TimeUnit.SECONDS,
-          () -> assertTrue(storeIngestionTaskUnderTest.hasAnySubscription()));
+          () -> assertFalse(storeIngestionTaskUnderTest.getPartitionConsumptionStateMap().isEmpty()));
 
       try {
         storeIngestionTaskUnderTest.produceToStoreBufferService(
@@ -5113,7 +5112,7 @@ public abstract class StoreIngestionTaskTest {
       TestUtils.waitForNonDeterministicAssertion(
           5,
           TimeUnit.SECONDS,
-          () -> assertTrue(storeIngestionTaskUnderTest.hasAnySubscription()));
+          () -> assertFalse(storeIngestionTaskUnderTest.getPartitionConsumptionStateMap().isEmpty()));
 
       try {
         storeIngestionTaskUnderTest.produceToStoreBufferService(
@@ -5178,7 +5177,7 @@ public abstract class StoreIngestionTaskTest {
           TestUtils.waitForNonDeterministicAssertion(
               5,
               TimeUnit.SECONDS,
-              () -> assertTrue(storeIngestionTaskUnderTest.hasAnySubscription()));
+              () -> assertFalse(storeIngestionTaskUnderTest.getPartitionConsumptionStateMap().isEmpty()));
 
           for (DefaultPubSubMessage message: messages) {
             try {

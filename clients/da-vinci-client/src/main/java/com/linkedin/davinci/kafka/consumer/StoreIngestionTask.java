@@ -4819,6 +4819,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.versionRole = versionRole;
   }
 
+  // For testing only
+  Map<Integer, PartitionConsumptionState> getPartitionConsumptionStateMap() {
+    return partitionConsumptionStateMap;
+  }
+
   boolean isDaVinciClient() {
     return isDaVinciClient;
   }
