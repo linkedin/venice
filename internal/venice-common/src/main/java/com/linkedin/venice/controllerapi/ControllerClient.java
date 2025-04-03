@@ -1412,6 +1412,23 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION, params, AdminTopicMetadataResponse.class);
   }
 
+  public AdminOperationProtocolVersionControllerResponse getAdminOperationProtocolVersionFromControllers(
+      String clusterName) {
+    QueryParams params = newParams().add(CLUSTER, clusterName);
+    return request(
+        ControllerRoute.GET_ADMIN_OPERATION_VERSION_FROM_CONTROLLERS,
+        params,
+        AdminOperationProtocolVersionControllerResponse.class);
+  }
+
+  public AdminOperationProtocolVersionControllerResponse getLocalAdminOperationProtocolVersion() {
+    // TODO: Modify this method to send to given controller url
+    return request(
+        ControllerRoute.GET_LOCAL_ADMIN_OPERATION_PROTOCOL_VERSION,
+        newParams(),
+        AdminOperationProtocolVersionControllerResponse.class);
+  }
+
   public ControllerResponse deleteKafkaTopic(String topicName) {
     QueryParams params = newParams().add(TOPIC, topicName);
     return request(ControllerRoute.DELETE_KAFKA_TOPIC, params, ControllerResponse.class);

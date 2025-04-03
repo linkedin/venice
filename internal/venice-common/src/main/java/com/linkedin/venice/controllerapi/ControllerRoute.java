@@ -293,8 +293,13 @@ public enum ControllerRoute {
   UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION(
       "/update_admin_operation_protocol_version", HttpMethod.POST,
       Arrays.asList(CLUSTER, ADMIN_OPERATION_PROTOCOL_VERSION)
+  ),
+  GET_ADMIN_OPERATION_VERSION_FROM_CONTROLLERS(
+      "/get_admin_operation_version_from_controllers", HttpMethod.GET, Collections.singletonList(CLUSTER)
+  ),
+  GET_LOCAL_ADMIN_OPERATION_PROTOCOL_VERSION(
+      "/get_local_admin_operation_protocol_version", HttpMethod.GET, Collections.emptyList()
   ), DELETE_KAFKA_TOPIC("/delete_kafka_topic", HttpMethod.POST, Arrays.asList(CLUSTER, TOPIC)),
-
   CREATE_STORAGE_PERSONA(
       "/create_storage_persona", HttpMethod.POST,
       Arrays.asList(CLUSTER, PERSONA_NAME, PERSONA_QUOTA, PERSONA_STORES, PERSONA_OWNERS)

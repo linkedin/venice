@@ -61,12 +61,14 @@ import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
+import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.logcompaction.LogCompactionService;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
+import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerRoute;
@@ -7240,6 +7242,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public Instance getLeaderController(String clusterName) {
+    List<Instance> leaderControllers = getControllersByHelixState(clusterName, HelixState.LEADER_STATE);
+    return leaderControllers.get(0);
+  }
+
+  /**
+   * Get controllers instance based on the given helix state.
+   * We look at the external view of the controller cluster to find the venice controller by the wanted state.
+   */
+  public List<Instance> getControllersByHelixState(String clusterName, String helixState) {
+    // Validate helix state
+    if (!HelixState.isValidHelixState(helixState)) {
+      throw new VeniceException("Invalid Helix state: " + helixState);
+    }
+
     if (!multiClusterConfigs.getClusters().contains(clusterName)) {
       throw new VeniceNoClusterException(clusterName);
     }
@@ -7248,35 +7264,44 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     String partitionName = HelixUtils.getPartitionName(clusterName, 0);
     for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
       ExternalView externalView = helixManager.getHelixDataAccessor().getProperty(keyBuilder.externalView(clusterName));
+      List<Instance> controllers = new ArrayList<>();
       if (externalView == null || externalView.getStateMap(partitionName) == null) {
         // Assignment is incomplete, try again later
         continue;
       }
       Map<String, String> veniceClusterStateMap = externalView.getStateMap(partitionName);
       for (Map.Entry<String, String> instanceNameAndState: veniceClusterStateMap.entrySet()) {
-        if (instanceNameAndState.getValue().equals(HelixState.LEADER_STATE)) {
-          // Found the Venice controller leader
+        if (instanceNameAndState.getValue().equals(helixState)) {
+          // Found the Venice controller, adding to the return list
           String id = instanceNameAndState.getKey();
-          return new Instance(
-              id,
-              Utils.parseHostFromHelixNodeIdentifier(id),
-              Utils.parsePortFromHelixNodeIdentifier(id),
-              multiClusterConfigs.getAdminSecurePort(),
-              multiClusterConfigs.getAdminGrpcPort(),
-              multiClusterConfigs.getAdminSecureGrpcPort());
+          controllers.add(
+              new Instance(
+                  id,
+                  Utils.parseHostFromHelixNodeIdentifier(id),
+                  Utils.parsePortFromHelixNodeIdentifier(id),
+                  multiClusterConfigs.getAdminSecurePort(),
+                  multiClusterConfigs.getAdminGrpcPort(),
+                  multiClusterConfigs.getAdminSecureGrpcPort()));
         }
       }
+
+      // Return the controllers if found
+      if (!controllers.isEmpty()) {
+        return controllers;
+      }
+
       if (attempt < maxAttempts) {
         LOGGER.warn(
-            "Venice controller leader does not exist for cluster: {}, attempt: {}/{}",
+            "Venice controller with state {} does not exist for cluster: {}, attempt: {}/{}",
+            helixState,
             clusterName,
             attempt,
             maxAttempts);
         Utils.sleep(5 * Time.MS_PER_SECOND);
       }
     }
-    String message =
-        "Unable to find Venice controller leader for cluster: " + clusterName + " after " + maxAttempts + " attempts";
+    String message = "Unable to find Venice controller" + helixState + "for cluster: " + clusterName + " after "
+        + maxAttempts + " attempts";
     LOGGER.error(message);
     throw new VeniceException(message);
   }
@@ -7647,6 +7672,51 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public void updateAdminOperationProtocolVersion(String clusterName, Long adminOperationProtocolVersion) {
     throw new VeniceUnsupportedOperationException(
         "updateAdminOperationProtocolVersion is not supported for child controller");
+  }
+
+  /**
+   * Get the admin operation protocol versions from controllers (leader + standby) for specific cluster.
+   * @param clusterName: the cluster name
+   * @return map (url: version). Example: {http://localhost:1234=1, http://localhost:1235=1}
+   */
+  @Override
+  public Map<String, Long> getAdminOperationVersionFromControllers(String clusterName) {
+    checkControllerLeadershipFor(clusterName);
+
+    Map<String, Long> UrlToAdminVersionMap = new HashMap<>();
+
+    // Get the version from the current controller - leader
+    String leaderControllerUrl = getLeaderController(clusterName).getUrl(false);
+    UrlToAdminVersionMap.put(leaderControllerUrl, getLocalAdminOperationProtocolVersion());
+
+    // Get version for standby controllers
+    List<Instance> standbyControllers = getControllersByHelixState(clusterName, HelixState.STANDBY_STATE);
+    for (Instance standbyController: standbyControllers) {
+      String standbyControllerUrl = standbyController.getUrl(false);
+
+      ControllerClient controllerClient =
+          ControllerClient.constructClusterControllerClient(clusterName, standbyControllerUrl, sslFactory);
+
+      // send controller client to get the admin operation protocol version from standby controller
+      AdminOperationProtocolVersionControllerResponse response =
+          controllerClient.getLocalAdminOperationProtocolVersion();
+      if (response.isError()) {
+        throw new VeniceException(
+            "Failed to get admin operation protocol version from standby controller: " + standbyControllerUrl
+                + ", error message: " + response.getError());
+      }
+      UrlToAdminVersionMap.put(response.getRequestUrl(), response.getLocalAdminOperationProtocolVersion());
+    }
+
+    return UrlToAdminVersionMap;
+  }
+
+  /**
+   * Get the local admin operation protocol version.
+   */
+  @Override
+  public long getLocalAdminOperationProtocolVersion() {
+    return AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
   }
 
   /**
