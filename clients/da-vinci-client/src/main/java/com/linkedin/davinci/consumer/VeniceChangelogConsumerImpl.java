@@ -104,7 +104,7 @@ import org.apache.logging.log4j.Logger;
 public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceChangelogConsumerImpl.class);
   private static final int MAX_SUBSCRIBE_RETRIES = 5;
-  private static final String ROCKSDB_BUFFER_FOLDER = "rocksdb-chunk-buffer";
+  private static final String ROCKSDB_BUFFER_FOLDER_PREFIX = "rocksdb-chunk-buffer-";
   protected long subscribeTime = Long.MAX_VALUE;
 
   protected final ReadWriteLock subscriptionLock = new ReentrantReadWriteLock();
@@ -191,8 +191,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         throw new VeniceException("bootstrapFileSystemPath must be configured for consuming view store: " + storeName);
       }
       // Create a new folder in user provided path so if the path contains other important files we don't drop it.
-      rocksDBBufferProperties
-          .put(DATA_BASE_PATH, RocksDBUtils.composeStoreDbDir(rocksDBBufferPath, ROCKSDB_BUFFER_FOLDER));
+      rocksDBBufferProperties.put(
+          DATA_BASE_PATH,
+          RocksDBUtils.composeStoreDbDir(
+              rocksDBBufferPath,
+              ROCKSDB_BUFFER_FOLDER_PREFIX + changelogClientConfig.getConsumerName()));
       // These properties are required to build a VeniceServerConfig but is never used by RocksDBStorageEngineFactory.
       // Instead of setting these configs, we could refactor RocksDBStorageEngineFactory to take a more generic config.
       rocksDBBufferProperties.put(CLUSTER_NAME, "");

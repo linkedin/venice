@@ -13,7 +13,6 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -40,7 +39,8 @@ public class TestViewWriter extends VeniceViewWriter {
       int newValueSchemaId,
       int oldValueSchemaId,
       GenericRecord replicationMetadataRecord,
-      Lazy<GenericRecord> valueProvider) {
+      Lazy<GenericRecord> valueProvider,
+      Lazy<GenericRecord> oldValueProvider) {
     internalView.incrementRecordCount(storeName);
     return CompletableFuture.completedFuture(null);
 
@@ -51,8 +51,8 @@ public class TestViewWriter extends VeniceViewWriter {
       ByteBuffer newValue,
       byte[] key,
       int newValueSchemaId,
-      Set<Integer> viewPartitionSet,
-      Lazy<GenericRecord> newValueProvider) {
+      Lazy<GenericRecord> newValueProvider,
+      Lazy<GenericRecord> oldValueProvider) {
     internalView.incrementRecordCount(storeName);
     return CompletableFuture.completedFuture(null);
   }

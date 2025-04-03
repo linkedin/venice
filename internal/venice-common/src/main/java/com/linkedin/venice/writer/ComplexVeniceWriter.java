@@ -1,23 +1,23 @@
 package com.linkedin.venice.writer;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.protocol.Put;
-import com.linkedin.venice.kafka.protocol.enums.MessageType;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.ComplexVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
+import com.linkedin.venice.utils.AvroRecordUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.VeniceView;
-import java.util.Set;
+import com.linkedin.venice.views.ViewUtils;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -29,6 +29,8 @@ import org.apache.avro.generic.GenericRecord;
 public class ComplexVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
   private final ComplexVenicePartitioner complexPartitioner;
   private final String viewName;
+  private GenericRecord reusableProjectionRecord = null;
+  private Function<GenericRecord, V> projectionSerializerAndCompressor;
 
   public ComplexVeniceWriter(
       VeniceWriterOptions params,
@@ -43,6 +45,14 @@ public class ComplexVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
     // For now, we expect ComplexVeniceWriter to be used only for writing to MaterializedView
     viewName =
         VeniceView.getViewNameFromViewStoreName(VeniceView.parseStoreAndViewFromViewTopic(params.getTopicName()));
+  }
+
+  public void configureWriterForProjection(
+      String projectionSchemaString,
+      Function<GenericRecord, V> projectionSerializerAndCompressor) {
+    Schema schema = new Schema.Parser().parse(projectionSchemaString);
+    this.reusableProjectionRecord = new GenericData.Record(schema);
+    this.projectionSerializerAndCompressor = projectionSerializerAndCompressor;
   }
 
   public CompletableFuture<Void> complexPut(K key, V value, int valueSchemaId, Lazy<GenericRecord> valueProvider) {
@@ -64,14 +74,26 @@ public class ComplexVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
       PutMetadata putMetadata) {
     CompletableFuture<Void> finalCompletableFuture = new CompletableFuture<>();
     if (value == null) {
-      // Ignore null value
       throw new VeniceException("Put value should not be null");
     } else {
+      V finalValue;
+      if (reusableProjectionRecord != null) {
+        AvroRecordUtils.clearRecord(reusableProjectionRecord);
+        GenericRecord record = valueProvider.get();
+        if (record == null) {
+          throw new VeniceException("Projection failed due to unexpected null value for view: " + getViewName());
+        }
+        ViewUtils.project(record, reusableProjectionRecord);
+        finalValue = projectionSerializerAndCompressor.apply(reusableProjectionRecord);
+      } else {
+        // No projection
+        finalValue = value;
+      }
       // Write updated/put record to materialized view topic partition(s)
       byte[] serializedKey = keySerializer.serialize(topicName, key);
       if (complexPartitioner == null) {
         // No VeniceComplexPartitioner involved, perform simple put.
-        byte[] serializedValue = valueSerializer.serialize(topicName, value);
+        byte[] serializedValue = valueSerializer.serialize(topicName, finalValue);
         int partition = getPartition(serializedKey);
         propagateVeniceWriterFuture(
             put(serializedKey, serializedValue, partition, valueSchemaId, callback, putMetadata),
@@ -84,7 +106,7 @@ public class ComplexVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
         if (partitions.length == 0) {
           finalCompletableFuture.complete(null);
         } else {
-          byte[] serializedValue = valueSerializer.serialize(topicName, value);
+          byte[] serializedValue = valueSerializer.serialize(topicName, finalValue);
           performMultiPartitionAction(
               partitions,
               finalCompletableFuture,
@@ -95,38 +117,6 @@ public class ComplexVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
         }
       }
     }
-    return finalCompletableFuture;
-  }
-
-  /**
-   * Used during NR pass-through in remote region to forward records or chunks of records to corresponding view
-   * partition based on provided view partition map. This way the producing leader don't need to worry about large
-   * record assembly or chunking for view topic(s) when ingesting from source VT during NR pass-through. It's also
-   * expected to receive an empty partition set and in which case it's a no-op and we simply return a completed future.
-   * This is a valid use case since certain complex partitioner implementation could filter out records based on value
-   * fields and return an empty partition.
-   */
-  public CompletableFuture<Void> forwardPut(K key, V value, int valueSchemaId, Set<Integer> partitions) {
-    if (partitions.isEmpty()) {
-      return CompletableFuture.completedFuture(null);
-    }
-    byte[] serializedKey = keySerializer.serialize(topicName, key);
-    byte[] serializedValue = valueSerializer.serialize(topicName, value);
-    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, serializedKey);
-    Put putPayload = buildPutPayload(serializedValue, valueSchemaId, null);
-    int[] partitionArray = partitions.stream().mapToInt(i -> i).toArray();
-    CompletableFuture<Void> finalCompletableFuture = new CompletableFuture<>();
-    performMultiPartitionAction(
-        partitionArray,
-        finalCompletableFuture,
-        (partition) -> sendMessage(
-            producerMetadata -> kafkaKey,
-            MessageType.PUT,
-            putPayload,
-            partition,
-            null,
-            DEFAULT_LEADER_METADATA_WRAPPER,
-            APP_DEFAULT_LOGICAL_TS));
     return finalCompletableFuture;
   }
 

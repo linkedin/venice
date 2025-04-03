@@ -5,19 +5,30 @@ import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_VIEW_PA
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.writer.ComplexVeniceWriter;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
 
 
 public class ViewUtils {
@@ -110,5 +121,104 @@ public class ViewUtils {
     } catch (JsonProcessingException e) {
       throw new VeniceException("Failed to serialize view destination partition map", e);
     }
+  }
+
+  /**
+   * This uses {@link com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper} for field extraction. Therefor it
+   * has the same limitations as regular read compute where for Avro-1.9 or above we cannot guarantee the extracted
+   * field will be exactly the same as existing field in terms of default value. Since the extracted default value will
+   * be in Java format. This shouldn't be an issue for most use cases, but it's something worth to keep in mind about.
+   */
+  public static String validateAndGenerateProjectionSchema(
+      Schema latestValueSchema,
+      Set<String> projectionFields,
+      String generatedSchemaName) {
+    if (latestValueSchema == null) {
+      throw new IllegalArgumentException("Latest value schema cannot be null");
+    }
+    List<Schema.Field> projectionSchemaFields = new LinkedList<>();
+
+    for (String fieldName: projectionFields) {
+      Schema.Field field = latestValueSchema.getField(fieldName);
+      if (field == null) {
+        throw new VeniceException("Field: " + fieldName + " does not exist in latest value schema");
+      }
+      if (!field.hasDefaultValue()) {
+        throw new VeniceException("Default value is required for field: " + fieldName);
+      }
+      projectionSchemaFields.add(AvroCompatibilityHelper.newField(field).setDoc("").build());
+    }
+
+    Schema generatedProjectionSchema =
+        Schema.createRecord(generatedSchemaName, "", latestValueSchema.getNamespace(), false);
+    generatedProjectionSchema.setFields(projectionSchemaFields);
+    return generatedProjectionSchema.toString();
+  }
+
+  public static void validateFilterByFields(Schema latestValueSchema, Set<String> filterByFields) {
+    if (latestValueSchema == null) {
+      throw new IllegalArgumentException("Latest value schema cannot be null");
+    }
+    for (String fieldName: filterByFields) {
+      Schema.Field field = latestValueSchema.getField(fieldName);
+      if (field == null) {
+        throw new VeniceException("Field: " + fieldName + " does not exist in latest value schema");
+      }
+    }
+  }
+
+  public static void project(GenericRecord inputRecord, GenericRecord resultRecord) {
+    Schema.Field inputRecordField;
+    for (Schema.Field field: resultRecord.getSchema().getFields()) {
+      inputRecordField = inputRecord.getSchema().getField(field.name());
+      if (inputRecordField != null) {
+        resultRecord.put(field.pos(), inputRecord.get(inputRecordField.pos()));
+      }
+    }
+  }
+
+  /**
+   * @param oldValue of the record
+   * @param newValue of the record
+   * @param filterByFields to perform change filter on
+   * @return boolean to decide on the filter result. i.e. true is to keep and false is to be filtered .
+   */
+  public static boolean changeFilter(
+      GenericRecord oldValue,
+      GenericRecord newValue,
+      List<String> filterByFields,
+      String viewName) {
+    if (oldValue == null) {
+      return true;
+    }
+    if (newValue == null) {
+      throw new VeniceException("Cannot perform filter because new value is null for view: " + viewName);
+    }
+    boolean changed = false;
+    for (String fieldName: filterByFields) {
+      Schema fieldSchema = oldValue.getSchema().getField(fieldName).schema();
+      if (GenericData.get().compare(oldValue.get(fieldName), newValue.get(fieldName), fieldSchema) != 0) {
+        changed = true;
+        break;
+      }
+    }
+    return changed;
+  }
+
+  public static void configureWriterForProjection(
+      ComplexVeniceWriter<byte[], byte[], byte[]> complexVeniceWriter,
+      String viewName,
+      Lazy<VeniceCompressor> compressor,
+      String projectionSchemaString) {
+    Schema projectionSchema = new Schema.Parser().parse(projectionSchemaString);
+    Lazy<RecordSerializer<GenericRecord>> serializer =
+        Lazy.of(() -> FastSerializerDeserializerFactory.getFastAvroGenericSerializer(projectionSchema));
+    complexVeniceWriter.configureWriterForProjection(projectionSchemaString, (projectionRecord) -> {
+      try {
+        return compressor.get().compress(serializer.get().serialize(projectionRecord));
+      } catch (IOException e) {
+        throw new VeniceException("Projection failed due to compression error for view: " + viewName, e);
+      }
+    });
   }
 }
