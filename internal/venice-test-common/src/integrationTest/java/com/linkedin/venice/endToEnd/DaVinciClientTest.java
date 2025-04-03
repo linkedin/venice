@@ -1401,7 +1401,7 @@ public class DaVinciClientTest {
         Integer.toString(port2),
         storageClass,
         "false",
-        "false");
+        "true");
 
     // Wait for the first DaVinci Client to complete ingestion
     Thread.sleep(60000);
