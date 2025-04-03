@@ -6,14 +6,18 @@ import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import java.time.Duration;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiConsumer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -56,6 +60,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   private final Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> leaderHeartbeatTimeStamps;
   private final HeartbeatVersionedStats versionStatsReporter;
   private final HeartbeatMonitoringServiceStats heartbeatMonitoringServiceStats;
+  private final Duration serverMaxWaitForVersionInfo = Duration.ofMillis(5000);
 
   public HeartbeatMonitoringService(
       MetricsRepository metricsRepository,
@@ -378,6 +383,48 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
           }
         }
       }
+    }
+  }
+
+  public void updateLagMonitor(
+      String resourceName,
+      int partitionId,
+      BiConsumer<Version, Integer> lagMonFunction,
+      boolean isNullVersionValid,
+      String trigger) {
+    try {
+      String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+      int storeVersion = Version.parseVersionFromKafkaTopicName(resourceName);
+      Pair<Store, Version> res =
+          metadataRepository.waitVersion(storeName, storeVersion, serverMaxWaitForVersionInfo, 200);
+      Store store = res.getFirst();
+      Version version = res.getSecond();
+      if (store == null) {
+        logger.error(
+            "Failed to get store for resource: {} with trigger: {}. Will not update lag monitor.",
+            Utils.getReplicaId(resourceName, partitionId),
+            trigger);
+        return;
+      }
+      if (version == null && !isNullVersionValid) {
+        logger.error(
+            "Failed to get version for resource: {} with trigger: {}. Will not update lag monitor.",
+            Utils.getReplicaId(resourceName, partitionId),
+            trigger);
+        return;
+      }
+      if (version == null) {
+        // During version deletion, the version will be deleted from ZK prior to servers perform resource deletion.
+        // It's valid to have null version when trying to remove lag monitor for the deleted resource.
+        version = new VersionImpl(storeName, storeVersion, "");
+      }
+      lagMonFunction.accept(version, partitionId);
+    } catch (Exception e) {
+      logger.error(
+          "Failed to update lag monitor for replica: {} with trigger: {}",
+          Utils.getReplicaId(resourceName, partitionId),
+          trigger,
+          e);
     }
   }
 

@@ -492,6 +492,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           return;
         }
         if (store.isMigrationDuplicateStore()) {
+          heartbeatMonitoringService.updateLagMonitor(
+              getKafkaVersionTopic(),
+              partitionConsumptionState.getPartition(),
+              heartbeatMonitoringService::addFollowerLagMonitor,
+              false,
+              "Pause state transition from STANDBY to LEADER for replica as this store is undergoing migration");
           partitionConsumptionState.setLeaderFollowerState(PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER);
           LOGGER.warn(
               "State transition from STANDBY to LEADER is paused for replica: {} as this store is undergoing migration",
@@ -634,6 +640,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         case PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER:
           Store store = storeRepository.getStoreOrThrow(storeName);
           if (!store.isMigrationDuplicateStore()) {
+            heartbeatMonitoringService.updateLagMonitor(
+                getKafkaVersionTopic(),
+                partitionConsumptionState.getPartition(),
+                heartbeatMonitoringService::addLeaderLagMonitor,
+                false,
+                "Resumed state transition from STANDBY to LEADER for replica as store migration is done.");
             partitionConsumptionState.setLeaderFollowerState(IN_TRANSITION_FROM_STANDBY_TO_LEADER);
             LOGGER.info(
                 "Resumed state transition from STANDBY to LEADER for replica: {}",
