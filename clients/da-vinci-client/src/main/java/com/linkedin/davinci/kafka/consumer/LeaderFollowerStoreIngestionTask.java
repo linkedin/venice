@@ -3655,7 +3655,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       try {
         storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, this);
       } catch (InterruptedException e) {
-        LOGGER.error("Failed to sync VT DIV to OffsetRecord for topic: {}", topicPartition.getTopicName(), e);
+        LOGGER.error("Failed to sync VT DIV to OffsetRecord for replica: {}", Utils.getReplicaId(topicPartition), e);
       }
     });
 
