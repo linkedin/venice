@@ -5,7 +5,6 @@ import static org.mockito.Mockito.*;
 import com.linkedin.venice.controller.stats.DeadStoreStats;
 import com.linkedin.venice.meta.Store;
 import java.util.Collections;
-import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -36,7 +35,7 @@ public class DeadStoreStatsPreFetchTaskTest {
     waitForAsyncExecution();
 
     verify(mockAdmin, atLeastOnce()).getAllStores("test-cluster");
-    verify(mockStats, atLeastOnce()).preFetchStats(any(List.class));
+    verify(mockAdmin, atLeastOnce()).preFetchDeadStoreStats(eq("test-cluster"), anyList());
 
     shutdownTask(task, executor);
   }
@@ -55,7 +54,7 @@ public class DeadStoreStatsPreFetchTaskTest {
 
     // 1 call should happen immediately (before loop)
     // at least 1 additional call should happen from loop
-    verify(mockStats, atLeast(2)).preFetchStats(any(List.class));
+    verify(mockAdmin, atLeastOnce()).preFetchDeadStoreStats(eq("test-cluster"), anyList());
     verify(mockAdmin, atLeast(2)).getAllStores("test-cluster");
   }
 
@@ -68,12 +67,13 @@ public class DeadStoreStatsPreFetchTaskTest {
     Thread.sleep(400);
 
     shutdownTask(task, executor);
-    verify(mockStats, atLeast(2)).preFetchStats(any(List.class));
+    verify(mockAdmin, atLeastOnce()).preFetchDeadStoreStats(eq("test-cluster"), anyList());
   }
 
   @Test
   public void testExceptionIsHandledGracefully() throws InterruptedException {
-    doThrow(new RuntimeException("Simulated error")).when(mockStats).preFetchStats(any(List.class));
+    doThrow(new RuntimeException("Simulated error")).when(mockAdmin)
+        .preFetchDeadStoreStats(eq("test-cluster"), anyList());
 
     DeadStoreStatsPreFetchTask task = new DeadStoreStatsPreFetchTask("test-cluster", mockAdmin, 100);
     ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -82,7 +82,7 @@ public class DeadStoreStatsPreFetchTaskTest {
     Thread.sleep(300);
 
     shutdownTask(task, executor);
-    verify(mockStats, atLeastOnce()).preFetchStats(any(List.class));
+    verify(mockAdmin, atLeastOnce()).preFetchDeadStoreStats(eq("test-cluster"), anyList());
   }
 
   private void waitForAsyncExecution() throws InterruptedException {
