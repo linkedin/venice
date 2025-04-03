@@ -82,6 +82,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
     if (!storeAndVersion.getFirst().isBlobTransferEnabled() || blobTransferManager == null) {
       runnable.run();
     } else {
+      // Open store for lag check and later metadata update for offset/StoreVersionState
       storageService.openStore(storeConfig, svsSupplier);
 
       BlobTransferTableFormat requestTableFormat =
@@ -124,6 +125,16 @@ public class DefaultIngestionBackend implements IngestionBackend {
     }
 
     String storeName = store.getName();
+
+    // After decide to bootstrap from blobs transfer, close the partition, clean up the offset and partition folder,
+    // but the metadata partition is not removed.
+    String kafkaTopic = Version.composeKafkaTopic(storeName, versionNumber);
+    AbstractStorageEngine storageEngine = storageService.getStorageEngine(kafkaTopic);
+    if (storageEngine != null) {
+      storageEngine.dropPartition(partitionId, false);
+    }
+    LOGGER.info("Clean up the offset and delete partition folder for topic {} partition {}", kafkaTopic, partitionId);
+
     return blobTransferManager.get(storeName, versionNumber, partitionId, tableFormat)
         .handle((inputStream, throwable) -> {
           updateBlobTransferResponseStats(throwable == null, storeName, versionNumber);

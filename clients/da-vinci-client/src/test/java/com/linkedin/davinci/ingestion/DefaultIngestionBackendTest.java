@@ -170,6 +170,30 @@ public class DefaultIngestionBackendTest {
   }
 
   @Test
+  public void testStartConsumptionWithClosePartition() {
+    AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
+    when(storageEngine.containsPartition(PARTITION)).thenReturn(true);
+    doNothing().when(storageEngine).dropPartition(PARTITION, false);
+
+    String kafkaTopic = Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER);
+    when(store.isBlobTransferEnabled()).thenReturn(true);
+    when(store.isHybrid()).thenReturn(true);
+    when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT)))
+        .thenReturn(CompletableFuture.completedFuture(null));
+    when(veniceServerConfig.getRocksDBPath()).thenReturn(BASE_DIR);
+    RocksDBServerConfig rocksDBServerConfig = Mockito.mock(RocksDBServerConfig.class);
+    when(rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()).thenReturn(false);
+    when(veniceServerConfig.getRocksDBServerConfig()).thenReturn(rocksDBServerConfig);
+    when(storageService.getStorageEngine(kafkaTopic)).thenReturn(storageEngine);
+
+    ingestionBackend.startConsumption(storeConfig, PARTITION);
+    verify(blobTransferManager).get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT));
+    verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
+    verify(aggVersionedBlobTransferStats)
+        .recordBlobTransferResponsesBasedOnBoostrapStatus(eq(STORE_NAME), eq(VERSION_NUMBER), eq(true));
+  }
+
+  @Test
   public void testHasCurrentVersionBootstrapping() {
     KafkaStoreIngestionService mockIngestionService = mock(KafkaStoreIngestionService.class);
     DefaultIngestionBackend ingestionBackend =
