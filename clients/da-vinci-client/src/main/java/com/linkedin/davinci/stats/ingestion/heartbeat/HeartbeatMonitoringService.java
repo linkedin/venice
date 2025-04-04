@@ -299,7 +299,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       Store store = res.getFirst();
       Version version = res.getSecond();
       if (store == null) {
-        getLogger().error(
+        LOGGER.error(
             "Failed to get store for resource: {} with trigger: {}. Will not update lag monitor.",
             Utils.getReplicaId(resourceName, partitionId),
             heartbeatLagMonitorAction.getTrigger());
@@ -307,7 +307,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       }
       if (version == null) {
         if (!HeartbeatLagMonitorAction.REMOVE_MONITOR.equals(heartbeatLagMonitorAction)) {
-          getLogger().error(
+          LOGGER.error(
               "Failed to get version for resource: {} with trigger: {}. Will not update lag monitor.",
               Utils.getReplicaId(resourceName, partitionId),
               heartbeatLagMonitorAction.getTrigger());
@@ -330,7 +330,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         default:
       }
     } catch (Exception e) {
-      getLogger().error(
+      LOGGER.error(
           "Failed to update lag monitor for replica: {} with trigger: {}",
           Utils.getReplicaId(resourceName, partitionId),
           heartbeatLagMonitorAction.getTrigger(),
@@ -344,10 +344,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
 
   Duration getMaxWaitForVersionInfo() {
     return maxWaitForVersionInfo;
-  }
-
-  static Logger getLogger() {
-    return LOGGER;
   }
 
   private void recordHeartbeat(
