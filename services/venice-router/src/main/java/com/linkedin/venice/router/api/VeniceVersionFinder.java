@@ -8,6 +8,7 @@ import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceStoreIsMigratedException;
+import com.linkedin.venice.exceptions.VeniceStoreNotReadyToServeException;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
@@ -27,6 +28,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -77,8 +79,8 @@ public class VeniceVersionFinder {
      * TODO: clone a store object is too expensive, and we could choose to expose the necessary methods
      * in {@link ReadOnlyStoreRepository}, such as 'isEnableReads' and others.
      */
-    Store store = metadataRepository.getStore(storeName);
-    if (store == null || store.isMigrating()) {
+    AtomicReference<Store> store = new AtomicReference<>(metadataRepository.getStore(storeName));
+    if (store.get() == null || store.get().isMigrating()) {
       // The client might be idle for a long time while the store is migrated. Check for store migration.
       if (request != null && request.headers().contains(HttpConstants.VENICE_ALLOW_REDIRECT)) {
         Optional<StoreConfig> config = storeConfigRepo.getStoreConfig(storeName);
@@ -90,146 +92,104 @@ public class VeniceVersionFinder {
           }
         }
       }
-      if (store == null) {
+      if (store.get() == null) {
         throw new VeniceNoStoreException(storeName);
       }
     }
-    if (!store.isEnableReads()) {
+    if (!store.get().isEnableReads()) {
       throw new StoreDisabledException(storeName, "read");
     }
 
-    int metadataCurrentVersion = store.getCurrentVersion();
-    if (!lastCurrentVersionMap.containsKey(storeName)) {
-      /**
-       * new version not ready to serve
-       * OR a version of an existing store comes back online */
-      if (metadataCurrentVersion == Store.NON_EXISTING_VERSION) {
-
-        store = metadataRepository.refreshOneStore(storeName);
-        metadataCurrentVersion = store.getCurrentVersion();
-      } else if (!isDecompressorReady(store, metadataCurrentVersion)) {
-        // new store ready, but compressor not ready -> fail request
-        return Store.NON_EXISTING_VERSION;
+    AtomicReference<Integer> metadataCurrentVersion = new AtomicReference<>(store.get().getCurrentVersion());
+    int existingVersion = lastCurrentVersionMap.computeIfAbsent(storeName, v -> {
+      if ((metadataCurrentVersion.get() == Store.NON_EXISTING_VERSION)) {
+        store.set(metadataRepository.refreshOneStore(storeName));
+        metadataCurrentVersion.set(store.get().getCurrentVersion());
       }
-    }
-    // TODO: put lastCurrentVersion in Map.computeIfAbsent()
 
-    // existing store OR new store version ready to serve
-    int lastCurrentVersion = lastCurrentVersionMap.get(storeName);
-    if (lastCurrentVersion == metadataCurrentVersion) {
-      // no version change
+      // check if new store is ready to serve
+      VersionStatus versionStatus = store.get().getVersionStatus(metadataCurrentVersion.get());
+      String kafkaTopic = Version.composeKafkaTopic(storeName, metadataCurrentVersion.get());
+      if (versionStatus.equals(VersionStatus.ONLINE) && isPartitionResourcesReady(kafkaTopic)
+          && isDecompressorReady(store.get(), metadataCurrentVersion.get())) {
+        // new store ready to serve
+        return metadataCurrentVersion.get();
+      }
+      // new store not ready to serve
+      throw new VeniceStoreNotReadyToServeException(storeName, metadataCurrentVersion.get());
+    });
+
+    if (existingVersion == metadataCurrentVersion.get()) {
+      // new store ready to serve or same store version (no version swap)
       stats.recordNotStale();
-      return metadataCurrentVersion;
-    }
-    int currentVersion = maybeServeNewCurrentVersion(store, lastCurrentVersion, metadataCurrentVersion);
-    // TODO: refactor maybeServeNewCurrentVersion to a smaller function that checks for version readiness, checking 1)
-    // status 2) partition 3) decompressor
-
-    String errorMessage = "";
-    // TODO check new version
-    // TODO log checking new version
-    if (!EXCEPTION_FILTER.isRedundantException(errorMessage)) {
-      LOGGER.warn(errorMessage);
-    }
-    // TODO else check old version
-    // TODO log checking old version
-    if (!EXCEPTION_FILTER.isRedundantException(errorMessage)) {
-      LOGGER.warn(errorMessage);
+      return existingVersion;
     }
 
-    storeStats.computeIfAbsent(storeName, k -> new RouterCurrentVersionStats(metricsRepository, storeName))
-        .updateCurrentVersion(currentVersion);
-    return currentVersion;
-  }
-
-  private boolean checkVersionReadiness(Store store, int versionNumber, String errorMessage) {
-    String storeName = store.getName();
-    VersionStatus versionStatus = store.getVersionStatus(versionNumber);
-    String kafkaTopic = Version.composeKafkaTopic(storeName, versionNumber);
-    boolean versionStatusOnline = versionStatus.equals(VersionStatus.ONLINE);
-    boolean partitionResourcesReady = isPartitionResourcesReady(kafkaTopic);
-    boolean decompressorReady = isDecompressorReady(store, versionNumber);
-
-    // TODO: switch case for if each of the above is not ready, add to error message and emit staleness reason metric
-    errorMessage += "Unable to serve version: " + kafkaTopic + ".";
-
-    if (!versionStatusOnline) {
-      errorMessage += " Version has status: " + versionStatus + ".";
-    }
-
-    if (!partitionResourcesReady) {
-      errorMessage += " Partition resources not ready for new active version.";
-      stats.recordStalenessReason(StaleVersionReason.OFFLINE_PARTITIONS);
-    }
-
-    if (!decompressorReady) {
-      errorMessage += " Decompressor not ready for current version (Has dictionary downloaded?).";
-      stats.recordStalenessReason(StaleVersionReason.DICTIONARY_NOT_DOWNLOADED);
-    }
-
-    return decompressorReady && partitionResourcesReady && versionStatusOnline;
-  }
-
-  // existing store, new version
-  private int maybeServeNewCurrentVersion(Store store, int lastCurrentVersion, int newCurrentVersion) {
-    String storeName = store.getName();
-    // This is a new version change, verify we have online replicas for each partition
-    String kafkaTopic = Version.composeKafkaTopic(storeName, newCurrentVersion);
-    boolean currentVersionDecompressorReady = isDecompressorReady(store, newCurrentVersion);
-    boolean currentVersionPartitionResourcesReady = isPartitionResourcesReady(kafkaTopic);
-    if (currentVersionPartitionResourcesReady && currentVersionDecompressorReady) {
-      // all partitions are online and decompressor is initialized with dictionary
-      lastCurrentVersionMap.put(storeName, newCurrentVersion);
-      stats.recordNotStale();
-      return newCurrentVersion;
-    }
-
-    // new version not ready to serve -> serve last current version
-    String errorMessage = "Unable to serve new active version: " + kafkaTopic + ".";
-    if (!currentVersionPartitionResourcesReady) {
-      errorMessage += " Partition resources not ready for new active version.";
-      stats.recordStalenessReason(StaleVersionReason.OFFLINE_PARTITIONS);
-    }
-
-    if (!currentVersionDecompressorReady) {
-      errorMessage += " Decompressor not ready for current version (Has dictionary downloaded?).";
-      stats.recordStalenessReason(StaleVersionReason.DICTIONARY_NOT_DOWNLOADED);
-    }
-
-    // check last current version still ready to serve/online
-    VersionStatus lastCurrentVersionStatus = store.getVersionStatus(lastCurrentVersion);
-    boolean prevVersionDecompressorReady = isDecompressorReady(store, lastCurrentVersion);
-    if (lastCurrentVersionStatus.equals(VersionStatus.ONLINE) && prevVersionDecompressorReady) {
-      // last current version is still ready to serve
-      String message = errorMessage + " Continuing to serve previous version: " + lastCurrentVersion + ".";
-      if (!EXCEPTION_FILTER.isRedundantException(message)) {
-        LOGGER.warn(message);
-      }
-      stats.recordStale(newCurrentVersion, lastCurrentVersion);
-      return lastCurrentVersion;
-    } else {
-      /**
-       * last current version is not ready to serve
-       * -> both last current and new version are not ready to serve
-       * -> fail request
-       */
-      lastCurrentVersionMap.remove(storeName, lastCurrentVersion);
-      errorMessage += " Unable to serve previous version: " + lastCurrentVersion + ".";
-
-      if (!lastCurrentVersionStatus.equals(VersionStatus.ONLINE)) {
-        errorMessage += " Previous version has status: " + lastCurrentVersionStatus + ".";
+    // version swap: new version
+    int servingVersion = lastCurrentVersionMap.computeIfPresent(storeName, (k, v) -> {
+      VersionStatus newVersionStatus = store.get().getVersionStatus(metadataCurrentVersion.get());
+      String newVersionKafkaTopic = Version.composeKafkaTopic(storeName, metadataCurrentVersion.get());
+      boolean newVersionStatusOnline = newVersionStatus.equals(VersionStatus.ONLINE);
+      boolean newVersionPartitionResourcesReady = isPartitionResourcesReady(newVersionKafkaTopic);
+      boolean newVersionDecompressorReady = isDecompressorReady(store.get(), metadataCurrentVersion.get());
+      if (newVersionStatusOnline && newVersionPartitionResourcesReady && newVersionDecompressorReady) {
+        // new version ready to serve
+        storeStats.computeIfAbsent(storeName, metric -> new RouterCurrentVersionStats(metricsRepository, storeName))
+            .updateCurrentVersion(metadataCurrentVersion.get());
+        return metadataCurrentVersion.get();
       }
 
-      if (!prevVersionDecompressorReady) {
+      // new version not ready to serve
+      String errorMessage = "Unable to serve new version: " + newVersionKafkaTopic + ".";
+      if (!newVersionStatusOnline) {
+        errorMessage += " New version has status: " + newVersionStatus + ".";
+      }
+      if (!newVersionPartitionResourcesReady) {
+        errorMessage += " Partition resources not ready for new version.";
+        stats.recordStalenessReason(StaleVersionReason.OFFLINE_PARTITIONS);
+      }
+      if (!newVersionDecompressorReady) {
+        errorMessage += " Decompressor not ready for new version (Has dictionary downloaded?).";
+        stats.recordStalenessReason(StaleVersionReason.DICTIONARY_NOT_DOWNLOADED);
+      }
+
+      // check if existing version ready to serve
+      VersionStatus existingVersionStatus = store.get().getVersionStatus(existingVersion);
+      String existingVersionKafkaTopic = Version.composeKafkaTopic(storeName, existingVersion);
+      boolean existingVersionStatusOnline = existingVersionStatus.equals(VersionStatus.ONLINE);
+      boolean existingVersionPartitionResourcesReady = isPartitionResourcesReady(existingVersionKafkaTopic);
+      boolean existingVersionDecompressorReady = isDecompressorReady(store.get(), existingVersion);
+      if (existingVersionStatusOnline && existingVersionPartitionResourcesReady && existingVersionDecompressorReady) {
+        // existing version ready to serve
+        String message = errorMessage + " Continuing to serve existing version: " + existingVersion + ".";
+        if (!EXCEPTION_FILTER.isRedundantException(message)) {
+          LOGGER.warn(message);
+        }
+        stats.recordStale(metadataCurrentVersion.get(), existingVersion);
+        return existingVersion;
+      }
+
+      // existing version not ready to serve
+      errorMessage += " Unable to serve existing version: " + existingVersion + ".";
+
+      if (!existingVersionStatusOnline) {
+        errorMessage += " Previous version has status: " + existingVersionStatus + ".";
+      }
+
+      if (!existingVersionDecompressorReady) {
         errorMessage += " Decompressor not ready for previous version (Has dictionary downloaded?).";
       }
 
-      String message = errorMessage + " No version ready to serve.";
-      if (!EXCEPTION_FILTER.isRedundantException(message)) {
-        LOGGER.warn(message);
+      errorMessage += " No version ready to serve.";
+      if (!EXCEPTION_FILTER.isRedundantException(errorMessage)) {
+        LOGGER.warn(errorMessage);
       }
-      return Store.NON_EXISTING_VERSION;
-    }
+      stats.recordStale(metadataCurrentVersion.get(), Store.NON_EXISTING_VERSION);
+      throw new VeniceStoreNotReadyToServeException(storeName);
+    });
+
+    // new or existing version ready to serve
+    return servingVersion;
   }
 
   private boolean isPartitionResourcesReady(String kafkaTopic) {
