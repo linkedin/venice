@@ -7300,7 +7300,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Utils.sleep(5 * Time.MS_PER_SECOND);
       }
     }
-    String message = "Unable to find Venice controller" + helixState + "for cluster: " + clusterName + " after "
+    String message = "Unable to find Venice controller " + helixState + " for cluster: " + clusterName + " after "
         + maxAttempts + " attempts";
     LOGGER.error(message);
     throw new VeniceException(message);

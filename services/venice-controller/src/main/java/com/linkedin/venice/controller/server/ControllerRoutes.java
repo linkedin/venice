@@ -34,6 +34,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
+import java.net.URL;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -257,7 +258,7 @@ public class ControllerRoutes extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         String clusterName = request.queryParams(CLUSTER);
-        String currentUrl = request.url().split(request.uri())[0];
+        String currentUrl = getRequestURL(request);
 
         responseObject.setCluster(clusterName);
         Map<String, Long> controllerUrlToVersionMap = admin.getAdminOperationVersionFromControllers(clusterName);
@@ -291,13 +292,29 @@ public class ControllerRoutes extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         responseObject.setLocalAdminOperationProtocolVersion(admin.getLocalAdminOperationProtocolVersion());
-        responseObject.setRequestUrl(request.url().split(request.uri())[0]);
+        responseObject.setRequestUrl(getRequestURL(request));
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
+  }
+
+  /**
+   * Get the request base URL from the request object.
+   * Example:
+   * request.url() = https://localhost:8080/venice/cluster/clusterName/leaderController?param1=value1&param2=value2
+   * base URL: https://localhost:8080
+   * @return the base URL
+   */
+  private String getRequestURL(Request request) {
+    try {
+      URL url = new URL(request.url());
+      return url.getProtocol() + "://" + url.getHost() + (url.getPort() != -1 ? ":" + url.getPort() : "");
+    } catch (Exception e) {
+      throw new RuntimeException("Invalid URL: " + request.url(), e);
+    }
   }
 
   @FunctionalInterface
