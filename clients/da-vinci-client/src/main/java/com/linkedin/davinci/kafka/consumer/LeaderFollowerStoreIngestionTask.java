@@ -493,10 +493,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           return;
         }
         if (store.isMigrationDuplicateStore()) {
-          heartbeatMonitoringService.updateLagMonitor(
-              getKafkaVersionTopic(),
-              partitionConsumptionState.getPartition(),
-              HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
           partitionConsumptionState.setLeaderFollowerState(PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER);
           LOGGER.warn(
               "State transition from STANDBY to LEADER is paused for replica: {} as this store is undergoing migration",
@@ -639,10 +635,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         case PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER:
           Store store = storeRepository.getStoreOrThrow(storeName);
           if (!store.isMigrationDuplicateStore()) {
-            heartbeatMonitoringService.updateLagMonitor(
-                getKafkaVersionTopic(),
-                partitionConsumptionState.getPartition(),
-                HeartbeatLagMonitorAction.SET_LEADER_MONITOR);
             partitionConsumptionState.setLeaderFollowerState(IN_TRANSITION_FROM_STANDBY_TO_LEADER);
             LOGGER.info(
                 "Resumed state transition from STANDBY to LEADER for replica: {}",
@@ -689,6 +681,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              */
             restoreProducerStatesForLeaderConsumption(partition);
             startConsumingAsLeader(partitionConsumptionState);
+
+            // Start tracking leader replication lag
+            heartbeatMonitoringService.updateLagMonitor(
+                getKafkaVersionTopic(),
+                partitionConsumptionState.getPartition(),
+                HeartbeatLagMonitorAction.SET_LEADER_MONITOR);
 
             /**
              * May adjust the underlying storage partition to optimize the ingestion performance.

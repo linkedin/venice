@@ -457,8 +457,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   }
 
   AggregatedHeartbeatLagEntry getMaxHeartbeatLag(
-      Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> heartbeatTimestamps,
-      boolean isLeaderLag) {
+      Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> heartbeatTimestamps) {
     long currentTimestamp = System.currentTimeMillis();
     long minHeartbeatTimestampForCurrentVersion = Long.MAX_VALUE;
     long minHeartbeatTimestampForNonCurrentVersion = Long.MAX_VALUE;
@@ -491,11 +490,11 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   }
 
   public AggregatedHeartbeatLagEntry getMaxLeaderHeartbeatLag() {
-    return getMaxHeartbeatLag(leaderHeartbeatTimeStamps, true);
+    return getMaxHeartbeatLag(leaderHeartbeatTimeStamps);
   }
 
   public AggregatedHeartbeatLagEntry getMaxFollowerHeartbeatLag() {
-    return getMaxHeartbeatLag(leaderHeartbeatTimeStamps, false);
+    return getMaxHeartbeatLag(followerHeartbeatTimeStamps);
   }
 
   @FunctionalInterface

@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -79,7 +80,7 @@ public class LeaderFollowerPartitionStateModelTest {
 
     // STANDBY->LEADER
     leaderFollowerPartitionStateModelSpy.onBecomeLeaderFromStandby(message, context);
-    verify(heartbeatMonitoringService)
+    verify(heartbeatMonitoringService, never())
         .updateLagMonitor(eq(resourceName), eq(partition), eq(HeartbeatLagMonitorAction.SET_LEADER_MONITOR));
 
     // LEADER->STANDBY
