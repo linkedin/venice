@@ -7,6 +7,7 @@ import static com.linkedin.venice.read.RequestType.SINGLE_GET;
 import static com.linkedin.venice.router.api.VenicePathParserHelper.parseRequest;
 import static com.linkedin.venice.router.api.VeniceResponseDecompressor.getCompressionStrategy;
 import static io.netty.handler.codec.http.HttpResponseStatus.METHOD_NOT_ALLOWED;
+import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
 import static io.netty.handler.codec.http.HttpResponseStatus.REQUEST_ENTITY_TOO_LARGE;
 import static io.netty.handler.codec.rtsp.RtspResponseStatuses.BAD_REQUEST;
 import static io.netty.handler.codec.rtsp.RtspResponseStatuses.MOVED_PERMANENTLY;
@@ -20,6 +21,7 @@ import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceStoreIsMigratedException;
+import com.linkedin.venice.exceptions.VeniceStoreNotReadyToServeException;
 import com.linkedin.venice.meta.NameRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RetryManager;
@@ -348,6 +350,9 @@ public class VenicePathParser implements ExtendedResourcePathParser<VenicePath, 
                 responseStatus,
                 keyCountLimitException.getRequestKeyCount());
       }
+      if (e instanceof VeniceStoreNotReadyToServeException) {
+        responseStatus = NOT_FOUND;
+      }
       /**
        * Tracking the bad requests in {@link RouterExceptionAndTrackingUtils} by logging and metrics.
        */
@@ -358,7 +363,6 @@ public class VenicePathParser implements ExtendedResourcePathParser<VenicePath, 
       // Right now we use key num as request usage, in the future we might consider the Capacity unit.
       routerStats.getStatsByType(SINGLE_GET).recordRequestUsage(storeName, keyNum);
     }
-
     return path;
   }
 
