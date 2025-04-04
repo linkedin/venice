@@ -1125,7 +1125,17 @@ public class TestVeniceHelixAdmin {
     doCallRealMethod().when(veniceParentHelixAdmin).getLocalAdminOperationProtocolVersion();
 
     doCallRealMethod().when(veniceHelixAdmin).getLocalAdminOperationProtocolVersion();
-    assert veniceParentHelixAdmin
-        .getLocalAdminOperationProtocolVersion() == AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
+    assertEquals(
+        veniceParentHelixAdmin.getLocalAdminOperationProtocolVersion(),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+  }
+
+  @Test
+  public void testGetControllersWithInvalidHelixState() {
+    String clusterName = "test-cluster";
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    doCallRealMethod().when(veniceHelixAdmin).getControllersByHelixState(any(), any());
+
+    expectThrows(VeniceException.class, () -> veniceHelixAdmin.getControllersByHelixState(clusterName, "state"));
   }
 }

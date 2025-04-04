@@ -1,12 +1,13 @@
 package com.linkedin.venice.controllerapi;
 
+import java.util.HashMap;
 import java.util.Map;
 
 
 public class AdminOperationProtocolVersionControllerResponse extends ControllerResponse {
   private long localAdminOperationProtocolVersion = -1;
-  private String requestUrl;
-  private Map<String, Long> urlToVersionMap;
+  private String requestUrl = "";
+  private Map<String, Long> urlToVersionMap = new HashMap<>();
 
   public void setLocalAdminOperationProtocolVersion(long adminOperationProtocolVersion) {
     this.localAdminOperationProtocolVersion = adminOperationProtocolVersion;
