@@ -54,7 +54,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
   }
 
   @Override
-  protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
+  protected CompletableFuture<V> get(GetRequestContext<K> requestContext, K key) throws VeniceClientException {
     long startTimeInNS = System.nanoTime();
     CompletableFuture<V> innerFuture = super.get(requestContext, key);
     return recordMetrics(requestContext, 1, innerFuture, startTimeInNS, clientStatsForSingleGet);
@@ -267,6 +267,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
           }
 
           routeStats.recordRequest();
+          routeStats.recordPendingRequestCount(monitor.getPendingRequestCounter(instance));
           routeStats.recordResponseWaitingTime(LatencyUtils.getElapsedTimeFromNSToMS(requestSentTimestampNS));
           switch (status) {
             case SC_OK:

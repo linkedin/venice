@@ -18,4 +18,12 @@ public class BatchGetRequestContext<K, V> extends MultiKeyRequestContext<K, V> {
   public RequestType getRequestType() {
     return RequestType.MULTI_GET_STREAMING;
   }
+
+  public BatchGetRequestContext<K, V> createRetryRequestContext(int numKeysInRequest) {
+    BatchGetRequestContext<K, V> retryContext =
+        new BatchGetRequestContext(numKeysInRequest, this.isPartialSuccessAllowed);
+    copyStateToRetryRequestContext(retryContext);
+
+    return retryContext;
+  }
 }

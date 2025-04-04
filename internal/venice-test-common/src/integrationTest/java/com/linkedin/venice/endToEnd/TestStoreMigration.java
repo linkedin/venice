@@ -612,7 +612,6 @@ public class TestStoreMigration {
             .setD2Client(d2Client)
             .setMetadataRefreshIntervalInSeconds(1)
             .setDualReadEnabled(false)
-            .setSpeculativeQueryEnabled(false)
             .setClusterDiscoveryD2Service(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .setStoreMetadataFetchMode(StoreMetadataFetchMode.SERVER_BASED_METADATA);
 
