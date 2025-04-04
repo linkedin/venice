@@ -683,7 +683,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             startConsumingAsLeader(partitionConsumptionState);
 
             // Start tracking leader replication lag
-            heartbeatMonitoringService.updateLagMonitor(
+            getHeartbeatMonitoringService().updateLagMonitor(
                 getKafkaVersionTopic(),
                 partitionConsumptionState.getPartition(),
                 HeartbeatLagMonitorAction.SET_LEADER_MONITOR);
@@ -4229,5 +4229,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   KafkaDataIntegrityValidator getKafkaDataIntegrityValidatorForLeaders() {
     return kafkaDataIntegrityValidatorForLeaders; // mainly for testing
+  }
+
+  HeartbeatMonitoringService getHeartbeatMonitoringService() {
+    return heartbeatMonitoringService;
   }
 }
