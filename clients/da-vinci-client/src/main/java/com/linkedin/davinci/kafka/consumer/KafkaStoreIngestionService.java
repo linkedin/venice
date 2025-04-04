@@ -399,7 +399,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         ingestionThrottler,
         kafkaClusterBasedRecordThrottler,
         metricsRepository,
-        new MetadataRepoBasedTopicExistingCheckerImpl(this.getMetadataRepo()),
+        new MetadataRepoBasedStaleTopicCheckerImpl(this.getMetadataRepo()),
         pubSubDeserializer,
         (topicName) -> this.killConsumptionTask(topicName),
         vt -> {
