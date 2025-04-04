@@ -4,8 +4,7 @@ import com.linkedin.venice.meta.Store;
 
 
 /**
- * Custom Exception for Venice Kafka Consumer Related Issues.
- * Currently everything is inherited from the superclass.
+ * Custom Exception for when Vencie store has no version that is ready to serve reads
  */
 public class VeniceStoreNotReadyToServeException extends VeniceException {
   private final String storeName;
