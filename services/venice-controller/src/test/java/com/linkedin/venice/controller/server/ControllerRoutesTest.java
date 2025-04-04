@@ -221,7 +221,7 @@ public class ControllerRoutesTest {
         localAdminOperationVersionRoute.handle(request, mock(Response.class)).toString(),
         AdminOperationProtocolVersionControllerResponse.class);
     assertEquals(response.getLocalAdminOperationProtocolVersion(), 1L);
-    assertEquals(response.getUrlToVersionMap().size(), 0);
+    assertEquals(response.getControllerUrlToVersionMap().size(), 0);
   }
 
   @Test
@@ -252,8 +252,8 @@ public class ControllerRoutesTest {
         adminOperationVersionRoute.handle(request, mock(Response.class)).toString(),
         AdminOperationProtocolVersionControllerResponse.class);
     assertEquals(response.getLocalAdminOperationProtocolVersion(), 1L);
-    assertEquals(response.getUrlToVersionMap().size(), 3);
-    assertEquals(response.getUrlToVersionMap(), urlToVersionMap);
+    assertEquals(response.getControllerUrlToVersionMap().size(), 3);
+    assertEquals(response.getControllerUrlToVersionMap(), urlToVersionMap);
     assertEquals(response.getRequestUrl(), leaderControllerHost);
     assertEquals(response.getCluster(), TEST_CLUSTER);
   }

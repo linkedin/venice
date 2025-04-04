@@ -7677,17 +7677,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   /**
    * Get the admin operation protocol versions from controllers (leader + standby) for specific cluster.
    * @param clusterName: the cluster name
-   * @return map (url: version). Example: {http://localhost:1234=1, http://localhost:1235=1}
-   */
+   * @return map (controllerUrl: version). Example: {http://localhost:1234=1, http://localhost:1235=1}*/
   @Override
   public Map<String, Long> getAdminOperationVersionFromControllers(String clusterName) {
     checkControllerLeadershipFor(clusterName);
 
-    Map<String, Long> UrlToAdminVersionMap = new HashMap<>();
+    Map<String, Long> controllerUrlToAdminOperationVersionMap = new HashMap<>();
 
     // Get the version from the current controller - leader
     String leaderControllerUrl = getLeaderController(clusterName).getUrl(false);
-    UrlToAdminVersionMap.put(leaderControllerUrl, getLocalAdminOperationProtocolVersion());
+    controllerUrlToAdminOperationVersionMap.put(leaderControllerUrl, getLocalAdminOperationProtocolVersion());
 
     // Get version for standby controllers
     List<Instance> standbyControllers = getControllersByHelixState(clusterName, HelixState.STANDBY_STATE);
@@ -7705,10 +7704,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             "Failed to get admin operation protocol version from standby controller: " + standbyControllerUrl
                 + ", error message: " + response.getError());
       }
-      UrlToAdminVersionMap.put(response.getRequestUrl(), response.getLocalAdminOperationProtocolVersion());
+      controllerUrlToAdminOperationVersionMap
+          .put(response.getRequestUrl(), response.getLocalAdminOperationProtocolVersion());
     }
 
-    return UrlToAdminVersionMap;
+    return controllerUrlToAdminOperationVersionMap;
   }
 
   /**

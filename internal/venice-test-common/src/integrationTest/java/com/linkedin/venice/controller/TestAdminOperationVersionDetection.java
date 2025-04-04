@@ -75,7 +75,7 @@ public class TestAdminOperationVersionDetection {
     assertEquals(
         response.getLocalAdminOperationProtocolVersion(),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    Map<String, Long> urlToVersionMap = response.getUrlToVersionMap();
+    Map<String, Long> urlToVersionMap = response.getControllerUrlToVersionMap();
     // TODO: This result should be 2 when we actually forward request to standby
     assertEquals(urlToVersionMap.size(), 1);
     assertEquals(response.getCluster(), clusterName);
@@ -100,7 +100,7 @@ public class TestAdminOperationVersionDetection {
     assertEquals(
         response.getLocalAdminOperationProtocolVersion(),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    Map<String, Long> urlToVersionMap = response.getUrlToVersionMap();
+    Map<String, Long> urlToVersionMap = response.getControllerUrlToVersionMap();
     // TODO: This result should be 2 when we actually forward request to standby
     assertEquals(urlToVersionMap.size(), 1);
     assertEquals(response.getCluster(), clusterName);

@@ -260,17 +260,17 @@ public class ControllerRoutes extends AbstractRoute {
         String currentUrl = request.url().split(request.uri())[0];
 
         responseObject.setCluster(clusterName);
-        Map<String, Long> urlToVersionMap = admin.getAdminOperationVersionFromControllers(clusterName);
-        responseObject.setUrlToVersionMap(urlToVersionMap);
+        Map<String, Long> controllerUrlToVersionMap = admin.getAdminOperationVersionFromControllers(clusterName);
+        responseObject.setControllerUrlToVersionMap(controllerUrlToVersionMap);
         responseObject.setRequestUrl(currentUrl);
 
-        if (urlToVersionMap.containsKey(currentUrl)) {
-          responseObject.setLocalAdminOperationProtocolVersion(urlToVersionMap.get(currentUrl));
+        if (controllerUrlToVersionMap.containsKey(currentUrl)) {
+          responseObject.setLocalAdminOperationProtocolVersion(controllerUrlToVersionMap.get(currentUrl));
         } else {
           // Should not happen
           throw new VeniceException(
               "The current controller URL: " + currentUrl + " is not in the urlToVersionMap in the response "
-                  + urlToVersionMap);
+                  + controllerUrlToVersionMap);
         }
 
       } catch (Throwable e) {
