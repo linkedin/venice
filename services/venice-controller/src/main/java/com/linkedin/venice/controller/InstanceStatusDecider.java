@@ -3,10 +3,10 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
-import com.linkedin.venice.helix.SafeHelixDataAccessor;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
@@ -16,8 +16,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
-import org.apache.helix.PropertyKey;
-import org.apache.helix.model.IdealState;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -142,12 +140,13 @@ public class InstanceStatusDecider {
                         result.getSecond()));
                 break;
               }
-              SafeHelixDataAccessor accessor = resources.getHelixManager().getHelixDataAccessor();
-              PropertyKey.Builder keyBuilder = accessor.keyBuilder();
 
-              IdealState idealState = accessor.getProperty(keyBuilder.idealStates(resourceName));
-              if (idealState != null && idealState.isEnabled() && idealState.isValid()) {
-                result = willTriggerRebalance(partitionAssignmentAfterRemoving, idealState.getMinActiveReplicas());
+              Version version = resources.getStoreMetadataRepository()
+                  .getStore(Version.parseStoreFromKafkaTopicName(resourceName))
+                  .getVersion(Version.parseVersionFromKafkaTopicName(resourceName));
+
+              if (version != null) {
+                result = willTriggerRebalance(partitionAssignmentAfterRemoving, version.getMinActiveReplicas());
               } else {
                 result = new Pair<>(
                     false,
