@@ -21,6 +21,7 @@ import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.utils.Time;
 import io.opentelemetry.api.common.Attributes;
@@ -52,7 +53,7 @@ public class MetricEntityStateThreeEnumTest {
     when(mockOtelRepository.emitOpenTelemetryMetrics()).thenReturn(true);
     when(mockOtelRepository.getMetricFormat()).thenReturn(getDefaultFormat());
     when(mockOtelRepository.getDimensionName(any())).thenCallRealMethod();
-    when(mockOtelRepository.createAttributes(any(), any(), any())).thenCallRealMethod();
+    when(mockOtelRepository.createAttributes(any(), any(), (VeniceDimensionInterface) any())).thenCallRealMethod();
     VeniceMetricsConfig mockMetricsConfig = Mockito.mock(VeniceMetricsConfig.class);
     when(mockMetricsConfig.getOtelCustomDimensionsMap()).thenReturn(new HashMap<>());
     when(mockOtelRepository.getMetricsConfig()).thenReturn(mockMetricsConfig);
