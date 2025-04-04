@@ -87,7 +87,7 @@ public class DelegatingAvroStoreClient<K, V> extends InternalAvroStoreClient<K, 
   }
 
   @Override
-  protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
+  protected CompletableFuture<V> get(GetRequestContext<K> requestContext, K key) throws VeniceClientException {
     return delegate.get(requestContext, key);
   }
 

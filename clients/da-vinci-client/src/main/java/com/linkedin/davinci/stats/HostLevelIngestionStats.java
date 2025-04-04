@@ -299,11 +299,23 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         new Max(),
         TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + valueSizeSensorName));
 
-    this.assembledRecordSizeSensor = registerSensor(ASSEMBLED_RECORD_SIZE_IN_BYTES, avgAndMax());
+    this.assembledRecordSizeSensor = registerPerStoreAndTotalSensor(
+        ASSEMBLED_RECORD_SIZE_IN_BYTES,
+        totalStats,
+        () -> totalStats.assembledRecordSizeSensor,
+        new Max());
 
-    this.assembledRecordSizeRatioSensor = registerSensor(ASSEMBLED_RECORD_SIZE_RATIO, new Max());
+    this.assembledRecordSizeRatioSensor = registerPerStoreAndTotalSensor(
+        ASSEMBLED_RECORD_SIZE_RATIO,
+        totalStats,
+        () -> totalStats.assembledRecordSizeRatioSensor,
+        new Max());
 
-    this.assembledRmdSizeSensor = registerSensor(ASSEMBLED_RMD_SIZE_IN_BYTES, avgAndMax());
+    this.assembledRmdSizeSensor = registerPerStoreAndTotalSensor(
+        ASSEMBLED_RMD_SIZE_IN_BYTES,
+        totalStats,
+        () -> totalStats.assembledRmdSizeSensor,
+        new Max());
 
     String viewTimerSensorName = "total_view_writer_latency";
     this.viewProducerLatencySensor = registerPerStoreAndTotalSensor(

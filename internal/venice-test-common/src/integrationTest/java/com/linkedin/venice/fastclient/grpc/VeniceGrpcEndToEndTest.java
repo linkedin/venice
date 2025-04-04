@@ -144,8 +144,7 @@ public class VeniceGrpcEndToEndTest {
 
     ClientConfigBuilder<Object, Object, SpecificRecord> clientConfigBuilder =
         new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
-            .setR2Client(r2Client)
-            .setSpeculativeQueryEnabled(false);
+            .setR2Client(r2Client);
 
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
         getGenericFastClient(clientConfigBuilder, new MetricsRepository(), d2Client);
@@ -194,14 +193,12 @@ public class VeniceGrpcEndToEndTest {
 
     ClientConfigBuilder<Object, Object, SpecificRecord> clientConfigBuilder =
         new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
-            .setR2Client(r2Client)
-            .setSpeculativeQueryEnabled(false);
+            .setR2Client(r2Client);
 
     ClientConfigBuilder<Object, Object, SpecificRecord> grpcClientConfigBuilder =
         new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setUseGrpc(true)
-            .setGrpcClientConfig(grpcClientConfig)
-            .setSpeculativeQueryEnabled(false);
+            .setGrpcClientConfig(grpcClientConfig);
 
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
         getGenericFastClient(clientConfigBuilder, new MetricsRepository(), d2Client);
@@ -254,14 +251,12 @@ public class VeniceGrpcEndToEndTest {
 
     ClientConfigBuilder<Object, Object, SpecificRecord> clientConfigBuilder =
         new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
-            .setR2Client(r2Client)
-            .setSpeculativeQueryEnabled(false);
+            .setR2Client(r2Client);
 
     ClientConfigBuilder<Object, Object, SpecificRecord> grpcClientConfigBuilder =
         new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setUseGrpc(true)
-            .setGrpcClientConfig(grpcClientConfig)
-            .setSpeculativeQueryEnabled(false);
+            .setGrpcClientConfig(grpcClientConfig);
 
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
         getGenericFastClient(clientConfigBuilder, new MetricsRepository(), d2Client);
@@ -298,14 +293,12 @@ public class VeniceGrpcEndToEndTest {
 
     ClientConfigBuilder<Object, Object, SpecificRecord> clientConfigBuilder =
         new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
-            .setR2Client(fastR2Client)
-            .setSpeculativeQueryEnabled(false);
+            .setR2Client(fastR2Client);
 
     ClientConfigBuilder<Object, Object, SpecificRecord> grpcClientConfigBuilder =
         new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setUseGrpc(true)
-            .setGrpcClientConfig(grpcClientConfig)
-            .setSpeculativeQueryEnabled(false);
+            .setGrpcClientConfig(grpcClientConfig);
 
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
         getGenericFastClient(clientConfigBuilder, new MetricsRepository(), fastD2Client);

@@ -38,27 +38,20 @@ public class LeastLoadedClientRoutingStrategyTest {
     return instanceHealthMonitor;
   }
 
-  public void runTest(
-      InstanceHealthMonitor monitor,
-      List<String> replicas,
-      long requestId,
-      int requiredReplicaCount,
-      List<String> expectedReplicas) {
+  public void runTest(InstanceHealthMonitor monitor, List<String> replicas, long requestId, String expectedReplica) {
     LeastLoadedClientRoutingStrategy strategy = new LeastLoadedClientRoutingStrategy(monitor);
-    List<String> selectedReplicas = strategy.getReplicas(requestId, replicas, requiredReplicaCount);
-    assertEquals(selectedReplicas, expectedReplicas);
+    String selectedReplica = strategy.getReplicas(requestId, -1, replicas);
+    assertEquals(selectedReplica, expectedReplica);
   }
 
   public void runTest(
       InstanceHealthMonitor monitor,
       List<String> replicas,
       long requestId,
-      int requiredReplicaCount,
       Function<String, Boolean> expectedReplicaFunc) {
     LeastLoadedClientRoutingStrategy strategy = new LeastLoadedClientRoutingStrategy(monitor);
-    List<String> selectedReplicas = strategy.getReplicas(requestId, replicas, requiredReplicaCount);
-    selectedReplicas
-        .forEach(replica -> assertTrue(expectedReplicaFunc.apply(replica), "replica: " + replica + " is unexpected"));
+    String selectedReplica = strategy.getReplicas(requestId, -1, replicas);
+    assertTrue(expectedReplicaFunc.apply(selectedReplica), "replica: " + selectedReplica + " is unexpected");
   }
 
   @Test
@@ -70,10 +63,10 @@ public class LeastLoadedClientRoutingStrategyTest {
         new boolean[] { false, false, false },
         new boolean[] { true, true, true },
         new int[] { 0, 0, 0 });
-    runTest(instanceHealthMonitor, replicas, 0, 2, replica -> replicas.contains(replica));
-    runTest(instanceHealthMonitor, replicas, 1, 2, replica -> replicas.contains(replica));
-    runTest(instanceHealthMonitor, replicas, 2, 2, replica -> replicas.contains(replica));
-    runTest(instanceHealthMonitor, replicas, 3, 2, replica -> replicas.contains(replica));
+    runTest(instanceHealthMonitor, replicas, 0, replica -> replicas.contains(replica));
+    runTest(instanceHealthMonitor, replicas, 1, replica -> replicas.contains(replica));
+    runTest(instanceHealthMonitor, replicas, 2, replica -> replicas.contains(replica));
+    runTest(instanceHealthMonitor, replicas, 3, replica -> replicas.contains(replica));
   }
 
   @Test
@@ -85,10 +78,9 @@ public class LeastLoadedClientRoutingStrategyTest {
         new boolean[] { false, false, false },
         new boolean[] { true, true, true },
         new int[] { 6, 5, 4 });
-    List<String> expectedReplicas = Arrays.asList(instance2, instance3);
-    runTest(instanceHealthMonitor, replicas, 0, 2, replica -> expectedReplicas.contains(replica));
-    runTest(instanceHealthMonitor, replicas, 1, 2, replica -> expectedReplicas.contains(replica));
-    runTest(instanceHealthMonitor, replicas, 2, 2, replica -> expectedReplicas.contains(replica));
+    runTest(instanceHealthMonitor, replicas, 0, instance3);
+    runTest(instanceHealthMonitor, replicas, 1, instance3);
+    runTest(instanceHealthMonitor, replicas, 2, instance3);
   }
 
   @Test
@@ -100,8 +92,8 @@ public class LeastLoadedClientRoutingStrategyTest {
         new boolean[] { true, false, false },
         new boolean[] { true, true, true },
         new int[] { 5, 5, 4 });
-    runTest(instanceHealthMonitor, replicas, 0, 2, Arrays.asList(instance3, instance2));
-    runTest(instanceHealthMonitor, replicas, 1, 2, Arrays.asList(instance3, instance2));
+    runTest(instanceHealthMonitor, replicas, 0, instance3);
+    runTest(instanceHealthMonitor, replicas, 1, instance3);
   }
 
   @Test
@@ -113,7 +105,7 @@ public class LeastLoadedClientRoutingStrategyTest {
         new boolean[] { true, false, false, false, false, false },
         new boolean[] { true, false, true, true, true, true },
         new int[] { 100, 1, 2, 4, 5, 3 });
-    runTest(instanceHealthMonitor, replicas, 0, 2, replica -> Arrays.asList(instance3, instance6).contains(replica));
+    runTest(instanceHealthMonitor, replicas, 0, instance3);
   }
 
   @Test
@@ -127,6 +119,6 @@ public class LeastLoadedClientRoutingStrategyTest {
         new int[] { 0, 0, 0 });
     long requestId = Integer.MAX_VALUE;
     requestId += 100;
-    runTest(instanceHealthMonitor, replicas, requestId, 1, replica -> replicas.contains(replica));
+    runTest(instanceHealthMonitor, replicas, requestId, replica -> replicas.contains(replica));
   }
 }
