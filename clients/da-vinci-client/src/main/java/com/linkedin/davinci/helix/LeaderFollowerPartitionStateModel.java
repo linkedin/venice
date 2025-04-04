@@ -4,6 +4,7 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -12,14 +13,11 @@ import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.BiConsumer;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
 import org.apache.helix.participant.statemachine.StateModelInfo;
@@ -39,7 +37,7 @@ import org.apache.helix.participant.statemachine.Transition;
  * There is an optional latch between Offline to Follower transition. The latch is only placed if the
  * version state model served is the current version. (During cluster rebalancing or SN rebouncing)
  * Since Helix rebalancer only refers to state model to determine the rebalancing time. The latch is
- * a safe guard to prevent Helix "over-rebalancing" the cluster and failing the read traffic. The
+ * a safeguard to prevent Helix "over-rebalancing" the cluster and failing the read traffic. The
  * latch is released when ingestion has caught up the lag or the ingestion has reached the last known
  * offset of VT.
  */
@@ -120,27 +118,14 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       if (isRegularStoreCurrentVersion) {
         waitConsumptionCompleted(resourceName, notifier);
       }
-      updateLagMonitor(
-          message.getResourceName(),
-          heartbeatMonitoringService::addFollowerLagMonitor,
-          false,
-          messageToString(message));
+      heartbeatMonitoringService
+          .updateLagMonitor(message.getResourceName(), getPartition(), HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
     });
   }
 
   @Transition(to = HelixState.LEADER_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeLeaderFromStandby(Message message, NotificationContext context) {
     LeaderSessionIdChecker checker = new LeaderSessionIdChecker(leaderSessionId.incrementAndGet(), leaderSessionId);
-    /**
-     * We set up the lag monitor first for leader transitions because we want to monitor the amount of time
-     * where a slice doesn't have a replicating leader.  While this state transition executes, there should be no
-     * other leader in the slice.
-     */
-    updateLagMonitor(
-        message.getResourceName(),
-        heartbeatMonitoringService::addLeaderLagMonitor,
-        false,
-        messageToString(message));
     executeStateTransition(
         message,
         context,
@@ -151,11 +136,8 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.LEADER_STATE)
   public void onBecomeStandbyFromLeader(Message message, NotificationContext context) {
     LeaderSessionIdChecker checker = new LeaderSessionIdChecker(leaderSessionId.incrementAndGet(), leaderSessionId);
-    updateLagMonitor(
-        message.getResourceName(),
-        heartbeatMonitoringService::addFollowerLagMonitor,
-        false,
-        messageToString(message));
+    heartbeatMonitoringService
+        .updateLagMonitor(message.getResourceName(), getPartition(), HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
     executeStateTransition(
         message,
         context,
@@ -165,11 +147,8 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
 
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeOfflineFromStandby(Message message, NotificationContext context) {
-    updateLagMonitor(
-        message.getResourceName(),
-        heartbeatMonitoringService::removeLagMonitor,
-        true,
-        messageToString(message));
+    heartbeatMonitoringService
+        .updateLagMonitor(message.getResourceName(), getPartition(), HeartbeatLagMonitorAction.REMOVE_MONITOR);
     executeStateTransition(message, context, () -> stopConsumption(true));
   }
 
@@ -232,51 +211,6 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   public void onBecomeOfflineFromError(Message message, NotificationContext context) {
     // Venice is not supporting automatically partition recovery. No-oped here.
     logger.warn("unexpected state transition from ERROR to OFFLINE");
-  }
-
-  void updateLagMonitor(
-      String resourceName,
-      BiConsumer<Version, Integer> lagMonFunction,
-      boolean isNullVersionValid,
-      String trigger) {
-    try {
-      String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
-      int storeVersion = Version.parseVersionFromKafkaTopicName(resourceName);
-      Pair<Store, Version> res = getStoreRepo()
-          .waitVersion(storeName, storeVersion, getStoreAndServerConfigs().getServerMaxWaitForVersionInfo(), 200);
-      Store store = res.getFirst();
-      Version version = res.getSecond();
-      if (store == null) {
-        logger.error(
-            "Failed to get store for resource: {} with trigger: {}. Will not update lag monitor.",
-            Utils.getReplicaId(resourceName, getPartition()),
-            trigger);
-        return;
-      }
-      if (version == null && !isNullVersionValid) {
-        logger.error(
-            "Failed to get version for resource: {} with trigger: {}. Will not update lag monitor.",
-            Utils.getReplicaId(resourceName, getPartition()),
-            trigger);
-        return;
-      }
-      if (version == null) {
-        // During version deletion, the version will be deleted from ZK prior to servers perform resource deletion.
-        // It's valid to have null version when trying to remove lag monitor for the deleted resource.
-        version = new VersionImpl(storeName, storeVersion, "");
-      }
-      lagMonFunction.accept(version, getPartition());
-    } catch (Exception e) {
-      logger.error(
-          "Failed to update lag monitor for replica: {} with trigger: {}",
-          Utils.getReplicaId(resourceName, getPartition()),
-          trigger,
-          e);
-    }
-  }
-
-  private String messageToString(Message message) {
-    return message.getFromState() + "->" + message.getToState();
   }
 
   /**

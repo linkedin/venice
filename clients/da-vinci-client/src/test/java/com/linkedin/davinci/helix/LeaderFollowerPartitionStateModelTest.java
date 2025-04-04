@@ -2,9 +2,8 @@ package com.linkedin.davinci.helix;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -17,13 +16,11 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.utils.Pair;
-import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
@@ -51,10 +48,12 @@ public class LeaderFollowerPartitionStateModelTest {
     ingestionBackend = mock(IngestionBackend.class);
     storeIngestionService = mock(KafkaStoreIngestionService.class);
     doReturn(storeIngestionService).when(ingestionBackend).getStoreIngestionService();
+    doReturn(CompletableFuture.completedFuture(null)).when(ingestionBackend).stopConsumption(any(), anyInt());
+
     storeAndServerConfigs = mock(VeniceStoreVersionConfig.class);
     notifier = mock(LeaderFollowerIngestionProgressNotifier.class);
     metadataRepo = mock(ReadOnlyStoreRepository.class);
-    partitionPushStatusAccessorFuture = mock(CompletableFuture.class);
+    partitionPushStatusAccessorFuture = CompletableFuture.completedFuture(mock(HelixPartitionStatusAccessor.class));
     threadPoolStats = mock(ParticipantStateTransitionStats.class);
     heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
     leaderFollowerPartitionStateModel = new LeaderFollowerPartitionStateModel(
@@ -73,32 +72,30 @@ public class LeaderFollowerPartitionStateModelTest {
   public void testUpdateLagMonitor() {
     Message message = mock(Message.class);
     NotificationContext context = mock(NotificationContext.class);
-    Store store = mock(Store.class);
-    Version version = mock(Version.class);
     when(message.getResourceName()).thenReturn(resourceName);
+    Store store = mock(Store.class);
+    doReturn(store).when(metadataRepo).getStoreOrThrow(anyString());
 
     LeaderFollowerPartitionStateModel leaderFollowerPartitionStateModelSpy = spy(leaderFollowerPartitionStateModel);
 
-    // test when both store and version are null
-    when(metadataRepo.waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong()))
-        .thenReturn(Pair.create(null, null));
+    // STANDBY->LEADER
     leaderFollowerPartitionStateModelSpy.onBecomeLeaderFromStandby(message, context);
-    verify(metadataRepo).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
-    verify(heartbeatMonitoringService, never()).addLeaderLagMonitor(any(Version.class), anyInt());
+    verify(heartbeatMonitoringService, never())
+        .updateLagMonitor(eq(resourceName), eq(partition), eq(HeartbeatLagMonitorAction.SET_LEADER_MONITOR));
 
-    // test when store is not null and version is null
-    when(metadataRepo.waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong()))
-        .thenReturn(Pair.create(store, null));
-    leaderFollowerPartitionStateModelSpy.onBecomeLeaderFromStandby(message, context);
-    verify(metadataRepo, times(2)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
-    verify(heartbeatMonitoringService, never()).addLeaderLagMonitor(any(Version.class), anyInt());
+    // LEADER->STANDBY
+    leaderFollowerPartitionStateModelSpy.onBecomeStandbyFromLeader(message, context);
+    verify(heartbeatMonitoringService)
+        .updateLagMonitor(eq(resourceName), eq(partition), eq(HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR));
 
-    // test both store and version are not null
-    when(metadataRepo.waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong()))
-        .thenReturn(Pair.create(store, version));
-    doNothing().when(leaderFollowerPartitionStateModelSpy).executeStateTransition(any(), any(), any());
-    leaderFollowerPartitionStateModelSpy.onBecomeLeaderFromStandby(message, context);
-    verify(metadataRepo, times(3)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
-    verify(heartbeatMonitoringService).addLeaderLagMonitor(version, partition);
+    // OFFLINE->STANDBY
+    leaderFollowerPartitionStateModelSpy.onBecomeStandbyFromOffline(message, context);
+    verify(heartbeatMonitoringService, times(2))
+        .updateLagMonitor(eq(resourceName), eq(partition), eq(HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR));
+
+    // STANDBY->OFFLINE
+    leaderFollowerPartitionStateModelSpy.onBecomeOfflineFromStandby(message, context);
+    verify(heartbeatMonitoringService)
+        .updateLagMonitor(eq(resourceName), eq(partition), eq(HeartbeatLagMonitorAction.REMOVE_MONITOR));
   }
 }

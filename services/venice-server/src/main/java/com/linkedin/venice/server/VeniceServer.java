@@ -375,12 +375,8 @@ public class VeniceServer {
     HeartbeatMonitoringServiceStats heartbeatMonitoringServiceStats =
         new HeartbeatMonitoringServiceStats(metricsRepository, clusterConfig.getClusterName());
 
-    heartbeatMonitoringService = new HeartbeatMonitoringService(
-        metricsRepository,
-        metadataRepo,
-        serverConfig.getRegionNames(),
-        serverConfig.getRegionName(),
-        heartbeatMonitoringServiceStats);
+    heartbeatMonitoringService =
+        new HeartbeatMonitoringService(metricsRepository, metadataRepo, serverConfig, heartbeatMonitoringServiceStats);
     services.add(heartbeatMonitoringService);
 
     this.zkHelixAdmin = Lazy.of(() -> new ZKHelixAdmin(serverConfig.getZookeeperAddress()));
