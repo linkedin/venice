@@ -294,11 +294,12 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     try {
       String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
       int storeVersion = Version.parseVersionFromKafkaTopicName(resourceName);
-      Pair<Store, Version> res = metadataRepository.waitVersion(storeName, storeVersion, maxWaitForVersionInfo, 200);
+      Pair<Store, Version> res =
+          getMetadataRepository().waitVersion(storeName, storeVersion, getMaxWaitForVersionInfo(), 200);
       Store store = res.getFirst();
       Version version = res.getSecond();
       if (store == null) {
-        logger.error(
+        getLogger().error(
             "Failed to get store for resource: {} with trigger: {}. Will not update lag monitor.",
             Utils.getReplicaId(resourceName, partitionId),
             heartbeatLagMonitorAction.getTrigger());
@@ -306,7 +307,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       }
       if (version == null) {
         if (!HeartbeatLagMonitorAction.REMOVE_MONITOR.equals(heartbeatLagMonitorAction)) {
-          logger.error(
+          getLogger().error(
               "Failed to get version for resource: {} with trigger: {}. Will not update lag monitor.",
               Utils.getReplicaId(resourceName, partitionId),
               heartbeatLagMonitorAction.getTrigger());
@@ -329,12 +330,24 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         default:
       }
     } catch (Exception e) {
-      logger.error(
+      getLogger().error(
           "Failed to update lag monitor for replica: {} with trigger: {}",
           Utils.getReplicaId(resourceName, partitionId),
           heartbeatLagMonitorAction.getTrigger(),
           e);
     }
+  }
+
+  ReadOnlyStoreRepository getMetadataRepository() {
+    return metadataRepository;
+  }
+
+  Duration getMaxWaitForVersionInfo() {
+    return maxWaitForVersionInfo;
+  }
+
+  static Logger getLogger() {
+    return LOGGER;
   }
 
   private void recordHeartbeat(
