@@ -69,21 +69,6 @@ public class TestInstanceStatusDecider {
     doReturn(mockMonitor).when(resources).getPushMonitor();
     doReturn(manager).when(resources).getHelixManager();
     doReturn(accessor).when(manager).getHelixDataAccessor();
-
-    // mock different invocations of PropertyKey
-    doAnswer(invocation -> {
-      PropertyKey key = invocation.getArgument(0);
-      if (key.getPath().contains("LIVEINSTANCES")) {
-        return mock(LiveInstance.class);
-      } else if (key.getPath().contains("IDEALSTATES")) {
-        IdealState idealState = mock(IdealState.class);
-        when(idealState.isEnabled()).thenReturn(true);
-        when(idealState.isValid()).thenReturn(true);
-        when(idealState.getMinActiveReplicas()).thenReturn(2);
-        return idealState;
-      }
-      return null;
-    }).when(accessor).getProperty(any(PropertyKey.class));
   }
 
   @Test
@@ -292,6 +277,22 @@ public class TestInstanceStatusDecider {
     }
 
     doReturn(store).when(readWriteStoreRepository).getStore(storeName);
+
+    // Create valid ideal state
+    IdealState idealState = mock(IdealState.class);
+    when(idealState.isEnabled()).thenReturn(true);
+    when(idealState.isValid()).thenReturn(true);
+    when(idealState.getMinActiveReplicas()).thenReturn(replicationFactor - 1);
+
+    doAnswer(invocation -> {
+      PropertyKey key = invocation.getArgument(0);
+      if (key.getPath().contains("LIVEINSTANCES")) {
+        return mock(LiveInstance.class);
+      } else if (key.getPath().contains("IDEALSTATES")) {
+        return idealState;
+      }
+      return null;
+    }).when(accessor).getProperty(any(PropertyKey.class));
 
   }
 }
