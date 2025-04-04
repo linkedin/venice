@@ -2,11 +2,9 @@ package com.linkedin.venice.fastclient.meta;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -43,7 +41,6 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 
 
@@ -65,12 +62,21 @@ public class RequestBasedMetadataTestUtils {
       String storeName,
       boolean firstConnWarmupFails,
       boolean isMetadataConnWarmupEnabled) {
+    return getMockClientConfig(storeName, firstConnWarmupFails, isMetadataConnWarmupEnabled, null);
+  }
+
+  public static ClientConfig getMockClientConfig(
+      String storeName,
+      boolean firstConnWarmupFails,
+      boolean isMetadataConnWarmupEnabled,
+      ScheduledExecutorService metadataRefreshExecutor) {
     ClientConfig clientConfig = mock(ClientConfig.class);
     ClusterStats clusterStats = new ClusterStats(new MetricsRepository(), storeName);
     doReturn(getMockR2Client(firstConnWarmupFails)).when(clientConfig).getR2Client();
     doReturn(1L).when(clientConfig).getMetadataRefreshIntervalInSeconds();
     doReturn(1L).when(clientConfig).getMetadataConnWarmupTimeoutInSeconds();
     doReturn(isMetadataConnWarmupEnabled).when(clientConfig).isMetadataConnWarmupEnabled();
+    doReturn(metadataRefreshExecutor).when(clientConfig).getMetadataRefreshExecutor();
     doReturn(storeName).when(clientConfig).getStoreName();
     doReturn(clusterStats).when(clientConfig).getClusterStats();
     doReturn(ClientRoutingStrategyType.LEAST_LOADED).when(clientConfig).getClientRoutingStrategyType();
@@ -220,21 +226,14 @@ public class RequestBasedMetadataTestUtils {
 
   public static RequestBasedMetadata getMockMetaData(ClientConfig clientConfig, String storeName)
       throws InterruptedException {
-    return getMockMetaData(clientConfig, storeName, getMockRouterBackedSchemaReader(), false, false, false, null);
+    return getMockMetaData(clientConfig, storeName, getMockRouterBackedSchemaReader(), false, false, false);
   }
 
   public static RequestBasedMetadata getMockMetaData(
       ClientConfig clientConfig,
       String storeName,
       boolean metadataChange) throws InterruptedException {
-    return getMockMetaData(
-        clientConfig,
-        storeName,
-        getMockRouterBackedSchemaReader(),
-        metadataChange,
-        false,
-        false,
-        null);
+    return getMockMetaData(clientConfig, storeName, getMockRouterBackedSchemaReader(), metadataChange, false, false);
   }
 
   public static RequestBasedMetadata getMockMetaData(
@@ -242,7 +241,7 @@ public class RequestBasedMetadataTestUtils {
       String storeName,
       RouterBackedSchemaReader routerBackedSchemaReader,
       boolean metadataChange) throws InterruptedException {
-    return getMockMetaData(clientConfig, storeName, routerBackedSchemaReader, metadataChange, false, false, null);
+    return getMockMetaData(clientConfig, storeName, routerBackedSchemaReader, metadataChange, false, false);
   }
 
   public static RequestBasedMetadata getMockMetaData(
@@ -250,16 +249,14 @@ public class RequestBasedMetadataTestUtils {
       String storeName,
       boolean metadataChange,
       boolean mockMetadataUpdateFailure,
-      boolean firstUpdateFails,
-      ScheduledExecutorService scheduler) throws InterruptedException {
+      boolean firstUpdateFails) throws InterruptedException {
     return getMockMetaData(
         clientConfig,
         storeName,
         getMockRouterBackedSchemaReader(),
         metadataChange,
         mockMetadataUpdateFailure,
-        firstUpdateFails,
-        scheduler);
+        firstUpdateFails);
   }
 
   public static RequestBasedMetadata getMockMetaData(
@@ -268,8 +265,7 @@ public class RequestBasedMetadataTestUtils {
       RouterBackedSchemaReader routerBackedSchemaReader,
       boolean metadataChange,
       boolean mockMetadataUpdateFailure,
-      boolean firstUpdateFails,
-      ScheduledExecutorService scheduler) throws InterruptedException {
+      boolean firstUpdateFails) throws InterruptedException {
     return getMockMetaData(
         clientConfig,
         storeName,
@@ -277,7 +273,6 @@ public class RequestBasedMetadataTestUtils {
         metadataChange,
         mockMetadataUpdateFailure,
         firstUpdateFails,
-        scheduler,
         AvroCompatibilityHelper.parse(KEY_SCHEMA),
         AvroCompatibilityHelper.parse(VALUE_SCHEMA));
   }
@@ -289,40 +284,33 @@ public class RequestBasedMetadataTestUtils {
       boolean metadataChange,
       boolean mockMetadataUpdateFailure,
       boolean firstUpdateFails,
-      ScheduledExecutorService scheduler,
       Schema storeKeySchema,
-      Schema storeValueSchema) throws InterruptedException {
+      Schema storeValueSchema) {
     D2TransportClient d2TransportClient =
         getMockD2TransportClient(storeName, metadataChange, storeKeySchema, storeValueSchema);
     D2ServiceDiscovery d2ServiceDiscovery = getMockD2ServiceDiscovery(d2TransportClient, storeName);
     RequestBasedMetadata requestBasedMetadata;
     if (mockMetadataUpdateFailure) {
-      requestBasedMetadata = mock(RequestBasedMetadata.class);
-      doAnswer(invocation -> null).when(requestBasedMetadata).discoverD2Service();
+      requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient) {
+        private boolean firstUpdate = true;
 
-      if (firstUpdateFails) {
-        doAnswer(invocation -> {
-          throw new VeniceClientException("update cache exception");
-        }).doAnswer(invocation -> null).when(requestBasedMetadata).updateCache(anyBoolean());
-      } else {
-        doAnswer(invocation -> null).when(requestBasedMetadata).updateCache(anyBoolean());
-      }
+        @Override
+        void discoverD2Service() {
+          // no-op
+        }
 
-      doCallRealMethod().when(requestBasedMetadata).setIsReadyLatch(any());
-      doCallRealMethod().when(requestBasedMetadata).getIsReadyLatch();
-      doCallRealMethod().when(requestBasedMetadata).setScheduler(any());
-      doCallRealMethod().when(requestBasedMetadata).getScheduler();
-      doCallRealMethod().when(requestBasedMetadata).setRefreshIntervalInSeconds(anyLong());
-      doCallRealMethod().when(requestBasedMetadata).getRefreshIntervalInSeconds();
+        @Override
+        synchronized void updateCache(boolean onDemandRefresh) {
+          if (firstUpdateFails && firstUpdate) {
+            firstUpdate = false;
+            throw new VeniceClientException("update cache exception");
+          }
+          // otherwise no-op
+        }
+      };
+
       requestBasedMetadata.setIsReadyLatch(new CountDownLatch(1));
-      ScheduledExecutorService mockScheduler = mock(ScheduledExecutorService.class);
-      requestBasedMetadata.setScheduler(mockScheduler);
       requestBasedMetadata.setRefreshIntervalInSeconds(RequestBasedMetadata.DEFAULT_REFRESH_INTERVAL_IN_SECONDS);
-      doAnswer(invocation -> {
-        scheduler.schedule((Runnable) invocation.getArgument(0), invocation.getArgument(1), invocation.getArgument(2));
-        return null;
-      }).when(mockScheduler).schedule(any(Runnable.class), anyLong(), any(TimeUnit.class));
-      doCallRealMethod().when(requestBasedMetadata).start();
     } else {
       requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient);
     }

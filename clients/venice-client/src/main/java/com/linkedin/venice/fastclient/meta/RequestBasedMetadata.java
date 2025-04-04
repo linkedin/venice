@@ -80,7 +80,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final boolean isMetadataConnWarmupEnabled;
   private final long connWarmupTimeoutInSeconds;
   /** scheduler to run {@link #refresh()} to periodically update metadata */
-  private ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+  private ScheduledExecutorService scheduler;
   /** scheduler within {@link #refresh()} to warmup new instances updated via metadata refresh.
    * Using a new ExecutorService rather than CompletableFuture's default one to not affect
    * the read requests happening in parallel.
@@ -140,6 +140,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         new RouterBackedSchemaReader(() -> metadataSchemaResponseStoreClient, Optional.empty(), Optional.empty());
     this.r2TransportClient = new R2TransportClient(clientConfig.getR2Client());
     this.harClusters = clientConfig.getHarClusters();
+    this.scheduler =
+        Optional.ofNullable(clientConfig.getMetadataRefreshExecutor()).orElse(Executors.newScheduledThreadPool(1));
   }
 
   // For unit tests only
