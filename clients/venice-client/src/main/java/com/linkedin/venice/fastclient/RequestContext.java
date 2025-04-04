@@ -29,6 +29,7 @@ public abstract class RequestContext {
 
   InstanceHealthMonitor instanceHealthMonitor = null;
 
+  // Tracking per-route request completion
   Map<String, CompletableFuture<Integer>> routeRequestMap = new VeniceConcurrentHashMap<>();
 
   String serverClusterName;

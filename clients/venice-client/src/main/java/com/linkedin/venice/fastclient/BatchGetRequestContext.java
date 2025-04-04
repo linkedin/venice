@@ -19,16 +19,10 @@ public class BatchGetRequestContext<K, V> extends MultiKeyRequestContext<K, V> {
     return RequestType.MULTI_GET_STREAMING;
   }
 
-  public BatchGetRequestContext<K, V> createRetryRequestContext(int numKeysInRequest, boolean isPartialSuccessAllowed) {
-    /**
-     * Create a new instance of BatchGetRequestContext for retrying the request.
-     * This will ensure that the retry context is fresh and does not carry over any state from the previous request.
-     */
-    BatchGetRequestContext<K, V> retryContext = new BatchGetRequestContext<>(numKeysInRequest, isPartialSuccessAllowed);
-    retryContext.currentVersion = this.currentVersion;
-    retryContext.routeRequestMap = this.routeRequestMap;
-    retryContext.helixGroupId = this.helixGroupId;
-    retryContext.retryRequest = true;
+  public BatchGetRequestContext<K, V> createRetryRequestContext(int numKeysInRequest) {
+    BatchGetRequestContext<K, V> retryContext =
+        new BatchGetRequestContext(numKeysInRequest, this.isPartialSuccessAllowed);
+    copyStateToRetryRequestContext(retryContext);
 
     return retryContext;
   }

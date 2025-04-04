@@ -19,16 +19,10 @@ public class ComputeRequestContext<K, V> extends MultiKeyRequestContext<K, V> {
     return RequestType.COMPUTE_STREAMING;
   }
 
-  public ComputeRequestContext<K, V> createRetryRequestContext(int numKeysInRequest, boolean isPartialSuccessAllowed) {
-    /**
-     * Create a new instance of BatchGetRequestContext for retrying the request.
-     * This will ensure that the retry context is fresh and does not carry over any state from the previous request.
-     */
-    ComputeRequestContext<K, V> retryContext = new ComputeRequestContext<>(numKeysInRequest, isPartialSuccessAllowed);
-    retryContext.currentVersion = this.currentVersion;
-    retryContext.routeRequestMap = this.routeRequestMap;
-    retryContext.helixGroupId = this.helixGroupId;
-    retryContext.retryRequest = true;
+  public ComputeRequestContext<K, V> createRetryRequestContext(int numKeysInRequest) {
+    ComputeRequestContext<K, V> retryContext =
+        new ComputeRequestContext(numKeysInRequest, this.isPartialSuccessAllowed);
+    copyStateToRetryRequestContext(retryContext);
 
     return retryContext;
   }

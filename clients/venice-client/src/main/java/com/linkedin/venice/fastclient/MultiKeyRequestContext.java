@@ -36,6 +36,9 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
   private final AtomicLong firstResponseReceivedTS;
   private final AtomicReference<Throwable> partialResponseException;
 
+  /**
+   * Tracking the assigned replicas per partition
+   */
   private Map<Integer, Set<String>> routesForPartition;
 
   final int numKeysInRequest;
@@ -118,6 +121,16 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
     if (firstRequestSentTS.get() != -1 && firstResponseReceivedTS.get() != -1) {
       requestSubmissionToResponseHandlingTime = firstResponseReceivedTS.get() - firstRequestSentTS.get();
     }
+  }
+
+  protected void copyStateToRetryRequestContext(MultiKeyRequestContext<K, V> retryContext) {
+    retryContext.currentVersion = this.currentVersion;
+    retryContext.routeRequestMap = this.routeRequestMap;
+    // Used to bypass the route chosen by the original request when routing the retry request.
+    retryContext.setRoutesForPartitionMapping(this.getRoutesForPartitionMapping());
+    // Used to choose a different helix group id in retry request.
+    retryContext.helixGroupId = this.helixGroupId;
+    retryContext.retryRequest = true;
   }
 
   void recordDecompressionTime(String routeId, long latencyInNS) {

@@ -236,8 +236,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         keys,
         callback,
         longTailRetryThresholdForBatchGetInMicroSeconds,
-        (numKeysInRequest, isPartialSuccessAllowed) -> requestContext
-            .createRetryRequestContext(numKeysInRequest, isPartialSuccessAllowed),
+        (numKeysInRequest) -> requestContext.createRetryRequestContext(numKeysInRequest),
         super::streamingBatchGet);
   }
 
@@ -260,8 +259,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         keys,
         callback,
         longTailRetryThresholdForComputeInMicroSeconds,
-        (numKeysInRequest, isPartialSuccessAllowed) -> requestContext
-            .createRetryRequestContext(numKeysInRequest, isPartialSuccessAllowed),
+        (numKeysInRequest) -> requestContext.createRetryRequestContext(numKeysInRequest),
         (requestContextInternal, internalKeys, internalCallback) -> {
           super.compute(
               requestContextInternal,
@@ -320,8 +318,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
             || multiKeyLongTailRetryManager.isRetryAllowed(pendingKeysFuture.keySet().size())) {
           Set<K> pendingKeys = Collections.unmodifiableSet(pendingKeysFuture.keySet());
           // Prepare the retry context and track excluded routes on a per-partition basis
-          R retryRequestContext =
-              requestContextConstructor.construct(pendingKeys.size(), requestContext.isPartialSuccessAllowed);
+          R retryRequestContext = requestContextConstructor.construct(pendingKeys.size());
 
           requestContext.retryContext.retryRequestContext = retryRequestContext;
           LOGGER.debug("Retrying {} incomplete keys", retryRequestContext.numKeysInRequest);
@@ -460,7 +457,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   }
 
   interface RequestContextConstructor<K, V, R extends MultiKeyRequestContext<K, V>> {
-    R construct(int numKeysInRequest, boolean isPartialSuccessAllowed);
+    R construct(int numKeysInRequest);
   }
 
   interface StreamingRequestExecutor<K, V, R extends MultiKeyRequestContext<K, V>, RESPONSE> {
