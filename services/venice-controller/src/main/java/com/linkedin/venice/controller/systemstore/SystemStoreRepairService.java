@@ -82,7 +82,7 @@ public class SystemStoreRepairService extends AbstractVeniceService {
     LOGGER.info("SystemStoreRepairService is shutdown.");
   }
 
-  Map<String, SystemStoreHealthCheckStats> getClusterToSystemStoreHealthCheckStatsMap() {
+  final Map<String, SystemStoreHealthCheckStats> getClusterToSystemStoreHealthCheckStatsMap() {
     return clusterToSystemStoreHealthCheckStatsMap;
   }
 }
