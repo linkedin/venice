@@ -4,7 +4,7 @@ import com.linkedin.venice.meta.Store;
 
 
 /**
- * Custom Exception for when Vencie store has no version that is ready to serve reads
+ * Custom Exception for when Venice store has no version that is ready to serve reads
  */
 public class VeniceStoreNotReadyToServeException extends VeniceException {
   private final String storeName;
