@@ -5057,6 +5057,14 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
+   * Cause {@link Admin#getDeadStores(String, String, boolean)}
+   */
+  @Override
+  public List<StoreInfo> getDeadStores(String clusterName, String storeName, boolean includeSystemStores) {
+    return getVeniceHelixAdmin().getDeadStores(clusterName, storeName, includeSystemStores);
+  }
+
+  /**
    * @return the largest used version number for the given store from the store graveyard.
    */
   @Override

@@ -1,10 +1,15 @@
 package com.linkedin.venice.meta;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.Collections;
 import org.testng.annotations.Test;
 
 
@@ -33,5 +38,36 @@ public class TestStoreInfo {
   @Test
   public void nullStore() {
     assertNull(StoreInfo.fromStore(null)); // should not throw a NPE!
+  }
+
+  @Test
+  public void testSetAndGetIsStoreDead() {
+    StoreInfo storeInfo = new StoreInfo();
+    assertFalse(storeInfo.getIsStoreDead(), "Default should be false");
+
+    storeInfo.setIsStoreDead(true);
+    assertTrue(storeInfo.getIsStoreDead(), "Should reflect store is dead");
+
+    storeInfo.setIsStoreDead(false);
+    assertFalse(storeInfo.getIsStoreDead(), "Should allow unsetting dead flag");
+  }
+
+  @Test
+  public void testSetAndGetStoreDeadStatusReasons() {
+    StoreInfo storeInfo = new StoreInfo();
+    assertNotNull(storeInfo.getStoreDeadStatusReasons(), "Default should be empty list");
+    assertTrue(storeInfo.getStoreDeadStatusReasons().isEmpty(), "Default should be empty");
+
+    storeInfo.setStoreDeadStatusReasons(Arrays.asList("No versions", "Metadata corrupted"));
+    assertEquals(2, storeInfo.getStoreDeadStatusReasons().size());
+    assertEquals("No versions", storeInfo.getStoreDeadStatusReasons().get(0));
+
+    storeInfo.setStoreDeadStatusReasons(null);
+    assertNotNull(storeInfo.getStoreDeadStatusReasons(), "Null input should be handled");
+    assertTrue(storeInfo.getStoreDeadStatusReasons().isEmpty(), "Null input should be treated as empty list");
+
+    storeInfo.setStoreDeadStatusReasons(Collections.singletonList("Store deleted"));
+    assertEquals(1, storeInfo.getStoreDeadStatusReasons().size());
+    assertEquals("Store deleted", storeInfo.getStoreDeadStatusReasons().get(0));
   }
 }

@@ -38,6 +38,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_KAFKA_TOP
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ENABLE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.FUTURE_VERSION;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DEAD_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DELETABLE_STORE_TOPICS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_HEARTBEAT_TIMESTAMP_FROM_SYSTEM_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_INUSE_SCHEMA_IDS;
@@ -1010,6 +1011,23 @@ public class StoresRoutes extends AbstractRoute {
         String cluster = request.queryParams(CLUSTER);
         String storeName = request.queryParams(STORE_NAME);
         veniceResponse.setVersion(admin.getLargestUsedVersionFromStoreGraveyard(cluster, storeName));
+      }
+    };
+  }
+
+  /**
+   * @see Admin#getDeadStores(String, String, boolean)
+   */
+  public Route getDeadStores(Admin admin) {
+    return new VeniceRouteHandler<MultiStoreInfoResponse>(MultiStoreInfoResponse.class) {
+      @Override
+      public void internalHandle(Request request, MultiStoreInfoResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, GET_DEAD_STORES.getParams(), admin);
+        String cluster = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        boolean includeSystemStores = Boolean.parseBoolean(request.queryParams(INCLUDE_SYSTEM_STORES));
+        List<StoreInfo> storeList = admin.getDeadStores(cluster, storeName, includeSystemStores);
+        veniceResponse.setStoreInfoList(storeList);
       }
     };
   }

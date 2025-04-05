@@ -1,5 +1,8 @@
 package com.linkedin.venice.controller;
 
+import static org.mockito.Mockito.*;
+
+import com.linkedin.venice.controller.stats.DeadStoreStats;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
@@ -10,6 +13,7 @@ import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -310,5 +314,44 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
       }
     }
     return false;
+  }
+
+  @Test
+  public void testDeadStoreStatsInitialization() {
+    int newAdminPort = controllerConfig.getAdminPort() + 100;
+    PropertyBuilder builder = new PropertyBuilder().put(controllerProps.toProperties())
+        .put("admin.port", newAdminPort)
+        .put("controller.dead.store.endpoint.enabled", true)
+        .put("controller.dead.store.stats.class.name", MockDeadStoreStats.class.getName());
+    VeniceProperties newControllerProps = builder.build();
+    VeniceControllerClusterConfig newConfig = new VeniceControllerClusterConfig(newControllerProps);
+
+    VeniceHelixAdmin admin = new VeniceHelixAdmin(
+        TestUtils.getMultiClusterConfigFromOneCluster(newConfig),
+        new MetricsRepository(),
+        D2TestUtils.getAndStartD2Client(zkAddress),
+        pubSubTopicRepository,
+        pubSubBrokerWrapper.getPubSubClientsFactory()) {
+      @Override
+      public boolean isParent() {
+        return true;
+      }
+    };
+
+    Assert.assertTrue(admin.deadStoreStats instanceof MockDeadStoreStats);
+  }
+
+  public static class MockDeadStoreStats implements DeadStoreStats {
+    public MockDeadStoreStats(VeniceProperties props) {
+    }
+
+    @Override
+    public List<StoreInfo> getDeadStores(List<StoreInfo> storeInfos) {
+      return null;
+    }
+
+    @Override
+    public void preFetchStats(List<StoreInfo> storeInfos) {
+    }
   }
 }

@@ -587,6 +587,15 @@ public class VeniceControllerClusterConfig {
   private final long logCompactionIntervalMS;
   private final long timeSinceLastLogCompactionThresholdMS;
 
+  /**
+   * Configs for Dead Store Endpoint
+   */
+  private final boolean isDeadStoreEndpointEnabled;
+  private final String deadStoreStatsClassName;
+  private final boolean isPreFetchDeadStoreStatsEnabled;
+  private final long deadStoreStatsPreFetchIntervalInMs;
+  private final VeniceProperties deadStoreStatsConfigs;
+
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
     this.clusterName = props.getString(CLUSTER_NAME);
@@ -1052,6 +1061,14 @@ public class VeniceControllerClusterConfig {
     this.logCompactionIntervalMS = props.getLong(LOG_COMPACTION_INTERVAL_MS, TimeUnit.HOURS.toMillis(1));
     this.timeSinceLastLogCompactionThresholdMS =
         props.getLong(TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS, TimeUnit.HOURS.toMillis(24));
+
+    this.isDeadStoreEndpointEnabled = props.getBoolean(ConfigKeys.CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED, false);
+    this.deadStoreStatsClassName = props.getString(ConfigKeys.CONTROLLER_DEAD_STORE_STATS_CLASS_NAME, "");
+    this.isPreFetchDeadStoreStatsEnabled =
+        props.getBoolean(ConfigKeys.CONTROLLER_DEAD_STORE_STATS_PRE_FETCH_ENABLED, false);
+    this.deadStoreStatsPreFetchIntervalInMs =
+        props.getLong(ConfigKeys.CONTROLLER_DEAD_STORE_STATS_PRE_FETCH_INTERVAL_MS, 24 * 60 * 60 * 1000);
+    this.deadStoreStatsConfigs = props.clipAndFilterNamespace(ConfigKeys.CONTROLLER_DEAD_STORE_STATS_PREFIX);
 
     this.isRealTimeTopicVersioningEnabled = props.getBoolean(
         ConfigKeys.CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING,
@@ -1993,6 +2010,26 @@ public class VeniceControllerClusterConfig {
 
   public long getTimeSinceLastLogCompactionThresholdMS() {
     return timeSinceLastLogCompactionThresholdMS;
+  }
+
+  public boolean isDeadStoreEndpointEnabled() {
+    return isDeadStoreEndpointEnabled;
+  }
+
+  public String getDeadStoreStatsClassName() {
+    return deadStoreStatsClassName;
+  }
+
+  public boolean isPreFetchDeadStoreStatsEnabled() {
+    return isPreFetchDeadStoreStatsEnabled;
+  }
+
+  public long getDeadStoreStatsPreFetchRefreshIntervalInMs() {
+    return deadStoreStatsPreFetchIntervalInMs;
+  }
+
+  public VeniceProperties getDeadStoreStatsConfigs() {
+    return deadStoreStatsConfigs;
   }
 
   public Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> getHelixGlobalRebalancePreference() {
