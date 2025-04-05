@@ -1,6 +1,7 @@
 package com.linkedin.davinci.consumer;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.schema.SchemaReader;
@@ -46,9 +47,9 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    */
   private boolean skipFailedToAssembleRecords = true;
 
-  private Boolean isBlobTransferEnabled = false;
   private Boolean isExperimentalClientEnabled = false;
   private int maxBufferSize = 1000;
+  private CachingDaVinciClientFactory daVinciClientFactory;
 
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
@@ -253,7 +254,6 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setDatabaseSyncBytesInterval(config.getDatabaseSyncBytesInterval())
         .setShouldCompactMessages(config.shouldCompactMessages())
         .setIsBeforeImageView(config.isBeforeImageView())
-        .setIsBlobTransferEnabled(config.isBlobTransferEnabled())
         .setIsExperimentalClientEnabled(config.isExperimentalClientEnabled())
         .setMaxBufferSize(config.getMaxBufferSize())
         .setSeekThreadPoolSize(config.getSeekThreadPoolSize())
@@ -283,20 +283,6 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
-  protected Boolean isBlobTransferEnabled() {
-    return isBlobTransferEnabled;
-  }
-
-  /**
-   * This is used by the experimental client to speed up bootstrapping times through blob transfer.
-   * In order for this feature to be used, {@link #setIsExperimentalClientEnabled(Boolean)} must be set to true.
-   * It is currently only supported for {@link BootstrappingVeniceChangelogConsumer}.
-   */
-  public ChangelogClientConfig setIsBlobTransferEnabled(Boolean blobTransferEnabled) {
-    isBlobTransferEnabled = blobTransferEnabled;
-    return this;
-  }
-
   protected int getMaxBufferSize() {
     return maxBufferSize;
   }
@@ -312,4 +298,18 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     this.maxBufferSize = maxBufferSize;
     return this;
   }
+
+  /**
+   * If this is set, the Experimental {@link BootstrappingVeniceChangelogConsumer} will use this factory instead
+   * of creating one itself.
+   */
+  public ChangelogClientConfig setDaVinciClientFactory(CachingDaVinciClientFactory daVinciClientFactory) {
+    this.daVinciClientFactory = daVinciClientFactory;
+    return this;
+  }
+
+  protected CachingDaVinciClientFactory getDaVinciClientFactory() {
+    return daVinciClientFactory;
+  }
+
 }
