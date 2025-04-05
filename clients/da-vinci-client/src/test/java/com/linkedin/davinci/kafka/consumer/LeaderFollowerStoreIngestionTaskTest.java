@@ -31,7 +31,6 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
-import com.linkedin.davinci.validation.DivSnapshot;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -55,6 +54,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -90,6 +90,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
   private PubSubTopicPartition mockTopicPartition;
   private ConsumerAction mockConsumerAction;
   private StorageService mockStorageService;
+  private StoreBufferService mockStoreBufferService;
   private Properties mockProperties;
   private BooleanSupplier mockBooleanSupplier;
   private VeniceStoreVersionConfig mockVeniceStoreVersionConfig;
@@ -215,6 +216,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
         .setHostLevelIngestionStats(aggHostLevelIngestionStats);
     when(builder.getSchemaRepo().getKeySchema(storeName)).thenReturn(new SchemaEntry(1, "\"string\""));
     mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
+    mockStoreBufferService = (StoreBufferService) builder.getStoreBufferService();
     Version version = mockStore.getVersion(versionNumber);
     assert version != null; // helps the IDE understand that version is not null, so it won't complain
     version.setCompressionStrategy(CompressionStrategy.GZIP);
@@ -412,6 +414,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     long messageTime = 5;
     DefaultPubSubMessage mockMessage = mock(DefaultPubSubMessage.class);
     PubSubTopicPartition mockTopicPartition = mock(PubSubTopicPartition.class);
+    LeaderProducedRecordContext context = mock(LeaderProducedRecordContext.class);
     PubSubPosition position = mock(PubSubPosition.class);
     doReturn(partition).when(mockTopicPartition).getPartitionNumber();
     doReturn(offset).when(position).getNumericOffset();
@@ -427,7 +430,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     byte[] keyBytes = LeaderFollowerStoreIngestionTask.getGlobalRtDivKeyName(brokerUrl).getBytes();
 
     leaderFollowerStoreIngestionTask
-        .sendGlobalRtDivMessage(mockMessage, mockPartitionConsumptionState, partition, brokerUrl, 0L, null, null);
+        .sendGlobalRtDivMessage(mockMessage, mockPartitionConsumptionState, partition, brokerUrl, 0L, null, context);
 
     ArgumentCaptor<byte[]> valueBytesArgumentCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<LeaderProducerCallback> callbackArgumentCaptor =
@@ -462,10 +465,15 @@ public class LeaderFollowerStoreIngestionTaskTest {
     assertEquals(callbackPayload.getKey().getKeyHeaderByte(), MessageType.GLOBAL_RT_DIV.getKeyHeaderByte());
     assertEquals(callbackPayload.getValue().getMessageType(), MessageType.PUT.getValue());
     assertEquals(callbackPayload.getPartition(), partition);
-    assertTrue(callbackPayload.getValue().payloadUnion instanceof DivSnapshot); // direct access bc the KME is a mock
-    DivSnapshot divSnapshot = (DivSnapshot) callbackPayload.getValue().payloadUnion;
-    assertEquals(divSnapshot.getLatestConsumedRtOffset(), offset);
-    assertEquals(divSnapshot.getPartitionTracker().getPartition(), partition);
+    assertTrue(callbackPayload.getValue().payloadUnion instanceof Put);
+    Put put = (Put) callbackPayload.getValue().payloadUnion;
+    assertEquals(put.getSchemaId(), AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
+    assertNotNull(put.getPutValue());
+    PubSubProduceResult produceResult = mock(PubSubProduceResult.class);
+    when(produceResult.getOffset()).thenReturn(0L);
+    when(produceResult.getSerializedSize()).thenReturn(keyBytes.length + put.putValue.remaining());
+    callback.onCompletion(produceResult, null);
+    verify(mockStoreBufferService, times(1)).execSyncOffsetFromSnapshotAsync(any(), any(), any());
   }
 
   @Test
@@ -480,7 +488,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doCallRealMethod().when(mockIngestionTask)
         .delegateConsumerRecord(any(), anyInt(), any(), anyInt(), anyLong(), anyLong());
     KafkaDataIntegrityValidator consumerDiv = mock(KafkaDataIntegrityValidator.class);
-    doReturn(consumerDiv).when(mockIngestionTask).getKafkaDataIntegrityValidatorForLeaders();
+    doReturn(consumerDiv).when(mockIngestionTask).getConsumerDiv();
     doReturn(true).when(mockIngestionTask).isGlobalRtDivEnabled();
 
     mockIngestionTask.delegateConsumerRecord(cm, 0, "testURL", 0, 0, 0);

@@ -3,6 +3,8 @@ package com.linkedin.venice.kafka.protocol.enums;
 import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.VeniceEnumValueTest;
 import java.util.Map;
+import org.testng.Assert;
+import org.testng.annotations.Test;
 
 
 public class ControlMessageTypeTest extends VeniceEnumValueTest<ControlMessageType> {
@@ -23,5 +25,17 @@ public class ControlMessageTypeTest extends VeniceEnumValueTest<ControlMessageTy
         .put(7, ControlMessageType.TOPIC_SWITCH)
         .put(8, ControlMessageType.VERSION_SWAP)
         .build();
+  }
+
+  @Test
+  public void testIsSegmentControlMessage() {
+    for (ControlMessageType controlMessageType: ControlMessageType.values()) {
+      if (controlMessageType == ControlMessageType.START_OF_SEGMENT
+          || controlMessageType == ControlMessageType.END_OF_SEGMENT) {
+        Assert.assertTrue(controlMessageType.isSegmentControlMessage());
+      } else {
+        Assert.assertFalse(controlMessageType.isSegmentControlMessage());
+      }
+    }
   }
 }

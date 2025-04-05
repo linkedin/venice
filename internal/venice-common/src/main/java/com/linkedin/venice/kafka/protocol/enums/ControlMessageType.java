@@ -57,6 +57,10 @@ public enum ControlMessageType implements VeniceEnumValue {
     this.shallowClassOverhead = ClassSizeEstimator.getClassOverhead(constructor.get().getClass());
   }
 
+  public boolean isSegmentControlMessage() {
+    return START_OF_SEGMENT.equals(this) || END_OF_SEGMENT.equals(this);
+  }
+
   @Override
   public int getValue() {
     return value;
