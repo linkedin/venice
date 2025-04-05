@@ -2,6 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atMostOnce;
@@ -50,6 +51,7 @@ import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -58,6 +60,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.ResourceAutoClosableLockManager;
 import io.tehuti.metrics.MetricsRepository;
@@ -65,6 +68,7 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.lang.reflect.Field;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Optional;
@@ -72,6 +76,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import org.apache.avro.Schema;
@@ -109,9 +114,12 @@ public abstract class KafkaStoreIngestionServiceTest {
     mockMetadataRepo = mock(ReadOnlyStoreRepository.class);
     mockSchemaRepo = mock(ReadOnlySchemaRepository.class);
     mockLiveClusterConfigRepo = mock(ReadOnlyLiveClusterConfigRepository.class);
+    PubSubConsumerAdapterFactory mockPubSubConsumerAdapterFactory = mock(PubSubConsumerAdapterFactory.class);
+    doReturn(mock(PubSubConsumerAdapter.class)).when(mockPubSubConsumerAdapterFactory)
+        .create(any(), anyBoolean(), any(), any());
     mockPubSubClientsFactory = new PubSubClientsFactory(
         mock(PubSubProducerAdapterFactory.class),
-        mock(PubSubConsumerAdapterFactory.class),
+        mockPubSubConsumerAdapterFactory,
         mock(PubSubAdminAdapterFactory.class));
     compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
 
@@ -136,6 +144,8 @@ public abstract class KafkaStoreIngestionServiceTest {
     doReturn(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.DEFAULT).when(mockVeniceServerConfig)
         .getConsumerPoolStrategyType();
     doReturn(2).when(mockVeniceServerConfig).getAaWCIngestionStorageLookupThreadPoolSize();
+    doReturn(1).when(mockVeniceServerConfig).getStoreWriterNumber();
+    doReturn(5).when(mockVeniceServerConfig).getIdleIngestionTaskCleanupIntervalInSeconds();
 
     // Consumer related configs for preparing kafka consumer service.
     doReturn(dummyKafkaUrl).when(mockVeniceServerConfig).getKafkaBootstrapServers();
@@ -243,6 +253,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         verify(task).enableMetricsEmission();
       }
     });
+    kafkaStoreIngestionService.close();
   }
 
   @Test
@@ -335,6 +346,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     assertTrue(
         results.size() == 2 && results.contains(invalidTopic) && results.contains(topic1),
         "Invalid and retired ingesting topics should be included in the returned set");
+    kafkaStoreIngestionService.close();
   }
 
   @Test
@@ -410,6 +422,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     shutdownTimeoutTask.getGracefulShutdownLatch().get();
     // Graceful shutdown wait should time out
     Assert.assertFalse(shutdownTimeoutTask.shutdownAndWait(1));
+    kafkaStoreIngestionService.close();
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -482,6 +495,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         spy(storeIngestionTask.aggKafkaConsumerService.createKafkaConsumerService(consumerProperties));
     kafkaStoreIngestionService.getTopicPartitionIngestionContext(topicName, topicName, 0);
     verify(kafkaConsumerService, atMostOnce()).getIngestionInfoFor(pubSubTopic, pubSubTopicPartition);
+    kafkaStoreIngestionService.close();
   }
 
   @Test
@@ -577,6 +591,72 @@ public abstract class KafkaStoreIngestionServiceTest {
     when(storeIngestionTask.isRunning()).thenReturn(false);
     kafkaStoreIngestionService.dropStoragePartitionGracefully(config, partitionId);
     verify(storageService).dropStorePartition(config, partitionId, true);
+    kafkaStoreIngestionService.close();
+  }
+
+  @Test
+  public void testCentralizedIdleIngestionTaskCleanupService() {
+    kafkaStoreIngestionService = new KafkaStoreIngestionService(
+        mockStorageService,
+        mockVeniceConfigLoader,
+        storageMetadataService,
+        mockClusterInfoProvider,
+        mockMetadataRepo,
+        mockSchemaRepo,
+        mockLiveClusterConfigRepo,
+        new MetricsRepository(),
+        Optional.empty(),
+        Optional.empty(),
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        Optional.empty(),
+        null,
+        false,
+        compressorFactory,
+        Optional.empty(),
+        null,
+        false,
+        null,
+        mockPubSubClientsFactory,
+        Optional.empty(),
+        null,
+        null,
+        null);
+    kafkaStoreIngestionService.start();
+    String topicName = "test-store_v1";
+    String storeName = Version.parseStoreFromKafkaTopicName(topicName);
+    Store mockStore = new ZKStore(
+        storeName,
+        "unit-test",
+        0,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        1);
+
+    AbstractStorageEngine storageEngine1 = mock(AbstractStorageEngine.class);
+    Mockito.when(mockStorageEngineRepository.getLocalStorageEngine(topicName)).thenReturn(storageEngine1);
+
+    mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id"));
+    doReturn(mockStore).when(mockMetadataRepo).getStore(storeName);
+    doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeName);
+    doReturn(new Pair<>(mockStore, mockStore.getVersion(1))).when(mockMetadataRepo)
+        .waitVersion(eq(storeName), eq(1), any());
+    VeniceProperties veniceProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    VeniceStoreVersionConfig config = new VeniceStoreVersionConfig(topicName, veniceProperties);
+    kafkaStoreIngestionService.startConsumption(config, 0);
+    // kafkaStoreIngestionService.stopConsumptionAndWait(config, 0, 1, 1, true);
+    final StoreIngestionTask storeIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
+    // Unsubscribe from partition 0 to make the store ingestion task idle
+    Set<PubSubTopicPartition> topicPartitionsToUnsubscribe = new HashSet<>();
+    topicPartitionsToUnsubscribe.add(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), 0));
+    storeIngestionTask.consumerBatchUnsubscribe(topicPartitionsToUnsubscribe);
+    // Verify that the store ingestion task is marked as idle and eventually closed
+    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+      Assert.assertTrue(storeIngestionTask.isIdleOverThreshold());
+      Assert.assertNull(kafkaStoreIngestionService.getStoreIngestionTask(topicName));
+    });
+    kafkaStoreIngestionService.close();
   }
 
   @Test

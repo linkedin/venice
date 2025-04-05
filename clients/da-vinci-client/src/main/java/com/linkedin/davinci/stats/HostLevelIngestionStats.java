@@ -281,6 +281,10 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
                 .mapToLong(task -> task.isStuckByMemoryConstraint() ? 1 : 0)
                 .sum(),
             "ingestion_stuck_by_memory_constraint"));
+    // Register a metric that records the size of ingestion tasks count
+    if (isTotalStats) {
+      registerSensor(new AsyncGauge((ignored, ignored2) -> ingestionTaskMap.size(), "ingestion_task_count"));
+    }
 
     // Stats which are per-store only:
     String keySizeSensorName = "record_key_size_in_bytes";

@@ -294,7 +294,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected final SparseConcurrentList<Object> availableSchemaIds = new SparseConcurrentList<>();
   protected final SparseConcurrentList<Object> deserializedSchemaIds = new SparseConcurrentList<>();
-  protected int idleCounter = 0;
+  protected AtomicInteger idleCounter = new AtomicInteger(0);
 
   private final StorageUtilizationManager storageUtilizationManager;
 
@@ -755,7 +755,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public boolean hasAnySubscription() {
-    return !partitionConsumptionStateMap.isEmpty();
+    return consumerHasAnySubscription() || hasAnyPendingSubscription();
+  }
+
+  /**
+   * Check the consumer action queue to see if there are any pending SUBSCRIBE actions.
+   */
+  public boolean hasAnyPendingSubscription() {
+    return consumerActionsQueue.stream().anyMatch(action -> action.getType() == SUBSCRIBE);
+  }
+
+  /**
+   * This helper function will check if the ingestion task has been idle for a long time.
+   */
+  public boolean isIdleOverThreshold() {
+    return getIdleCounter() > getMaxIdleCounter();
   }
 
   /**
@@ -1561,8 +1575,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Check whether current consumer has any subscription or not since 'poll' function will throw
      * {@link IllegalStateException} with empty subscription.
      */
-    if (!consumerHasAnySubscription()) {
-      if (++idleCounter <= getMaxIdleCounter()) {
+    if (!hasAnySubscription()) {
+      if (idleCounter.incrementAndGet() <= getMaxIdleCounter()) {
         String message = ingestionTaskName + " Not subscribed to any partitions ";
         if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
           LOGGER.info(message);
@@ -1579,7 +1593,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           }
           // long sleep here in case there are more consumer action to perform like KILL/subscription etc.
           Thread.sleep(POST_UNSUB_SLEEP_MS);
-          idleCounter = 0;
+          idleCounter.set(0);
           if (serverConfig.isSkipChecksAfterUnSubEnabled()) {
             skipAfterBatchPushUnsubEnabled = true;
           }
@@ -1589,7 +1603,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       return;
     }
-    idleCounter = 0;
+    idleCounter.set(0);
     if (emitMetrics.get()) {
       recordQuotaMetrics();
       recordMaxIdleTime();
@@ -1915,7 +1929,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // Only reset Offset and Drop Partition Messages are important, subscribe/unsubscribe will be handled
     // on the restart by Helix Controller notifications on the new StoreIngestionTask.
     this.storeRepository.unregisterStoreDataChangedListener(this.storageUtilizationManager);
-    for (ConsumerAction message: consumerActionsQueue) {
+    // Remove all the actions out of the queue in order
+    while (!consumerActionsQueue.isEmpty()) {
+      ConsumerAction message = consumerActionsQueue.poll();
       ConsumerActionType opType = message.getType();
       String topic = message.getTopic();
       int partition = message.getPartition();
@@ -4192,6 +4208,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   private void maybeCloseInactiveIngestionTask() {
+    if (serverConfig.getIdleIngestionTaskCleanupIntervalInSeconds() >= 0 && !isIsolatedIngestion) {
+      // Ingestion task will not close by itself
+      return;
+    }
     LOGGER.warn("{} Has expired due to not being subscribed to any partitions for too long.", ingestionTaskName);
     if (!consumerActionsQueue.isEmpty()) {
       LOGGER.info("{} consumerActionsQueue is not empty, will not close ingestion task.", ingestionTaskName);
@@ -4220,11 +4240,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   void resetIdleCounter() {
-    idleCounter = 0;
+    idleCounter.set(0);
   }
 
   int getIdleCounter() {
-    return idleCounter;
+    return idleCounter.get();
   }
 
   int getMaxIdleCounter() {
@@ -4797,6 +4817,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   // For unit test purpose.
   void setVersionRole(PartitionReplicaIngestionContext.VersionRole versionRole) {
     this.versionRole = versionRole;
+  }
+
+  // For testing only
+  Map<Integer, PartitionConsumptionState> getPartitionConsumptionStateMap() {
+    return partitionConsumptionStateMap;
   }
 
   boolean isDaVinciClient() {

@@ -108,6 +108,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INITIAL_WINDOW_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_MAX_CONCURRENT_STREAMS;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_MAX_FRAME_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_MAX_HEADER_LIST_SIZE;
+import static com.linkedin.venice.ConfigKeys.SERVER_IDLE_INGESTION_TASK_CLEANUP_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INCREMENTAL_PUSH_STATUS_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_HEARTBEAT_INTERVAL_MS;
@@ -611,6 +612,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int aclInMemoryCacheTTLMs;
 
   private final int aaWCIngestionStorageLookupThreadPoolSize;
+  private final int idleIngestionTaskCleanupIntervalInSeconds;
 
   private final List<Double> defaultConsumerPoolLimitFactorsList =
       Arrays.asList(0.4D, 0.6D, 0.8D, 1.0D, 1.2D, 1.4D, 1.6D);
@@ -1049,6 +1051,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     aaWCIngestionStorageLookupThreadPoolSize =
         serverProperties.getInt(SERVER_AA_WC_INGESTION_STORAGE_LOOKUP_THREAD_POOL_SIZE, 4);
     this.isParticipantMessageStoreEnabled = serverProperties.getBoolean(PARTICIPANT_MESSAGE_STORE_ENABLED, false);
+    idleIngestionTaskCleanupIntervalInSeconds =
+        serverProperties.getInt(SERVER_IDLE_INGESTION_TASK_CLEANUP_INTERVAL_IN_SECONDS, -1);
   }
 
   List<Double> extractThrottleLimitFactorsFor(VeniceProperties serverProperties, String configKey) {
@@ -1929,5 +1933,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isParticipantMessageStoreEnabled() {
     return isParticipantMessageStoreEnabled;
+  }
+
+  public int getIdleIngestionTaskCleanupIntervalInSeconds() {
+    return idleIngestionTaskCleanupIntervalInSeconds;
   }
 }
