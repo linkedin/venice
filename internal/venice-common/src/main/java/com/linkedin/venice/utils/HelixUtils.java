@@ -22,6 +22,7 @@ import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.model.CloudConfig;
 import org.apache.helix.model.CustomizedStateConfig;
 import org.apache.helix.model.HelixConfigScope;
+import org.apache.helix.model.IdealState;
 import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.model.LiveInstance;
 import org.apache.helix.model.MaintenanceSignal;
@@ -341,6 +342,12 @@ public class HelixUtils {
     } else {
       return true;
     }
+  }
+
+  public static IdealState getIdealState(String clusterName, String resourceName, SafeHelixManager manager) {
+    PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
+    SafeHelixDataAccessor accessor = manager.getHelixDataAccessor();
+    return accessor.getProperty(keyBuilder.idealStates(resourceName));
   }
 
   /**

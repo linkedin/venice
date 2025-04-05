@@ -6,7 +6,6 @@ import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
@@ -16,6 +15,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.apache.helix.model.IdealState;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -141,16 +141,13 @@ public class InstanceStatusDecider {
                 break;
               }
 
-              Version version = resources.getStoreMetadataRepository()
-                  .getStore(Version.parseStoreFromKafkaTopicName(resourceName))
-                  .getVersion(Version.parseVersionFromKafkaTopicName(resourceName));
-
-              if (version != null) {
-                result = willTriggerRebalance(partitionAssignmentAfterRemoving, version.getMinActiveReplicas());
+              IdealState idealState = HelixUtils.getIdealState(clusterName, resourceName, resources.getHelixManager());
+              if (idealState != null && idealState.isEnabled() && idealState.isValid()) {
+                result = willTriggerRebalance(partitionAssignmentAfterRemoving, idealState.getMinActiveReplicas());
               } else {
                 result = new Pair<>(
                     false,
-                    "Cannot find the version info. Ignore it since it's been deleted. " + "Resource: " + resourceName);
+                    "Cannot find the ideal state. Ignore it since it does not exist. Resource: " + resourceName);
               }
 
               if (result.getFirst()) {
