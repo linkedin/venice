@@ -38,7 +38,13 @@ public class DeadStoreStatsPreFetchTask implements Runnable, Closeable {
   public void run() {
     logger.info("Started {}", taskId);
     isRunning.set(true);
-    admin.preFetchDeadStoreStats(clusterName, getStoresInCluster()); // Fetch before cycling
+    try {
+      logger.debug("Initial fetch of dead store stats for cluster: {}", clusterName);
+      admin.preFetchDeadStoreStats(clusterName, getStoresInCluster());
+    } catch (Exception e) {
+      logger.error("Error during initial fetch of dead store stats for cluster: {}", clusterName, e);
+    }
+
     while (isRunning.get()) {
       try {
         Utils.sleep(refreshIntervalMs);
