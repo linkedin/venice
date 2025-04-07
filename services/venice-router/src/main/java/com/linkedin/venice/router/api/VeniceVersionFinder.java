@@ -104,7 +104,8 @@ public class VeniceVersionFinder {
       }
 
       // check if new store is ready to serve
-      if (isDecompressorReady(store[0], metadataCurrentVersion[0])) {
+      String kafkaTopic = Version.composeKafkaTopic(storeName, metadataCurrentVersion[0]);
+      if (isPartitionResourcesReady(kafkaTopic) && isDecompressorReady(store[0], metadataCurrentVersion[0])) {
         // new store ready to serve
         return metadataCurrentVersion[0];
       }
