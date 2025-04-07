@@ -152,6 +152,7 @@ public class VeniceVersionFinder {
     boolean existingVersionDecompressorReady = isDecompressorReady(store[0], existingVersion);
     if (existingVersionStatusOnline && existingVersionDecompressorReady) {
       // existing version ready to serve
+      errorMessage += " Continuing to serve existing version: " + existingVersion + ".";
       if (!EXCEPTION_FILTER.isRedundantException(errorMessage)) {
         LOGGER.warn(errorMessage);
       }
