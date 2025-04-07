@@ -25,6 +25,7 @@ import com.linkedin.davinci.ingestion.LagType;
 import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.davinci.schema.merge.MergeRecordHelper;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
@@ -680,6 +681,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              */
             restoreProducerStatesForLeaderConsumption(partition);
             startConsumingAsLeader(partitionConsumptionState);
+
+            // Start tracking leader replication lag
+            getHeartbeatMonitoringService().updateLagMonitor(
+                getKafkaVersionTopic(),
+                partitionConsumptionState.getPartition(),
+                HeartbeatLagMonitorAction.SET_LEADER_MONITOR);
 
             /**
              * May adjust the underlying storage partition to optimize the ingestion performance.
@@ -4222,5 +4229,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   KafkaDataIntegrityValidator getKafkaDataIntegrityValidatorForLeaders() {
     return kafkaDataIntegrityValidatorForLeaders; // mainly for testing
+  }
+
+  HeartbeatMonitoringService getHeartbeatMonitoringService() {
+    return heartbeatMonitoringService;
   }
 }

@@ -11,9 +11,16 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
@@ -24,8 +31,10 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
+import java.time.Duration;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -46,7 +55,7 @@ public class HeartbeatMonitoringServiceTest {
     HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
     doCallRealMethod().when(heartbeatMonitoringService).getHeartbeatInfo(anyString(), anyInt(), anyBoolean());
     heartbeatMonitoringService.getHeartbeatInfo("", -1, false);
-    Mockito.verify(heartbeatMonitoringService, Mockito.times(2))
+    Mockito.verify(heartbeatMonitoringService, times(2))
         .getHeartbeatInfoFromMap(any(), anyString(), anyLong(), anyString(), anyInt(), anyBoolean());
   }
 
@@ -175,13 +184,17 @@ public class HeartbeatMonitoringServiceTest {
     MetricsRepository mockMetricsRepository = new MetricsRepository();
     ReadOnlyStoreRepository mockReadOnlyRepository = mock(ReadOnlyStoreRepository.class);
     Mockito.when(mockReadOnlyRepository.getStoreOrThrow(TEST_STORE)).thenReturn(mockStore);
-
     Set<String> regions = new HashSet<>();
     regions.add(LOCAL_FABRIC);
     regions.add(REMOTE_FABRIC);
     regions.add(REMOTE_FABRIC + SEPARATE_TOPIC_SUFFIX);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    doReturn(regions).when(serverConfig).getRegionNames();
+    doReturn(LOCAL_FABRIC).when(serverConfig).getRegionName();
+    doReturn(Duration.ofSeconds(5)).when(serverConfig).getServerMaxWaitForVersionInfo();
+
     HeartbeatMonitoringService heartbeatMonitoringService =
-        new HeartbeatMonitoringService(mockMetricsRepository, mockReadOnlyRepository, regions, LOCAL_FABRIC, null);
+        new HeartbeatMonitoringService(mockMetricsRepository, mockReadOnlyRepository, serverConfig, null);
 
     // Let's emit some heartbeats that don't exist in the registry yet
     heartbeatMonitoringService.recordLeaderHeartbeat(TEST_STORE, 1, 0, LOCAL_FABRIC, 1000L, true);
@@ -411,5 +424,68 @@ public class HeartbeatMonitoringServiceTest {
     Assert.assertTrue(heartbeatStatReporter.getMetricsRepository().metrics().containsKey(catchingUpFollowerMetricName));
     Assert.assertFalse(
         heartbeatStatReporter.getMetricsRepository().metrics().containsKey(catchingUpFollowerMetricNameForSepRT));
+  }
+
+  @Test
+  public void testUpdateLagMonitor() {
+    HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+    doCallRealMethod().when(heartbeatMonitoringService).updateLagMonitor(anyString(), anyInt(), any());
+    ReadOnlyStoreRepository metadataRepo = mock(ReadOnlyStoreRepository.class);
+    doReturn(metadataRepo).when(heartbeatMonitoringService).getMetadataRepository();
+    Store store = mock(Store.class);
+    Version version = mock(Version.class);
+
+    String storeName = "foo";
+    int storeVersion = 1;
+    int partition = 256;
+    String resourceName = Version.composeKafkaTopic(storeName, storeVersion);
+
+    // 1. Test when both store and version are null
+    when(metadataRepo.waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong()))
+        .thenReturn(Pair.create(null, null));
+    heartbeatMonitoringService.updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_LEADER_MONITOR);
+    verify(metadataRepo).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
+    verify(heartbeatMonitoringService, never()).addLeaderLagMonitor(any(Version.class), anyInt());
+
+    heartbeatMonitoringService
+        .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
+    verify(metadataRepo, times(2)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
+    verify(heartbeatMonitoringService, never()).addFollowerLagMonitor(any(Version.class), anyInt());
+
+    heartbeatMonitoringService.updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.REMOVE_MONITOR);
+    verify(metadataRepo, times(3)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
+    verify(heartbeatMonitoringService, never()).removeLagMonitor(any(Version.class), anyInt());
+
+    // 2. Test when store is not null and version is null
+    when(metadataRepo.waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong()))
+        .thenReturn(Pair.create(store, null));
+    heartbeatMonitoringService.updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_LEADER_MONITOR);
+    verify(metadataRepo, times(4)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
+    verify(heartbeatMonitoringService, never()).addLeaderLagMonitor(any(Version.class), anyInt());
+
+    heartbeatMonitoringService
+        .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
+    verify(metadataRepo, times(5)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
+    verify(heartbeatMonitoringService, never()).addFollowerLagMonitor(any(Version.class), anyInt());
+
+    heartbeatMonitoringService.updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.REMOVE_MONITOR);
+    verify(metadataRepo, times(6)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
+    verify(heartbeatMonitoringService).removeLagMonitor(any(Version.class), anyInt());
+
+    // 3. Test both store and version are not null
+    when(metadataRepo.waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong()))
+        .thenReturn(Pair.create(store, version));
+    heartbeatMonitoringService.updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_LEADER_MONITOR);
+    verify(metadataRepo, times(7)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
+    verify(heartbeatMonitoringService).addLeaderLagMonitor(version, partition);
+
+    heartbeatMonitoringService
+        .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
+    verify(metadataRepo, times(8)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
+    verify(heartbeatMonitoringService).addFollowerLagMonitor(version, partition);
+
+    heartbeatMonitoringService.updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.REMOVE_MONITOR);
+    verify(metadataRepo, times(9)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
+    verify(heartbeatMonitoringService, times(2)).removeLagMonitor(any(Version.class), anyInt());
   }
 }
