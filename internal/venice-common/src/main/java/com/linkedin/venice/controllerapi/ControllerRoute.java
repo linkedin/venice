@@ -273,6 +273,8 @@ public enum ControllerRoute {
   GET_STORES_FOR_COMPACTION("/get_stores_for_compaction", HttpMethod.GET, Collections.singletonList(CLUSTER)),
   COMPACT_STORE("/trigger_repush", HttpMethod.POST, Arrays.asList(NAME)),
   GET_STORE_LARGEST_USED_VERSION("/get_store_largest_used_version", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
+
+  GET_DEAD_STORES("/get_dead_stores", HttpMethod.GET, Arrays.asList(CLUSTER, NAME, INCLUDE_SYSTEM_STORES)),
   LIST_STORE_PUSH_INFO("/list_store_push_info", HttpMethod.GET, Arrays.asList(CLUSTER, NAME, PARTITION_DETAIL_ENABLED)),
   GET_REGION_PUSH_DETAILS(
       "/get_region_push_details", HttpMethod.GET, Arrays.asList(CLUSTER, NAME, PARTITION_DETAIL_ENABLED)

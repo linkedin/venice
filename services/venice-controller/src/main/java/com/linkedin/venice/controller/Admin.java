@@ -959,6 +959,12 @@ public interface Admin extends AutoCloseable, Closeable {
    */
   int getLargestUsedVersionFromStoreGraveyard(String clusterName, String storeName);
 
+  /**
+   * @return list of stores infos that are considered dead. A store is considered dead if it exists but has no
+   * user traffic in it's read or write path.
+   */
+  List<StoreInfo> getDeadStores(String clusterName, String storeName, boolean includeSystemStores);
+
   Map<String, RegionPushDetails> listStorePushInfo(
       String clusterName,
       String storeName,
