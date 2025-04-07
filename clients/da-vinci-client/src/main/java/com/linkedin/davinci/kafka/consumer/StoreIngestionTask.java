@@ -1570,6 +1570,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     processIngestionException();
     maybeUnsubscribeCompletedPartitions(store);
 
+    // record before consumer unsub as it might lead to stale metrics after unsub
     if (emitMetrics.get()) {
       recordQuotaMetrics();
       recordMaxIdleTime();

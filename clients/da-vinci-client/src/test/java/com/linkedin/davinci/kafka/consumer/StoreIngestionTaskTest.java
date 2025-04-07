@@ -2145,6 +2145,7 @@ public abstract class StoreIngestionTaskTest {
           .batchUnsubscribe(Collections.singleton(fooTopicPartition));
       verify(mockLocalKafkaConsumer, never()).unSubscribe(barTopicPartition);
     }, aaConfig);
+
     config.setBeforeStartingConsumption(() -> {
       Store mockStore = mock(Store.class);
       doReturn(storeNameWithoutVersionInfo).when(mockStore).getName();
@@ -2155,6 +2156,8 @@ public abstract class StoreIngestionTaskTest {
       doAnswer(invocation -> false).when(aggKafkaConsumerService).hasAnyConsumerAssignedForVersionTopic(any());
     }).setHybridStoreConfig(this.hybridStoreConfig).setExtraServerProperties(extraServerProperties);
     runTest(config);
+    HostLevelIngestionStats stats = storeIngestionTaskUnderTest.hostLevelIngestionStats;
+    verify(stats, timeout(TEST_TIMEOUT_MS)).recordStorageQuotaUsed(anyDouble());
   }
 
   @Test(dataProvider = "aaConfigProvider")
