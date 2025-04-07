@@ -136,7 +136,10 @@ public class TestVeniceVersionFinder {
     String storeName = "TestVeniceVersionFinder";
     int currentVersion = 10;
     Store store = TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
+    Version version = new VersionImpl(storeName, currentVersion);
+    version.setStatus(VersionStatus.ONLINE);
     store.setCurrentVersion(currentVersion);
+    store.addVersion(version);
     // disable store, should return the number indicates that none of version is avaiable to read.
     store.setEnableReads(false);
     doReturn(store).when(mockRepo).getStore(storeName);
