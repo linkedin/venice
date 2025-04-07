@@ -2413,6 +2413,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         // Update the latest consumed VT offset since we're consuming from the version topic
         if (isGlobalRtDivEnabled()) {
           getConsumerDiv().updateLatestConsumedVtOffset(partition, consumerRecord.getPosition().getNumericOffset());
+
+          if (shouldSyncOffsetFromSnapshot(consumerRecord, partitionConsumptionState)) {
+            PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(getVersionTopic(), partition);
+            PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition); // includes latest consumed vt offset
+            storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, this);
+          }
         }
 
         /**
@@ -2710,6 +2716,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               + consumerRecord.getTopicPartition() + ", Offset: " + consumerRecord.getPosition() + ". Bubbling up.",
           e);
     }
+  }
+
+  /**
+   * Followers should sync the VT DIV to the OffsetRecord if the consumer sees a Global RT DIV message
+   * (sync only once for a Global RT DIV, which can either be one singular message or multiple chunks + one manifest.
+   * thus, the condition is to check that it's not a chunk) or if it sees a non-segment control message.
+   */
+  boolean shouldSyncOffsetFromSnapshot(DefaultPubSubMessage consumerRecord, PartitionConsumptionState pcs) {
+    if (consumerRecord.getKey().isGlobalRtDiv()) {
+      Put put = (Put) consumerRecord.getValue().getPayloadUnion();
+      if (put.getSchemaId() != CHUNK_SCHEMA_ID) {
+        return true;
+      }
+    }
+    return shouldSyncOffset(pcs, consumerRecord, null);
   }
 
   /**

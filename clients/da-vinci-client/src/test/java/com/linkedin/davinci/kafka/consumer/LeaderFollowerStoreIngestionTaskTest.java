@@ -491,7 +491,52 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(consumerDiv).when(mockIngestionTask).getConsumerDiv();
     doReturn(true).when(mockIngestionTask).isGlobalRtDivEnabled();
 
+    // delegateConsumerRecord() should cause updateLatestConsumedVtOffset() to be called
     mockIngestionTask.delegateConsumerRecord(cm, 0, "testURL", 0, 0, 0);
     verify(consumerDiv, times(1)).updateLatestConsumedVtOffset(0, 1L);
+  }
+
+  @Test
+  public void testShouldSyncOffsetFromSnapshot() throws InterruptedException {
+    setUp();
+    LeaderFollowerStoreIngestionTask mockIngestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(mockIngestionTask).shouldSyncOffsetFromSnapshot(any(), any());
+    doCallRealMethod().when(mockIngestionTask).shouldSyncOffset(any(), any(), any());
+
+    // Set up Global RT DIV message
+    final DefaultPubSubMessage globalRtDivMessage = getMockMessage(1).getMessage();
+    KafkaKey mockKey = globalRtDivMessage.getKey();
+    doReturn(false).when(mockKey).isControlMessage();
+    Put mockPut = mock(Put.class);
+    KafkaMessageEnvelope mockKme = globalRtDivMessage.getValue();
+
+    // The method should only return true for non-chunk Global RT DIV messages
+    assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
+    doReturn(true).when(mockKey).isGlobalRtDiv();
+    doReturn(mockPut).when(mockKme).getPayloadUnion();
+    doReturn(AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion()).when(mockPut).getSchemaId();
+    assertTrue(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
+    doReturn(AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()).when(mockPut).getSchemaId();
+    assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
+    doReturn(AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()).when(mockPut).getSchemaId();
+    assertTrue(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
+
+    // Set up Control Message
+    final DefaultPubSubMessage nonSegmentControlMessage = getMockMessage(2).getMessage();
+    mockKey = nonSegmentControlMessage.getKey();
+    mockKme = nonSegmentControlMessage.getValue();
+    doReturn(false).when(mockKey).isGlobalRtDiv();
+    ControlMessage mockControlMessage = mock(ControlMessage.class);
+
+    // The method should only return true for non-segment control messages
+    assertFalse(
+        mockIngestionTask.shouldSyncOffsetFromSnapshot(nonSegmentControlMessage, mockPartitionConsumptionState));
+    doReturn(ControlMessageType.START_OF_PUSH.getValue()).when(mockControlMessage).getControlMessageType();
+    doReturn(true).when(mockKey).isControlMessage();
+    doReturn(mockControlMessage).when(mockKme).getPayloadUnion();
+    assertTrue(mockIngestionTask.shouldSyncOffsetFromSnapshot(nonSegmentControlMessage, mockPartitionConsumptionState));
+    doReturn(ControlMessageType.START_OF_SEGMENT.getValue()).when(mockControlMessage).getControlMessageType();
+    assertFalse(
+        mockIngestionTask.shouldSyncOffsetFromSnapshot(nonSegmentControlMessage, mockPartitionConsumptionState));
   }
 }
