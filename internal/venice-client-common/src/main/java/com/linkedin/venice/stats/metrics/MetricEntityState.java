@@ -237,6 +237,10 @@ public abstract class MetricEntityState {
     return getOtelRepository().createAttributes(metricEntity, baseDimensionsMap, dimensions);
   }
 
+  Attributes createAttributes(Map<VeniceMetricsDimensions, String> dimensions) {
+    return getOtelRepository().createAttributes(metricEntity, baseDimensionsMap, dimensions);
+  }
+
   final boolean emitOpenTelemetryMetrics() {
     return emitOpenTelemetryMetrics;
   }
@@ -247,6 +251,10 @@ public abstract class MetricEntityState {
 
   VeniceOpenTelemetryMetricsRepository getOtelRepository() {
     return otelRepository;
+  }
+
+  Map<VeniceMetricsDimensions, String> getBaseDimensionsMap() {
+    return baseDimensionsMap;
   }
 
   /** used only for testing */

@@ -248,7 +248,7 @@ public class VeniceOpenTelemetryMetricsRepository {
       if (!REDUNDANT_LOG_FILTER.isRedundantLog(errorLog)) {
         LOGGER.error(errorLog);
       }
-      throw new VeniceException(errorLog);
+      throw new IllegalArgumentException(errorLog);
     }
   }
 
@@ -271,7 +271,7 @@ public class VeniceOpenTelemetryMetricsRepository {
     baseDimensionsMap.forEach(
         (key, value) -> validateDimensionValuesAndBuildAttributes(metricEntity, key, value, attributesBuilder));
 
-    // add additional dimensions
+    // add additional dimensions passed in as type VeniceDimensionInterface
     for (VeniceDimensionInterface additionalDimensionEnum: additionalDimensionEnums) {
       validateDimensionValuesAndBuildAttributes(
           metricEntity,
@@ -279,6 +279,26 @@ public class VeniceOpenTelemetryMetricsRepository {
           additionalDimensionEnum.getDimensionValue(),
           attributesBuilder);
     }
+
+    // add custom dimensions passed in by the user
+    getMetricsConfig().getOtelCustomDimensionsMap().forEach(attributesBuilder::put);
+
+    return attributesBuilder.build();
+  }
+
+  public Attributes createAttributes(
+      MetricEntity metricEntity,
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap,
+      Map<VeniceMetricsDimensions, String> additionalDimensionsMap) {
+    AttributesBuilder attributesBuilder = Attributes.builder();
+
+    // add common dimensions
+    baseDimensionsMap.forEach(
+        (key, value) -> validateDimensionValuesAndBuildAttributes(metricEntity, key, value, attributesBuilder));
+
+    // add additional dimensions passed in as a map
+    additionalDimensionsMap.forEach(
+        (key, value) -> validateDimensionValuesAndBuildAttributes(metricEntity, key, value, attributesBuilder));
 
     // add custom dimensions passed in by the user
     getMetricsConfig().getOtelCustomDimensionsMap().forEach(attributesBuilder::put);
