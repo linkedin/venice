@@ -5,6 +5,7 @@ import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 
 import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.venice.HttpConstants;
@@ -142,15 +143,19 @@ public class TestVeniceVersionFinder {
     StaleVersionStats stats = mock(StaleVersionStats.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
-    VeniceVersionFinder versionFinder = new VeniceVersionFinder(
-        mockRepo,
-        getCVBasedMockedRoutingRepo(),
-        stats,
-        storeConfigRepo,
-        clusterToD2Map,
-        CLUSTER,
-        compressorFactory,
-        mock(VeniceMetricsRepository.class));
+    VeniceVersionFinder versionFinder = spy(
+        new VeniceVersionFinder(
+            mockRepo,
+            getCVBasedMockedRoutingRepo(),
+            stats,
+            storeConfigRepo,
+            clusterToD2Map,
+            CLUSTER,
+            compressorFactory,
+            mock(VeniceMetricsRepository.class)));
+    doReturn(true).when(versionFinder).isPartitionResourcesReady(Version.composeKafkaTopic(storeName, currentVersion));
+    doReturn(true).when(versionFinder).isDecompressorReady(store, currentVersion);
+
     try {
       versionFinder.getVersion(storeName, request);
       Assert.fail("Store should be disabled and forbidden to read.");

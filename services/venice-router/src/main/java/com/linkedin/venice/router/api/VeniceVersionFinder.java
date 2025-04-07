@@ -8,7 +8,6 @@ import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceStoreIsMigratedException;
-import com.linkedin.venice.exceptions.VeniceStoreNotReadyToServeException;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
@@ -105,10 +104,8 @@ public class VeniceVersionFinder {
       }
 
       // check if new store is ready to serve
-      VersionStatus versionStatus = store[0].getVersionStatus(metadataCurrentVersion[0]);
       String kafkaTopic = Version.composeKafkaTopic(storeName, metadataCurrentVersion[0]);
-      if (versionStatus.equals(VersionStatus.ONLINE) && isPartitionResourcesReady(kafkaTopic)
-          && isDecompressorReady(store[0], metadataCurrentVersion[0])) {
+      if (isPartitionResourcesReady(kafkaTopic) && isDecompressorReady(store[0], metadataCurrentVersion[0])) {
         // new store ready to serve
         return metadataCurrentVersion[0];
       }
@@ -117,7 +114,7 @@ public class VeniceVersionFinder {
     });
 
     if (!lastCurrentVersionMap.containsKey(storeName)) {
-      throw new VeniceStoreNotReadyToServeException(storeName, metadataCurrentVersion[0]);
+      return Store.NON_EXISTING_VERSION;
     }
 
     int existingVersion = lastCurrentVersionMap.get(storeName);
@@ -128,7 +125,6 @@ public class VeniceVersionFinder {
     }
 
     // version swap: new version
-    VersionStatus newVersionStatus = store[0].getVersionStatus(metadataCurrentVersion[0]);
     String newVersionKafkaTopic = Version.composeKafkaTopic(storeName, metadataCurrentVersion[0]);
     boolean newVersionPartitionResourcesReady = isPartitionResourcesReady(newVersionKafkaTopic);
     boolean newVersionDecompressorReady = isDecompressorReady(store[0], metadataCurrentVersion[0]);
@@ -179,10 +175,10 @@ public class VeniceVersionFinder {
     }
     stats.recordStale(metadataCurrentVersion[0], Store.NON_EXISTING_VERSION);
     lastCurrentVersionMap.remove(storeName);
-    throw new VeniceStoreNotReadyToServeException(storeName);
+    return Store.NON_EXISTING_VERSION;
   }
 
-  private boolean isPartitionResourcesReady(String kafkaTopic) {
+  protected boolean isPartitionResourcesReady(String kafkaTopic) {
     if (!routingDataRepository.containsKafkaTopic(kafkaTopic)) {
       return false;
     }
@@ -208,7 +204,7 @@ public class VeniceVersionFinder {
     return true;
   }
 
-  private boolean isDecompressorReady(Store store, int versionNumber) {
+  protected boolean isDecompressorReady(Store store, int versionNumber) {
     Version version = store.getVersion(versionNumber);
     if (version == null) {
       return false;
