@@ -89,8 +89,9 @@ public class TestVeniceVersionFinder {
   @Test
   public void throws301onMigratedStore() {
     ReadOnlyStoreRepository mockRepo = Mockito.mock(ReadOnlyStoreRepository.class);
+    String storeName = "store";
     Store store = new ZKStore(
-        "store",
+        storeName,
         "owner",
         System.currentTimeMillis(),
         PersistenceType.IN_MEMORY,
@@ -101,6 +102,9 @@ public class TestVeniceVersionFinder {
     store.setMigrating(true);
     int currentVersion = 10;
     store.setCurrentVersion(currentVersion);
+    Version version = new VersionImpl(storeName, currentVersion);
+    version.setStatus(VersionStatus.ONLINE);
+    store.addVersion(version);
     doReturn(store).when(mockRepo).getStore(anyString());
     StaleVersionStats stats = mock(StaleVersionStats.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
@@ -108,15 +112,18 @@ public class TestVeniceVersionFinder {
     storeConfig.setCluster(DEST_CLUSTER);
     doReturn(Optional.of(storeConfig)).when(storeConfigRepo).getStoreConfig("store");
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
-    VeniceVersionFinder versionFinder = new VeniceVersionFinder(
-        mockRepo,
-        getCVBasedMockedRoutingRepo(),
-        stats,
-        storeConfigRepo,
-        clusterToD2Map,
-        CLUSTER,
-        compressorFactory,
-        mock(VeniceMetricsRepository.class));
+    VeniceVersionFinder versionFinder = spy(
+        new VeniceVersionFinder(
+            mockRepo,
+            getCVBasedMockedRoutingRepo(),
+            stats,
+            storeConfigRepo,
+            clusterToD2Map,
+            CLUSTER,
+            compressorFactory,
+            mock(VeniceMetricsRepository.class)));
+    doReturn(true).when(versionFinder).isPartitionResourcesReady(Version.composeKafkaTopic(storeName, currentVersion));
+    doReturn(true).when(versionFinder).isDecompressorReady(store, currentVersion);
     try {
       request.headers().add(HttpConstants.VENICE_ALLOW_REDIRECT, "1");
       versionFinder.getVersion("store", request);
