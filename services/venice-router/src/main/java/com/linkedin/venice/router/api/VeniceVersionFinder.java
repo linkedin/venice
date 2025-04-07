@@ -75,8 +75,8 @@ public class VeniceVersionFinder {
      * TODO: clone a store object is too expensive, and we could choose to expose the necessary methods
      * in {@link ReadOnlyStoreRepository}, such as 'isEnableReads' and others.
      */
-    final Store[] store = { metadataRepository.getStore(storeName) };
-    if (store[0] == null || store[0].isMigrating()) {
+    Store store = metadataRepository.getStore(storeName);
+    if (store == null || store.isMigrating()) {
       // The client might be idle for a long time while the store is migrated. Check for store migration.
       if (request != null && request.headers().contains(HttpConstants.VENICE_ALLOW_REDIRECT)) {
         Optional<StoreConfig> config = storeConfigRepo.getStoreConfig(storeName);
@@ -88,52 +88,55 @@ public class VeniceVersionFinder {
           }
         }
       }
-      if (store[0] == null) {
+      if (store == null) {
         throw new VeniceNoStoreException(storeName);
       }
     }
-    if (!store[0].isEnableReads()) {
+    if (!store.isEnableReads()) {
       throw new StoreDisabledException(storeName, "read");
     }
 
-    final int[] metadataCurrentVersion = { store[0].getCurrentVersion() };
-    lastCurrentVersionMap.computeIfAbsent(storeName, v -> {
-      if (metadataCurrentVersion[0] == Store.NON_EXISTING_VERSION) {
-        store[0] = metadataRepository.refreshOneStore(storeName);
-        metadataCurrentVersion[0] = store[0].getCurrentVersion();
-      }
+    int metadataCurrentVersion = store.getCurrentVersion();
 
+    Store finalStore = store;
+    int finalMetadataCurrentVersion = metadataCurrentVersion;
+    if (lastCurrentVersionMap.computeIfAbsent(storeName, v -> {
       // check if new store is ready to serve
-      String kafkaTopic = Version.composeKafkaTopic(storeName, metadataCurrentVersion[0]);
-      if (isPartitionResourcesReady(kafkaTopic) && isDecompressorReady(store[0], metadataCurrentVersion[0])) {
+      String kafkaTopic = Version.composeKafkaTopic(storeName, finalMetadataCurrentVersion);
+      if (isPartitionResourcesReady(kafkaTopic) && isDecompressorReady(finalStore, finalMetadataCurrentVersion)) {
         // new store ready to serve
-        return metadataCurrentVersion[0];
+        return finalMetadataCurrentVersion;
       }
       // new store not ready to serve
       return null;
-    });
+    }) == null) {
+      if (metadataCurrentVersion == Store.NON_EXISTING_VERSION) {
+        store = metadataRepository.refreshOneStore(storeName);
+        metadataCurrentVersion = store.getCurrentVersion();
+      }
+    }
 
     if (!lastCurrentVersionMap.containsKey(storeName)) {
       return Store.NON_EXISTING_VERSION;
     }
 
     int existingVersion = lastCurrentVersionMap.get(storeName);
-    if (existingVersion == metadataCurrentVersion[0]) {
+    if (existingVersion == metadataCurrentVersion) {
       // new store ready to serve or same store version (no version swap)
       stats.recordNotStale();
       return existingVersion;
     }
 
     // version swap: new version
-    String newVersionKafkaTopic = Version.composeKafkaTopic(storeName, metadataCurrentVersion[0]);
+    String newVersionKafkaTopic = Version.composeKafkaTopic(storeName, metadataCurrentVersion);
     boolean newVersionPartitionResourcesReady = isPartitionResourcesReady(newVersionKafkaTopic);
-    boolean newVersionDecompressorReady = isDecompressorReady(store[0], metadataCurrentVersion[0]);
+    boolean newVersionDecompressorReady = isDecompressorReady(store, metadataCurrentVersion);
     if (newVersionPartitionResourcesReady && newVersionDecompressorReady) {
       // new version ready to serve
       storeStats.computeIfAbsent(storeName, metric -> new RouterCurrentVersionStats(metricsRepository, storeName))
-          .updateCurrentVersion(metadataCurrentVersion[0]);
-      lastCurrentVersionMap.put(storeName, metadataCurrentVersion[0]);
-      return metadataCurrentVersion[0];
+          .updateCurrentVersion(metadataCurrentVersion);
+      lastCurrentVersionMap.put(storeName, metadataCurrentVersion);
+      return metadataCurrentVersion;
     }
 
     // new version not ready to serve
@@ -148,16 +151,16 @@ public class VeniceVersionFinder {
     }
 
     // check if existing version ready to serve
-    VersionStatus existingVersionStatus = store[0].getVersionStatus(existingVersion);
+    VersionStatus existingVersionStatus = store.getVersionStatus(existingVersion);
     boolean existingVersionStatusOnline = existingVersionStatus.equals(VersionStatus.ONLINE);
-    boolean existingVersionDecompressorReady = isDecompressorReady(store[0], existingVersion);
+    boolean existingVersionDecompressorReady = isDecompressorReady(store, existingVersion);
     if (existingVersionStatusOnline && existingVersionDecompressorReady) {
       // existing version ready to serve
       errorMessage += " Continuing to serve existing version: " + existingVersion + ".";
       if (!EXCEPTION_FILTER.isRedundantException(errorMessage)) {
         LOGGER.warn(errorMessage);
       }
-      stats.recordStale(metadataCurrentVersion[0], existingVersion);
+      stats.recordStale(metadataCurrentVersion, existingVersion);
       return existingVersion;
     }
 
@@ -173,7 +176,7 @@ public class VeniceVersionFinder {
     if (!EXCEPTION_FILTER.isRedundantException(errorMessage)) {
       LOGGER.warn(errorMessage);
     }
-    stats.recordStale(metadataCurrentVersion[0], Store.NON_EXISTING_VERSION);
+    stats.recordStale(metadataCurrentVersion, Store.NON_EXISTING_VERSION);
     lastCurrentVersionMap.remove(storeName);
     return Store.NON_EXISTING_VERSION;
   }
