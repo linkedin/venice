@@ -130,10 +130,9 @@ public class VeniceVersionFinder {
     // version swap: new version
     VersionStatus newVersionStatus = store[0].getVersionStatus(metadataCurrentVersion[0]);
     String newVersionKafkaTopic = Version.composeKafkaTopic(storeName, metadataCurrentVersion[0]);
-    boolean newVersionStatusOnline = newVersionStatus.equals(VersionStatus.ONLINE);
     boolean newVersionPartitionResourcesReady = isPartitionResourcesReady(newVersionKafkaTopic);
     boolean newVersionDecompressorReady = isDecompressorReady(store[0], metadataCurrentVersion[0]);
-    if (newVersionStatusOnline && newVersionPartitionResourcesReady && newVersionDecompressorReady) {
+    if (newVersionPartitionResourcesReady && newVersionDecompressorReady) {
       // new version ready to serve
       storeStats.computeIfAbsent(storeName, metric -> new RouterCurrentVersionStats(metricsRepository, storeName))
           .updateCurrentVersion(metadataCurrentVersion[0]);
@@ -143,9 +142,6 @@ public class VeniceVersionFinder {
 
     // new version not ready to serve
     String errorMessage = "Unable to serve new version: " + newVersionKafkaTopic + ".";
-    if (!newVersionStatusOnline) {
-      errorMessage += " New version has status: " + newVersionStatus + ".";
-    }
     if (!newVersionPartitionResourcesReady) {
       errorMessage += " Partition resources not ready for new version.";
       stats.recordStalenessReason(StaleVersionReason.OFFLINE_PARTITIONS);
@@ -159,9 +155,8 @@ public class VeniceVersionFinder {
     VersionStatus existingVersionStatus = store[0].getVersionStatus(existingVersion);
     String existingVersionKafkaTopic = Version.composeKafkaTopic(storeName, existingVersion);
     boolean existingVersionStatusOnline = existingVersionStatus.equals(VersionStatus.ONLINE);
-    boolean existingVersionPartitionResourcesReady = isPartitionResourcesReady(existingVersionKafkaTopic);
     boolean existingVersionDecompressorReady = isDecompressorReady(store[0], existingVersion);
-    if (existingVersionStatusOnline && existingVersionPartitionResourcesReady && existingVersionDecompressorReady) {
+    if (existingVersionStatusOnline && existingVersionDecompressorReady) {
       // existing version ready to serve
       if (!EXCEPTION_FILTER.isRedundantException(errorMessage)) {
         LOGGER.warn(errorMessage);
@@ -172,15 +167,12 @@ public class VeniceVersionFinder {
 
     // existing version not ready to serve -> no version ready to serve
     errorMessage += " Unable to serve existing version: " + existingVersion + ".";
-
     if (!existingVersionStatusOnline) {
       errorMessage += " Previous version has status: " + existingVersionStatus + ".";
     }
-
     if (!existingVersionDecompressorReady) {
       errorMessage += " Decompressor not ready for previous version (Has dictionary downloaded?).";
     }
-
     errorMessage += " No version ready to serve.";
     if (!EXCEPTION_FILTER.isRedundantException(errorMessage)) {
       LOGGER.warn(errorMessage);
