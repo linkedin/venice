@@ -124,7 +124,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
               .map(Version::kafkaTopicName)
               .collect(Collectors.toList()));
 
-      // For versions that went into nonONLINE states, delete dictionary.
+      // For versions that went into non-ONLINE states, delete dictionary.
       versions.stream()
           .filter(
               version -> version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT && version
