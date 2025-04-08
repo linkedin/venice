@@ -119,6 +119,7 @@ public class TestVeniceVersionFinder {
             CLUSTER,
             compressorFactory,
             mock(VeniceMetricsRepository.class)));
+    doReturn(true).when(versionFinder).isPartitionResourcesReady(Version.composeKafkaTopic(storeName, currentVersion));
     doReturn(true).when(versionFinder).isDecompressorReady(store, currentVersion);
     try {
       request.headers().add(HttpConstants.VENICE_ALLOW_REDIRECT, "1");
@@ -156,6 +157,7 @@ public class TestVeniceVersionFinder {
             CLUSTER,
             compressorFactory,
             mock(VeniceMetricsRepository.class)));
+    doReturn(true).when(versionFinder).isPartitionResourcesReady(Version.composeKafkaTopic(storeName, currentVersion));
     doReturn(true).when(versionFinder).isDecompressorReady(store, currentVersion);
 
     try {
@@ -292,17 +294,19 @@ public class TestVeniceVersionFinder {
           Version.composeKafkaTopic(storeName, firstVersion),
           firstVersionDictionary.array());
       // Object under test
-      VeniceVersionFinder versionFinder = new VeniceVersionFinder(
-          storeRepository,
-          routingDataRepo,
-          stats,
-          storeConfigRepo,
-          clusterToD2Map,
-          CLUSTER,
-          compressorFactory,
-          mock(VeniceMetricsRepository.class));
+      VeniceVersionFinder versionFinder = spy(
+          new VeniceVersionFinder(
+              storeRepository,
+              routingDataRepo,
+              stats,
+              storeConfigRepo,
+              clusterToD2Map,
+              CLUSTER,
+              compressorFactory,
+              mock(VeniceMetricsRepository.class)));
 
       String firstVersionKafkaTopic = Version.composeKafkaTopic(storeName, firstVersion);
+      doReturn(true).when(versionFinder).isPartitionResourcesReady(firstVersionKafkaTopic);
 
       Assert.assertEquals(versionFinder.getVersion(storeName, request), firstVersion);
       Assert.assertNotNull(compressorFactory.getVersionSpecificCompressor(firstVersionKafkaTopic));
@@ -339,17 +343,19 @@ public class TestVeniceVersionFinder {
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
 
     // Object under test
-    VeniceVersionFinder versionFinder = new VeniceVersionFinder(
-        storeRepository,
-        routingDataRepo,
-        stats,
-        storeConfigRepo,
-        clusterToD2Map,
-        CLUSTER,
-        compressorFactory,
-        mock(VeniceMetricsRepository.class));
+    VeniceVersionFinder versionFinder = spy(
+        new VeniceVersionFinder(
+            storeRepository,
+            routingDataRepo,
+            stats,
+            storeConfigRepo,
+            clusterToD2Map,
+            CLUSTER,
+            compressorFactory,
+            mock(VeniceMetricsRepository.class)));
 
     String firstVersionKafkaTopic = Version.composeKafkaTopic(storeName, firstVersion);
+    doReturn(true).when(versionFinder).isPartitionResourcesReady(firstVersionKafkaTopic);
 
     Assert.assertEquals(versionFinder.getVersion(storeName, request), Store.NON_EXISTING_VERSION);
     Assert.assertNull(compressorFactory.getVersionSpecificCompressor(firstVersionKafkaTopic));
