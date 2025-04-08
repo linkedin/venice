@@ -108,6 +108,8 @@ public class PartitionTracker {
     return latestConsumedVtOffset.get();
   }
 
+  // TODO: should max be correct because it should always be increasing except for when LCVO is loaded from disk,
+  // in which case that should be when the PCS is created?
   public void updateLatestConsumedVtOffset(long offset) {
     latestConsumedVtOffset.updateAndGet(current -> Math.max(current, offset));
   }

@@ -1074,6 +1074,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     consumerSubscribe(leaderTopic, partitionConsumptionState, upstreamStartOffset, leaderSourceKafkaURL);
+    // TODO: set to null
     syncConsumedUpstreamRTOffsetMapIfNeeded(
         partitionConsumptionState,
         Collections.singletonMap(leaderSourceKafkaURL, upstreamStartOffset));
@@ -3847,8 +3848,49 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   private void restoreProducerStatesForLeaderConsumption(int partition) {
     consumerDiv.clearPartition(partition);
-    cloneProducerStates(partition, consumerDiv);
-    // TODO: the Global RT DIV version needs to be implemented in a future PR
+    if (isGlobalRtDivEnabled()) {
+      loadGlobalRtDiv(partition);
+    } else {
+      cloneProducerStates(partition, consumerDiv);
+    }
+  }
+
+  /**
+   * Load the stored Global RT DIV object from the storage engine into the Consumer DIV during state transition
+   * to LEADER. The RT DIV needs to be loaded per-broker url, and the latest consumed RT offset needs to be updated.
+   */
+  private void loadGlobalRtDiv(int partition) {
+    PartitionConsumptionState pcs = partitionConsumptionStateMap.get(partition);
+    final PubSubTopic topic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
+    final PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, pcs.getPartition());
+
+    kafkaClusterIdToUrlMap.forEach((clusterId, brokerUrl) -> {
+      String globalRtDivKey = getGlobalRtDivKeyName(brokerUrl);
+      byte[] keyBytes = globalRtDivKey.getBytes();
+      final ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
+      GenericRecord valueRecord = readStoredValueRecord(
+          pcs,
+          keyBytes,
+          AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion(),
+          topicPartition,
+          valueManifestContainer);
+      if (valueRecord == null) {
+        return; // it may not exist (e.g. this is the first leader to be elected)
+      }
+
+      Object value = valueRecord.get(globalRtDivKey);
+      if (value instanceof GlobalRtDivState) {
+        GlobalRtDivState globalRtDivState = (GlobalRtDivState) value;
+        final Map<CharSequence, ProducerPartitionState> producerStates = globalRtDivState.getProducerStates();
+        TopicType realTimeTopicType = TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
+        consumerDiv.setPartitionState(realTimeTopicType, pcs.getPartition(), producerStates);
+        final long latestConsumedRtOffset = globalRtDivState.getLatestOffset(); // LCRO
+        pcs.updateLatestConsumedRtOffset(brokerUrl, latestConsumedRtOffset);
+      } else {
+        LOGGER.warn("Unable to load Global RT DIV: {}", globalRtDivKey);
+        // TODO: should we throw? or if we don't throw, which offset should the subscribe occur at?
+      }
+    });
   }
 
   /**
