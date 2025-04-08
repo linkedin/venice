@@ -6,14 +6,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.security.KeyStore;
 import java.util.Base64;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.Properties;
-import java.util.Set;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
-import javax.net.ssl.SSLProtocolException;
 import javax.net.ssl.TrustManagerFactory;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang.StringUtils;
@@ -29,13 +25,6 @@ import org.apache.commons.lang.StringUtils;
  * 2. Added a helper function that builds a {@link Config} from {@link Properties}
  */
 public class DefaultSSLFactory implements SSLFactory {
-  static final String[] CIPHER_SUITE_ALLOWLIST = {
-      // Preferred ciphersuites:
-      "TLS_RSA_WITH_AES_128_CBC_SHA256", "TLS_RSA_WITH_AES_128_GCM_SHA256",
-      // For java 1.6 support:
-      "TLS_RSA_WITH_AES_128_CBC_SHA",
-      // the remaining are for backwards compatibility and shouldn't be used by newer clients
-      "SSL_RSA_WITH_NULL_MD5", "SSL_RSA_WITH_NULL_SHA" };
   private SSLContext _context;
   private boolean _sslEnabled;
   private boolean _sslRequireClientCerts;
@@ -72,11 +61,8 @@ public class DefaultSSLFactory implements SSLFactory {
         throw new SSLConfig.ConfigHelper.MissingConfigParameterException(
             "Either keyStoreData or (keyStoreFilePath and trustStoreFilePath) must be provided to operate in sslEnabled mode.");
       }
-      String[] allowedCiphersuites =
-          filterDisallowedCiphersuites(_context.getSocketFactory().getSupportedCipherSuites());
 
       _parameters = _context.getDefaultSSLParameters();
-      _parameters.setCipherSuites(allowedCiphersuites);
 
       if (config.doesSslRequireClientCerts()) {
         _parameters.setNeedClientAuth(true);
@@ -87,23 +73,6 @@ public class DefaultSSLFactory implements SSLFactory {
       _context = null;
       _parameters = null;
     }
-  }
-
-  public static String[] filterDisallowedCiphersuites(String[] ciphersuites) throws SSLProtocolException {
-    Set<String> allowedCiphers = new HashSet<String>();
-    Collections.addAll(allowedCiphers, CIPHER_SUITE_ALLOWLIST);
-
-    Set<String> supportedCiphers = new HashSet<String>();
-    Collections.addAll(supportedCiphers, ciphersuites);
-
-    supportedCiphers.retainAll(allowedCiphers);
-    String[] allowedCiphersuites = supportedCiphers.toArray(new String[0]);
-
-    if (allowedCiphersuites == null || allowedCiphersuites.length == 0) {
-      throw new SSLProtocolException("No Allowlisted SSL Ciphers Available.");
-    }
-
-    return allowedCiphersuites;
   }
 
   @Override
