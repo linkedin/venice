@@ -2602,8 +2602,8 @@ public class ConfigKeys {
 
   /**
    * The interval for cleaning up the idle store ingestion tasks in a centralized way inside KafkaStoreIngestionService.
-   * If config value is -1, it means the new clean up service is disabled and the old mechanism is still in place.
-   * If config value is non-negative, it means the new clean up service is enabled and the value is the clean up
+   * If config value is non-positive, it means the new clean up service is disabled and the old mechanism is still in place.
+   * If config value is positive, it means the new clean up service is enabled and the value is the clean up
    * schedule interval in seconds.
    *
    * Once enabled, Store ingestion tasks will not try to close themselves when they are idle; instead, a service

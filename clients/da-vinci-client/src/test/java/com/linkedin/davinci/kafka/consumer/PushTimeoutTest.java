@@ -22,6 +22,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.ExceptionCaptorNotifier;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.util.ArrayDeque;
 import java.util.Collections;
@@ -106,6 +107,9 @@ public class PushTimeoutTest {
     StorageMetadataService mockStorageMetadataService = mock(StorageMetadataService.class);
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
     doReturn(Object2IntMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterUrlToIdMap();
+    doReturn(VeniceProperties.empty()).when(mockVeniceServerConfig).getClusterProperties();
+    doReturn(VeniceProperties.empty()).when(mockVeniceServerConfig).getKafkaConsumerConfigsForRemoteConsumption();
+    doReturn(VeniceProperties.empty()).when(mockVeniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
     AggHostLevelIngestionStats mockAggStoreIngestionStats = mock(AggHostLevelIngestionStats.class);
     HostLevelIngestionStats mockStoreIngestionStats = mock(HostLevelIngestionStats.class);
     doReturn(mockStoreIngestionStats).when(mockAggStoreIngestionStats).getStoreStats(anyString());

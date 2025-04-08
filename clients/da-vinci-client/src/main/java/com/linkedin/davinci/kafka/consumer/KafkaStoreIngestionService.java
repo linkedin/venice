@@ -453,7 +453,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       this.aaWCWorkLoadProcessingThreadPool = null;
     }
 
-    this.idleStoreIngestionTaskKillerExecutor = serverConfig.getIdleIngestionTaskCleanupIntervalInSeconds() >= 0
+    this.idleStoreIngestionTaskKillerExecutor = serverConfig.getIdleIngestionTaskCleanupIntervalInSeconds() > 0
         ? Executors.newScheduledThreadPool(1, new DaemonThreadFactory("idle-store-ingestion-task-clean-up-thread"))
         : null;
 
@@ -544,7 +544,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       participantStoreConsumerExecutorService.submit(participantStoreConsumptionTask);
     }
     final int idleIngestionTaskCleanupIntervalInSeconds = serverConfig.getIdleIngestionTaskCleanupIntervalInSeconds();
-    if (idleIngestionTaskCleanupIntervalInSeconds >= 0) {
+    if (idleIngestionTaskCleanupIntervalInSeconds > 0) {
       this.idleStoreIngestionTaskKillerExecutor.scheduleWithFixedDelay(
           this::scanAndCloseIdleConsumptionTasks,
           idleIngestionTaskCleanupIntervalInSeconds,
