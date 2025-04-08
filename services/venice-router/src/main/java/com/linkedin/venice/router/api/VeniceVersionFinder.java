@@ -25,6 +25,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentMap;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -42,7 +43,7 @@ public class VeniceVersionFinder {
   private final ReadOnlyStoreConfigRepository storeConfigRepo;
   private final Map<String, String> clusterToD2Map;
   private final String clusterName;
-  private final VeniceConcurrentHashMap<String, Integer> lastCurrentVersionMap = new VeniceConcurrentHashMap<>();
+  private final ConcurrentMap<String, Integer> lastCurrentVersionMap = new VeniceConcurrentHashMap<>();
 
   protected final Map<String, RouterCurrentVersionStats> storeStats = new VeniceConcurrentHashMap<>();
 
