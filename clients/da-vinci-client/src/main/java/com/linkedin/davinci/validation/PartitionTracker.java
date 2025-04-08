@@ -543,11 +543,6 @@ public class PartitionTracker {
       DefaultPubSubMessage consumerRecord,
       boolean endOfPushReceived,
       Lazy<Boolean> tolerateMissingMsgs) throws CorruptDataException {
-    /**
-     * {@link Segment#addToCheckSum(KafkaKey, KafkaMessageEnvelope)} is an expensive operation because of the internal
-     * memory allocation.
-     * TODO: we could disable checksum validation if we think it is not necessary any more later on.
-     */
     if (!segment.isRegistered()) {
       /**
        * Checksums only work for full segments. The unregistered segments are those which we first saw after the
@@ -589,8 +584,8 @@ public class PartitionTracker {
       } else {
         /**
          * We will swallow {@link DataFaultType.CORRUPT} in either of the two scenarios:
-         * 1. The segment was sent by unregistered producers after EOP (handled at the top of the function)
-         * 2. The topic might have been compacted for the record so that tolerateMissingMsgs is true
+         * 1. The segment was sent by unregistered producers (handled at the top of the function)
+         * 2. The tolerateMissingMsgs param is true (e.g., due to log compaction thresholds or other criteria)
          */
         if (tolerateMissingMsgs.get()) {
           segment.end(incomingEndOfSegment.finalSegment);

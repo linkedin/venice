@@ -158,6 +158,10 @@ public class TestPartitionTracker {
     return putPayload;
   }
 
+  private KafkaKey getUpdateMessageKey(byte[] bytes) {
+    return new KafkaKey(MessageType.UPDATE, bytes);
+  }
+
   private Update getUpdateMessage(byte[] bytes) {
     Update updatePayload = new Update();
     updatePayload.schemaId = 1;
@@ -165,6 +169,10 @@ public class TestPartitionTracker {
     updatePayload.updateValue = ByteBuffer.wrap(bytes);
 
     return updatePayload;
+  }
+
+  private KafkaKey getDeleteMessageKey(byte[] bytes) {
+    return new KafkaKey(MessageType.DELETE, bytes);
   }
 
   private ControlMessage getStartOfSegment() {
@@ -626,7 +634,7 @@ public class TestPartitionTracker {
     Update firstUpdate = getUpdateMessage("second_message".getBytes());
     KafkaMessageEnvelope updateMessage =
         getKafkaMessageEnvelope(MessageType.UPDATE, guid, segment, Optional.empty(), firstUpdate);
-    KafkaKey secondMessageKey = getPutMessageKey("second_key".getBytes());
+    KafkaKey secondMessageKey = getUpdateMessageKey("second_key".getBytes());
     DefaultPubSubMessage updateConsumerRecord = new ImmutablePubSubMessage(
         secondMessageKey,
         updateMessage,
@@ -640,6 +648,7 @@ public class TestPartitionTracker {
     Delete firstDelete = new Delete();
     KafkaMessageEnvelope deleteMessage =
         getKafkaMessageEnvelope(MessageType.DELETE, guid, segment, Optional.empty(), firstDelete);
+    KafkaKey thirdMessageKey = getDeleteMessageKey("third_key".getBytes());
     DefaultPubSubMessage deleteConsumerRecord = new ImmutablePubSubMessage(
         firstMessageKey,
         deleteMessage,

@@ -3565,6 +3565,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     Lazy<Boolean> tolerateMissingMsgs = Lazy.of(() -> {
       PubSubTopic pubSubTopic = consumerRecord.getTopic();
+      /** N.B.: In the switch/case, we only short-circuit if true, as there is one more condition to check below. */
       switch (pubSubTopic.getPubSubTopicType()) {
         case REALTIME_TOPIC:
           if (tolerateMissingMessagesForRealTimeTopic) {
@@ -3577,7 +3578,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             long elapsedTime = LatencyUtils.getElapsedTimeFromMsToMs(consumerRecord.getPubSubMessageTime());
 
             /** If we are consuming a portion of topic beyond compaction threshold, then all bets are off */
-            return elapsedTime >= topicManager.getTopicMinLogCompactionLagMs(pubSubTopic);
+            if (elapsedTime >= topicManager.getTopicMinLogCompactionLagMs(pubSubTopic)) {
+              return true;
+            }
           }
           break;
         default: // no-op
