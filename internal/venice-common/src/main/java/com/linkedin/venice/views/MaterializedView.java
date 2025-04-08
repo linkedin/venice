@@ -15,6 +15,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
@@ -29,6 +30,7 @@ public class MaterializedView extends VeniceView {
   private final int viewPartitionCount;
   private final PartitionerConfig partitionerConfig;
   private Lazy<VenicePartitioner> viewPartitioner;
+  private final List<String> filterByFields;
 
   public MaterializedView(Properties props, String storeName, Map<String, String> viewParameters) {
     super(props, storeName, viewParameters);
@@ -46,6 +48,15 @@ public class MaterializedView extends VeniceView {
     Map<String, String> viewPartitionerParamsMap = PartitionUtils.getPartitionerParamsMap(viewPartitionerParamsString);
     this.partitionerConfig =
         new PartitionerConfigImpl(viewPartitionerClass, viewPartitionerParamsMap, DEFAULT_AMP_FACTOR);
+    String filterByFieldsString =
+        viewParameters.get(MaterializedViewParameters.MATERIALIZED_VIEW_FILTER_BY_FIELDS.name());
+    if (filterByFieldsString != null) {
+      filterByFields = MaterializedViewParameters.parsePropertyStringToList(
+          filterByFieldsString,
+          MaterializedViewParameters.MATERIALIZED_VIEW_FILTER_BY_FIELDS.name());
+    } else {
+      filterByFields = Collections.emptyList();
+    }
   }
 
   @Override
@@ -147,5 +158,18 @@ public class MaterializedView extends VeniceView {
 
   public PartitionerConfig getPartitionerConfig() {
     return partitionerConfig;
+  }
+
+  public String getProjectionSchema() {
+    return viewParameters.get(MaterializedViewParameters.MATERIALIZED_VIEW_PROJECTION_SCHEMA.name());
+  }
+
+  public boolean isValueProviderNeeded() {
+    return getViewPartitioner().getPartitionerType() == VenicePartitioner.VenicePartitionerType.COMPLEX
+        || getProjectionSchema() != null;
+  }
+
+  public List<String> getFilterByFields() {
+    return filterByFields;
   }
 }

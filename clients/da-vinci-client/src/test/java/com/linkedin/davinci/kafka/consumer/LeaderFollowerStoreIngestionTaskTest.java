@@ -69,6 +69,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -314,10 +315,10 @@ public class LeaderFollowerStoreIngestionTaskTest {
         .thenReturn(CompletableFuture.completedFuture(null));
     leaderFollowerStoreIngestionTask.queueUpVersionTopicWritesWithViewWriters(
         mockPartitionConsumptionState,
-        (viewWriter, viewPartitionSet) -> viewWriter
-            .processRecord(mock(ByteBuffer.class), new byte[1], 1, viewPartitionSet, Lazy.of(() -> null)),
-        null,
-        () -> writeToVersionTopic.set(true));
+        (viewWriter) -> viewWriter
+            .processRecord(mock(ByteBuffer.class), new byte[1], 1, Lazy.of(() -> null), Lazy.of(() -> null)),
+        (consumerRecordWrapper) -> writeToVersionTopic.set(true),
+        Collections.singletonList(mock(PubSubMessageProcessedResultWrapper.class)));
     verify(mockPartitionConsumptionState, times(1)).getLastVTProduceCallFuture();
     ArgumentCaptor<CompletableFuture> vtWriteFutureCaptor = ArgumentCaptor.forClass(CompletableFuture.class);
     verify(mockPartitionConsumptionState, times(1)).setLastVTProduceCallFuture(vtWriteFutureCaptor.capture());

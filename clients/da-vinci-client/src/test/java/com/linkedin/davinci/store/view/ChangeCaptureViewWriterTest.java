@@ -249,17 +249,41 @@ public class ChangeCaptureViewWriterTest {
     Lazy<GenericRecord> dummyValueProvider = Lazy.of(() -> null);
     // Update Case
     changeCaptureViewWriter
-        .processRecord(NEW_VALUE, OLD_VALUE, KEY, 1, 1, rmdRecordWithValueLevelTimeStamp, dummyValueProvider)
+        .processRecord(
+            NEW_VALUE,
+            OLD_VALUE,
+            KEY,
+            1,
+            1,
+            rmdRecordWithValueLevelTimeStamp,
+            dummyValueProvider,
+            dummyValueProvider)
         .get();
 
     // Insert Case
     changeCaptureViewWriter
-        .processRecord(NEW_VALUE, null, KEY, 1, 1, rmdRecordWithValueLevelTimeStamp, dummyValueProvider)
+        .processRecord(
+            NEW_VALUE,
+            null,
+            KEY,
+            1,
+            1,
+            rmdRecordWithValueLevelTimeStamp,
+            dummyValueProvider,
+            dummyValueProvider)
         .get();
 
     // Deletion Case
     changeCaptureViewWriter
-        .processRecord(null, OLD_VALUE, KEY, 1, 1, rmdRecordWithValueLevelTimeStamp, dummyValueProvider)
+        .processRecord(
+            null,
+            OLD_VALUE,
+            KEY,
+            1,
+            1,
+            rmdRecordWithValueLevelTimeStamp,
+            dummyValueProvider,
+            dummyValueProvider)
         .get();
 
     // Set up argument captors

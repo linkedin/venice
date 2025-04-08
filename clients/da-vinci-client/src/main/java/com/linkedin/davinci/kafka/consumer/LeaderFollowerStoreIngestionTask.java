@@ -32,8 +32,8 @@ import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
+import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
-import com.linkedin.davinci.store.view.ChangeCaptureViewWriter;
 import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.validation.DivSnapshot;
@@ -81,6 +81,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
+import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -92,7 +93,6 @@ import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
-import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
@@ -125,11 +125,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
-import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.LongPredicate;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.logging.log4j.LogManager;
@@ -219,6 +221,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected final Map<String, VeniceViewWriter> viewWriters;
   protected final boolean hasChangeCaptureView;
   protected final boolean hasComplexVenicePartitionerMaterializedView;
+  protected final boolean hasFilterByFieldsMaterializedView;
 
   protected final AvroStoreDeserializerCache<GenericRecord> storeDeserializerCache;
 
@@ -228,6 +231,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private final Version version;
 
   protected final ExecutorService aaWCIngestionStorageLookupThreadPool;
+  private final Lazy<KeyWithChunkingSuffixSerializer> chunkingSuffixSerializer =
+      Lazy.of(KeyWithChunkingSuffixSerializer::new);
 
   public LeaderFollowerStoreIngestionTask(
       StorageService storageService,
@@ -354,21 +359,31 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               schemaRepository.getKeySchema(store.getName()).getSchema());
       boolean tmpValueForHasChangeCaptureViewWriter = false;
       boolean tmpValueForHasComplexVenicePartitioner = false;
+      boolean tmpValueForHasFilterByFields = false;
       for (Map.Entry<String, VeniceViewWriter> viewWriter: viewWriters.entrySet()) {
-        if (viewWriter.getValue() instanceof ChangeCaptureViewWriter) {
+        if (viewWriter.getValue().getViewWriterType() == VeniceViewWriter.ViewWriterType.CHANGE_CAPTURE_VIEW) {
           tmpValueForHasChangeCaptureViewWriter = true;
         } else if (viewWriter.getValue().getViewWriterType() == VeniceViewWriter.ViewWriterType.MATERIALIZED_VIEW) {
-          if (((MaterializedViewWriter) viewWriter.getValue()).isComplexVenicePartitioner()) {
+          MaterializedViewWriter materializedViewWriter = (MaterializedViewWriter) viewWriter.getValue();
+          if (materializedViewWriter.isComplexVenicePartitioner()) {
             tmpValueForHasComplexVenicePartitioner = true;
+          }
+          if (materializedViewWriter.isProjectionEnabled()) {
+            materializedViewWriter.configureWriterForProjection(compressor);
+          }
+          if (materializedViewWriter.isFilterByFieldsEnabled()) {
+            tmpValueForHasFilterByFields = true;
           }
         }
       }
       hasChangeCaptureView = tmpValueForHasChangeCaptureViewWriter;
       hasComplexVenicePartitionerMaterializedView = tmpValueForHasComplexVenicePartitioner;
+      hasFilterByFieldsMaterializedView = tmpValueForHasFilterByFields;
     } else {
       viewWriters = Collections.emptyMap();
       hasChangeCaptureView = false;
       hasComplexVenicePartitionerMaterializedView = false;
+      hasFilterByFieldsMaterializedView = false;
     }
     this.storeDeserializerCache = new AvroStoreDeserializerCache(
         builder.getSchemaRepo(),
@@ -3202,9 +3217,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
     byte[] keyBytes = kafkaKey.getKey();
     MessageType msgType = MessageType.valueOf(kafkaValue.messageType);
-    Lazy<GenericRecord> valueProvider;
+    Lazy<GenericRecord> valueProvider = Lazy.of(() -> null);
+    Lazy<GenericRecord> oldValueProvider = Lazy.of(() -> null);
     switch (msgType) {
       case PUT:
+        if (hasFilterByFieldsMaterializedView) {
+          GenericRecord oldValue = readStoredValueRecord(
+              partitionConsumptionState,
+              keyBytes,
+              schemaRepository.getSupersetSchema(storeName).getId(),
+              consumerRecord.getTopicPartition(),
+              new ChunkedValueManifestContainer());
+          oldValueProvider = Lazy.of(() -> oldValue);
+        }
         Put put = (Put) kafkaValue.payloadUnion;
         // Value provider should use un-compressed data.
         final ByteBuffer rawPutValue = put.putValue;
@@ -3244,7 +3269,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               null);
         }
 
-        return new PubSubMessageProcessedResult(new WriteComputeResultWrapper(put, null, false, valueProvider));
+        return new PubSubMessageProcessedResult(
+            new WriteComputeResultWrapper(put, null, false, valueProvider, oldValueProvider));
 
       case UPDATE:
         /**
@@ -3286,7 +3312,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             readerValueSchemaId,
             consumerRecord.getTopicPartition(),
             valueManifestContainer);
-
+        if (hasFilterByFieldsMaterializedView) {
+          // Copy the currValue since it will be used for in-place update(s).
+          GenericRecord oldValue = new GenericData.Record((GenericData.Record) currValue, true);
+          oldValueProvider = Lazy.of(() -> oldValue);
+        }
         final byte[] updatedValueBytes;
         final ChunkedValueManifest oldValueManifest = valueManifestContainer.getManifest();
         WriteComputeResult writeComputeResult;
@@ -3344,25 +3374,22 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                   updatedPut,
                   oldValueManifest,
                   false,
-                  Lazy.of(writeComputeResult::getUpdatedValue)));
+                  Lazy.of(writeComputeResult::getUpdatedValue),
+                  oldValueProvider));
         }
       case DELETE:
-        Lazy<GenericRecord> oldValueProvider;
         if (hasComplexVenicePartitionerMaterializedView) {
           // Best-effort to provide the old value for delete operation in case needed by a ComplexVeniceWriter to
           // generate deletes for materialized view topic partition(s). We need to do a non-lazy lookup before, so we
           // have a chance of getting the old value before the transient record cache is updated to null as part of
           // processing the DELETE.
-          int oldValueReaderSchemaId = schemaRepository.getSupersetSchema(storeName).getId();
           GenericRecord oldValue = readStoredValueRecord(
               partitionConsumptionState,
               keyBytes,
-              oldValueReaderSchemaId,
+              schemaRepository.getSupersetSchema(storeName).getId(),
               consumerRecord.getTopicPartition(),
               new ChunkedValueManifestContainer());
           oldValueProvider = Lazy.of(() -> oldValue);
-        } else {
-          oldValueProvider = Lazy.of(() -> null);
         }
         /**
          * For WC enabled stores update the transient record map with the latest {key,null} for similar reason as mentioned in PUT above.
@@ -3371,7 +3398,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           partitionConsumptionState
               .setTransientRecord(kafkaClusterId, consumerRecord.getPosition().getNumericOffset(), keyBytes, -1, null);
         }
-        return new PubSubMessageProcessedResult(new WriteComputeResultWrapper(null, null, false, oldValueProvider));
+        return new PubSubMessageProcessedResult(
+            new WriteComputeResultWrapper(null, null, false, valueProvider, oldValueProvider));
 
       default:
         throw new VeniceMessageException(
@@ -3410,31 +3438,84 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (msgType.equals(UPDATE) && writeComputeResultWrapper.isSkipProduce()) {
       return;
     }
-    Runnable produceToVersionTopic = () -> produceToLocalKafkaHelper(
-        consumerRecord,
-        partitionConsumptionState,
-        writeComputeResultWrapper,
-        partition,
-        kafkaUrl,
-        kafkaClusterId,
-        beforeProcessingRecordTimestampNs);
-    // Write to views
+    Put newPut = writeComputeResultWrapper.getNewPut();
+    // Write to views.
     if (hasViewWriters()) {
-      Put newPut = writeComputeResultWrapper.getNewPut();
-      Map<String, Set<Integer>> viewPartitionMap = null;
+      consumerRecordWrapper.setProcessedResult(new PubSubMessageProcessedResult(writeComputeResultWrapper));
+      consumerRecordWrapper.setBeforeProcessingPerRecordTimestampNs(beforeProcessingRecordTimestampNs);
+      Consumer<PubSubMessageProcessedResultWrapper> produceToVersionTopic =
+          (messageWrapper) -> produceToLocalKafkaHelper(
+              messageWrapper.getMessage(),
+              partitionConsumptionState,
+              messageWrapper.getProcessedResult().getWriteComputeResultWrapper(),
+              partition,
+              kafkaUrl,
+              kafkaClusterId,
+              messageWrapper.getBeforeProcessingPerRecordTimestampNs());
       if (!partitionConsumptionState.isEndOfPushReceived()) {
-        // NR pass-through records are expected to carry view partition map in the message header
-        viewPartitionMap = ViewUtils.extractViewPartitionMap(consumerRecord.getPubSubMessageHeaders());
+        // Native replication (NR) pass-through mode
+        partitionConsumptionState.addMessageToPendingMessages(consumerRecordWrapper);
+        ByteBufferValueRecord<ByteBuffer> valueRecord = chunkAssembler.get()
+            .bufferAndAssembleRecord(
+                consumerRecord.getTopicPartition(),
+                newPut.schemaId,
+                keyBytes,
+                newPut.putValue,
+                consumerRecord.getPosition().getNumericOffset(),
+                compressor.get());
+        if (valueRecord != null) {
+          // Only process full records
+          Lazy<GenericRecord> valueProvider = Lazy.of(() -> {
+            try {
+              return storeDeserializerCache.getDeserializer(valueRecord.writerSchemaId(), valueRecord.writerSchemaId())
+                  .deserialize(compressor.get().decompress(valueRecord.value()));
+            } catch (IOException e) {
+              throw new VeniceException(
+                  "Unable to provide value during NR pass-through due to decompression failure",
+                  e);
+            }
+          });
+          final byte[] originalKeyBytes;
+          if (isChunked) {
+            // valueRecord is not null for full records and manifest and the key for both is serialized with non chunked
+            // key suffix in source version topic if chunking is enabled.
+            originalKeyBytes = chunkingSuffixSerializer.get().extractKeyFromNonChunkedKeySuffix(keyBytes);
+          } else {
+            originalKeyBytes = keyBytes;
+          }
+          queueUpVersionTopicWritesWithViewWriters(
+              partitionConsumptionState,
+              (viewWriter) -> viewWriter.processRecord(
+                  valueRecord.value(),
+                  originalKeyBytes,
+                  valueRecord.writerSchemaId(),
+                  valueProvider,
+                  Lazy.of(() -> null)),
+              produceToVersionTopic,
+              partitionConsumptionState.getAndClearPendingMessagesToLocalVT());
+        }
+      } else {
+        // NR standard mode where upstream is RT topic.
+        queueUpVersionTopicWritesWithViewWriters(
+            partitionConsumptionState,
+            (viewWriter) -> viewWriter.processRecord(
+                newPut.putValue,
+                keyBytes,
+                newPut.schemaId,
+                writeComputeResultWrapper.getValueProvider(),
+                writeComputeResultWrapper.getOldValueProvider()),
+            produceToVersionTopic,
+            Collections.singletonList(consumerRecordWrapper));
       }
-      Lazy<GenericRecord> newValueProvider = writeComputeResultWrapper.getValueProvider();
-      queueUpVersionTopicWritesWithViewWriters(
-          partitionConsumptionState,
-          (viewWriter, viewPartitionSet) -> viewWriter
-              .processRecord(newPut.putValue, keyBytes, newPut.schemaId, viewPartitionSet, newValueProvider),
-          viewPartitionMap,
-          produceToVersionTopic);
     } else {
-      produceToVersionTopic.run();
+      produceToLocalKafkaHelper(
+          consumerRecord,
+          partitionConsumptionState,
+          writeComputeResultWrapper,
+          partition,
+          kafkaUrl,
+          kafkaClusterId,
+          beforeProcessingRecordTimestampNs);
     }
   }
 
@@ -4123,9 +4204,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected void queueUpVersionTopicWritesWithViewWriters(
       PartitionConsumptionState partitionConsumptionState,
-      BiFunction<VeniceViewWriter, Set<Integer>, CompletableFuture<Void>> viewWriterRecordProcessor,
-      Map<String, Set<Integer>> viewPartitionMap,
-      Runnable versionTopicWrite) {
+      Function<VeniceViewWriter, CompletableFuture<Void>> viewWriterRecordProcessor,
+      Consumer<PubSubMessageProcessedResultWrapper> versionTopicWrite,
+      List<PubSubMessageProcessedResultWrapper> consumerRecordWrappers) {
     long preprocessingTime = System.currentTimeMillis();
     CompletableFuture<Void> currentVersionTopicWrite = new CompletableFuture<>();
     CompletableFuture[] viewWriterFutures = new CompletableFuture[this.viewWriters.size() + 1];
@@ -4133,21 +4214,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     // The first future is for the previous write to VT
     viewWriterFutures[index++] = partitionConsumptionState.getLastVTProduceCallFuture();
     for (VeniceViewWriter writer: viewWriters.values()) {
-      Set<Integer> viewPartitionSet = null;
-      if (viewPartitionMap != null && writer.getViewWriterType() == VeniceViewWriter.ViewWriterType.MATERIALIZED_VIEW) {
-        MaterializedViewWriter mvWriter = (MaterializedViewWriter) writer;
-        viewPartitionSet = viewPartitionMap.get(mvWriter.getViewName());
-        if (viewPartitionSet == null) {
-          throw new VeniceException("Unable to find view partition set for view: " + mvWriter.getViewName());
-        }
-      }
-      viewWriterFutures[index++] = viewWriterRecordProcessor.apply(writer, viewPartitionSet);
+      viewWriterFutures[index++] = viewWriterRecordProcessor.apply(writer);
     }
     hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
     CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
       hostLevelIngestionStats.recordViewProducerAckLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
       if (exception == null) {
-        versionTopicWrite.run();
+        for (PubSubMessageProcessedResultWrapper consumerRecordWrapper: consumerRecordWrappers) {
+          versionTopicWrite.accept(consumerRecordWrapper);
+        }
         currentVersionTopicWrite.complete(null);
       } else {
         VeniceException veniceException = new VeniceException(exception);
