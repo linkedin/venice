@@ -755,7 +755,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public boolean hasAnySubscription() {
-    return consumerHasAnySubscription() || hasAnyPendingSubscription();
+    return !partitionConsumptionStateMap.isEmpty() || hasAnyPendingSubscription();
   }
 
   /**
@@ -1575,7 +1575,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Check whether current consumer has any subscription or not since 'poll' function will throw
      * {@link IllegalStateException} with empty subscription.
      */
-    if (!hasAnySubscription()) {
+    if (!(consumerHasAnySubscription() || hasAnyPendingSubscription())) {
       if (idleCounter.incrementAndGet() <= getMaxIdleCounter()) {
         String message = ingestionTaskName + " Not subscribed to any partitions ";
         if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
