@@ -98,6 +98,10 @@ public class VeniceVersionFinder {
 
     int metadataCurrentVersion = store.getCurrentVersion();
 
+    if (metadataCurrentVersion == Store.NON_EXISTING_VERSION) {
+      store = metadataRepository.refreshOneStore(storeName);
+      metadataCurrentVersion = store.getCurrentVersion();
+    }
     Store finalStore = store;
     int finalMetadataCurrentVersion = metadataCurrentVersion;
     if (lastCurrentVersionMap.computeIfAbsent(storeName, v -> {
@@ -110,13 +114,6 @@ public class VeniceVersionFinder {
       // new store not ready to serve
       return null;
     }) == null) {
-      if (metadataCurrentVersion == Store.NON_EXISTING_VERSION) {
-        store = metadataRepository.refreshOneStore(storeName);
-        metadataCurrentVersion = store.getCurrentVersion();
-      }
-    }
-
-    if (!lastCurrentVersionMap.containsKey(storeName)) {
       return Store.NON_EXISTING_VERSION;
     }
 
