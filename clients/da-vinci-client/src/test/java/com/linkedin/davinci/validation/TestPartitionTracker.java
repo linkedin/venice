@@ -620,9 +620,8 @@ public class TestPartitionTracker {
     Put firstPut = getPutMessage("first_message".getBytes());
     KafkaMessageEnvelope putMessage =
         getKafkaMessageEnvelope(MessageType.PUT, guid, segment, Optional.empty(), firstPut);
-    KafkaKey firstMessageKey = getPutMessageKey("first_key".getBytes());
     DefaultPubSubMessage putConsumerRecord = new ImmutablePubSubMessage(
-        firstMessageKey,
+        getPutMessageKey("first_key".getBytes()),
         putMessage,
         pubSubTopicPartition,
         ApacheKafkaOffsetPosition.of(offset++),
@@ -634,9 +633,8 @@ public class TestPartitionTracker {
     Update firstUpdate = getUpdateMessage("second_message".getBytes());
     KafkaMessageEnvelope updateMessage =
         getKafkaMessageEnvelope(MessageType.UPDATE, guid, segment, Optional.empty(), firstUpdate);
-    KafkaKey secondMessageKey = getUpdateMessageKey("second_key".getBytes());
     DefaultPubSubMessage updateConsumerRecord = new ImmutablePubSubMessage(
-        secondMessageKey,
+        getUpdateMessageKey("second_key".getBytes()),
         updateMessage,
         pubSubTopicPartition,
         ApacheKafkaOffsetPosition.of(offset++),
@@ -648,9 +646,8 @@ public class TestPartitionTracker {
     Delete firstDelete = new Delete();
     KafkaMessageEnvelope deleteMessage =
         getKafkaMessageEnvelope(MessageType.DELETE, guid, segment, Optional.empty(), firstDelete);
-    KafkaKey thirdMessageKey = getDeleteMessageKey("third_key".getBytes());
     DefaultPubSubMessage deleteConsumerRecord = new ImmutablePubSubMessage(
-        firstMessageKey,
+        getDeleteMessageKey("third_key".getBytes()),
         deleteMessage,
         pubSubTopicPartition,
         ApacheKafkaOffsetPosition.of(offset++),
