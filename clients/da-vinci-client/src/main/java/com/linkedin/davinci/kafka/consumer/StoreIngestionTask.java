@@ -324,6 +324,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   // Total number of partition for this store version
   protected final int storeVersionPartitionCount;
 
+  private AtomicInteger pendingSubscriptionActionCount = new AtomicInteger(0);
   private int subscribedCount = 0;
   private int forceUnSubscribedCount = 0;
 
@@ -694,6 +695,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     partitionToPendingConsumerActionCountMap.computeIfAbsent(partitionNumber, x -> new AtomicInteger(0))
         .incrementAndGet();
+    pendingSubscriptionActionCount.incrementAndGet();
     consumerActionsQueue.add(new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction));
   }
 
@@ -758,11 +760,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return !partitionConsumptionStateMap.isEmpty() || hasAnyPendingSubscription();
   }
 
-  /**
-   * Check the consumer action queue to see if there are any pending SUBSCRIBE actions.
-   */
   public boolean hasAnyPendingSubscription() {
-    return consumerActionsQueue.stream().anyMatch(action -> action.getType() == SUBSCRIBE);
+    return pendingSubscriptionActionCount.get() > 0;
   }
 
   /**
@@ -1937,17 +1936,23 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int partition = message.getPartition();
       String replica = Utils.getReplicaId(message.getTopic(), message.getPartition());
       try {
-        if (opType == ConsumerActionType.RESET_OFFSET) {
-          LOGGER.info("Cleanup Reset OffSet. Replica: {}", replica);
-          storageMetadataService.clearOffset(topic, partition);
-          message.getFuture().complete(null);
-        } else if (opType == DROP_PARTITION) {
-          PubSubTopicPartition topicPartition = message.getTopicPartition();
-          LOGGER.info("Processing DROP_PARTITION message for {} in internalClose", topicPartition);
-          dropPartitionSynchronously(topicPartition);
-          message.getFuture().complete(null);
-        } else {
-          LOGGER.info("Cleanup ignoring the Message: {} Replica: {}", message, replica);
+        switch (opType) {
+          case RESET_OFFSET:
+            LOGGER.info("Cleanup Reset OffSet. Replica: {}", replica);
+            storageMetadataService.clearOffset(topic, partition);
+            message.getFuture().complete(null);
+            break;
+          case DROP_PARTITION:
+            PubSubTopicPartition topicPartition = message.getTopicPartition();
+            LOGGER.info("Processing DROP_PARTITION message for {} in internalClose", topicPartition);
+            dropPartitionSynchronously(topicPartition);
+            message.getFuture().complete(null);
+            break;
+          case SUBSCRIBE:
+            pendingSubscriptionActionCount.decrementAndGet();
+          default:
+            LOGGER.info("Ignore and cleanup the Message: {} Replica: {}", message, replica);
+            break;
         }
       } catch (Exception e) {
         LOGGER.error(
@@ -2023,6 +2028,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // Remove the action that is processed recently (not necessarily the head of consumerActionsQueue).
         if (consumerActionsQueue.remove(action)) {
           partitionToPendingConsumerActionCountMap.get(action.getPartition()).decrementAndGet();
+          if (action.getType().equals(SUBSCRIBE)) {
+            pendingSubscriptionActionCount.decrementAndGet();
+          }
         }
         LOGGER.info(
             "Finished consumer action {} in {}ms",
@@ -2061,6 +2069,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // Remove the action that is failed to execute recently (not necessarily the head of consumerActionsQueue).
     if (consumerActionsQueue.remove(action)) {
       partitionToPendingConsumerActionCountMap.get(action.getPartition()).decrementAndGet();
+      if (action.getType().equals(SUBSCRIBE)) {
+        pendingSubscriptionActionCount.decrementAndGet();
+      }
     }
     /**
      * {@link state} can be null if the {@link OffsetRecord} from {@link storageMetadataService} was corrupted in

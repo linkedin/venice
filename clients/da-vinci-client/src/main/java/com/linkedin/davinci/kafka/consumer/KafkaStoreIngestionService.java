@@ -1090,12 +1090,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
       if (consumerTask.isRunning()) {
         consumerTask.kill();
-        compressorFactory.removeVersionSpecificCompressor(topicName);
         killed = true;
         LOGGER.info("Killed consumption task for topic {}", topicName);
       } else {
         LOGGER.warn("Ignoring kill request for stopped consumption task {}", topicName);
       }
+      // Always remove the version level compressor regardless if the task was running or not.
+      compressorFactory.removeVersionSpecificCompressor(topicName);
       // cleanup the map regardless if the task was running or not to prevent mem leak when failed tasks lingers
       // in the map since isRunning is set to false already.
       topicNameToIngestionTaskMap.remove(topicName);
