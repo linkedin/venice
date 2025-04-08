@@ -99,6 +99,8 @@ public class VeniceVersionFinder {
     int metadataCurrentVersion = store.getCurrentVersion();
     if (!lastCurrentVersionMap.containsKey(storeName)) {
       if (metadataCurrentVersion == Store.NON_EXISTING_VERSION) {
+        /** new store push has completed but the routers are not up-to-date on the latest metadata yet
+         * This should happen at most once per store, since we are adding the mapping to {@link lastCurrentVersion} */
         store = metadataRepository.refreshOneStore(storeName);
         metadataCurrentVersion = store.getCurrentVersion();
       }
