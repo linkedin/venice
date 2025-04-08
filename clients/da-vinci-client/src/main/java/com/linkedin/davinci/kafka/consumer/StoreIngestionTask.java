@@ -3389,7 +3389,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               this.kafkaDataIntegrityValidator,
               consumerRecord,
               endOfPushReceived,
-              partitionConsumptionState);
+              partitionConsumptionState,
+              /**
+               * N.B.: For A/A enabled stores, the drainer DIV is useless, since upstream of here we may have filtered
+               * out any message due to DCR. So we'll still try to perform the DIV on a best-effort basis, but we pass
+               * {@link #isActiveActiveReplicationEnabled} in the extraTolerateMissingMessageCondition param to indicate
+               * that if the store is A/A, then we can't trust the DIV results.
+               */
+              this.isActiveActiveReplicationEnabled);
         }
         if (recordLevelMetricEnabled.get()) {
           versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
@@ -3548,23 +3555,46 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       KafkaDataIntegrityValidator validator,
       DefaultPubSubMessage consumerRecord,
       boolean endOfPushReceived,
-      PartitionConsumptionState partitionConsumptionState) {
+      PartitionConsumptionState partitionConsumptionState,
+      boolean tolerateMissingMessagesForRealTimeTopic) {
     KafkaKey key = consumerRecord.getKey();
     if (key.isControlMessage() && Arrays.equals(KafkaKey.HEART_BEAT.getKey(), key.getKey())) {
       // Skip DIV for ingestion heartbeat records.
       return;
     }
-    Lazy<Boolean> tolerateMissingMsgs = Lazy.of(() -> {
-      TopicManager topicManager = topicManagerRepository.getLocalTopicManager();
-      // Tolerate missing message if store version is data recovery + hybrid and TS not received yet (due to source
-      // topic
-      // data may have been log compacted) or log compaction is enabled and record is old enough for log compaction.
-      PubSubTopic pubSubTopic = consumerRecord.getTopic();
 
-      return (isDataRecovery && isHybridMode() && partitionConsumptionState.getTopicSwitch() == null)
-          || (pubSubTopic.isVersionTopic() && topicManager.isTopicCompactionEnabled(pubSubTopic)
-              && LatencyUtils.getElapsedTimeFromMsToMs(consumerRecord.getPubSubMessageTime()) >= topicManager
-                  .getTopicMinLogCompactionLagMs(pubSubTopic));
+    Lazy<Boolean> tolerateMissingMsgs = Lazy.of(() -> {
+      PubSubTopic pubSubTopic = consumerRecord.getTopic();
+      /** N.B.: In the switch/case, we only short-circuit if true, as there is one more condition to check below. */
+      switch (pubSubTopic.getPubSubTopicType()) {
+        case REALTIME_TOPIC:
+          if (tolerateMissingMessagesForRealTimeTopic) {
+            return true;
+          }
+          break;
+        case VERSION_TOPIC:
+          TopicManager topicManager = this.topicManagerRepository.getLocalTopicManager();
+          if (topicManager.isTopicCompactionEnabled(pubSubTopic)) {
+            long elapsedTime = LatencyUtils.getElapsedTimeFromMsToMs(consumerRecord.getPubSubMessageTime());
+
+            /** If we are consuming a portion of topic beyond compaction threshold, then all bets are off */
+            if (elapsedTime >= topicManager.getTopicMinLogCompactionLagMs(pubSubTopic)) {
+              return true;
+            }
+          }
+          break;
+        default: // no-op
+      }
+
+      if (this.isDataRecovery && isHybridMode() && partitionConsumptionState.getTopicSwitch() == null) {
+        /**
+         * Tolerate missing message if store version is data recovery + hybrid and TS not received yet (due to source
+         * topic data may have been log compacted)
+         */
+        return true;
+      }
+
+      return false;
     });
 
     try {

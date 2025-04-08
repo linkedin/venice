@@ -2304,7 +2304,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         final TopicType topicType = (isGlobalRtDivEnabled())
             ? TopicType.of(isRealTimeTopic ? REALTIME_TOPIC_TYPE : VERSION_TOPIC_TYPE, kafkaUrl)
             : PartitionTracker.VERSION_TOPIC;
-        validateMessage(topicType, kafkaDataIntegrityValidatorForLeaders, record, isEndOfPushReceived, pcs);
+        validateMessage(topicType, kafkaDataIntegrityValidatorForLeaders, record, isEndOfPushReceived, pcs, false);
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       } catch (FatalDataValidationException e) {
         if (!isEndOfPushReceived) {
