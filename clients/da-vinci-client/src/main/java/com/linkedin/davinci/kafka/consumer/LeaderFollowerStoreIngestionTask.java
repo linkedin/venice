@@ -3610,7 +3610,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   void sendGlobalRtDivMessage(
       DefaultPubSubMessage previousMessage,
-      PartitionConsumptionState partitionConsumptionState,
+      PartitionConsumptionState pcs,
       int partition,
       String brokerUrl,
       long beforeProcessingRecordTimestampNs,
@@ -3621,11 +3621,54 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     TopicType realTimeTopicType = TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
 
     // Snapshot the RT DIV (single broker URL) in preparation to be produced
-    PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition); // includes latest consumed vt offset
+    PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition); // includes latest consumed vt offset (LCVO)
     PartitionTracker rtDiv = consumerDiv.cloneRtProducerStates(partition, brokerUrl);
     Map<CharSequence, ProducerPartitionState> rtDivPartitionStates = rtDiv.getPartitionStates(realTimeTopicType);
 
-    // Create GlobalRtDivState (RT DIV + latest RT Offset) which will be serialized into a byte array
+    // Create GlobalRtDivState (RT DIV + latest RT Offset) which will be serialized into a byte array. Try compression.
+    final byte[] valueBytes = createGlobalRtDivValueBytes(previousMessage, brokerUrl, rtDivPartitionStates);
+
+    // The callback onCompletionFunction sends the VT DIV + LCVO to the drainer after producing to VT successfully
+    final LeaderProducerCallback divCallback = createGlobalRtDivCallback(
+        previousMessage,
+        pcs,
+        partition,
+        brokerUrl,
+        beforeProcessingRecordTimestampNs,
+        leaderProducedRecordContext,
+        keyBytes,
+        valueBytes,
+        topicPartition,
+        vtDiv);
+
+    // Get the old value manifest which contains the list of old chunks, so they can be deleted
+    final int schemaId = AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
+    ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
+    readStoredValueRecord(pcs, keyBytes, schemaId, topicPartition, valueManifestContainer);
+
+    // Produce to local VT for the Global RT DIV + latest RT offset (GlobalRtDivState)
+    // Internally, VeniceWriter.put() will schedule DELETEs for the old chunks in the old manifest after the new PUTs
+    getVeniceWriter(pcs).get()
+        .put(
+            keyBytes,
+            valueBytes,
+            partition,
+            1, // dummy value schema id which shouldn't be used for MessageType.GLOBAL_RT_DIV
+            divCallback,
+            leaderMetadataWrapper,
+            APP_DEFAULT_LOGICAL_TS,
+            null,
+            valueManifestContainer.getManifest(),
+            null,
+            false);
+
+    consumedBytesSinceLastSync.put(brokerUrl, 0L); // reset the timer for the next sync, since RT DIV was just synced
+  }
+
+  private byte[] createGlobalRtDivValueBytes(
+      DefaultPubSubMessage previousMessage,
+      String brokerUrl,
+      Map<CharSequence, ProducerPartitionState> rtDivPartitionStates) {
     ByteBuffer emptyBuffer = ByteBuffer.allocate(0); // TODO: use this PubSubPosition instead of latestOffset
     final long offset = previousMessage.getPosition().getNumericOffset();
     GlobalRtDivState globalRtDiv = new GlobalRtDivState(brokerUrl, rtDivPartitionStates, offset, emptyBuffer);
@@ -3634,13 +3677,25 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       valueBytes = compressor.get().compress(valueBytes);
     } catch (IOException e) {
       LOGGER.error(
-          "Failed to compress GlobalRtDivState for topic: {}. Will proceed without {} compression.",
-          topicPartition.getTopicName(),
+          "Failed to compress GlobalRtDivState for replica: {}. Will proceed without {} compression.",
+          previousMessage.getTopicPartition(),
           compressionStrategy,
           e);
     }
+    return valueBytes;
+  }
 
-    // Create PubSubMessage for the LeaderProducerCallback
+  private LeaderProducerCallback createGlobalRtDivCallback(
+      DefaultPubSubMessage previousMessage,
+      PartitionConsumptionState partitionConsumptionState,
+      int partition,
+      String brokerUrl,
+      long beforeProcessingRecordTimestampNs,
+      LeaderProducedRecordContext leaderProducedRecordContext,
+      byte[] keyBytes,
+      byte[] valueBytes,
+      PubSubTopicPartition topicPartition,
+      PartitionTracker vtDiv) {
     final int schemaId = AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
     KafkaKey divKey = new KafkaKey(MessageType.GLOBAL_RT_DIV, keyBytes);
     KafkaMessageEnvelope divEnvelope = getVeniceWriter(partitionConsumptionState).get()
@@ -3676,31 +3731,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       try {
         storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, this);
       } catch (InterruptedException e) {
-        LOGGER.error("Failed to sync VT DIV to OffsetRecord for replica: {}", Utils.getReplicaId(topicPartition), e);
+        LOGGER.error("Failed to sync VT DIV to OffsetRecord for replica: {}", topicPartition, e);
       }
     });
 
-    // Get the old value manifest which contains the list of old chunks, so they can be deleted
-    ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
-    readStoredValueRecord(partitionConsumptionState, keyBytes, schemaId, topicPartition, valueManifestContainer);
-
-    // Produce to local VT for the Global RT DIV + latest RT offset (GlobalRtDivState)
-    // Internally, VeniceWriter.put() will schedule DELETEs for the old chunks in the old manifest after the new PUTs
-    getVeniceWriter(partitionConsumptionState).get()
-        .put(
-            keyBytes,
-            valueBytes,
-            partition,
-            1, // dummy value schema id which shouldn't be used for MessageType.GLOBAL_RT_DIV
-            divCallback,
-            leaderMetadataWrapper,
-            APP_DEFAULT_LOGICAL_TS,
-            null,
-            valueManifestContainer.getManifest(),
-            null,
-            false);
-
-    consumedBytesSinceLastSync.put(brokerUrl, 0L); // reset the timer for the next sync
+    return divCallback;
   }
 
   /**
