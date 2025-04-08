@@ -1593,7 +1593,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           }
           // long sleep here in case there are more consumer action to perform like KILL/subscription etc.
           Thread.sleep(POST_UNSUB_SLEEP_MS);
-          idleCounter.set(0);
+          resetIdleCounter();
           if (serverConfig.isSkipChecksAfterUnSubEnabled()) {
             skipAfterBatchPushUnsubEnabled = true;
           }
@@ -1603,7 +1603,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       return;
     }
-    idleCounter.set(0);
+    resetIdleCounter();
     if (emitMetrics.get()) {
       recordQuotaMetrics();
       recordMaxIdleTime();

@@ -544,7 +544,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       participantStoreConsumerExecutorService.submit(participantStoreConsumptionTask);
     }
     final int idleIngestionTaskCleanupIntervalInSeconds = serverConfig.getIdleIngestionTaskCleanupIntervalInSeconds();
-    if (idleIngestionTaskCleanupIntervalInSeconds > 0) {
+    if (idleStoreIngestionTaskKillerExecutor != null) {
       this.idleStoreIngestionTaskKillerExecutor.scheduleWithFixedDelay(
           this::scanAndCloseIdleConsumptionTasks,
           idleIngestionTaskCleanupIntervalInSeconds,
@@ -987,7 +987,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       StoreIngestionTask ingestionTask = topicNameToIngestionTaskMap.get(topicName);
       if (ingestionTask != null && !ingestionTask.hasAnySubscription()) {
         if (isIsolatedIngestion) {
-          LOGGER.info("Ingestion task for topic {} will be kept open for the access from main process.", topicName);
+          LOGGER.info(
+              "Ingestion task for topic {} will be kept open for the access from main process even though it has no subscription now.",
+              topicName);
         } else {
           LOGGER.info("Shutting down ingestion task of topic {}", topicName);
           shutdownStoreIngestionTask(topicName);
@@ -1061,8 +1063,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         }
       }
       LOGGER.info("Number of active ingestion tasks after cleaning: {}", topicNameToIngestionTaskMap.size());
-    } catch (VeniceException e) {
-      LOGGER.info("Error when attempting to shutdown idle store ingestion tasks", e);
+    } catch (Exception e) {
+      LOGGER.error("Error when attempting to shutdown idle store ingestion tasks", e);
     }
   }
 
