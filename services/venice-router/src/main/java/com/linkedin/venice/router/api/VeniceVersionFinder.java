@@ -97,24 +97,20 @@ public class VeniceVersionFinder {
     }
 
     int metadataCurrentVersion = store.getCurrentVersion();
-
-    if (metadataCurrentVersion == Store.NON_EXISTING_VERSION) {
-      store = metadataRepository.refreshOneStore(storeName);
-      metadataCurrentVersion = store.getCurrentVersion();
-    }
-    Store finalStore = store;
-    int finalMetadataCurrentVersion = metadataCurrentVersion;
-    if (lastCurrentVersionMap.computeIfAbsent(storeName, v -> {
-      // check if new store is ready to serve
-      String kafkaTopic = Version.composeKafkaTopic(storeName, finalMetadataCurrentVersion);
-      if (isPartitionResourcesReady(kafkaTopic) && isDecompressorReady(finalStore, finalMetadataCurrentVersion)) {
-        // new store ready to serve
-        return finalMetadataCurrentVersion;
+    if (!lastCurrentVersionMap.containsKey(storeName)) {
+      if (metadataCurrentVersion == Store.NON_EXISTING_VERSION) {
+        store = metadataRepository.refreshOneStore(storeName);
+        metadataCurrentVersion = store.getCurrentVersion();
       }
-      // new store not ready to serve
-      return null;
-    }) == null) {
-      return Store.NON_EXISTING_VERSION;
+      // check if new store is ready to serve
+      String kafkaTopic = Version.composeKafkaTopic(storeName, metadataCurrentVersion);
+      if (isPartitionResourcesReady(kafkaTopic) && isDecompressorReady(store, metadataCurrentVersion)) {
+        // new store ready to serve
+        lastCurrentVersionMap.putIfAbsent(storeName, metadataCurrentVersion);
+      } else {
+        // new store not ready to serve
+        return Store.NON_EXISTING_VERSION;
+      }
     }
 
     int existingVersion = lastCurrentVersionMap.get(storeName);
