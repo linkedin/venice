@@ -453,7 +453,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     VeniceCompressor compressor = leaderFollowerStoreIngestionTask.getCompressor().get();
     byte[] valueBytes = ByteUtils.extractByteArray(compressor.decompress(ByteBuffer.wrap(compressedBytes)));
     InternalAvroSpecificSerializer<GlobalRtDivState> serializer =
-        AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer();
+        leaderFollowerStoreIngestionTask.globalRtDivStateSerializer;
     GlobalRtDivState globalRtDiv =
         serializer.deserialize(valueBytes, AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
     assertNotNull(globalRtDiv);

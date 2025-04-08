@@ -205,6 +205,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected final boolean hasChangeCaptureView;
   protected final boolean hasComplexVenicePartitionerMaterializedView;
 
+  protected final InternalAvroSpecificSerializer<GlobalRtDivState> globalRtDivStateSerializer =
+      AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer();
   protected final AvroStoreDeserializerCache<GenericRecord> storeDeserializerCache;
 
   private final AtomicLong lastSendIngestionHeartbeatTimestamp = new AtomicLong(0);
@@ -3614,8 +3616,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       long beforeProcessingRecordTimestampNs,
       LeaderMetadataWrapper leaderMetadataWrapper,
       LeaderProducedRecordContext leaderProducedRecordContext) {
-    final InternalAvroSpecificSerializer<GlobalRtDivState> serializer =
-        AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer(); // unfortunately, serializer is not thread-safe
     final byte[] keyBytes = getGlobalRtDivKeyBytes(brokerUrl);
     final PubSubTopicPartition topicPartition = previousMessage.getTopicPartition();
     TopicType realTimeTopicType = TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
@@ -3626,10 +3626,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     Map<CharSequence, ProducerPartitionState> rtDivPartitionStates = rtDiv.getPartitionStates(realTimeTopicType);
 
     // Create GlobalRtDivState (RT DIV + latest RT Offset) which will be serialized into a byte array
-    ByteBuffer emptyBuffer = ByteBuffer.allocate(0); // TODO: replace this for latestOffset in GlobalRtDivState
+    ByteBuffer emptyBuffer = ByteBuffer.allocate(0); // TODO: use this PubSubPosition instead of latestOffset
     final long offset = previousMessage.getPosition().getNumericOffset();
     GlobalRtDivState globalRtDiv = new GlobalRtDivState(brokerUrl, rtDivPartitionStates, offset, emptyBuffer);
-    byte[] valueBytes = ByteUtils.extractByteArray(serializer.serialize(globalRtDiv));
+    byte[] valueBytes = ByteUtils.extractByteArray(globalRtDivStateSerializer.serialize(globalRtDiv));
     try {
       valueBytes = compressor.get().compress(valueBytes);
     } catch (IOException e) {
