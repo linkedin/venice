@@ -12,6 +12,7 @@ import static com.linkedin.davinci.validation.PartitionTracker.TopicType.VERSION
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.END_OF_PUSH;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.kafka.protocol.enums.MessageType.UPDATE;
+import static com.linkedin.venice.offsets.OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
@@ -951,7 +952,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           topicSwitch.rewindStartTimestamp,
           partitionConsumptionState.getReplicaId());
     }
-    return Collections.singletonMap(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, upstreamStartOffset);
+    return Collections.singletonMap(NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, upstreamStartOffset);
   }
 
   @Override
@@ -997,7 +998,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     partitionConsumptionState.setLeaderFollowerState(LEADER);
     final PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
-    prepareOffsetCheckpointAndStartConsumptionAsLeader(leaderTopic, partitionConsumptionState);
+    prepareOffsetCheckpointAndStartConsumptionAsLeader(leaderTopic, partitionConsumptionState, true);
   }
 
   private boolean switchAwayFromStreamReprocessingTopic(PubSubTopic currentLeaderTopic, PubSubTopic topicSwitchTopic) {
@@ -1051,6 +1052,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     maybeApplyReadyToServeCheck(partitionConsumptionState);
   }
 
+  void prepareOffsetCheckpointAndStartConsumptionAsLeader(
+      PubSubTopic leaderTopic,
+      PartitionConsumptionState partitionConsumptionState) {
+    prepareOffsetCheckpointAndStartConsumptionAsLeader(leaderTopic, partitionConsumptionState, false);
+  }
+
   /**
    * This method does a few things for leader topic-partition subscription:
    * (1) Calculate Kafka URL to leader subscribe offset map.
@@ -1059,18 +1066,20 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   void prepareOffsetCheckpointAndStartConsumptionAsLeader(
       PubSubTopic leaderTopic,
-      PartitionConsumptionState partitionConsumptionState) {
+      PartitionConsumptionState partitionConsumptionState,
+      boolean isTransition) {
     Set<String> leaderSourceKafkaURLs = getConsumptionSourceKafkaAddress(partitionConsumptionState);
     if (leaderSourceKafkaURLs.size() != 1) {
       throw new VeniceException("In L/F mode, expect only one leader source Kafka URL. Got: " + leaderSourceKafkaURLs);
     }
+    boolean useLcro = isTransition && isGlobalRtDivEnabled();
     long upstreamStartOffset = partitionConsumptionState
-        .getLeaderOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, pubSubTopicRepository);
+        .getLeaderOffset(NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, pubSubTopicRepository, useLcro);
     String leaderSourceKafkaURL = leaderSourceKafkaURLs.iterator().next();
     if (upstreamStartOffset < 0 && leaderTopic.isRealTime()) {
       upstreamStartOffset =
           calculateLeaderUpstreamOffsetWithTopicSwitch(partitionConsumptionState, leaderTopic, Collections.emptyList())
-              .getOrDefault(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, OffsetRecord.LOWEST_OFFSET);
+              .getOrDefault(NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, OffsetRecord.LOWEST_OFFSET);
     }
 
     consumerSubscribe(leaderTopic, partitionConsumptionState, upstreamStartOffset, leaderSourceKafkaURL);
@@ -1559,7 +1568,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         (sourceKafkaUrl, upstreamTopic) -> upstreamTopic.isRealTime()
             ? partitionConsumptionState.getLatestProcessedUpstreamRTOffset(sourceKafkaUrl)
             : partitionConsumptionState.getLatestProcessedUpstreamVersionTopicOffset(),
-        () -> OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY,
+        () -> NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY,
         dryRun);
   }
 
@@ -3020,15 +3029,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   private final Predicate<? super PartitionConsumptionState> FOLLOWER_OFFSET_LAG_FILTER =
-      pcs -> pcs.getLatestProcessedUpstreamRTOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY) != -1
+      pcs -> pcs.getLatestProcessedUpstreamRTOffset(NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY) != -1
           && !pcs.getLeaderFollowerState().equals(LEADER);
   private final Predicate<? super PartitionConsumptionState> BATCH_FOLLOWER_OFFSET_LAG_FILTER =
       pcs -> !pcs.isEndOfPushReceived()
-          && pcs.getLatestProcessedUpstreamRTOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY) != -1
+          && pcs.getLatestProcessedUpstreamRTOffset(NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY) != -1
           && !pcs.getLeaderFollowerState().equals(LEADER);
   private final Predicate<? super PartitionConsumptionState> HYBRID_FOLLOWER_OFFSET_LAG_FILTER =
       pcs -> pcs.isEndOfPushReceived() && pcs.isHybrid()
-          && pcs.getLatestProcessedUpstreamRTOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY) != -1
+          && pcs.getLatestProcessedUpstreamRTOffset(NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY) != -1
           && !pcs.getLeaderFollowerState().equals(LEADER);
 
   private long getFollowerOffsetLag(Predicate<? super PartitionConsumptionState> partitionConsumptionStateFilter) {
@@ -3103,7 +3112,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected long getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(
       PartitionConsumptionState pcs,
       String ignoredUpstreamKafkaUrl) {
-    return pcs.getLatestProcessedUpstreamRTOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
+    return pcs.getLatestProcessedUpstreamRTOffset(NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
   }
 
   /**
@@ -3112,14 +3121,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected long getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement(
       PartitionConsumptionState pcs,
       String ignoredKafkaUrl) {
-    return pcs.getLeaderConsumedUpstreamRTOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
+    return pcs.getLeaderConsumedUpstreamRTOffset(NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
   }
 
   protected void updateLatestInMemoryLeaderConsumedRTOffset(
       PartitionConsumptionState pcs,
       String ignoredKafkaUrl,
       long offset) {
-    pcs.updateLeaderConsumedUpstreamRTOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, offset);
+    pcs.updateLeaderConsumedUpstreamRTOffset(NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, offset);
   }
 
   @Override
@@ -3710,7 +3719,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       Map<CharSequence, ProducerPartitionState> rtDivPartitionStates) {
     ByteBuffer emptyBuffer = ByteBuffer.allocate(0); // TODO: use this PubSubPosition instead of latestOffset
     final long offset = previousMessage.getPosition().getNumericOffset();
-    GlobalRtDivState globalRtDiv = new GlobalRtDivState(brokerUrl, rtDivPartitionStates, offset, emptyBuffer);
+    String url = (isActiveActiveReplicationEnabled()) ? brokerUrl : NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY;
+    GlobalRtDivState globalRtDiv = new GlobalRtDivState(url, rtDivPartitionStates, offset, emptyBuffer);
     byte[] valueBytes = ByteUtils.extractByteArray(globalRtDivStateSerializer.serialize(globalRtDiv));
     try {
       valueBytes = compressor.get().compress(valueBytes);
@@ -3855,42 +3865,44 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
+  protected void loadGlobalRtDiv(int partition) {
+    loadGlobalRtDiv(partition, NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
+  }
+
   /**
    * Load the stored Global RT DIV object from the storage engine into the Consumer DIV during state transition
    * to LEADER. The RT DIV needs to be loaded per-broker url, and the latest consumed RT offset needs to be updated.
    */
-  private void loadGlobalRtDiv(int partition) {
+  void loadGlobalRtDiv(int partition, String brokerUrl) {
     PartitionConsumptionState pcs = partitionConsumptionStateMap.get(partition);
     final PubSubTopic topic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
     final PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, pcs.getPartition());
 
-    kafkaClusterIdToUrlMap.forEach((clusterId, brokerUrl) -> {
-      String globalRtDivKey = getGlobalRtDivKeyName(brokerUrl);
-      byte[] keyBytes = globalRtDivKey.getBytes();
-      final ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
-      GenericRecord valueRecord = readStoredValueRecord(
-          pcs,
-          keyBytes,
-          AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion(),
-          topicPartition,
-          valueManifestContainer);
-      if (valueRecord == null) {
-        return; // it may not exist (e.g. this is the first leader to be elected)
-      }
+    String globalRtDivKey = getGlobalRtDivKeyName(brokerUrl);
+    byte[] keyBytes = globalRtDivKey.getBytes();
+    final ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
+    GenericRecord valueRecord = readStoredValueRecord(
+        pcs,
+        keyBytes,
+        AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion(),
+        topicPartition,
+        valueManifestContainer);
+    if (valueRecord == null) {
+      return; // it may not exist (e.g. this is the first leader to be elected)
+    }
 
-      Object value = valueRecord.get(globalRtDivKey);
-      if (value instanceof GlobalRtDivState) {
-        GlobalRtDivState globalRtDivState = (GlobalRtDivState) value;
-        final Map<CharSequence, ProducerPartitionState> producerStates = globalRtDivState.getProducerStates();
-        TopicType realTimeTopicType = TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
-        consumerDiv.setPartitionState(realTimeTopicType, pcs.getPartition(), producerStates);
-        final long latestConsumedRtOffset = globalRtDivState.getLatestOffset(); // LCRO
-        pcs.updateLatestConsumedRtOffset(brokerUrl, latestConsumedRtOffset);
-      } else {
-        LOGGER.warn("Unable to load Global RT DIV: {}", globalRtDivKey);
-        // TODO: should we throw? or if we don't throw, which offset should the subscribe occur at?
-      }
-    });
+    Object value = valueRecord.get(globalRtDivKey);
+    if (value instanceof GlobalRtDivState) {
+      GlobalRtDivState globalRtDivState = (GlobalRtDivState) value;
+      final Map<CharSequence, ProducerPartitionState> producerStates = globalRtDivState.getProducerStates();
+      PartitionTracker.TopicType realTimeTopicType = PartitionTracker.TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
+      consumerDiv.setPartitionState(realTimeTopicType, pcs.getPartition(), producerStates);
+      final long latestConsumedRtOffset = globalRtDivState.getLatestOffset(); // LCRO
+      pcs.updateLatestConsumedRtOffset(brokerUrl, latestConsumedRtOffset);
+    } else {
+      LOGGER.warn("Unable to load Global RT DIV: {}", globalRtDivKey);
+      // TODO: should we throw? or if we don't throw, which offset should the subscribe occur at?
+    }
   }
 
   /**

@@ -791,16 +791,21 @@ public class PartitionConsumptionState {
     return latestProcessedUpstreamRTOffset;
   }
 
+  public long getLeaderOffset(String kafkaURL, PubSubTopicRepository pubSubTopicRepository) {
+    return getLeaderOffset(kafkaURL, pubSubTopicRepository, false);
+  }
+
   /**
    * The caller of this API should be interested in which offset currently leader should consume from now.
    * 1. If currently leader should consume from real-time topic, return upstream RT offset;
+   *    If Global RT DIV is enabled, use the value of LCRO from the Global RT DIV from StorageEngine.
    * 2. if currently leader should consume from version topic, return either remote VT offset or local VT offset, depending
    *    on whether the remote consumption flag is on.
    */
-  public long getLeaderOffset(String kafkaURL, PubSubTopicRepository pubSubTopicRepository) {
+  public long getLeaderOffset(String kafkaURL, PubSubTopicRepository pubSubTopicRepository, boolean useLcro) {
     PubSubTopic leaderTopic = getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
     if (leaderTopic != null && !leaderTopic.isVersionTopic()) {
-      return getLatestProcessedUpstreamRTOffset(kafkaURL);
+      return (useLcro) ? getLatestConsumedRtOffset(kafkaURL) : getLatestProcessedUpstreamRTOffset(kafkaURL);
     } else {
       return consumeRemotely()
           ? getLatestProcessedUpstreamVersionTopicOffset()

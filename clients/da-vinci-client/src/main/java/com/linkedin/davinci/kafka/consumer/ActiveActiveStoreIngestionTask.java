@@ -1,6 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
+import static com.linkedin.davinci.validation.PartitionTracker.TopicType.*;
 import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 
@@ -1059,7 +1060,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           .info("{} enabled remote consumption from topic {} partition {}", ingestionTaskName, leaderTopic, partition);
     }
     partitionConsumptionState.setLeaderFollowerState(LEADER);
-    prepareOffsetCheckpointAndStartConsumptionAsLeader(leaderTopic, partitionConsumptionState);
+    prepareOffsetCheckpointAndStartConsumptionAsLeader(leaderTopic, partitionConsumptionState, true);
   }
 
   /**
@@ -1520,13 +1521,16 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   @Override
   void prepareOffsetCheckpointAndStartConsumptionAsLeader(
       PubSubTopic leaderTopic,
-      PartitionConsumptionState partitionConsumptionState) {
+      PartitionConsumptionState partitionConsumptionState,
+      boolean isTransition) {
     Set<String> leaderSourceKafkaURLs = getConsumptionSourceKafkaAddress(partitionConsumptionState);
     Map<String, Long> leaderOffsetByKafkaURL = new HashMap<>(leaderSourceKafkaURLs.size());
     List<CharSequence> unreachableBrokerList = new ArrayList<>();
+    boolean useLcro = isTransition && isGlobalRtDivEnabled();
     // Read previously checkpointed offset and maybe fallback to TopicSwitch if any of upstream offset is missing.
     for (String kafkaURL: leaderSourceKafkaURLs) {
-      leaderOffsetByKafkaURL.put(kafkaURL, partitionConsumptionState.getLeaderOffset(kafkaURL, pubSubTopicRepository));
+      leaderOffsetByKafkaURL
+          .put(kafkaURL, partitionConsumptionState.getLeaderOffset(kafkaURL, pubSubTopicRepository, useLcro));
     }
     if (leaderTopic.isRealTime() && leaderOffsetByKafkaURL.containsValue(OffsetRecord.LOWEST_OFFSET)) {
       leaderOffsetByKafkaURL =
@@ -1551,6 +1555,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         leaderTopic,
         partitionConsumptionState.getPartition(),
         leaderOffsetByKafkaURL);
+  }
+
+  @Override
+  protected void loadGlobalRtDiv(int partition) {
+    kafkaClusterIdToUrlMap.forEach((clusterId, brokerUrl) -> {
+      loadGlobalRtDiv(partition, brokerUrl);
+    });
   }
 
   private long calculateRewindStartTime(PartitionConsumptionState partitionConsumptionState) {
