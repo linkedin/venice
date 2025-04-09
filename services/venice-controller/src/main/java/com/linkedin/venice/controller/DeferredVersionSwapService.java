@@ -109,6 +109,10 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       Store store,
       int targetVersionNum) {
     for (String targetRegion: targetRegions) {
+      if (!completionTimes.containsKey(targetRegion)) {
+        continue;
+      }
+
       long completionTime = completionTimes.get(targetRegion);
       long storeWaitTime = TimeUnit.MINUTES.toSeconds(store.getTargetSwapRegionWaitTime());
       long currentTime = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
@@ -145,6 +149,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       if (targetRegionStoreResponse.isError()) {
         String message = "Got error when fetching targetRegionStore: " + targetRegionStoreResponse.getStore();
         logMessageIfNotRedundant(message);
+        continue;
       }
 
       StoreInfo targetRegionStore = targetRegionStoreResponse.getStore();
@@ -154,6 +159,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         String message =
             "Unable to find version " + targetVersionNum + " for store: " + storeName + " in region " + region;
         logMessageIfNotRedundant(message);
+        continue;
       }
 
       if (version.isPresent()) {
@@ -362,7 +368,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               Version targetVersion = parentStore.getVersion(targetVersionNum);
 
               // Check if the target version is in a terminal state (push job completed or failed)
-              // TODO rename function to isPushInTerminalState
               if (!isPushInTerminalState(targetVersion)) {
                 continue;
               }
@@ -378,6 +383,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                     targetRegions,
                     parentStore,
                     targetVersionNum)) {
+                  String message =
+                      "Checking cached completion time for store: " + storeName + " on version: " + targetVersionNum;
+                  logMessageIfNotRedundant(message);
                   continue;
                 }
               }
@@ -425,6 +433,10 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                   targetRegions,
                   parentStore,
                   targetVersionNum)) {
+                String message = "Updating storePushCompletionTimeCache for kafka topic: " + kafkaTopicName
+                    + " with values: " + pushStatusInfo.getExtraInfoUpdateTimestamp();
+                logMessageIfNotRedundant(message);
+                storePushCompletionTimeCache.put(kafkaTopicName, pushStatusInfo.getExtraInfoUpdateTimestamp());
                 continue;
               }
 
@@ -435,10 +447,10 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             }
           }
         } catch (Exception e) {
-          LOGGER.warn("Caught exception: {} while performing deferred version swap", e);
+          LOGGER.warn("Caught exception while performing deferred version swap", e);
           deferredVersionSwapStats.recordDeferredVersionSwapErrorSensor();
         } catch (Throwable throwable) {
-          LOGGER.warn("Caught a throwable: {} while performing deferred version swap", throwable.getMessage());
+          LOGGER.warn("Caught a throwable while performing deferred version swap", throwable);
           deferredVersionSwapStats.recordDeferreredVersionSwapThrowableSensor();
         }
       }
