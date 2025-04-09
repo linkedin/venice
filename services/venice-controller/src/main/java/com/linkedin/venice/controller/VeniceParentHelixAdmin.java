@@ -5036,10 +5036,10 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * see {@link Admin#compactStore}
+   * see {@link Admin#repushStore}
    */
   @Override
-  public RepushJobResponse compactStore(RepushJobRequest repushJobRequest) throws Exception {
+  public RepushJobResponse repushStore(RepushJobRequest repushJobRequest) throws Exception {
     // TODO:
     // Repush implementation today with no parameter adjustments does a repush to all colo's. There's some discussion
     // about if this should instead be federated out and if this should be done in parent at all. Considering today
@@ -5048,7 +5048,7 @@ public class VeniceParentHelixAdmin implements Admin {
     // But when that day comes that we implement that kind of behavior dichotomy, we should code here that either honors
     // what's been passed in (parent getting a request for a repush in a child colo should forward that along) OR the
     // parent should just abort the request and return an error.
-    return veniceHelixAdmin.compactStore(repushJobRequest);
+    return veniceHelixAdmin.repushStore(repushJobRequest);
   }
 
   @Override

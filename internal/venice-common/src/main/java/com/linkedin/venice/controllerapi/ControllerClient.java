@@ -1218,13 +1218,13 @@ public class ControllerClient implements Closeable {
    * @param storeName
    * @return //TODO LC:
    */
-  public RepushJobResponse triggerRepush(String storeName, byte[] repushJobDetails) {
+  public RepushJobResponse repushStore(String storeName) {
     QueryParams params = newParams().add(NAME, storeName);
     // TODO repush: Use byte[] to pass parameters instead of QueryParams as it is a post method. see
     // (https://github.com/linkedin/venice/pull/1282#discussion_r1871510627)
     // TODO repush: add params from admin tool for repush: e.g. version, fabric etc.
     // TODO repush: add admin.repush()
-    return request(ControllerRoute.COMPACT_STORE, params, RepushJobResponse.class, repushJobDetails);
+    return request(ControllerRoute.REPUSH_STORE, params, RepushJobResponse.class);
   }
 
   public VersionResponse getStoreLargestUsedVersion(String clusterName, String storeName) {

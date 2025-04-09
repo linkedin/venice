@@ -8161,12 +8161,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @param repushJobRequest@return
    */
   @Override
-  public RepushJobResponse compactStore(RepushJobRequest repushJobRequest) throws Exception {
+  public RepushJobResponse repushStore(RepushJobRequest repushJobRequest) throws Exception {
     Assert.isTrue(multiClusterConfigs.isLogCompactionEnabled(), "Log compaction is not enabled for this cluster!");
     try {
-      return compactionManager.compactStore(repushJobRequest);
+      return compactionManager.repushStore(repushJobRequest);
     } catch (Exception e) {
-      LOGGER.error("Error while compacting store: {}", repushJobRequest.getStoreName(), e);
+      LOGGER.error("Error while triggering repush for store: {}", repushJobRequest.getStoreName(), e);
       throw e; // this method is the first common point for scheduled & adhoc log compaction, each has different error
     }
   }

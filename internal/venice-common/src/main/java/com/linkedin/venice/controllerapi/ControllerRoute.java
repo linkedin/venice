@@ -271,7 +271,7 @@ public enum ControllerRoute {
   ), GET_STALE_STORES_IN_CLUSTER("/get_stale_stores_in_cluster", HttpMethod.GET, Collections.singletonList(CLUSTER)),
   GET_STORES_IN_CLUSTER("/get_stores_in_cluster", HttpMethod.GET, Collections.singletonList(CLUSTER)),
   GET_STORES_FOR_COMPACTION("/get_stores_for_compaction", HttpMethod.GET, Collections.singletonList(CLUSTER)),
-  COMPACT_STORE("/trigger_repush", HttpMethod.POST, Arrays.asList(NAME)),
+  REPUSH_STORE("/trigger_repush", HttpMethod.POST, Arrays.asList(NAME)),
   GET_STORE_LARGEST_USED_VERSION("/get_store_largest_used_version", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
 
   GET_DEAD_STORES("/get_dead_stores", HttpMethod.GET, Arrays.asList(CLUSTER, NAME, INCLUDE_SYSTEM_STORES)),

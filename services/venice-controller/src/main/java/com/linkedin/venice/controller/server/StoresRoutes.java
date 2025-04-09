@@ -29,7 +29,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_OPE
 import static com.linkedin.venice.controllerapi.ControllerRoute.ABORT_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.BACKUP_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLUSTER_HEALTH_STORES;
-import static com.linkedin.venice.controllerapi.ControllerRoute.COMPACT_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.COMPARE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.COMPLETE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER;
@@ -51,6 +50,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_STORE_PUSH_INFO;
 import static com.linkedin.venice.controllerapi.ControllerRoute.MIGRATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_STORE_FROM_GRAVEYARD;
+import static com.linkedin.venice.controllerapi.ControllerRoute.REPUSH_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ROLLBACK_TO_BACKUP_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ROLL_FORWARD_TO_FUTURE_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SEND_HEARTBEAT_TIMESTAMP_TO_SYSTEM_STORE;
@@ -980,19 +980,18 @@ public class StoresRoutes extends AbstractRoute {
   }
 
   /**
-   * @see Admin#compactStore(RepushJobRequest)
+   * @see Admin#repushStore(RepushJobRequest)
    */
-  public Route compactStore(Admin admin) {
+  public Route repushStore(Admin admin) {
     return new VeniceRouteHandler<RepushJobResponse>(RepushJobResponse.class) {
       @Override
       public void internalHandle(Request request, RepushJobResponse veniceResponse) {
-        AdminSparkServer.validateParams(request, COMPACT_STORE.getParams(), admin);
+        AdminSparkServer.validateParams(request, REPUSH_STORE.getParams(), admin);
         String storeName = request.queryParams(STORE_NAME);
         String sourceRegion = request.queryParamOrDefault(SOURCE_REGION, null);
         try {
-          admin.compactStore(new RepushJobRequest(storeName, sourceRegion, RepushJobRequest.MANUAL_TRIGGER));
-
-          veniceResponse.setName(storeName);
+          veniceResponse.copyValueOf(
+              admin.repushStore(new RepushJobRequest(storeName, sourceRegion, RepushJobRequest.MANUAL_TRIGGER)));
         } catch (Exception e) {
           veniceResponse.setError("Failed to compact store: " + storeName, e);
         }
