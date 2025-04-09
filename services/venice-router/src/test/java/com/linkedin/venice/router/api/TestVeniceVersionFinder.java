@@ -119,8 +119,9 @@ public class TestVeniceVersionFinder {
             CLUSTER,
             compressorFactory,
             mock(VeniceMetricsRepository.class)));
-    doReturn(true).when(versionFinder).isPartitionResourcesReady(Version.composeKafkaTopic(storeName, currentVersion));
-    doReturn(true).when(versionFinder).isDecompressorReady(store, currentVersion);
+    String kafkaTopicName = Version.composeKafkaTopic(storeName, currentVersion);
+    doReturn(true).when(versionFinder).isPartitionResourcesReady(kafkaTopicName);
+    doReturn(true).when(versionFinder).isDecompressorReady(store, currentVersion, kafkaTopicName);
     try {
       request.headers().add(HttpConstants.VENICE_ALLOW_REDIRECT, "1");
       versionFinder.getVersion("store", request);
@@ -157,8 +158,9 @@ public class TestVeniceVersionFinder {
             CLUSTER,
             compressorFactory,
             mock(VeniceMetricsRepository.class)));
-    doReturn(true).when(versionFinder).isPartitionResourcesReady(Version.composeKafkaTopic(storeName, currentVersion));
-    doReturn(true).when(versionFinder).isDecompressorReady(store, currentVersion);
+    String kafkaTopicName = Version.composeKafkaTopic(storeName, currentVersion);
+    doReturn(true).when(versionFinder).isPartitionResourcesReady(kafkaTopicName);
+    doReturn(true).when(versionFinder).isDecompressorReady(store, currentVersion, kafkaTopicName);
 
     try {
       versionFinder.getVersion(storeName, request);
