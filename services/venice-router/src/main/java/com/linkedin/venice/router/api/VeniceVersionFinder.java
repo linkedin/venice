@@ -102,7 +102,9 @@ public class VeniceVersionFinder {
     String newVersionKafkaTopic = UNINITALISED_KAFKA_TOPIC_STRING;
     boolean newVersionPartitionResourcesReady = false;
     boolean newVersionDecompressorReady = false;
-    if (!lastCurrentVersionMap.containsKey(storeName)) {
+
+    Integer existingVersion = lastCurrentVersionMap.get(storeName);
+    if (existingVersion == null) {
       if (metadataCurrentVersion == Store.NON_EXISTING_VERSION) {
         /** new store push has completed but the routers are not up-to-date on the latest metadata yet
          * This should happen at most once per store, since we are adding the mapping to {@link lastCurrentVersion} */
@@ -116,13 +118,13 @@ public class VeniceVersionFinder {
       if (newVersionPartitionResourcesReady && newVersionDecompressorReady) {
         // new store ready to serve
         lastCurrentVersionMap.putIfAbsent(storeName, metadataCurrentVersion);
+        existingVersion = metadataCurrentVersion;
       } else {
         // new store not ready to serve
         return Store.NON_EXISTING_VERSION;
       }
     }
 
-    int existingVersion = lastCurrentVersionMap.get(storeName);
     if (existingVersion == metadataCurrentVersion) {
       // new store ready to serve or same store version (no version swap)
       stats.recordNotStale();
