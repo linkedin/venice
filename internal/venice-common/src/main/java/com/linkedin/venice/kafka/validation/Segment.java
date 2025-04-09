@@ -60,21 +60,21 @@ public class Segment {
   private final Map<CharSequence, Long> aggregates;
 
   // Mutable state
-  private int sequenceNumber;
-  private boolean registered;
-  private boolean started;
-  private boolean ended;
-  private boolean finalSegment;
+  private volatile int sequenceNumber;
+  private volatile boolean registered;
+  private volatile boolean started;
+  private volatile boolean ended;
+  private volatile boolean finalSegment;
   /**
    * Set this field to true when building a new segment for an incoming message, and update this flag to false immediately
    * after checking incoming message's sequence number.
    */
-  private boolean newSegment;
-  private long lastSuccessfulOffset;
+  private volatile boolean newSegment;
+  private volatile long lastSuccessfulOffset;
   // record the last timestamp that a validation for this segment happened and passed.
-  private long lastRecordTimestamp = -1;
+  private volatile long lastRecordTimestamp = -1;
   // record the last producer message time stamp passed within the ConsumerRecord
-  private long lastRecordProducerTimestamp = -1;
+  private volatile long lastRecordProducerTimestamp = -1;
 
   public Segment(
       int partition,

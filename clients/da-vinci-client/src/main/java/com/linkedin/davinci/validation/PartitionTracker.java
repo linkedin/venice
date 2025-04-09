@@ -185,15 +185,21 @@ public class PartitionTracker {
   }
 
   /**
-   * Clone both vtSegment and rtSegment to the destination PartitionTracker. May be called concurrently.
+   * Clone the vtSegments and LCVO to the destination PartitionTracker. May be called concurrently.
    */
-  public void cloneProducerStates(PartitionTracker destProducerTracker, String brokerUrl) {
+  public void cloneVtProducerStates(PartitionTracker destProducerTracker) {
     for (Map.Entry<GUID, Segment> entry: vtSegments.entrySet()) {
       destProducerTracker.setSegment(PartitionTracker.VERSION_TOPIC, entry.getKey(), new Segment(entry.getValue()));
     }
+    destProducerTracker.updateLatestConsumedVtOffset(latestConsumedVtOffset.get());
+  }
 
+  /**
+   * Clone the rtSegments to the destination PartitionTracker. Filter by brokerUrl. May be called concurrently.
+   */
+  public void cloneRtProducerStates(PartitionTracker destProducerTracker, String brokerUrl) {
     for (Map.Entry<String, VeniceConcurrentHashMap<GUID, Segment>> entry: rtSegments.entrySet()) {
-      if (brokerUrl != null && !brokerUrl.equals(entry.getKey())) {
+      if (!brokerUrl.isEmpty() && !brokerUrl.equals(entry.getKey())) {
         continue; // filter by brokerUrl if specified
       }
       for (Map.Entry<GUID, Segment> rtEntry: entry.getValue().entrySet()) {
@@ -213,6 +219,7 @@ public class PartitionTracker {
     ProducerPartitionState state;
     if (TopicType.isVersionTopic(type)) {
       state = offsetRecord.getProducerPartitionState(guid);
+      offsetRecord.setLatestConsumedVtOffset(latestConsumedVtOffset.get());
     } else {
       state = offsetRecord.getRealTimeProducerState(type.getKafkaUrl(), guid);
     }
