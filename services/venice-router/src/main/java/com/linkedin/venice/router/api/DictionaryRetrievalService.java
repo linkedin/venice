@@ -119,7 +119,10 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
       // For new versions, download dictionary.
       dictionaryDownloadCandidates.addAll(
           versions.stream()
-              .filter(version -> version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT)
+              .filter(
+                  version -> version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT
+                      && (version.getStatus() == VersionStatus.STARTED || version.getStatus() == VersionStatus.PUSHED
+                          || version.getStatus() == VersionStatus.ONLINE))
               .filter(version -> !downloadingDictionaryFutures.containsKey(version.kafkaTopicName()))
               .map(Version::kafkaTopicName)
               .collect(Collectors.toList()));
@@ -323,7 +326,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
    * @param dictionaryDownloadTopics A Collection of topics (representing store and version) to download the dictionaries for.
    * @return false if the dictionary download timed out, true otherwise.
    */
-  private boolean downloadDictionaries(Collection<String> dictionaryDownloadTopics) {
+  protected boolean downloadDictionaries(Collection<String> dictionaryDownloadTopics) {
     String storeTopics = String.join(",", dictionaryDownloadTopics);
     if (storeTopics.isEmpty()) {
       return true;
