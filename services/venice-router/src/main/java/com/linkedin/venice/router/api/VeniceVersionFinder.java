@@ -37,6 +37,7 @@ public class VeniceVersionFinder {
   private static final Logger LOGGER = LogManager.getLogger(VeniceVersionFinder.class);
   private static final RedundantExceptionFilter EXCEPTION_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
+  private static final String UNINITALISED_KAFKA_TOPIC_STRING = "uninit-kafka-topic";
 
   private final ReadOnlyStoreRepository metadataRepository;
   private final StaleVersionStats stats;
@@ -98,6 +99,9 @@ public class VeniceVersionFinder {
     }
 
     int metadataCurrentVersion = store.getCurrentVersion();
+    String newVersionKafkaTopic = UNINITALISED_KAFKA_TOPIC_STRING;
+    boolean newVersionPartitionResourcesReady = false;
+    boolean newVersionDecompressorReady = false;
     if (!lastCurrentVersionMap.containsKey(storeName)) {
       if (metadataCurrentVersion == Store.NON_EXISTING_VERSION) {
         /** new store push has completed but the routers are not up-to-date on the latest metadata yet
@@ -106,8 +110,10 @@ public class VeniceVersionFinder {
         metadataCurrentVersion = store.getCurrentVersion();
       }
       // check if new store is ready to serve
-      String kafkaTopic = Version.composeKafkaTopic(storeName, metadataCurrentVersion);
-      if (isPartitionResourcesReady(kafkaTopic) && isDecompressorReady(store, metadataCurrentVersion)) {
+      newVersionKafkaTopic = Version.composeKafkaTopic(storeName, metadataCurrentVersion);
+      newVersionPartitionResourcesReady = isPartitionResourcesReady(newVersionKafkaTopic);
+      newVersionDecompressorReady = isDecompressorReady(store, metadataCurrentVersion, newVersionKafkaTopic);
+      if (newVersionPartitionResourcesReady && newVersionDecompressorReady) {
         // new store ready to serve
         lastCurrentVersionMap.putIfAbsent(storeName, metadataCurrentVersion);
       } else {
@@ -124,9 +130,11 @@ public class VeniceVersionFinder {
     }
 
     // version swap: new version
-    String newVersionKafkaTopic = Version.composeKafkaTopic(storeName, metadataCurrentVersion);
-    boolean newVersionPartitionResourcesReady = isPartitionResourcesReady(newVersionKafkaTopic);
-    boolean newVersionDecompressorReady = isDecompressorReady(store, metadataCurrentVersion);
+    if (newVersionKafkaTopic.equals(UNINITALISED_KAFKA_TOPIC_STRING)) {
+      newVersionKafkaTopic = Version.composeKafkaTopic(storeName, metadataCurrentVersion);
+      newVersionPartitionResourcesReady = isPartitionResourcesReady(newVersionKafkaTopic);
+      newVersionDecompressorReady = isDecompressorReady(store, metadataCurrentVersion, newVersionKafkaTopic);
+    }
     if (newVersionPartitionResourcesReady && newVersionDecompressorReady) {
       // new version ready to serve
       storeStats.computeIfAbsent(storeName, metric -> new RouterCurrentVersionStats(metricsRepository, storeName))
@@ -149,7 +157,8 @@ public class VeniceVersionFinder {
     // check if existing version ready to serve
     VersionStatus existingVersionStatus = store.getVersionStatus(existingVersion);
     boolean existingVersionStatusOnline = existingVersionStatus.equals(VersionStatus.ONLINE);
-    boolean existingVersionDecompressorReady = isDecompressorReady(store, existingVersion);
+    boolean existingVersionDecompressorReady =
+        isDecompressorReady(store, existingVersion, Version.composeKafkaTopic(storeName, existingVersion));
     if (existingVersionStatusOnline && existingVersionDecompressorReady) {
       // existing version ready to serve
       errorMessage += " Continuing to serve existing version: " + existingVersion + ".";
@@ -203,12 +212,12 @@ public class VeniceVersionFinder {
     return true;
   }
 
-  protected boolean isDecompressorReady(Store store, int versionNumber) {
+  protected boolean isDecompressorReady(Store store, int versionNumber, String kafkaTopicName) {
     Version version = store.getVersion(versionNumber);
     if (version == null) {
       return false;
     }
     return version.getCompressionStrategy() != CompressionStrategy.ZSTD_WITH_DICT
-        || compressorFactory.versionSpecificCompressorExists(Version.composeKafkaTopic(store.getName(), versionNumber));
+        || compressorFactory.versionSpecificCompressorExists(kafkaTopicName);
   }
 }
