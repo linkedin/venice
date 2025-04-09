@@ -127,6 +127,27 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     return true;
   }
 
+  /**
+   * Checks whether the wait time has passed since the cached push completion time in the list of regions
+   * @param targetRegions the list of regions to check if wait time has elapsed
+   * @param store the store to check if the push wait time has elapsed
+   * @param targetVersionNum the version to check if the push wait time has elapsed
+   * @return
+   */
+  private boolean didCachedWaitTimeElapseInTargetRegions(Set<String> targetRegions, Store store, int targetVersionNum) {
+    String kafkaTopicName = Version.composeKafkaTopic(store.getName(), targetVersionNum);
+    Map<String, Long> storePushCompletionTimes = storePushCompletionTimeCache.getIfPresent(kafkaTopicName);
+
+    // If there is no cached completion time, we should let the service continue the checks for the store as:
+    // 1. It could be a new push that we haven't checked for yet
+    // 2. The existing cached wait time expired
+    if (storePushCompletionTimes == null) {
+      return true;
+    }
+
+    return didWaitTimeElapseInTargetRegions(storePushCompletionTimes, targetRegions, store, targetVersionNum);
+  }
+
   private void logMessageIfNotRedundant(String message) {
     if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(message)) {
       LOGGER.info(message);
@@ -372,22 +393,12 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                 continue;
               }
 
-              // Check if the cached waitTime (if any) for the target version has elapsed
+              // Check if the cached waitTime for the target version has elapsed
               String storeName = parentStore.getName();
               String kafkaTopicName = Version.composeKafkaTopic(storeName, targetVersionNum);
               Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetVersion.getTargetSwapRegion());
-              Map<String, Long> storePushCompletionTimes = storePushCompletionTimeCache.getIfPresent(kafkaTopicName);
-              if (storePushCompletionTimes != null) {
-                if (!didWaitTimeElapseInTargetRegions(
-                    storePushCompletionTimes,
-                    targetRegions,
-                    parentStore,
-                    targetVersionNum)) {
-                  String message =
-                      "Checking cached completion time for store: " + storeName + " on version: " + targetVersionNum;
-                  logMessageIfNotRedundant(message);
-                  continue;
-                }
+              if (!didCachedWaitTimeElapseInTargetRegions(targetRegions, parentStore, targetVersionNum)) {
+                continue;
               }
 
               // TODO remove this check once DVC delayed ingestion is completed
@@ -455,5 +466,10 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         }
       }
     }
+  }
+
+  // Only used for testing
+  Cache<String, Map<String, Long>> getStorePushCompletionTimes() {
+    return storePushCompletionTimeCache;
   }
 }
