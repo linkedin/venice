@@ -137,6 +137,16 @@ public class LeaderProducedRecordContext implements Measurable {
     return new LeaderProducedRecordContext(consumedKafkaClusterId, consumedOffset, DELETE, keyBytes, valueUnion);
   }
 
+  public LeaderProducedRecordContext(LeaderProducedRecordContext context) {
+    this(
+        context.consumedKafkaClusterId,
+        context.consumedOffset,
+        context.messageType,
+        context.keyBytes,
+        context.valueUnion,
+        new CompletableFuture());
+  }
+
   private LeaderProducedRecordContext(
       int consumedKafkaClusterId,
       long consumedOffset,
