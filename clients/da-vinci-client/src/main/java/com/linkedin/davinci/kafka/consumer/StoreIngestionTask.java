@@ -1570,6 +1570,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     processIngestionException();
     maybeUnsubscribeCompletedPartitions(store);
 
+    if (emitMetrics.get()) {
+      recordQuotaMetrics();
+      recordMaxIdleTime();
+    }
+
     /**
      * Check whether current consumer has any subscription or not since 'poll' function will throw
      * {@link IllegalStateException} with empty subscription.
@@ -1603,10 +1608,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
     resetIdleCounter();
-    if (emitMetrics.get()) {
-      recordQuotaMetrics();
-      recordMaxIdleTime();
-    }
+    idleCounter = 0;
 
     /**
      * While using the shared consumer, we still need to check hybrid quota here since the actual disk usage could change
