@@ -2130,20 +2130,21 @@ public abstract class StoreIngestionTaskTest {
   @Test(dataProvider = "aaConfigProvider")
   public void testSubscribeCompletedPartitionUnsubscribe(AAConfig aaConfig) throws Exception {
     final int offset = 100;
-    final long LONG_TEST_TIMEOUT = 2 * TEST_TIMEOUT_MS;
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     Map<String, Object> extraServerProperties = new HashMap<>();
     extraServerProperties.put(SERVER_UNSUB_AFTER_BATCHPUSH, true);
     extraServerProperties.put(SERVER_INGESTION_TASK_MAX_IDLE_COUNT, 0);
 
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
-      verify(mockLogNotifier, timeout(LONG_TEST_TIMEOUT)).completed(topic, PARTITION_FOO, offset, "STANDBY");
-      verify(aggKafkaConsumerService, timeout(LONG_TEST_TIMEOUT))
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).completed(topic, PARTITION_FOO, offset, "STANDBY");
+      verify(aggKafkaConsumerService, timeout(TEST_TIMEOUT_MS))
           .batchUnsubscribeConsumerFor(pubSubTopic, Collections.singleton(fooTopicPartition));
       verify(aggKafkaConsumerService, never()).unsubscribeConsumerFor(pubSubTopic, barTopicPartition);
-      verify(mockLocalKafkaConsumer, timeout(LONG_TEST_TIMEOUT))
+      verify(mockLocalKafkaConsumer, timeout(TEST_TIMEOUT_MS))
           .batchUnsubscribe(Collections.singleton(fooTopicPartition));
       verify(mockLocalKafkaConsumer, never()).unSubscribe(barTopicPartition);
+      HostLevelIngestionStats stats = storeIngestionTaskUnderTest.hostLevelIngestionStats;
+      verify(stats, timeout(TEST_TIMEOUT_MS).atLeast(3)).recordStorageQuotaUsed(anyDouble());
     }, aaConfig);
 
     config.setBeforeStartingConsumption(() -> {
@@ -2156,8 +2157,6 @@ public abstract class StoreIngestionTaskTest {
       doAnswer(invocation -> false).when(aggKafkaConsumerService).hasAnyConsumerAssignedForVersionTopic(any());
     }).setHybridStoreConfig(this.hybridStoreConfig).setExtraServerProperties(extraServerProperties);
     runTest(config);
-    HostLevelIngestionStats stats = storeIngestionTaskUnderTest.hostLevelIngestionStats;
-    verify(stats, times(1)).recordStorageQuotaUsed(anyDouble());
   }
 
   @Test(dataProvider = "aaConfigProvider")
