@@ -313,7 +313,7 @@ public class ControllerRoutes extends AbstractRoute {
       URL url = new URL(request.url());
       return url.getProtocol() + "://" + url.getHost() + (url.getPort() != -1 ? ":" + url.getPort() : "");
     } catch (Exception e) {
-      throw new RuntimeException("Invalid URL: " + request.url(), e);
+      throw new VeniceException("Invalid URL: " + request.url(), e);
     }
   }
 
