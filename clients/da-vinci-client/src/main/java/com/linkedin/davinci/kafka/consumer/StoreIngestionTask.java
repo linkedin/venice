@@ -1609,7 +1609,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
     resetIdleCounter();
-    idleCounter = 0;
 
     /**
      * While using the shared consumer, we still need to check hybrid quota here since the actual disk usage could change

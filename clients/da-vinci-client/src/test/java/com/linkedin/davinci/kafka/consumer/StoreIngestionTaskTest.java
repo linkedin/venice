@@ -2157,7 +2157,7 @@ public abstract class StoreIngestionTaskTest {
     }).setHybridStoreConfig(this.hybridStoreConfig).setExtraServerProperties(extraServerProperties);
     runTest(config);
     HostLevelIngestionStats stats = storeIngestionTaskUnderTest.hostLevelIngestionStats;
-    verify(stats, timeout(TEST_TIMEOUT_MS)).recordStorageQuotaUsed(anyDouble());
+    verify(stats, times(1)).recordStorageQuotaUsed(anyDouble());
   }
 
   @Test(dataProvider = "aaConfigProvider")
