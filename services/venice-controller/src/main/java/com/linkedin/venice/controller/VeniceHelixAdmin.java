@@ -146,6 +146,7 @@ import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreName;
+import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.SystemStoreAttributes;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
@@ -4532,7 +4533,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return repository.getStore(storeName);
   }
 
-  Pair<Store, Version> waitVersion(String clusterName, String storeName, int versionNumber, Duration timeout) {
+  StoreVersionInfo waitVersion(String clusterName, String storeName, int versionNumber, Duration timeout) {
     checkControllerLeadershipFor(clusterName);
     ReadWriteStoreRepository repository = getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
     return repository.waitVersion(storeName, versionNumber, timeout);

@@ -85,7 +85,7 @@ public class LeaderFollowerPartitionStateModelTest {
 
     // LEADER->STANDBY
     leaderFollowerPartitionStateModelSpy.onBecomeStandbyFromLeader(message, context);
-    verify(heartbeatMonitoringService)
+    verify(heartbeatMonitoringService, never())
         .updateLagMonitor(eq(resourceName), eq(partition), eq(HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR));
 
     // OFFLINE->STANDBY

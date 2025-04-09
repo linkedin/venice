@@ -580,6 +580,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           partitionConsumptionState.setLeaderFollowerState(STANDBY);
           updateLeaderTopicOnFollower(partitionConsumptionState);
         }
+        // Make sure we stop consuming from leader upstream before we switch heartbeat monitoring.
+        getHeartbeatMonitoringService().updateLagMonitor(
+            topicName,
+            partitionConsumptionState.getPartition(),
+            HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
         LOGGER.info("Replica: {} moved to standby/follower state", partitionConsumptionState.getReplicaId());
 
         /**
