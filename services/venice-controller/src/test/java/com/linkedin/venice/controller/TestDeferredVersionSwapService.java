@@ -21,6 +21,7 @@ import com.linkedin.venice.utils.TestUtils;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -53,8 +54,7 @@ public class TestDeferredVersionSwapService {
     doReturn(true).when(veniceControllerMultiClusterConfig).isDeferredVersionSwapServiceEnabled();
     doReturn(true).when(veniceControllerMultiClusterConfig).isSkipDeferredVersionSwapForDVCEnabled();
 
-    List<String> clustersList = new ArrayList<>();
-    clustersList.add(clusterName);
+    List clustersList = Arrays.asList(clusterName);
     doReturn(clustersList).when(admin).getClustersLeaderOf();
   }
 
