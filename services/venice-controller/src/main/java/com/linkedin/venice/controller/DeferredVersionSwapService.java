@@ -19,8 +19,10 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -381,19 +383,19 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     public void run() {
       while (!stop.get()) {
         try {
-          try {
-            Thread.sleep(5 * Time.MS_PER_SECOND);
-          } catch (InterruptedException e) {
-            LOGGER.error("Received InterruptedException during sleep in DeferredVersionSwapTask thread");
-            break;
-          }
-
+          Utils.sleep(5 * Time.MS_PER_SECOND);
           for (String cluster: veniceParentHelixAdmin.getClustersLeaderOf()) {
             if (!veniceParentHelixAdmin.isLeaderControllerFor(cluster)) {
               continue;
             }
 
-            List<Store> parentStores = veniceParentHelixAdmin.getAllStores(cluster);
+            List<Store> parentStores = new ArrayList<>();
+            try {
+              parentStores = veniceParentHelixAdmin.getAllStores(cluster);
+            } catch (Exception e) {
+              LOGGER.warn("Leadership changed during getAllStores call for cluster: {}", cluster, e);
+            }
+
             for (Store parentStore: parentStores) {
               int targetVersionNum = parentStore.getLargestUsedVersionNumber();
               Version targetVersion = parentStore.getVersion(targetVersionNum);
