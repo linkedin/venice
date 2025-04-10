@@ -3803,10 +3803,12 @@ public class VeniceParentHelixAdmin implements Admin {
             if (isTargetRegionPush && !isVersionPushed) {
               parentStore.updateVersionStatus(versionNum, PUSHED);
               repository.updateStore(parentStore);
+              LOGGER.info("Updating parent store version {} status to {}", kafkaTopic, PUSHED);
             } else { // status ONLINE is set when all region finishes ingestion for either regular or target region
                      // push.
               parentStore.updateVersionStatus(versionNum, ONLINE);
               repository.updateStore(parentStore);
+              LOGGER.info("Updating parent store version {} status to {}", kafkaTopic, ONLINE);
             }
           }
         }
