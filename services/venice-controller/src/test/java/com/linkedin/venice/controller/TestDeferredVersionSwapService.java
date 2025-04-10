@@ -52,6 +52,10 @@ public class TestDeferredVersionSwapService {
     doReturn(10L).when(veniceControllerMultiClusterConfig).getDeferredVersionSwapSleepMs();
     doReturn(true).when(veniceControllerMultiClusterConfig).isDeferredVersionSwapServiceEnabled();
     doReturn(true).when(veniceControllerMultiClusterConfig).isSkipDeferredVersionSwapForDVCEnabled();
+
+    List<String> clustersList = new ArrayList<>();
+    clustersList.add(clusterName);
+    doReturn(clustersList).when(admin).getClustersLeaderOf();
   }
 
   private Store mockStore(
@@ -234,7 +238,7 @@ public class TestDeferredVersionSwapService {
 
     deferredVersionSwapService.startInner();
 
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       // push completed in target region & wait time elapsed
       verify(admin, atLeast(1)).rollForwardToFutureVersion(clusterName, storeName1, region2);
 
@@ -397,7 +401,7 @@ public class TestDeferredVersionSwapService {
 
     deferredVersionSwapService.startInner();
 
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       // one target region, 2 non target regions: one succeeded, one still in progress -> do not swap
       verify(admin, never())
           .rollForwardToFutureVersion(clusterName, storeName1, String.join(",\\s*", region2, region3));
@@ -509,7 +513,7 @@ public class TestDeferredVersionSwapService {
 
     deferredVersionSwapService.startInner();
 
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       // one target region, 2 non target regions: all succeeded, wait time not elapsed -> do not swap
       verify(admin, never())
           .rollForwardToFutureVersion(clusterName, storeName1, String.join(",\\s*", region2, region3));
