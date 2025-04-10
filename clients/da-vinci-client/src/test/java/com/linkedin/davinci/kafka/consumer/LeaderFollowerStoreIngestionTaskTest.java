@@ -26,6 +26,7 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.view.MaterializedViewWriter;
@@ -212,6 +213,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
         .setServerConfig(mockVeniceServerConfig)
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setVeniceViewWriterFactory(mockVeniceViewWriterFactory)
+        .setHeartbeatMonitoringService(mock(HeartbeatMonitoringService.class))
         .setCompressorFactory(new StorageEngineBackedCompressorFactory(inMemoryStorageMetadataService))
         .setHostLevelIngestionStats(aggHostLevelIngestionStats);
     when(builder.getSchemaRepo().getKeySchema(storeName)).thenReturn(new SchemaEntry(1, "\"string\""));
