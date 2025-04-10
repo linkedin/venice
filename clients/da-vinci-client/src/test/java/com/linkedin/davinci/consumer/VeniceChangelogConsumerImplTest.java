@@ -8,6 +8,10 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
@@ -65,6 +69,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -102,6 +107,19 @@ public class VeniceChangelogConsumerImplTest {
 
     keySerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(keySchema);
     valueSerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(valueSchema);
+  }
+
+  @Test
+  public void testConfig() {
+    ChangelogClientConfig config = new ChangelogClientConfig();
+    assertNotNull(config.getConsumerProperties());
+    assertTrue(config.getConsumerProperties().isEmpty());
+    assertThrows(NullPointerException.class, () -> config.setConsumerProperties(null));
+    Properties newProps = new Properties();
+    newProps.setProperty("foo", "bar");
+    config.setConsumerProperties(newProps);
+    assertNotNull(config.getConsumerProperties());
+    assertFalse(config.getConsumerProperties().isEmpty());
   }
 
   @Test
@@ -394,7 +412,7 @@ public class VeniceChangelogConsumerImplTest {
         0);
     doReturn(currentTimestamp).when(veniceChangelogConsumer).getSubscribeTime();
     veniceChangelogConsumer.maybeUpdatePartitionToBootstrapMap(message, pubSubTopicPartition);
-    Assert.assertFalse(bootstrapStateMap.get(0));
+    assertFalse(bootstrapStateMap.get(0));
     kafkaMessageEnvelope.producerMetadata.messageTimestamp = currentTimestamp - TimeUnit.SECONDS.toMillis(30);
     veniceChangelogConsumer.maybeUpdatePartitionToBootstrapMap(message, pubSubTopicPartition);
     Assert.assertTrue(bootstrapStateMap.get(0));
@@ -453,7 +471,7 @@ public class VeniceChangelogConsumerImplTest {
     prepareVersionTopicRecordsToBePolled(5L, 15L, mockPubSubConsumer, oldVersionTopic, 0, true);
     pubSubMessages =
         (List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>>) veniceChangelogConsumer.poll(100);
-    Assert.assertFalse(pubSubMessages.isEmpty());
+    assertFalse(pubSubMessages.isEmpty());
     Assert.assertEquals(pubSubMessages.size(), 10);
     for (int i = 5; i < 15; i++) {
       PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage = pubSubMessages.get(i - 5);
@@ -526,7 +544,7 @@ public class VeniceChangelogConsumerImplTest {
 
     prepareVersionTopicRecordsToBePolled(5L, 15L, mockPubSubConsumer, oldVersionTopic, 0, true);
     pubSubMessages = new ArrayList<>(veniceChangelogConsumer.poll(100));
-    Assert.assertFalse(pubSubMessages.isEmpty());
+    assertFalse(pubSubMessages.isEmpty());
     Assert.assertEquals(pubSubMessages.size(), 10);
     for (int i = 5; i < 15; i++) {
       PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage = pubSubMessages.get(i - 5);
