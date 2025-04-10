@@ -2570,7 +2570,7 @@ public class ConfigKeys {
   public static final String GLOBAL_RT_DIV_ENABLED = "global.rt.div.enabled";
 
   /**
-   * Config to control whether the child controller emits the version swap emits
+   * Config to control whether the child controller emits the version swap messages
    */
   public static final String CONTROLLER_EMIT_VERSION_SWAP_MESSAGES = "controller.emit.version.swap.messages";
 }
