@@ -3918,7 +3918,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(topicSwitchWrapper).when(mockPcs).getTopicSwitch();
     OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
     doReturn(pubSubTopicRepository.getTopic("test_rt")).when(mockOffsetRecord).getLeaderTopic(any());
-    doReturn(1000L).when(mockPcs).getLeaderOffset(anyString(), any());
+    doReturn(1000L).when(mockPcs).getLeaderOffset(anyString(), any(), anyBoolean());
     doReturn(mockOffsetRecord).when(mockPcs).getOffsetRecord();
     // Test whether consumedUpstreamRTOffsetMap is updated when leader subscribes to RT after state transition
     ingestionTask.startConsumingAsLeader(mockPcs);
@@ -3933,7 +3933,7 @@ public abstract class StoreIngestionTaskTest {
       doReturn(topicSwitchWrapper).when(mock).getTopicSwitch();
       OffsetRecord mockOR = mock(OffsetRecord.class);
       doReturn(rtTopic).when(mockOR).getLeaderTopic(any());
-      doReturn(1000L).when(mock).getLeaderOffset(anyString(), any());
+      doReturn(1000L).when(mock).getLeaderOffset(anyString(), any(), anyBoolean());
       System.out.println(mockOR.getLeaderTopic(null));
       doReturn(1000L).when(mockOR).getUpstreamOffset(anyString());
       doReturn(1000L).when(mock).getLatestProcessedUpstreamRTOffset(anyString());
@@ -3952,7 +3952,7 @@ public abstract class StoreIngestionTaskTest {
     // Test alternative branch of the code
     Supplier<PartitionConsumptionState> mockPcsSupplier2 = () -> {
       PartitionConsumptionState mock = mockPcsSupplier.get();
-      doReturn(-1L).when(mock).getLeaderOffset(anyString(), any());
+      doReturn(-1L).when(mock).getLeaderOffset(anyString(), any(), anyBoolean());
       doReturn(-1L).when(mock).getLatestProcessedUpstreamRTOffset(anyString());
       doReturn(new PubSubTopicPartitionImpl(rtTopic, 0)).when(mock).getSourceTopicPartition(any());
       return mock;
@@ -5842,7 +5842,8 @@ public abstract class StoreIngestionTaskTest {
     LeaderFollowerStoreIngestionTask ingestionTask =
         aaEnabled ? mock(ActiveActiveStoreIngestionTask.class) : mock(LeaderFollowerStoreIngestionTask.class);
     doCallRealMethod().when(ingestionTask).resubscribeAsLeader(any());
-    doCallRealMethod().when(ingestionTask).prepareOffsetCheckpointAndStartConsumptionAsLeader(any(), any());
+    doCallRealMethod().when(ingestionTask)
+        .prepareOffsetCheckpointAndStartConsumptionAsLeader(any(), any(), anyBoolean());
     PubSubTopicRepository topicRepository = new PubSubTopicRepository();
     when(ingestionTask.getPubSubTopicRepository()).thenReturn(topicRepository);
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
@@ -5870,7 +5871,7 @@ public abstract class StoreIngestionTaskTest {
     when(ingestionTask.getConsumptionSourceKafkaAddress(pcs)).thenReturn(upstreamUrlSet);
     when(pcs.getLatestProcessedUpstreamRTOffsetMap()).thenReturn(upstreamOffsetMap);
     doCallRealMethod().when(pcs).getLatestProcessedUpstreamRTOffset(anyString());
-    doCallRealMethod().when(pcs).getLeaderOffset(anyString(), any());
+    doCallRealMethod().when(pcs).getLeaderOffset(anyString(), any(), anyBoolean());
     ingestionTask.resubscribeAsLeader(pcs);
 
     ArgumentCaptor<String> urlCaptor = ArgumentCaptor.forClass(String.class);
@@ -5894,7 +5895,8 @@ public abstract class StoreIngestionTaskTest {
   public void testResubscribeAsLeaderFromVersionTopic(boolean aaEnabled) throws InterruptedException {
     LeaderFollowerStoreIngestionTask ingestionTask =
         aaEnabled ? mock(ActiveActiveStoreIngestionTask.class) : mock(LeaderFollowerStoreIngestionTask.class);
-    doCallRealMethod().when(ingestionTask).prepareOffsetCheckpointAndStartConsumptionAsLeader(any(), any());
+    doCallRealMethod().when(ingestionTask)
+        .prepareOffsetCheckpointAndStartConsumptionAsLeader(any(), any(), anyBoolean());
     PubSubTopicRepository topicRepository = new PubSubTopicRepository();
     when(ingestionTask.getPubSubTopicRepository()).thenReturn(topicRepository);
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
@@ -5920,7 +5922,7 @@ public abstract class StoreIngestionTaskTest {
     doCallRealMethod().when(pcs).getLeaderOffset(anyString(), any());
     when(pcs.getLatestProcessedUpstreamVersionTopicOffset()).thenReturn(100L);
     when(pcs.consumeRemotely()).thenReturn(true);
-    ingestionTask.prepareOffsetCheckpointAndStartConsumptionAsLeader(pubSubTopic, pcs);
+    ingestionTask.prepareOffsetCheckpointAndStartConsumptionAsLeader(pubSubTopic, pcs, false);
 
     if (aaEnabled) {
       Assert.assertEquals(offsetRecord.getUpstreamOffset("dc-1"), -1);
