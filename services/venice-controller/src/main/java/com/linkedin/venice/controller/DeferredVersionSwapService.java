@@ -131,10 +131,14 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
    * @param targetRegions the list of regions to check if wait time has elapsed
    * @param store the store to check if the push wait time has elapsed
    * @param targetVersionNum the version to check if the push wait time has elapsed
+   * @param kafkaTopicName the name of the kafka topic for this target version
    * @return
    */
-  private boolean didCachedWaitTimeElapseInTargetRegions(Set<String> targetRegions, Store store, int targetVersionNum) {
-    String kafkaTopicName = Version.composeKafkaTopic(store.getName(), targetVersionNum);
+  private boolean didCachedWaitTimeElapseInTargetRegions(
+      Set<String> targetRegions,
+      Store store,
+      int targetVersionNum,
+      String kafkaTopicName) {
     Map<String, Long> storePushCompletionTimes = storePushCompletionTimeCache.getIfPresent(kafkaTopicName);
 
     // If there is no cached completion time, we should let the service continue the checks for the store as:
@@ -403,7 +407,11 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               String storeName = parentStore.getName();
               String kafkaTopicName = Version.composeKafkaTopic(storeName, targetVersionNum);
               Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetVersion.getTargetSwapRegion());
-              if (!didCachedWaitTimeElapseInTargetRegions(targetRegions, parentStore, targetVersionNum)) {
+              if (!didCachedWaitTimeElapseInTargetRegions(
+                  targetRegions,
+                  parentStore,
+                  targetVersionNum,
+                  kafkaTopicName)) {
                 continue;
               }
 
