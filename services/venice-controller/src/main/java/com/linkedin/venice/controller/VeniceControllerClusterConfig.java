@@ -50,6 +50,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_ROUTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLE_PARENT_TOPIC_TRUNCATION_UPON_COMPLETION;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_EARLY_DELETE_BACKUP_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_EMIT_VERSION_SWAP_MESSAGES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_DISABLED_REPLICA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENFORCE_SSL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_GRPC_SERVER_ENABLED;
@@ -569,6 +570,7 @@ public class VeniceControllerClusterConfig {
   private final List<String> helixInstanceCapacityKeys;
   private final Map<String, Integer> helixDefaultInstanceCapacityMap;
   private final Map<String, Integer> helixDefaultPartitionWeightMap;
+  private final boolean emitVersionSwapMessages;
 
   /**
    * Configs for repush
@@ -1108,6 +1110,7 @@ public class VeniceControllerClusterConfig {
         props.getLong(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, TimeUnit.MINUTES.toMillis(1));
     this.deferredVersionSwapServiceEnabled = props.getBoolean(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, false);
     this.skipDeferredVersionSwapForDVCEnabled = props.getBoolean(SKIP_DEFERRED_VERSION_SWAP_FOR_DVC_ENABLED, true);
+    this.emitVersionSwapMessages = props.getBoolean(CONTROLLER_EMIT_VERSION_SWAP_MESSAGES, false);
   }
 
   public VeniceProperties getProps() {
@@ -1984,6 +1987,10 @@ public class VeniceControllerClusterConfig {
 
   public long getTimeSinceLastLogCompactionThresholdMS() {
     return timeSinceLastLogCompactionThresholdMS;
+  }
+
+  public boolean shouldEmitVersionSwapMessages() {
+    return emitVersionSwapMessages;
   }
 
   public Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> getHelixGlobalRebalancePreference() {

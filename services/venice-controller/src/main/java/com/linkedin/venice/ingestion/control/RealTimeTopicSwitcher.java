@@ -1,5 +1,6 @@
 package com.linkedin.venice.ingestion.control;
 
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_EMIT_VERSION_SWAP_MESSAGES;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR_RT_TOPICS;
@@ -54,6 +55,7 @@ public class RealTimeTopicSwitcher {
   private final Optional<Integer> minSyncReplicasForRTTopics;
 
   private final PubSubTopicRepository pubSubTopicRepository;
+  private final boolean shouldEmitVersionSwapMessages;
 
   public RealTimeTopicSwitcher(
       TopicManager topicManager,
@@ -72,6 +74,7 @@ public class RealTimeTopicSwitcher {
     this.kafkaReplicationFactorForRTTopics =
         veniceProperties.getInt(KAFKA_REPLICATION_FACTOR_RT_TOPICS, kafkaReplicationFactor);
     this.minSyncReplicasForRTTopics = veniceProperties.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS);
+    this.shouldEmitVersionSwapMessages = veniceProperties.getBoolean(CONTROLLER_EMIT_VERSION_SWAP_MESSAGES);
   }
 
   /**
@@ -213,7 +216,8 @@ public class RealTimeTopicSwitcher {
   }
 
   public void transmitVersionSwapMessage(Store store, int previousVersion, int nextVersion) {
-    if (previousVersion == Store.NON_EXISTING_VERSION || nextVersion == Store.NON_EXISTING_VERSION) {
+    if (previousVersion == Store.NON_EXISTING_VERSION || nextVersion == Store.NON_EXISTING_VERSION
+        || !shouldEmitVersionSwapMessages) {
       // NoOp
       return;
     }
