@@ -155,6 +155,7 @@ public class RealTimeTopicSwitcherTest {
     VeniceProperties mockVeniceProperties = mock(VeniceProperties.class);
     when(mockVeniceProperties.getString(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS))
         .thenReturn(aggregateRealTimeSourceKafkaUrl);
+    when(mockVeniceProperties.getBoolean(ConfigKeys.CONTROLLER_EMIT_VERSION_SWAP_MESSAGES, false)).thenReturn(true);
 
     RealTimeTopicSwitcher realTimeTopicSwitcher =
         new RealTimeTopicSwitcher(mockTopicManager, mockWriterFactory, mockVeniceProperties, pubSubTopicRepository);

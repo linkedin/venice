@@ -74,7 +74,7 @@ public class RealTimeTopicSwitcher {
     this.kafkaReplicationFactorForRTTopics =
         veniceProperties.getInt(KAFKA_REPLICATION_FACTOR_RT_TOPICS, kafkaReplicationFactor);
     this.minSyncReplicasForRTTopics = veniceProperties.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS);
-    this.shouldEmitVersionSwapMessages = veniceProperties.getBoolean(CONTROLLER_EMIT_VERSION_SWAP_MESSAGES);
+    this.shouldEmitVersionSwapMessages = veniceProperties.getBoolean(CONTROLLER_EMIT_VERSION_SWAP_MESSAGES, false);
   }
 
   /**
