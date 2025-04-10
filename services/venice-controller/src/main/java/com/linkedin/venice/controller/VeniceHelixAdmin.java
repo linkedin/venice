@@ -7688,8 +7688,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     String leaderControllerUrl = getLeaderController(clusterName).getUrl(false);
     controllerUrlToAdminOperationVersionMap.put(leaderControllerUrl, getLocalAdminOperationProtocolVersion());
 
-    // Create the controllerClient to reuse
-    ControllerClient controllerClient =
+    // Create the controller client to reuse
+    // (this is controller client to communicate with other controllers in the same cluster, the same region)
+    ControllerClient localControllerClient =
         ControllerClient.constructClusterControllerClient(clusterName, leaderControllerUrl, sslFactory);
 
     // Get version for standby controllers
@@ -7698,9 +7699,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     for (Instance standbyController: standbyControllers) {
       String standbyControllerUrl = standbyController.getUrl(false);
 
-      // send controller client to get the admin operation protocol version from standby controller
+      // Get the admin operation protocol version from standby controller
       AdminOperationProtocolVersionControllerResponse response =
-          controllerClient.getLocalAdminOperationProtocolVersion();
+          localControllerClient.getLocalAdminOperationProtocolVersion();
       if (response.isError()) {
         throw new VeniceException(
             "Failed to get admin operation protocol version from standby controller: " + standbyControllerUrl
