@@ -1,7 +1,6 @@
 package com.linkedin.davinci.consumer;
 
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.schema.SchemaReader;
@@ -49,7 +48,6 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
 
   private Boolean isExperimentalClientEnabled = false;
   private int maxBufferSize = 1000;
-  private CachingDaVinciClientFactory daVinciClientFactory;
 
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
@@ -298,18 +296,4 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     this.maxBufferSize = maxBufferSize;
     return this;
   }
-
-  /**
-   * If this is set, the Experimental {@link BootstrappingVeniceChangelogConsumer} will use this factory instead
-   * of creating one itself.
-   */
-  public ChangelogClientConfig setDaVinciClientFactory(CachingDaVinciClientFactory daVinciClientFactory) {
-    this.daVinciClientFactory = daVinciClientFactory;
-    return this;
-  }
-
-  protected CachingDaVinciClientFactory getDaVinciClientFactory() {
-    return daVinciClientFactory;
-  }
-
 }

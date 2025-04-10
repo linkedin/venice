@@ -99,15 +99,11 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
         .build();
     daVinciConfig.setRecordTransformerConfig(recordTransformerConfig);
 
-    if (changelogClientConfig.getDaVinciClientFactory() != null) {
-      this.daVinciClientFactory = changelogClientConfig.getDaVinciClientFactory();
-    } else {
-      this.daVinciClientFactory = new CachingDaVinciClientFactory(
-          changelogClientConfig.getD2Client(),
-          changelogClientConfig.getD2ServiceName(),
-          innerClientConfig.getMetricsRepository(),
-          buildVeniceConfig());
-    }
+    this.daVinciClientFactory = new CachingDaVinciClientFactory(
+        changelogClientConfig.getD2Client(),
+        changelogClientConfig.getD2ServiceName(),
+        innerClientConfig.getMetricsRepository(),
+        buildVeniceConfig());
 
     if (innerClientConfig.isSpecificClient()) {
       this.daVinciClient = this.daVinciClientFactory

@@ -13,7 +13,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
@@ -408,25 +407,6 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       verify(bufferIsFullCondition).signal();
     });
-  }
-
-  @Test
-  public void testDaVinciClientFactory() throws NoSuchFieldException, IllegalAccessException {
-    Field daVinciClientFactoryField =
-        BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("daVinciClientFactory");
-    daVinciClientFactoryField.setAccessible(true);
-
-    // Test the case where a DVC factory isn't passed into changelogClientConfig
-    assertNull(changelogClientConfig.getDaVinciClientFactory(), "DaVinciClientFactory shouldn't be set");
-    assertNotNull(daVinciClientFactoryField.get(bootstrappingVeniceChangelogConsumer));
-
-    // Test the case where a DVC factory is passed into changelogClientConfig
-    CachingDaVinciClientFactory mockDaVinciClientFactory = mock(CachingDaVinciClientFactory.class);
-    changelogClientConfig.setDaVinciClientFactory(mockDaVinciClientFactory);
-
-    BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<Integer, Integer> bootstrappingVeniceChangelogConsumer =
-        new BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<>(changelogClientConfig);
-    assertEquals(daVinciClientFactoryField.get(bootstrappingVeniceChangelogConsumer), mockDaVinciClientFactory);
   }
 
   private void verifyPuts(int value) {
