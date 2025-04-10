@@ -4,12 +4,14 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.schema.SchemaReader;
+import java.util.Objects;
 import java.util.Properties;
+import javax.annotation.Nonnull;
 import org.apache.avro.specific.SpecificRecord;
 
 
 public class ChangelogClientConfig<T extends SpecificRecord> {
-  private Properties consumerProperties;
+  private @Nonnull Properties consumerProperties = new Properties();
   private SchemaReader schemaReader;
   private String viewName;
   private Boolean isBeforeImageView = false;
@@ -67,11 +69,12 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return innerClientConfig.getStoreName();
   }
 
-  public ChangelogClientConfig<T> setConsumerProperties(Properties consumerProperties) {
-    this.consumerProperties = consumerProperties;
+  public ChangelogClientConfig<T> setConsumerProperties(@Nonnull Properties consumerProperties) {
+    this.consumerProperties = Objects.requireNonNull(consumerProperties);
     return this;
   }
 
+  @Nonnull
   public Properties getConsumerProperties() {
     return consumerProperties;
   }
