@@ -1997,16 +1997,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     } catch (Exception e) {
       LOGGER.error("{} Error while unsubscribing topic.", ingestionTaskName, e);
     }
+
+    try {
+      closeVeniceViewWriters(doFlush);
+    } catch (Exception e) {
+      LOGGER.error("Error while closing venice view writer", e);
+    }
+
     try {
       closeVeniceWriters(doFlush);
     } catch (Exception e) {
       LOGGER.error("Error while closing venice writers", e);
-    }
-
-    try {
-      closeVeniceViewWriters();
-    } catch (Exception e) {
-      LOGGER.error("Error while closing venice view writer", e);
     }
 
     if (topicManagerRepository != null) {
@@ -2025,7 +2026,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   public void closeVeniceWriters(boolean doFlush) {
   }
 
-  protected void closeVeniceViewWriters() {
+  protected void closeVeniceViewWriters(boolean doFlush) {
   }
 
   /**

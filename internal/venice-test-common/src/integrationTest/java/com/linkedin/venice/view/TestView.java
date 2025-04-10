@@ -40,7 +40,7 @@ public class TestView extends VeniceView {
   }
 
   @Override
-  public void close() {
+  public void close(boolean gracefulClose) {
     // close out anything which should be shutdown
   }
 
