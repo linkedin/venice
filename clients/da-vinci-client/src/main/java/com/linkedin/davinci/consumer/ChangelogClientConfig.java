@@ -48,7 +48,6 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    */
   private boolean skipFailedToAssembleRecords = true;
 
-  private Boolean isBlobTransferEnabled = false;
   private Boolean isExperimentalClientEnabled = false;
   private int maxBufferSize = 1000;
 
@@ -256,7 +255,6 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setDatabaseSyncBytesInterval(config.getDatabaseSyncBytesInterval())
         .setShouldCompactMessages(config.shouldCompactMessages())
         .setIsBeforeImageView(config.isBeforeImageView())
-        .setIsBlobTransferEnabled(config.isBlobTransferEnabled())
         .setIsExperimentalClientEnabled(config.isExperimentalClientEnabled())
         .setMaxBufferSize(config.getMaxBufferSize())
         .setSeekThreadPoolSize(config.getSeekThreadPoolSize())
@@ -283,20 +281,6 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    */
   public ChangelogClientConfig setIsExperimentalClientEnabled(Boolean experimentalClientEnabled) {
     isExperimentalClientEnabled = experimentalClientEnabled;
-    return this;
-  }
-
-  protected Boolean isBlobTransferEnabled() {
-    return isBlobTransferEnabled;
-  }
-
-  /**
-   * This is used by the experimental client to speed up bootstrapping times through blob transfer.
-   * In order for this feature to be used, {@link #setIsExperimentalClientEnabled(Boolean)} must be set to true.
-   * It is currently only supported for {@link BootstrappingVeniceChangelogConsumer}.
-   */
-  public ChangelogClientConfig setIsBlobTransferEnabled(Boolean blobTransferEnabled) {
-    isBlobTransferEnabled = blobTransferEnabled;
     return this;
   }
 
