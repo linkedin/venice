@@ -72,8 +72,7 @@ import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
 import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
-import static com.linkedin.venice.meta.VersionStatus.ONLINE;
-import static com.linkedin.venice.meta.VersionStatus.PUSHED;
+import static com.linkedin.venice.meta.VersionStatus.*;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.BATCH_JOB_HEARTBEAT;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PUSH_JOB_DETAILS;
 import static com.linkedin.venice.views.VeniceView.VIEW_NAME_SEPARATOR;
@@ -3813,6 +3812,24 @@ public class VeniceParentHelixAdmin implements Admin {
             }
           }
         }
+      }
+    } else {
+      // If the aggregate status is not terminal, but the parent version status is marked as KILLED, we should mark the
+      // push job status as terminal (ERROR) as job was killed
+      String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+      int versionNum = Version.parseVersionFromKafkaTopicName(kafkaTopic);
+      Store parentStore = getStore(clusterName, storeName);
+      Version parentStoreVersion = parentStore.getVersion(versionNum);
+      if (parentStoreVersion.getStatus().equals(KILLED)) {
+        LOGGER
+            .info("Marking execution status as ERROR for store {} because parent version status is KILLED", storeName);
+        return new OfflinePushStatusInfo(
+            ExecutionStatus.ERROR,
+            null,
+            extraInfo,
+            currentReturnStatusDetails.toString(),
+            extraDetails,
+            extraInfoUpdateTimestamp);
       }
     }
 
