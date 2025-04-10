@@ -833,7 +833,6 @@ public class PartitionConsumptionState {
     this.latestProcessedLocalVersionTopicOffset = offset;
   }
 
-  // TODO: this is called all over, do we need to analyze every usage since we're switching to subscribing to LCVO?
   public long getLatestProcessedLocalVersionTopicOffset() {
     return this.latestProcessedLocalVersionTopicOffset;
   }

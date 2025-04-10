@@ -1,7 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
-import static com.linkedin.davinci.validation.PartitionTracker.TopicType.*;
 import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 
@@ -1555,13 +1554,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         leaderTopic,
         partitionConsumptionState.getPartition(),
         leaderOffsetByKafkaURL);
-  }
-
-  @Override
-  protected void loadGlobalRtDiv(int partition) {
-    kafkaClusterIdToUrlMap.forEach((clusterId, brokerUrl) -> {
-      loadGlobalRtDiv(partition, brokerUrl);
-    });
   }
 
   private long calculateRewindStartTime(PartitionConsumptionState partitionConsumptionState) {
