@@ -127,7 +127,6 @@ public class TestBootstrappingChangelogConsumer {
         .numberOfRouters(1)
         .replicationFactor(1)
         .forkServer(false)
-
         .extraProperties(clusterConfig)
         .build();
 
