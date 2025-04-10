@@ -218,6 +218,9 @@ def integrationTestBuckets = [
       "com.linkedin.venice.endToEnd.TestMaterializedViewEndToEnd",
       "com.linkedin.venice.endToEnd.TestDeferredVersionSwap"
   ],
+  "1450": [
+      "com.linkedin.venice.controller.TestVeniceHelixAdminWithSharedEnvironment"
+  ],
   "1500":[
       "com.linkedin.venice.multicluster.TestMetadataOperationInMultiCluster",
       "com.linkedin.venice.endToEnd.MetaSystemStoreTest",
@@ -233,6 +236,12 @@ def integrationTestBuckets = [
         "com.linkedin.venice.endToEnd.TestStaleDataVisibility"]
 ]
 
+def integrationTestExcludes = [
+    "1430":[
+        "com.linkedin.venice.controller.TestVeniceHelixAdminWithSharedEnvironment"
+    ]
+]
+
 integrationTestBuckets.each { name, patterns ->
   task "integrationTests_${name}" (type: Test) {
     ext {
@@ -241,6 +250,10 @@ integrationTestBuckets.each { name, patterns ->
     filter {
       patterns.each { pattern ->
         includeTestsMatching pattern
+      }
+      integrationTestExcludes.get(name, []).each {
+        excludedPattern ->
+          excludeTestsMatching excludedPattern
       }
     }
     configure integrationTestConfigs
