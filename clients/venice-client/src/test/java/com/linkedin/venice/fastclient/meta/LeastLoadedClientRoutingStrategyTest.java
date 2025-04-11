@@ -55,10 +55,10 @@ public class LeastLoadedClientRoutingStrategyTest {
     List<String> replicas = Arrays.asList(instances);
     InstanceHealthMonitor instanceHealthMonitor =
         mockInstanceHealthyMonitor(instances, new boolean[] { true, true, true }, new int[] { 0, 0, 0 });
-    runTest(instanceHealthMonitor, replicas, 0,  replica -> replicas.contains(replica));
+    runTest(instanceHealthMonitor, replicas, 0, replica -> replicas.contains(replica));
     runTest(instanceHealthMonitor, replicas, 1, replica -> replicas.contains(replica));
     runTest(instanceHealthMonitor, replicas, 2, replica -> replicas.contains(replica));
-    runTest(instanceHealthMonitor, replicas, 3,replica -> replicas.contains(replica));
+    runTest(instanceHealthMonitor, replicas, 3, replica -> replicas.contains(replica));
   }
 
   @Test

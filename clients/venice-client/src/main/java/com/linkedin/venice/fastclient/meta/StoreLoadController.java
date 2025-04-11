@@ -39,6 +39,12 @@ public class StoreLoadController {
     if (loadController == null) {
       return;
     }
+    /**
+     * This mechanism is mainly used to detect the overload scenario, not others, and other kinds of errors should be handled separately.
+     * For example, if the requested partition doesn't exist in the server, the overload logic can't decide how to handle it properly,
+     * but certainly, it can't mark it as overloaded and overload signal should be sent by the Server explicitly, and
+     * in the above case, it should be handled by the error retry feature.
+     */
     if (exception == null || !ExceptionUtils.recursiveClassEquals(exception, VeniceClientRateExceededException.class)) {
       loadController.recordAccept();
     }

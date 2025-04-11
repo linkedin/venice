@@ -213,7 +213,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     } else {
       this.instanceHealthMonitor = builder.instanceHealthMonitor;
     }
-    this.enableLeastLoadedRoutingStrategyForHelixGroupRouting = builder.enableLeastLoadedRoutingStrategyForHelixGroupRouting;
+    this.enableLeastLoadedRoutingStrategyForHelixGroupRouting =
+        builder.enableLeastLoadedRoutingStrategyForHelixGroupRouting;
     this.retryBudgetEnabled = builder.retryBudgetEnabled;
     this.retryBudgetPercentage = builder.retryBudgetPercentage;
     if (retryBudgetPercentage > 1.0 || retryBudgetPercentage < 0.0) {
@@ -371,8 +372,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   }
 
   public boolean isEnableLeastLoadedRoutingStrategyForHelixGroupRouting() {
-        return enableLeastLoadedRoutingStrategyForHelixGroupRouting;
-      }
+    return enableLeastLoadedRoutingStrategyForHelixGroupRouting;
+  }
 
   public boolean isStoreLoadControllerEnabled() {
     return storeLoadControllerEnabled;
@@ -697,8 +698,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setInstanceHealthMonitor(instanceHealthMonitor)
           .setRetryBudgetEnabled(retryBudgetEnabled)
           .setRetryBudgetPercentage(retryBudgetPercentage)
-          .setEnableLeastLoadedRoutingStrategyForHelixGroupRouting(
-              enableLeastLoadedRoutingStrategyForHelixGroupRouting)
+          .setEnableLeastLoadedRoutingStrategyForHelixGroupRouting(enableLeastLoadedRoutingStrategyForHelixGroupRouting)
           .setStoreLoadControllerEnabled(storeLoadControllerEnabled)
           .setStoreLoadControllerWindowSizeInSec(storeLoadControllerWindowSizeInSec)
           .setStoreLoadControllerRejectionRatioUpdateIntervalInSec(storeLoadControllerRejectionRatioUpdateIntervalInSec)
