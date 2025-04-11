@@ -61,21 +61,23 @@ public class StatsAvroGenericDaVinciClient<K, V> extends DelegatingAvroGenericDa
         int httpStatus;
         if (throwable != null) {
           httpStatus = stats.getUnhealthyRequestHttpStatus(throwable);
-          stats.recordUnhealthyRequest(httpStatus);
-          stats.recordUnhealthyLatency(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS), httpStatus);
-          stats.recordFailedRequestKeyCount(numKeys, httpStatus);
+          stats.emitRequestUnhealthyMetrics(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS), numKeys, httpStatus);
           statFuture.completeExceptionally(throwable);
         } else {
           int successfulKeyCount = getSuccessfulKeyCount(v);
           httpStatus = stats.getHealthyRequestHttpStatus(successfulKeyCount);
-          stats.recordHealthyRequest(httpStatus);
-          stats.recordHealthyLatency(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS), httpStatus);
-          stats.recordSuccessRequestKeyCount(successfulKeyCount, httpStatus);
+          stats.emitRequestHealthyMetrics(
+              LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS),
+              successfulKeyCount,
+              httpStatus);
           statFuture.complete(v);
         }
       });
     } catch (Exception e) {
-      stats.recordUnhealthyRequest(HttpStatus.SC_INTERNAL_SERVER_ERROR);
+      stats.emitRequestUnhealthyMetrics(
+          LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS),
+          numKeys,
+          HttpStatus.SC_INTERNAL_SERVER_ERROR);
       throw e;
     }
   }
