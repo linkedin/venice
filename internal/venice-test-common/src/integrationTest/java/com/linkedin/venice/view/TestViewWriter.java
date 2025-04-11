@@ -107,8 +107,8 @@ public class TestViewWriter extends VeniceViewWriter {
   }
 
   @Override
-  public void close() {
-    internalView.close();
+  public void close(boolean gracefulClose) {
+    internalView.close(gracefulClose);
   }
 
 }

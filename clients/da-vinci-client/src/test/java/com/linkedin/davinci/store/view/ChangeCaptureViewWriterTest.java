@@ -295,8 +295,8 @@ public class ChangeCaptureViewWriterTest {
     Assert.assertEquals(changeEvents.get(2).previousValue.value, OLD_VALUE);
 
     // Test close
-    changeCaptureViewWriter.close();
-    Mockito.verify(mockVeniceWriter).close();
+    changeCaptureViewWriter.close(true);
+    Mockito.verify(mockVeniceWriter).close(true);
   }
 
 }
