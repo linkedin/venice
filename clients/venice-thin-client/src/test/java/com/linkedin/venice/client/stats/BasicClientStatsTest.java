@@ -4,6 +4,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.dimensions.VeniceClientType;
 import io.tehuti.metrics.MetricsRepository;
 import org.testng.annotations.Test;
 
@@ -15,7 +16,8 @@ public class BasicClientStatsTest {
     MetricsRepository metricsRepository1 = new MetricsRepository();
     // Without prefix
     ClientConfig config1 = new ClientConfig(storeName);
-    BasicClientStats.getClientStats(metricsRepository1, storeName, RequestType.SINGLE_GET, config1);
+    BasicClientStats
+        .getClientStats(metricsRepository1, storeName, RequestType.SINGLE_GET, config1, VeniceClientType.THIN_CLIENT);
     // Check metric name
     assertTrue(metricsRepository1.metrics().size() > 0);
     String metricPrefix1 = "." + storeName;
@@ -27,7 +29,8 @@ public class BasicClientStatsTest {
     String prefix = "test_prefix";
     MetricsRepository metricsRepository2 = new MetricsRepository();
     ClientConfig config2 = new ClientConfig(storeName).setStatsPrefix(prefix);
-    BasicClientStats.getClientStats(metricsRepository2, storeName, RequestType.SINGLE_GET, config2);
+    BasicClientStats
+        .getClientStats(metricsRepository2, storeName, RequestType.SINGLE_GET, config2, VeniceClientType.FAST_CLIENT);
     // Check metric name
     assertTrue(metricsRepository2.metrics().size() > 0);
     String metricPrefix2 = "." + prefix + "_" + storeName;
