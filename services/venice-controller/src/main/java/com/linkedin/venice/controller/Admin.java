@@ -983,6 +983,10 @@ public interface Admin extends AutoCloseable, Closeable {
 
   void updateAdminOperationProtocolVersion(String clusterName, Long adminOperationProtocolVersion);
 
+  Map<String, Long> getAdminOperationVersionFromControllers(String clusterName);
+
+  long getLocalAdminOperationProtocolVersion();
+
   void createStoragePersona(
       String clusterName,
       String name,

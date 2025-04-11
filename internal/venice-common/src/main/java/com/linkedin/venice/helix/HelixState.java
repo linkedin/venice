@@ -24,4 +24,16 @@ public enum HelixState {
   public static final String ERROR_STATE = "ERROR";
   public static final String LEADER_STATE = "LEADER";
   public static final String STANDBY_STATE = "STANDBY";
+
+  public static boolean isValidHelixState(String state) {
+    if (state == null || state.isEmpty()) {
+      return false;
+    }
+    for (HelixState helixState: HelixState.values()) {
+      if (helixState.name().equals(state)) {
+        return true;
+      }
+    }
+    return false;
+  }
 }

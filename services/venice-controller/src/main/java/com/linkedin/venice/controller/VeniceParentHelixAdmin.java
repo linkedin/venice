@@ -4404,6 +4404,16 @@ public class VeniceParentHelixAdmin implements Admin {
         .updateAdminOperationProtocolVersion(clusterName, adminOperationProtocolVersion);
   }
 
+  @Override
+  public Map<String, Long> getAdminOperationVersionFromControllers(String clusterName) {
+    return getVeniceHelixAdmin().getAdminOperationVersionFromControllers(clusterName);
+  }
+
+  @Override
+  public long getLocalAdminOperationProtocolVersion() {
+    return getVeniceHelixAdmin().getLocalAdminOperationProtocolVersion();
+  }
+
   /**
    * Unsupported operation in the parent controller.
    */
