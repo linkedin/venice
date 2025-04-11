@@ -238,7 +238,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
                   + " returned unexpected response.");
         } else {
           long elapsedTime = System.currentTimeMillis() - startTime;
-          LOGGER.info("fetched dict for {} took {} ms", kafkaTopic, elapsedTime);
+          LOGGER.info("Fetched dictionary for resource: {} took: {} ms", kafkaTopic, elapsedTime);
           return dictionary;
         }
       } catch (InterruptedException e) {
