@@ -1856,6 +1856,34 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
+  public void testKilledVersionExecutionStatus() {
+    Map<ExecutionStatus, ControllerClient> clientMap = getMockJobStatusQueryClient();
+    TopicManager topicManager = mock(TopicManager.class);
+
+    Map<String, ControllerClient> notCreatedMap = new HashMap<>();
+    notCreatedMap.put("cluster", clientMap.get(ExecutionStatus.NOT_CREATED));
+    notCreatedMap.put("cluster2", clientMap.get(ExecutionStatus.NOT_CREATED));
+    notCreatedMap.put("cluster3", clientMap.get(ExecutionStatus.NOT_CREATED));
+
+    Set<PubSubTopic> pubSubTopics = new HashSet<>();
+    pubSubTopics.add(pubSubTopicRepository.getTopic("topic_v1"));
+    doReturn(pubSubTopics).when(topicManager).listTopics();
+
+    Store store = mock(Store.class);
+    doReturn(false).when(store).isIncrementalPushEnabled();
+    doReturn(store).when(internalAdmin).getStore(anyString(), anyString());
+
+    Version version = mock(Version.class);
+    doReturn(version).when(store).getVersion(anyInt());
+    doReturn(VersionStatus.KILLED).when(version).getStatus();
+    doReturn(Version.PushType.BATCH).when(version).getPushType();
+
+    Admin.OfflinePushStatusInfo offlineJobStatus =
+        parentAdmin.getOffLineJobStatus("IGNORED", "topic1_v1", notCreatedMap);
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
+  }
+
+  @Test
   public void testUpdateStore() {
     String storeName = Utils.getUniqueString("testUpdateStore");
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
