@@ -21,7 +21,6 @@ import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.Optional;
@@ -34,8 +33,6 @@ import org.apache.avro.Schema;
  * This class is in charge of all the metric emissions per request.
  */
 public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient<K, V> {
-  private static final int TIMEOUT_IN_SECOND = 5;
-
   private final FastClientStats clientStatsForSingleGet;
   private final FastClientStats clientStatsForStreamingBatchGet;
   private final FastClientStats clientStatsForStreamingCompute;
@@ -160,12 +157,15 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
         }
       }
 
-      if (exceptionReceived || (latency > TIMEOUT_IN_SECOND * Time.MS_PER_SECOND)) {
-        clientStats.recordUnhealthyRequest();
-        clientStats.recordUnhealthyLatency(latency);
+      int httpStatus;
+      if (exceptionReceived) {
+        httpStatus = clientStats.getUnhealthyRequestHttpStatus(throwable);
+        clientStats.recordUnhealthyRequest(httpStatus);
+        clientStats.recordUnhealthyLatency(latency, httpStatus);
       } else {
-        clientStats.recordHealthyRequest();
-        clientStats.recordHealthyLatency(latency);
+        httpStatus = clientStats.getHealthyRequestHttpStatus(requestContext.successRequestKeyCount.get());
+        clientStats.recordHealthyRequest(httpStatus);
+        clientStats.recordHealthyLatency(latency, httpStatus);
       }
 
       if (requestContext.noAvailableReplica) {
@@ -187,7 +187,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
         if (requestContext.responseDeserializationTime > 0) {
           clientStats.recordResponseDeserializationTime(requestContext.responseDeserializationTime);
         }
-        clientStats.recordSuccessRequestKeyCount(requestContext.successRequestKeyCount.get());
+        clientStats.recordSuccessRequestKeyCount(requestContext.successRequestKeyCount.get(), httpStatus);
       }
 
       if (requestContext instanceof GetRequestContext) {

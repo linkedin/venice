@@ -115,7 +115,15 @@ public class VeniceMetricsConfig {
   public static final String OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_BUCKETS =
       "otel.exporter.otlp.metrics.default.histogram.aggregation.max.buckets";
 
+  /**
+   * Used for logging
+   */
   private final String serviceName;
+  /**
+   * Used for creating the name space for the metrics.
+   * For instance: if metricPrefix is router and the metric name is call_count, the metric
+   * name will be venice.router.call_count
+   */
   private final String metricPrefix;
   /**
    * List of all the metrics emitted by the service: Currently used to set Exponential Histogram view
@@ -253,6 +261,12 @@ public class VeniceMetricsConfig {
 
     public Builder setMetricNamingFormat(VeniceOpenTelemetryMetricNamingFormat metricNamingFormat) {
       this.metricNamingFormat = metricNamingFormat;
+      return this;
+    }
+
+    public Builder setMetricNamingFormat(String metricNamingFormat) {
+      this.metricNamingFormat =
+          VeniceOpenTelemetryMetricNamingFormat.valueOf(metricNamingFormat.toUpperCase(Locale.ROOT));
       return this;
     }
 
@@ -408,7 +422,6 @@ public class VeniceMetricsConfig {
           if (otelEndpoint == null) {
             throw new IllegalArgumentException("endpoint is required to configure OpenTelemetry metrics export");
           }
-
         } else {
           LOGGER.warn("OpenTelemetry metrics are enabled but no endpoint is configured to export metrics");
         }

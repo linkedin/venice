@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.client.StatsAvroGenericDaVinciClient.DAVINCI_CLIENT_SERVICE_NAME;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_PUT_LATENCY;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
@@ -39,6 +40,8 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
+import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
+import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_PREFIX;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
@@ -104,6 +107,8 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -287,7 +292,12 @@ public class DaVinciClientTest {
         .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
         .build();
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setServiceName(DAVINCI_CLIENT_SERVICE_NAME)
+            .setMetricPrefix(CLIENT_METRIC_PREFIX)
+            .setEmitOtelMetrics(true)
+            .setMetricEntities(CLIENT_METRIC_ENTITIES)
+            .build());
 
     // Test multiple clients sharing the same ClientConfig/MetricsRepository & base data path
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(

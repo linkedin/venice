@@ -1,5 +1,6 @@
 package com.linkedin.davinci;
 
+import static com.linkedin.davinci.client.StatsAvroGenericDaVinciClient.DAVINCI_CLIENT_SERVICE_NAME;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_INSTANCE_NAME_SUFFIX;
 import static com.linkedin.venice.ConfigKeys.VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION;
@@ -136,7 +137,7 @@ public class DaVinciBackend implements Closeable {
       writeBatchingPushStatus = backendConfig.getDaVinciPushStatusCheckIntervalInMs() >= 0;
       this.configLoader = configLoader;
       metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())
-          .orElse(TehutiUtils.getMetricsRepository("davinci-client"));
+          .orElse(TehutiUtils.getMetricsRepository(DAVINCI_CLIENT_SERVICE_NAME));
       VeniceMetadataRepositoryBuilder veniceMetadataRepositoryBuilder =
           new VeniceMetadataRepositoryBuilder(configLoader, clientConfig, metricsRepository, icProvider, false);
       ClusterInfoProvider clusterInfoProvider = veniceMetadataRepositoryBuilder.getClusterInfoProvider();
