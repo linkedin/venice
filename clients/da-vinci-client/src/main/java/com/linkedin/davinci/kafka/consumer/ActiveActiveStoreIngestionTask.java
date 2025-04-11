@@ -1059,7 +1059,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           .info("{} enabled remote consumption from topic {} partition {}", ingestionTaskName, leaderTopic, partition);
     }
     partitionConsumptionState.setLeaderFollowerState(LEADER);
-    prepareOffsetCheckpointAndStartConsumptionAsLeader(leaderTopic, partitionConsumptionState);
+    prepareOffsetCheckpointAndStartConsumptionAsLeader(leaderTopic, partitionConsumptionState, true);
   }
 
   /**
@@ -1123,7 +1123,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     // Update leader topic.
     partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
     // Calculate leader offset and start consumption
-    prepareOffsetCheckpointAndStartConsumptionAsLeader(newSourceTopic, partitionConsumptionState);
+    prepareOffsetCheckpointAndStartConsumptionAsLeader(newSourceTopic, partitionConsumptionState, false);
   }
 
   /**
@@ -1520,13 +1520,16 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   @Override
   void prepareOffsetCheckpointAndStartConsumptionAsLeader(
       PubSubTopic leaderTopic,
-      PartitionConsumptionState partitionConsumptionState) {
+      PartitionConsumptionState partitionConsumptionState,
+      boolean isTransition) {
     Set<String> leaderSourceKafkaURLs = getConsumptionSourceKafkaAddress(partitionConsumptionState);
     Map<String, Long> leaderOffsetByKafkaURL = new HashMap<>(leaderSourceKafkaURLs.size());
     List<CharSequence> unreachableBrokerList = new ArrayList<>();
+    boolean useLcro = isTransition && isGlobalRtDivEnabled();
     // Read previously checkpointed offset and maybe fallback to TopicSwitch if any of upstream offset is missing.
     for (String kafkaURL: leaderSourceKafkaURLs) {
-      leaderOffsetByKafkaURL.put(kafkaURL, partitionConsumptionState.getLeaderOffset(kafkaURL, pubSubTopicRepository));
+      leaderOffsetByKafkaURL
+          .put(kafkaURL, partitionConsumptionState.getLeaderOffset(kafkaURL, pubSubTopicRepository, useLcro));
     }
     if (leaderTopic.isRealTime() && leaderOffsetByKafkaURL.containsValue(OffsetRecord.LOWEST_OFFSET)) {
       leaderOffsetByKafkaURL =

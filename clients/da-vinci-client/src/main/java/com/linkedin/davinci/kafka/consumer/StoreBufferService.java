@@ -732,6 +732,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
             continue;
           } else if (node instanceof SyncVtDivNode) {
             ((SyncVtDivNode) node).execute();
+            continue;
           }
 
           processRecord(

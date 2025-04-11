@@ -2,11 +2,13 @@ package com.linkedin.davinci.validation;
 
 import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.kafka.protocol.GUID;
+import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.IntFunction;
@@ -74,6 +76,14 @@ public class KafkaDataIntegrityValidator {
 
   public void setPartitionState(PartitionTracker.TopicType type, int partition, OffsetRecord offsetRecord) {
     registerPartition(partition).setPartitionState(type, offsetRecord, this.maxAgeInMs);
+  }
+
+  public void setPartitionState(
+      PartitionTracker.TopicType type,
+      int partition,
+      Map<CharSequence, ProducerPartitionState> producerPartitionStateMap) {
+    // TODO: can maxAgeInMs be used without offsetRecord.getMaxMessageTimeInMs()?
+    registerPartition(partition).setPartitionState(type, producerPartitionStateMap, DISABLED);
   }
 
   /**

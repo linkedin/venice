@@ -550,7 +550,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           consumerSubscribe(
               topic,
               partitionConsumptionState,
-              partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset(),
+              getLocalVtSubscribeOffset(partitionConsumptionState),
               localKafkaServer);
           /**
            * When switching leader to follower, we may adjust the underlying storage partition to optimize the performance.
@@ -943,7 +943,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * this case, the newly selected leader will resume the consumption from RT specified in TS at the offset
      * checkpointed in leader offset metadata.
      */
-
     final int partition = partitionConsumptionState.getPartition();
     final OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
     if (isNativeReplicationEnabled) {
@@ -967,7 +966,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     partitionConsumptionState.setLeaderFollowerState(LEADER);
     final PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
-    prepareOffsetCheckpointAndStartConsumptionAsLeader(leaderTopic, partitionConsumptionState);
+    prepareOffsetCheckpointAndStartConsumptionAsLeader(leaderTopic, partitionConsumptionState, true);
   }
 
   private boolean switchAwayFromStreamReprocessingTopic(PubSubTopic currentLeaderTopic, PubSubTopic topicSwitchTopic) {
@@ -1014,7 +1013,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
 
-    prepareOffsetCheckpointAndStartConsumptionAsLeader(newSourceTopic, partitionConsumptionState);
+    prepareOffsetCheckpointAndStartConsumptionAsLeader(newSourceTopic, partitionConsumptionState, false);
 
     // In case new topic is empty and leader can never become online
     // TODO: Remove this once after AGG store migration.
@@ -1029,13 +1028,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   void prepareOffsetCheckpointAndStartConsumptionAsLeader(
       PubSubTopic leaderTopic,
-      PartitionConsumptionState partitionConsumptionState) {
+      PartitionConsumptionState partitionConsumptionState,
+      boolean isTransition) {
     Set<String> leaderSourceKafkaURLs = getConsumptionSourceKafkaAddress(partitionConsumptionState);
     if (leaderSourceKafkaURLs.size() != 1) {
       throw new VeniceException("In L/F mode, expect only one leader source Kafka URL. Got: " + leaderSourceKafkaURLs);
     }
+    boolean useLcro = isTransition && isGlobalRtDivEnabled();
     long upstreamStartOffset = partitionConsumptionState
-        .getLeaderOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, pubSubTopicRepository);
+        .getLeaderOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, pubSubTopicRepository, useLcro);
     String leaderSourceKafkaURL = leaderSourceKafkaURLs.iterator().next();
     if (upstreamStartOffset < 0 && leaderTopic.isRealTime()) {
       upstreamStartOffset =
@@ -1044,6 +1045,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     consumerSubscribe(leaderTopic, partitionConsumptionState, upstreamStartOffset, leaderSourceKafkaURL);
+    // TODO: clear the LCRO map in the PCS after subscribing and set the value for this brokerUrl as null?
     syncConsumedUpstreamRTOffsetMapIfNeeded(
         partitionConsumptionState,
         Collections.singletonMap(leaderSourceKafkaURL, upstreamStartOffset));
@@ -3726,7 +3728,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     LeaderProducerCallback divCallback = createProducerCallback(
         divMessage,
         partitionConsumptionState,
-        leaderProducedRecordContext,
+        new LeaderProducedRecordContext(leaderProducedRecordContext),
         partition,
         brokerUrl,
         beforeProcessingRecordTimestampNs);
@@ -3814,8 +3816,53 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   private void restoreProducerStatesForLeaderConsumption(int partition) {
     consumerDiv.clearPartition(partition);
-    cloneProducerStates(partition, consumerDiv);
-    // TODO: the Global RT DIV version needs to be implemented in a future PR
+    if (isGlobalRtDivEnabled()) {
+      loadGlobalRtDiv(partition);
+    } else {
+      cloneProducerStates(partition, consumerDiv);
+    }
+  }
+
+  private void loadGlobalRtDiv(int partition) {
+    kafkaClusterIdToUrlMap.forEach((clusterId, brokerUrl) -> {
+      loadGlobalRtDiv(partition, brokerUrl);
+    });
+  }
+
+  /**
+   * Load the stored Global RT DIV object from the storage engine into the Consumer DIV during state transition
+   * to LEADER. The RT DIV needs to be loaded per-broker url, and the latest consumed RT offset needs to be updated.
+   */
+  private void loadGlobalRtDiv(int partition, String brokerUrl) {
+    PartitionConsumptionState pcs = partitionConsumptionStateMap.get(partition);
+    final PubSubTopic topic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
+    final PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, pcs.getPartition());
+
+    String globalRtDivKey = getGlobalRtDivKeyName(brokerUrl);
+    byte[] keyBytes = globalRtDivKey.getBytes();
+    final ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
+    GenericRecord valueRecord = readStoredValueRecord(
+        pcs,
+        keyBytes,
+        AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion(),
+        topicPartition,
+        valueManifestContainer);
+    if (valueRecord == null) {
+      return; // it may not exist (e.g. this is the first leader to be elected)
+    }
+
+    Object value = valueRecord.get(globalRtDivKey);
+    if (value instanceof GlobalRtDivState) {
+      GlobalRtDivState globalRtDivState = (GlobalRtDivState) value;
+      final Map<CharSequence, ProducerPartitionState> producerStates = globalRtDivState.getProducerStates();
+      PartitionTracker.TopicType realTimeTopicType = PartitionTracker.TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
+      consumerDiv.setPartitionState(realTimeTopicType, pcs.getPartition(), producerStates);
+      final long latestConsumedRtOffset = globalRtDivState.getLatestOffset(); // LCRO
+      pcs.updateLatestConsumedRtOffset(brokerUrl, latestConsumedRtOffset);
+    } else {
+      LOGGER.warn("Unable to load Global RT DIV: {}", globalRtDivKey);
+      // TODO: should we throw? or if we don't throw, which offset should the subscribe occur at?
+    }
   }
 
   /**
@@ -4182,7 +4229,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     LOGGER.info(
         "Leader replica: {} unsubscribe finished for future resubscribe.",
         partitionConsumptionState.getReplicaId());
-    prepareOffsetCheckpointAndStartConsumptionAsLeader(leaderTopic, partitionConsumptionState);
+    prepareOffsetCheckpointAndStartConsumptionAsLeader(leaderTopic, partitionConsumptionState, false);
   }
 
   protected void queueUpVersionTopicWritesWithViewWriters(

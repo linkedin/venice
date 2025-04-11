@@ -108,6 +108,8 @@ public class PartitionTracker {
     return latestConsumedVtOffset.get();
   }
 
+  // TODO: should max be correct because it should always be increasing except for when LCVO is loaded from disk,
+  // in which case that should be when the PCS is created?
   public void updateLatestConsumedVtOffset(long offset) {
     latestConsumedVtOffset.updateAndGet(current -> Math.max(current, offset));
   }
@@ -139,8 +141,15 @@ public class PartitionTracker {
   public void setPartitionState(TopicType type, OffsetRecord offsetRecord, long maxAgeInMs) {
     long minimumRequiredRecordProducerTimestamp =
         maxAgeInMs == DISABLED ? DISABLED : offsetRecord.getMaxMessageTimeInMs() - maxAgeInMs;
+    setPartitionState(type, offsetRecord.getProducerPartitionStateMap(), minimumRequiredRecordProducerTimestamp);
+  }
+
+  public void setPartitionState(
+      TopicType type,
+      Map<CharSequence, ProducerPartitionState> producerPartitionStateMap,
+      long minimumRequiredRecordProducerTimestamp) {
     Iterator<Map.Entry<CharSequence, ProducerPartitionState>> iterator =
-        offsetRecord.getProducerPartitionStateMap().entrySet().iterator();
+        producerPartitionStateMap.entrySet().iterator();
     Map.Entry<CharSequence, ProducerPartitionState> entry;
     GUID producerGuid;
     ProducerPartitionState producerPartitionState;
@@ -219,7 +228,7 @@ public class PartitionTracker {
     ProducerPartitionState state;
     if (TopicType.isVersionTopic(type)) {
       state = offsetRecord.getProducerPartitionState(guid);
-      offsetRecord.setLatestConsumedVtOffset(latestConsumedVtOffset.get());
+      offsetRecord.setLatestConsumedVtOffset(getLatestConsumedVtOffset());
     } else {
       state = offsetRecord.getRealTimeProducerState(type.getKafkaUrl(), guid);
     }

@@ -9,6 +9,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -318,10 +319,10 @@ public class OffsetRecord {
 
   public long getLatestConsumedVtOffset() {
     try {
-      return ApacheKafkaOffsetPosition.of(this.partitionState.getLastConsumedVersionTopicPubSubPosition())
-          .getNumericOffset();
+      PubSubPosition pos = ApacheKafkaOffsetPosition.of(partitionState.getLastConsumedVersionTopicPubSubPosition());
+      return pos.getNumericOffset();
     } catch (IOException e) {
-      throw new VeniceException(e);
+      return -1;
     }
   }
 
@@ -338,12 +339,12 @@ public class OffsetRecord {
 
   @Override
   public String toString() {
-    return "OffsetRecord{" + "localVersionTopicOffset=" + getLocalVersionTopicOffset() + ", upstreamOffset="
-        + getPartitionUpstreamOffsetString() + ", leaderTopic=" + getLeaderTopic() + ", offsetLag=" + getOffsetLag()
-        + ", eventTimeEpochMs=" + getMaxMessageTimeInMs() + ", latestProducerProcessingTimeInMs="
-        + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived=" + isEndOfPushReceived() + ", databaseInfo="
-        + getDatabaseInfo() + ", realTimeProducerState=" + getRealTimeProducerState() + ", recordTransformerClassHash="
-        + getRecordTransformerClassHash() + '}';
+    return "OffsetRecord{" + "localVersionTopicOffset=" + getLocalVersionTopicOffset() + ", latestConsumedVtOffset="
+        + getLatestConsumedVtOffset() + ", upstreamOffset=" + getPartitionUpstreamOffsetString() + ", leaderTopic="
+        + getLeaderTopic() + ", offsetLag=" + getOffsetLag() + ", eventTimeEpochMs=" + getMaxMessageTimeInMs()
+        + ", latestProducerProcessingTimeInMs=" + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived="
+        + isEndOfPushReceived() + ", databaseInfo=" + getDatabaseInfo() + ", realTimeProducerState="
+        + getRealTimeProducerState() + ", recordTransformerClassHash=" + getRecordTransformerClassHash() + '}';
   }
 
   /**
