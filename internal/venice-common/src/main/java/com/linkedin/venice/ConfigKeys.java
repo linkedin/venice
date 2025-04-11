@@ -2568,4 +2568,9 @@ public class ConfigKeys {
    * ConsumptionTask, and leaders will periodically replicate the RT DIV to followers via VT.
    */
   public static final String GLOBAL_RT_DIV_ENABLED = "global.rt.div.enabled";
+
+  /**
+   * Config to control whether the child controller emits the version swap messages
+   */
+  public static final String CONTROLLER_EMIT_VERSION_SWAP_MESSAGES = "controller.emit.version.swap.messages";
 }
