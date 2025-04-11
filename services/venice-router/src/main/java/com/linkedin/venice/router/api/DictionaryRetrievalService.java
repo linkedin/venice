@@ -97,14 +97,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
   private final StoreDataChangedListener storeChangeListener = new StoreDataChangedListener() {
     @Override
     public void handleStoreCreated(Store store) {
-      dictionaryDownloadCandidates.addAll(
-          store.getVersions()
-              .stream()
-              .filter(
-                  version -> version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT
-                      && version.getStatus() == VersionStatus.ONLINE)
-              .map(Version::kafkaTopicName)
-              .collect(Collectors.toList()));
+      queueDictionaryDownloadOfFutureAndCurrentVersions(store);
     }
 
     @Override
@@ -114,18 +107,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
 
     @Override
     public void handleStoreChanged(Store store) {
-      List<Version> versions = store.getVersions();
-
-      // For new versions, download dictionary.
-      dictionaryDownloadCandidates.addAll(
-          versions.stream()
-              .filter(
-                  version -> version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT
-                      && (version.getStatus() == VersionStatus.STARTED || version.getStatus() == VersionStatus.PUSHED
-                          || version.getStatus() == VersionStatus.ONLINE))
-              .filter(version -> !downloadingDictionaryFutures.containsKey(version.kafkaTopicName()))
-              .map(Version::kafkaTopicName)
-              .collect(Collectors.toList()));
+      queueDictionaryDownloadOfFutureAndCurrentVersions(store);
 
       // For versions that have been retired, delete dictionary.
       for (String topic: downloadingDictionaryFutures.keySet()) {
@@ -134,6 +116,20 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
           handleVersionRetirement(topic, "Version retired");
         }
       }
+    }
+
+    // download dictionary of future & current store versions
+    private void queueDictionaryDownloadOfFutureAndCurrentVersions(Store store) {
+      dictionaryDownloadCandidates.addAll(
+          store.getVersions()
+              .stream()
+              .filter(
+                  version -> version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT
+                      && (version.getStatus() == VersionStatus.STARTED || version.getStatus() == VersionStatus.PUSHED
+                          || version.getStatus() == VersionStatus.ONLINE))
+              .filter(version -> !downloadingDictionaryFutures.containsKey(version.kafkaTopicName()))
+              .map(Version::kafkaTopicName)
+              .collect(Collectors.toList()));
     }
   };
 
