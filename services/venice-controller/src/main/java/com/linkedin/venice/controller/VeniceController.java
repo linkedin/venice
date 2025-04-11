@@ -20,6 +20,7 @@ import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.server.VeniceControllerGrpcServiceImpl;
 import com.linkedin.venice.controller.server.VeniceControllerRequestHandler;
 import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
+import com.linkedin.venice.controller.stats.ProtocolVersionAutoDetectionStats;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controller.systemstore.SystemStoreRepairService;
@@ -79,6 +80,7 @@ public class VeniceController {
   private final Optional<SystemStoreRepairService> systemStoreRepairService;
 
   private Optional<DeferredVersionSwapService> deferredVersionSwapService;
+  private final Optional<ProtocolVersionAutoDetectionService> protocolVersionAutoDetectionService;
 
   private VeniceControllerRequestHandler secureRequestHandler;
   private VeniceControllerRequestHandler unsecureRequestHandler;
@@ -174,6 +176,7 @@ public class VeniceController {
     this.storeGraveyardCleanupService = createStoreGraveyardCleanupService();
     this.systemStoreRepairService = createSystemStoreRepairService();
     this.deferredVersionSwapService = createDeferredVersionSwapService();
+    this.protocolVersionAutoDetectionService = createAdminOperationVersionAutoDetectionService();
     if (multiClusterConfigs.isGrpcServerEnabled()) {
       initializeGrpcServer();
     }
@@ -307,6 +310,18 @@ public class VeniceController {
     return Optional.empty();
   }
 
+  private Optional<ProtocolVersionAutoDetectionService> createAdminOperationVersionAutoDetectionService() {
+    if (multiClusterConfigs.isParent() && multiClusterConfigs.isAdminOperationProtocolVersionAutoDetectionEnabled()) {
+      Admin admin = controllerService.getVeniceHelixAdmin();
+      return Optional.of(
+          new ProtocolVersionAutoDetectionService(
+              (VeniceParentHelixAdmin) admin,
+              multiClusterConfigs,
+              new ProtocolVersionAutoDetectionStats(metricsRepository)));
+    }
+    return Optional.empty();
+  }
+
   // package-private for testing
   private void initializeGrpcServer() {
     LOGGER.info("Initializing gRPC server as it is enabled for the controller...");
@@ -405,6 +420,7 @@ public class VeniceController {
     systemStoreRepairService.ifPresent(AbstractVeniceService::start);
     disabledPartitionEnablerService.ifPresent(AbstractVeniceService::start);
     deferredVersionSwapService.ifPresent(AbstractVeniceService::start);
+    protocolVersionAutoDetectionService.ifPresent(AbstractVeniceService::start);
     // register with service discovery at the end
     asyncRetryingServiceDiscoveryAnnouncer.register();
     if (adminGrpcServer != null) {
@@ -471,6 +487,7 @@ public class VeniceController {
     storeBackupVersionCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     disabledPartitionEnablerService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     deferredVersionSwapService.ifPresent(Utils::closeQuietlyWithErrorLogged);
+    protocolVersionAutoDetectionService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     if (adminGrpcServer != null) {
       adminGrpcServer.stop();
     }

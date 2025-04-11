@@ -7732,7 +7732,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       // Get the admin operation protocol version from standby controller
       AdminOperationProtocolVersionControllerResponse response =
-          localControllerClient.getLocalAdminOperationProtocolVersion();
+          localControllerClient.getLocalAdminOperationProtocolVersion(standbyControllerUrl);
       if (response.isError()) {
         throw new VeniceException(
             "Failed to get admin operation protocol version from standby controller: " + standbyControllerUrl
