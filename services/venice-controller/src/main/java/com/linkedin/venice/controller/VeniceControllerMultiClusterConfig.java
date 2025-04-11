@@ -358,4 +358,16 @@ public class VeniceControllerMultiClusterConfig {
   public boolean isRealTimeTopicVersioningEnabled() {
     return getCommonConfig().getRealTimeTopicVersioningEnabled();
   }
+
+  public boolean isAdminOperationProtocolVersionAutoDetectionEnabled() {
+    return getCommonConfig().getAdminOperationVersionAutoDetectionEnabled();
+  }
+
+  public long getAdminOperationProtocolVersionAutoDetectionIntervalMs() {
+    return getCommonConfig().getAdminOperationVersionAutoDetectionIntervalMS();
+  }
+
+  public int getAdminOperationProtocolVersionAutoDetectionThreadCount() {
+    return getCommonConfig().getAdminOperationVersionAutoDetectionThreadCount();
+  }
 }

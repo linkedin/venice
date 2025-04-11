@@ -390,6 +390,24 @@ public class ConfigKeys {
   public static final String ADMIN_TOPIC_SOURCE_REGION = "admin.topic.source.region";
 
   /**
+   * Whether the admin operation protocol version auto-detection service is enabled or not.
+   */
+  public static final String ADMIN_OPERATION_PROTOCOL_VERSION_AUTO_DETECTION_ENABLED =
+      "admin.operation.protocol.version.auto.detection.enabled";
+
+  /**
+   * The number of threads to use for the admin operation protocol version auto-detection service.
+   */
+  public static final String ADMIN_OPERATION_PROTOCOL_VERSION_AUTO_DETECTION_THREAD_COUNT =
+      "admin.operation.protocol.version.auto.detection.thread.count";
+
+  /**
+   * The time interval to check the admin operation protocol version auto-detection service.
+   */
+  public static final String ADMIN_OPERATION_PROTOCOL_VERSION_AUTO_DETECTION_INTERVAL_MS =
+      "admin.operation.protocol.version.auto.detection.interval.ms";
+
+  /**
    * This following config defines whether admin consumption should be enabled or not, and this config will only control
    * the behavior in Child Controller. This is used for store migration.
    */
