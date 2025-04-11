@@ -225,6 +225,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     CompletableFuture<PortableHttpResponse> responseFuture = new CompletableFuture<>();
 
     return CompletableFuture.supplyAsync(() -> {
+      long startTime = System.currentTimeMillis();
       storageNodeClient.sendRequest(request, responseFuture);
       VeniceException exception = null;
       try {
@@ -236,6 +237,8 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
               "Dictionary download for resource: " + kafkaTopic + " from: " + instanceUrl
                   + " returned unexpected response.");
         } else {
+          long elapsedTime = System.currentTimeMillis() - startTime;
+          LOGGER.info("fetched dict for {} took {} ms", kafkaTopic, elapsedTime);
           return dictionary;
         }
       } catch (InterruptedException e) {
