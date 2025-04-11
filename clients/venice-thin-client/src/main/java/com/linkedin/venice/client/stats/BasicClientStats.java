@@ -71,6 +71,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
   private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> unhealthyLatencyMetric;
   private final Sensor requestKeyCountSensor;
   private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> healthyKeyCountMetric;
+  private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> unhealthyKeyCountMetric;
   private final Sensor successRequestRatioSensor;
   private final Sensor successRequestKeyRatioSensor;
   private final Rate requestRate = new OccurrenceRate();
@@ -196,6 +197,16 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
         HttpResponseStatusEnum.class,
         HttpResponseStatusCodeCategory.class,
         VeniceResponseStatusCategory.class);
+    unhealthyKeyCountMetric = MetricEntityStateThreeEnums.create(
+        BasicClientMetricEntity.KEY_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        BasicClientTehutiMetricName.FAILED_REQUEST_KEY_COUNT,
+        Arrays.asList(new Rate(), new Avg(), new Max()),
+        baseDimensionsMap,
+        HttpResponseStatusEnum.class,
+        HttpResponseStatusCodeCategory.class,
+        VeniceResponseStatusCategory.class);
 
     successRequestKeyRatioSensor = registerSensor(
         new TehutiUtils.SimpleRatioStat(successRequestKeyCountRate, requestKeyCountRate, "success_request_key_ratio"));
@@ -251,6 +262,14 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
         VeniceResponseStatusCategory.SUCCESS);
   }
 
+  public void recordFailedRequestKeyCount(int successKeyCount, int httpStatus) {
+    unhealthyKeyCountMetric.record(
+        successKeyCount,
+        transformIntToHttpResponseStatusEnum(httpStatus),
+        getVeniceHttpResponseStatusCodeCategory(httpStatus),
+        VeniceResponseStatusCategory.FAIL);
+  }
+
   protected final Rate getRequestRate() {
     return requestRate;
   }
@@ -297,7 +316,8 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
    * Metric names for tehuti metrics used in this class.
    */
   public enum BasicClientTehutiMetricName implements TehutiMetricNameEnum {
-    HEALTHY_REQUEST, UNHEALTHY_REQUEST, HEALTHY_REQUEST_LATENCY, UNHEALTHY_REQUEST_LATENCY, SUCCESS_REQUEST_KEY_COUNT;
+    HEALTHY_REQUEST, UNHEALTHY_REQUEST, HEALTHY_REQUEST_LATENCY, UNHEALTHY_REQUEST_LATENCY, SUCCESS_REQUEST_KEY_COUNT,
+    FAILED_REQUEST_KEY_COUNT;
 
     private final String metricName;
 
