@@ -135,6 +135,9 @@ public class TestChangelogConsumer {
         CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME,
         "localhost:" + TestUtils.getFreePort());
     serverProperties.put(SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED, isAAWCParallelProcessingEnabled());
+
+    Properties controllerProperties = new Properties();
+    controllerProperties.put(CONTROLLER_EMIT_VERSION_SWAP_MESSAGES, true);
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
             .numberOfClusters(1)
@@ -144,7 +147,8 @@ public class TestChangelogConsumer {
             .numberOfRouters(1)
             .replicationFactor(1)
             .forkServer(false)
-            .serverProperties(serverProperties);
+            .serverProperties(serverProperties)
+            .childControllerProperties(controllerProperties);
     multiRegionMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
 
