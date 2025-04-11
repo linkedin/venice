@@ -1437,6 +1437,7 @@ public class ControllerClient implements Closeable {
         AdminOperationProtocolVersionControllerResponse.class);
   }
 
+<<<<<<< HEAD
   public AdminOperationProtocolVersionControllerResponse getLocalAdminOperationProtocolVersion(String controllerUrl) {
     return request(
         ControllerRoute.GET_LOCAL_ADMIN_OPERATION_PROTOCOL_VERSION,
@@ -1446,6 +1447,14 @@ public class ControllerClient implements Closeable {
         DEFAULT_MAX_ATTEMPTS,
         null,
         Optional.of(controllerUrl));
+=======
+  public AdminOperationProtocolVersionControllerResponse getLocalAdminOperationProtocolVersion() {
+    // TODO: Modify this method to send to given controller url
+    return request(
+        ControllerRoute.GET_LOCAL_ADMIN_OPERATION_PROTOCOL_VERSION,
+        newParams(),
+        AdminOperationProtocolVersionControllerResponse.class);
+>>>>>>> 4ea563d32 ([controller] Controller API to get all Admin Operation Version for leader+standby controllers given cluster name  (#1669))
   }
 
   public ControllerResponse deleteKafkaTopic(String topicName) {
