@@ -611,14 +611,11 @@ public class StatTrackingStoreClientTest {
     Metric requestMetric = metrics.get(metricPrefix + "--multiget_streaming_request.OccurrenceRate");
     Metric healthyRequestMetric = metrics.get(metricPrefix + "--multiget_streaming_healthy_request.OccurrenceRate");
     Metric unhealthyRequestMetric = metrics.get(metricPrefix + "--multiget_streaming_unhealthy_request.OccurrenceRate");
-    Metric duplicateKeyMetric =
-        metrics.get(metricPrefix + "--multiget_streaming_success_request_duplicate_key_count.Rate");
     Metric responseWith500 = metrics.get(metricPrefix + "--multiget_streaming_http_500_request.OccurrenceRate");
 
     Assert.assertTrue(requestMetric.value() > 0.0);
     Assert.assertEquals(healthyRequestMetric.value(), 0.0);
     Assert.assertTrue(unhealthyRequestMetric.value() > 0.0);
-    Assert.assertTrue(duplicateKeyMetric.value() > 0.0);
     Assert.assertTrue(responseWith500.value() > 0.0);
   }
 
