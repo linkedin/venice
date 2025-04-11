@@ -257,13 +257,10 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
       if (exception.get() instanceof VeniceClientHttpException) {
         clientStats.recordHttpRequest(httpStatus);
       }
-      clientStats.recordUnhealthyRequest(httpStatus);
-      clientStats.recordUnhealthyLatency(latency, httpStatus);
-      clientStats.recordFailedRequestKeyCount(keyCount, httpStatus);
+      clientStats.emitRequestUnhealthyMetrics(latency, keyCount, httpStatus);
     } else {
       int httpStatus = clientStats.getHealthyRequestHttpStatus(successKeyCnt);
-      emitRequestHealthyMetrics(clientStats, latency, httpStatus);
-      clientStats.recordSuccessRequestKeyCount(successKeyCnt, httpStatus);
+      clientStats.emitRequestHealthyMetrics(latency, successKeyCnt, httpStatus);
       clientStats.recordSuccessDuplicateRequestKeyCount(duplicateEntryCnt);
     }
   }
@@ -278,11 +275,6 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     return super.compute(Optional.of(computeStreamingStats), this);
   }
 
-  private static void emitRequestHealthyMetrics(ClientStats clientStats, double latency, int httpStatus) {
-    clientStats.recordHealthyRequest(httpStatus);
-    clientStats.recordHealthyLatency(latency, httpStatus);
-  }
-
   public static <T> BiFunction<? super T, Throwable, ? extends T> getStatCallback(
       ClientStats clientStats,
       long startTimeInNS,
@@ -294,24 +286,15 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
         if (throwable instanceof VeniceClientHttpException) {
           clientStats.recordHttpRequest(httpStatus);
         }
-        clientStats.recordUnhealthyRequest(httpStatus);
-        clientStats.recordUnhealthyLatency(latency, httpStatus);
-        clientStats.recordFailedRequestKeyCount(numKeys, httpStatus);
+        clientStats.emitRequestUnhealthyMetrics(latency, numKeys, httpStatus);
         handleStoreExceptionInternally(throwable);
       }
 
       if (value == null) {
-        int httpStatus = HttpStatus.SC_NOT_FOUND;
-        emitRequestHealthyMetrics(clientStats, latency, httpStatus);
-        clientStats.recordSuccessRequestKeyCount(0, httpStatus);
+        clientStats.emitRequestHealthyMetrics(latency, 0, HttpStatus.SC_NOT_FOUND);
       } else {
-        int httpStatus = HttpStatus.SC_OK;
-        emitRequestHealthyMetrics(clientStats, latency, httpStatus);
-        if (value instanceof Map) {
-          clientStats.recordSuccessRequestKeyCount(((Map) value).size(), httpStatus);
-        } else {
-          clientStats.recordSuccessRequestKeyCount(1, httpStatus);
-        }
+        clientStats
+            .emitRequestHealthyMetrics(latency, (value instanceof Map) ? ((Map) value).size() : 1, HttpStatus.SC_OK);
       }
       return value;
     };

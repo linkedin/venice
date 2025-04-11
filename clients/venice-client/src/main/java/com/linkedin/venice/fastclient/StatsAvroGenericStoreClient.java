@@ -160,13 +160,10 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       int httpStatus;
       if (exceptionReceived) {
         httpStatus = clientStats.getUnhealthyRequestHttpStatus(throwable);
-        clientStats.recordUnhealthyRequest(httpStatus);
-        clientStats.recordUnhealthyLatency(latency, httpStatus);
-        clientStats.recordFailedRequestKeyCount(numberOfKeys, httpStatus);
+        clientStats.emitRequestUnhealthyMetrics(latency, numberOfKeys, httpStatus);
       } else {
         httpStatus = clientStats.getHealthyRequestHttpStatus(requestContext.successRequestKeyCount.get());
-        clientStats.recordHealthyRequest(httpStatus);
-        clientStats.recordHealthyLatency(latency, httpStatus);
+        clientStats.emitRequestHealthyMetrics(latency, requestContext.successRequestKeyCount.get(), httpStatus);
 
         // Record additional metrics
         if (requestContext.requestSerializationTime > 0) {
@@ -182,7 +179,6 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
         if (requestContext.responseDeserializationTime > 0) {
           clientStats.recordResponseDeserializationTime(requestContext.responseDeserializationTime);
         }
-        clientStats.recordSuccessRequestKeyCount(requestContext.successRequestKeyCount.get(), httpStatus);
       }
 
       if (requestContext.noAvailableReplica) {

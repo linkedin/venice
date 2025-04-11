@@ -216,58 +216,34 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
     requestSensor.record();
   }
 
-  public void recordHealthyRequest(int httpStatus) {
+  public void emitRequestHealthyMetrics(double latency, int keyCount, int httpStatus) {
     recordRequest();
-    healthyRequestMetric.record(
-        1,
-        transformIntToHttpResponseStatusEnum(httpStatus),
-        getVeniceHttpResponseStatusCodeCategory(httpStatus),
-        VeniceResponseStatusCategory.SUCCESS);
+    HttpResponseStatusEnum httpResponseStatusEnum = transformIntToHttpResponseStatusEnum(httpStatus);
+    HttpResponseStatusCodeCategory httpResponseStatusCodeCategory = getVeniceHttpResponseStatusCodeCategory(httpStatus);
+    VeniceResponseStatusCategory veniceResponseStatusCategory = VeniceResponseStatusCategory.SUCCESS;
+    healthyRequestMetric
+        .record(1, httpResponseStatusEnum, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
+    healthyLatencyMetric
+        .record(latency, httpResponseStatusEnum, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
+    healthyKeyCountMetric
+        .record(keyCount, httpResponseStatusEnum, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
   }
 
-  public void recordUnhealthyRequest(int httpStatus) {
+  public void emitRequestUnhealthyMetrics(double latency, int keyCount, int httpStatus) {
     recordRequest();
-    unhealthyRequestMetric.record(
-        1,
-        transformIntToHttpResponseStatusEnum(httpStatus),
-        getVeniceHttpResponseStatusCodeCategory(httpStatus),
-        VeniceResponseStatusCategory.FAIL);
-  }
-
-  public void recordHealthyLatency(double latency, int httpStatus) {
-    healthyLatencyMetric.record(
-        latency,
-        transformIntToHttpResponseStatusEnum(httpStatus),
-        getVeniceHttpResponseStatusCodeCategory(httpStatus),
-        VeniceResponseStatusCategory.SUCCESS);
-  }
-
-  public void recordUnhealthyLatency(double latency, int httpStatus) {
-    unhealthyLatencyMetric.record(
-        latency,
-        transformIntToHttpResponseStatusEnum(httpStatus),
-        getVeniceHttpResponseStatusCodeCategory(httpStatus),
-        VeniceResponseStatusCategory.FAIL);
+    HttpResponseStatusEnum httpResponseStatusEnum = transformIntToHttpResponseStatusEnum(httpStatus);
+    HttpResponseStatusCodeCategory httpResponseStatusCodeCategory = getVeniceHttpResponseStatusCodeCategory(httpStatus);
+    VeniceResponseStatusCategory veniceResponseStatusCategory = VeniceResponseStatusCategory.SUCCESS;
+    unhealthyRequestMetric
+        .record(1, httpResponseStatusEnum, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
+    unhealthyLatencyMetric
+        .record(latency, httpResponseStatusEnum, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
+    unhealthyKeyCountMetric
+        .record(keyCount, httpResponseStatusEnum, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
   }
 
   public void recordRequestKeyCount(int keyCount) {
     requestKeyCountSensor.record(keyCount);
-  }
-
-  public void recordSuccessRequestKeyCount(int successKeyCount, int httpStatus) {
-    healthyKeyCountMetric.record(
-        successKeyCount,
-        transformIntToHttpResponseStatusEnum(httpStatus),
-        getVeniceHttpResponseStatusCodeCategory(httpStatus),
-        VeniceResponseStatusCategory.SUCCESS);
-  }
-
-  public void recordFailedRequestKeyCount(int successKeyCount, int httpStatus) {
-    unhealthyKeyCountMetric.record(
-        successKeyCount,
-        transformIntToHttpResponseStatusEnum(httpStatus),
-        getVeniceHttpResponseStatusCodeCategory(httpStatus),
-        VeniceResponseStatusCategory.FAIL);
   }
 
   protected final Rate getRequestRate() {
