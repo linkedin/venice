@@ -47,8 +47,7 @@ public class HelixGroupRoutingStrategyTest {
   @BeforeMethod
   public void setUp() {
     instanceHealthMonitor = mock(InstanceHealthMonitor.class);
-    doReturn(false).when(instanceHealthMonitor).isInstanceBlocked(any());
-    doReturn(true).when(instanceHealthMonitor).isInstanceHealthy(any());
+    doReturn(true).when(instanceHealthMonitor).isRequestAllowed(any());
   }
 
   public void runTest(List<String> replicas, long requestId, int expectedGroupId, String expectedReplica) {
@@ -75,7 +74,7 @@ public class HelixGroupRoutingStrategyTest {
 
   @Test
   public void testGetReplicaWithBlockedInstances() {
-    doReturn(true).when(instanceHealthMonitor).isInstanceBlocked(instance2);
+    doReturn(false).when(instanceHealthMonitor).isRequestAllowed(instance2);
     List<String> replicas = Arrays.asList(instance1, instance2, instance3);
     runTest(replicas, 0, 0, instance1);
     // 1, 4, 5, 6 are all blocked. Can only get 2 and 3 in order to meet the required replica of 2.
