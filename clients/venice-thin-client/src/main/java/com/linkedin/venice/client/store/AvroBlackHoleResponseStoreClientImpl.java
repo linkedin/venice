@@ -94,7 +94,7 @@ public class AvroBlackHoleResponseStoreClientImpl<K, V> extends AvroGenericStore
       if (exception.isPresent()) {
         completedException = Optional.of(exception.get());
       }
-      callback.onDeserializationCompletion(completedException, keyCount, 0);
+      callback.onDeserializationCompletion(completedException, keyCount, keyCount, 0);
       callback.onCompletion(completedException);
     }
   }

@@ -22,5 +22,9 @@ public interface TrackingStreamingCallback<K, V> extends StreamingCallback<K, V>
    * @param successKeyCount, this param indicates the total number of existing keys
    * @param duplicateEntryCount
    */
-  void onDeserializationCompletion(Optional<Exception> exception, int successKeyCount, int duplicateEntryCount);
+  void onDeserializationCompletion(
+      Optional<Exception> exception,
+      int keyCount,
+      int successKeyCount,
+      int duplicateEntryCount);
 }

@@ -150,7 +150,7 @@ public class StatTrackingStoreClientTest {
           }
         }
         if (!noCompletion) {
-          trackingStreamingCallback.onDeserializationCompletion(Optional.empty(), 10, 5);
+          trackingStreamingCallback.onDeserializationCompletion(Optional.empty(), 10, 10, 5);
           trackingStreamingCallback.onCompletion(Optional.empty());
         }
       }
@@ -175,7 +175,7 @@ public class StatTrackingStoreClientTest {
       if (callback instanceof TrackingStreamingCallback) {
         TrackingStreamingCallback<K, V> trackingStreamingCallback = (TrackingStreamingCallback) callback;
         Utils.sleep(5);
-        trackingStreamingCallback.onDeserializationCompletion(Optional.of(veniceException), 10, 5);
+        trackingStreamingCallback.onDeserializationCompletion(Optional.of(veniceException), keys.size(), 10, 5);
         trackingStreamingCallback.onCompletion(Optional.of(veniceException));
       }
     }
@@ -219,10 +219,14 @@ public class StatTrackingStoreClientTest {
     Metric requestMetric = metrics.get(metricPrefix + "--request.OccurrenceRate");
     Metric healthyRequestMetric = metrics.get(metricPrefix + "--healthy_request.OccurrenceRate");
     Metric unhealthyRequestMetric = metrics.get(metricPrefix + "--unhealthy_request.OccurrenceRate");
+    Metric successKeyCountMetric = metrics.get(metricPrefix + "--success_request_key_count.Avg");
+    Metric failedKeyCountMetric = metrics.get(metricPrefix + "--failed_request_key_count.Rate");
 
     Assert.assertTrue(requestMetric.value() > 0.0);
     Assert.assertTrue(healthyRequestMetric.value() > 0.0);
     Assert.assertEquals(unhealthyRequestMetric.value(), 0.0);
+    Assert.assertEquals(successKeyCountMetric.value(), 1.0);
+    Assert.assertEquals(failedKeyCountMetric.value(), 0.0);
   }
 
   @Test
@@ -263,6 +267,7 @@ public class StatTrackingStoreClientTest {
     Metric successKeyCountMetric = metrics.get(metricPrefix + "--multiget_streaming_success_request_key_count.Avg");
     Metric successKeyRatioMetric =
         metrics.get(metricPrefix + "--multiget_streaming_success_request_key_ratio.SimpleRatioStat");
+    Metric failedKeyCountMetric = metrics.get(metricPrefix + "--multiget_streaming_failed_request_key_count.Rate");
 
     Assert.assertTrue(requestMetric.value() > 0.0);
     Assert.assertTrue(healthyRequestMetric.value() > 0.0);
@@ -270,6 +275,7 @@ public class StatTrackingStoreClientTest {
     Assert.assertEquals(keyCountMetric.value(), 10.0);
     Assert.assertEquals(successKeyCountMetric.value(), 10.0);
     Assert.assertTrue(successKeyRatioMetric.value() > 0, "Success Key Ratio should be positive");
+    Assert.assertEquals(failedKeyCountMetric.value(), 0.0);
   }
 
   @Test(expectedExceptions = ExecutionException.class, expectedExceptionsMessageRegExp = ".*Received partial response.*")
@@ -381,11 +387,15 @@ public class StatTrackingStoreClientTest {
     Metric healthyRequestMetric = metrics.get(metricPrefix + "--healthy_request.OccurrenceRate");
     Metric unhealthyRequestMetric = metrics.get(metricPrefix + "--unhealthy_request.OccurrenceRate");
     Metric http400RequestMetric = metrics.get(metricPrefix + "--http_400_request.OccurrenceRate");
+    Metric successKeyCountMetric = metrics.get(metricPrefix + "--success_request_key_count.Rate");
+    Metric failedKeyCountMetric = metrics.get(metricPrefix + "--failed_request_key_count.Avg");
 
     Assert.assertTrue(requestMetric.value() > 0.0);
     Assert.assertEquals(healthyRequestMetric.value(), 0.0);
     Assert.assertTrue(unhealthyRequestMetric.value() > 0.0);
     Assert.assertTrue(http400RequestMetric.value() > 0.0);
+    Assert.assertEquals(successKeyCountMetric.value(), 0.0);
+    Assert.assertEquals(failedKeyCountMetric.value(), 1.0);
   }
 
   @Test
@@ -422,11 +432,15 @@ public class StatTrackingStoreClientTest {
     Metric healthyRequestMetric = metrics.get(metricPrefix + "--multiget_streaming_healthy_request.OccurrenceRate");
     Metric unhealthyRequestMetric = metrics.get(metricPrefix + "--multiget_streaming_unhealthy_request.OccurrenceRate");
     Metric http500RequestMetric = metrics.get(metricPrefix + "--multiget_streaming_http_500_request.OccurrenceRate");
+    Metric successKeyCountMetric = metrics.get(metricPrefix + "--multiget_streaming_success_request_key_count.Rate");
+    Metric failedKeyCountMetric = metrics.get(metricPrefix + "--multiget_streaming_failed_request_key_count.Avg");
 
     Assert.assertTrue(requestMetric.value() > 0.0);
     Assert.assertEquals(healthyRequestMetric.value(), 0.0);
     Assert.assertTrue(unhealthyRequestMetric.value() > 0.0);
     Assert.assertTrue(http500RequestMetric.value() > 0.0);
+    Assert.assertEquals(successKeyCountMetric.value(), 0.0);
+    Assert.assertEquals(failedKeyCountMetric.value(), 1.0);
   }
 
   @Test(enabled = false)
@@ -644,7 +658,7 @@ public class StatTrackingStoreClientTest {
           }
           if (callback instanceof TrackingStreamingCallback) {
             TrackingStreamingCallback<K, V> trackingStreamingCallback = (TrackingStreamingCallback) callback;
-            trackingStreamingCallback.onDeserializationCompletion(Optional.of(veniceException), 10, 5);
+            trackingStreamingCallback.onDeserializationCompletion(Optional.of(veniceException), keys.size(), 10, 5);
           }
           resultLatch.countDown();
 
@@ -718,7 +732,7 @@ public class StatTrackingStoreClientTest {
           if (callback instanceof TrackingStreamingCallback) {
             TrackingStreamingCallback<K, GenericRecord> trackingStreamingCallback =
                 (TrackingStreamingCallback) callback;
-            trackingStreamingCallback.onDeserializationCompletion(Optional.of(veniceException), 10, 5);
+            trackingStreamingCallback.onDeserializationCompletion(Optional.of(veniceException), keys.size(), 10, 5);
           }
           resultLatch.countDown();
           // Never complete, so the timeout should always happen

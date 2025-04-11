@@ -221,7 +221,11 @@ public abstract class AbstractRecordStreamDecoder<ENVELOPE, K, V> implements Rec
             }
           }
           callback.onCompletion(completedException);
-          callback.onDeserializationCompletion(completedException, successfulKeyCnt.get(), duplicateEntryCount);
+          callback.onDeserializationCompletion(
+              completedException,
+              keyList.size(),
+              successfulKeyCnt.get(),
+              duplicateEntryCount);
           callback.getStats()
               .ifPresent(
                   stats -> stats

@@ -568,6 +568,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
           @Override
           public void onDeserializationCompletion(
               Optional<Exception> exception,
+              int keyCount,
               int successKeyCount,
               int duplicateEntryCount) {
           }

@@ -52,7 +52,8 @@ public class StatsAvroGenericDaVinciClient<K, V> extends DelegatingAvroGenericDa
 
   private static <T> CompletableFuture<T> trackRequest(
       BasicClientStats stats,
-      Supplier<CompletableFuture<T>> futureSupplier) {
+      Supplier<CompletableFuture<T>> futureSupplier,
+      int numKeys) {
     long startTimeInNS = System.nanoTime();
     CompletableFuture<T> statFuture = new CompletableFuture<>();
     try {
@@ -62,6 +63,7 @@ public class StatsAvroGenericDaVinciClient<K, V> extends DelegatingAvroGenericDa
           httpStatus = stats.getUnhealthyRequestHttpStatus(throwable);
           stats.recordUnhealthyRequest(httpStatus);
           stats.recordUnhealthyLatency(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS), httpStatus);
+          stats.recordFailedRequestKeyCount(numKeys, httpStatus);
           statFuture.completeExceptionally(throwable);
         } else {
           int successfulKeyCount = getSuccessfulKeyCount(v);
@@ -86,13 +88,13 @@ public class StatsAvroGenericDaVinciClient<K, V> extends DelegatingAvroGenericDa
   @Override
   public CompletableFuture<V> get(K key, V reusableValue) {
     clientStatsForSingleGet.recordRequestKeyCount(1);
-    return trackRequest(clientStatsForSingleGet, () -> super.get(key, reusableValue));
+    return trackRequest(clientStatsForSingleGet, () -> super.get(key, reusableValue), 1);
   }
 
   @Override
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) {
     clientStatsForBatchGet.recordRequestKeyCount(keys.size());
-    return trackRequest(clientStatsForBatchGet, () -> super.batchGet(keys));
+    return trackRequest(clientStatsForBatchGet, () -> super.batchGet(keys), keys.size());
   }
 
   /**
