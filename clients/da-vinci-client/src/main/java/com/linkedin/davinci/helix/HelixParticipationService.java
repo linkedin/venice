@@ -26,7 +26,6 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -39,8 +38,6 @@ import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.List;
@@ -336,16 +333,7 @@ public class HelixParticipationService extends AbstractVeniceService
    */
   private void asyncStart() {
     zkClient = ZkClientFactory.newZkClient(zkAddress);
-
     VeniceServerConfig veniceServerConfig = veniceConfigLoader.getVeniceServerConfig();
-    VeniceProperties veniceProperties = veniceServerConfig.getClusterProperties();
-    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
-        veniceServerConfig.getPubSubClientsFactory().getProducerAdapterFactory();
-    /**
-     * TODO: Remove this VW factory creation from here and replace it with the one created in {@link KafkaStoreIngestionService}
-     */
-    VeniceWriterFactory writerFactory =
-        new VeniceWriterFactory(veniceProperties.toProperties(), pubSubProducerAdapterFactory, null);
     SchemaEntry valueSchemaEntry;
     DerivedSchemaEntry updateSchemaEntry;
     try {
@@ -365,8 +353,11 @@ public class HelixParticipationService extends AbstractVeniceService
           WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema));
     }
     // We use push status store for persisting incremental push statuses
-    statusStoreWriter =
-        new PushStatusStoreWriter(writerFactory, instance.getNodeId(), valueSchemaEntry, updateSchemaEntry);
+    statusStoreWriter = new PushStatusStoreWriter(
+        ingestionService.getVeniceWriterFactory(),
+        instance.getNodeId(),
+        valueSchemaEntry,
+        updateSchemaEntry);
 
     // Record replica status in Zookeeper.
     // Need to be started before connecting to ZK, otherwise some notification will not be sent by this notifier.

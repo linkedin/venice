@@ -41,9 +41,9 @@ import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
-import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS;
-import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
-import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
@@ -222,14 +222,12 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 1)
             .put(SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED, true)
             .put(
-                PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS,
+                PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS,
                 pubSubClientsFactory.getProducerAdapterFactory().getClass().getName())
             .put(
-                PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS,
+                PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS,
                 pubSubClientsFactory.getConsumerAdapterFactory().getClass().getName())
-            .put(
-                PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS,
-                pubSubClientsFactory.getAdminAdapterFactory().getClass().getName())
+            .put(PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS, pubSubClientsFactory.getAdminAdapterFactory().getClass().getName())
             .put(extraProps.toProperties());
 
         if (sslEnabled) {

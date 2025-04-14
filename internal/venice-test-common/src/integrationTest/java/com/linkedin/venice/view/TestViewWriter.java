@@ -11,6 +11,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Set;
@@ -26,8 +27,9 @@ public class TestViewWriter extends VeniceViewWriter {
       VeniceConfigLoader props,
       Version version,
       Schema keySchema,
-      Map<String, String> extraViewParameters) {
-    super(props, version, keySchema, extraViewParameters);
+      Map<String, String> extraViewParameters,
+      VeniceWriterFactory viewWriterFactory) {
+    super(props, version, keySchema, extraViewParameters, viewWriterFactory);
     internalView =
         new TestView(props.getCombinedProperties().toProperties(), version.getStoreName(), extraViewParameters);
   }

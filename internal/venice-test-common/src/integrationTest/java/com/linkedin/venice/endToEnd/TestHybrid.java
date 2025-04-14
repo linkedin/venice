@@ -797,17 +797,21 @@ public class TestHybrid {
       /**
        *  Build a producer that writes to {@link tmpTopic1}
        */
+      PubSubBrokerWrapper pubSubBrokerWrapper = venice.getPubSubBrokerWrapper();
       Properties veniceWriterProperties = new Properties();
-      veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getPubSubBrokerWrapper().getAddress());
+      veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
       veniceWriterProperties.putAll(
           PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
       AvroSerializer<String> stringSerializer = new AvroSerializer(STRING_SCHEMA);
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
           venice.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
 
-      try (VeniceWriter<byte[], byte[], byte[]> tmpWriter1 =
-          TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
-              .createVeniceWriter(new VeniceWriterOptions.Builder(tmpTopic1.getName()).build())) {
+      try (VeniceWriter<byte[], byte[], byte[]> tmpWriter1 = TestUtils
+          .getVeniceWriterFactory(
+              veniceWriterProperties,
+              pubSubProducerAdapterFactory,
+              pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
+          .createVeniceWriter(new VeniceWriterOptions.Builder(tmpTopic1.getName()).build())) {
         // Write 10 records
         for (int i = 0; i < 10; ++i) {
           tmpWriter1.put(stringSerializer.serialize("key_" + i), stringSerializer.serialize("value_" + i), 1);
@@ -817,9 +821,12 @@ public class TestHybrid {
       /**
        *  Build a producer that writes to {@link tmpTopic2}
        */
-      try (VeniceWriter<byte[], byte[], byte[]> tmpWriter2 =
-          TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
-              .createVeniceWriter(new VeniceWriterOptions.Builder(tmpTopic2.getName()).build())) {
+      try (VeniceWriter<byte[], byte[], byte[]> tmpWriter2 = TestUtils
+          .getVeniceWriterFactory(
+              veniceWriterProperties,
+              pubSubProducerAdapterFactory,
+              pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
+          .createVeniceWriter(new VeniceWriterOptions.Builder(tmpTopic2.getName()).build())) {
         // Write 10 records
         for (int i = 10; i < 20; ++i) {
           tmpWriter2.put(stringSerializer.serialize("key_" + i), stringSerializer.serialize("value_" + i), 1);
@@ -842,9 +849,12 @@ public class TestHybrid {
       try (
           AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
               ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
-          VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter =
-              TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
-                  .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
+          VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter = TestUtils
+              .getVeniceWriterFactory(
+                  veniceWriterProperties,
+                  pubSubProducerAdapterFactory,
+                  pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
+              .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
         // Build a producer to produce 2 TS messages into RT
         realTimeTopicWriter.broadcastTopicSwitch(
             Collections.singletonList(venice.getPubSubBrokerWrapper().getAddress()),
@@ -1290,9 +1300,12 @@ public class TestHybrid {
             new AvroGenericDeserializer<>(STRING_SCHEMA, STRING_SCHEMA);
         StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
 
-        try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter =
-            TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
-                .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
+        try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter = TestUtils
+            .getVeniceWriterFactory(
+                veniceWriterProperties,
+                pubSubProducerAdapterFactory,
+                venice.getPubSubBrokerWrapper().getPubSubPositionTypeRegistry())
+            .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
           // Send <key1, value1, seq: 1>
           Pair<KafkaKey, KafkaMessageEnvelope> record = getKafkaKeyAndValueEnvelope(
               stringSerializer.serialize(key1),
@@ -1476,9 +1489,12 @@ public class TestHybrid {
       StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
 
       for (int i = 0; i < 2; i++) {
-        try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter =
-            TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
-                .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
+        try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter = TestUtils
+            .getVeniceWriterFactory(
+                veniceWriterProperties,
+                pubSubProducerAdapterFactory,
+                venice.getPubSubBrokerWrapper().getPubSubPositionTypeRegistry())
+            .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
           for (int j = i * 50 + 1; j <= i * 50 + 50; j++) {
             realTimeTopicWriter
                 .put(stringSerializer.serialize(String.valueOf(j)), stringSerializer.serialize(prefix + j), 1);
@@ -1550,9 +1566,12 @@ public class TestHybrid {
       // as soon as it finishes writing. This makes sure that closing or switching producers won't
       // impact the ingestion
       for (int i = 0; i < 2; i++) {
-        try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter =
-            TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
-                .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
+        try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter = TestUtils
+            .getVeniceWriterFactory(
+                veniceWriterProperties,
+                pubSubProducerAdapterFactory,
+                venice.getPubSubBrokerWrapper().getPubSubPositionTypeRegistry())
+            .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
           for (int j = i * 50 + 1; j <= i * 50 + 50; j++) {
             realTimeTopicWriter
                 .put(stringSerializer.serialize(String.valueOf(j)), stringSerializer.serialize(prefix + j), 1);

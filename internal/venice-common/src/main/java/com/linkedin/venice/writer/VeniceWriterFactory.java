@@ -9,15 +9,14 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterConcurrentDelegator;
-import com.linkedin.venice.pubsub.api.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterDelegator;
 import com.linkedin.venice.stats.VeniceWriterStats;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,50 +32,64 @@ import org.apache.logging.log4j.Logger;
  */
 public class VeniceWriterFactory {
   private static final Logger LOGGER = LogManager.getLogger(VeniceWriterFactory.class);
-  private final Lazy<VeniceProperties> venicePropertiesLazy;
+  private final VeniceProperties veniceProperties;
   private final PubSubProducerAdapterFactory producerAdapterFactory;
   private final MetricsRepository metricsRepository;
   private final String defaultBrokerAddress;
+  private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
 
   public VeniceWriterFactory(Properties properties) {
-    this(properties, PubSubClientsFactory.createProducerFactory(properties), null);
+    this(properties, null, null, null);
   }
 
+  @Deprecated
   public VeniceWriterFactory(Properties properties, MetricsRepository metricsRepository) {
-    this(properties, PubSubClientsFactory.createProducerFactory(properties), metricsRepository);
+    this(properties, null, metricsRepository, null);
   }
 
   public VeniceWriterFactory(
       Properties properties,
       PubSubProducerAdapterFactory producerAdapterFactory,
-      MetricsRepository metricsRepository) {
+      MetricsRepository metricsRepository,
+      PubSubPositionTypeRegistry pubSubPositionTypeRegistry) {
     this.metricsRepository = metricsRepository;
-    this.venicePropertiesLazy = Lazy.of(() -> new VeniceProperties(properties));
+    this.veniceProperties = new VeniceProperties(properties);
+    this.defaultBrokerAddress = lookupBrokerAddress(veniceProperties);
     if (metricsRepository != null) {
       new VeniceWriterStats(metricsRepository);
     }
     // For now, if VeniceWriterFactory caller does not pass PubSubProducerAdapterFactory, use Kafka factory as default.
     // Eventually we'll force VeniceWriterFactory creators to inject PubSubProducerAdapterFactory.
-    if (producerAdapterFactory == null) {
-      LOGGER.info("No PubSubProducerAdapterFactory provided. Using ApacheKafkaProducerAdapterFactory as default.");
-      producerAdapterFactory = new ApacheKafkaProducerAdapterFactory();
-    }
-    defaultBrokerAddress = lookupBrokerAddress(venicePropertiesLazy.get());
-    this.producerAdapterFactory = producerAdapterFactory;
+    this.producerAdapterFactory = Objects.requireNonNull(
+        producerAdapterFactory != null
+            ? producerAdapterFactory
+            : PubSubClientsFactory.createProducerFactory(veniceProperties),
+        "PubSubProducerAdapterFactory cannot be null when creating VeniceWriterFactory");
+    this.pubSubPositionTypeRegistry = Objects.requireNonNull(
+        pubSubPositionTypeRegistry != null
+            ? pubSubPositionTypeRegistry
+            : PubSubPositionTypeRegistry.getRegistryFromPropertiesOrDefault(veniceProperties),
+        "PubSubPositionTypeRegistry cannot be null when creating VeniceWriterFactory");
+    LOGGER.info(
+        "### MARKER ### Creating VeniceWriterFactory with properties: {} defaultBrokerAddress: {} pubSubPositionTypeRegistry: {} pubSubProducerAdapterFactory: {}",
+        this.veniceProperties,
+        this.defaultBrokerAddress,
+        this.pubSubPositionTypeRegistry,
+        this.producerAdapterFactory);
   }
 
   public <K, V, U> VeniceWriter<K, V, U> createVeniceWriter(VeniceWriterOptions options) {
     PubSubProducerAdapter producerAdapter = buildPubSubProducerAdapter(options);
-    return new VeniceWriter<>(options, venicePropertiesLazy.get(), producerAdapter);
+    return new VeniceWriter<>(options, veniceProperties, producerAdapter);
   }
 
   public <K, V, U> ComplexVeniceWriter<K, V, U> createComplexVeniceWriter(VeniceWriterOptions options) {
     PubSubProducerAdapter producerAdapter = buildPubSubProducerAdapter(options);
-    return new ComplexVeniceWriter<>(options, venicePropertiesLazy.get(), producerAdapter);
+    return new ComplexVeniceWriter<>(options, veniceProperties, producerAdapter);
   }
 
   private PubSubProducerAdapter buildPubSubProducerAdapter(VeniceWriterOptions options) {
-    VeniceProperties props = venicePropertiesLazy.get();
+    VeniceProperties props = veniceProperties;
     String targetBrokerAddress = options.getBrokerAddress() != null ? options.getBrokerAddress() : defaultBrokerAddress;
     Objects.requireNonNull(
         targetBrokerAddress,
@@ -87,7 +100,8 @@ public class VeniceWriterFactory {
             .setBrokerAddress(targetBrokerAddress)
             .setMetricsRepository(metricsRepository)
             .setPubSubMessageSerializer(options.getPubSubMessageSerializer())
-            .setProducerCompressionEnabled(options.isProducerCompressionEnabled());
+            .setProducerCompressionEnabled(options.isProducerCompressionEnabled())
+            .setPubSubPositionTypeRegistry(pubSubPositionTypeRegistry);
 
     Supplier<PubSubProducerAdapter> producerAdapterSupplier =
         () -> producerAdapterFactory.create(producerContext.build());

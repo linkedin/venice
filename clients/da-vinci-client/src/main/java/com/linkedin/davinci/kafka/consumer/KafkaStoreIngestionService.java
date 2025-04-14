@@ -204,6 +204,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final ScheduledExecutorService idleStoreIngestionTaskKillerExecutor;
 
+  private final VeniceWriterFactory veniceWriterFactory;
+
   public KafkaStoreIngestionService(
       StorageService storageService,
       VeniceConfigLoader veniceConfigLoader,
@@ -248,8 +250,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     veniceWriterProperties.put(PubSubConstants.PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS, "true");
     producerAdapterFactory = pubSubClientsFactory.getProducerAdapterFactory();
-    VeniceWriterFactory veniceWriterFactory =
-        new VeniceWriterFactory(veniceWriterProperties, producerAdapterFactory, metricsRepository);
+    this.veniceWriterFactory = new VeniceWriterFactory(
+        veniceWriterProperties,
+        producerAdapterFactory,
+        metricsRepository,
+        serverConfig.getPubSubPositionTypeRegistry());
     this.adaptiveThrottlerSignalService = adaptiveThrottlerSignalService;
     this.ingestionThrottler = new IngestionThrottler(
         isDaVinciClient,
@@ -443,7 +448,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
      */
     DiskUsage diskUsage = new DiskUsage(serverConfig.getDataBasePath(), serverConfig.getDiskFullThreshold());
 
-    VeniceViewWriterFactory viewWriterFactory = new VeniceViewWriterFactory(veniceConfigLoader);
+    VeniceViewWriterFactory viewWriterFactory = new VeniceViewWriterFactory(veniceConfigLoader, veniceWriterFactory);
 
     if (serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
       this.aaWCWorkLoadProcessingThreadPool = Executors.newFixedThreadPool(
@@ -833,6 +838,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   @Override
   public VeniceConfigLoader getVeniceConfigLoader() {
     return veniceConfigLoader;
+  }
+
+  @Override
+  public VeniceWriterFactory getVeniceWriterFactory() {
+    return veniceWriterFactory;
   }
 
   /**

@@ -32,6 +32,7 @@ public abstract class DataWriterComputeJob implements ComputeJob {
       Arrays.asList(
           VeniceWriter.VENICE_WRITER_CONFIG_PREFIX,
           ConfigKeys.KAFKA_CONFIG_PREFIX,
+          ConfigKeys.PUBSUB_CLIENT_CONFIG_PREFIX,
           KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX));
 
   private Status jobStatus = Status.NOT_STARTED;

@@ -27,6 +27,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
@@ -44,6 +45,7 @@ import org.apache.avro.generic.GenericRecord;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.testng.Assert;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -57,6 +59,13 @@ public class ChangeCaptureViewWriterTest {
   public static final String LTX_1 = "ltx1";
   public static final String LVA_1 = "lva1";
   public static final String LOR_1 = "lor1";
+
+  private VeniceWriterFactory veniceWriterFactory;
+
+  @BeforeMethod(alwaysRun = true)
+  public void setUp() {
+    veniceWriterFactory = mock(VeniceWriterFactory.class);
+  }
 
   @Test
   public void testConstructVersionSwapMessage() {
@@ -111,8 +120,12 @@ public class ChangeCaptureViewWriterTest {
     Mockito.when(mockVeniceConfigLoader.getVeniceServerConfig()).thenReturn(mockVeniceServerConfig);
 
     // Build the change capture writer and set the mock writer
-    ChangeCaptureViewWriter changeCaptureViewWriter =
-        new ChangeCaptureViewWriter(mockVeniceConfigLoader, version, SCHEMA, Collections.emptyMap());
+    ChangeCaptureViewWriter changeCaptureViewWriter = new ChangeCaptureViewWriter(
+        mockVeniceConfigLoader,
+        version,
+        SCHEMA,
+        Collections.emptyMap(),
+        veniceWriterFactory);
     changeCaptureViewWriter.setVeniceWriter(mockVeniceWriter);
 
     // Verify that we never produce the version swap from a follower replica
@@ -202,8 +215,12 @@ public class ChangeCaptureViewWriterTest {
     Mockito.when(mockVeniceServerConfig.getPubSubClientsFactory()).thenReturn(mockPubSubClientsFactory);
     Mockito.when(mockVeniceConfigLoader.getVeniceServerConfig()).thenReturn(mockVeniceServerConfig);
 
-    ChangeCaptureViewWriter changeCaptureViewWriter =
-        new ChangeCaptureViewWriter(mockVeniceConfigLoader, version, SCHEMA, Collections.emptyMap());
+    ChangeCaptureViewWriter changeCaptureViewWriter = new ChangeCaptureViewWriter(
+        mockVeniceConfigLoader,
+        version,
+        SCHEMA,
+        Collections.emptyMap(),
+        veniceWriterFactory);
 
     VeniceWriterOptions writerOptions = changeCaptureViewWriter.buildWriterOptions();
 
@@ -237,8 +254,12 @@ public class ChangeCaptureViewWriterTest {
     Mockito.when(mockVeniceConfigLoader.getCombinedProperties()).thenReturn(props);
     Mockito.when(mockVeniceConfigLoader.getVeniceServerConfig()).thenReturn(mockVeniceServerConfig);
 
-    ChangeCaptureViewWriter changeCaptureViewWriter =
-        new ChangeCaptureViewWriter(mockVeniceConfigLoader, version, SCHEMA, Collections.emptyMap());
+    ChangeCaptureViewWriter changeCaptureViewWriter = new ChangeCaptureViewWriter(
+        mockVeniceConfigLoader,
+        version,
+        SCHEMA,
+        Collections.emptyMap(),
+        veniceWriterFactory);
 
     Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(SCHEMA, 1);
     List<Long> vectors = Arrays.asList(1L, 2L, 3L);
