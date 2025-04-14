@@ -43,6 +43,7 @@ import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.MultiStoragePersonaResponse;
+import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
@@ -507,6 +508,8 @@ public class AdminTool {
         case REPUSH_STORE:
           repushStore(cmd);
           break;
+        case GET_DEAD_STORES:
+          getDeadStores(cmd);
         case COMPARE_STORE:
           compareStore(cmd);
           break;
@@ -2825,6 +2828,15 @@ public class AdminTool {
   private static void repushStore(CommandLine cmd) {
     String storeName = getRequiredArgument(cmd, Arg.STORE);
     RepushJobResponse response = controllerClient.repushStore(storeName);
+    printObject(response);
+  }
+
+  private static void getDeadStores(CommandLine cmd) {
+    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
+    String storeName = getOptionalArgument(cmd, Arg.STORE);
+    boolean includeSystemStores = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.INCLUDE_SYSTEM_STORES));
+
+    MultiStoreInfoResponse response = controllerClient.getDeadStores(clusterName, storeName, includeSystemStores);
     printObject(response);
   }
 

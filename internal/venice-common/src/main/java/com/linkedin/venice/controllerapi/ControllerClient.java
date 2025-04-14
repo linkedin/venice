@@ -1227,6 +1227,12 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.REPUSH_STORE, params, RepushJobResponse.class);
   }
 
+  public MultiStoreInfoResponse getDeadStores(String clusterName, String storeName, boolean includeSystemStores) {
+    QueryParams params =
+        newParams().add(CLUSTER, clusterName).add(NAME, storeName).add(INCLUDE_SYSTEM_STORES, includeSystemStores);
+    return request(ControllerRoute.GET_DEAD_STORES, params, MultiStoreInfoResponse.class);
+  }
+
   public VersionResponse getStoreLargestUsedVersion(String clusterName, String storeName) {
     QueryParams params = newParams().add(CLUSTER, clusterName).add(NAME, storeName);
     return request(ControllerRoute.GET_STORE_LARGEST_USED_VERSION, params, VersionResponse.class);
