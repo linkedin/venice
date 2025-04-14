@@ -439,7 +439,7 @@ public class StoreBackendTest {
 
     // delayed ingestion is enabled, target region is the current region
     store.setTargetSwapRegion("dc-0");
-    Version version3 = new VersionImpl(store.getName(), store.peekNextVersion().getNumber(), null, 15);
+    Version version3 = new VersionImpl(store.getName(), store.peekNextVersionNumber(), null, 15);
     store.addVersion(version3);
     backend.handleStoreChanged(storeBackend);
 
@@ -452,7 +452,7 @@ public class StoreBackendTest {
 
     // delayed ingestion is enabled, target region is not the current region
     store.setTargetSwapRegion("dc-1");
-    Version version4 = new VersionImpl(store.getName(), store.peekNextVersion().getNumber(), null, 15);
+    Version version4 = new VersionImpl(store.getName(), store.peekNextVersionNumber(), null, 15);
     store.addVersion(version4);
     backend.handleStoreChanged(storeBackend);
 
