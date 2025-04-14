@@ -160,10 +160,10 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       int httpStatus;
       if (exceptionReceived) {
         httpStatus = clientStats.getUnhealthyRequestHttpStatus(throwable);
-        clientStats.emitRequestUnhealthyMetrics(latency, numberOfKeys, httpStatus);
+        clientStats.emitUnhealthyRequestMetrics(latency, numberOfKeys, httpStatus);
       } else {
         httpStatus = clientStats.getHealthyRequestHttpStatus(requestContext.successRequestKeyCount.get());
-        clientStats.emitRequestHealthyMetrics(latency, requestContext.successRequestKeyCount.get(), httpStatus);
+        clientStats.emitHealthyRequestMetrics(latency, requestContext.successRequestKeyCount.get(), httpStatus);
 
         // Record additional metrics
         if (requestContext.requestSerializationTime > 0) {
