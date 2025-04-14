@@ -9,6 +9,7 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
@@ -45,7 +46,6 @@ import org.apache.logging.log4j.Logger;
  */
 public class DeferredVersionSwapService extends AbstractVeniceService {
   private final AtomicBoolean stop = new AtomicBoolean(false);
-  private final Set<String> allClusters;
   private final VeniceControllerMultiClusterConfig veniceControllerMultiClusterConfig;
   private final VeniceParentHelixAdmin veniceParentHelixAdmin;
   private final ScheduledExecutorService deferredVersionSwapExecutor = Executors.newSingleThreadScheduledExecutor();
@@ -61,7 +61,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       VeniceControllerMultiClusterConfig multiClusterConfig,
       DeferredVersionSwapStats deferredVersionSwapStats) {
     this.veniceParentHelixAdmin = admin;
-    this.allClusters = multiClusterConfig.getClusters();
     this.veniceControllerMultiClusterConfig = multiClusterConfig;
     this.deferredVersionSwapStats = deferredVersionSwapStats;
   }
@@ -69,7 +68,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   @Override
   public boolean startInner() throws Exception {
     deferredVersionSwapExecutor.scheduleAtFixedRate(
-        new DeferredVersionSwapTask(),
+        getRunnableForDeferredVersionSwap(),
         0,
         veniceControllerMultiClusterConfig.getDeferredVersionSwapSleepMs(),
         TimeUnit.MILLISECONDS);
@@ -109,6 +108,10 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       Store store,
       int targetVersionNum) {
     for (String targetRegion: targetRegions) {
+      if (!completionTimes.containsKey(targetRegion)) {
+        continue;
+      }
+
       long completionTime = completionTimes.get(targetRegion);
       long storeWaitTime = TimeUnit.MINUTES.toSeconds(store.getTargetSwapRegionWaitTime());
       long currentTime = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
@@ -121,6 +124,31 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     }
 
     return true;
+  }
+
+  /**
+   * Checks whether the wait time has passed since the cached push completion time in the list of regions
+   * @param targetRegions the list of regions to check if wait time has elapsed
+   * @param store the store to check if the push wait time has elapsed
+   * @param targetVersionNum the version to check if the push wait time has elapsed
+   * @param kafkaTopicName the name of the kafka topic for this target version
+   * @return
+   */
+  private boolean didCachedWaitTimeElapseInTargetRegions(
+      Set<String> targetRegions,
+      Store store,
+      int targetVersionNum,
+      String kafkaTopicName) {
+    Map<String, Long> storePushCompletionTimes = storePushCompletionTimeCache.getIfPresent(kafkaTopicName);
+
+    // If there is no cached completion time, we should let the service continue the checks for the store as:
+    // 1. It could be a new push that we haven't checked for yet
+    // 2. The existing cached wait time expired
+    if (storePushCompletionTimes == null) {
+      return true;
+    }
+
+    return didWaitTimeElapseInTargetRegions(storePushCompletionTimes, targetRegions, store, targetVersionNum);
   }
 
   private void logMessageIfNotRedundant(String message) {
@@ -145,6 +173,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       if (targetRegionStoreResponse.isError()) {
         String message = "Got error when fetching targetRegionStore: " + targetRegionStoreResponse.getStore();
         logMessageIfNotRedundant(message);
+        continue;
       }
 
       StoreInfo targetRegionStore = targetRegionStoreResponse.getStore();
@@ -154,6 +183,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         String message =
             "Unable to find version " + targetVersionNum + " for store: " + storeName + " in region " + region;
         logMessageIfNotRedundant(message);
+        continue;
       }
 
       if (version.isPresent()) {
@@ -346,102 +376,108 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     return completedNonTargetRegions;
   }
 
-  private class DeferredVersionSwapTask implements Runnable {
-    @Override
-    public void run() {
-      while (!stop.get()) {
-        try {
-          for (String cluster: allClusters) {
-            if (!veniceParentHelixAdmin.isLeaderControllerFor(cluster)) {
+  private Runnable getRunnableForDeferredVersionSwap() {
+    return () -> {
+      if (stop.get()) {
+        return;
+      }
+
+      try {
+        for (String cluster: veniceParentHelixAdmin.getClustersLeaderOf()) {
+          if (!veniceParentHelixAdmin.isLeaderControllerFor(cluster)) {
+            continue;
+          }
+
+          List<Store> parentStores;
+          try {
+            parentStores = veniceParentHelixAdmin.getAllStores(cluster);
+          } catch (VeniceNoClusterException e) {
+            LOGGER.warn("Leadership changed during getAllStores call for cluster: {}", cluster, e);
+            break;
+          }
+
+          for (Store parentStore: parentStores) {
+            int targetVersionNum = parentStore.getLargestUsedVersionNumber();
+            Version targetVersion = parentStore.getVersion(targetVersionNum);
+
+            // Check if the target version is in a terminal state (push job completed or failed)
+            if (!isPushInTerminalState(targetVersion)) {
               continue;
             }
 
-            List<Store> parentStores = veniceParentHelixAdmin.getAllStores(cluster);
-            for (Store parentStore: parentStores) {
-              int targetVersionNum = parentStore.getLargestUsedVersionNumber();
-              Version targetVersion = parentStore.getVersion(targetVersionNum);
+            // Check if the cached waitTime for the target version has elapsed
+            String storeName = parentStore.getName();
+            String kafkaTopicName = Version.composeKafkaTopic(storeName, targetVersionNum);
+            Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetVersion.getTargetSwapRegion());
+            if (!didCachedWaitTimeElapseInTargetRegions(targetRegions, parentStore, targetVersionNum, kafkaTopicName)) {
+              continue;
+            }
 
-              // Check if the target version is in a terminal state (push job completed or failed)
-              // TODO rename function to isPushInTerminalState
-              if (!isPushInTerminalState(targetVersion)) {
+            // TODO remove this check once DVC delayed ingestion is completed
+            // Skip davinci stores if skip.deferred.version.swap.for.dvc.enabled is enabled
+            Map<String, Integer> coloToVersions =
+                veniceParentHelixAdmin.getCurrentVersionsForMultiColos(cluster, storeName);
+            if (veniceControllerMultiClusterConfig.isSkipDeferredVersionSwapForDVCEnabled()) {
+              if (isDavinciStore(cluster, coloToVersions.keySet(), storeName, targetVersionNum)) {
                 continue;
               }
+            }
 
-              // Check if the cached waitTime (if any) for the target version has elapsed
-              String storeName = parentStore.getName();
-              String kafkaTopicName = Version.composeKafkaTopic(storeName, targetVersionNum);
-              Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetVersion.getTargetSwapRegion());
-              Map<String, Long> storePushCompletionTimes = storePushCompletionTimeCache.getIfPresent(kafkaTopicName);
-              if (storePushCompletionTimes != null) {
-                if (!didWaitTimeElapseInTargetRegions(
-                    storePushCompletionTimes,
-                    targetRegions,
-                    parentStore,
-                    targetVersionNum)) {
-                  continue;
-                }
-              }
+            Admin.OfflinePushStatusInfo pushStatusInfo =
+                veniceParentHelixAdmin.getOffLinePushStatus(cluster, kafkaTopicName);
+            HelixVeniceClusterResources resources =
+                veniceParentHelixAdmin.getVeniceHelixAdmin().getHelixVeniceClusterResources(cluster);
+            ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+            Set<String> remainingRegions = getRegionsForVersionSwap(coloToVersions, targetRegions);
 
-              // TODO remove this check once DVC delayed ingestion is completed
-              // Skip davinci stores if skip.deferred.version.swap.for.dvc.enabled is enabled
-              Map<String, Integer> coloToVersions =
-                  veniceParentHelixAdmin.getCurrentVersionsForMultiColos(cluster, storeName);
-              if (veniceControllerMultiClusterConfig.isSkipDeferredVersionSwapForDVCEnabled()) {
-                if (isDavinciStore(cluster, coloToVersions.keySet(), storeName, targetVersionNum)) {
-                  continue;
-                }
-              }
-
-              Admin.OfflinePushStatusInfo pushStatusInfo =
-                  veniceParentHelixAdmin.getOffLinePushStatus(cluster, kafkaTopicName);
-              HelixVeniceClusterResources resources =
-                  veniceParentHelixAdmin.getVeniceHelixAdmin().getHelixVeniceClusterResources(cluster);
-              ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
-              Set<String> remainingRegions = getRegionsForVersionSwap(coloToVersions, targetRegions);
-
-              // If version status is marked as KILLED (push timeout, user killed push job, etc), check if target
-              // regions failed
-              if (targetVersion.getStatus() == VersionStatus.KILLED) {
-                if (didPushFailInTargetRegions(
-                    targetRegions,
-                    pushStatusInfo,
-                    repository,
-                    parentStore,
-                    targetVersionNum)) {
-                  continue;
-                }
-              }
-
-              // Get eligible non target regions to roll forward in
-              Set<String> nonTargetRegionsCompleted =
-                  getRegionsToRollForward(remainingRegions, pushStatusInfo, repository, parentStore, targetVersionNum);
-              if (nonTargetRegionsCompleted == null) {
-                continue;
-              }
-
-              // Check that waitTime has elapsed in target regions
-              if (!didWaitTimeElapseInTargetRegions(
-                  pushStatusInfo.getExtraInfoUpdateTimestamp(),
+            // If version status is marked as KILLED (push timeout, user killed push job, etc), check if target
+            // regions failed
+            if (targetVersion.getStatus() == VersionStatus.KILLED) {
+              if (didPushFailInTargetRegions(
                   targetRegions,
+                  pushStatusInfo,
+                  repository,
                   parentStore,
                   targetVersionNum)) {
                 continue;
               }
-
-              // TODO add call for postStoreVersionSwap() once it is implemented
-
-              // Switch to the target version in the completed non target regions
-              rollForwardToTargetVersion(nonTargetRegionsCompleted, parentStore, targetVersion, cluster, repository);
             }
+
+            // Get eligible non target regions to roll forward in
+            Set<String> nonTargetRegionsCompleted =
+                getRegionsToRollForward(remainingRegions, pushStatusInfo, repository, parentStore, targetVersionNum);
+            if (nonTargetRegionsCompleted == null) {
+              continue;
+            }
+
+            // Check that waitTime has elapsed in target regions
+            if (!didWaitTimeElapseInTargetRegions(
+                pushStatusInfo.getExtraInfoUpdateTimestamp(),
+                targetRegions,
+                parentStore,
+                targetVersionNum)) {
+              storePushCompletionTimeCache.put(kafkaTopicName, pushStatusInfo.getExtraInfoUpdateTimestamp());
+              continue;
+            }
+
+            // TODO add call for postStoreVersionSwap() once it is implemented
+
+            // Switch to the target version in the completed non target regions
+            rollForwardToTargetVersion(nonTargetRegionsCompleted, parentStore, targetVersion, cluster, repository);
           }
-        } catch (Exception e) {
-          LOGGER.warn("Caught exception: {} while performing deferred version swap", e);
-          deferredVersionSwapStats.recordDeferredVersionSwapErrorSensor();
-        } catch (Throwable throwable) {
-          LOGGER.warn("Caught a throwable: {} while performing deferred version swap", throwable.getMessage());
-          deferredVersionSwapStats.recordDeferreredVersionSwapThrowableSensor();
         }
+      } catch (Exception e) {
+        LOGGER.warn("Caught exception while performing deferred version swap", e);
+        deferredVersionSwapStats.recordDeferredVersionSwapErrorSensor();
+      } catch (Throwable throwable) {
+        LOGGER.warn("Caught a throwable while performing deferred version swap", throwable);
+        deferredVersionSwapStats.recordDeferreredVersionSwapThrowableSensor();
       }
-    }
+    };
+  }
+
+  // Only used for testing
+  Cache<String, Map<String, Long>> getStorePushCompletionTimes() {
+    return storePushCompletionTimeCache;
   }
 }

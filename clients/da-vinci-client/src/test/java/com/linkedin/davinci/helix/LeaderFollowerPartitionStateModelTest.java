@@ -85,12 +85,12 @@ public class LeaderFollowerPartitionStateModelTest {
 
     // LEADER->STANDBY
     leaderFollowerPartitionStateModelSpy.onBecomeStandbyFromLeader(message, context);
-    verify(heartbeatMonitoringService)
+    verify(heartbeatMonitoringService, never())
         .updateLagMonitor(eq(resourceName), eq(partition), eq(HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR));
 
     // OFFLINE->STANDBY
     leaderFollowerPartitionStateModelSpy.onBecomeStandbyFromOffline(message, context);
-    verify(heartbeatMonitoringService, times(2))
+    verify(heartbeatMonitoringService, times(1))
         .updateLagMonitor(eq(resourceName), eq(partition), eq(HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR));
 
     // STANDBY->OFFLINE

@@ -13,7 +13,6 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.CHECK_RESOURCE_C
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLEANUP_INSTANCE_CUSTOMIZED_STATES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLUSTER_DISCOVERY;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLUSTER_HEALTH_STORES;
-import static com.linkedin.venice.controllerapi.ControllerRoute.COMPACT_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.COMPARE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.COMPLETE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER;
@@ -35,6 +34,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.END_OF_PUSH;
 import static com.linkedin.venice.controllerapi.ControllerRoute.EXECUTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.FUTURE_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ACL;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ADMIN_OPERATION_VERSION_FROM_CONTROLLERS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ADMIN_TOPIC_METADATA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_MIGRATION_PUSH_STRATEGIES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_REPLICATION_METADATA_SCHEMAS;
@@ -47,6 +47,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.GET_HEARTBEAT_TI
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_INUSE_SCHEMA_IDS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_KAFKA_TOPIC_CONFIGS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_KEY_SCHEMA;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_LOCAL_ADMIN_OPERATION_PROTOCOL_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ONGOING_INCREMENTAL_PUSH_VERSIONS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REGION_PUSH_DETAILS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REPUSH_INFO;
@@ -83,6 +84,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_DERIVED_S
 import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_NODE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_STORE_FROM_GRAVEYARD;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REPLICATE_META_DATA;
+import static com.linkedin.venice.controllerapi.ControllerRoute.REPUSH_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REQUEST_TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ROLLBACK_TO_BACKUP_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ROLL_FORWARD_TO_FUTURE_VERSION;
@@ -599,8 +601,8 @@ public class AdminSparkServer extends AbstractVeniceService {
         GET_STORES_FOR_COMPACTION.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getStoresForCompaction(admin)));
     httpService.post(
-        COMPACT_STORE.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, storesRoutes.compactStore(admin)));
+        REPUSH_STORE.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, storesRoutes.repushStore(admin)));
     httpService.get(
         GET_STORE_LARGEST_USED_VERSION.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getStoreLargestUsedVersion(admin)));
@@ -655,6 +657,16 @@ public class AdminSparkServer extends AbstractVeniceService {
             admin,
             adminTopicMetadataRoutes
                 .updateAdminOperationProtocolVersion(admin, requestHandler.getClusterAdminOpsRequestHandler())));
+    httpService.get(
+        GET_ADMIN_OPERATION_VERSION_FROM_CONTROLLERS.getPath(),
+        new VeniceParentControllerRegionStateHandler(
+            admin,
+            controllerRoutes.getAdminOperationVersionFromControllers(admin)));
+    httpService.get(
+        GET_LOCAL_ADMIN_OPERATION_PROTOCOL_VERSION.getPath(),
+        new VeniceParentControllerRegionStateHandler(
+            admin,
+            controllerRoutes.getLocalAdminOperationProtocolVersion(admin)));
     httpService.post(
         DELETE_KAFKA_TOPIC.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.deleteKafkaTopic(admin)));
