@@ -3,12 +3,17 @@ package com.linkedin.venice.controller.systemstore;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
+import com.linkedin.venice.controller.stats.SystemStoreHealthCheckStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.SystemStoreHeartbeatResponse;
 import com.linkedin.venice.meta.Store;
@@ -16,6 +21,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -23,7 +29,31 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class TestSystemStoreRepairTask {
+public class SystemStoreRepairTaskTest {
+  @Test
+  public void testFilterDisabledCluster() {
+    SystemStoreRepairTask systemStoreRepairTask = mock(SystemStoreRepairTask.class);
+
+    Map<String, SystemStoreHealthCheckStats> systemStoreHealthCheckStatsMap = new HashMap<>();
+    systemStoreHealthCheckStatsMap.put("venice-2", mock(SystemStoreHealthCheckStats.class));
+    systemStoreHealthCheckStatsMap.put("venice-3", mock(SystemStoreHealthCheckStats.class));
+    doReturn(systemStoreHealthCheckStatsMap).when(systemStoreRepairTask).getClusterToSystemStoreHealthCheckStatsMap();
+
+    VeniceParentHelixAdmin parentHelixAdmin = mock(VeniceParentHelixAdmin.class);
+    List<String> leaderClusterList = Arrays.asList("venice-1", "venice-3");
+    doReturn(leaderClusterList).when(parentHelixAdmin).getClustersLeaderOf();
+    doReturn(parentHelixAdmin).when(systemStoreRepairTask).getParentAdmin();
+
+    doCallRealMethod().when(systemStoreRepairTask).run();
+    systemStoreRepairTask.run();
+
+    // Only venice-3 is the leader cluster and has system store repair task enabled.
+    verify(systemStoreRepairTask, never()).checkSystemStoresHealth(eq("venice-1"), anySet(), anySet(), anyMap());
+    verify(systemStoreRepairTask, never()).checkSystemStoresHealth(eq("venice-2"), anySet(), anySet(), anyMap());
+    verify(systemStoreRepairTask).checkSystemStoresHealth(eq("venice-3"), anySet(), anySet(), anyMap());
+
+  }
+
   @Test
   public void testCheckHeartbeat() {
     SystemStoreRepairTask systemStoreRepairTask = mock(SystemStoreRepairTask.class);

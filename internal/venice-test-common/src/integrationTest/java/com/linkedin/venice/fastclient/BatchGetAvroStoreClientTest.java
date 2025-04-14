@@ -130,7 +130,6 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setSpeculativeQueryEnabled(true)
             .setDualReadEnabled(false);
 
     if (retryEnabled) {
@@ -169,7 +168,6 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setSpeculativeQueryEnabled(true)
             .setDualReadEnabled(false);
 
     MetricsRepository metricsRepository = new MetricsRepository();
@@ -200,7 +198,6 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setSpeculativeQueryEnabled(false)
             .setDualReadEnabled(false);
 
     if (retryEnabled) {
@@ -259,7 +256,6 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setSpeculativeQueryEnabled(false)
             .setDualReadEnabled(false);
 
     MetricsRepository metricsRepository = new MetricsRepository();
@@ -304,7 +300,6 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setSpeculativeQueryEnabled(false)
             .setDualReadEnabled(false);
 
     if (retryEnabled) {

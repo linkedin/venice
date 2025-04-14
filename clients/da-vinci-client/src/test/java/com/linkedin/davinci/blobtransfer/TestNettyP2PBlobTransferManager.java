@@ -14,6 +14,7 @@ import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
@@ -95,6 +96,10 @@ public class TestNettyP2PBlobTransferManager {
     StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
     GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler =
         getGlobalChannelTrafficShapingHandlerInstance(2000000, 2000000);
+
+    AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
+    Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(Mockito.anyString());
+    Mockito.doReturn(true).when(storageEngine).containsPartition(Mockito.anyInt());
 
     sslFactory = Optional.of(SslUtils.getVeniceLocalSslFactory());
 

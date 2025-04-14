@@ -1,6 +1,7 @@
 package com.linkedin.venice.utils;
 
 import static com.linkedin.venice.HttpConstants.LOCALHOST;
+import static com.linkedin.venice.meta.Version.REAL_TIME_TOPIC_SUFFIX;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -22,6 +23,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -88,7 +90,6 @@ public class Utils {
   public static final AtomicBoolean SUPPRESS_SYSTEM_EXIT = new AtomicBoolean();
   public static final String SEPARATE_TOPIC_SUFFIX = "_sep";
   public static final String FATAL_DATA_VALIDATION_ERROR = "fatal data validation problem";
-  public static final String REAL_TIME_TOPIC_TEMPLATE = "%s_v%d" + Version.REAL_TIME_TOPIC_SUFFIX;
 
   /**
    * Print an error and exit with error code 1
@@ -575,11 +576,11 @@ public class Utils {
    * {@link Utils#getRealTimeTopicName(Version)}
    */
   public static String composeRealTimeTopic(String storeName) {
-    return storeName + Version.REAL_TIME_TOPIC_SUFFIX;
+    return storeName + REAL_TIME_TOPIC_SUFFIX;
   }
 
   public static String composeRealTimeTopic(String storeName, int versionNumber) {
-    return String.format(REAL_TIME_TOPIC_TEMPLATE, storeName, versionNumber);
+    return String.format(Version.REAL_TIME_TOPIC_TEMPLATE, storeName, versionNumber);
   }
 
   /**
@@ -1012,17 +1013,17 @@ public class Utils {
     return params;
   }
 
-  public static Pair<Store, Version> waitStoreVersionOrThrow(
+  public static StoreVersionInfo waitStoreVersionOrThrow(
       String storeVersionName,
       ReadOnlyStoreRepository metadataRepo) {
     String storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
     int versionNumber = Version.parseVersionFromKafkaTopicName(storeVersionName);
 
-    Pair<Store, Version> storeVersionPair = metadataRepo.waitVersion(storeName, versionNumber, Duration.ofSeconds(30));
-    if (storeVersionPair.getFirst() == null) {
+    StoreVersionInfo storeVersionPair = metadataRepo.waitVersion(storeName, versionNumber, Duration.ofSeconds(30));
+    if (storeVersionPair.getStore() == null) {
       throw new VeniceException("Store " + storeName + " does not exist.");
     }
-    if (storeVersionPair.getSecond() == null) {
+    if (storeVersionPair.getVersion() == null) {
       throw new VeniceException("Store " + storeName + " version " + versionNumber + " does not exist.");
     }
     return storeVersionPair;

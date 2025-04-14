@@ -11,8 +11,10 @@ import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -22,6 +24,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -67,12 +70,18 @@ public class RequestBasedMetadataTest {
       boolean isMetadataConnWarmupEnabled) throws IOException, InterruptedException {
     String storeName = "testStore";
 
-    ClientConfig clientConfig =
-        RequestBasedMetadataTestUtils.getMockClientConfig(storeName, firstConnWarmupFails, isMetadataConnWarmupEnabled);
-    RequestBasedMetadata requestBasedMetadata = null;
     ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+    ScheduledExecutorService mockRefreshExecutor = mock(ScheduledExecutorService.class);
+    doAnswer(invocation -> {
+      scheduler.schedule((Runnable) invocation.getArgument(0), invocation.getArgument(1), invocation.getArgument(2));
+      return null;
+    }).when(mockRefreshExecutor).schedule(any(Runnable.class), anyLong(), any(TimeUnit.class));
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils
+        .getMockClientConfig(storeName, firstConnWarmupFails, isMetadataConnWarmupEnabled, mockRefreshExecutor);
+    RequestBasedMetadata requestBasedMetadata = null;
+
     try {
-      requestBasedMetadata = getMockMetaData(clientConfig, storeName, false, true, firstMetadataUpdateFails, scheduler);
+      requestBasedMetadata = getMockMetaData(clientConfig, storeName, false, true, firstMetadataUpdateFails);
       requestBasedMetadata.start();
       CountDownLatch isReadyLatch = requestBasedMetadata.getIsReadyLatch();
 
@@ -92,9 +101,12 @@ public class RequestBasedMetadataTest {
       // testing that start() is only finished after warmup is done
       long periodicRetryAfterSuccessfulWarmup = requestBasedMetadata.getRefreshIntervalInSeconds();
       waitForNonDeterministicAssertion(2, TimeUnit.SECONDS, () -> {
+        assertSame(finalRequestBasedMetadata.getScheduler(), mockRefreshExecutor);
         verify(finalRequestBasedMetadata.getScheduler())
             .schedule(any(Runnable.class), eq(periodicRetryAfterSuccessfulWarmup), eq(TimeUnit.SECONDS));
       });
+    } catch (Exception e) {
+      e.printStackTrace();
     } finally {
       scheduler.shutdownNow();
       if (requestBasedMetadata != null) {

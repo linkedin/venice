@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.blobtransfer.server.P2PFileTransferServerHandler;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -149,6 +150,9 @@ public class TestP2PFileTransferServerHandler {
 
   @Test
   public void testFailOnAccessPath() throws IOException {
+    AbstractStorageEngine localStorageEngine = Mockito.mock(AbstractStorageEngine.class);
+    Mockito.doReturn(localStorageEngine).when(storageEngineRepository).getLocalStorageEngine(Mockito.any());
+    Mockito.doReturn(true).when(localStorageEngine).containsPartition(Mockito.anyInt());
     // prepare response from metadata service for the metadata preparation
     StoreVersionState storeVersionState = new StoreVersionState();
     Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());
@@ -180,6 +184,10 @@ public class TestP2PFileTransferServerHandler {
 
   @Test
   public void testTransferSingleFileAndSingleMetadataForBatchStore() throws IOException {
+    AbstractStorageEngine localStorageEngine = Mockito.mock(AbstractStorageEngine.class);
+    Mockito.doReturn(localStorageEngine).when(storageEngineRepository).getLocalStorageEngine(Mockito.any());
+    Mockito.doReturn(true).when(localStorageEngine).containsPartition(Mockito.anyInt());
+
     // prepare response from metadata service
     StoreVersionState storeVersionState = new StoreVersionState();
     Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());
@@ -234,6 +242,10 @@ public class TestP2PFileTransferServerHandler {
 
   @Test
   public void testTransferMultipleFiles() throws IOException {
+    AbstractStorageEngine localStorageEngine = Mockito.mock(AbstractStorageEngine.class);
+    Mockito.doReturn(localStorageEngine).when(storageEngineRepository).getLocalStorageEngine(Mockito.any());
+    Mockito.doReturn(true).when(localStorageEngine).containsPartition(Mockito.anyInt());
+
     // prepare response from metadata service
     StoreVersionState storeVersionState = new StoreVersionState();
     Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());

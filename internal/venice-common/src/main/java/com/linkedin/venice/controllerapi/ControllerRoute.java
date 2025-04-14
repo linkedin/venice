@@ -271,8 +271,10 @@ public enum ControllerRoute {
   ), GET_STALE_STORES_IN_CLUSTER("/get_stale_stores_in_cluster", HttpMethod.GET, Collections.singletonList(CLUSTER)),
   GET_STORES_IN_CLUSTER("/get_stores_in_cluster", HttpMethod.GET, Collections.singletonList(CLUSTER)),
   GET_STORES_FOR_COMPACTION("/get_stores_for_compaction", HttpMethod.GET, Collections.singletonList(CLUSTER)),
-  COMPACT_STORE("/trigger_repush", HttpMethod.POST, Arrays.asList(NAME)),
+  REPUSH_STORE("/trigger_repush", HttpMethod.POST, Arrays.asList(NAME)),
   GET_STORE_LARGEST_USED_VERSION("/get_store_largest_used_version", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
+
+  GET_DEAD_STORES("/get_dead_stores", HttpMethod.GET, Arrays.asList(CLUSTER, NAME, INCLUDE_SYSTEM_STORES)),
   LIST_STORE_PUSH_INFO("/list_store_push_info", HttpMethod.GET, Arrays.asList(CLUSTER, NAME, PARTITION_DETAIL_ENABLED)),
   GET_REGION_PUSH_DETAILS(
       "/get_region_push_details", HttpMethod.GET, Arrays.asList(CLUSTER, NAME, PARTITION_DETAIL_ENABLED)
@@ -293,8 +295,13 @@ public enum ControllerRoute {
   UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION(
       "/update_admin_operation_protocol_version", HttpMethod.POST,
       Arrays.asList(CLUSTER, ADMIN_OPERATION_PROTOCOL_VERSION)
+  ),
+  GET_ADMIN_OPERATION_VERSION_FROM_CONTROLLERS(
+      "/get_admin_operation_version_from_controllers", HttpMethod.GET, Collections.singletonList(CLUSTER)
+  ),
+  GET_LOCAL_ADMIN_OPERATION_PROTOCOL_VERSION(
+      "/get_local_admin_operation_protocol_version", HttpMethod.GET, Collections.emptyList()
   ), DELETE_KAFKA_TOPIC("/delete_kafka_topic", HttpMethod.POST, Arrays.asList(CLUSTER, TOPIC)),
-
   CREATE_STORAGE_PERSONA(
       "/create_storage_persona", HttpMethod.POST,
       Arrays.asList(CLUSTER, PERSONA_NAME, PERSONA_QUOTA, PERSONA_STORES, PERSONA_OWNERS)

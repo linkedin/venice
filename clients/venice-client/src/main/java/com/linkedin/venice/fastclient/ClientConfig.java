@@ -22,6 +22,7 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ScheduledExecutorService;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -31,11 +32,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private static final Logger LOGGER = LogManager.getLogger(ClientConfig.class);
   private final Client r2Client;
   private final String statsPrefix;
-  private final boolean speculativeQueryEnabled;
   private final Class<T> specificValueClass;
   private final String storeName;
   private final Map<RequestType, FastClientStats> clientStatsMap = new VeniceConcurrentHashMap<>();
   private final Executor deserializationExecutor;
+  private final ScheduledExecutorService metadataRefreshExecutor;
   private final ClientRoutingStrategyType clientRoutingStrategyType;
   /**
    * For dual-read support.
@@ -88,6 +89,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private Set<String> harClusters;
   private final InstanceHealthMonitor instanceHealthMonitor;
   private final boolean retryBudgetEnabled;
+  private final double retryBudgetPercentage;
+  private final boolean enableLeastLoadedRoutingStrategyForHelixGroupRouting;
 
   private final MetricsRepository metricsRepository;
 
@@ -96,9 +99,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       Client r2Client,
       MetricsRepository metricsRepository,
       String statsPrefix,
-      boolean speculativeQueryEnabled,
       Class<T> specificValueClass,
       Executor deserializationExecutor,
+      ScheduledExecutorService metadataRefreshExecutor,
       ClientRoutingStrategyType clientRoutingStrategyType,
       boolean dualReadEnabled,
       AvroGenericStoreClient<K, V> genericThinClient,
@@ -123,7 +126,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       long longTailRetryBudgetEnforcementWindowInMs,
       Set<String> harClusters,
       InstanceHealthMonitor instanceHealthMonitor,
-      boolean retryBudgetEnabled) {
+      boolean retryBudgetEnabled,
+      double retryBudgetPercentage,
+      boolean enableLeastLoadedRoutingStrategyForHelixGroupRouting) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
@@ -148,9 +153,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           FastClientStats.getClientStats(this.metricsRepository, this.statsPrefix, storeName, requestType));
     }
     this.clusterStats = new ClusterStats(this.metricsRepository, storeName);
-    this.speculativeQueryEnabled = speculativeQueryEnabled;
     this.specificValueClass = specificValueClass;
     this.deserializationExecutor = deserializationExecutor;
+    this.metadataRefreshExecutor = metadataRefreshExecutor;
     this.clientRoutingStrategyType =
         clientRoutingStrategyType == null ? ClientRoutingStrategyType.LEAST_LOADED : clientRoutingStrategyType;
     this.dualReadEnabled = dualReadEnabled;
@@ -207,14 +212,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       }
     }
 
-    // TODO: Need to check whether this case applies for BatchGet
-    if (this.speculativeQueryEnabled && this.longTailRetryEnabledForSingleGet) {
-      throw new VeniceClientException(
-          "Speculative query feature can't be enabled together with long-tail retry for single-get");
-    }
-
     this.isVsonStore = isVsonStore;
-
     this.storeMetadataFetchMode = storeMetadataFetchMode;
     this.d2Client = d2Client;
     this.clusterDiscoveryD2Service = clusterDiscoveryD2Service;
@@ -242,6 +240,12 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       this.instanceHealthMonitor = instanceHealthMonitor;
     }
     this.retryBudgetEnabled = retryBudgetEnabled;
+    if (retryBudgetPercentage > 1.0 || retryBudgetPercentage < 0.0) {
+      throw new VeniceClientException(
+          "Invalid retryBudgetPercentage value: " + retryBudgetPercentage + ", should be in [0.0, 1.0]");
+    }
+    this.retryBudgetPercentage = retryBudgetPercentage;
+    this.enableLeastLoadedRoutingStrategyForHelixGroupRouting = enableLeastLoadedRoutingStrategyForHelixGroupRouting;
   }
 
   public String getStoreName() {
@@ -260,16 +264,16 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return clientStatsMap.get(requestType);
   }
 
-  public boolean isSpeculativeQueryEnabled() {
-    return speculativeQueryEnabled;
-  }
-
   public Class<T> getSpecificValueClass() {
     return specificValueClass;
   }
 
   public Executor getDeserializationExecutor() {
     return deserializationExecutor;
+  }
+
+  public ScheduledExecutorService getMetadataRefreshExecutor() {
+    return metadataRefreshExecutor;
   }
 
   public boolean isDualReadEnabled() {
@@ -382,13 +386,21 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return retryBudgetEnabled;
   }
 
+  public double getRetryBudgetPercentage() {
+    return retryBudgetPercentage;
+  }
+
+  public boolean isEnableLeastLoadedRoutingStrategyForHelixGroupRouting() {
+    return enableLeastLoadedRoutingStrategyForHelixGroupRouting;
+  }
+
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {
     private MetricsRepository metricsRepository;
     private String statsPrefix = "";
-    private boolean speculativeQueryEnabled = false;
     private Class<T> specificValueClass;
     private String storeName;
     private Executor deserializationExecutor;
+    private ScheduledExecutorService metadataRefreshExecutor;
     private ClientRoutingStrategyType clientRoutingStrategyType;
     private Client r2Client;
     private boolean dualReadEnabled = false;
@@ -428,6 +440,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     private boolean retryBudgetEnabled = true;
 
+    // Default value of 0.1 meaning only 10 percent of the user requests are allowed to trigger long tail retry
+    private double retryBudgetPercentage = 0.1d;
+
+    private boolean enableLeastLoadedRoutingStrategyForHelixGroupRouting = true;
+
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
       return this;
@@ -443,11 +460,6 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
-    public ClientConfigBuilder<K, V, T> setSpeculativeQueryEnabled(boolean speculativeQueryEnabled) {
-      this.speculativeQueryEnabled = speculativeQueryEnabled;
-      return this;
-    }
-
     public ClientConfigBuilder<K, V, T> setSpecificValueClass(Class<T> specificValueClass) {
       this.specificValueClass = specificValueClass;
       return this;
@@ -455,6 +467,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     public ClientConfigBuilder<K, V, T> setDeserializationExecutor(Executor deserializationExecutor) {
       this.deserializationExecutor = deserializationExecutor;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setMetadataRefreshExecutor(ScheduledExecutorService metadataRefreshExecutor) {
+      this.metadataRefreshExecutor = metadataRefreshExecutor;
       return this;
     }
 
@@ -601,14 +618,25 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setRetryBudgetPercentage(double retryBudgetPercentage) {
+      this.retryBudgetPercentage = retryBudgetPercentage;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setEnableLeastLoadedRoutingStrategyForHelixGroupRouting(
+        boolean enableLeastLoadedRoutingStrategyForHelixGroupRouting) {
+      this.enableLeastLoadedRoutingStrategyForHelixGroupRouting = enableLeastLoadedRoutingStrategyForHelixGroupRouting;
+      return this;
+    }
+
     public ClientConfigBuilder<K, V, T> clone() {
       return new ClientConfigBuilder().setStoreName(storeName)
           .setR2Client(r2Client)
           .setMetricsRepository(metricsRepository)
           .setStatsPrefix(statsPrefix)
-          .setSpeculativeQueryEnabled(speculativeQueryEnabled)
           .setSpecificValueClass(specificValueClass)
           .setDeserializationExecutor(deserializationExecutor)
+          .setMetadataRefreshExecutor(metadataRefreshExecutor)
           .setClientRoutingStrategyType(clientRoutingStrategyType)
           .setDualReadEnabled(dualReadEnabled)
           .setGenericThinClient(genericThinClient)
@@ -634,7 +662,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setLongTailRetryBudgetEnforcementWindowInMs(longTailRetryBudgetEnforcementWindowInMs)
           .setHARClusters(harClusters)
           .setInstanceHealthMonitor(instanceHealthMonitor)
-          .setRetryBudgetEnabled(retryBudgetEnabled);
+          .setRetryBudgetEnabled(retryBudgetEnabled)
+          .setRetryBudgetPercentage(retryBudgetPercentage)
+          .setEnableLeastLoadedRoutingStrategyForHelixGroupRouting(
+              enableLeastLoadedRoutingStrategyForHelixGroupRouting);
     }
 
     public ClientConfig<K, V, T> build() {
@@ -643,9 +674,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           r2Client,
           metricsRepository,
           statsPrefix,
-          speculativeQueryEnabled,
           specificValueClass,
           deserializationExecutor,
+          metadataRefreshExecutor,
           clientRoutingStrategyType,
           dualReadEnabled,
           genericThinClient,
@@ -670,7 +701,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           longTailRetryBudgetEnforcementWindowInMs,
           harClusters,
           instanceHealthMonitor,
-          retryBudgetEnabled);
+          retryBudgetEnabled,
+          retryBudgetPercentage,
+          enableLeastLoadedRoutingStrategyForHelixGroupRouting);
     }
   }
 }

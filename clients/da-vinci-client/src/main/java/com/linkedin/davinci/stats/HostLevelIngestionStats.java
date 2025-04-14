@@ -281,6 +281,10 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
                 .mapToLong(task -> task.isStuckByMemoryConstraint() ? 1 : 0)
                 .sum(),
             "ingestion_stuck_by_memory_constraint"));
+    // Register a metric that records the size of ingestion tasks count
+    if (isTotalStats) {
+      registerSensor(new AsyncGauge((ignored, ignored2) -> ingestionTaskMap.size(), "ingestion_task_count"));
+    }
 
     // Stats which are per-store only:
     String keySizeSensorName = "record_key_size_in_bytes";
@@ -299,11 +303,23 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         new Max(),
         TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + valueSizeSensorName));
 
-    this.assembledRecordSizeSensor = registerSensor(ASSEMBLED_RECORD_SIZE_IN_BYTES, avgAndMax());
+    this.assembledRecordSizeSensor = registerPerStoreAndTotalSensor(
+        ASSEMBLED_RECORD_SIZE_IN_BYTES,
+        totalStats,
+        () -> totalStats.assembledRecordSizeSensor,
+        new Max());
 
-    this.assembledRecordSizeRatioSensor = registerSensor(ASSEMBLED_RECORD_SIZE_RATIO, new Max());
+    this.assembledRecordSizeRatioSensor = registerPerStoreAndTotalSensor(
+        ASSEMBLED_RECORD_SIZE_RATIO,
+        totalStats,
+        () -> totalStats.assembledRecordSizeRatioSensor,
+        new Max());
 
-    this.assembledRmdSizeSensor = registerSensor(ASSEMBLED_RMD_SIZE_IN_BYTES, avgAndMax());
+    this.assembledRmdSizeSensor = registerPerStoreAndTotalSensor(
+        ASSEMBLED_RMD_SIZE_IN_BYTES,
+        totalStats,
+        () -> totalStats.assembledRmdSizeSensor,
+        new Max());
 
     String viewTimerSensorName = "total_view_writer_latency";
     this.viewProducerLatencySensor = registerPerStoreAndTotalSensor(

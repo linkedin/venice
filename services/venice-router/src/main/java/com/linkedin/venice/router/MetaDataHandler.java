@@ -68,6 +68,7 @@ import com.linkedin.venice.routerapi.ResourceStateResponse;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
+import com.linkedin.venice.stats.D2Stats;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
@@ -78,12 +79,14 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.util.ReferenceCountUtil;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.security.cert.CertificateExpiredException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -155,6 +158,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   static final String REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE =
       "Blob Discovery: failed to get the live node hostNames for store:%s version:%s partition:%s";
   private final VeniceVersionFinder veniceVersionFinder;
+  private final MetricsRepository metricsRepository;
+  private final Map<String, D2Stats> d2StatsMap = new HashMap<>();
 
   public MetaDataHandler(
       HelixCustomizedViewOfflinePushRepository routingDataRepository,
@@ -169,7 +174,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       String kafkaBootstrapServers,
       boolean isSslToKafka,
       VeniceVersionFinder versionFinder,
-      PushStatusStoreReader pushStatusStoreReader) {
+      PushStatusStoreReader pushStatusStoreReader,
+      MetricsRepository metricsRepository) {
     super();
     this.routingDataRepository = routingDataRepository;
     this.schemaRepo = schemaRepo;
@@ -184,6 +190,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     this.isSslToKafka = isSslToKafka;
     this.veniceVersionFinder = versionFinder;
     this.pushStatusStoreReader = pushStatusStoreReader;
+    this.metricsRepository = metricsRepository;
   }
 
   @Override
@@ -470,8 +477,11 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     checkResourceName(
         storeName,
         "/" + TYPE_CLUSTER_DISCOVERY + "/${storeName} or /" + TYPE_CLUSTER_DISCOVERY + "?store_name=${storeName}");
+
+    D2Stats d2Stats = d2StatsMap.computeIfAbsent(storeName, name -> new D2Stats(metricsRepository, name));
     Optional<StoreConfig> config = storeConfigRepo.getStoreConfig(storeName);
     if (!config.isPresent() || StringUtils.isEmpty(config.get().getCluster())) {
+      d2Stats.recordStoreDiscoveryFailure();
       String errorMsg = "Cluster for store: " + storeName + " doesn't exist";
       setupErrorD2DiscoveryResponseAndFlush(NOT_FOUND, errorMsg, ctx);
       return;
@@ -479,6 +489,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     String clusterName = config.get().getCluster();
     String d2Service = getD2ServiceByClusterName(clusterName);
     if (StringUtils.isEmpty(d2Service)) {
+      d2Stats.recordStoreDiscoveryFailure();
       String errorMsg = "D2 service for store: " + storeName + " doesn't exist";
       setupErrorD2DiscoveryResponseAndFlush(NOT_FOUND, errorMsg, ctx);
       return;
@@ -492,6 +503,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     responseObject.setZkAddress(zkAddress);
     responseObject.setKafkaBootstrapServers(kafkaBootstrapServers);
     setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
+    d2Stats.recordStoreDiscoverySuccess();
   }
 
   private void setupErrorD2DiscoveryResponseAndFlush(

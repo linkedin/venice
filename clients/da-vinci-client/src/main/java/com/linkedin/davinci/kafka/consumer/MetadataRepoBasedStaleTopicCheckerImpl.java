@@ -8,17 +8,15 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class MetadataRepoBasedTopicExistingCheckerImpl implements TopicExistenceChecker {
+public class MetadataRepoBasedStaleTopicCheckerImpl implements StaleTopicChecker {
   private final ReadOnlyStoreRepository readOnlyStoreRepository;
-  private final Logger logger = LogManager.getLogger(MetadataRepoBasedTopicExistingCheckerImpl.class);
+  private static final Logger LOGGER = LogManager.getLogger(MetadataRepoBasedStaleTopicCheckerImpl.class);
 
-  public MetadataRepoBasedTopicExistingCheckerImpl(ReadOnlyStoreRepository readOnlyStoreRepository) {
+  public MetadataRepoBasedStaleTopicCheckerImpl(ReadOnlyStoreRepository readOnlyStoreRepository) {
     this.readOnlyStoreRepository = readOnlyStoreRepository;
   }
 
-  public boolean checkTopicExists(String topic) {
-    boolean isExistingTopic = true;
-
+  public boolean shouldTopicExist(String topic) {
     try {
       String storeName = Version.parseStoreFromKafkaTopicName(topic);
       Store store = readOnlyStoreRepository.getStoreOrThrow(storeName);
@@ -26,18 +24,21 @@ public class MetadataRepoBasedTopicExistingCheckerImpl implements TopicExistence
       if (Version.isVersionTopicOrStreamReprocessingTopic(topic)) {
         int version = Version.parseVersionFromKafkaTopicName(topic);
         if (store.getVersion(version) == null) {
-          isExistingTopic = false;
+          LOGGER.warn("Version {} not found for topic: {}", version, topic);
+          return false;
         }
       } else if (Version.isRealTimeTopic(topic)) {
         if (!store.isHybrid()) {
-          isExistingTopic = false;
+          LOGGER.warn("Store {} is not hybrid currently, but found real-time topic {}", storeName, topic);
+          return false;
         }
       }
     } catch (VeniceNoStoreException e) {
-      isExistingTopic = false;
+      LOGGER.warn("Store not found for topic: {}", topic);
+      return false;
     } catch (Exception e) {
-      logger.error("Exception thrown in checkTopicExists: ", e);
+      LOGGER.error("Exception thrown in checkTopicExists; unable to decide if topic {} should exist ", topic, e);
     }
-    return isExistingTopic;
+    return true;
   }
 }

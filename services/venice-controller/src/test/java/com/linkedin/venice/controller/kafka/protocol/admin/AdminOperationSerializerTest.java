@@ -58,7 +58,7 @@ public class AdminOperationSerializerTest {
       adminOperationSerializer.serialize(adminMessage, 74);
     } catch (VeniceProtocolException e) {
       String expectedMessage =
-          "Field AdminOperation.payloadUnion.UpdateStore.separateRealTimeTopicEnabled: Boolean value true is not the default value false or false";
+          "Current schema version: 74. New semantic is being used. Field AdminOperation.payloadUnion.UpdateStore.separateRealTimeTopicEnabled: Boolean value true is not the default value false or false";
       assertEquals(e.getMessage(), expectedMessage);
     }
 

@@ -621,10 +621,9 @@ public abstract class TestBatch {
         validator);
 
     // Since chunking was not enabled, verify that the assembled record size metrics are not collected
-    String baseMetricName = AbstractVeniceStats.getSensorFullName(storeName, ASSEMBLED_RECORD_SIZE_IN_BYTES);
-    MetricsUtils.getAvgMax(baseMetricName, veniceCluster.getVeniceServers()).forEach(value -> {
-      Assert.assertTrue(value == Double.MIN_VALUE || value == Double.MAX_VALUE || value.isNaN(), "Must be invalid");
-    });
+    String metricName = AbstractVeniceStats.getSensorFullName(storeName, ASSEMBLED_RECORD_SIZE_IN_BYTES) + ".Max";
+    double assembledRecordSize = MetricsUtils.getMax(metricName, veniceCluster.getVeniceServers());
+    Assert.assertEquals(assembledRecordSize, Double.MIN_VALUE, "Metric must be unset / invalid");
 
     // Re-push with Kafka Input
     testRepush(storeName, validator);
@@ -960,9 +959,9 @@ public abstract class TestBatch {
 
     // Verify that after records are chunked and re-assembled, the original sizes of these records are being recorded
     // to the metrics sensor, and are within the correct size range.
-    String baseMetricName = AbstractVeniceStats.getSensorFullName(storeName, ASSEMBLED_RECORD_SIZE_IN_BYTES);
-    List<Double> assembledRecordSizes = MetricsUtils.getAvgMax(baseMetricName, veniceCluster.getVeniceServers());
-    MetricsUtils.validateMetricRange(assembledRecordSizes, BYTES_PER_MB, LARGE_VALUE_SIZE);
+    String metricName = AbstractVeniceStats.getSensorFullName(storeName, ASSEMBLED_RECORD_SIZE_IN_BYTES) + ".Max";
+    double assembledRecordSize = MetricsUtils.getMax(metricName, veniceCluster.getVeniceServers());
+    Assert.assertTrue(assembledRecordSize >= BYTES_PER_MB && assembledRecordSize <= LARGE_VALUE_SIZE);
   }
 
   /** Test that values that are too large will fail the push job only when the limit is enforced. */
@@ -979,9 +978,9 @@ public abstract class TestBatch {
 
       // Add a little wiggle room (1e-3) for generating the test data / record sizes
       final double maxRatio = (double) tooLargeValueSize / maxRecordSizeBytesForTest + 1e-3;
-      String baseMetricName = AbstractVeniceStats.getSensorFullName(storeName, ASSEMBLED_RECORD_SIZE_RATIO);
-      List<Double> assembledRecordSizeRatios = MetricsUtils.getAvgMax(baseMetricName, veniceCluster.getVeniceServers());
-      MetricsUtils.validateMetricRange(assembledRecordSizeRatios, 0, maxRatio);
+      String metricName = AbstractVeniceStats.getSensorFullName(storeName, ASSEMBLED_RECORD_SIZE_RATIO) + ".Max";
+      double assembledRecordSizeRatios = MetricsUtils.getMax(metricName, veniceCluster.getVeniceServers());
+      Assert.assertTrue(assembledRecordSizeRatios >= 0 && assembledRecordSizeRatios <= maxRatio);
     } catch (VeniceException e) {
       final String limitStr = generateHumanReadableByteCountString(maxRecordSizeBytesForTest);
       Assert.assertTrue(e.getMessage().contains("exceed the maximum record limit of " + limitStr), e.getMessage());

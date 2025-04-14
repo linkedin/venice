@@ -2568,8 +2568,50 @@ public class ConfigKeys {
   public static final String ACL_IN_MEMORY_CACHE_TTL_MS = "acl.in.memory.cache.ttl.ms";
 
   /**
+   * If enabled, the controller's get dead store endpoint will be enabled.
+   */
+  public static final String CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED = "controller.dead.store.endpoint.enabled";
+
+  /**
+   * (Only matters if CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED true). Class name of {@link com.linkedin.venice.controller.stats.DeadStoreStats} implementation
+   */
+  public static final String CONTROLLER_DEAD_STORE_STATS_CLASS_NAME = "controller.dead.store.stats.class.name";
+
+  /**
+   * (Only matters if CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED true) Allow the controller to pre-fetch dead store stats before the endpoint is called
+   */
+  public static final String CONTROLLER_DEAD_STORE_STATS_PRE_FETCH_ENABLED =
+      "controller.dead.store.stats.pre.fetch.enabled";
+
+  /**
+   * (Only matters if CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED and CONTROLLER_DEAD_STORE_STATS_PRE_FETCH_ENABLED are true) Amount of time in milliseconds to wait before refetching the dead store stats
+   */
+  public static final String CONTROLLER_DEAD_STORE_STATS_PRE_FETCH_INTERVAL_MS =
+      "controller.dead.store.stats.pre.fetch.interval.ms";
+
+  /**
+   * (Only matters if CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED true) Prefix of configs to configure the DeadStoreStats implementation
+   */
+  public static final String CONTROLLER_DEAD_STORE_STATS_PREFIX = "controller.dead.store.stats.";
+
+  /**
    * Enables / disables the Global RT DIV feature. Default value is disabled. The DIV will be centralized in the
    * ConsumptionTask, and leaders will periodically replicate the RT DIV to followers via VT.
    */
   public static final String GLOBAL_RT_DIV_ENABLED = "global.rt.div.enabled";
+
+  /**
+   * The interval for cleaning up the idle store ingestion tasks in a centralized way inside KafkaStoreIngestionService.
+   * If config value is non-positive, it means the new clean up service is disabled and the old mechanism is still in place.
+   * If config value is positive, it means the new clean up service is enabled and the value is the clean up
+   * schedule interval in seconds.
+   *
+   * Once enabled, Store ingestion tasks will not try to close themselves when they are idle; instead, a service
+   * is started inside KafkaStoreIngestionService to clean up idle tasks. This is completely eliminate the race
+   * conditions between store ingestion task thread and Helix state transition threads when managing the life cycle
+   * of a store ingestion task.
+   * TODO: Deprecate this config after new clean up service is fully rolled out and stable.
+   */
+  public static final String SERVER_IDLE_INGESTION_TASK_CLEANUP_INTERVAL_IN_SECONDS =
+      "server.idle.ingestion.task.cleanup.interval.in.seconds";
 }

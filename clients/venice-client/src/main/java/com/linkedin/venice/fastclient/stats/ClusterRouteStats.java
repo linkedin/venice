@@ -7,6 +7,8 @@ import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.Avg;
+import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -59,6 +61,7 @@ public class ClusterRouteStats {
     private final Sensor serviceUnavailableRequestCountSensor;
     private final Sensor leakedRequestCountSensor;
     private final Sensor otherErrorRequestCountSensor;
+    private final Sensor pendingRequestCountSensor;
 
     public RouteStats(
         MetricsRepository metricsRepository,
@@ -78,6 +81,11 @@ public class ClusterRouteStats {
           registerSensor("service_unavailable_request_count", new OccurrenceRate());
       this.leakedRequestCountSensor = registerSensor("leaked_request_count", new OccurrenceRate());
       this.otherErrorRequestCountSensor = registerSensor("other_error_request_count", new OccurrenceRate());
+      /**
+       * This metric doesn't different request type, which means it will track the total number of pending requests regardless of
+       * request types.
+       */
+      this.pendingRequestCountSensor = registerSensor("pending_request_count", new Avg(), new Max());
     }
 
     public void recordRequest() {
@@ -110,6 +118,10 @@ public class ClusterRouteStats {
 
     public void recordOtherErrorRequest() {
       otherErrorRequestCountSensor.record();
+    }
+
+    public void recordPendingRequestCount(int count) {
+      pendingRequestCountSensor.record(count);
     }
   }
 }

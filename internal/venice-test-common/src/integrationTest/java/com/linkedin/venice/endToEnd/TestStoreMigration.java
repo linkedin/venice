@@ -212,10 +212,10 @@ public class TestStoreMigration {
     Assert.assertEquals(
         storeInfo.getHybridStoreConfig().getRealTimeTopicName(),
         Utils.composeRealTimeTopic(storeName, 1));
-    // we set largestUsedRTVersionNumber=2 before VPJ, so the version would have rt=<store_name>_v2_rt
+    // we set largestUsedRTVersionNumber=2 before VPJ, so the version would have rt=<store_name>_rt_v2
     Assert.assertEquals(
         storeInfo.getVersions().get(0).getHybridStoreConfig().getRealTimeTopicName(),
-        storeName + "_v2" + Version.REAL_TIME_TOPIC_SUFFIX);
+        Utils.composeRealTimeTopic(storeName, 2));
 
     // Test abort migration on parent controller
     try (ControllerClient srcParentControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
@@ -612,7 +612,6 @@ public class TestStoreMigration {
             .setD2Client(d2Client)
             .setMetadataRefreshIntervalInSeconds(1)
             .setDualReadEnabled(false)
-            .setSpeculativeQueryEnabled(false)
             .setClusterDiscoveryD2Service(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .setStoreMetadataFetchMode(StoreMetadataFetchMode.SERVER_BASED_METADATA);
 
