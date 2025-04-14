@@ -1,9 +1,10 @@
 package com.linkedin.venice.pubsub;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import java.io.IOException;
@@ -26,12 +27,16 @@ public class PubSubPositionFactory {
     }
 
     switch (positionWireFormat.type) {
-      case PubSubPositionType.APACHE_KAFKA_OFFSET:
+      case PubSubPositionTypeRegistry.APACHE_KAFKA_OFFSET_POSITION_TYPE_ID:
         try {
           return new ApacheKafkaOffsetPosition(positionWireFormat.rawBytes);
         } catch (IOException e) {
           throw new VeniceException("Failed to deserialize Apache Kafka offset position", e);
         }
+      case PubSubPositionTypeRegistry.EARLIEST_POSITION_RESERVED_TYPE_ID:
+        return PubSubSymbolicPosition.EARLIEST;
+      case PubSubPositionTypeRegistry.LATEST_POSITION_RESERVED_TYPE_ID:
+        return PubSubSymbolicPosition.LATEST;
       default:
         throw new IllegalArgumentException(
             "Cannot convert to position. Unknown position type: " + positionWireFormat.type);

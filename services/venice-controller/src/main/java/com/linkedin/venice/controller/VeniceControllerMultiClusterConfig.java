@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.utils.LogContext;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
 import java.util.Collection;
@@ -290,6 +291,10 @@ public class VeniceControllerMultiClusterConfig {
 
   public PubSubClientsFactory getPubSubClientsFactory() {
     return getCommonConfig().getPubSubClientsFactory();
+  }
+
+  public PubSubPositionTypeRegistry getPubSubPositionTypeRegistry() {
+    return getCommonConfig().getPubSubPositionTypeRegistry();
   }
 
   public PubSubAdminAdapterFactory getSourceOfTruthAdminAdapterFactory() {

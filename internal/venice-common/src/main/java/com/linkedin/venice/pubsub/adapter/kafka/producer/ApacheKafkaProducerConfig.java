@@ -2,13 +2,15 @@ package com.linkedin.venice.pubsub.adapter.kafka.producer;
 
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CLIENT_CONFIG_PREFIX;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS;
-import static com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils.generateClientId;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubMessageSerializer;
-import com.linkedin.venice.pubsub.api.PubSubProducerAdapterContext;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.Objects;
 import java.util.Properties;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.producer.ProducerConfig;
@@ -45,6 +47,8 @@ public class ApacheKafkaProducerConfig {
       KAFKA_CONFIG_PREFIX + ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG;
   public static final String SSL_KAFKA_BOOTSTRAP_SERVERS = "ssl." + KAFKA_BOOTSTRAP_SERVERS;
 
+  protected static final String KAFKA_POSITION_CLASS_NAME = ApacheKafkaOffsetPosition.class.getName();
+
   /**
    * N.B. do not attempt to change spelling, "kakfa", without carefully replacing all instances in use and some of them
    * may be external to this repo
@@ -64,20 +68,13 @@ public class ApacheKafkaProducerConfig {
   private final PubSubMessageSerializer pubSubMessageSerializer;
 
   public ApacheKafkaProducerConfig(PubSubProducerAdapterContext context) {
-    String brokerAddressToOverride = context.getBrokerAddress();
-    String producerName = context.getProducerName();
+    String brokerAddress = Objects.requireNonNull(context.getBrokerAddress(), "Broker address cannot be null");
     VeniceProperties allVeniceProperties = context.getVeniceProperties();
-    boolean strictConfigs = context.shouldValidateProducerConfigStrictly();
+    validateKafkaPositionType(context.getPubSubPositionTypeRegistry());
+
     this.pubSubMessageSerializer = context.getPubSubMessageSerializer();
-    String brokerAddress =
-        brokerAddressToOverride != null ? brokerAddressToOverride : getPubsubBrokerAddress(allVeniceProperties);
-    this.producerProperties =
-        ApacheKafkaUtils.getValidKafkaClientProperties(allVeniceProperties, ProducerConfig.configNames());
-
-    this.producerProperties.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, brokerAddress);
-    validateAndUpdateProperties(this.producerProperties, strictConfigs);
-    producerProperties.put(ProducerConfig.CLIENT_ID_CONFIG, generateClientId(producerName, brokerAddress));
-
+    this.producerProperties = ApacheKafkaUtils.getValidKafkaClientProperties(allVeniceProperties, ProducerConfig.configNames());
+    validateAndUpdateProperties(this.producerProperties, context.shouldValidateProducerConfigStrictly());
     if (allVeniceProperties.getBoolean(PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS, false)) {
       addHighThroughputDefaults();
     }
@@ -86,6 +83,8 @@ public class ApacheKafkaProducerConfig {
       this.producerProperties.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, context.getCompressionType());
     }
 
+    producerProperties.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, brokerAddress);
+    producerProperties.put(ProducerConfig.CLIENT_ID_CONFIG, context.getProducerName());
     // Do not remove the following configurations unless you fully understand the implications.
     producerProperties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class);
     producerProperties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class);
@@ -104,27 +103,11 @@ public class ApacheKafkaProducerConfig {
     }
   }
 
-  public Properties getProducerProperties() {
+  protected Properties getProducerProperties() {
     return producerProperties;
   }
 
-  public static String getPubsubBrokerAddress(VeniceProperties properties) {
-    if (Boolean.parseBoolean(properties.getStringWithAlternative(SSL_TO_KAFKA_LEGACY, KAFKA_OVER_SSL, "false"))) {
-      checkProperty(properties, SSL_KAFKA_BOOTSTRAP_SERVERS);
-      return properties.getString(SSL_KAFKA_BOOTSTRAP_SERVERS);
-    }
-    checkProperty(properties, KAFKA_BOOTSTRAP_SERVERS);
-    return properties.getString(KAFKA_BOOTSTRAP_SERVERS);
-  }
-
-  private static void checkProperty(VeniceProperties properties, String key) {
-    if (!properties.containsKey(key)) {
-      throw new VeniceException(
-          "Invalid properties for Kafka producer factory. Required property: " + key + " is missing.");
-    }
-  }
-
-  public String getBrokerAddress() {
+  protected String getBrokerAddress() {
     return producerProperties.getProperty(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG);
   }
 
@@ -201,5 +184,43 @@ public class ApacheKafkaProducerConfig {
 
   public PubSubMessageSerializer getPubSubMessageSerializer() {
     return pubSubMessageSerializer;
+  }
+
+  /**
+   * Validates that the {@link PubSubPositionTypeRegistry} includes support for the Kafka offset-based position type.
+   * <p>
+   * Since this client uses a <b>reserved type ID</b> for Kafka positions (see
+   * {@link PubSubPositionTypeRegistry#APACHE_KAFKA_OFFSET_POSITION_TYPE_ID}), we do not rely on the type ID returned
+   * by the registry for functional behavior. Instead, we perform a <b>sanity check</b> to ensure that the registry
+   * mapping is consistent with the reserved value. This helps detect misconfigured or corrupted mappings.
+   * <p>
+   * If the position class is not registered or the associated type ID does not match the expected reserved value,
+   * this method logs a descriptive error and throws a {@link VeniceException}.
+   *
+   * @param typeRegistry the position type registry to validate
+   * @throws VeniceException if the type is missing or mismatched
+   */
+  private static void validateKafkaPositionType(PubSubPositionTypeRegistry typeRegistry) {
+    if (!typeRegistry.hasType(KAFKA_POSITION_CLASS_NAME)) {
+      String message = String.format(
+          "Kafka position type class (%s) not found in PubSubPositionMapper: %s",
+          KAFKA_POSITION_CLASS_NAME,
+          typeRegistry);
+      LOGGER.error(message);
+      throw new VeniceException(message);
+    }
+
+    int positionTypeId = typeRegistry.getTypeId(KAFKA_POSITION_CLASS_NAME);
+    int expectedTypeId = PubSubPositionTypeRegistry.APACHE_KAFKA_OFFSET_POSITION_TYPE_ID;
+
+    if (positionTypeId != expectedTypeId) {
+      String message = String.format(
+          "Unexpected type ID for Kafka position. Expected: %d, Found: %d, Registry: %s",
+          expectedTypeId,
+          positionTypeId,
+          typeRegistry);
+      LOGGER.error(message);
+      throw new VeniceException(message);
+    }
   }
 }

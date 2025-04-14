@@ -56,7 +56,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -71,9 +70,7 @@ import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
 import java.util.Collections;
@@ -152,8 +149,6 @@ public class DaVinciBackend implements Closeable {
       storeRepository = (SubscriptionBasedReadOnlyStoreRepository) readOnlyStoreRepository;
       schemaRepository = veniceMetadataRepositoryBuilder.getSchemaRepo();
 
-      VeniceProperties backendProps = backendConfig.getClusterProperties();
-
       SchemaReader partitionStateSchemaReader = ClientFactory.getSchemaReader(
           ClientConfig.cloneConfig(clientConfig)
               .setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName()),
@@ -213,24 +208,6 @@ public class DaVinciBackend implements Closeable {
           true,
           functionToCheckWhetherStorageEngineShouldBeKeptOrNot(managedClients));
       storageService.start();
-      PubSubClientsFactory pubSubClientsFactory = configLoader.getVeniceServerConfig().getPubSubClientsFactory();
-      VeniceWriterFactory writerFactory =
-          new VeniceWriterFactory(backendProps.toProperties(), pubSubClientsFactory.getProducerAdapterFactory(), null);
-      String pid = Utils.getPid();
-      String instanceSuffix =
-          configLoader.getCombinedProperties().getString(PUSH_STATUS_INSTANCE_NAME_SUFFIX, (pid == null ? "NA" : pid));
-      // Current instance name.
-      String instanceName = Utils.getHostName() + "_" + instanceSuffix;
-
-      // Fetch latest update schema's protocol ID for Push Status Store from Router.
-      ClientConfig pushStatusStoreClientConfig = ClientConfig.cloneConfig(clientConfig)
-          .setStoreName(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName());
-      try (StoreSchemaFetcher schemaFetcher = ClientFactory.createStoreSchemaFetcher(pushStatusStoreClientConfig)) {
-        SchemaEntry valueSchemaEntry = schemaFetcher.getLatestValueSchemaEntry();
-        DerivedSchemaEntry updateSchemaEntry = schemaFetcher.getUpdateSchemaEntry(valueSchemaEntry.getId());
-        pushStatusStoreWriter =
-            new PushStatusStoreWriter(writerFactory, instanceName, valueSchemaEntry, updateSchemaEntry);
-      }
 
       SchemaReader kafkaMessageEnvelopeSchemaReader = ClientFactory.getSchemaReader(
           ClientConfig.cloneConfig(clientConfig)
@@ -285,12 +262,30 @@ public class DaVinciBackend implements Closeable {
           true,
           // TODO: consider how/if a repair task would be valid for Davinci users?
           null,
-          pubSubClientsFactory,
+          configLoader.getVeniceServerConfig().getPubSubClientsFactory(),
           Optional.empty(),
           // TODO: It would be good to monitor heartbeats like this from davinci, but needs some work
           null,
           null,
           null);
+
+      String pid = Utils.getPid();
+      String instanceSuffix =
+          configLoader.getCombinedProperties().getString(PUSH_STATUS_INSTANCE_NAME_SUFFIX, (pid == null ? "NA" : pid));
+      // Current instance name.
+      String instanceName = Utils.getHostName() + "_" + instanceSuffix;
+      // Fetch latest update schema's protocol ID for Push Status Store from Router.
+      ClientConfig pushStatusStoreClientConfig = ClientConfig.cloneConfig(clientConfig)
+          .setStoreName(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName());
+      try (StoreSchemaFetcher schemaFetcher = ClientFactory.createStoreSchemaFetcher(pushStatusStoreClientConfig)) {
+        SchemaEntry valueSchemaEntry = schemaFetcher.getLatestValueSchemaEntry();
+        DerivedSchemaEntry updateSchemaEntry = schemaFetcher.getUpdateSchemaEntry(valueSchemaEntry.getId());
+        pushStatusStoreWriter = new PushStatusStoreWriter(
+            ingestionService.getVeniceWriterFactory(),
+            instanceName,
+            valueSchemaEntry,
+            updateSchemaEntry);
+      }
 
       ingestionService.start();
 

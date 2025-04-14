@@ -1,6 +1,7 @@
 package com.linkedin.davinci.consumer;
 
 import static com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory.getConsumer;
+import static com.linkedin.venice.pubsub.api.PubSubSymbolicPosition.LATEST;
 
 import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -126,7 +127,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
             topicPartition.getPartitionNumber(),
             new VeniceChangeCoordinate(
                 topicPartition.getPubSubTopic().getName(),
-                PubSubPosition.LATEST,
+                LATEST,
                 topicPartition.getPartitionNumber()));
       } else if (checkpoints.get(topicPartition.getPartitionNumber()) == null) {
         LOGGER.warn("No EOP checkpoint found for partition: {}", topicPartition.getPartitionNumber());

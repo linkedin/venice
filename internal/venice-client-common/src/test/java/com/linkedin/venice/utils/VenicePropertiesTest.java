@@ -2,8 +2,12 @@ package com.linkedin.venice.utils;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.expectThrows;
 
+import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -146,5 +150,44 @@ public class VenicePropertiesTest {
     assertEquals(resultProperties.getProperty("key1"), "value1");
     assertEquals(resultProperties.getProperty("key2"), "value2");
     assertEquals(resultProperties.getProperty("key3"), "value3");
+  }
+
+  @Test
+  public void testGetIntKeyedMap() {
+    // Case: Valid comma-separated string with integer keys.
+    Properties properties = new Properties();
+    properties.put(
+        ConfigKeys.PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP,
+        "1:com.linkedin.venice.pubsub.kafka.ApacheKafkaOffsetPosition,2:com.linkedin.venice.pubsub.pulsar.ApachePulsarPosition");
+    VeniceProperties veniceProperties = new VeniceProperties(properties);
+    Int2ObjectMap<String> result =
+        veniceProperties.getIntKeyedMap(ConfigKeys.PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP);
+    assertEquals(result.size(), 2);
+    assertEquals(result.get(1), "com.linkedin.venice.pubsub.kafka.ApacheKafkaOffsetPosition");
+    assertEquals(result.get(2), "com.linkedin.venice.pubsub.pulsar.ApachePulsarPosition");
+
+    // Case: An entry with a non-integer key should trigger a VeniceException.
+    properties.put("bad.int.key", "abc:badValue,3:broker3.kafka.com:9094");
+    VeniceProperties badVeniceProperties = new VeniceProperties(properties);
+    expectThrows(VeniceException.class, () -> badVeniceProperties.getIntKeyedMap("bad.int.key"));
+
+    // Case: Missing key should trigger UndefinedPropertyException.
+    expectThrows(UndefinedPropertyException.class, () -> badVeniceProperties.getIntKeyedMap("non.existent.key"));
+  }
+
+  @Test
+  public void testMapToString() {
+    Map<String, String> map = new HashMap<>();
+    map.put("key1", "value1");
+    map.put("key2", "value2");
+    map.put("key3", "value3");
+
+    String result = VeniceProperties.mapToString(map);
+    assertEquals(result, "key1:value1,key2:value2,key3:value3");
+
+    // Test with empty map
+    Map<String, String> emptyMap = new HashMap<>();
+    String emptyResult = VeniceProperties.mapToString(emptyMap);
+    assertEquals(emptyResult, "");
   }
 }

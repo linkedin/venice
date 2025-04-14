@@ -346,6 +346,14 @@ public class PushStatusStoreTest {
     try (DaVinciClient daVinciClient =
         ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, new DaVinciConfig(), backendConfig)) {
       daVinciClient.subscribeAll().get();
+
+      // First let's make sure the partition status is available in the push status store
+      TestUtils.waitForNonDeterministicAssertion(
+          TEST_TIMEOUT_MS,
+          TimeUnit.MILLISECONDS,
+          () -> assertEquals(reader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 1));
+
+      // Now let's test the async API
       CompletableFuture<Map<CharSequence, Integer>> future1 =
           reader.getPartitionStatusAsync(storeName, 1, 0, Optional.empty(), Optional.empty());
       future1.whenComplete((result, throwable) -> {
