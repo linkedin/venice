@@ -109,6 +109,41 @@ public class PushStatusStoreReader implements Closeable {
     }
   }
 
+  public CompletableFuture<Map<CharSequence, Integer>> getPartitionStatusAsync(
+      String storeName,
+      int version,
+      int partitionId,
+      Optional<String> incrementalPushVersion,
+      Optional<String> incrementalPushPrefix) {
+    try {
+      AvroSpecificStoreClient<PushStatusKey, PushStatusValue> client = getVeniceClient(storeName);
+      PushStatusKey pushStatusKey =
+          PushStatusStoreUtils.getPushKey(version, partitionId, incrementalPushVersion, incrementalPushPrefix);
+
+      // Get the CompletableFuture from the client and transform it
+      return client.get(pushStatusKey).<Map<CharSequence, Integer>>thenApply(pushStatusValue -> {
+        if (pushStatusValue == null) {
+          return Collections.emptyMap();
+        } else {
+          return pushStatusValue.instances;
+        }
+      }).exceptionally(e -> {
+        LOGGER.error("Failed to read push status of partition:{} store:{}", partitionId, storeName, e);
+        return Collections.emptyMap();
+      });
+    } catch (Exception e) {
+      // Handle any exceptions during setup by returning a failed future
+      LOGGER.error(
+          "Failed to set up async request for partition:{} store:{} to get partition status",
+          partitionId,
+          storeName,
+          e);
+      CompletableFuture<Map<CharSequence, Integer>> failedFuture = new CompletableFuture<>();
+      failedFuture.completeExceptionally(new VeniceException(e));
+      return failedFuture;
+    }
+  }
+
   /**
    * Return statuses of all replicas belonging to partitions with partitionIds in the range [0 (inclusive), numberOfPartitions (exclusive))
    * {partitionId: {instance:status, instance:status,...},...}
