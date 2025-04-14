@@ -260,7 +260,8 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     }, executor);
   }
 
-  private byte[] getDictionaryFromResponse(PortableHttpResponse response, String instanceUrl) {
+  // protected for testing
+  protected byte[] getDictionaryFromResponse(PortableHttpResponse response, String instanceUrl) {
     try {
       int code = response.getStatusCode();
       if (code != SC_OK) {
@@ -408,6 +409,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
             }
             return null;
           }, executor);
+      System.out.println("put dictionary of this topic to downloadingDictionaryFutures: " + kafkaTopic);
       downloadingDictionaryFutures.put(kafkaTopic, dictionaryFuture);
     }
 
