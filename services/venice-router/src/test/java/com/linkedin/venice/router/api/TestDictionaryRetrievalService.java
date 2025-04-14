@@ -245,8 +245,9 @@ public class TestDictionaryRetrievalService {
   public void testFutureVersionDictionaryRetrieval() throws Exception {
     DictionaryRetrievalService dictionaryRetrievalService = null;
     try {
-      // if dictionaryRetrievalTimeMs not set, the value would default to 0 -> timeout getDictionaryFromResponse() ->
-      // fail dictionary download
+      /** if dictionaryRetrievalTimeMs not set, the value would default to 0
+       * -> timeout getDictionaryFromResponse()
+       * -> fail dictionary download */
       when(routerConfig.getDictionaryRetrievalTimeMs()).thenReturn(DICTIONARY_RETRIEVAL_TIME_MS);
 
       dictionaryRetrievalService = spy(
