@@ -2834,10 +2834,10 @@ public class AdminTool {
 
   private static void getDeadStores(CommandLine cmd) {
     String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
-    String storeName = getOptionalArgument(cmd, Arg.STORE);
+    Optional<String> storeName = Optional.ofNullable(getOptionalArgument(cmd, Arg.STORE));
     boolean includeSystemStores = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.INCLUDE_SYSTEM_STORES));
 
-    MultiStoreInfoResponse response = controllerClient.getDeadStores(clusterName, storeName, includeSystemStores);
+    MultiStoreInfoResponse response = controllerClient.getDeadStores(clusterName, includeSystemStores, storeName);
     printObject(response);
   }
 
