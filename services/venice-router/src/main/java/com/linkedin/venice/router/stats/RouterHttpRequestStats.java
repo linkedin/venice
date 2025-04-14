@@ -103,6 +103,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   /** OTel metrics yet to be added */
   private final Sensor requestSizeSensor;
   private final Sensor compressedResponseSizeSensor;
+  private final Sensor decompressedResponseSizeSensor;
+
   private final Sensor responseSizeSensor;
   private final Sensor requestThrottledByRouterCapacitySensor;
   private final Sensor decompressionTimeSensor;
@@ -388,6 +390,12 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         new Avg(),
         new Max());
 
+    decompressedResponseSizeSensor = registerSensor(
+        "decompressed_response_size",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("decompressed_response_size")),
+        new Avg(),
+        new Max());
+
     decompressionTimeSensor = registerSensor(
         "decompression_time",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("decompression_time")),
@@ -605,6 +613,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordCompressedResponseSize(double compressedResponseSize) {
     compressedResponseSizeSensor.record(compressedResponseSize);
+  }
+
+  public void recordDecompressedResponseSize(double decompressedResponseSize) {
+    decompressedResponseSizeSensor.record(decompressedResponseSize);
   }
 
   public void recordResponseSize(double responseSize) {

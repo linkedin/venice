@@ -11,6 +11,7 @@ import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import com.linkedin.venice.utils.pools.ObjectPool;
+import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -62,7 +63,7 @@ public class PubSubMessageDeserializer {
         // ImmutablePubSubMessage and used down the ingestion path later
         if (header.key().equals(VENICE_TRANSPORT_PROTOCOL_HEADER)) {
           try {
-            Schema providedProtocolSchema = AvroCompatibilityHelper.parse(new String(header.value()));
+            Supplier<Schema> providedProtocolSchema = () -> AvroCompatibilityHelper.parse(new String(header.value()));
             value =
                 valueSerializer.deserialize(valueBytes, providedProtocolSchema, getEnvelope(key.getKeyHeaderByte()));
           } catch (Exception e) {

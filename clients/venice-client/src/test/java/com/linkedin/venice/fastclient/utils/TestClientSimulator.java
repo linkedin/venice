@@ -101,7 +101,6 @@ public class TestClientSimulator implements Client {
   public final RecordDeserializer<MultiGetRouterRequestKeyV1> multiGetRequestDeserializer;
   private final D2Client mockD2Client = mock(D2Client.class);
   private final String dummyD2Discovery = "testD2Endpoint";
-  private boolean speculativeQueryEnabled = false;
   private Map<String, String> keyValues = new HashMap<>(); // all keys in the simulation
   private Map<String, String> requestedKeyValues = new HashMap<>(); // subset/all of keyValues are a part of requests
   private Map<String, Integer> keysToPartitions = new HashMap<>();
@@ -116,12 +115,8 @@ public class TestClientSimulator implements Client {
 
   private static class UnitTestRoutingStrategy extends AbstractClientRoutingStrategy {
     @Override
-    public List<String> getReplicas(long requestId, List<String> replicas, int requiredReplicaCount) {
-      List<String> retReplicas = new ArrayList<>();
-      for (int i = 0; i < requiredReplicaCount && i < replicas.size(); i++) {
-        retReplicas.add(replicas.get(i));
-      }
-      return retReplicas;
+    public String getReplicas(long requestId, int groupId, List<String> replicas) {
+      return replicas.isEmpty() ? null : replicas.get(0);
     }
   }
 
@@ -315,7 +310,7 @@ public class TestClientSimulator implements Client {
     return requestedKeyValues;
   }
 
-  /** Mock the return replica list in the method {@link AbstractStoreMetadata#getReplicas}
+  /** Mock the return replica list in the method {@text AbstractStoreMetadata#getReplicas}
    * created inside {@link TestClientSimulator#getFastClient} */
   public TestClientSimulator expectReplicaRequestForPartitionAndRespondWithReplicas(
       int partitionId,
@@ -502,12 +497,6 @@ public class TestClientSimulator implements Client {
     return simulatorCompleteFuture;
   }
 
-  // TODO need to add tests for this
-  public TestClientSimulator setSpeculativeQueryEnabled(boolean speculativeQueryEnabled) {
-    this.speculativeQueryEnabled = speculativeQueryEnabled;
-    return this;
-  }
-
   public TestClientSimulator setLongTailRetryEnabledForSingleGet(boolean longTailRetryEnabledForSingleGet) {
     this.longTailRetryEnabledForSingleGet = longTailRetryEnabledForSingleGet;
     return this;
@@ -537,7 +526,6 @@ public class TestClientSimulator implements Client {
     clientConfigBuilder.setStoreName(UNIT_TEST_STORE_NAME);
     clientConfigBuilder.setR2Client(this);
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
-    clientConfigBuilder.setSpeculativeQueryEnabled(speculativeQueryEnabled);
     if (longTailRetryEnabledForBatchGet) {
       clientConfigBuilder.setLongTailRetryEnabledForBatchGet(true);
       clientConfigBuilder

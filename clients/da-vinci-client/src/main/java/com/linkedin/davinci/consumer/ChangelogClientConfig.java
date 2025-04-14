@@ -4,12 +4,14 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.schema.SchemaReader;
+import java.util.Objects;
 import java.util.Properties;
+import javax.annotation.Nonnull;
 import org.apache.avro.specific.SpecificRecord;
 
 
 public class ChangelogClientConfig<T extends SpecificRecord> {
-  private Properties consumerProperties;
+  private @Nonnull Properties consumerProperties = new Properties();
   private SchemaReader schemaReader;
   private String viewName;
   private Boolean isBeforeImageView = false;
@@ -46,6 +48,9 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    */
   private boolean skipFailedToAssembleRecords = true;
 
+  private Boolean isExperimentalClientEnabled = false;
+  private int maxBufferSize = 1000;
+
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
   }
@@ -63,11 +68,12 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return innerClientConfig.getStoreName();
   }
 
-  public ChangelogClientConfig<T> setConsumerProperties(Properties consumerProperties) {
-    this.consumerProperties = consumerProperties;
+  public ChangelogClientConfig<T> setConsumerProperties(@Nonnull Properties consumerProperties) {
+    this.consumerProperties = Objects.requireNonNull(consumerProperties);
     return this;
   }
 
+  @Nonnull
   public Properties getConsumerProperties() {
     return consumerProperties;
   }
@@ -249,6 +255,8 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setDatabaseSyncBytesInterval(config.getDatabaseSyncBytesInterval())
         .setShouldCompactMessages(config.shouldCompactMessages())
         .setIsBeforeImageView(config.isBeforeImageView())
+        .setIsExperimentalClientEnabled(config.isExperimentalClientEnabled())
+        .setMaxBufferSize(config.getMaxBufferSize())
         .setSeekThreadPoolSize(config.getSeekThreadPoolSize())
         .setShouldSkipFailedToAssembleRecords(config.shouldSkipFailedToAssembleRecords());
     return newConfig;
@@ -260,6 +268,35 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
 
   public ChangelogClientConfig setIsBeforeImageView(Boolean beforeImageView) {
     isBeforeImageView = beforeImageView;
+    return this;
+  }
+
+  protected Boolean isExperimentalClientEnabled() {
+    return isExperimentalClientEnabled;
+  }
+
+  /**
+   * This uses a highly experimental client.
+   * It is currently only supported for {@link BootstrappingVeniceChangelogConsumer}.
+   */
+  public ChangelogClientConfig setIsExperimentalClientEnabled(Boolean experimentalClientEnabled) {
+    isExperimentalClientEnabled = experimentalClientEnabled;
+    return this;
+  }
+
+  protected int getMaxBufferSize() {
+    return maxBufferSize;
+  }
+
+  /**
+   * Sets the maximum number of records that can be buffered and returned to the user when calling poll.
+   * When the maximum number of records is reached, ingestion will be paused until the buffer is drained.
+   * Please note that this is separate from {@link com.linkedin.venice.ConfigKeys#SERVER_KAFKA_MAX_POLL_RECORDS}.
+   * In order for this feature to be used, {@link #setIsExperimentalClientEnabled(Boolean)} must be set to true.
+   * It is currently only supported for {@link BootstrappingVeniceChangelogConsumer}.
+   */
+  public ChangelogClientConfig setMaxBufferSize(int maxBufferSize) {
+    this.maxBufferSize = maxBufferSize;
     return this;
   }
 }

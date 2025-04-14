@@ -1098,11 +1098,11 @@ public class TestHybrid {
       throw new RuntimeException(e);
     }
 
-    // ok, now run run repush manually with the controller client.
+    // ok, now run repush manually with the controller client.
     // this call should be synchronous and the count down will trigger immediately..
     TestRepushOrchestratorImpl.latch = new CountDownLatch(1);
     sharedVenice.useControllerClient(client -> {
-      RepushJobResponse response = client.triggerRepush(storeName, null);
+      RepushJobResponse response = client.repushStore(storeName);
       Assert.assertFalse(response.isError(), "Repush failed with error: " + response.getError());
       // No waiting this time, this should countdown immediately
       Assert.assertEquals(TestRepushOrchestratorImpl.latch.getCount(), 0);
@@ -1120,6 +1120,10 @@ public class TestHybrid {
       latch.countDown();
       LOGGER.info("Repush job triggered for store: " + repushJobRequest.toString());
       return new RepushJobResponse(Utils.getUniqueString("repush-execId"));
+    }
+
+    public static CountDownLatch getLatch() {
+      return latch;
     }
   }
 
@@ -1254,7 +1258,6 @@ public class TestHybrid {
 
       try (
           ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties)) {
-        StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
         // Have 1 partition only, so that all keys are produced to the same partition
         ControllerResponse response = controllerClient.updateStore(
             storeName,
@@ -1285,6 +1288,8 @@ public class TestHybrid {
         AvroSerializer<String> stringSerializer = new AvroSerializer(STRING_SCHEMA);
         AvroGenericDeserializer<String> stringDeserializer =
             new AvroGenericDeserializer<>(STRING_SCHEMA, STRING_SCHEMA);
+        StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
+
         try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter =
             TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
                 .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
@@ -1442,7 +1447,6 @@ public class TestHybrid {
     try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
         AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
-      StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
       // Have 1 partition only, so that all keys are produced to the same partition
       ControllerResponse response = controllerClient.updateStore(
           storeName,
@@ -1469,6 +1473,8 @@ public class TestHybrid {
       String prefix = "foo_object_";
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
           venice.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+      StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
+
       for (int i = 0; i < 2; i++) {
         try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter =
             TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
@@ -1517,7 +1523,6 @@ public class TestHybrid {
     try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
         AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
-      StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
       // Have 1 partition only, so that all keys are produced to the same partition
       ControllerResponse response = controllerClient.updateStore(
           storeName,
@@ -1539,6 +1544,7 @@ public class TestHybrid {
       String prefix = "hybrid_DIV_enhancement_";
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
           venice.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+      StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
 
       // chunk the data into 2 parts and send each part by different producers. Also, close the producers
       // as soon as it finishes writing. This makes sure that closing or switching producers won't
@@ -1572,8 +1578,6 @@ public class TestHybrid {
 
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testHybridWithPartitionWiseConsumer() throws Exception {
-    final Properties extraProperties = new Properties();
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
     // Using partition count of 4 to trigger realtime topics from different store versions' store ingestion task will
     // share one consumer.
     final int partitionCount = 4;

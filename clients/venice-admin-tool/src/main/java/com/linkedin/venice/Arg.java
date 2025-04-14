@@ -303,7 +303,7 @@ public enum Arg {
   ), ENABLE_STORE_MIGRATION("enable-store-migration", "esm", true, "Toggle store migration store config"),
   ADMIN_OPERATION_PROTOCOL_VERSION(
       "admin-operation-protocol-version", "aopv", true, "Admin operation protocol version"
-  );
+  ), GLOBAL_RT_DIV_ENABLED("global-rt-div-enabled", "grde", true, "Enable Global RT DIV for a store");
 
   private final String argName;
   private final String first;

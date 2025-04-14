@@ -1218,13 +1218,13 @@ public class ControllerClient implements Closeable {
    * @param storeName
    * @return //TODO LC:
    */
-  public RepushJobResponse triggerRepush(String storeName, byte[] repushJobDetails) {
+  public RepushJobResponse repushStore(String storeName) {
     QueryParams params = newParams().add(NAME, storeName);
     // TODO repush: Use byte[] to pass parameters instead of QueryParams as it is a post method. see
     // (https://github.com/linkedin/venice/pull/1282#discussion_r1871510627)
     // TODO repush: add params from admin tool for repush: e.g. version, fabric etc.
     // TODO repush: add admin.repush()
-    return request(ControllerRoute.COMPACT_STORE, params, RepushJobResponse.class, repushJobDetails);
+    return request(ControllerRoute.REPUSH_STORE, params, RepushJobResponse.class);
   }
 
   public VersionResponse getStoreLargestUsedVersion(String clusterName, String storeName) {
@@ -1410,6 +1410,23 @@ public class ControllerClient implements Closeable {
     QueryParams params =
         newParams().add(CLUSTER, clusterName).add(ADMIN_OPERATION_PROTOCOL_VERSION, adminOperationProtocolVersion);
     return request(ControllerRoute.UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION, params, AdminTopicMetadataResponse.class);
+  }
+
+  public AdminOperationProtocolVersionControllerResponse getAdminOperationProtocolVersionFromControllers(
+      String clusterName) {
+    QueryParams params = newParams().add(CLUSTER, clusterName);
+    return request(
+        ControllerRoute.GET_ADMIN_OPERATION_VERSION_FROM_CONTROLLERS,
+        params,
+        AdminOperationProtocolVersionControllerResponse.class);
+  }
+
+  public AdminOperationProtocolVersionControllerResponse getLocalAdminOperationProtocolVersion() {
+    // TODO: Modify this method to send to given controller url
+    return request(
+        ControllerRoute.GET_LOCAL_ADMIN_OPERATION_PROTOCOL_VERSION,
+        newParams(),
+        AdminOperationProtocolVersionControllerResponse.class);
   }
 
   public ControllerResponse deleteKafkaTopic(String topicName) {

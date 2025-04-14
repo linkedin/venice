@@ -263,6 +263,7 @@ public class ControllerApiConstants {
   public static final String TARGET_SWAP_REGION = "target_swap_region";
   public static final String TARGET_SWAP_REGION_WAIT_TIME = "target_swap_region_wait_time";
   public static final String IS_DAVINCI_HEARTBEAT_REPORTED = "is_davinci_heartbeat_reported";
+  public static final String GLOBAL_RT_DIV_ENABLED = "global_rt_div_enabled";
 
   /**
    * Params for repush job

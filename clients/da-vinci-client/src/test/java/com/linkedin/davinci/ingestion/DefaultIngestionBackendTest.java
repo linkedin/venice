@@ -27,9 +27,9 @@ import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.utils.Pair;
 import java.io.InputStream;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
@@ -82,7 +82,7 @@ public class DefaultIngestionBackendTest {
     MockitoAnnotations.openMocks(this);
     when(store.getName()).thenReturn(STORE_NAME);
     when(version.getNumber()).thenReturn(VERSION_NUMBER);
-    Pair<Store, Version> storeAndVersion = Pair.create(store, version);
+    StoreVersionInfo storeAndVersion = new StoreVersionInfo(store, version);
 
     when(storeConfig.getStoreVersionName()).thenReturn(STORE_VERSION);
     when(storeIngestionService.getMetadataRepo()).thenReturn(metadataRepo);
@@ -167,6 +167,30 @@ public class DefaultIngestionBackendTest {
     verify(aggVersionedBlobTransferStats, never()).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
     verify(aggVersionedBlobTransferStats, never())
         .recordBlobTransferResponsesBasedOnBoostrapStatus(eq(STORE_NAME), eq(VERSION_NUMBER), eq(false));
+  }
+
+  @Test
+  public void testStartConsumptionWithClosePartition() {
+    AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
+    when(storageEngine.containsPartition(PARTITION)).thenReturn(true);
+    doNothing().when(storageEngine).dropPartition(PARTITION, false);
+
+    String kafkaTopic = Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER);
+    when(store.isBlobTransferEnabled()).thenReturn(true);
+    when(store.isHybrid()).thenReturn(true);
+    when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT)))
+        .thenReturn(CompletableFuture.completedFuture(null));
+    when(veniceServerConfig.getRocksDBPath()).thenReturn(BASE_DIR);
+    RocksDBServerConfig rocksDBServerConfig = Mockito.mock(RocksDBServerConfig.class);
+    when(rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()).thenReturn(false);
+    when(veniceServerConfig.getRocksDBServerConfig()).thenReturn(rocksDBServerConfig);
+    when(storageService.getStorageEngine(kafkaTopic)).thenReturn(storageEngine);
+
+    ingestionBackend.startConsumption(storeConfig, PARTITION);
+    verify(blobTransferManager).get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT));
+    verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
+    verify(aggVersionedBlobTransferStats)
+        .recordBlobTransferResponsesBasedOnBoostrapStatus(eq(STORE_NAME), eq(VERSION_NUMBER), eq(true));
   }
 
   @Test

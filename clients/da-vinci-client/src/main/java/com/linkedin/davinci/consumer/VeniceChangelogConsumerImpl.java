@@ -794,7 +794,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           topicSuffix,
           pubSubTopicPartition.getPartitionNumber());
     }
-    if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
+
+    // VERSION_SWAP is now being emitted to VT by the Leader. Make sure to only process VERSION_SWAP messages from
+    // the change capture topic
+    if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)
+        && !Version.isVersionTopic(pubSubTopicPartition.getTopicName())) {
       // TODO: In view topics, we need to know the partition of the upstream RT
       // how we transmit this information has yet to be determined, so once we finalize
       // that, we'll need to tweak this. For now, we'll just pass in the same partition number
@@ -872,8 +876,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       }
 
       partitionToDeleteMessageCount.computeIfAbsent(message.getPartition(), x -> new AtomicLong(0)).incrementAndGet();
-    }
-    if (messageType.equals(MessageType.PUT)) {
+    } else if (messageType.equals(MessageType.PUT)) {
       Put put = (Put) message.getValue().payloadUnion;
       // Select appropriate reader schema and compressors
       RecordDeserializer deserializer = null;

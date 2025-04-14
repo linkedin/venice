@@ -14,10 +14,12 @@ import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_PASSWORD;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_TYPE;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING;
 import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
@@ -166,6 +168,7 @@ public class DaVinciClientTest {
   private VeniceClusterWrapper cluster;
   private D2Client d2Client;
   private PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
+  private final boolean REAL_TIME_TOPIC_VERSIONING_ENABLED = true;
 
   @BeforeClass
   public void setUp() {
@@ -174,6 +177,7 @@ public class DaVinciClientTest {
     clusterConfig.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     clusterConfig.put(PUSH_STATUS_STORE_ENABLED, true);
     clusterConfig.put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 3);
+    clusterConfig.put(CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING, REAL_TIME_TOPIC_VERSIONING_ENABLED);
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfServers(2)
         .numberOfRouters(1)
@@ -1305,6 +1309,7 @@ public class DaVinciClientTest {
         .put(BLOB_TRANSFER_MANAGER_ENABLED, true)
         .put(BLOB_TRANSFER_SSL_ENABLED, true)
         .put(BLOB_TRANSFER_ACL_ENABLED, true)
+        .put(BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, -1000000)
         .put(SSL_KEYSTORE_TYPE, "JKS")
         .put(SSL_KEYSTORE_LOCATION, SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS))
         .put(SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD)
@@ -1324,6 +1329,7 @@ public class DaVinciClientTest {
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         new MetricsRepository(),
         backendConfig2)) {
+      // Case 1: Start a fresh client, and see if it can bootstrap from the first one
       DaVinciClient<Integer, Object> client2 = factory2.getAndStartGenericAvroClient(storeName, dvcConfig);
       client2.subscribeAll().get();
 
@@ -1332,6 +1338,28 @@ public class DaVinciClientTest {
         Assert.assertTrue(Files.exists(Paths.get(snapshotPath)));
       }
 
+      for (int i = 0; i < 3; i++) {
+        String partitionPath2 = RocksDBUtils.composePartitionDbDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertTrue(Files.exists(Paths.get(partitionPath2)));
+        String snapshotPath2 = RocksDBUtils.composeSnapshotDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertFalse(Files.exists(Paths.get(snapshotPath2)));
+      }
+
+      // Case 2: Restart the second Da Vinci client to see if it can re-bootstrap from the first one with retained old
+      // data.
+      client2.close();
+      // wait and restart, and verify old data is retained before subscribing
+      Thread.sleep(3000);
+      for (int i = 0; i < 3; i++) {
+        // Verify that the folder is not clean up.
+        String partitionPath2 = RocksDBUtils.composePartitionDbDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertTrue(Files.exists(Paths.get(partitionPath2)));
+        String snapshotPath2 = RocksDBUtils.composeSnapshotDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertFalse(Files.exists(Paths.get(snapshotPath2)));
+      }
+
+      client2.start();
+      client2.subscribeAll().get();
       for (int i = 0; i < 3; i++) {
         String partitionPath2 = RocksDBUtils.composePartitionDbDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
         Assert.assertTrue(Files.exists(Paths.get(partitionPath2)));
@@ -1373,7 +1401,7 @@ public class DaVinciClientTest {
         Integer.toString(port2),
         storageClass,
         "false",
-        "false");
+        "true");
 
     // Wait for the first DaVinci Client to complete ingestion
     Thread.sleep(60000);
@@ -1493,7 +1521,9 @@ public class DaVinciClientTest {
   }
 
   private void runIncrementalPush(String storeName, String incrementalPushVersion, int keyCount) throws Exception {
-    String realTimeTopicName = Version.composeRealTimeTopic(storeName);
+    String realTimeTopicName = REAL_TIME_TOPIC_VERSIONING_ENABLED
+        ? Utils.composeRealTimeTopic(storeName, 1)
+        : Utils.composeRealTimeTopic(storeName);
     VeniceWriterFactory vwFactory =
         IntegrationTestPushUtils.getVeniceWriterFactory(cluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory);
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);

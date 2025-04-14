@@ -497,10 +497,7 @@ public class TestUtils {
       if (executionStatus.isError()) {
         throw new VeniceException("Unexpected push failure for topic: " + topicName + ": " + jobStatusQueryResponse);
       }
-      assertEquals(
-          executionStatus,
-          ExecutionStatus.COMPLETED,
-          "Push is yet to complete: " + jobStatusQueryResponse.toString());
+      assertEquals(executionStatus, ExecutionStatus.COMPLETED, "Push is yet to complete: " + jobStatusQueryResponse);
     });
   }
 

@@ -189,7 +189,6 @@ public class DispatchingAvroGenericStoreClientTest {
         false,
         false,
         false,
-        null,
         AvroCompatibilityHelper.parse(KEY_SCHEMA),
         STORE_VALUE_SCHEMA);
     CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
