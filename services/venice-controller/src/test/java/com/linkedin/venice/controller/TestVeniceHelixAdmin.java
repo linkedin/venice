@@ -1079,9 +1079,9 @@ public class TestVeniceHelixAdmin {
               && urlToVersionMap.get("http://standbyHost1:1234") == 1L);
       assertTrue(
           urlToVersionMap.containsKey("http://standbyHost2:1234")
-              && urlToVersionMap.get("http://standbyHost2:1234") == 1L);
+              && urlToVersionMap.get("http://standbyHost2:1234") == 2L);
       assertTrue(
-          urlToVersionMap.containsKey("http://leaderHost:1234") && urlToVersionMap.get("http://leaderHost:1234") == 1L);
+          urlToVersionMap.containsKey("http://leaderHost:1234") && urlToVersionMap.get("http://leaderHost:1234") == 2L);
     }
   }
 

@@ -75,7 +75,7 @@ public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
 
   }
 
-  private class ProtocolVersionDetectionTask implements Runnable {
+  class ProtocolVersionDetectionTask implements Runnable {
     @Override
     public void run() {
       LOGGER.info("Started running {}", getClass().getSimpleName());
@@ -106,10 +106,10 @@ public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
             stats.recordProtocolVersionAutoDetectionLatencySensor(elapsedTimeFromMsToMs);
           }
         } catch (Exception e) {
-          LOGGER.warn("Received exception: {} while running ProtocolVersionDetectionTask", e);
+          LOGGER.warn("Received exception while running ProtocolVersionDetectionTask", e);
           stats.recordProtocolVersionAutoDetectionErrorSensor();
         } catch (Throwable throwable) {
-          LOGGER.warn("Received a throwable: {} while running ProtocolVersionDetectionTask", throwable.getMessage());
+          LOGGER.warn("Received a throwable while running ProtocolVersionDetectionTask", throwable);
           stats.recordProtocolVersionAutoDetectionThrowableSensor();
         }
       }
