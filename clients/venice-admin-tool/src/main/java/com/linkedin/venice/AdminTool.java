@@ -510,6 +510,7 @@ public class AdminTool {
           break;
         case GET_DEAD_STORES:
           getDeadStores(cmd);
+          break;
         case COMPARE_STORE:
           compareStore(cmd);
           break;
