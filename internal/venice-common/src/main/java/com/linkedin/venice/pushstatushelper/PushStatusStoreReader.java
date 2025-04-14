@@ -93,16 +93,10 @@ public class PushStatusStoreReader implements Closeable {
       int partitionId,
       Optional<String> incrementalPushVersion,
       Optional<String> incrementalPushPrefix) {
-    AvroSpecificStoreClient<PushStatusKey, PushStatusValue> client = getVeniceClient(storeName);
-    PushStatusKey pushStatusKey =
-        PushStatusStoreUtils.getPushKey(version, partitionId, incrementalPushVersion, incrementalPushPrefix);
+    // Reuse the async method but block here
     try {
-      PushStatusValue pushStatusValue = client.get(pushStatusKey).get(60, TimeUnit.SECONDS);
-      if (pushStatusValue == null) {
-        return Collections.emptyMap();
-      } else {
-        return pushStatusValue.instances;
-      }
+      return getPartitionStatusAsync(storeName, version, partitionId, incrementalPushVersion, incrementalPushPrefix)
+          .get(60, TimeUnit.SECONDS);
     } catch (Exception e) {
       LOGGER.error("Failed to read push status of partition:{} store:{}", partitionId, storeName, e);
       throw new VeniceException(e);
@@ -129,7 +123,7 @@ public class PushStatusStoreReader implements Closeable {
         }
       }).exceptionally(e -> {
         LOGGER.error("Failed to read push status of partition:{} store:{}", partitionId, storeName, e);
-        return Collections.emptyMap();
+        throw new VeniceException(e);
       });
     } catch (Exception e) {
       // Handle any exceptions during setup by returning a failed future
