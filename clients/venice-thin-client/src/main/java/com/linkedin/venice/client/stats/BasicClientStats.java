@@ -216,7 +216,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
     requestSensor.record();
   }
 
-  public void emitRequestHealthyMetrics(double latency, int keyCount, int httpStatus) {
+  public void emitHealthyRequestMetrics(double latency, int keyCount, int httpStatus) {
     recordRequest();
     HttpResponseStatusEnum httpResponseStatusEnum = transformIntToHttpResponseStatusEnum(httpStatus);
     HttpResponseStatusCodeCategory httpResponseStatusCodeCategory = getVeniceHttpResponseStatusCodeCategory(httpStatus);
@@ -229,11 +229,11 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
         .record(keyCount, httpResponseStatusEnum, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
   }
 
-  public void emitRequestUnhealthyMetrics(double latency, int keyCount, int httpStatus) {
+  public void emitUnhealthyRequestMetrics(double latency, int keyCount, int httpStatus) {
     recordRequest();
     HttpResponseStatusEnum httpResponseStatusEnum = transformIntToHttpResponseStatusEnum(httpStatus);
     HttpResponseStatusCodeCategory httpResponseStatusCodeCategory = getVeniceHttpResponseStatusCodeCategory(httpStatus);
-    VeniceResponseStatusCategory veniceResponseStatusCategory = VeniceResponseStatusCategory.SUCCESS;
+    VeniceResponseStatusCategory veniceResponseStatusCategory = VeniceResponseStatusCategory.FAIL;
     unhealthyRequestMetric
         .record(1, httpResponseStatusEnum, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
     unhealthyLatencyMetric
@@ -280,11 +280,11 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
     }
   }
 
-  VeniceOpenTelemetryMetricsRepository getOtelRepository() {
+  private VeniceOpenTelemetryMetricsRepository getOtelRepository() {
     return otelRepository;
   }
 
-  Map<VeniceMetricsDimensions, String> getBaseDimensionsMap() {
+  private Map<VeniceMetricsDimensions, String> getBaseDimensionsMap() {
     return baseDimensionsMap;
   }
 

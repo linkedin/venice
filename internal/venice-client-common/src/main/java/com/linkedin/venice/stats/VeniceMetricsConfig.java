@@ -6,6 +6,7 @@ import com.linkedin.venice.stats.metrics.MetricEntity;
 import io.opentelemetry.exporter.otlp.internal.OtlpConfigUtil;
 import io.opentelemetry.sdk.metrics.export.AggregationTemporalitySelector;
 import io.opentelemetry.sdk.metrics.export.MetricExporter;
+import io.opentelemetry.sdk.metrics.export.MetricReader;
 import io.tehuti.metrics.MetricConfig;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -174,6 +175,9 @@ public class VeniceMetricsConfig {
   private final int otelExponentialHistogramMaxScale;
   private final int otelExponentialHistogramMaxBuckets;
 
+  /** Additional MetricsReader to be used for OpenTelemetry metrics */
+  private final MetricReader otelAdditionalMetricsReader;
+
   private VeniceMetricsConfig(Builder builder) {
     this.serviceName = builder.serviceName;
     this.metricPrefix = builder.metricPrefix;
@@ -191,6 +195,7 @@ public class VeniceMetricsConfig {
     this.useOtelExponentialHistogram = builder.useOtelExponentialHistogram;
     this.otelExponentialHistogramMaxScale = builder.otelExponentialHistogramMaxScale;
     this.otelExponentialHistogramMaxBuckets = builder.otelExponentialHistogramMaxBuckets;
+    this.otelAdditionalMetricsReader = builder.otelAdditionalMetricsReader;
     this.tehutiMetricConfig = builder.tehutiMetricConfig;
   }
 
@@ -212,6 +217,7 @@ public class VeniceMetricsConfig {
     private boolean useOtelExponentialHistogram = true;
     private int otelExponentialHistogramMaxScale = 3;
     private int otelExponentialHistogramMaxBuckets = 250;
+    private MetricReader otelAdditionalMetricsReader = null;
     private MetricConfig tehutiMetricConfig = null;
 
     public Builder setServiceName(String serviceName) {
@@ -288,6 +294,11 @@ public class VeniceMetricsConfig {
 
     public Builder setOtelExponentialHistogramMaxBuckets(int otelExponentialHistogramMaxBuckets) {
       this.otelExponentialHistogramMaxBuckets = otelExponentialHistogramMaxBuckets;
+      return this;
+    }
+
+    public Builder setOtelAdditionalMetricsReader(MetricReader otelAdditionalMetricsReader) {
+      this.otelAdditionalMetricsReader = otelAdditionalMetricsReader;
       return this;
     }
 
@@ -499,6 +510,10 @@ public class VeniceMetricsConfig {
 
   public int getOtelExponentialHistogramMaxBuckets() {
     return otelExponentialHistogramMaxBuckets;
+  }
+
+  public MetricReader getOtelAdditionalMetricsReader() {
+    return otelAdditionalMetricsReader;
   }
 
   public MetricConfig getTehutiMetricConfig() {

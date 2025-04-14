@@ -86,6 +86,12 @@ public class VeniceOpenTelemetryMetricsRepository {
                 .build());
       }
 
+      if (metricsConfig.getOtelAdditionalMetricsReader() != null) {
+        // additional metrics reader apart from the above. For instance,
+        // an in-memory metric reader can be passed in for testing purposes.
+        builder.registerMetricReader(metricsConfig.getOtelAdditionalMetricsReader());
+      }
+
       if (metricsConfig.useOtelExponentialHistogram()) {
         setExponentialHistogramAggregation(builder, metricsConfig);
       }

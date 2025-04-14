@@ -61,12 +61,12 @@ public class StatsAvroGenericDaVinciClient<K, V> extends DelegatingAvroGenericDa
         int httpStatus;
         if (throwable != null) {
           httpStatus = stats.getUnhealthyRequestHttpStatus(throwable);
-          stats.emitRequestUnhealthyMetrics(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS), numKeys, httpStatus);
+          stats.emitUnhealthyRequestMetrics(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS), numKeys, httpStatus);
           statFuture.completeExceptionally(throwable);
         } else {
           int successfulKeyCount = getSuccessfulKeyCount(v);
           httpStatus = stats.getHealthyRequestHttpStatus(successfulKeyCount);
-          stats.emitRequestHealthyMetrics(
+          stats.emitHealthyRequestMetrics(
               LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS),
               successfulKeyCount,
               httpStatus);
@@ -74,7 +74,7 @@ public class StatsAvroGenericDaVinciClient<K, V> extends DelegatingAvroGenericDa
         }
       });
     } catch (Exception e) {
-      stats.emitRequestUnhealthyMetrics(
+      stats.emitUnhealthyRequestMetrics(
           LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS),
           numKeys,
           HttpStatus.SC_INTERNAL_SERVER_ERROR);
