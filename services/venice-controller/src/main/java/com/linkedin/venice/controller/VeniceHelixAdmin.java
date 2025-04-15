@@ -3724,7 +3724,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return Version.parseVersionFromKafkaTopicName(offlinePush.get());
     }
     // If the push status is finished, then return the largest online version greater than current version
-    return getOnlineFutureVersion(clusterName, storeName);
+    return getFutureVersionWithStatus(clusterName, storeName, VersionStatus.ONLINE);
   }
 
   @Override
@@ -3737,14 +3737,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  public int getOnlineFutureVersion(String clusterName, String storeName) {
+  public int getFutureVersionWithStatus(String clusterName, String storeName, VersionStatus status) {
     Store store = getStoreForReadOnly(clusterName, storeName);
     if (store.getVersions().isEmpty()) {
       return NON_EXISTING_VERSION;
     }
 
     Version version = store.getVersions().stream().max(Comparable::compareTo).get();
-    if (version.getNumber() != store.getCurrentVersion() && version.getStatus().equals(ONLINE)) {
+    if (version.getNumber() != store.getCurrentVersion() && version.getStatus().equals(status)) {
       return version.getNumber();
     }
     return NON_EXISTING_VERSION;
@@ -4604,10 +4604,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return;
       }
     }
-    int futureVersion = getOnlineFutureVersion(clusterName, storeName);
-    if (futureVersion == NON_EXISTING_VERSION) {
+
+    int onlineFutureVersion = getFutureVersionWithStatus(clusterName, storeName, ONLINE);
+    int pushedFutureVersion = getFutureVersionWithStatus(clusterName, storeName, PUSHED); // Check for PUSHED status too
+                                                                                          // for target region pushes
+    if (onlineFutureVersion == Store.NON_EXISTING_VERSION && pushedFutureVersion == NON_EXISTING_VERSION) {
       return;
     }
+
+    int futureVersion = onlineFutureVersion == Store.NON_EXISTING_VERSION ? pushedFutureVersion : onlineFutureVersion;
     storeMetadataUpdate(clusterName, storeName, store -> {
       if (!store.isEnableWrites()) {
         throw new VeniceException(
@@ -4615,6 +4620,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(futureVersion);
+
+      if (pushedFutureVersion != Store.NON_EXISTING_VERSION) {
+        store.updateVersionStatus(futureVersion, VersionStatus.ONLINE);
+      }
+
       LOGGER.info(
           "Rolling forward current version {} to version {} in store {}",
           previousVersion,
