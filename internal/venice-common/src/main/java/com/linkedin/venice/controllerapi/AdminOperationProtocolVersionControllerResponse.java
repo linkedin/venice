@@ -1,5 +1,6 @@
 package com.linkedin.venice.controllerapi;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -31,5 +32,25 @@ public class AdminOperationProtocolVersionControllerResponse extends ControllerR
 
   public Map<String, Long> getControllerUrlToVersionMap() {
     return controllerUrlToVersionMap;
+  }
+
+  @JsonIgnore
+  public String toString() {
+    return new StringBuilder().append(this.getClass().getSimpleName())
+        .append(" {\n")
+        .append("  \"localAdminOperationProtocolVersion\": ")
+        .append(localAdminOperationProtocolVersion)
+        .append(",\n")
+        .append("  \"cluster\": \"")
+        .append(getCluster())
+        .append("\",\n")
+        .append("  \"requestUrl\": \"")
+        .append(requestUrl)
+        .append("\",\n")
+        .append("  \"controllerUrlToVersionMap\": ")
+        .append(controllerUrlToVersionMap.toString())
+        .append("\n")
+        .append("}")
+        .toString();
   }
 }
