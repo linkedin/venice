@@ -76,7 +76,7 @@ public class RmdSerDe {
             rmdWithValueSchemaID.position(),
             rmdWithValueSchemaID.remaining());
 
-    // We allow 5 retries of 2 sec delay between each attempt to get the deserializer in case of a slow schema
+    // We allow 5 retries of 1 sec delay between each attempt to get the deserializer in case of a slow schema
     // repository.
     GenericRecord rmdRecord = getRmdDeserializerWithRetry(valueSchemaId, valueSchemaId, 5).deserialize(binaryDecoder);
     rmdWithValueSchemaId.setValueSchemaId(valueSchemaId);
