@@ -75,7 +75,7 @@ public class ControllerInstanceTagRefresher implements PreConnectCallback {
             currentTags,
             instanceConfig.getTags());
       } else {
-        LOGGER.info("Instance '{}' already contains all expected tags.", instanceName);
+        LOGGER.info("Instance '{}' already contains all expected tags: {}", instanceName, currentTags);
       }
     } catch (Exception e) {
       throw new VeniceException("PreConnectCallback failed to apply instance tags", e);
