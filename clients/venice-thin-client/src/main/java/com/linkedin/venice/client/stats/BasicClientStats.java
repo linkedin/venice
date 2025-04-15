@@ -218,28 +218,22 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
 
   public void emitHealthyRequestMetrics(double latency, int keyCount, int httpStatus) {
     recordRequest();
-    HttpResponseStatusEnum httpResponseStatusEnum = transformIntToHttpResponseStatusEnum(httpStatus);
-    HttpResponseStatusCodeCategory httpResponseStatusCodeCategory = getVeniceHttpResponseStatusCodeCategory(httpStatus);
-    VeniceResponseStatusCategory veniceResponseStatusCategory = VeniceResponseStatusCategory.SUCCESS;
-    healthyRequestMetric
-        .record(1, httpResponseStatusEnum, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
-    healthyLatencyMetric
-        .record(latency, httpResponseStatusEnum, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
-    healthyKeyCountMetric
-        .record(keyCount, httpResponseStatusEnum, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
+    HttpResponseStatusEnum statusEnum = transformIntToHttpResponseStatusEnum(httpStatus);
+    HttpResponseStatusCodeCategory httpCategory = getVeniceHttpResponseStatusCodeCategory(httpStatus);
+    VeniceResponseStatusCategory veniceCategory = VeniceResponseStatusCategory.SUCCESS;
+    healthyRequestMetric.record(1, statusEnum, httpCategory, veniceCategory);
+    healthyLatencyMetric.record(latency, statusEnum, httpCategory, veniceCategory);
+    healthyKeyCountMetric.record(keyCount, statusEnum, httpCategory, veniceCategory);
   }
 
   public void emitUnhealthyRequestMetrics(double latency, int keyCount, int httpStatus) {
     recordRequest();
-    HttpResponseStatusEnum httpResponseStatusEnum = transformIntToHttpResponseStatusEnum(httpStatus);
-    HttpResponseStatusCodeCategory httpResponseStatusCodeCategory = getVeniceHttpResponseStatusCodeCategory(httpStatus);
-    VeniceResponseStatusCategory veniceResponseStatusCategory = VeniceResponseStatusCategory.FAIL;
-    unhealthyRequestMetric
-        .record(1, httpResponseStatusEnum, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
-    unhealthyLatencyMetric
-        .record(latency, httpResponseStatusEnum, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
-    unhealthyKeyCountMetric
-        .record(keyCount, httpResponseStatusEnum, httpResponseStatusCodeCategory, veniceResponseStatusCategory);
+    HttpResponseStatusEnum statusEnum = transformIntToHttpResponseStatusEnum(httpStatus);
+    HttpResponseStatusCodeCategory httpCategory = getVeniceHttpResponseStatusCodeCategory(httpStatus);
+    VeniceResponseStatusCategory veniceCategory = VeniceResponseStatusCategory.FAIL;
+    unhealthyRequestMetric.record(1, statusEnum, httpCategory, veniceCategory);
+    unhealthyLatencyMetric.record(latency, statusEnum, httpCategory, veniceCategory);
+    unhealthyKeyCountMetric.record(keyCount, statusEnum, httpCategory, veniceCategory);
   }
 
   public void recordRequestKeyCount(int keyCount) {
@@ -261,8 +255,20 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
    * @param numSuccessfulKeys
    * @return {@link HttpStatus}
    */
-  public int getHealthyRequestHttpStatus(int numSuccessfulKeys) {
+  public static int getHealthyRequestHttpStatus(int numSuccessfulKeys) {
     return numSuccessfulKeys > 0 ? SC_OK : SC_NOT_FOUND;
+  }
+
+  /**
+   * Get the number of successful keys from the value.
+   * @param value
+   * @return The number of successful keys.
+   */
+  public static int getSuccessfulKeyCount(Object value) {
+    if (value instanceof Map) {
+      return ((Map) value).size();
+    }
+    return (value != null) ? 1 : 0;
   }
 
   /**
@@ -271,7 +277,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
    * @param throwable
    * @return {@link HttpStatus}
    */
-  public int getUnhealthyRequestHttpStatus(Throwable throwable) {
+  public static int getUnhealthyRequestHttpStatus(Throwable throwable) {
     if (throwable instanceof VeniceClientHttpException) {
       VeniceClientHttpException httpException = (VeniceClientHttpException) throwable;
       return httpException.getHttpStatus();

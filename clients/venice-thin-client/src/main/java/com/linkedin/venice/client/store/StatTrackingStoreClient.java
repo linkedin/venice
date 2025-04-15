@@ -1,5 +1,9 @@
 package com.linkedin.venice.client.store;
 
+import static com.linkedin.venice.client.stats.BasicClientStats.getHealthyRequestHttpStatus;
+import static com.linkedin.venice.client.stats.BasicClientStats.getSuccessfulKeyCount;
+import static com.linkedin.venice.client.stats.BasicClientStats.getUnhealthyRequestHttpStatus;
+
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.stats.ClientStats;
@@ -25,7 +29,6 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.BiFunction;
 import org.apache.avro.Schema;
-import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -253,13 +256,13 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
       int duplicateEntryCnt) {
     double latency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS);
     if (exception.isPresent()) {
-      int httpStatus = clientStats.getUnhealthyRequestHttpStatus(exception.get());
+      int httpStatus = getUnhealthyRequestHttpStatus(exception.get());
       if (exception.get() instanceof VeniceClientHttpException) {
         clientStats.recordHttpRequest(httpStatus);
       }
       clientStats.emitUnhealthyRequestMetrics(latency, keyCount, httpStatus);
     } else {
-      int httpStatus = clientStats.getHealthyRequestHttpStatus(successKeyCnt);
+      int httpStatus = getHealthyRequestHttpStatus(successKeyCnt);
       clientStats.emitHealthyRequestMetrics(latency, successKeyCnt, httpStatus);
       clientStats.recordSuccessDuplicateRequestKeyCount(duplicateEntryCnt);
     }
@@ -282,7 +285,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     return (T value, Throwable throwable) -> {
       double latency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS);
       if (throwable != null) {
-        int httpStatus = clientStats.getUnhealthyRequestHttpStatus(throwable);
+        int httpStatus = getUnhealthyRequestHttpStatus(throwable);
         if (throwable instanceof VeniceClientHttpException) {
           clientStats.recordHttpRequest(httpStatus);
         }
@@ -290,12 +293,9 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
         handleStoreExceptionInternally(throwable);
       }
 
-      if (value == null) {
-        clientStats.emitHealthyRequestMetrics(latency, 0, HttpStatus.SC_NOT_FOUND);
-      } else {
-        clientStats
-            .emitHealthyRequestMetrics(latency, (value instanceof Map) ? ((Map) value).size() : 1, HttpStatus.SC_OK);
-      }
+      int successfulKeyCount = getSuccessfulKeyCount(value);
+      int httpStatus = getHealthyRequestHttpStatus(successfulKeyCount);
+      clientStats.emitHealthyRequestMetrics(latency, successfulKeyCount, httpStatus);
       return value;
     };
   }

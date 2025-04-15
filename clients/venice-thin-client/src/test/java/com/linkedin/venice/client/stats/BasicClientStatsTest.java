@@ -113,7 +113,7 @@ public class BasicClientStatsTest {
     Attributes expectedAttributes = getExpectedAttributes(storeName, httpStatus, VeniceResponseStatusCategory.SUCCESS);
     Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
     Assert.assertFalse(metricsData.isEmpty(), "Metrics should not be empty");
-    Assert.assertEquals(metricsData.size(), 3, "There should be four metrics recorded");
+    Assert.assertEquals(metricsData.size(), 3, "There should be three metrics recorded");
     LongPointData callCountData = getLongPointData(metricsData, "call_count", otelPrefix);
     validateLongPointData(callCountData, 1, expectedAttributes);
     ExponentialHistogramPointData callTimeData = getExponentialHistogramPointData(metricsData, "call_time", otelPrefix);
@@ -162,7 +162,7 @@ public class BasicClientStatsTest {
     Attributes expectedAttributes = getExpectedAttributes(storeName, httpStatus, VeniceResponseStatusCategory.FAIL);
     Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
     Assert.assertFalse(metricsData.isEmpty(), "Metrics should not be empty");
-    Assert.assertEquals(metricsData.size(), 3, "There should be four metrics recorded");
+    Assert.assertEquals(metricsData.size(), 3, "There should be three metrics recorded");
     LongPointData callCountData = getLongPointData(metricsData, "call_count", otelPrefix);
     validateLongPointData(callCountData, 1, expectedAttributes);
     ExponentialHistogramPointData callTimeData = getExponentialHistogramPointData(metricsData, "call_time", otelPrefix);
