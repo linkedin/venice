@@ -37,7 +37,7 @@ public class VeniceVersionFinder {
   private static final Logger LOGGER = LogManager.getLogger(VeniceVersionFinder.class);
   private static final RedundantExceptionFilter EXCEPTION_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
-  private static final String UNINITALISED_KAFKA_TOPIC_STRING = "uninit-kafka-topic";
+  private static final String UNINITALISED_KAFKA_TOPIC_STRING = null;
 
   private final ReadOnlyStoreRepository metadataRepository;
   private final StaleVersionStats stats;
