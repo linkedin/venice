@@ -146,13 +146,13 @@ public class VeniceVersionFinder {
     }
 
     // new version not ready to serve
-    String errorMessage = "Unable to serve new version: " + newVersionKafkaTopic + ".";
+    LOGGER.debug("Unable to serve new version: {}", newVersionKafkaTopic);
     if (!newVersionPartitionResourcesReady) {
-      errorMessage += " Partition resources not ready for new version.";
+      LOGGER.debug("Partition resources not ready for new version");
       stats.recordStalenessReason(StaleVersionReason.OFFLINE_PARTITIONS);
     }
     if (!newVersionDecompressorReady) {
-      errorMessage += " Decompressor not ready for new version (Has dictionary downloaded?).";
+      LOGGER.debug("Decompressor not ready for new version (Has dictionary downloaded?)");
       stats.recordStalenessReason(StaleVersionReason.DICTIONARY_NOT_DOWNLOADED);
     }
 
@@ -163,26 +163,20 @@ public class VeniceVersionFinder {
         isDecompressorReady(store, existingVersion, Version.composeKafkaTopic(storeName, existingVersion));
     if (existingVersionStatusOnline && existingVersionDecompressorReady) {
       // existing version ready to serve
-      errorMessage += " Continuing to serve existing version: " + existingVersion + ".";
-      if (!EXCEPTION_FILTER.isRedundantException(errorMessage)) {
-        LOGGER.warn(errorMessage);
-      }
+      LOGGER.debug("Continuing to serve existing version: {}", existingVersion);
       stats.recordStale(metadataCurrentVersion, existingVersion);
       return existingVersion;
     }
 
     // existing version not ready to serve -> no version ready to serve
-    errorMessage += " Unable to serve existing version: " + existingVersion + ".";
+    LOGGER.debug("Unable to serve existing version: {}. No version ready to serve.", existingVersion);
     if (!existingVersionStatusOnline) {
-      errorMessage += " Previous version has status: " + existingVersionStatus + ".";
+      LOGGER.debug("Existing version has status: {}", existingVersionStatus);
     }
     if (!existingVersionDecompressorReady) {
-      errorMessage += " Decompressor not ready for previous version (Has dictionary downloaded?).";
+      LOGGER.debug("Decompressor not ready for existing version (Has dictionary downloaded?)");
     }
-    errorMessage += " No version ready to serve.";
-    if (!EXCEPTION_FILTER.isRedundantException(errorMessage)) {
-      LOGGER.warn(errorMessage);
-    }
+
     stats.recordStale(metadataCurrentVersion, Store.NON_EXISTING_VERSION);
     lastCurrentVersionMap.remove(storeName);
     return Store.NON_EXISTING_VERSION;
@@ -200,14 +194,14 @@ public class VeniceVersionFinder {
         try {
           partitionAssignment = routingDataRepository.getAllInstances(kafkaTopic, partitionId).toString();
         } catch (Exception e) {
-          LOGGER.warn("Failed to get partition assignment for resource: {}", kafkaTopic, e);
+          LOGGER.debug("Failed to get partition assignment for resource: {}", kafkaTopic, e);
           partitionAssignment = "unknown";
         }
-        String message = "No online replica exists for partition " + partitionId + " of " + kafkaTopic
-            + ", partition assignment: " + partitionAssignment;
-        if (!EXCEPTION_FILTER.isRedundantException(message)) {
-          LOGGER.warn(message);
-        }
+        LOGGER.debug(
+            "No online replica exists for partition {} of {}, particion assignment: {}",
+            partitionId,
+            kafkaTopic,
+            partitionAssignment);
         return false;
       }
     }
