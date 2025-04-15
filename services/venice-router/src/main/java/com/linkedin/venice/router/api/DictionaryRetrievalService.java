@@ -236,8 +236,11 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
               "Dictionary download for resource: " + kafkaTopic + " from: " + instanceUrl
                   + " returned unexpected response.");
         } else {
-          long elapsedTime = System.currentTimeMillis() - startTime;
-          LOGGER.info("Dictionary downloaded successfully for resource: {} took: {} ms", kafkaTopic, elapsedTime);
+          long elapsedTimeForDictionaryRetrievalMs = System.currentTimeMillis() - startTime;
+          LOGGER.info(
+              "Dictionary downloaded successfully for resource: {} took: {} ms",
+              kafkaTopic,
+              elapsedTimeForDictionaryRetrievalMs);
           return dictionary;
         }
       } catch (InterruptedException e) {
