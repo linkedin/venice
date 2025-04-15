@@ -30,6 +30,7 @@ import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
+import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
@@ -85,6 +86,7 @@ import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
+import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -3391,7 +3393,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     // Get the old value manifest which contains the list of old chunks, so they can be deleted
     final int schemaId = AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
     ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
-    readStoredValueRecord(pcs, keyBytes, schemaId, topicPartition, valueManifestContainer);
+    readGlobalRtDivState(keyBytes, schemaId, topicPartition, valueManifestContainer);
 
     // Produce to local VT for the Global RT DIV + latest RT offset (GlobalRtDivState)
     // Internally, VeniceWriter.put() will schedule DELETEs for the old chunks in the old manifest after the new PUTs
@@ -3484,6 +3486,36 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     });
 
     return divCallback;
+  }
+
+  private Optional<GlobalRtDivState> readGlobalRtDivState(
+      byte[] keyBytes,
+      int readerValueSchemaID,
+      PubSubTopicPartition topicPartition,
+      ChunkedValueManifestContainer manifestContainer) {
+    try {
+      ByteBuffer currValue = (ByteBuffer) GenericChunkingAdapter.INSTANCE.get(
+          storageEngine,
+          topicPartition.getPartitionNumber(),
+          ByteBuffer.wrap(keyBytes),
+          isChunked,
+          null,
+          null,
+          NoOpReadResponseStats.SINGLETON,
+          readerValueSchemaID,
+          RawBytesStoreDeserializerCache.getInstance(),
+          compressor.get(),
+          manifestContainer);
+      if (currValue != null) {
+        return Optional.of(
+            globalRtDivStateSerializer.deserialize(
+                ByteUtils.extractByteArray(currValue),
+                AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion()));
+      }
+    } catch (Exception e) {
+      LOGGER.error("Unable to retrieve stored value bytes", e);
+    }
+    return Optional.empty();
   }
 
   /**
@@ -3582,13 +3614,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     String globalRtDivKey = getGlobalRtDivKeyName(brokerUrl);
     byte[] keyBytes = globalRtDivKey.getBytes();
     final ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
-    GenericRecord valueRecord = readStoredValueRecord(
-        pcs,
+    Optional<GlobalRtDivState> globalRtDivState = readGlobalRtDivState(
         keyBytes,
         AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion(),
         topicPartition,
         valueManifestContainer);
-    if (valueRecord == null) {
+    if (!globalRtDivState.isPresent()) {
       PubSubPosition leaderPosition = pcs.getLeaderPosition(brokerUrl, false);
       if (leaderPosition.getNumericOffset() > 0) {
         LOGGER.warn(
@@ -3600,21 +3631,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return; // it may not exist (e.g. this is the first leader to be elected)
     }
 
-    Object value = valueRecord.get(globalRtDivKey);
-    if (value instanceof GlobalRtDivState) {
-      GlobalRtDivState globalRtDivState = (GlobalRtDivState) value;
-      final Map<CharSequence, ProducerPartitionState> producerStates = globalRtDivState.getProducerStates();
-      PartitionTracker.TopicType realTimeTopicType = PartitionTracker.TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
-      getConsumerDiv().setPartitionState(realTimeTopicType, pcs.getPartition(), producerStates);
-      final PubSubPosition divRtCheckpointPosition =
-          getPubSubContext().getPubSubPositionDeserializer().toPosition(globalRtDivState.getLatestPubSubPosition());
-      pcs.setDivRtCheckpointPosition(brokerUrl, divRtCheckpointPosition);
-    } else {
-      LOGGER.warn(
-          "Unable to load Global RT DIV from storage engine for replica: {} brokerUrl: {}",
-          topicPartition,
-          brokerUrl);
-    }
+    final Map<CharSequence, ProducerPartitionState> producerStates = globalRtDivState.get().getProducerStates();
+    PartitionTracker.TopicType realTimeTopicType = PartitionTracker.TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
+    consumerDiv.setPartitionState(realTimeTopicType, pcs.getPartition(), producerStates);
+    ByteBuffer checkpointBytes = globalRtDivState.get().getLatestPubSubPosition(); // LCRP
+    final PubSubPosition divRtCheckpointPosition = getPubSubContext().getPubSubPositionDeserializer().toPosition(bytes);
+    pcs.setDivRtCheckpointPosition(brokerUrl, divRtCheckpointPosition);
   }
 
   /**
