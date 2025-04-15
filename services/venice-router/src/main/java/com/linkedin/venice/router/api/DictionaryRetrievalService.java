@@ -125,8 +125,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
               .stream()
               .filter(
                   version -> version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT
-                      && (version.getStatus() == VersionStatus.STARTED || version.getStatus() == VersionStatus.PUSHED
-                          || version.getStatus() == VersionStatus.ONLINE))
+                      && (version.getStatus() == VersionStatus.STARTED || version.getStatus() == VersionStatus.ONLINE))
               .filter(version -> !downloadingDictionaryFutures.containsKey(version.kafkaTopicName()))
               .map(Version::kafkaTopicName)
               .collect(Collectors.toList()));
