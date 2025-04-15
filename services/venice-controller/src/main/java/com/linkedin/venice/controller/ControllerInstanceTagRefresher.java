@@ -35,7 +35,6 @@ public class ControllerInstanceTagRefresher implements PreConnectCallback {
       InstanceConfig instanceConfig = configAccessor.getInstanceConfig(helixManager.getClusterName(), instanceName);
 
       if (instanceConfig == null) {
-        LOGGER.warn("No InstanceConfig found for {}. Creating new config.", instanceName);
         throw new VeniceException(
             "InstanceConfig not found for instance: " + instanceName + ". This should not happen.");
       }
