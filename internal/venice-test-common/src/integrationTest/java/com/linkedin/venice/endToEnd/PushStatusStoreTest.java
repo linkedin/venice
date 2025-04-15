@@ -35,6 +35,7 @@ import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
@@ -63,6 +64,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -70,6 +72,7 @@ import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
@@ -331,6 +334,39 @@ public class PushStatusStoreTest {
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
         assertEquals(reader.getPartitionStatus(storeName, 1, 0, Optional.empty()).size(), 0);
       });
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT_MS * 2)
+  public void testGetPartitionStatusAsync() throws Exception {
+    VeniceProperties backendConfig = getBackendConfigBuilder().build();
+    Properties vpjProperties = getVPJProperties();
+    // case 1: happy path
+    runVPJ(vpjProperties, 1, cluster);
+    try (DaVinciClient daVinciClient =
+        ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, new DaVinciConfig(), backendConfig)) {
+      daVinciClient.subscribeAll().get();
+      CompletableFuture<Map<CharSequence, Integer>> future1 =
+          reader.getPartitionStatusAsync(storeName, 1, 0, Optional.empty(), Optional.empty());
+      future1.whenComplete((result, throwable) -> {
+        {
+          Assert.assertEquals(result.size(), 1);
+        }
+      }).join();
+
+      // case 2: throw exception for non-existing store
+      try {
+        reader.getPartitionStatusAsync("non-existed-store-name", 1, 0, Optional.empty(), Optional.empty());
+      } catch (VeniceException e) {
+        assertTrue(e.getMessage().contains("Failed to read push status of partition:1 store:non-existed-store-name"));
+      }
+
+      // case 3: throw exception for non-existed version
+      try {
+        reader.getPartitionStatusAsync(storeName, 100, 0, Optional.empty(), Optional.empty());
+      } catch (VeniceException e) {
+        assertTrue(e.getMessage().contains("Failed to read push status of partition:100 store:" + storeName));
+      }
     }
   }
 
