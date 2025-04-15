@@ -95,7 +95,7 @@ public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
                 currentGoodVersion,
                 upstreamVersion);
             if (upstreamVersion != -1 && !Objects.equals(currentGoodVersion, upstreamVersion)) {
-              updateAdminOperationProtocolVersionInZK(clusterName, upstreamVersion);
+              updateAdminOperationProtocolVersionInZK(clusterName, currentGoodVersion);
               LOGGER.info(
                   "Updated admin operation protocol version in ZK for cluster {} from {} to {}",
                   clusterName,
