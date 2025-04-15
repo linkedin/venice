@@ -1,5 +1,9 @@
 package com.linkedin.davinci.client;
 
+import static com.linkedin.venice.client.stats.BasicClientStats.getHealthyRequestHttpStatus;
+import static com.linkedin.venice.client.stats.BasicClientStats.getSuccessfulKeyCount;
+import static com.linkedin.venice.client.stats.BasicClientStats.getUnhealthyRequestHttpStatus;
+
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.stats.BasicClientStats;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -60,12 +64,12 @@ public class StatsAvroGenericDaVinciClient<K, V> extends DelegatingAvroGenericDa
       return futureSupplier.get().whenComplete((v, throwable) -> {
         int httpStatus;
         if (throwable != null) {
-          httpStatus = stats.getUnhealthyRequestHttpStatus(throwable);
+          httpStatus = getUnhealthyRequestHttpStatus(throwable);
           stats.emitUnhealthyRequestMetrics(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS), numKeys, httpStatus);
           statFuture.completeExceptionally(throwable);
         } else {
           int successfulKeyCount = getSuccessfulKeyCount(v);
-          httpStatus = stats.getHealthyRequestHttpStatus(successfulKeyCount);
+          httpStatus = getHealthyRequestHttpStatus(successfulKeyCount);
           stats.emitHealthyRequestMetrics(
               LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS),
               successfulKeyCount,
@@ -97,20 +101,5 @@ public class StatsAvroGenericDaVinciClient<K, V> extends DelegatingAvroGenericDa
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) {
     clientStatsForBatchGet.recordRequestKeyCount(keys.size());
     return trackRequest(clientStatsForBatchGet, () -> super.batchGet(keys), keys.size());
-  }
-
-  /**
-   * Get the number of successful keys from the value.
-   * @param value
-   * @return The number of successful keys.
-   */
-  private static int getSuccessfulKeyCount(Object value) {
-    if (value instanceof Map) {
-      // multi get
-      return ((Map) value).size();
-    } else {
-      // single get
-      return (value != null) ? 1 : 0;
-    }
   }
 }

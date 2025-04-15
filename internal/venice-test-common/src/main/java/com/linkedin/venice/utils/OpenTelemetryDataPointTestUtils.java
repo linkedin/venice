@@ -73,14 +73,14 @@ public abstract class OpenTelemetryDataPointTestUtils {
       double expectedSum,
       Attributes expectedAttributes) {
     assertNotNull(histogramPointData, "ExponentialHistogramPointData should not be null");
-    assertEquals(histogramPointData.getMin(), expectedMin, "Histogram min value should be 10");
-    assertEquals(histogramPointData.getMax(), expectedMax, "Histogram max value should be 50");
-    assertEquals(histogramPointData.getCount(), expectedCount, "Histogram count should be 5");
-    assertEquals(histogramPointData.getSum(), expectedSum, "Histogram sum should be 150");
+    assertEquals(histogramPointData.getMin(), expectedMin, "Histogram min value should be " + expectedMin);
+    assertEquals(histogramPointData.getMax(), expectedMax, "Histogram max value should be " + expectedMax);
+    assertEquals(histogramPointData.getCount(), expectedCount, "Histogram count should be " + expectedCount);
+    assertEquals(histogramPointData.getSum(), expectedSum, "Histogram sum should be " + expectedSum);
     assertEquals(
         histogramPointData.getPositiveBuckets().getTotalCount(),
         expectedCount,
-        "Histogram positive buckets total count should be 5");
+        "Histogram positive buckets total count should be " + expectedCount);
     assertEquals(histogramPointData.getAttributes(), expectedAttributes, "Histogram attributes should match");
   }
 
@@ -92,10 +92,10 @@ public abstract class OpenTelemetryDataPointTestUtils {
       double expectedSum,
       Attributes expectedAttributes) {
     assertNotNull(histogramPointData, "HistogramPointData should not be null");
-    assertEquals(histogramPointData.getMin(), expectedMin, "Histogram min value should be 10");
-    assertEquals(histogramPointData.getMax(), expectedMax, "Histogram max value should be 50");
-    assertEquals(histogramPointData.getCount(), expectedCount, "Histogram count should be 5");
-    assertEquals(histogramPointData.getSum(), expectedSum, "Histogram sum should be 150");
+    assertEquals(histogramPointData.getMin(), expectedMin, "Histogram min value should be " + expectedMin);
+    assertEquals(histogramPointData.getMax(), expectedMax, "Histogram max value should be " + expectedMax);
+    assertEquals(histogramPointData.getCount(), expectedCount, "Histogram count should be " + expectedCount);
+    assertEquals(histogramPointData.getSum(), expectedSum, "Histogram sum should be " + expectedSum);
     assertEquals(histogramPointData.getAttributes(), expectedAttributes, "Histogram attributes should match");
   }
 }
