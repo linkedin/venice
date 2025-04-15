@@ -322,7 +322,7 @@ public class OffsetRecord {
       PubSubPosition pos = ApacheKafkaOffsetPosition.of(partitionState.getLastConsumedVersionTopicPubSubPosition());
       return pos.getNumericOffset();
     } catch (IOException e) {
-      return -1;
+      return LOWEST_OFFSET;
     }
   }
 
