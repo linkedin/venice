@@ -835,7 +835,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     // for refreshing the instance config list if the controller is already a participant in venice-controller cluster
     // but assigned to another venice cluster
-    tempManager.addPreConnectCallback(new ControllerInstanceTagRefresher(tempManager, multiClusterConfigs));
+    tempManager.addPreConnectCallback(
+        new ControllerInstanceTagRefresher(tempManager, multiClusterConfigs.getControllerInstanceTagList()));
     StateMachineEngine stateMachine = tempManager.getStateMachineEngine();
     stateMachine.registerStateModelFactory(LeaderStandbySMD.name, controllerStateModelFactory);
     try {

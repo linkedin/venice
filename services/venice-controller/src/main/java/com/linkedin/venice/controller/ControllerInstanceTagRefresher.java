@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.SafeHelixManager;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import org.apache.helix.ConfigAccessor;
 import org.apache.helix.PreConnectCallback;
@@ -14,18 +15,16 @@ import org.apache.logging.log4j.Logger;
 /**
  * PreConnectCallback is called after the participant registers its info in the cluster but before marking itself as
  * LIVEINSTANCE. If the instance is already a participant of the cluster, then we need this logic to update Instance tags
- * in the case of KSAP assigning this controller participant to another cluster
+ * in the case of K8S assigning this controller participant to another cluster
  */
 public class ControllerInstanceTagRefresher implements PreConnectCallback {
   private static final Logger LOGGER = LogManager.getLogger(ControllerInstanceTagRefresher.class);
   private SafeHelixManager helixManager;
-  private final VeniceControllerMultiClusterConfig multiClusterConfigs;
+  private final List<String> instanceTagList;
 
-  public ControllerInstanceTagRefresher(
-      SafeHelixManager helixManager,
-      VeniceControllerMultiClusterConfig multiClusterConfigs) {
+  public ControllerInstanceTagRefresher(SafeHelixManager helixManager, List<String> instanceTagList) {
     this.helixManager = helixManager;
-    this.multiClusterConfigs = multiClusterConfigs;
+    this.instanceTagList = instanceTagList;
   }
 
   @Override
@@ -37,11 +36,12 @@ public class ControllerInstanceTagRefresher implements PreConnectCallback {
 
       if (instanceConfig == null) {
         LOGGER.warn("No InstanceConfig found for {}. Creating new config.", instanceName);
-        instanceConfig = new InstanceConfig(instanceName);
+        throw new VeniceException(
+            "InstanceConfig not found for instance: " + instanceName + ". This should not happen.");
       }
 
       Set<String> currentTags = new HashSet<>(instanceConfig.getTags());
-      Set<String> expectedTags = new HashSet<>(multiClusterConfigs.getControllerInstanceTagList());
+      Set<String> expectedTags = new HashSet<>(instanceTagList);
 
       // Determine tags to add and remove
       Set<String> tagsToAdd = new HashSet<>(expectedTags);
@@ -70,12 +70,15 @@ public class ControllerInstanceTagRefresher implements PreConnectCallback {
 
         // Persist the updated configuration
         configAccessor.setInstanceConfig(helixManager.getClusterName(), instanceName, instanceConfig);
-        LOGGER.info("Updated InstanceConfig tags for '{}'.", instanceName);
+        LOGGER.info(
+            "Replace instance tags of instance '{}' from {} to {}",
+            instanceName,
+            currentTags,
+            instanceConfig.getTags());
       } else {
         LOGGER.info("Instance '{}' already contains all expected tags.", instanceName);
       }
     } catch (Exception e) {
-      LOGGER.error("Failed to apply instance tags in PreConnectCallback", e);
       throw new VeniceException("PreConnectCallback failed to apply instance tags", e);
     }
   }
