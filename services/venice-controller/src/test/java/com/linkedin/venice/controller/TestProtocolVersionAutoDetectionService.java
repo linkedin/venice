@@ -6,6 +6,7 @@ import static org.testng.Assert.*;
 import com.linkedin.venice.controller.stats.ProtocolVersionAutoDetectionStats;
 import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -153,11 +154,41 @@ public class TestProtocolVersionAutoDetectionService {
         mock(VeniceControllerMultiClusterConfig.class),
         mock(ProtocolVersionAutoDetectionStats.class));
 
-    // Call the method under test
     long smallestVersion = localProtocolVersionAutoDetectionService.new ProtocolVersionDetectionTask()
-        .getLocalAdminOperationProtocolVersionForAllConsumers(CLUSTER_VENICE_0);
+        .getSmallestLocalAdminOperationProtocolVersionForAllConsumers(CLUSTER_VENICE_0);
 
     assertEquals(smallestVersion, 1L);
+  }
+
+  @Test
+  public void testGetLocalAdminOperationVersionWithFailRequest() {
+    AdminOperationProtocolVersionControllerResponse failResponse =
+        new AdminOperationProtocolVersionControllerResponse();
+    failResponse.setError("Fail to connect to the controller");
+
+    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
+    ControllerClient mockControllerClient = mock(ControllerClient.class);
+    controllerClientMap.put(REGION_DC_1, mockControllerClient);
+    controllerClientMap.put(REGION_DC_2, mockControllerClient);
+    doReturn(controllerClientMap).when(admin).getControllerClientMap(CLUSTER_VENICE_0);
+    when(mockControllerClient.getAdminOperationProtocolVersionFromControllers(CLUSTER_VENICE_0))
+        .thenReturn(getAdminOperationProtocolVersionResponse(REGION_DC_1, CLUSTER_VENICE_0))
+        .thenReturn(failResponse);
+
+    try {
+      localProtocolVersionAutoDetectionService = new ProtocolVersionAutoDetectionService(
+          parentAdmin,
+          mock(VeniceControllerMultiClusterConfig.class),
+          mock(ProtocolVersionAutoDetectionStats.class));
+      localProtocolVersionAutoDetectionService.new ProtocolVersionDetectionTask()
+          .getSmallestLocalAdminOperationProtocolVersionForAllConsumers(CLUSTER_VENICE_0);
+    } catch (VeniceException e) {
+      assertEquals(
+          e.getMessage(),
+          "Failed to get admin operation protocol version from child controller dc1: Fail to connect to the controller");
+    } catch (Exception e) {
+      fail("Unexpected exception: " + e);
+    }
   }
 
   /**
