@@ -30,17 +30,16 @@ import org.testng.annotations.Test;
 public class TestProtocolVersionAutoDetection {
   private static final int NUMBER_OF_CHILD_DATACENTERS = 1;
   private static final int NUMBER_OF_CLUSTERS = 1;
+  private static final long SERVICE_INTERVAL_MS = TimeUnit.SECONDS.toMillis(5);
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private List<VeniceMultiClusterWrapper> childDatacenters;
-  private String[] clusterNames;
   private String clusterName;
 
   @BeforeClass
   public void setUp() {
     Properties parentControllerProps = new Properties();
     parentControllerProps.put(ADMIN_OPERATION_PROTOCOL_VERSION_AUTO_DETECTION_ENABLED, true);
-    parentControllerProps
-        .put(ADMIN_OPERATION_PROTOCOL_VERSION_AUTO_DETECTION_INTERVAL_MS, TimeUnit.SECONDS.toMillis(5));
+    parentControllerProps.put(ADMIN_OPERATION_PROTOCOL_VERSION_AUTO_DETECTION_INTERVAL_MS, SERVICE_INTERVAL_MS);
     parentControllerProps.put(ADMIN_OPERATION_PROTOCOL_VERSION_AUTO_DETECTION_THREAD_COUNT, 1);
     Properties serverProperties = new Properties();
 
@@ -59,8 +58,7 @@ public class TestProtocolVersionAutoDetection {
     multiRegionMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
-    clusterNames = multiRegionMultiClusterWrapper.getClusterNames();
-    clusterName = this.clusterNames[0];
+    clusterName = multiRegionMultiClusterWrapper.getClusterNames()[0];
   }
 
   @AfterClass(alwaysRun = true)
@@ -79,7 +77,7 @@ public class TestProtocolVersionAutoDetection {
         .updateAdminOperationProtocolVersion(clusterName, (long) (LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION + 1));
     assertFalse(updateResponse.isError());
 
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(SERVICE_INTERVAL_MS, TimeUnit.MILLISECONDS, () -> {
       // With ProtocolVersionAutoDetectionService is enabled, the version should be updated to LATEST (smallest version
       // among controllers)
       // Expected the data to be updated within 5 sec (the interval defined in config)
