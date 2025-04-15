@@ -325,7 +325,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
    * @param dictionaryDownloadTopics A Collection of topics (representing store and version) to download the dictionaries for.
    * @return false if the dictionary download timed out, true otherwise.
    */
-  protected boolean downloadDictionaries(Collection<String> dictionaryDownloadTopics) {
+  private boolean downloadDictionaries(Collection<String> dictionaryDownloadTopics) {
     String storeTopics = String.join(",", dictionaryDownloadTopics);
     if (storeTopics.isEmpty()) {
       return true;
