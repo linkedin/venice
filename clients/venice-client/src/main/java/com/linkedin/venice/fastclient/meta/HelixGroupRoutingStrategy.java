@@ -48,8 +48,7 @@ public class HelixGroupRoutingStrategy extends AbstractClientRoutingStrategy {
     for (int i = 0; i < groupCnt; i++) {
       int tmpGroupId = groupIds.get((i + groupId) % groupCnt);
       for (String replica: replicas) {
-        if (instanceToGroupIdMapping.get(replica) == tmpGroupId && !instanceHealthMonitor.isInstanceBlocked(replica)
-            && instanceHealthMonitor.isInstanceHealthy(replica)) {
+        if (instanceToGroupIdMapping.get(replica) == tmpGroupId && instanceHealthMonitor.isRequestAllowed(replica)) {
           return replica;
         }
       }
