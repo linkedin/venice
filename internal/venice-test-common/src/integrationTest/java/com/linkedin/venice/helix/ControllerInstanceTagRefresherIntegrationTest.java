@@ -46,7 +46,6 @@ public class ControllerInstanceTagRefresherIntegrationTest {
   private ZkServerWrapper zkServerWrapper;
   private String zkAddress;
   private HelixAdmin admin;
-  private SafeHelixManager helixManager;
 
   @BeforeClass
   public void setUp() throws Exception {
@@ -65,9 +64,6 @@ public class ControllerInstanceTagRefresherIntegrationTest {
 
   @AfterClass
   public void tearDown() {
-    if (helixManager != null) {
-      helixManager.disconnect();
-    }
     zkServerWrapper.close();
   }
 
@@ -92,6 +88,8 @@ public class ControllerInstanceTagRefresherIntegrationTest {
       List<String> actualTags = updatedConfig.getTags();
       Assert.assertTrue(actualTags.containsAll(expectedTags), "Instance tags not updated correctly: " + actualTags);
     });
+
+    tempManager.disconnect();
   }
 
   @Test
