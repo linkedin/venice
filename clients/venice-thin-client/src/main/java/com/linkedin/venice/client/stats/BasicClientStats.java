@@ -1,5 +1,6 @@
 package com.linkedin.venice.client.stats;
 
+import static com.linkedin.venice.client.stats.BasicClientStats.getSuccessfulKeyCount;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum.transformIntToHttpResponseStatusEnum;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
@@ -216,14 +217,19 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
     requestSensor.record();
   }
 
-  public void emitHealthyRequestMetrics(double latency, int keyCount, int httpStatus) {
+  public void emitHealthyRequestMetrics(double latency, int keyCount) {
     recordRequest();
+    int httpStatus = getHealthyRequestHttpStatus(keyCount);
     HttpResponseStatusEnum statusEnum = transformIntToHttpResponseStatusEnum(httpStatus);
     HttpResponseStatusCodeCategory httpCategory = getVeniceHttpResponseStatusCodeCategory(httpStatus);
     VeniceResponseStatusCategory veniceCategory = VeniceResponseStatusCategory.SUCCESS;
     healthyRequestMetric.record(1, statusEnum, httpCategory, veniceCategory);
     healthyLatencyMetric.record(latency, statusEnum, httpCategory, veniceCategory);
     healthyKeyCountMetric.record(keyCount, statusEnum, httpCategory, veniceCategory);
+  }
+
+  public void emitHealthyRequestMetrics(double latency, Object value) {
+    emitHealthyRequestMetrics(latency, getSuccessfulKeyCount(value));
   }
 
   public void emitUnhealthyRequestMetrics(double latency, int keyCount, int httpStatus) {
@@ -234,6 +240,10 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
     unhealthyRequestMetric.record(1, statusEnum, httpCategory, veniceCategory);
     unhealthyLatencyMetric.record(latency, statusEnum, httpCategory, veniceCategory);
     unhealthyKeyCountMetric.record(keyCount, statusEnum, httpCategory, veniceCategory);
+  }
+
+  public void emitUnhealthyRequestMetrics(double latency, int keyCount, Throwable throwable) {
+    emitUnhealthyRequestMetrics(latency, keyCount, getUnhealthyRequestHttpStatus(throwable));
   }
 
   public void recordRequestKeyCount(int keyCount) {

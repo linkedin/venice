@@ -91,11 +91,10 @@ public class BasicClientStatsTest {
 
     String metricPrefix = "." + storeName;
 
-    int httpStatus = SC_OK;
     int keyCount = 2;
     double latency = 90.0;
 
-    stats.emitHealthyRequestMetrics(latency, keyCount, httpStatus);
+    stats.emitHealthyRequestMetrics(latency, keyCount);
 
     // validate tehuti metrics
     Map<String, ? extends Metric> metrics = metricsRepository.metrics();
@@ -110,7 +109,7 @@ public class BasicClientStatsTest {
     Assert.assertEquals(successKeyCountMetric.value(), 2.0);
 
     // validate otel metrics
-    Attributes expectedAttributes = getExpectedAttributes(storeName, httpStatus, VeniceResponseStatusCategory.SUCCESS);
+    Attributes expectedAttributes = getExpectedAttributes(storeName, SC_OK, VeniceResponseStatusCategory.SUCCESS);
     Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
     Assert.assertFalse(metricsData.isEmpty(), "Metrics should not be empty");
     Assert.assertEquals(metricsData.size(), 3, "There should be three metrics recorded");

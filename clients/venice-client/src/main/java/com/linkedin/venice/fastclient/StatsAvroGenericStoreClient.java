@@ -1,7 +1,5 @@
 package com.linkedin.venice.fastclient;
 
-import static com.linkedin.venice.client.stats.BasicClientStats.getHealthyRequestHttpStatus;
-import static com.linkedin.venice.client.stats.BasicClientStats.getUnhealthyRequestHttpStatus;
 import static org.apache.hc.core5.http.HttpStatus.SC_GONE;
 import static org.apache.hc.core5.http.HttpStatus.SC_INTERNAL_SERVER_ERROR;
 import static org.apache.hc.core5.http.HttpStatus.SC_NOT_FOUND;
@@ -159,13 +157,10 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
         }
       }
 
-      int httpStatus;
       if (exceptionReceived) {
-        httpStatus = getUnhealthyRequestHttpStatus(throwable);
-        clientStats.emitUnhealthyRequestMetrics(latency, numberOfKeys, httpStatus);
+        clientStats.emitUnhealthyRequestMetrics(latency, numberOfKeys, throwable);
       } else {
-        httpStatus = getHealthyRequestHttpStatus(requestContext.successRequestKeyCount.get());
-        clientStats.emitHealthyRequestMetrics(latency, requestContext.successRequestKeyCount.get(), httpStatus);
+        clientStats.emitHealthyRequestMetrics(latency, requestContext.successRequestKeyCount.get());
 
         // Record additional metrics
         if (requestContext.requestSerializationTime > 0) {
