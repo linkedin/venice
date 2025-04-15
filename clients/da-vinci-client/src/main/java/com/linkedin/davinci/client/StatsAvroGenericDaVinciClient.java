@@ -1,9 +1,5 @@
 package com.linkedin.davinci.client;
 
-import static com.linkedin.venice.client.stats.BasicClientStats.getHealthyRequestHttpStatus;
-import static com.linkedin.venice.client.stats.BasicClientStats.getSuccessfulKeyCount;
-import static com.linkedin.venice.client.stats.BasicClientStats.getUnhealthyRequestHttpStatus;
-
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.stats.BasicClientStats;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -62,18 +58,11 @@ public class StatsAvroGenericDaVinciClient<K, V> extends DelegatingAvroGenericDa
     CompletableFuture<T> statFuture = new CompletableFuture<>();
     try {
       return futureSupplier.get().whenComplete((v, throwable) -> {
-        int httpStatus;
         if (throwable != null) {
-          httpStatus = getUnhealthyRequestHttpStatus(throwable);
-          stats.emitUnhealthyRequestMetrics(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS), numKeys, httpStatus);
+          stats.emitUnhealthyRequestMetrics(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS), numKeys, throwable);
           statFuture.completeExceptionally(throwable);
         } else {
-          int successfulKeyCount = getSuccessfulKeyCount(v);
-          httpStatus = getHealthyRequestHttpStatus(successfulKeyCount);
-          stats.emitHealthyRequestMetrics(
-              LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS),
-              successfulKeyCount,
-              httpStatus);
+          stats.emitHealthyRequestMetrics(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS), v);
           statFuture.complete(v);
         }
       });

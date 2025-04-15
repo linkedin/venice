@@ -1,7 +1,5 @@
 package com.linkedin.venice.client.store;
 
-import static com.linkedin.venice.client.stats.BasicClientStats.getHealthyRequestHttpStatus;
-import static com.linkedin.venice.client.stats.BasicClientStats.getSuccessfulKeyCount;
 import static com.linkedin.venice.client.stats.BasicClientStats.getUnhealthyRequestHttpStatus;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -247,6 +245,18 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
         preRequestTimeInNS);
   }
 
+  private static void handleUnhealthyRequest(
+      ClientStats clientStats,
+      Throwable throwable,
+      double latency,
+      int keyCount) {
+    int httpStatus = getUnhealthyRequestHttpStatus(throwable);
+    clientStats.emitUnhealthyRequestMetrics(latency, keyCount, httpStatus);
+    if (throwable instanceof VeniceClientHttpException) {
+      clientStats.recordHttpRequest(httpStatus);
+    }
+  }
+
   private static void handleMetricTrackingForStreamingCallback(
       ClientStats clientStats,
       long startTimeInNS,
@@ -256,14 +266,9 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
       int duplicateEntryCnt) {
     double latency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS);
     if (exception.isPresent()) {
-      int httpStatus = getUnhealthyRequestHttpStatus(exception.get());
-      if (exception.get() instanceof VeniceClientHttpException) {
-        clientStats.recordHttpRequest(httpStatus);
-      }
-      clientStats.emitUnhealthyRequestMetrics(latency, keyCount, httpStatus);
+      handleUnhealthyRequest(clientStats, exception.get(), latency, keyCount);
     } else {
-      int httpStatus = getHealthyRequestHttpStatus(successKeyCnt);
-      clientStats.emitHealthyRequestMetrics(latency, successKeyCnt, httpStatus);
+      clientStats.emitHealthyRequestMetrics(latency, successKeyCnt);
       clientStats.recordSuccessDuplicateRequestKeyCount(duplicateEntryCnt);
     }
   }
@@ -285,17 +290,11 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     return (T value, Throwable throwable) -> {
       double latency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS);
       if (throwable != null) {
-        int httpStatus = getUnhealthyRequestHttpStatus(throwable);
-        if (throwable instanceof VeniceClientHttpException) {
-          clientStats.recordHttpRequest(httpStatus);
-        }
-        clientStats.emitUnhealthyRequestMetrics(latency, numKeys, httpStatus);
+        handleUnhealthyRequest(clientStats, throwable, latency, numKeys);
         handleStoreExceptionInternally(throwable);
       }
 
-      int successfulKeyCount = getSuccessfulKeyCount(value);
-      int httpStatus = getHealthyRequestHttpStatus(successfulKeyCount);
-      clientStats.emitHealthyRequestMetrics(latency, successfulKeyCount, httpStatus);
+      clientStats.emitHealthyRequestMetrics(latency, value);
       return value;
     };
   }
