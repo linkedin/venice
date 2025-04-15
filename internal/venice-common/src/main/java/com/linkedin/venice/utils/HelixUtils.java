@@ -35,8 +35,11 @@ import org.apache.logging.log4j.Logger;
 /**
  * Helper functions for Helix.
  */
-public class HelixUtils {
+public final class HelixUtils {
   private static final Logger LOGGER = LogManager.getLogger(HelixUtils.class);
+
+  private HelixUtils() {
+  }
 
   /**
    * Retry 3 times for each helix operation in case of getting the error by default.

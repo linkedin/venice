@@ -38,7 +38,6 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_ENABLE_READ_THROTTLING;
 import static com.linkedin.venice.ConfigKeys.ROUTER_FULL_PENDING_QUEUE_SERVER_OOR_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HEART_BEAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_STRATEGY;
-import static com.linkedin.venice.ConfigKeys.ROUTER_HELIX_VIRTUAL_GROUP_FIELD_IN_DOMAIN;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP2_HEADER_TABLE_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP2_INITIAL_WINDOW_SIZE;
@@ -100,8 +99,6 @@ import static com.linkedin.venice.ConfigKeys.SSL_TO_STORAGE_NODES;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
-import static com.linkedin.venice.helix.HelixInstanceConfigRepository.GROUP_FIELD_NAME_IN_DOMAIN;
-import static com.linkedin.venice.helix.HelixInstanceConfigRepository.ZONE_FIELD_NAME_IN_DOMAIN;
 import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.LEAST_LOADED_ROUTING;
 import static com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum.LEAST_LOADED;
 
@@ -197,14 +194,13 @@ public class VeniceRouterConfig implements RouterRetryConfig {
   private final long maxRouterReadCapacityCu;
   private final boolean helixHybridStoreQuotaEnabled;
   private final int ioThreadCountInPoolMode;
-  private final boolean useGroupFieldInHelixDomain;
   private final VeniceMultiKeyRoutingStrategy multiKeyRoutingStrategy;
   private final HelixGroupSelectionStrategyEnum helixGroupSelectionStrategy;
   private final String systemSchemaClusterName;
   private final int clientSslHandshakeThreads;
   private final int maxConcurrentSslHandshakes;
   private final int resolveThreads;
-  private final int resolveQueueCapacity;;
+  private final int resolveQueueCapacity;
   private final int clientResolutionRetryAttempts;
   private final long clientResolutionRetryBackoffMs;
   private final int clientSslHandshakeQueueCapacity;
@@ -355,18 +351,6 @@ public class VeniceRouterConfig implements RouterRetryConfig {
       readQuotaThrottlingLeaseTimeoutMs =
           props.getLong(ROUTER_READ_QUOTA_THROTTLING_LEASE_TIMEOUT_MS, 6 * Time.MS_PER_HOUR);
 
-      String helixVirtualGroupFieldNameInDomain =
-          props.getString(ROUTER_HELIX_VIRTUAL_GROUP_FIELD_IN_DOMAIN, GROUP_FIELD_NAME_IN_DOMAIN);
-      if (helixVirtualGroupFieldNameInDomain.equals(GROUP_FIELD_NAME_IN_DOMAIN)) {
-        useGroupFieldInHelixDomain = true;
-      } else if (helixVirtualGroupFieldNameInDomain.equals(ZONE_FIELD_NAME_IN_DOMAIN)) {
-        useGroupFieldInHelixDomain = false;
-      } else {
-        throw new VeniceException(
-            "Unknown value: " + helixVirtualGroupFieldNameInDomain + " for config: "
-                + ROUTER_HELIX_VIRTUAL_GROUP_FIELD_IN_DOMAIN + ", and " + "allowed values: ["
-                + GROUP_FIELD_NAME_IN_DOMAIN + ", " + ZONE_FIELD_NAME_IN_DOMAIN + "]");
-      }
       String multiKeyRoutingStrategyStr =
           props.getString(ROUTER_MULTI_KEY_ROUTING_STRATEGY, LEAST_LOADED_ROUTING.name());
       VeniceMultiKeyRoutingStrategy multiKeyRoutingStrategyEnum;
@@ -707,10 +691,6 @@ public class VeniceRouterConfig implements RouterRetryConfig {
 
   public int getIoThreadCountInPoolMode() {
     return ioThreadCountInPoolMode;
-  }
-
-  public boolean isUseGroupFieldInHelixDomain() {
-    return useGroupFieldInHelixDomain;
   }
 
   public VeniceMultiKeyRoutingStrategy getMultiKeyRoutingStrategy() {

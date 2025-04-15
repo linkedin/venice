@@ -1007,7 +1007,7 @@ public class RouterServer extends AbstractVeniceService {
         /**
          * This statement should be invoked after {@link #manager} is connected.
          */
-        instanceConfigRepository = new HelixInstanceConfigRepository(manager, config.isUseGroupFieldInHelixDomain());
+        instanceConfigRepository = new HelixInstanceConfigRepository(manager);
         instanceConfigRepository.refresh();
         helixGroupSelector = new HelixGroupSelector(
             metricsRepository,

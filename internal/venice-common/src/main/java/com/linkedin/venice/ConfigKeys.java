@@ -1101,12 +1101,6 @@ public class ConfigKeys {
   public static final String ROUTER_MULTI_KEY_ROUTING_STRATEGY = "router.multi.key.routing.strategy";
 
   /**
-   * The Helix virtual group field name in domain, and the allowed values: {@link com.linkedin.venice.helix.HelixInstanceConfigRepository#GROUP_FIELD_NAME_IN_DOMAIN}
-   * and {@link com.linkedin.venice.helix.HelixInstanceConfigRepository#ZONE_FIELD_NAME_IN_DOMAIN}.
-   */
-  public static final String ROUTER_HELIX_VIRTUAL_GROUP_FIELD_IN_DOMAIN = "router.helix.virtual.group.field.in.domain";
-
-  /**
    * Helix group selection strategy when Helix assisted routing is enabled.
    * Available strategies listed here: {@literal HelixGroupSelectionStrategyEnum}.
    */

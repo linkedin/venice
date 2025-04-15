@@ -11,7 +11,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.PropertyKey;
+import org.apache.helix.api.listeners.ClusterConfigChangeListener;
 import org.apache.helix.api.listeners.InstanceConfigChangeListener;
+import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.InstanceConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -19,18 +21,17 @@ import org.apache.logging.log4j.Logger;
 
 /**
  * This repository is used to store the instance config per instance.
- * So far it only stores group/zone info, and we could add more if necessary in the future.
+ * So far it only stores the fault zone type info, and we could add more if necessary in the future.
  */
-public class HelixInstanceConfigRepository implements VeniceResource, InstanceConfigChangeListener {
+public class HelixInstanceConfigRepository
+    implements VeniceResource, InstanceConfigChangeListener, ClusterConfigChangeListener {
   private static final Logger LOGGER = LogManager.getLogger(HelixInstanceConfigRepository.class);
 
   public static final int DEFAULT_INSTANCE_GROUP_ID = 0;
-  public static final String GROUP_FIELD_NAME_IN_DOMAIN = "group";
-  public static final String ZONE_FIELD_NAME_IN_DOMAIN = "zone";
 
   private final SafeHelixManager manager;
   private final PropertyKey.Builder keyBuilder;
-  private final String virtualGroupFieldName;
+  private String faultZoneType;
 
   private Map<String, Integer> instanceGroupIdMapping = Collections.emptyMap();
   private int groupCount = 1;
@@ -42,11 +43,14 @@ public class HelixInstanceConfigRepository implements VeniceResource, InstanceCo
    */
   private final AtomicLong unknownInstanceCall = new AtomicLong();
 
-  public HelixInstanceConfigRepository(SafeHelixManager manager, boolean useGroupFieldInDomain) {
+  private List<InstanceConfig> instanceConfigs;
+
+  public HelixInstanceConfigRepository(SafeHelixManager manager) {
     this.manager = manager;
     this.keyBuilder = new PropertyKey.Builder(manager.getClusterName());
-    this.virtualGroupFieldName = useGroupFieldInDomain ? GROUP_FIELD_NAME_IN_DOMAIN : ZONE_FIELD_NAME_IN_DOMAIN;
-    LOGGER.info("Will use '{}' as the virtual group field in Helix domain.", this.virtualGroupFieldName);
+    ClusterConfig clusterConfig = manager.getConfigAccessor().getClusterConfig(manager.getClusterName());
+    this.faultZoneType = clusterConfig.getFaultZoneType();
+    LOGGER.info("Will use '{}' as the fault zone in Helix domain.", this.faultZoneType);
   }
 
   @Override
@@ -57,7 +61,10 @@ public class HelixInstanceConfigRepository implements VeniceResource, InstanceCo
        * an initialized callback will be triggered even there is no instance config changed.
        */
       manager.addInstanceConfigChangeListener(this);
-      LOGGER.info("Setup InstanceConfigChangeListener in {}.", this.getClass().getSimpleName());
+      manager.addClusterfigChangeListener(this);
+      LOGGER.info(
+          "Setup InstanceConfigChangeListener and ClusterConfigChangeListener in {}.",
+          this.getClass().getSimpleName());
     } catch (Exception e) {
       throw new VeniceException("Failed to refresh " + this.getClass().getSimpleName(), e);
     }
@@ -65,8 +72,11 @@ public class HelixInstanceConfigRepository implements VeniceResource, InstanceCo
 
   @Override
   public void clear() {
+    manager.removeListener(keyBuilder.clusterConfig(), this);
     manager.removeListener(keyBuilder.instanceConfigs(), this);
-    LOGGER.info("Removed InstanceConfigChangeListener in {}.", this.getClass().getSimpleName());
+    LOGGER.info(
+        "Removed InstanceConfigChangeListener and ClusterConfigChangeListener in {}.",
+        this.getClass().getSimpleName());
   }
 
   public int getInstanceGroupId(String instanceId) {
@@ -98,12 +108,7 @@ public class HelixInstanceConfigRepository implements VeniceResource, InstanceCo
     return groupCount;
   }
 
-  /**
-   * This function will assign a unique group id per group.
-   * If there is no group defined for some instances, this function will use empty string as the default.
-   */
-  @Override
-  public synchronized void onInstanceConfigChange(List<InstanceConfig> instanceConfigs, NotificationContext context) {
+  private synchronized void updateInstanceGroupIdMappings() {
     if (instanceConfigs.isEmpty()) {
       LOGGER.warn("Received empty instance configs, so will skip it");
       return;
@@ -124,7 +129,7 @@ public class HelixInstanceConfigRepository implements VeniceResource, InstanceCo
       // Extract group config
       if (instanceConfig.getInstanceEnabled()) {
         Map<String, String> domainConfigMap = instanceConfig.getDomainAsMap();
-        String groupConfig = domainConfigMap.get(virtualGroupFieldName);
+        String groupConfig = domainConfigMap.get(faultZoneType);
         if (groupConfig == null) {
           // Set the default group to be empty if not present
           groupConfig = "";
@@ -137,5 +142,25 @@ public class HelixInstanceConfigRepository implements VeniceResource, InstanceCo
     groupCount = groupIdCnt.get();
     LOGGER.info("New instance group id mapping: {}.", instanceGroupIdMapping);
     LOGGER.info("The total number of groups: {}.", groupCount);
+  }
+
+  /**
+   * This function will assign a unique group id per group.
+   * If there is no group defined for some instances, this function will use empty string as the default.
+   */
+  @Override
+  public synchronized void onInstanceConfigChange(List<InstanceConfig> instanceConfigs, NotificationContext context) {
+    this.instanceConfigs = instanceConfigs;
+    updateInstanceGroupIdMappings();
+  }
+
+  @Override
+  public void onClusterConfigChange(ClusterConfig clusterConfig, NotificationContext context) {
+    String updatedFaultZoneType = clusterConfig.getFaultZoneType();
+    if (faultZoneType.equals(updatedFaultZoneType)) {
+      return;
+    }
+    this.faultZoneType = updatedFaultZoneType;
+    updateInstanceGroupIdMappings();
   }
 }
