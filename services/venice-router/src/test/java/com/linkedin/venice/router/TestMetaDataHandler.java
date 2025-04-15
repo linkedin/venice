@@ -1561,8 +1561,8 @@ public class TestMetaDataHandler {
         .when(pushStatusStoreReader)
         .getPartitionStatusAsync(
             storeName,
-            Integer.valueOf(storeVersion),
-            Integer.valueOf(storePartition),
+            Integer.parseInt(storeVersion),
+            Integer.parseInt(storePartition),
             Optional.empty(),
             Optional.empty());
 

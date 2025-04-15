@@ -356,16 +356,14 @@ public class PushStatusStoreTest {
 
       // case 2: throw exception for non-existing store
       try {
-        CompletableFuture<Map<CharSequence, Integer>> future2 =
-            reader.getPartitionStatusAsync("non-existed-store-name", 1, 0, Optional.empty(), Optional.empty());
+        reader.getPartitionStatusAsync("non-existed-store-name", 1, 0, Optional.empty(), Optional.empty());
       } catch (VeniceException e) {
         assertTrue(e.getMessage().contains("Failed to read push status of partition:1 store:non-existed-store-name"));
       }
 
       // case 3: throw exception for non-existed version
       try {
-        CompletableFuture<Map<CharSequence, Integer>> future3 =
-            reader.getPartitionStatusAsync(storeName, 100, 0, Optional.empty(), Optional.empty());
+        reader.getPartitionStatusAsync(storeName, 100, 0, Optional.empty(), Optional.empty());
       } catch (VeniceException e) {
         assertTrue(e.getMessage().contains("Failed to read push status of partition:100 store:" + storeName));
       }
