@@ -6,6 +6,8 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.LatencyUtils;
+import io.tehuti.metrics.MetricsRepository;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -29,24 +31,38 @@ import org.apache.logging.log4j.Logger;
  * To disable step 3, set the admin version for the cluster in ZK as -1.
  */
 public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
+  private static final Logger LOGGER = LogManager.getLogger(ProtocolVersionAutoDetectionService.class);
   private final AtomicBoolean stop = new AtomicBoolean(false);
   private final Set<String> allClusters;
-  private static final Logger LOGGER = LogManager.getLogger(ProtocolVersionAutoDetectionService.class);
+  private final Map<String, ProtocolVersionAutoDetectionStats> clusterToStatsMap = new HashMap<>();
   private final VeniceParentHelixAdmin veniceParentHelixAdmin;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
-  private final ProtocolVersionAutoDetectionStats stats;
   final ScheduledExecutorService executor;
 
   public ProtocolVersionAutoDetectionService(
-      VeniceParentHelixAdmin admin,
+      VeniceParentHelixAdmin parentHelixAdmin,
       VeniceControllerMultiClusterConfig multiClusterConfigs,
-      ProtocolVersionAutoDetectionStats protocolVersionAutoDetectionStats) {
-    this.veniceParentHelixAdmin = admin;
+      MetricsRepository metricsRepository,
+      Optional<Map<String, ProtocolVersionAutoDetectionStats>> clusterToStatsMap) {
+    this.veniceParentHelixAdmin = parentHelixAdmin;
     this.multiClusterConfigs = multiClusterConfigs;
     this.allClusters = multiClusterConfigs.getClusters();
-    this.stats = protocolVersionAutoDetectionStats;
     executor = Executors
         .newScheduledThreadPool(multiClusterConfigs.getAdminOperationProtocolVersionAutoDetectionThreadCount());
+
+    if (clusterToStatsMap.isPresent()) {
+      // If the caller has provided a map of stats, use it - for testing purpose
+      this.clusterToStatsMap.putAll(clusterToStatsMap.get());
+    } else {
+      // Otherwise, create a new map of stats for each cluster - default option
+      for (String clusterName: this.allClusters) {
+        this.clusterToStatsMap.put(
+            clusterName,
+            new ProtocolVersionAutoDetectionStats(
+                metricsRepository,
+                "admin_operation_protocol_version_auto_detection_service_" + clusterName));
+      }
+    }
   }
 
   @Override
@@ -74,7 +90,10 @@ public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
       LOGGER.error("Error shutting down ProtocolVersionAutoDetectionService", e);
       executor.shutdownNow();
     }
+  }
 
+  private ProtocolVersionAutoDetectionStats getClusterStat(String clusterName) {
+    return clusterToStatsMap.get(clusterName);
   }
 
   class ProtocolVersionDetectionTask implements Runnable {
@@ -82,11 +101,11 @@ public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
     public void run() {
       LOGGER.info("Started running {}", getClass().getSimpleName());
       while (!stop.get()) {
-        try {
-          for (String clusterName: allClusters) {
-            if (!veniceParentHelixAdmin.isLeaderControllerFor(clusterName)) {
-              continue;
-            }
+        for (String clusterName: allClusters) {
+          if (!veniceParentHelixAdmin.isLeaderControllerFor(clusterName)) {
+            continue;
+          }
+          try {
             // start the clock
             long startTime = System.currentTimeMillis();
             Long currentGoodVersion = getSmallestLocalAdminOperationProtocolVersionForAllConsumers(clusterName);
@@ -106,14 +125,14 @@ public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
                   currentGoodVersion);
             }
             long elapsedTimeFromMsToMs = LatencyUtils.getElapsedTimeFromMsToMs(startTime);
-            stats.recordProtocolVersionAutoDetectionLatencySensor(elapsedTimeFromMsToMs);
+            getClusterStat(clusterName).recordProtocolVersionAutoDetectionLatencySensor(elapsedTimeFromMsToMs);
+          } catch (Exception e) {
+            LOGGER.warn("Received exception while running ProtocolVersionDetectionTask", e);
+            getClusterStat(clusterName).recordProtocolVersionAutoDetectionErrorSensor();
+          } catch (Throwable throwable) {
+            LOGGER.warn("Received a throwable while running ProtocolVersionDetectionTask", throwable);
+            getClusterStat(clusterName).recordProtocolVersionAutoDetectionThrowableSensor();
           }
-        } catch (Exception e) {
-          LOGGER.warn("Received exception while running ProtocolVersionDetectionTask", e);
-          stats.recordProtocolVersionAutoDetectionErrorSensor();
-        } catch (Throwable throwable) {
-          LOGGER.warn("Received a throwable while running ProtocolVersionDetectionTask", throwable);
-          stats.recordProtocolVersionAutoDetectionThrowableSensor();
         }
       }
     }
@@ -161,11 +180,6 @@ public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
                 + ": " + response.getError());
       }
       return response.getControllerUrlToVersionMap();
-    }
-
-    public Long getAdminOperationProtocolVersionInZK(String clusterName) {
-      Map<String, Long> metadata = veniceParentHelixAdmin.getAdminTopicMetadata(clusterName, Optional.empty());
-      return AdminTopicMetadataAccessor.getAdminOperationProtocolVersion(metadata);
     }
 
     /**

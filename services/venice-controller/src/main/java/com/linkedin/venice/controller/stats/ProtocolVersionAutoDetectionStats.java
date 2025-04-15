@@ -16,8 +16,8 @@ public class ProtocolVersionAutoDetectionStats extends AbstractVeniceStats {
   private final static String PROTOCOL_VERSION_AUTO_DETECTION_THROWABLE = "protocol_version_auto_detection_throwable";
   private final static String PROTOCOL_VERSION_AUTO_DETECTION_LATENCY = "protocol_version_auto_detection_latency";
 
-  public ProtocolVersionAutoDetectionStats(MetricsRepository metricsRepository) {
-    super(metricsRepository, "ProtocolVersionAutoDetection");
+  public ProtocolVersionAutoDetectionStats(MetricsRepository metricsRepository, String name) {
+    super(metricsRepository, name);
     protocolVersionAutoDetectionErrorSensor =
         registerSensorIfAbsent(PROTOCOL_VERSION_AUTO_DETECTION_ERROR, new Count());
     protocolVersionAutoDetectionThrowableSensor =
