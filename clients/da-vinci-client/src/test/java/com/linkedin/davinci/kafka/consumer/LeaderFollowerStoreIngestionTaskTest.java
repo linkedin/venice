@@ -1,11 +1,13 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask.VIEW_WRITER_CLOSE_TIMEOUT_IN_MS;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -19,6 +21,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -63,6 +66,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.MaterializedView;
@@ -75,6 +79,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
@@ -339,6 +344,66 @@ public class LeaderFollowerStoreIngestionTaskTest {
     assertFalse(vtWriteFutureCaptor.getValue().isCompletedExceptionally());
     assertTrue(writeToVersionTopic.get());
     verify(hostLevelIngestionStats, times(1)).recordViewProducerAckLatency(anyDouble());
+  }
+
+  @Test(timeOut = 10000)
+  public void testCloseVeniceViewWriters() throws InterruptedException {
+    mockVeniceViewWriterFactory = mock(VeniceViewWriterFactory.class);
+    Map<String, VeniceViewWriter> viewWriterMap = new HashMap<>();
+    MaterializedViewWriter materializedViewWriter = mock(MaterializedViewWriter.class);
+    viewWriterMap.put("testView", materializedViewWriter);
+    when(mockVeniceViewWriterFactory.buildStoreViewWriters(any(), anyInt(), any())).thenReturn(viewWriterMap);
+    setUp();
+    CompletableFuture<Void> lastVTProduceCallFuture = new CompletableFuture<>();
+    doReturn(lastVTProduceCallFuture).when(mockPartitionConsumptionState).getLastVTProduceCallFuture();
+    // gracefulClose/doFlush is false when close is called for a killed ingestion. The lastVTProduceCallFuture should be
+    // short-circuited without any exception to reduce unnecessary exception logging.
+    leaderFollowerStoreIngestionTask.closeVeniceViewWriters(false);
+    verify(materializedViewWriter, times(1)).close(false);
+    assertTrue(lastVTProduceCallFuture.isDone());
+    assertFalse(lastVTProduceCallFuture.isCompletedExceptionally());
+
+    clearInvocations(materializedViewWriter);
+    setUp();
+    Time mockTime = mock(Time.class);
+    when(mockTime.getMilliseconds()).thenReturn(0L).thenReturn(VIEW_WRITER_CLOSE_TIMEOUT_IN_MS - 100L);
+    leaderFollowerStoreIngestionTask.setTime(mockTime);
+    CompletableFuture<Void> timedOutLastVTProduceCallFuture = new CompletableFuture<>();
+    doReturn(timedOutLastVTProduceCallFuture).when(mockPartitionConsumptionState).getLastVTProduceCallFuture();
+    // gracefulClose/doFlush is true. We will mimic lastVTProduceCallFuture is still not complete after some time and
+    // the ingestion task will wait for 100ms before completing it exceptionally to shortcircuit and unblock any threads
+    // waiting on the future.
+    leaderFollowerStoreIngestionTask.closeVeniceViewWriters(true);
+    verify(materializedViewWriter, times(1)).close(true);
+    assertTrue(timedOutLastVTProduceCallFuture.isDone());
+    assertTrue(timedOutLastVTProduceCallFuture.isCompletedExceptionally());
+    try {
+      timedOutLastVTProduceCallFuture.get();
+      fail();
+    } catch (ExecutionException e) {
+      assertTrue(e.getCause().getMessage().contains("Exception caught when closing"));
+    }
+
+    // Finally verify a forcefully short-circuited lastVTProduceCallFuture due to already exceeding the graceful close
+    // timeout.
+    clearInvocations(materializedViewWriter);
+    setUp();
+    mockTime = mock(Time.class);
+    when(mockTime.getMilliseconds()).thenReturn(0L).thenReturn(VIEW_WRITER_CLOSE_TIMEOUT_IN_MS + 100L);
+    leaderFollowerStoreIngestionTask.setTime(mockTime);
+    CompletableFuture<Void> forcefullyCompletedLastVTProduceCallFuture = new CompletableFuture<>();
+    doReturn(forcefullyCompletedLastVTProduceCallFuture).when(mockPartitionConsumptionState)
+        .getLastVTProduceCallFuture();
+    leaderFollowerStoreIngestionTask.closeVeniceViewWriters(true);
+    verify(materializedViewWriter, times(1)).close(true);
+    assertTrue(forcefullyCompletedLastVTProduceCallFuture.isDone());
+    assertTrue(forcefullyCompletedLastVTProduceCallFuture.isCompletedExceptionally());
+    try {
+      forcefullyCompletedLastVTProduceCallFuture.get();
+      fail();
+    } catch (ExecutionException e) {
+      assertTrue(e.getCause().getMessage().contains("Completing the future forcefully"));
+    }
   }
 
   /**
