@@ -467,6 +467,10 @@ public enum Command {
       "repush-store", "Copy the current serving version's data into a new version and repush it to the store",
       new Arg[] { URL, STORE }, new Arg[] { CLUSTER }
   ),
+  GET_DEAD_STORES(
+      "get-dead-stores", "Get the stores that are considered dead via ACL DB and Store Discovery",
+      new Arg[] { URL, CLUSTER }, new Arg[] { STORE, INCLUDE_SYSTEM_STORES }
+  ),
   LIST_STORE_PUSH_INFO(
       "list-store-push-info", "List information about current pushes and push history for a specific store.",
       new Arg[] { URL, STORE }, new Arg[] { CLUSTER, PARTITION_DETAIL_ENABLED }
