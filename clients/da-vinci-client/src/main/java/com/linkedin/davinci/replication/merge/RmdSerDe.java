@@ -36,7 +36,7 @@ public class RmdSerDe {
   private BiIntKeyCache<RecordDeserializer<GenericRecord>> deserializerCache;
   private final boolean fastAvroEnabled;
 
-  private final static int DEFAULT_DELAY_TIME_BETWEEN_RETRIES = 2; // seconds
+  private final static int DEFAULT_DELAY_TIME_BETWEEN_RETRIES = 1; // seconds
 
   public RmdSerDe(StringAnnotatedStoreSchemaCache annotatedStoreSchemaCache, int rmdVersionId) {
     this(annotatedStoreSchemaCache, rmdVersionId, true);
@@ -152,7 +152,7 @@ public class RmdSerDe {
   }
 
   // For testing purpose only.
-  public void setDeserializerCache(BiIntKeyCache<RecordDeserializer<GenericRecord>> deserializerCache) {
+  void setDeserializerCache(BiIntKeyCache<RecordDeserializer<GenericRecord>> deserializerCache) {
     this.deserializerCache = deserializerCache;
   }
 }
