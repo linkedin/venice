@@ -26,6 +26,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -235,6 +236,8 @@ public class PartitionConsumptionState {
   // veniceWriterLazyRef could be set and get in different threads, mark it volatile.
   private volatile Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriterLazyRef;
 
+  private BooleanSupplier isCurrentVersion;
+
   public PartitionConsumptionState(String replicaId, int partition, OffsetRecord offsetRecord, boolean hybrid) {
     this.replicaId = replicaId;
     this.partition = partition;
@@ -292,6 +295,10 @@ public class PartitionConsumptionState {
 
   public void setLastVTProduceCallFuture(CompletableFuture<Void> lastVTProduceCallFuture) {
     this.lastVTProduceCallFuture = lastVTProduceCallFuture;
+  }
+
+  public void setCurrentVersionSupplier(BooleanSupplier isCurrentVersion) {
+    this.isCurrentVersion = isCurrentVersion;
   }
 
   public OffsetRecord getOffsetRecord() {
@@ -383,7 +390,7 @@ public class PartitionConsumptionState {
       return false;
     }
     // for regular push store, receiving EOP is good to go
-    return !hybrid || lagCaughtUp;
+    return !hybrid && isCurrentVersion.getAsBoolean() || lagCaughtUp;
   }
 
   public final boolean isHybrid() {
