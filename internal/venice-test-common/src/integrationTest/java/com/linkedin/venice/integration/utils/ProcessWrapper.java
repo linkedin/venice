@@ -154,7 +154,7 @@ public abstract class ProcessWrapper implements Closeable {
    * @throws Exception if there are any problems while trying to stop the service (typically, these
    *                   exceptions will be ignored).
    */
-  protected synchronized void stop() throws Exception {
+  public synchronized void stop() throws Exception {
     if (isStarted) {
       long startTime = System.currentTimeMillis();
       internalStop();
@@ -168,7 +168,7 @@ public abstract class ProcessWrapper implements Closeable {
 
   protected abstract void internalStop() throws Exception;
 
-  protected synchronized void restart() throws Exception {
+  public synchronized void restart() throws Exception {
     if (!isRunning) {
       newProcess();
       start();

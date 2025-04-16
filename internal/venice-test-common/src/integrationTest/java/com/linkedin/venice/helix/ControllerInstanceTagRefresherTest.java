@@ -31,14 +31,14 @@ import org.testng.annotations.Test;
  * expected instance tags are applied to a controller participant in Helix before it transitions to a live state.
  *
  * These tests verify:
- * 1. Tags are added to new controller participants on first connection.
- * 2. Tags are re-applied if they are manually removed (e.g., due to a stale or cleared config after restart).
- * 3. Tags are updated before the participant is considered LIVE in Helix.
+ * 1. Instance is brand-new to the Helix cluster (Scale ups)
+ * 2. Instance already exists in the cluster, and contains the same state as it expects (in-place deployments)
+ * 3. Instance already exists in the cluster, but contains different state from what it expects (stale metadata after various operations)
  *
  * Simulates real-world scenarios such as Kubernetes restarts, where participants may come up with missing config,
  * and ensures the preConnect callback mechanism reliably restores expected cluster state.
  */
-public class ControllerInstanceTagRefresherIntegrationTest {
+public class ControllerInstanceTagRefresherTest {
   private static final String CLUSTER_NAME = "test-controller-cluster";
   private static final String INSTANCE_TAG_1 = "venice-tag-1";
   private static final String INSTANCE_TAG_2 = "venice-tag-2";
