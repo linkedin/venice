@@ -332,6 +332,10 @@ public class PartitionConsumptionState {
     }
   }
 
+  public boolean isCurrentVersion() {
+    return isCurrentVersion.getAsBoolean();
+  }
+
   public boolean hasLagCaughtUp() {
     return lagCaughtUp;
   }
@@ -390,7 +394,7 @@ public class PartitionConsumptionState {
       return false;
     }
     // for regular push store, receiving EOP is good to go
-    return !hybrid && isCurrentVersion.getAsBoolean() || lagCaughtUp;
+    return !hybrid || lagCaughtUp;
   }
 
   public final boolean isHybrid() {
