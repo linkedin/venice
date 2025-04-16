@@ -109,15 +109,15 @@ public class VeniceVersionFinder {
         /** new store push has completed but the routers are not up-to-date on the latest metadata yet
          * This should happen at most once per store, since we are adding the mapping to {@link lastCurrentVersion} */
         store = metadataRepository.refreshOneStore(storeName);
-        metadataCurrentVersion = store.getCurrentVersion();
+        metadataCurrentVersion = store.getCurrentVersion(); // = 1
       }
       // check if new store is ready to serve
+      lastCurrentVersionMap.putIfAbsent(storeName, metadataCurrentVersion); // = 0
       newVersionKafkaTopic = Version.composeKafkaTopic(storeName, metadataCurrentVersion);
       newVersionPartitionResourcesReady = isPartitionResourcesReady(newVersionKafkaTopic);
       newVersionDecompressorReady = isDecompressorReady(store, metadataCurrentVersion, newVersionKafkaTopic);
       if (newVersionPartitionResourcesReady && newVersionDecompressorReady) {
         // new store ready to serve
-        lastCurrentVersionMap.putIfAbsent(storeName, metadataCurrentVersion);
         existingVersion = metadataCurrentVersion;
       } else {
         // new store not ready to serve
@@ -178,7 +178,7 @@ public class VeniceVersionFinder {
     }
 
     stats.recordStale(metadataCurrentVersion, Store.NON_EXISTING_VERSION);
-    lastCurrentVersionMap.remove(storeName);
+    lastCurrentVersionMap.put(storeName, Store.NON_EXISTING_VERSION);
     return Store.NON_EXISTING_VERSION;
   }
 
