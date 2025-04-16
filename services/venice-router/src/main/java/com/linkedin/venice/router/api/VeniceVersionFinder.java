@@ -133,6 +133,7 @@ public class VeniceVersionFinder {
 
     // version swap: new version
     if (newVersionKafkaTopic.equals(UNINITALISED_KAFKA_TOPIC_STRING)) {
+      // new version is of an existing store rather than new store
       newVersionKafkaTopic = Version.composeKafkaTopic(storeName, metadataCurrentVersion);
       newVersionPartitionResourcesReady = isPartitionResourcesReady(newVersionKafkaTopic);
       newVersionDecompressorReady = isDecompressorReady(store, metadataCurrentVersion, newVersionKafkaTopic);
