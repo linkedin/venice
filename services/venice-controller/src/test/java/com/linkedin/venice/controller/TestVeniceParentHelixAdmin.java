@@ -1861,9 +1861,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     TopicManager topicManager = mock(TopicManager.class);
 
     Map<String, ControllerClient> notCreatedMap = new HashMap<>();
-    notCreatedMap.put("cluster", clientMap.get(ExecutionStatus.NOT_CREATED));
+    notCreatedMap.put("cluster", clientMap.get(ExecutionStatus.ERROR));
     notCreatedMap.put("cluster2", clientMap.get(ExecutionStatus.NOT_CREATED));
-    notCreatedMap.put("cluster3", clientMap.get(ExecutionStatus.NOT_CREATED));
+    notCreatedMap.put("cluster3", clientMap.get(ExecutionStatus.ERROR));
 
     Set<PubSubTopic> pubSubTopics = new HashSet<>();
     pubSubTopics.add(pubSubTopicRepository.getTopic("topic_v1"));
@@ -1877,6 +1877,13 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(version).when(store).getVersion(anyInt());
     doReturn(VersionStatus.KILLED).when(version).getStatus();
     doReturn(Version.PushType.BATCH).when(version).getPushType();
+
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    doReturn(mock(ClusterLockManager.class)).when(resources).getClusterLockManager();
+    doReturn(resources).when(internalAdmin).getHelixVeniceClusterResources(anyString());
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    doReturn(repository).when(resources).getStoreMetadataRepository();
+    doReturn(store).when(repository).getStore(anyString());
 
     Admin.OfflinePushStatusInfo offlineJobStatus =
         parentAdmin.getOffLineJobStatus("IGNORED", "topic1_v1", notCreatedMap);
