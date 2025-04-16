@@ -207,7 +207,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
           config.getErrorPartitionProcessingCycleDelay());
     }
 
-    if (config.isParent() && config.isDeadStoreEndpointEnabled() && config.isPreFetchDeadStoreStatsEnabled()) {
+    if (config.isDeadStoreEndpointEnabled() && config.isPreFetchDeadStoreStatsEnabled()) {
+      LOGGER.info("Dead store stats pre-fetch task is enabled for cluster: {}", clusterName);
       deadStoreStatsPreFetchTask =
           new DeadStoreStatsPreFetchTask(clusterName, admin, config.getDeadStoreStatsPreFetchRefreshIntervalInMs());
     }
