@@ -116,11 +116,13 @@ public class DiskHealthCheckServiceTest {
       assertTrue(diskHealthCheckService.getDiskHealthy());
 
       Path healthCheckFilePath = Paths.get(directory + "/" + DiskHealthCheckService.TMP_FILE_NAME);
+      assertTrue(Files.exists(healthCheckFilePath));
       assertTrue(Files.isRegularFile(healthCheckFilePath));
 
-      // Random text in the health check file to denote corrupted data
+      // Mimic text old
       String incorrectMessage = "I Want My Hat Back";
-      diskHealthCheckService.getHealthCheckTask().setForceOverrideMessage(incorrectMessage);
+      diskHealthCheckService.getHealthCheckTask()
+          .setHealthCheckDiskAccessor(new CorruptFileHealthCheckDiskAccessor(incorrectMessage));
 
       // Wait for the health check to run at least once
       Utils.sleep(500);
@@ -130,7 +132,7 @@ public class DiskHealthCheckServiceTest {
       assertFalse(diskHealthCheckService.getDiskHealthy());
 
       // Disk is healthy again
-      diskHealthCheckService.getHealthCheckTask().resetForceOverrideMessage();
+      diskHealthCheckService.getHealthCheckTask().resetHealthCheckDiskAccessor();
 
       // Wait for the health check to run at least once
       Utils.sleep(500);
@@ -138,6 +140,20 @@ public class DiskHealthCheckServiceTest {
       assertTrue(diskHealthCheckService.isDiskHealthy());
       assertNull(diskHealthCheckService.getErrorMessage());
       assertTrue(diskHealthCheckService.getDiskHealthy());
+    }
+  }
+
+  private static class CorruptFileHealthCheckDiskAccessor extends DiskHealthCheckService.HealthCheckDiskAccessor {
+    private final String message;
+
+    private CorruptFileHealthCheckDiskAccessor(String message) {
+      this.message = message;
+    }
+
+    // Mimic that data got corrupted after writing to disk
+    @Override
+    String validateHealthCheckFile(File file, String expectedMessage, int repeats) throws IOException {
+      return message;
     }
   }
 }

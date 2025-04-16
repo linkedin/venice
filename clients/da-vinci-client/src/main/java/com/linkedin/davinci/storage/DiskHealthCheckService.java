@@ -161,23 +161,12 @@ public class DiskHealthCheckService extends AbstractVeniceService {
   class DiskHealthCheckTask implements Runnable {
     private volatile boolean stop = false;
 
-    private String forceOverrideMessage = null;
-
-    // Only for testing
-    void setForceOverrideMessage(String message) {
-      this.forceOverrideMessage = message;
-    }
-
-    // Only for testing
-    void resetForceOverrideMessage() {
-      this.forceOverrideMessage = null;
-    }
-
     protected void setStop() {
       stop = true;
     }
 
     private long unhealthyStartTime;
+    private HealthCheckDiskAccessor healthCheckDiskAccessor = null;
 
     @Override
     public void run() {
@@ -222,8 +211,10 @@ public class DiskHealthCheckService extends AbstractVeniceService {
           String message = String.valueOf(System.currentTimeMillis());
           int repeats = TMP_FILE_SIZE_IN_BYTES / message.length();
 
-          writeHealthCheckFile(tmpFile, message, repeats);
-          String mismatchedLine = validateHealthCheckFile(tmpFile, message, repeats);
+          HealthCheckDiskAccessor healthCheckDiskAccessor = getHealthCheckDiskAccessor();
+
+          healthCheckDiskAccessor.writeHealthCheckFile(tmpFile, message, repeats);
+          String mismatchedLine = healthCheckDiskAccessor.validateHealthCheckFile(tmpFile, message, repeats);
 
           try (AutoCloseableLock ignore = AutoCloseableLock.of(lock)) {
             // update the disk health status
@@ -245,24 +236,38 @@ public class DiskHealthCheckService extends AbstractVeniceService {
       }
     }
 
-    private void writeHealthCheckFile(File file, String message, int repeats)
+    private HealthCheckDiskAccessor getHealthCheckDiskAccessor() {
+      return healthCheckDiskAccessor == null ? HealthCheckDiskAccessor.INSTANCE : healthCheckDiskAccessor;
+    }
+
+    // Visible for testing
+    void setHealthCheckDiskAccessor(HealthCheckDiskAccessor healthCheckDiskAccessor) {
+      this.healthCheckDiskAccessor = healthCheckDiskAccessor;
+    }
+
+    // Visible for testing
+    void resetHealthCheckDiskAccessor() {
+      this.healthCheckDiskAccessor = null;
+    }
+
+  }
+
+  // Visible for testing
+  static class HealthCheckDiskAccessor {
+    static final HealthCheckDiskAccessor INSTANCE = new HealthCheckDiskAccessor();
+
+    void writeHealthCheckFile(File file, String message, int repeats)
         throws FileNotFoundException, UnsupportedEncodingException {
-      final String outputMessage;
-      if (forceOverrideMessage != null) {
-        outputMessage = forceOverrideMessage;
-      } else {
-        outputMessage = message;
-      }
       try (PrintWriter printWriter = new PrintWriter(file, "UTF-8")) {
         // write 64KB data to the temporary file first
         for (int i = 0; i < repeats; i++) {
-          printWriter.println(outputMessage);
+          printWriter.println(message);
         }
         printWriter.flush();
       }
     }
 
-    private String validateHealthCheckFile(File file, String expectedMessage, int repeats) throws IOException {
+    String validateHealthCheckFile(File file, String expectedMessage, int repeats) throws IOException {
       // Check data in it.
       try (BufferedReader br =
           new BufferedReader(new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8))) {
