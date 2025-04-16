@@ -309,7 +309,8 @@ class IngestionNotificationDispatcher {
         logMessage.append("Replica: ").append(pcs.getReplicaId()).append(" has already been ");
         boolean report = true;
 
-        if (pcs.isComplete()) {
+        // Report error for non-current version ingestions otherwise they will be stuck till push timeout
+        if (pcs.isComplete() && pcs.isCurrentVersion()) {
           logMessage.append("marked as completed so an error will not be reported.");
           report = false;
         }
