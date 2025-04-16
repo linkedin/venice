@@ -2281,6 +2281,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             partition,
             offsetRecord,
             hybridStoreConfig.isPresent());
+        newPartitionConsumptionState.setCurrentVersionSupplier(isCurrentVersion);
 
         if (isCurrentVersion.getAsBoolean()) {
           // Latch creation is in StateModelIngestionProgressNotifier#startConsumption() from the Helix transition
@@ -2437,13 +2438,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             topicPartition,
             partitionConsumptionState.getReplicaId());
       }
-      partitionConsumptionStateMap.put(
+      PartitionConsumptionState consumptionState = new PartitionConsumptionState(
+          Utils.getReplicaId(versionTopic, partition),
           partition,
-          new PartitionConsumptionState(
-              Utils.getReplicaId(versionTopic, partition),
-              partition,
-              new OffsetRecord(partitionStateSerializer),
-              hybridStoreConfig.isPresent()));
+          new OffsetRecord(partitionStateSerializer),
+          hybridStoreConfig.isPresent());
+      consumptionState.setCurrentVersionSupplier(isCurrentVersion);
+      partitionConsumptionStateMap.put(partition, consumptionState);
       storageUtilizationManager.initPartition(partition);
       // Reset the error partition tracking
       partitionIngestionExceptionList.set(partition, null);
