@@ -6,6 +6,8 @@ import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.venice.HttpConstants;
@@ -489,6 +491,52 @@ public class TestVeniceVersionFinder {
     }
   }
 
+  /** Since refreshOneStore() is an expensive operation, this test ensures that refreshOneStore() is only called once per store when getVersion() is called on the same store */
+  @Test
+  public void testRefreshOneStoreCalledOnce() {
+    String storeName = Utils.getUniqueString("version-finder-test-store");
+    int firstVersion = 1;
+    Store store = TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
+    store.setCurrentVersion(Store.NON_EXISTING_VERSION);
+
+    ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
+    HelixCustomizedViewOfflinePushRepository routingDataRepo = mock(HelixCustomizedViewOfflinePushRepository.class);
+    StaleVersionStats stats = mock(StaleVersionStats.class);
+    HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
+    CompressorFactory compressorFactory = mock(CompressorFactory.class);
+    VeniceMetricsRepository mockMetricsRepository = mock(VeniceMetricsRepository.class);
+    final Sensor mockSensor = mock(Sensor.class);
+    doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
+    VeniceVersionFinder versionFinder = spy(
+        new VeniceVersionFinder(
+            storeRepository,
+            routingDataRepo,
+            stats,
+            storeConfigRepo,
+            clusterToD2Map,
+            CLUSTER,
+            compressorFactory,
+            mockMetricsRepository));
+
+    doReturn(store).when(storeRepository).getStore(storeName);
+    doReturn(store).when(storeRepository).refreshOneStore(storeName);
+
+    // Call getVersion() multiple times while version is NON_EXISTING_VERSION
+    Assert.assertEquals(versionFinder.getVersion(storeName, request), Store.NON_EXISTING_VERSION);
+    Assert.assertEquals(versionFinder.getVersion(storeName, request), Store.NON_EXISTING_VERSION);
+
+    // Verify refreshOneStore is called only once
+    verify(storeRepository, times(1)).refreshOneStore(storeName);
+
+    // Update the store's version to 1
+    store.setCurrentVersion(firstVersion);
+    doReturn(true).when(versionFinder).isDecompressorReady(any(), anyInt(), anyString());
+    doReturn(true).when(versionFinder).isPartitionResourcesReady(anyString());
+
+    // Call getVersion() again and verify it returns the updated version
+    Assert.assertEquals(versionFinder.getVersion(storeName, request), firstVersion);
+  }
+
   public static HelixCustomizedViewOfflinePushRepository getCVBasedMockedRoutingRepo() {
     List<Instance> instances = new LinkedList<>();
     instances.add(new Instance("id1", "host", 1234));
@@ -499,5 +547,4 @@ public class TestVeniceVersionFinder {
 
     return routingData;
   }
-
 }
