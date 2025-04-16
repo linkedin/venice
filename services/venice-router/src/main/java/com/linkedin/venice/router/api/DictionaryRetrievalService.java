@@ -411,7 +411,6 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
             }
             return null;
           }, executor);
-      System.out.println("put dictionary of this topic to downloadingDictionaryFutures: " + kafkaTopic);
       downloadingDictionaryFutures.put(kafkaTopic, dictionaryFuture);
     }
 
