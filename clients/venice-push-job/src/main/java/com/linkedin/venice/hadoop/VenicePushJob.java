@@ -395,6 +395,11 @@ public class VenicePushJob implements AutoCloseable {
       throw new VeniceException("Incremental push is not supported while using targeted region push mode");
     }
 
+    if (pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled && pushJobSettingToReturn.deferVersionSwap) {
+      throw new VeniceException(
+          "Target region push with deferred swap and deferred swap cannot be enabled at the same time");
+    }
+
     // If target region push with deferred version swap is enabled, enable deferVersionSwap
     if (pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled) {
       pushJobSettingToReturn.deferVersionSwap = true;
