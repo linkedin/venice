@@ -578,11 +578,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           partitionConsumptionState.setLeaderFollowerState(STANDBY);
           updateLeaderTopicOnFollower(partitionConsumptionState);
           // subscribe back to local VT/partition
-          consumerSubscribe(
-              topic,
-              partitionConsumptionState,
-              getLocalVtSubscribeOffset(partitionConsumptionState),
-              localKafkaServer);
+          long subscribeOffset = getLocalVtSubscribeOffset(partitionConsumptionState);
+          if (isGlobalRtDivEnabled()) {
+            consumerDiv.updateLatestConsumedVtOffset(partition, subscribeOffset); // latest consumed vt offset (LCVO)
+          }
+          consumerSubscribe(topic, partitionConsumptionState, subscribeOffset, localKafkaServer);
           /**
            * When switching leader to follower, we may adjust the underlying storage partition to optimize the performance.
            * Only adjust the storage engine after the batch portion as compaction tuning is meaningless for the batch portion.
