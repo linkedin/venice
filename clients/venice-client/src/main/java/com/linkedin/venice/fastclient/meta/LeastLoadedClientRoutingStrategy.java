@@ -33,7 +33,7 @@ public class LeastLoadedClientRoutingStrategy extends AbstractClientRoutingStrat
      */
     Collections.shuffle(replicas);
     for (String replica: replicas) {
-      if (!instanceHealthMonitor.isInstanceBlocked(replica) && instanceHealthMonitor.isInstanceHealthy(replica)) {
+      if (instanceHealthMonitor.isRequestAllowed(replica)) {
         availReplicas.add(replica);
       }
     }

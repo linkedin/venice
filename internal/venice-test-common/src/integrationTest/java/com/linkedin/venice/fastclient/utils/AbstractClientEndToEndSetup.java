@@ -170,12 +170,18 @@ public abstract class AbstractClientEndToEndSetup {
     return DataProviderUtils.allPermutationGenerator(REQUEST_TYPES_SMALL);
   }
 
+  protected Properties getExtraServerProperties() {
+    return new Properties();
+  }
+
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
     Utils.thisIsLocalhost();
     Properties props = new Properties();
     props.put(SERVER_HTTP2_INBOUND_ENABLED, "true");
     props.put(SERVER_QUOTA_ENFORCEMENT_ENABLED, "true");
+    props.putAll(getExtraServerProperties());
+
     VeniceClusterCreateOptions createOptions = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfServers(2)
         .enableGrpc(true)

@@ -8,8 +8,11 @@ import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
@@ -38,7 +41,8 @@ public class DiskHealthCheckService extends AbstractVeniceService {
 
   private static final long HEALTH_CHECK_HARD_TIMEOUT = TimeUnit.SECONDS.toMillis(30); // 30 seconds
 
-  private static final String TMP_FILE_NAME = ".health_check_file";
+  // Visible for testing
+  static final String TMP_FILE_NAME = ".health_check_file";
   private static final int TMP_FILE_SIZE_IN_BYTES = 64 * 1024; // 64KB
 
   // lock object protects diskHealthy and lastStatusUpdateTimeInNS.
@@ -55,19 +59,31 @@ public class DiskHealthCheckService extends AbstractVeniceService {
   private DiskHealthCheckTask healthCheckTask;
   private Thread runner;
 
-  private void setDiskHealthy(boolean diskHealthy) {
+  // Visible for testing
+  void setDiskUnhealthy(String errorMessage) {
     try (AutoCloseableLock ignore = AutoCloseableLock.of(lock)) {
-      this.diskHealthy = diskHealthy;
+      this.diskHealthy = false;
+      this.errorMessage = errorMessage;
     }
   }
 
-  private boolean getDiskHealthy() {
+  // Visible for testing
+  void setDiskHealthy() {
+    try (AutoCloseableLock ignore = AutoCloseableLock.of(lock)) {
+      this.diskHealthy = true;
+      this.errorMessage = null;
+    }
+  }
+
+  // Visible for testing
+  boolean getDiskHealthy() {
     try (AutoCloseableLock ignore = AutoCloseableLock.of(lock)) {
       return diskHealthy;
     }
   }
 
-  private void setLastStatusUpdateTimeInNS(long lastStatusUpdateTimeInNS) {
+  // Visible for testing
+  void setLastStatusUpdateTimeInNS(long lastStatusUpdateTimeInNS) {
     try (AutoCloseableLock ignore = AutoCloseableLock.of(lock)) {
       this.lastStatusUpdateTimeInNS = lastStatusUpdateTimeInNS;
     }
@@ -76,14 +92,14 @@ public class DiskHealthCheckService extends AbstractVeniceService {
   public DiskHealthCheckService(
       boolean serviceEnabled,
       long healthCheckIntervalMs,
-      long diskOperationTimeout,
+      long diskOperationTimeoutMs,
       String databasePath,
       long diskFailServerShutdownTimeMs) {
     this.serviceEnabled = serviceEnabled;
     this.healthCheckIntervalMs = healthCheckIntervalMs;
-    this.healthCheckTimeoutMs = Math.max(HEALTH_CHECK_HARD_TIMEOUT, healthCheckIntervalMs + diskOperationTimeout);
+    this.healthCheckTimeoutMs = Math.max(HEALTH_CHECK_HARD_TIMEOUT, healthCheckIntervalMs + diskOperationTimeoutMs);
     this.databasePath = databasePath;
-    errorMessage = null;
+    this.errorMessage = null;
     this.diskFailServerShutdownTimeMs = diskFailServerShutdownTimeMs;
   }
 
@@ -116,7 +132,7 @@ public class DiskHealthCheckService extends AbstractVeniceService {
          * Disk operation hangs so the status has not been updated for {@link healthCheckTimeoutMs};
          * mark the host as unhealthy.
          */
-        diskHealthy = false;
+        setDiskUnhealthy("Status has not been updated for " + healthCheckTimeoutMs + " ms");
       }
       return diskHealthy;
     }
@@ -136,7 +152,13 @@ public class DiskHealthCheckService extends AbstractVeniceService {
     }
   }
 
-  private class DiskHealthCheckTask implements Runnable {
+  // Only for testing
+  DiskHealthCheckTask getHealthCheckTask() {
+    return healthCheckTask;
+  }
+
+  // Visible for testing
+  class DiskHealthCheckTask implements Runnable {
     private volatile boolean stop = false;
 
     protected void setStop() {
@@ -144,6 +166,7 @@ public class DiskHealthCheckService extends AbstractVeniceService {
     }
 
     private long unhealthyStartTime;
+    private HealthCheckDiskAccessor healthCheckDiskAccessor = null;
 
     @Override
     public void run() {
@@ -168,14 +191,12 @@ public class DiskHealthCheckService extends AbstractVeniceService {
 
           File databaseDir = new File(databasePath);
           if (!databaseDir.exists() || !databaseDir.isDirectory()) {
-            errorMessage = databasePath + " does not exist or is not a directory!";
-            setDiskHealthy(false);
+            setDiskUnhealthy(databasePath + " does not exist or is not a directory!");
             continue;
           }
 
           if (!(databaseDir.canRead() && databaseDir.canWrite())) {
-            errorMessage = "No read/write permission for health check service in path " + databasePath;
-            setDiskHealthy(false);
+            setDiskUnhealthy("No read/write permission for health check service in path " + databasePath);
             continue;
           }
 
@@ -187,46 +208,77 @@ public class DiskHealthCheckService extends AbstractVeniceService {
           // delete the temporary file at the end
           tmpFile.deleteOnExit();
 
-          try (PrintWriter printWriter = new PrintWriter(tmpFile, "UTF-8")) {
-            String message = String.valueOf(System.currentTimeMillis());
-            // write 64KB data to the temporary file first
-            int repeats = TMP_FILE_SIZE_IN_BYTES / message.length();
-            for (int i = 0; i < repeats; i++) {
-              printWriter.println(message);
-            }
-            printWriter.flush();
+          String message = String.valueOf(System.currentTimeMillis());
+          int repeats = TMP_FILE_SIZE_IN_BYTES / message.length();
 
-            // Check data in it.
-            errorMessage = null;
-            boolean fileReadableAndCorrect = true;
-            try (BufferedReader br =
-                new BufferedReader(new InputStreamReader(new FileInputStream(tmpFile), StandardCharsets.UTF_8))) {
-              for (int i = 0; i < repeats; i++) {
-                String newLine = br.readLine();
-                if (!Objects.equals(newLine, message)) {
-                  errorMessage =
-                      "Content in health check file is different from what was written to it; expect message: "
-                          + message + "; actual content: " + newLine;
-                  fileReadableAndCorrect = false;
-                  break;
-                }
-              }
-            }
+          HealthCheckDiskAccessor healthCheckDiskAccessor = getHealthCheckDiskAccessor();
 
-            try (AutoCloseableLock ignore = AutoCloseableLock.of(lock)) {
-              // update the disk health status
-              diskHealthy = fileReadableAndCorrect;
-              lastStatusUpdateTimeInNS = System.nanoTime();
+          healthCheckDiskAccessor.writeHealthCheckFile(tmpFile, message, repeats);
+          String mismatchedLine = healthCheckDiskAccessor.validateHealthCheckFile(tmpFile, message, repeats);
+
+          try (AutoCloseableLock ignore = AutoCloseableLock.of(lock)) {
+            // update the disk health status
+            if (mismatchedLine == null) {
+              setDiskHealthy();
+            } else {
+              setDiskUnhealthy(
+                  "Content in health check file is different from what was written to it; expect message: " + message
+                      + "; actual content: " + mismatchedLine);
             }
+            lastStatusUpdateTimeInNS = System.nanoTime();
           }
         } catch (InterruptedException e) {
           LOGGER.info("Disk check service thread shutting down (interrupted).");
         } catch (Exception ee) {
           LOGGER.error("Error while checking the disk health in server: ", ee);
-          errorMessage = ee.getMessage();
-          setDiskHealthy(false);
+          setDiskUnhealthy(ee.getMessage());
         }
       }
+    }
+
+    private HealthCheckDiskAccessor getHealthCheckDiskAccessor() {
+      return healthCheckDiskAccessor == null ? HealthCheckDiskAccessor.INSTANCE : healthCheckDiskAccessor;
+    }
+
+    // Visible for testing
+    void setHealthCheckDiskAccessor(HealthCheckDiskAccessor healthCheckDiskAccessor) {
+      this.healthCheckDiskAccessor = healthCheckDiskAccessor;
+    }
+
+    // Visible for testing
+    void resetHealthCheckDiskAccessor() {
+      this.healthCheckDiskAccessor = null;
+    }
+
+  }
+
+  // Visible for testing
+  static class HealthCheckDiskAccessor {
+    static final HealthCheckDiskAccessor INSTANCE = new HealthCheckDiskAccessor();
+
+    void writeHealthCheckFile(File file, String message, int repeats)
+        throws FileNotFoundException, UnsupportedEncodingException {
+      try (PrintWriter printWriter = new PrintWriter(file, "UTF-8")) {
+        // write 64KB data to the temporary file first
+        for (int i = 0; i < repeats; i++) {
+          printWriter.println(message);
+        }
+        printWriter.flush();
+      }
+    }
+
+    String validateHealthCheckFile(File file, String expectedMessage, int repeats) throws IOException {
+      // Check data in it.
+      try (BufferedReader br =
+          new BufferedReader(new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8))) {
+        for (int i = 0; i < repeats; i++) {
+          String newLine = br.readLine();
+          if (!Objects.equals(newLine, expectedMessage)) {
+            return newLine;
+          }
+        }
+      }
+      return null;
     }
   }
 }

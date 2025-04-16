@@ -122,6 +122,14 @@ import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEAKED_RESOURCE_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES;
+import static com.linkedin.venice.ConfigKeys.SERVER_LOAD_CONTROLLER_ACCEPT_MULTIPLIER;
+import static com.linkedin.venice.ConfigKeys.SERVER_LOAD_CONTROLLER_COMPUTE_LATENCY_ACCEPT_THRESHOLD_IN_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_LOAD_CONTROLLER_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_LOAD_CONTROLLER_MAX_REJECTION_RATIO;
+import static com.linkedin.venice.ConfigKeys.SERVER_LOAD_CONTROLLER_MULTI_GET_LATENCY_ACCEPT_THRESHOLD_IN_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_LOAD_CONTROLLER_REJECTION_RATIO_UPDATE_INTERNAL_IN_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_LOAD_CONTROLLER_SINGLE_GET_LATENCY_ACCEPT_THRESHOLD_IN_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_LOAD_CONTROLLER_WINDOW_SIZE_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LOCAL_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_MAX_REQUEST_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_MAX_WAIT_AFTER_UNSUBSCRIBE_MS;
@@ -610,9 +618,16 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long maxWaitAfterUnsubscribeMs;
   private final boolean deleteUnassignedPartitionsOnStartup;
   private final int aclInMemoryCacheTTLMs;
-
   private final int aaWCIngestionStorageLookupThreadPoolSize;
   private final int idleIngestionTaskCleanupIntervalInSeconds;
+  private final boolean loadControllerEnabled;
+  private final int loadControllerWindowSizeInSec;
+  private final double loadControllerAcceptMultiplier;
+  private final double loadControllerMaxRejectionRatio;
+  private final int loadControllerRejectionRatioUpdateIntervalInSec;
+  private final int loadControllerSingleGetLatencyAcceptThresholdMs;
+  private final int loadControllerMultiGetLatencyAcceptThresholdMs;
+  private final int loadControllerComputeLatencyAcceptThresholdMs;
 
   private final List<Double> defaultConsumerPoolLimitFactorsList =
       Arrays.asList(0.4D, 0.6D, 0.8D, 1.0D, 1.2D, 1.4D, 1.6D);
@@ -1053,6 +1068,18 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     this.isParticipantMessageStoreEnabled = serverProperties.getBoolean(PARTICIPANT_MESSAGE_STORE_ENABLED, false);
     idleIngestionTaskCleanupIntervalInSeconds =
         serverProperties.getInt(SERVER_IDLE_INGESTION_TASK_CLEANUP_INTERVAL_IN_SECONDS, -1);
+    loadControllerEnabled = serverProperties.getBoolean(SERVER_LOAD_CONTROLLER_ENABLED, false);
+    loadControllerWindowSizeInSec = serverProperties.getInt(SERVER_LOAD_CONTROLLER_WINDOW_SIZE_IN_SECONDS, 60);
+    loadControllerAcceptMultiplier = serverProperties.getDouble(SERVER_LOAD_CONTROLLER_ACCEPT_MULTIPLIER, 2.0);
+    loadControllerMaxRejectionRatio = serverProperties.getDouble(SERVER_LOAD_CONTROLLER_MAX_REJECTION_RATIO, 0.9);
+    loadControllerRejectionRatioUpdateIntervalInSec =
+        serverProperties.getInt(SERVER_LOAD_CONTROLLER_REJECTION_RATIO_UPDATE_INTERNAL_IN_SECONDS, 10);
+    loadControllerSingleGetLatencyAcceptThresholdMs =
+        serverProperties.getInt(SERVER_LOAD_CONTROLLER_SINGLE_GET_LATENCY_ACCEPT_THRESHOLD_IN_MS, 20);
+    loadControllerMultiGetLatencyAcceptThresholdMs =
+        serverProperties.getInt(SERVER_LOAD_CONTROLLER_MULTI_GET_LATENCY_ACCEPT_THRESHOLD_IN_MS, 100);
+    loadControllerComputeLatencyAcceptThresholdMs =
+        serverProperties.getInt(SERVER_LOAD_CONTROLLER_COMPUTE_LATENCY_ACCEPT_THRESHOLD_IN_MS, 100);
   }
 
   List<Double> extractThrottleLimitFactorsFor(VeniceProperties serverProperties, String configKey) {
@@ -1937,5 +1964,37 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getIdleIngestionTaskCleanupIntervalInSeconds() {
     return idleIngestionTaskCleanupIntervalInSeconds;
+  }
+
+  public boolean isLoadControllerEnabled() {
+    return loadControllerEnabled;
+  }
+
+  public int getLoadControllerWindowSizeInSec() {
+    return loadControllerWindowSizeInSec;
+  }
+
+  public double getLoadControllerAcceptMultiplier() {
+    return loadControllerAcceptMultiplier;
+  }
+
+  public double getLoadControllerMaxRejectionRatio() {
+    return loadControllerMaxRejectionRatio;
+  }
+
+  public int getLoadControllerRejectionRatioUpdateIntervalInSec() {
+    return loadControllerRejectionRatioUpdateIntervalInSec;
+  }
+
+  public int getLoadControllerSingleGetLatencyAcceptThresholdMs() {
+    return loadControllerSingleGetLatencyAcceptThresholdMs;
+  }
+
+  public int getLoadControllerMultiGetLatencyAcceptThresholdMs() {
+    return loadControllerMultiGetLatencyAcceptThresholdMs;
+  }
+
+  public int getLoadControllerComputeLatencyAcceptThresholdMs() {
+    return loadControllerComputeLatencyAcceptThresholdMs;
   }
 }
