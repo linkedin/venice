@@ -199,7 +199,7 @@ public class VeniceVersionFinder {
           partitionAssignment = "unknown";
         }
         LOGGER.debug(
-            "No online replica exists for partition {} of {}, particion assignment: {}",
+            "No online replica exists for partition {} of {}, partition assignment: {}",
             partitionId,
             kafkaTopic,
             partitionAssignment);
