@@ -84,6 +84,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
@@ -1555,6 +1556,16 @@ public class TestMetaDataHandler {
     String storeVersion = "3";
     String storePartition = "30";
 
+    // Set up empty map for instance results from PushStatusStore
+    Mockito.doReturn(CompletableFuture.completedFuture(new HashMap<CharSequence, Integer>()))
+        .when(pushStatusStoreReader)
+        .getPartitionStatusAsync(
+            storeName,
+            Integer.parseInt(storeVersion),
+            Integer.parseInt(storePartition),
+            Optional.empty(),
+            Optional.empty());
+
     Store store = Mockito.mock(Store.class);
     Mockito.doReturn(store).when(storeRepository).getStore(storeName);
     Mockito.doReturn(isBlobTransferEnabled).when(store).isBlobTransferEnabled();
@@ -1650,6 +1661,9 @@ public class TestMetaDataHandler {
       }
     };
 
+    CompletableFuture<Map<CharSequence, Integer>> instanceResultsFromPushStatusStoreFuture =
+        CompletableFuture.completedFuture(instanceResultsFromPushStatusStore);
+
     Map<String, Boolean> instanceHealth = new HashMap<String, Boolean>() {
       {
         put("ltx1-test.prod.linkedin.com_137", true);
@@ -1660,9 +1674,9 @@ public class TestMetaDataHandler {
 
     List<String> expectedResult = Arrays.asList("ltx1-test.prod.linkedin.com_137", "ltx1-test2.prod.linkedin.com_137");
 
-    Mockito.doReturn(instanceResultsFromPushStatusStore)
+    Mockito.doReturn(instanceResultsFromPushStatusStoreFuture)
         .when(pushStatusStoreReader)
-        .getPartitionStatus(storeName, storeVersion, storePartition, Optional.empty());
+        .getPartitionStatusAsync(storeName, storeVersion, storePartition, Optional.empty(), Optional.empty());
 
     instanceHealth.forEach((instance, isLive) -> {
       Mockito.doReturn(isLive).when(pushStatusStoreReader).isInstanceAlive(storeName, instance);
@@ -1719,6 +1733,8 @@ public class TestMetaDataHandler {
         put("ltx1-test2.prod.linkedin.com_137", 1);
       }
     };
+    CompletableFuture<Map<CharSequence, Integer>> instanceResultsFromPushStatusStoreFuture =
+        CompletableFuture.completedFuture(instanceResultsFromPushStatusStore);
 
     Map<String, Boolean> instanceHealth = new HashMap<String, Boolean>() {
       {
@@ -1730,12 +1746,13 @@ public class TestMetaDataHandler {
 
     List<String> expectedResult = Collections.emptyList();
 
-    Mockito.doReturn(instanceResultsFromPushStatusStore)
+    Mockito.doReturn(instanceResultsFromPushStatusStoreFuture)
         .when(pushStatusStoreReader)
-        .getPartitionStatus(
+        .getPartitionStatusAsync(
             storeName,
             Integer.valueOf(storeVersion),
             Integer.valueOf(storePartition),
+            Optional.empty(),
             Optional.empty());
 
     instanceHealth.forEach((instance, isLive) -> {

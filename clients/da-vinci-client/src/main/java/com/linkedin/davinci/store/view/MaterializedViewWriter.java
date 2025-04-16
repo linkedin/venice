@@ -120,6 +120,14 @@ public class MaterializedViewWriter extends VeniceViewWriter {
     return internalView.getWriterClassName();
   }
 
+  @Override
+  public void close(boolean gracefulClose) {
+    internalView.close(gracefulClose);
+    if (veniceWriter.isPresent()) {
+      veniceWriter.get().close(gracefulClose);
+    }
+  }
+
   // Package private for testing
   VeniceWriterOptions buildWriterOptions() {
     return setProducerOptimizations(internalView.getWriterOptionsBuilder(materializedViewTopicName, version)).build();

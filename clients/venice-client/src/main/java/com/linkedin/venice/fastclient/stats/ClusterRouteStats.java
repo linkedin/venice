@@ -62,6 +62,7 @@ public class ClusterRouteStats {
     private final Sensor leakedRequestCountSensor;
     private final Sensor otherErrorRequestCountSensor;
     private final Sensor pendingRequestCountSensor;
+    private final Sensor rejectionRatioSensor;
 
     public RouteStats(
         MetricsRepository metricsRepository,
@@ -86,6 +87,7 @@ public class ClusterRouteStats {
        * request types.
        */
       this.pendingRequestCountSensor = registerSensor("pending_request_count", new Avg(), new Max());
+      this.rejectionRatioSensor = registerSensor("rejection_ratio", new Avg(), new Max());
     }
 
     public void recordRequest() {
@@ -122,6 +124,10 @@ public class ClusterRouteStats {
 
     public void recordPendingRequestCount(int count) {
       pendingRequestCountSensor.record(count);
+    }
+
+    public void recordRejectionRatio(double rejectionRatio) {
+      rejectionRatioSensor.record(rejectionRatio);
     }
   }
 }

@@ -170,10 +170,10 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
   }
 
   @Override
-  public void close() {
-    internalView.close();
+  public void close(boolean gracefulClose) {
+    internalView.close(gracefulClose);
     if (veniceWriter != null) {
-      veniceWriter.close();
+      veniceWriter.close(gracefulClose);
     }
   }
 
