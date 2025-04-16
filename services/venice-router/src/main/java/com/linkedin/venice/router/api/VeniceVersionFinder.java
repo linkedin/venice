@@ -34,7 +34,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class VeniceVersionFinder {
   private static final Logger LOGGER = LogManager.getLogger(VeniceVersionFinder.class);
-  private static final String UNINITALISED_KAFKA_TOPIC_STRING = null;
+  private static final String UNINITALISED_KAFKA_TOPIC_STRING = "";
 
   private final ReadOnlyStoreRepository metadataRepository;
   private final StaleVersionStats stats;
