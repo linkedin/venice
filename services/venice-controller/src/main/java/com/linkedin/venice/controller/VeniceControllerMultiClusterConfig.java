@@ -347,8 +347,8 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getDeadStoreStatsConfigs();
   }
 
-  public boolean isDeadStoreEndpointEnabled() {
-    return getCommonConfig().isDeadStoreEndpointEnabled();
+  public boolean isDeadStoreEndpointEnabled(String clusterName) {
+    return getControllerConfig(clusterName).isDeadStoreEndpointEnabled();
   }
 
   public long getTimeSinceLastLogCompactionThresholdMS() {
