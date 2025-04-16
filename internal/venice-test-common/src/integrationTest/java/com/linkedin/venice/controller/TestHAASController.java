@@ -17,6 +17,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.SafeHelixDataAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.integration.utils.HelixAsAServiceWrapper;
@@ -34,6 +35,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -100,27 +102,32 @@ public class TestHAASController {
       List<String> instances = helixAdmin.getInstancesInClusterWithTag(controllerClusterName, instanceTag);
       assertEquals(instances.size(), 1);
       // Stop controller
-      controllerWrapper.stop();
+      venice.stopVeniceController(controllerWrapper.getPort());
 
       // Modify tags in ZK directly
       InstanceConfig instanceConfig = helixAdmin.getInstanceConfig(controllerClusterName, instanceName);
+      instanceConfig.removeTag(instanceTag);
       instanceConfig.addTag(newInstanceTag);
       helixAdmin.setInstanceConfig(controllerClusterName, instanceName, instanceConfig);
 
       Assert.assertTrue(
-          helixAdmin.getInstanceConfig(controllerClusterName, instanceName).getTags().contains(newInstanceTag),
+          helixAdmin.getInstanceConfig(controllerClusterName, instanceName)
+              .getTags()
+              .equals(Arrays.asList(newInstanceTag)),
           newInstanceTag + " tag should be added to the instance config");
 
-      controllerWrapper.restart();
+      venice.restartVeniceController(controllerWrapper.getPort());
 
       // Wait for the controller to rejoin the cluster and use the tag declared in it's clusterProperties
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         InstanceConfig updatedConfig = helixAdmin.getInstanceConfig(controllerClusterName, instanceName);
         List<String> tags = updatedConfig.getTags();
-        Assert.assertTrue(tags.contains(instanceTag));
+        Assert.assertTrue(
+            tags.equals(Arrays.asList(instanceTag)),
+            "The instance tag should be updated to the one in the cluster properties");
       });
     } catch (Exception e) {
-      throw new RuntimeException(e);
+      throw new VeniceException(e);
     }
   }
 
