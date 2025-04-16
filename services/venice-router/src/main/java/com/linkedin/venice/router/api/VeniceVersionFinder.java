@@ -19,7 +19,6 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.router.stats.RouterCurrentVersionStats;
 import com.linkedin.venice.router.stats.StaleVersionReason;
 import com.linkedin.venice.router.stats.StaleVersionStats;
-import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.List;
@@ -35,8 +34,6 @@ import org.apache.logging.log4j.Logger;
  */
 public class VeniceVersionFinder {
   private static final Logger LOGGER = LogManager.getLogger(VeniceVersionFinder.class);
-  private static final RedundantExceptionFilter EXCEPTION_FILTER =
-      RedundantExceptionFilter.getRedundantExceptionFilter();
   private static final String UNINITALISED_KAFKA_TOPIC_STRING = null;
 
   private final ReadOnlyStoreRepository metadataRepository;
