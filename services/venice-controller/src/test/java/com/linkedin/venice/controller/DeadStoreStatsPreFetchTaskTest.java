@@ -24,6 +24,7 @@ public class DeadStoreStatsPreFetchTaskTest {
     mockStore = mock(Store.class);
     mockAdmin.deadStoreStats = mockStats;
     when(mockAdmin.getAllStores("test-cluster")).thenReturn(Collections.singletonList(mockStore));
+    when(mockAdmin.isLeaderControllerFor("test-cluster")).thenReturn(true);
   }
 
   @Test
