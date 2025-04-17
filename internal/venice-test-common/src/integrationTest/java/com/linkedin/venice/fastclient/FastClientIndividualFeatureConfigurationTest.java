@@ -73,7 +73,6 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setSpeculativeQueryEnabled(false)
             .setInstanceHealthMonitor(
                 new InstanceHealthMonitor(
                     InstanceHealthMonitorConfig.builder()
@@ -146,6 +145,7 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     assertTrue(quotaRequestedKPSSum >= 0, "Quota request key count sum: " + quotaRequestedKPSSum);
     assertTrue(clientConnectionCountRateSum > 0, "Servers should have more than 0 client connections");
     assertEquals(routerConnectionCountRateSum, 0.0d, "Servers should have 0 router connections");
+
     // At least one server's usage ratio should eventually be a positive decimal
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       double usageRatio = 0;
@@ -220,7 +220,6 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setSpeculativeQueryEnabled(false)
             .setInstanceHealthMonitor(
                 new InstanceHealthMonitor(
                     InstanceHealthMonitorConfig.builder()
@@ -281,7 +280,6 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setSpeculativeQueryEnabled(false)
             .setInstanceHealthMonitor(
                 new InstanceHealthMonitor(
                     InstanceHealthMonitorConfig.builder()
@@ -354,7 +352,6 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
             .setR2Client(r2Client)
             .setLongTailRetryEnabledForBatchGet(true)
             .setLongTailRetryThresholdForBatchGetInMicroSeconds(10000)
-            .setSpeculativeQueryEnabled(false)
             .setInstanceHealthMonitor(
                 new InstanceHealthMonitor(
                     InstanceHealthMonitorConfig.builder()
@@ -400,7 +397,6 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
             .setR2Client(r2Client)
             .setLongTailRetryEnabledForBatchGet(true)
             .setLongTailRetryThresholdForBatchGetInMicroSeconds(10000)
-            .setSpeculativeQueryEnabled(false)
             .setInstanceHealthMonitor(
                 new InstanceHealthMonitor(
                     InstanceHealthMonitorConfig.builder()
@@ -445,7 +441,6 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
             .setLongTailRetryEnabledForBatchGet(true)
             .setLongTailRetryThresholdForBatchGetInMicroSeconds(10000)
             .setLongTailRetryBudgetEnforcementWindowInMs(1000)
-            .setSpeculativeQueryEnabled(false)
             .setInstanceHealthMonitor(
                 new InstanceHealthMonitor(
                     InstanceHealthMonitorConfig.builder()
@@ -490,7 +485,6 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setSpeculativeQueryEnabled(false)
             .setInstanceHealthMonitor(
                 new InstanceHealthMonitor(
                     InstanceHealthMonitorConfig.builder()
@@ -516,7 +510,6 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
             .setLongTailRetryEnabledForBatchGet(true)
-            .setSpeculativeQueryEnabled(false)
             .setInstanceHealthMonitor(
                 new InstanceHealthMonitor(
                     InstanceHealthMonitorConfig.builder()

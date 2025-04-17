@@ -286,7 +286,6 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
   @Test(dataProvider = "FastClient-Test-Permutations", timeOut = TIME_OUT)
   public void testFastClientGet(
       boolean dualRead,
-      boolean speculativeQueryEnabled,
       boolean enableGrpc,
       boolean retryEnabled,
       int batchGetKeySize,
@@ -298,7 +297,6 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setSpeculativeQueryEnabled(speculativeQueryEnabled)
             .setDualReadEnabled(dualRead);
     // Test HAR algorithm in this test.
     Set<String> harClusters = new HashSet<>();

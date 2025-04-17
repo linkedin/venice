@@ -5,6 +5,7 @@ import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
@@ -29,6 +30,7 @@ import java.util.Collections;
 import java.util.EnumMap;
 import java.util.List;
 import org.apache.helix.PropertyKey;
+import org.apache.helix.model.IdealState;
 import org.apache.helix.model.LiveInstance;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -51,26 +53,22 @@ public class TestInstanceStatusDecider {
     clusterName = Utils.getUniqueString("TestInstanceStatusDecider");
     resources = mock(HelixVeniceClusterResources.class);
     routingDataRepository = mock(HelixCustomizedViewOfflinePushRepository.class);
-
     readWriteStoreRepository = mock(HelixReadWriteStoreRepository.class);
     mockMonitor = mock(PushMonitorDelegator.class);
 
     doAnswer(invocation -> {
       PartitionAssignment partitionAssignment = invocation.getArgument(0);
       int partitionId = invocation.getArgument(1);
-
       return partitionAssignment.getPartition(partitionId).getReadyToServeInstances();
     }).when(routingDataRepository).getReadyToServeInstances(any(PartitionAssignment.class), anyInt());
 
     SafeHelixManager manager = mock(SafeHelixManager.class);
-
     accessor = mock(SafeHelixDataAccessor.class);
     doReturn(routingDataRepository).when(resources).getCustomizedViewRepository();
     doReturn(readWriteStoreRepository).when(resources).getStoreMetadataRepository();
     doReturn(mockMonitor).when(resources).getPushMonitor();
     doReturn(manager).when(resources).getHelixManager();
     doReturn(accessor).when(manager).getHelixDataAccessor();
-    doReturn(new LiveInstance("test_1")).when(accessor).getProperty(any(PropertyKey.class));
   }
 
   @Test
@@ -279,6 +277,22 @@ public class TestInstanceStatusDecider {
     }
 
     doReturn(store).when(readWriteStoreRepository).getStore(storeName);
+
+    // Create valid ideal state
+    IdealState idealState = mock(IdealState.class);
+    when(idealState.isEnabled()).thenReturn(true);
+    when(idealState.isValid()).thenReturn(true);
+    when(idealState.getMinActiveReplicas()).thenReturn(replicationFactor - 1);
+
+    doAnswer(invocation -> {
+      PropertyKey key = invocation.getArgument(0);
+      if (key.getPath().contains("LIVEINSTANCES")) {
+        return mock(LiveInstance.class);
+      } else if (key.getPath().contains("IDEALSTATES")) {
+        return idealState;
+      }
+      return null;
+    }).when(accessor).getProperty(any(PropertyKey.class));
 
   }
 }

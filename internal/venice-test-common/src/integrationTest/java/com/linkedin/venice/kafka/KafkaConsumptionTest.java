@@ -14,9 +14,9 @@ import com.linkedin.davinci.kafka.consumer.KafkaClusterBasedRecordThrottler;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator;
 import com.linkedin.davinci.kafka.consumer.PartitionReplicaIngestionContext;
+import com.linkedin.davinci.kafka.consumer.StaleTopicChecker;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.kafka.consumer.StorePartitionDataReceiver;
-import com.linkedin.davinci.kafka.consumer.TopicExistenceChecker;
 import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -183,7 +183,7 @@ public class KafkaConsumptionTest {
     clusterUrlToIdMap.put(remoteKafkaUrl, 1);
     doReturn(clusterUrlToIdMap).when(veniceServerConfig).getKafkaClusterUrlToIdMap();
 
-    TopicExistenceChecker topicExistenceChecker = mock(TopicExistenceChecker.class);
+    StaleTopicChecker staleTopicChecker = mock(StaleTopicChecker.class);
     PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory =
         localPubSubBroker.getPubSubClientsFactory().getConsumerAdapterFactory();
     PubSubMessageDeserializer pubSubDeserializer = new PubSubMessageDeserializer(
@@ -197,7 +197,7 @@ public class KafkaConsumptionTest {
         mockIngestionThrottler,
         kafkaClusterBasedRecordThrottler,
         metricsRepository,
-        topicExistenceChecker,
+        staleTopicChecker,
         pubSubDeserializer,
         (ignored) -> {},
         (ignored) -> false,

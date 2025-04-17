@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_READ_CYCLE_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
+import static com.linkedin.venice.ConfigKeys.SERVER_MAX_WAIT_FOR_VERSION_INFO_MS_CONFIG;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
@@ -55,6 +56,8 @@ public class TestTopicWiseSharedConsumerPoolResilience {
     extraProperties.setProperty(
         SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY,
         KafkaConsumerService.ConsumerAssignmentStrategy.TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY.name());
+    // Set it to lower value so that L->F wait for deprecated version will be faster in test.
+    extraProperties.setProperty(SERVER_MAX_WAIT_FOR_VERSION_INFO_MS_CONFIG, Integer.toString(1));
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfServers(2)
         .numberOfRouters(1)
@@ -115,6 +118,13 @@ public class TestTopicWiseSharedConsumerPoolResilience {
               10,
               TimeUnit.SECONDS,
               () -> !admin.isResourceStillAlive(resourceNameForBackupVersion));
+          /**
+           * Adding this wait so that dropping resource can complete. The above check only checks Helix side resource,
+           * not on server side. The heartbeat monitor action could retry to find deleted store resource, so in this test
+           * we add wait here and tuned down timeout for the store repository wait to avoid test flakiness.
+           */
+
+          Utils.sleep(1000);
         }
       }
     }

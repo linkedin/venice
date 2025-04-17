@@ -3,7 +3,7 @@ package com.linkedin.venice.router.api.routing.helix;
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
-import com.linkedin.venice.router.stats.HelixGroupStats;
+import com.linkedin.venice.stats.routing.HelixGroupStats;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.concurrent.TimeUnit;
 

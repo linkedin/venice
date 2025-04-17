@@ -28,17 +28,13 @@ public class AvroStoreClientGzipEndToEndTest extends AvroStoreClientEndToEndTest
   @DataProvider(name = "FastClient-Test-Permutations")
   public Object[][] fastClientTestPermutations() {
     return DataProviderUtils.allPermutationGenerator((permutation) -> {
-      boolean speculativeQueryEnabled = (boolean) permutation[1];
-      if (speculativeQueryEnabled) {
-        return false;
-      }
-      boolean retryEnabled = (boolean) permutation[3];
+      boolean retryEnabled = (boolean) permutation[2];
       if (retryEnabled) {
         return false;
       }
-      int batchGetKeySize = (int) permutation[4];
-      RequestType requestType = (RequestType) permutation[5];
-      StoreMetadataFetchMode storeMetadataFetchMode = (StoreMetadataFetchMode) permutation[6];
+      int batchGetKeySize = (int) permutation[3];
+      RequestType requestType = (RequestType) permutation[4];
+      StoreMetadataFetchMode storeMetadataFetchMode = (StoreMetadataFetchMode) permutation[5];
       if (requestType != RequestType.MULTI_GET && requestType != RequestType.MULTI_GET_STREAMING) {
         if (batchGetKeySize != (int) BATCH_GET_KEY_SIZE.get(0)) {
           // these parameters are related only to batchGet, so just allowing 1 set
@@ -53,7 +49,6 @@ public class AvroStoreClientGzipEndToEndTest extends AvroStoreClientEndToEndTest
       return true;
     },
         DataProviderUtils.BOOLEAN_FALSE, // dualRead
-        DataProviderUtils.BOOLEAN_FALSE, // speculativeQueryEnabled
         DataProviderUtils.BOOLEAN, // enableGrpc
         DataProviderUtils.BOOLEAN, // retryEnabled
         BATCH_GET_KEY_SIZE.toArray(), // batchGetKeySize

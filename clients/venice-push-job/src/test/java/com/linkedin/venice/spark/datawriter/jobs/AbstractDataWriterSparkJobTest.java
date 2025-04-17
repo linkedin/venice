@@ -14,8 +14,9 @@ import static org.apache.spark.sql.types.DataTypes.StringType;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.PushJobSetting;
+import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
+import com.linkedin.venice.jobs.ComputeJob;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
@@ -84,27 +85,51 @@ public class AbstractDataWriterSparkJobTest {
     PushJobSetting setting = getDefaultPushJobSetting(inputDir, dataSchema);
     Properties properties = new Properties();
     try (DataWriterComputeJob computeJob = new InvalidKeySchemaDataWriterSparkJob()) {
-      Assert.assertThrows(VeniceException.class, () -> computeJob.configure(new VeniceProperties(properties), setting));
+      computeJob.configure(new VeniceProperties(properties), setting);
+      computeJob.runJob();
+      Assert.assertEquals(computeJob.getStatus(), ComputeJob.Status.FAILED);
+      Assert.assertNotNull(computeJob.getFailureReason());
+      Assert.assertTrue(computeJob.getFailureReason() instanceof VeniceInvalidInputException);
     }
 
     try (DataWriterComputeJob computeJob = new InvalidValueSchemaDataWriterSparkJob()) {
-      Assert.assertThrows(VeniceException.class, () -> computeJob.configure(new VeniceProperties(properties), setting));
+      computeJob.configure(new VeniceProperties(properties), setting);
+      computeJob.runJob();
+      Assert.assertEquals(computeJob.getStatus(), ComputeJob.Status.FAILED);
+      Assert.assertNotNull(computeJob.getFailureReason());
+      Assert.assertTrue(computeJob.getFailureReason() instanceof VeniceInvalidInputException);
     }
 
     try (DataWriterComputeJob computeJob = new IncompleteFieldDataWriterSparkJob()) {
-      Assert.assertThrows(VeniceException.class, () -> computeJob.configure(new VeniceProperties(properties), setting));
+      computeJob.configure(new VeniceProperties(properties), setting);
+      computeJob.runJob();
+      Assert.assertEquals(computeJob.getStatus(), ComputeJob.Status.FAILED);
+      Assert.assertNotNull(computeJob.getFailureReason());
+      Assert.assertTrue(computeJob.getFailureReason() instanceof VeniceInvalidInputException);
     }
 
     try (DataWriterComputeJob computeJob = new MissingKeyFieldDataWriterSparkJob()) {
-      Assert.assertThrows(VeniceException.class, () -> computeJob.configure(new VeniceProperties(properties), setting));
+      computeJob.configure(new VeniceProperties(properties), setting);
+      computeJob.runJob();
+      Assert.assertEquals(computeJob.getStatus(), ComputeJob.Status.FAILED);
+      Assert.assertNotNull(computeJob.getFailureReason());
+      Assert.assertTrue(computeJob.getFailureReason() instanceof VeniceInvalidInputException);
     }
 
     try (DataWriterComputeJob computeJob = new MissingValueFieldDataWriterSparkJob()) {
-      Assert.assertThrows(VeniceException.class, () -> computeJob.configure(new VeniceProperties(properties), setting));
+      computeJob.configure(new VeniceProperties(properties), setting);
+      computeJob.runJob();
+      Assert.assertEquals(computeJob.getStatus(), ComputeJob.Status.FAILED);
+      Assert.assertNotNull(computeJob.getFailureReason());
+      Assert.assertTrue(computeJob.getFailureReason() instanceof VeniceInvalidInputException);
     }
 
     try (DataWriterComputeJob computeJob = new SchemaWithRestrictedFieldDataWriterSparkJob()) {
-      Assert.assertThrows(VeniceException.class, () -> computeJob.configure(new VeniceProperties(properties), setting));
+      computeJob.configure(new VeniceProperties(properties), setting);
+      computeJob.runJob();
+      Assert.assertEquals(computeJob.getStatus(), ComputeJob.Status.FAILED);
+      Assert.assertNotNull(computeJob.getFailureReason());
+      Assert.assertTrue(computeJob.getFailureReason() instanceof VeniceInvalidInputException);
     }
   }
 

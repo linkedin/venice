@@ -74,9 +74,27 @@ public class TestVersion {
   public void testParseStoreFromRealTimeTopic() {
     String validRealTimeTopic = "abc_rt";
     assertEquals(Version.parseStoreFromRealTimeTopic(validRealTimeTopic), "abc");
+
+    String validRealTimeTopic2 = Utils.composeRealTimeTopic("abc", 1);
+    assertEquals(Version.parseStoreFromRealTimeTopic(validRealTimeTopic2), "abc");
+
+    String validRealTimeTopic3 = Utils.composeRealTimeTopic("abc_v", 1);
+    assertEquals(Version.parseStoreFromRealTimeTopic(validRealTimeTopic3), "abc_v");
+
+    String validRealTimeTopic4 = Utils.composeRealTimeTopic("abc_v1", 1);
+    assertEquals(Version.parseStoreFromRealTimeTopic(validRealTimeTopic4), "abc_v1");
+
     String invalidRealTimeTopic = "abc";
     try {
       Version.parseStoreFromRealTimeTopic(invalidRealTimeTopic);
+      Assert.fail("VeniceException should be thrown for invalid real-time topic");
+    } catch (VeniceException e) {
+
+    }
+
+    String invalidRealTimeTopic2 = "_v1_rt";
+    try {
+      Version.parseStoreFromRealTimeTopic(invalidRealTimeTopic2);
       Assert.fail("VeniceException should be thrown for invalid real-time topic");
     } catch (VeniceException e) {
 

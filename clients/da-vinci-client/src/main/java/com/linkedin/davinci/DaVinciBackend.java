@@ -304,8 +304,7 @@ public class DaVinciBackend implements Closeable {
             "Ingestion isolated and Cache are incompatible configs!!  Aborting start up!");
       }
 
-      if (backendConfig.isBlobTransferManagerEnabled() && backendConfig.isBlobTransferSslEnabled()
-          && backendConfig.isBlobTransferAclEnabled()) {
+      if (BlobTransferUtils.isBlobTransferManagerEnabled(backendConfig, isIsolatedIngestion())) {
         aggVersionedBlobTransferStats =
             new AggVersionedBlobTransferStats(metricsRepository, storeRepository, configLoader.getVeniceServerConfig());
 

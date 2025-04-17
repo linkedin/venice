@@ -8,7 +8,9 @@ import static com.linkedin.venice.store.rocksdb.RocksDBUtils.composePartitionDbD
 import static org.apache.commons.codec.digest.DigestUtils.md5Hex;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.SSLConfig;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.SslUtils;
@@ -176,5 +178,28 @@ public class BlobTransferUtils {
 
   private static boolean isBlobTransferAclValidationEnabled(VeniceConfigLoader configLoader) {
     return configLoader.getCombinedProperties().getBoolean(BLOB_TRANSFER_ACL_ENABLED, false);
+  }
+
+  /**
+   * A config check to determine if blob transfer manager is enabled
+   * @param backendConfig the Venice server config
+   * @param isIsolatedIngestionEnabled whether isolated ingestion is enabled
+   * @return true if blob transfer manager is enabled, false otherwise
+   */
+  public static boolean isBlobTransferManagerEnabled(
+      VeniceServerConfig backendConfig,
+      boolean isIsolatedIngestionEnabled) {
+    // Blob transfer feature and isolated ingestion feature are mutually exclusive
+    if (backendConfig.isBlobTransferManagerEnabled() && backendConfig.isBlobTransferSslEnabled()
+        && backendConfig.isBlobTransferAclEnabled()) {
+      if (isIsolatedIngestionEnabled) {
+        throw new VeniceException("Blob transfer manager is not supported with isolated ingestion");
+      } else {
+        return true;
+      }
+    } else if (backendConfig.isBlobTransferManagerEnabled()) {
+      throw new VeniceException("Blob transfer manager is not supported without SSL and ACL enabled");
+    }
+    return false;
   }
 }

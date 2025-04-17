@@ -285,7 +285,7 @@ public class RetryUtils {
   }
 
   private static <T> void logAttemptWithFailure(ExecutionAttemptedEvent<T> executionAttemptedEvent) {
-    LOGGER.error(
+    LOGGER.warn(
         "Execution failed with message {} on attempt count {}",
         executionAttemptedEvent.getLastFailure().getMessage(),
         executionAttemptedEvent.getAttemptCount());

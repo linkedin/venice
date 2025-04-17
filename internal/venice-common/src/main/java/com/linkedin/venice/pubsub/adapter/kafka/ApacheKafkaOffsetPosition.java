@@ -20,7 +20,8 @@ import org.apache.avro.io.BinaryEncoder;
 public class ApacheKafkaOffsetPosition implements PubSubPosition {
   private static final ThreadLocal<BinaryDecoder> DECODER = new ThreadLocal<>();
   private static final ThreadLocal<BinaryEncoder> ENCODER = new ThreadLocal<>();
-  private final int SHALLOW_CLASS_OVERHEAD = ClassSizeEstimator.getClassOverhead(ApacheKafkaOffsetPosition.class);
+  private static final int SHALLOW_CLASS_OVERHEAD =
+      ClassSizeEstimator.getClassOverhead(ApacheKafkaOffsetPosition.class);
 
   private final long offset;
 
@@ -114,6 +115,10 @@ public class ApacheKafkaOffsetPosition implements PubSubPosition {
 
   public static ApacheKafkaOffsetPosition of(long offset) {
     return new ApacheKafkaOffsetPosition(offset);
+  }
+
+  public static ApacheKafkaOffsetPosition of(ByteBuffer buffer) throws IOException {
+    return new ApacheKafkaOffsetPosition(buffer);
   }
 
   /**

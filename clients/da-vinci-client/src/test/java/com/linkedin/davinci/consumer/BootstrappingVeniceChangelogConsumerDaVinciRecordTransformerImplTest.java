@@ -7,6 +7,8 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -42,7 +44,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.avro.Schema;
-import org.mockito.Mockito;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -308,8 +309,8 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
 
   @Test
   public void testMaxBufferSize() throws NoSuchFieldException, IllegalAccessException, InterruptedException {
-    ReentrantLock bufferLock = Mockito.spy(new ReentrantLock());
-    Condition bufferIsFullCondition = Mockito.spy(bufferLock.newCondition());
+    ReentrantLock bufferLock = spy(new ReentrantLock());
+    Condition bufferIsFullCondition = spy(bufferLock.newCondition());
 
     Field bufferLockField =
         BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("bufferLock");
@@ -339,7 +340,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     }
 
     // Buffer is full signal should be hit
-    verify(bufferLock, atLeastOnce()).lock();
+    verify(bufferLock, timeout(1000).atLeastOnce()).lock();
     verify(bufferLock, atLeastOnce()).unlock();
     verify(bufferIsFullCondition, atLeastOnce()).signal();
 

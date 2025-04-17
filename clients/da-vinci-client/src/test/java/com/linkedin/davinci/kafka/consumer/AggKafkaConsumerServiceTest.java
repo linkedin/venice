@@ -50,7 +50,7 @@ public class AggKafkaConsumerServiceTest {
   private IngestionThrottler ingestionThrottler;
   private KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler;
   private MetricsRepository metricsRepository;
-  private TopicExistenceChecker topicExistenceChecker;
+  private StaleTopicChecker staleTopicChecker;
   private PubSubMessageDeserializer pubSubDeserializer;
   private Consumer<String> killIngestionTaskRunnable;
   private ReadOnlyStoreRepository metadataRepository;
@@ -71,7 +71,7 @@ public class AggKafkaConsumerServiceTest {
     ingestionThrottler = mock(IngestionThrottler.class);
     kafkaClusterBasedRecordThrottler = mock(KafkaClusterBasedRecordThrottler.class);
     metricsRepository = mock(MetricsRepository.class);
-    topicExistenceChecker = mock(TopicExistenceChecker.class);
+    staleTopicChecker = mock(StaleTopicChecker.class);
     pubSubDeserializer = mock(PubSubMessageDeserializer.class);
     killIngestionTaskRunnable = mock(Consumer.class);
     metadataRepository = mock(ReadOnlyStoreRepository.class);
@@ -97,7 +97,7 @@ public class AggKafkaConsumerServiceTest {
         ingestionThrottler,
         kafkaClusterBasedRecordThrottler,
         metricsRepository,
-        topicExistenceChecker,
+        staleTopicChecker,
         pubSubDeserializer,
         killIngestionTaskRunnable,
         t -> false,

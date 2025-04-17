@@ -108,6 +108,14 @@ public class HelixInstanceConfigRepository implements VeniceResource, InstanceCo
       LOGGER.warn("Received empty instance configs, so will skip it");
       return;
     }
+    // Sort it to make the group id generation deterministic.
+    Collections.sort(instanceConfigs, (instanceConfig1, instanceConfig2) -> {
+      // Sort by instance id to ensure the order is consistent for the same set of instance configs.
+      // This will help to generate deterministic group ids.
+      String id1 = instanceConfig1.getId();
+      String id2 = instanceConfig2.getId();
+      return id1.compareTo(id2);
+    });
     LOGGER.info("Received instance configs: {}.", instanceConfigs);
     Map<String, Integer> newInstanceGroupIdMapping = new VeniceConcurrentHashMap<>();
     Map<String, Integer> groupIdMapping = new HashMap<>();

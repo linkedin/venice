@@ -6,7 +6,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
-import com.linkedin.venice.router.stats.HelixGroupStats;
+import com.linkedin.venice.stats.routing.HelixGroupStats;
 import io.tehuti.metrics.MetricsRepository;
 import org.testng.Assert;
 import org.testng.annotations.Test;

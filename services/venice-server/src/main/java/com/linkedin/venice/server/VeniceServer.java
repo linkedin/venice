@@ -375,12 +375,8 @@ public class VeniceServer {
     HeartbeatMonitoringServiceStats heartbeatMonitoringServiceStats =
         new HeartbeatMonitoringServiceStats(metricsRepository, clusterConfig.getClusterName());
 
-    heartbeatMonitoringService = new HeartbeatMonitoringService(
-        metricsRepository,
-        metadataRepo,
-        serverConfig.getRegionNames(),
-        serverConfig.getRegionName(),
-        heartbeatMonitoringServiceStats);
+    heartbeatMonitoringService =
+        new HeartbeatMonitoringService(metricsRepository, metadataRepo, serverConfig, heartbeatMonitoringServiceStats);
     services.add(heartbeatMonitoringService);
 
     this.zkHelixAdmin = Lazy.of(() -> new ZKHelixAdmin(serverConfig.getZookeeperAddress()));
@@ -477,8 +473,7 @@ public class VeniceServer {
     /**
      * Initialize Blob transfer manager for Service
      */
-    if (serverConfig.isBlobTransferManagerEnabled() && serverConfig.isBlobTransferSslEnabled()
-        && serverConfig.isBlobTransferAclEnabled()) {
+    if (BlobTransferUtils.isBlobTransferManagerEnabled(serverConfig, false)) {
       aggVersionedBlobTransferStats = new AggVersionedBlobTransferStats(metricsRepository, metadataRepo, serverConfig);
 
       P2PBlobTransferConfig p2PBlobTransferConfig = new P2PBlobTransferConfig(

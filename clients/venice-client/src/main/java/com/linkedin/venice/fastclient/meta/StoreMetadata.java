@@ -3,10 +3,11 @@ package com.linkedin.venice.fastclient.meta;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.fastclient.RequestContext;
 import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.concurrent.ChainedCompletableFuture;
 import java.nio.ByteBuffer;
-import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -32,21 +33,8 @@ public interface StoreMetadata extends SchemaReader {
 
   /**
    * This function is expected to return fully qualified URI, such as: "https://fake.host:8888".
-   * @param version
-   * @param partitionId
-   * @return
    */
-
-  default List<String> getReplicas(long requestId, int version, int partitionId, int requiredReplicaCount) {
-    return getReplicas(requestId, version, partitionId, requiredReplicaCount, Collections.emptySet());
-  }
-
-  List<String> getReplicas(
-      long requestId,
-      int version,
-      int partitionId,
-      int requiredReplicaCount,
-      Set<String> excludedInstances);
+  String getReplica(long requestId, int groupId, int version, int partitionId, Set<String> excludedInstances);
 
   ChainedCompletableFuture<Integer, Integer> trackHealthBasedOnRequestToInstance(
       String instance,
@@ -65,4 +53,7 @@ public interface StoreMetadata extends SchemaReader {
   default boolean isReady() {
     return true;
   }
+
+  <K> void routeRequest(RequestContext requestContext, RecordSerializer<K> keySerializer);
+
 }

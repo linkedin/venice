@@ -1,6 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import io.tehuti.metrics.MetricsRepository;
@@ -59,6 +60,10 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
     this.unsortedStoreBufferServiceDelegate = unsortedStoreBufferServiceDelegate;
   }
 
+  private StoreBufferService getDelegate(StoreIngestionTask ingestionTask) {
+    return ingestionTask.isHybridMode() ? unsortedStoreBufferServiceDelegate : sortedStoreBufferServiceDelegate;
+  }
+
   @Override
   public void putConsumerRecord(
       DefaultPubSubMessage consumerRecord,
@@ -67,9 +72,7 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
       int partition,
       String kafkaUrl,
       long beforeProcessingRecordTimestampNs) throws InterruptedException {
-    StoreBufferService chosenSBS =
-        ingestionTask.isHybridMode() ? unsortedStoreBufferServiceDelegate : sortedStoreBufferServiceDelegate;
-    chosenSBS.putConsumerRecord(
+    getDelegate(ingestionTask).putConsumerRecord(
         consumerRecord,
         ingestionTask,
         leaderProducedRecordContext,
@@ -88,9 +91,15 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
   public CompletableFuture<Void> execSyncOffsetCommandAsync(
       PubSubTopicPartition topicPartition,
       StoreIngestionTask ingestionTask) throws InterruptedException {
-    StoreBufferService chosenSBS =
-        ingestionTask.isHybridMode() ? unsortedStoreBufferServiceDelegate : sortedStoreBufferServiceDelegate;
-    return chosenSBS.execSyncOffsetCommandAsync(topicPartition, ingestionTask);
+    return getDelegate(ingestionTask).execSyncOffsetCommandAsync(topicPartition, ingestionTask);
+  }
+
+  @Override
+  public void execSyncOffsetFromSnapshotAsync(
+      PubSubTopicPartition topicPartition,
+      PartitionTracker vtDivSnapshot,
+      StoreIngestionTask ingestionTask) throws InterruptedException {
+    getDelegate(ingestionTask).execSyncOffsetFromSnapshotAsync(topicPartition, vtDivSnapshot, ingestionTask);
   }
 
   @Override

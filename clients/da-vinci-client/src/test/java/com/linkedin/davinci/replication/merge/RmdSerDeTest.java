@@ -4,22 +4,32 @@ import static org.mockito.Mockito.mock;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp;
+import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.utils.collections.BiIntKeyCache;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.io.BinaryDecoder;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class RmdSerDeTest {
+  private static final int valueSchemaID = 1214;
+  private static final int rmdVersionID = 1;
+  private static final String storeName = "test_store_name";
+  private RmdSerDe rmdSerDe;
+  private ByteBuffer rmdAndValueSchemaIDBytes;
+  private GenericRecord rmd;
   /**
    * A schema that contains primitive fields and collection fields, specifically, a list field and a map field.
    */
@@ -33,9 +43,16 @@ public class RmdSerDeTest {
 
   @Test
   public void testSerDeRmd() {
-    final int valueSchemaID = 1214;
-    final int rmdVersionID = 1;
-    final String storeName = "test_store_name";
+    setupTestEnv();
+
+    // Deserialize all bytes and expect to get value schema ID and RMD record back.
+    RmdWithValueSchemaId rmdAndValueID = new RmdWithValueSchemaId();
+    rmdSerDe.deserializeValueSchemaIdPrependedRmdBytes(rmdAndValueSchemaIDBytes.array(), rmdAndValueID);
+    Assert.assertEquals(rmdAndValueID.getValueSchemaId(), valueSchemaID);
+    Assert.assertEquals(rmdAndValueID.getRmdRecord(), rmd);
+  }
+
+  private void setupTestEnv() {
     // Generate RMD schema and record from value schema.
     Schema valueSchema = AvroCompatibilityHelper.parse(VALUE_SCHEMA_STR);
     Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(valueSchema);
@@ -49,9 +66,9 @@ public class RmdSerDeTest {
         .getReplicationMetadataSchema(storeName, valueSchemaID, rmdVersionID);
     StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
         new StringAnnotatedStoreSchemaCache(storeName, schemaRepository);
-    RmdSerDe rmdSerDe = new RmdSerDe(stringAnnotatedStoreSchemaCache, rmdVersionID);
+    rmdSerDe = new RmdSerDe(stringAnnotatedStoreSchemaCache, rmdVersionID);
     Schema annotateRmdSchema = stringAnnotatedStoreSchemaCache.getRmdSchema(valueSchemaID, rmdVersionID).getSchema();
-    GenericRecord rmd = createRmdWithCollectionTimestamp(annotateRmdSchema);
+    rmd = createRmdWithCollectionTimestamp(annotateRmdSchema);
 
     // Serialize this RMD record to bytes.
     Schema actualRmdSchema = rmdSerDe.getRmdSchema(valueSchemaID);
@@ -59,15 +76,56 @@ public class RmdSerDeTest {
     ByteBuffer rmdBytes = rmdSerDe.serializeRmdRecord(valueSchemaID, rmd);
 
     // Prepend value schema ID to RMD bytes.
-    ByteBuffer rmdAndValueSchemaIDBytes = ByteBuffer.allocate(Integer.BYTES + rmdBytes.remaining());
+    rmdAndValueSchemaIDBytes = ByteBuffer.allocate(Integer.BYTES + rmdBytes.remaining());
     rmdAndValueSchemaIDBytes.putInt(valueSchemaID);
     rmdAndValueSchemaIDBytes.put(rmdBytes.array());
+  }
+
+  /**
+   * Test that when deserializer cache doesn't have the deserializer, it will retry 5 times to get the
+   * deserializer from the cache.
+   */
+  @Test
+  public void testRetryInGetRmdDeserializer() {
+    setupTestEnv();
+
+    BiIntKeyCache<RecordDeserializer<GenericRecord>> mockDeserializerCache = mock(BiIntKeyCache.class);
+    rmdSerDe.setDeserializerCache(mockDeserializerCache);
+    RecordDeserializer mockDes = mock(RecordDeserializer.class);
+
+    // Mock to fail twice on BiIntKeyCache.get() and succeed on the third time.
+    Mockito.doReturn(rmd).when(mockDes).deserialize((BinaryDecoder) Mockito.any());
+    Mockito.doThrow(new VeniceException("Mocked exception"))
+        .doThrow(new VeniceException("Mocked exception"))
+        .doReturn(mockDes)
+        .when(mockDeserializerCache)
+        .get(Mockito.anyInt(), Mockito.anyInt());
 
     // Deserialize all bytes and expect to get value schema ID and RMD record back.
     RmdWithValueSchemaId rmdAndValueID = new RmdWithValueSchemaId();
     rmdSerDe.deserializeValueSchemaIdPrependedRmdBytes(rmdAndValueSchemaIDBytes.array(), rmdAndValueID);
     Assert.assertEquals(rmdAndValueID.getValueSchemaId(), valueSchemaID);
     Assert.assertEquals(rmdAndValueID.getRmdRecord(), rmd);
+  }
+
+  /**
+   * Test that when deserializer cache doesn't have the deserializer, it will throw an exception after 5 retries.
+   */
+  @Test(expectedExceptions = VeniceException.class)
+  public void testRetryInGetRmdDeserializerWithException() {
+    setupTestEnv();
+
+    BiIntKeyCache<RecordDeserializer<GenericRecord>> mockDeserializerCache = mock(BiIntKeyCache.class);
+    rmdSerDe.setDeserializerCache(mockDeserializerCache);
+
+    // Mock to fail all the times on BiIntKeyCache.get().
+    Mockito.doThrow(new VeniceException("Mocked exception"))
+        .when(mockDeserializerCache)
+        .get(Mockito.anyInt(), Mockito.anyInt());
+
+    // Deserialize all bytes and expect to get value schema ID and RMD record back.
+    RmdWithValueSchemaId rmdAndValueID = new RmdWithValueSchemaId();
+    rmdSerDe.deserializeValueSchemaIdPrependedRmdBytes(rmdAndValueSchemaIDBytes.array(), rmdAndValueID);
   }
 
   private GenericRecord createRmdWithCollectionTimestamp(Schema rmdSchema) {

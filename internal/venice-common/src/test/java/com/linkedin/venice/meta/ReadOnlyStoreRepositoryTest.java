@@ -13,7 +13,6 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 
-import com.linkedin.venice.utils.Pair;
 import java.time.Duration;
 import org.testng.annotations.Test;
 
@@ -29,11 +28,11 @@ public class ReadOnlyStoreRepositoryTest {
     doCallRealMethod().when(readOnlyStoreRepository).waitVersion(anyString(), anyInt(), any(), anyLong());
     doReturn(store).when(readOnlyStoreRepository).refreshOneStore(anyString());
 
-    Pair<Store, Version> res = readOnlyStoreRepository.waitVersion("test", 1, Duration.ofMillis(5000));
+    StoreVersionInfo res = readOnlyStoreRepository.waitVersion("test", 1, Duration.ofMillis(5000));
     assertNotNull(res);
-    assertNotNull(res.getFirst(), "Store should not be null");
-    assertEquals(res.getFirst(), store, "Store should be the same");
-    assertNull(res.getSecond(), "Version should be null");
+    assertNotNull(res.getStore(), "Store should not be null");
+    assertEquals(res.getStore(), store, "Store should be the same");
+    assertNull(res.getVersion(), "Version should be null");
     verify(readOnlyStoreRepository).getStore("test");
     verify(readOnlyStoreRepository, atLeast(3)).refreshOneStore("test");
     verify(store, atLeast(3)).getVersion(1);
@@ -43,9 +42,9 @@ public class ReadOnlyStoreRepositoryTest {
 
     res = readOnlyStoreRepository.waitVersion("test", 1, Duration.ofMillis(5000), 10);
     assertNotNull(res);
-    assertNotNull(res.getFirst(), "Store should not be null");
-    assertEquals(res.getFirst(), store, "Store should be the same");
-    assertNotNull(res.getSecond(), "Version should not be null");
-    assertEquals(res.getSecond(), version, "Version should be the same");
+    assertNotNull(res.getStore(), "Store should not be null");
+    assertEquals(res.getStore(), store, "Store should be the same");
+    assertNotNull(res.getVersion(), "Version should not be null");
+    assertEquals(res.getVersion(), version, "Version should be the same");
   }
 }

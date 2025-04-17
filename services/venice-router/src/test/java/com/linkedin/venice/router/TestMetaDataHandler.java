@@ -74,6 +74,7 @@ import io.netty.handler.codec.http.EmptyHttpHeaders;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -83,6 +84,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
@@ -97,6 +99,8 @@ public class TestMetaDataHandler {
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
   private final HelixHybridStoreQuotaRepository hybridStoreQuotaRepository =
       Mockito.mock(HelixHybridStoreQuotaRepository.class);
+
+  private final MetricsRepository metricsRepository = new MetricsRepository();
 
   public FullHttpResponse passRequestToMetadataHandler(
       String requestUri,
@@ -191,7 +195,8 @@ public class TestMetaDataHandler {
         KAFKA_BOOTSTRAP_SERVERS,
         false,
         null,
-        pushStatusStoreReader);
+        pushStatusStoreReader,
+        metricsRepository);
     handler.channelRead0(ctx, httpRequest);
     ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
     Mockito.verify(ctx).writeAndFlush(captor.capture());
@@ -690,6 +695,10 @@ public class TestMetaDataHandler {
     Assert.assertEquals(d2ServiceResponse.getD2Service(), d2Service);
     Assert.assertEquals(d2ServiceResponse.getName(), storeName);
     Assert.assertFalse(d2ServiceResponse.isError());
+    Assert.assertEquals(
+        metricsRepository.getMetric(".d2_store_discovery--" + storeName + "-success_request_count.Count").value(),
+        1.0,
+        "Request count should be 1 after first request");
 
     FullHttpResponse response2 = passRequestToMetadataHandler(
         "http://myRouterHost:4567/discover_cluster?store_name=" + storeName,
@@ -707,6 +716,10 @@ public class TestMetaDataHandler {
     Assert.assertEquals(d2ServiceResponse2.getD2Service(), d2Service);
     Assert.assertEquals(d2ServiceResponse2.getName(), storeName);
     Assert.assertFalse(d2ServiceResponse2.isError());
+    Assert.assertEquals(
+        metricsRepository.getMetric(".d2_store_discovery--" + storeName + "-success_request_count.Count").value(),
+        2.0,
+        "Request count should be 2 after second request");
   }
 
   @Test
@@ -723,6 +736,10 @@ public class TestMetaDataHandler {
         Collections.emptyMap());
 
     Assert.assertEquals(response.status(), HttpResponseStatus.NOT_FOUND);
+    Assert.assertEquals(
+        metricsRepository.getMetric(".d2_store_discovery--" + storeName + "-failure_request_count.Count").value(),
+        1.0,
+        "Failure request count should be incremented when no cluster found");
   }
 
   @Test
@@ -964,7 +981,8 @@ public class TestMetaDataHandler {
         KAFKA_BOOTSTRAP_SERVERS,
         false,
         null,
-        pushStatusStoreReader);
+        pushStatusStoreReader,
+        metricsRepository);
     handler.channelRead0(ctx, httpRequest);
     // '/storage' request should be handled by upstream, instead of current MetaDataHandler
     Mockito.verify(ctx, Mockito.times(1)).fireChannelRead(Mockito.any());
@@ -1538,6 +1556,16 @@ public class TestMetaDataHandler {
     String storeVersion = "3";
     String storePartition = "30";
 
+    // Set up empty map for instance results from PushStatusStore
+    Mockito.doReturn(CompletableFuture.completedFuture(new HashMap<CharSequence, Integer>()))
+        .when(pushStatusStoreReader)
+        .getPartitionStatusAsync(
+            storeName,
+            Integer.parseInt(storeVersion),
+            Integer.parseInt(storePartition),
+            Optional.empty(),
+            Optional.empty());
+
     Store store = Mockito.mock(Store.class);
     Mockito.doReturn(store).when(storeRepository).getStore(storeName);
     Mockito.doReturn(isBlobTransferEnabled).when(store).isBlobTransferEnabled();
@@ -1633,6 +1661,9 @@ public class TestMetaDataHandler {
       }
     };
 
+    CompletableFuture<Map<CharSequence, Integer>> instanceResultsFromPushStatusStoreFuture =
+        CompletableFuture.completedFuture(instanceResultsFromPushStatusStore);
+
     Map<String, Boolean> instanceHealth = new HashMap<String, Boolean>() {
       {
         put("ltx1-test.prod.linkedin.com_137", true);
@@ -1643,9 +1674,9 @@ public class TestMetaDataHandler {
 
     List<String> expectedResult = Arrays.asList("ltx1-test.prod.linkedin.com_137", "ltx1-test2.prod.linkedin.com_137");
 
-    Mockito.doReturn(instanceResultsFromPushStatusStore)
+    Mockito.doReturn(instanceResultsFromPushStatusStoreFuture)
         .when(pushStatusStoreReader)
-        .getPartitionStatus(storeName, storeVersion, storePartition, Optional.empty());
+        .getPartitionStatusAsync(storeName, storeVersion, storePartition, Optional.empty(), Optional.empty());
 
     instanceHealth.forEach((instance, isLive) -> {
       Mockito.doReturn(isLive).when(pushStatusStoreReader).isInstanceAlive(storeName, instance);
@@ -1702,6 +1733,8 @@ public class TestMetaDataHandler {
         put("ltx1-test2.prod.linkedin.com_137", 1);
       }
     };
+    CompletableFuture<Map<CharSequence, Integer>> instanceResultsFromPushStatusStoreFuture =
+        CompletableFuture.completedFuture(instanceResultsFromPushStatusStore);
 
     Map<String, Boolean> instanceHealth = new HashMap<String, Boolean>() {
       {
@@ -1713,12 +1746,13 @@ public class TestMetaDataHandler {
 
     List<String> expectedResult = Collections.emptyList();
 
-    Mockito.doReturn(instanceResultsFromPushStatusStore)
+    Mockito.doReturn(instanceResultsFromPushStatusStoreFuture)
         .when(pushStatusStoreReader)
-        .getPartitionStatus(
+        .getPartitionStatusAsync(
             storeName,
             Integer.valueOf(storeVersion),
             Integer.valueOf(storePartition),
+            Optional.empty(),
             Optional.empty());
 
     instanceHealth.forEach((instance, isLive) -> {

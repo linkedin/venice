@@ -538,7 +538,7 @@ public interface Admin extends AutoCloseable, Closeable {
       List<String> toBeStoppedInstances,
       boolean isSSLEnabled);
 
-  boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, String storeName);
+  boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, String rtTopicName);
 
   /**
    * Check if this controller itself is the leader controller for a given cluster or not. Note that the controller can be
@@ -945,19 +945,25 @@ public interface Admin extends AutoCloseable, Closeable {
 
   /**
    * triggers repush for storeName for log compaction of store topic implemented in
-   * {@link VeniceHelixAdmin#compactStore}
+   * {@link VeniceHelixAdmin#repushStore}
    *
    * @param repushJobRequest contains params for repush job
    * @return data model of repush job run info
    */
-  RepushJobResponse compactStore(RepushJobRequest repushJobRequest) throws Exception;
+  RepushJobResponse repushStore(RepushJobRequest repushJobRequest) throws Exception;
 
-  public CompactionManager getCompactionManager();
+  CompactionManager getCompactionManager();
 
   /**
    * @return the largest used version number for the given store from store graveyard.
    */
   int getLargestUsedVersionFromStoreGraveyard(String clusterName, String storeName);
+
+  /**
+   * @return list of stores infos that are considered dead. A store is considered dead if it exists but has no
+   * user traffic in it's read or write path.
+   */
+  List<StoreInfo> getDeadStores(String clusterName, String storeName, boolean includeSystemStores);
 
   Map<String, RegionPushDetails> listStorePushInfo(
       String clusterName,
@@ -976,6 +982,10 @@ public interface Admin extends AutoCloseable, Closeable {
       Optional<Long> upstreamOffset);
 
   void updateAdminOperationProtocolVersion(String clusterName, Long adminOperationProtocolVersion);
+
+  Map<String, Long> getAdminOperationVersionFromControllers(String clusterName);
+
+  long getLocalAdminOperationProtocolVersion();
 
   void createStoragePersona(
       String clusterName,

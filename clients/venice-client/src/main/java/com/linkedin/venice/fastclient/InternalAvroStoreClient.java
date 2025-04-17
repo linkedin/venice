@@ -37,7 +37,7 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
     return get(new GetRequestContext(), key);
   }
 
-  protected abstract CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException;
+  protected abstract CompletableFuture<V> get(GetRequestContext<K> requestContext, K key) throws VeniceClientException;
 
   @Override
   public final CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {

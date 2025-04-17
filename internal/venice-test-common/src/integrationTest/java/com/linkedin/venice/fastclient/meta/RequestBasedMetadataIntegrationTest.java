@@ -96,7 +96,7 @@ public class RequestBasedMetadataIntegrationTest {
   private void setCommonClientConfigs(ClientConfig.ClientConfigBuilder clientConfigBuilder) {
     clientConfigBuilder.setR2Client(r2Client);
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
-    clientConfigBuilder.setSpeculativeQueryEnabled(true);
+    // clientConfigBuilder.setSpeculativeQueryEnabled(true);
     clientConfigBuilder.setMetadataRefreshIntervalInSeconds(1);
     clientConfigBuilder.setD2Client(d2Client);
     clientConfigBuilder.setClusterDiscoveryD2Service(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME);

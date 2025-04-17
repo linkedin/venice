@@ -42,7 +42,7 @@ public class ConsumerSubscriptionCleaner {
    */
   private final Object2LongMap<String> nonExistingTopicDiscoverTimestampMap = new Object2LongOpenHashMap<>();
 
-  private final TopicExistenceChecker topicExistenceChecker;
+  private final StaleTopicChecker staleTopicChecker;
 
   private final Supplier<Set<PubSubTopicPartition>> currentAssignmentSupplier;
 
@@ -63,14 +63,14 @@ public class ConsumerSubscriptionCleaner {
   public ConsumerSubscriptionCleaner(
       long nonExistingTopicCleanupDelayMS,
       int sanitizeTopicSubscriptionAfterPollTimes,
-      TopicExistenceChecker topicExistenceChecker,
+      StaleTopicChecker staleTopicChecker,
       Supplier<Set<PubSubTopicPartition>> assignmentSupplier,
       IntConsumer recordNumberOfTopicsToUnsub,
       Consumer<Set<PubSubTopicPartition>> batchUnsubscribeFunction,
       Time time) {
     this.nonExistingTopicCleanupDelayMS = nonExistingTopicCleanupDelayMS;
     this.sanitizeTopicSubscriptionAfterPollTimes = sanitizeTopicSubscriptionAfterPollTimes;
-    this.topicExistenceChecker = topicExistenceChecker;
+    this.staleTopicChecker = staleTopicChecker;
     this.currentAssignmentSupplier = assignmentSupplier;
     this.recordNumberOfTopicsToUnsub = recordNumberOfTopicsToUnsub;
     this.batchUnsubscribeFunction = batchUnsubscribeFunction;
@@ -102,13 +102,13 @@ public class ConsumerSubscriptionCleaner {
     if (currentAssignment.isEmpty()) {
       return returnSetOfTopicPartitionsToUnsub;
     }
-    Set<String> nonExistingTopics = new HashSet<>();
+    Set<String> staleTopics = new HashSet<>();
     long currentTimestamp = time.getMilliseconds();
     for (PubSubTopicPartition pubSubTopicPartition: currentAssignment) {
       String topic = pubSubTopicPartition.getPubSubTopic().getName();
-      boolean isExistingTopic = topicExistenceChecker.checkTopicExists(topic);
-      if (!isExistingTopic) {
-        nonExistingTopics.add(topic);
+      boolean isValidTopic = staleTopicChecker.shouldTopicExist(topic);
+      if (!isValidTopic) {
+        staleTopics.add(topic);
       } else {
         /**
          * Check whether we should remove any topic from {@link #nonExistingTopicDiscoverTimestampMap} detected previously.
@@ -125,10 +125,10 @@ public class ConsumerSubscriptionCleaner {
         }
       }
     }
-    Set<String> topicsToUnsubscribe = new HashSet<>(nonExistingTopics);
-    if (!nonExistingTopics.isEmpty()) {
-      LOGGER.warn("Detected the following non-existing topics: {}", nonExistingTopics);
-      for (String topic: nonExistingTopics) {
+    Set<String> topicsToUnsubscribe = new HashSet<>(staleTopics);
+    if (!staleTopics.isEmpty()) {
+      LOGGER.warn("Detected the following non-existing topics: {}", staleTopics);
+      for (String topic: staleTopics) {
         long firstDetectedTimestamp = nonExistingTopicDiscoverTimestampMap.getLong(topic);
         if (firstDetectedTimestamp == nonExistingTopicDiscoverTimestampMap.defaultReturnValue()) {
           // The first time to detect this non-existing topic.

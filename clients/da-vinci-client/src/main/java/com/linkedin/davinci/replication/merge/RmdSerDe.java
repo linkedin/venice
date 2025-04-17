@@ -8,9 +8,12 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.collections.BiIntKeyCache;
 import java.nio.ByteBuffer;
+import java.time.Duration;
+import java.util.Collections;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.OptimizedBinaryDecoder;
@@ -30,8 +33,10 @@ public class RmdSerDe {
   private final int rmdVersionId;
   private final SparseConcurrentList<Schema> rmdSchemaIndexedByValueSchemaId;
   private final SparseConcurrentList<RecordSerializer<GenericRecord>> rmdSerializerIndexedByValueSchemaId;
-  private final BiIntKeyCache<RecordDeserializer<GenericRecord>> deserializerCache;
+  private BiIntKeyCache<RecordDeserializer<GenericRecord>> deserializerCache;
   private final boolean fastAvroEnabled;
+
+  private final static int DEFAULT_DELAY_TIME_BETWEEN_RETRIES = 1; // seconds
 
   public RmdSerDe(StringAnnotatedStoreSchemaCache annotatedStoreSchemaCache, int rmdVersionId) {
     this(annotatedStoreSchemaCache, rmdVersionId, true);
@@ -70,7 +75,10 @@ public class RmdSerDe {
             rmdWithValueSchemaID.array(), // bytes of replication metadata with NO value schema ID.
             rmdWithValueSchemaID.position(),
             rmdWithValueSchemaID.remaining());
-    GenericRecord rmdRecord = getRmdDeserializer(valueSchemaId, valueSchemaId).deserialize(binaryDecoder);
+
+    // We allow 5 retries of 1 sec delay between each attempt to get the deserializer in case of a slow schema
+    // repository.
+    GenericRecord rmdRecord = getRmdDeserializerWithRetry(valueSchemaId, valueSchemaId, 5).deserialize(binaryDecoder);
     rmdWithValueSchemaId.setValueSchemaId(valueSchemaId);
     rmdWithValueSchemaId.setRmdProtocolVersionId(rmdVersionId);
     rmdWithValueSchemaId.setRmdRecord(rmdRecord);
@@ -99,7 +107,12 @@ public class RmdSerDe {
   private Schema generateRmdSchema(final int valueSchemaId) {
     RmdSchemaEntry rmdSchemaEntry = this.annotatedStoreSchemaCache.getRmdSchema(valueSchemaId, this.rmdVersionId);
     if (rmdSchemaEntry == null) {
-      throw new VeniceException("Unable to fetch replication metadata schema from schema repository");
+      throw new VeniceException(
+          String.format(
+              "Unable to fetch replication metadata schema from schema repository for store: %s and value schema ID: %d and RMD version ID: %d",
+              annotatedStoreSchemaCache.getStoreName(),
+              valueSchemaId,
+              this.rmdVersionId));
     }
     return rmdSchemaEntry.getSchema();
   }
@@ -108,10 +121,38 @@ public class RmdSerDe {
     return this.deserializerCache.get(writerSchemaID, readerSchemaID);
   }
 
+  private RecordDeserializer<GenericRecord> getRmdDeserializerWithRetry(
+      int writerSchemaID,
+      int readerSchemaID,
+      int maxRetry) {
+    return RetryUtils.executeWithMaxAttempt(() -> {
+      try {
+        return this.deserializerCache.get(writerSchemaID, readerSchemaID);
+      } catch (VeniceException e) {
+        // Adjusting the error message to include the store name and schema IDs for better debugging.
+        throw new VeniceException(
+            String.format(
+                "Failed to fetch RMD deserializer for store: %s with writer schema ID: %d and reader schema ID: %d",
+                annotatedStoreSchemaCache.getStoreName(),
+                writerSchemaID,
+                readerSchemaID),
+            e);
+      }
+    },
+        maxRetry,
+        Duration.ofSeconds(DEFAULT_DELAY_TIME_BETWEEN_RETRIES),
+        Collections.singletonList(VeniceException.class));
+  }
+
   private RecordSerializer<GenericRecord> generateRmdSerializer(int valueSchemaId) {
     Schema replicationMetadataSchema = getRmdSchema(valueSchemaId);
     return fastAvroEnabled
         ? MapOrderPreservingFastSerDeFactory.getSerializer(replicationMetadataSchema)
         : MapOrderPreservingSerDeFactory.getSerializer(replicationMetadataSchema);
+  }
+
+  // For testing purpose only.
+  void setDeserializerCache(BiIntKeyCache<RecordDeserializer<GenericRecord>> deserializerCache) {
+    this.deserializerCache = deserializerCache;
   }
 }

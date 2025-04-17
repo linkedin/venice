@@ -7,6 +7,7 @@ import static java.util.stream.Collectors.toList;
 
 import com.linkedin.davinci.stats.StoreBufferServiceStats;
 import com.linkedin.davinci.utils.LockAssistedCompletableFuture;
+import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -295,6 +296,15 @@ public class StoreBufferService extends AbstractStoreBufferService {
         new CommandQueueNode(CommandQueueNode.CommandType.SYNC_OFFSET, fakeRecord, ingestionTask);
     getDrainerForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber()).put(syncOffsetCmd);
     return syncOffsetCmd.getCmdExecutedFuture();
+  }
+
+  public void execSyncOffsetFromSnapshotAsync(
+      PubSubTopicPartition topicPartition,
+      PartitionTracker vtDivSnapshot,
+      StoreIngestionTask ingestionTask) throws InterruptedException {
+    DefaultPubSubMessage fakeRecord = new FakePubSubMessage(topicPartition);
+    SyncVtDivNode syncDivNode = new SyncVtDivNode(fakeRecord, vtDivSnapshot, ingestionTask);
+    getDrainerForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber()).put(syncDivNode);
   }
 
   @Override
@@ -638,6 +648,41 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   /**
+   * Allows the ConsumptionTask to command the Drainer to sync the VT DIV to the OffsetRecord.
+   */
+  private static class SyncVtDivNode extends QueueNode {
+    private static final int PARTIAL_CLASS_OVERHEAD = getClassOverhead(SyncVtDivNode.class);
+
+    private PartitionTracker vtDivSnapshot;
+
+    public SyncVtDivNode(
+        DefaultPubSubMessage consumerRecord,
+        PartitionTracker vtDivSnapshot,
+        StoreIngestionTask ingestionTask) {
+      super(consumerRecord, ingestionTask, StringUtils.EMPTY, 0);
+      this.vtDivSnapshot = vtDivSnapshot;
+    }
+
+    public void execute() {
+      getIngestionTask().updateAndSyncOffsetFromSnapshot(vtDivSnapshot, getConsumerRecord().getTopicPartition());
+    }
+
+    @Override
+    public int hashCode() {
+      return super.hashCode();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      return super.equals(o);
+    }
+
+    protected int getBaseClassOverhead() {
+      return PARTIAL_CLASS_OVERHEAD;
+    }
+  }
+
+  /**
    * Worker thread, which will invoke {@link StoreIngestionTask#processConsumerRecord}
    * to process each {@link PubSubMessage} buffered in {@link BlockingQueue}.
    */
@@ -685,6 +730,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
                 ingestionTask,
                 ingestionTask.getPartitionConsumptionState(partitionNum));
             continue;
+          } else if (node instanceof SyncVtDivNode) {
+            ((SyncVtDivNode) node).execute();
           }
 
           processRecord(

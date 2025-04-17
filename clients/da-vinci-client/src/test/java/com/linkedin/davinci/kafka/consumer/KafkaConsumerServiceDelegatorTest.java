@@ -548,7 +548,7 @@ public class KafkaConsumerServiceDelegatorTest {
         mockMetricsRepository,
         "test_kafka_cluster_alias",
         TimeUnit.MINUTES.toMillis(1),
-        mock(TopicExistenceChecker.class),
+        mock(StaleTopicChecker.class),
         false,
         pubSubDeserializer,
         SystemTime.INSTANCE,

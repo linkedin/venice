@@ -75,6 +75,7 @@
     <Or>
       <Class name="com.linkedin.venice.router.api.TestHostFinder"/>
       <Class name="com.linkedin.davinci.StoreBackendTest"/>
+      <Class name="com.linkedin.davinci.consumer.VeniceChangelogConsumerImplTest"/>
       <Class name="com.linkedin.venice.memory.ClassSizeEstimatorTest"/>
       <Class name="com.linkedin.venice.controller.server.VeniceControllerAccessManagerTest"/>
       <Class name="com.linkedin.venice.sql.SQLUtilsTest"/>

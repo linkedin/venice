@@ -11,6 +11,7 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import org.apache.avro.specific.FixedSize;
+import org.apache.avro.util.Utf8;
 
 
 /**
@@ -54,6 +55,43 @@ public class GuidUtils {
 
   public static String getCharSequenceFromGuid(GUID guid) {
     return new String(guid.bytes(), CHARSET); // TODO: Optimize this. It's probably expensive...
+  }
+
+  public static Utf8 getUtf8FromGuid(GUID guid) {
+    /** Adapted from {@link StringCoding#encodeUTF8(byte, byte[], boolean)} */
+    byte[] val = guid.bytes();
+    if (!hasNegatives(val, 0, val.length)) {
+      return new Utf8(val);
+    }
+
+    int dp = 0;
+    byte[] dst = new byte[val.length << 1];
+    for (int sp = 0; sp < val.length; sp++) {
+      byte c = val[sp];
+      if (c < 0) {
+        dst[dp++] = (byte) (0xc0 | ((c & 0xff) >> 6));
+        dst[dp++] = (byte) (0x80 | (c & 0x3f));
+      } else {
+        dst[dp++] = c;
+      }
+    }
+
+    Utf8 result = new Utf8(dst);
+    if (dp != dst.length) {
+      result.setByteLength(dp);
+    }
+
+    return result;
+  }
+
+  private static boolean hasNegatives(byte[] ba, int off, int len) {
+    /** Copied from {@link StringCoding#hasNegatives(byte[], int, int)} */
+    for (int i = off; i < off + len; i++) {
+      if (ba[i] < 0) {
+        return true;
+      }
+    }
+    return false;
   }
 
   public static GUID getGuidFromHex(String hexGuid) {

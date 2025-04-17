@@ -63,7 +63,7 @@ public class TestDeferredVersionSwap {
   @BeforeClass
   public void setUp() {
     Properties controllerProps = new Properties();
-    controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, 30000);
+    controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, 100);
     controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, true);
     Properties serverProperties = new Properties();
 

@@ -32,7 +32,6 @@ public class FastClientDaVinciClientCompatTest extends AbstractClientEndToEndSet
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
             .setDualReadEnabled(false)
-            .setSpeculativeQueryEnabled(false)
             .setLongTailRetryEnabledForSingleGet(true)
             .setLongTailRetryThresholdForSingleGetInMicroSeconds(1000);
 
@@ -59,7 +58,6 @@ public class FastClientDaVinciClientCompatTest extends AbstractClientEndToEndSet
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
             .setDualReadEnabled(false)
-            .setSpeculativeQueryEnabled(false)
             .setLongTailRetryEnabledForSingleGet(true)
             .setLongTailRetryThresholdForSingleGetInMicroSeconds(1000);
     try (DaVinciClient<String, TestValueSchema> daVinciClient = setupDaVinciClient(storeName)) {

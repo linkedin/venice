@@ -1,4 +1,4 @@
-package com.linkedin.venice.router.stats;
+package com.linkedin.venice.stats.routing;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -20,7 +20,11 @@ public class HelixGroupStats extends AbstractVeniceStats {
   private final Sensor groupCountSensor;
 
   public HelixGroupStats(MetricsRepository metricsRepository) {
-    super(metricsRepository, "HelixGroupStats");
+    this(metricsRepository, "");
+  }
+
+  public HelixGroupStats(MetricsRepository metricsRepository, String prefix) {
+    super(metricsRepository, prefix.isEmpty() ? "HelixGroupStats" : prefix + "_HelixGroupStats");
 
     this.groupCountSensor = registerSensor("group_count", new Avg());
   }

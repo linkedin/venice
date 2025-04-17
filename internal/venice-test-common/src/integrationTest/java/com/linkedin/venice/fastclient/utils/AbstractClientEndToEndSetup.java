@@ -120,11 +120,10 @@ public abstract class AbstractClientEndToEndSetup {
   public Object[][] fastClientTestPermutations() {
     return DataProviderUtils.allPermutationGenerator((permutation) -> {
       boolean dualRead = (boolean) permutation[0];
-      boolean speculativeQueryEnabled = (boolean) permutation[1];
-      boolean retryEnabled = (boolean) permutation[3];
-      int batchGetKeySize = (int) permutation[4];
-      RequestType requestType = (RequestType) permutation[5];
-      StoreMetadataFetchMode storeMetadataFetchMode = (StoreMetadataFetchMode) permutation[6];
+      boolean retryEnabled = (boolean) permutation[2];
+      int batchGetKeySize = (int) permutation[3];
+      RequestType requestType = (RequestType) permutation[4];
+      StoreMetadataFetchMode storeMetadataFetchMode = (StoreMetadataFetchMode) permutation[5];
       if (requestType != RequestType.MULTI_GET && requestType != RequestType.MULTI_GET_STREAMING) {
         if (batchGetKeySize != (int) BATCH_GET_KEY_SIZE.get(0)) {
           // these parameters are related only to batchGet, so just allowing 1 set
@@ -133,12 +132,9 @@ public abstract class AbstractClientEndToEndSetup {
         }
       }
       if (storeMetadataFetchMode != SERVER_BASED_METADATA) {
-        if (retryEnabled || speculativeQueryEnabled) {
+        if (retryEnabled) {
           return false;
         }
-      }
-      if (retryEnabled && speculativeQueryEnabled) {
-        return false;
       }
       if (dualRead && (requestType == RequestType.COMPUTE || requestType == RequestType.COMPUTE_STREAMING)) {
         // Compute requests don't do dual reads
@@ -147,7 +143,6 @@ public abstract class AbstractClientEndToEndSetup {
       return true;
     },
         DataProviderUtils.BOOLEAN, // dualRead
-        DataProviderUtils.BOOLEAN, // speculativeQueryEnabled
         DataProviderUtils.BOOLEAN, // enableGrpc
         DataProviderUtils.BOOLEAN, // retryEnabled
         BATCH_GET_KEY_SIZE.toArray(), // batchGetKeySize
@@ -175,12 +170,18 @@ public abstract class AbstractClientEndToEndSetup {
     return DataProviderUtils.allPermutationGenerator(REQUEST_TYPES_SMALL);
   }
 
+  protected Properties getExtraServerProperties() {
+    return new Properties();
+  }
+
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
     Utils.thisIsLocalhost();
     Properties props = new Properties();
     props.put(SERVER_HTTP2_INBOUND_ENABLED, "true");
     props.put(SERVER_QUOTA_ENFORCEMENT_ENABLED, "true");
+    props.putAll(getExtraServerProperties());
+
     VeniceClusterCreateOptions createOptions = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfServers(2)
         .enableGrpc(true)

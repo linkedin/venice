@@ -3,6 +3,7 @@ package com.linkedin.venice.helix;
 import static org.mockito.Mockito.mock;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -26,7 +27,7 @@ public class HelixInstanceConfigRepositoryTest {
     return instanceConfigs;
   }
 
-  @Test
+  @Test(invocationCount = 100)
   public void testGroupIdAssignment() {
     String nodeId1 = "node_id_1_port";
     String nodeId2 = "node_id_2_port";
@@ -49,6 +50,7 @@ public class HelixInstanceConfigRepositoryTest {
     instanceGroupMapping1.put(nodeId6, group3);
     List<InstanceConfig> instanceConfigs1 = mockInstanceConfigs(instanceGroupMapping1);
 
+    Collections.shuffle(instanceConfigs1);
     HelixInstanceConfigRepository repo1 = new HelixInstanceConfigRepository(mock(SafeHelixManager.class), true);
     repo1.refresh();
     repo1.onInstanceConfigChange(instanceConfigs1, null);

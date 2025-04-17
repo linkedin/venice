@@ -105,4 +105,8 @@ public class StringAnnotatedStoreSchemaCache {
   public RmdSchemaEntry getRmdSchema(int valueSchemaId, int rmdSchemaProtocolId) {
     return rmdSchemaEntryMapCache.get(valueSchemaId, rmdSchemaProtocolId);
   }
+
+  public String getStoreName() {
+    return storeName;
+  }
 }

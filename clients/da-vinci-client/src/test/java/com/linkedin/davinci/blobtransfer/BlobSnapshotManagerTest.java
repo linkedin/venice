@@ -53,6 +53,7 @@ public class BlobSnapshotManagerTest {
   public void testHybridSnapshot() {
     AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
     Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
+    Mockito.doReturn(true).when(storageEngine).containsPartition(PARTITION_ID);
 
     AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
     Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
@@ -93,6 +94,7 @@ public class BlobSnapshotManagerTest {
     AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
     AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
     Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
+    Mockito.doReturn(true).when(storageEngine).containsPartition(PARTITION_ID);
     Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
     Mockito.doNothing().when(storagePartition).createSnapshot();
 
@@ -124,6 +126,7 @@ public class BlobSnapshotManagerTest {
     AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
     AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
     Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
+    Mockito.doReturn(true).when(storageEngine).containsPartition(PARTITION_ID);
     Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
     Mockito.doNothing().when(storagePartition).createSnapshot();
 
@@ -167,6 +170,7 @@ public class BlobSnapshotManagerTest {
     AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
     AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
     Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
+    Mockito.doReturn(true).when(storageEngine).containsPartition(PARTITION_ID);
     Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
     Mockito.doNothing().when(storagePartition).createSnapshot();
 
@@ -207,6 +211,7 @@ public class BlobSnapshotManagerTest {
     AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
     AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
     Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
+    Mockito.doReturn(true).when(storageEngine).containsPartition(PARTITION_ID);
     Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
     Mockito.doNothing().when(storagePartition).createSnapshot();
 
@@ -250,6 +255,7 @@ public class BlobSnapshotManagerTest {
     AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
     AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
     Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
+    Mockito.doReturn(true).when(storageEngine).containsPartition(PARTITION_ID);
     Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
     Mockito.doNothing().when(storagePartition).createSnapshot();
 

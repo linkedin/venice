@@ -64,7 +64,11 @@ public class PartitionConsumptionState {
   private boolean isDataRecoveryCompleted;
   private LeaderFollowerStateType leaderFollowerState;
 
-  private CompletableFuture<Void> lastVTProduceCallFuture;
+  /**
+   * The VT produce future should be read/set by the same consumer thread during normal operation. Making it volatile
+   * since the SIT thread might want to shortcircuit this future when closing {@link LeaderFollowerStoreIngestionTask}.
+   */
+  private volatile CompletableFuture<Void> lastVTProduceCallFuture;
 
   /**
    * State machine that can only transition to LATCH_CREATED if LatchStatus is NONE, and transition to LATCH_RELEASED

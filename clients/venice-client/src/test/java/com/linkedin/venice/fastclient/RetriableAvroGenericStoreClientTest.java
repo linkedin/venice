@@ -169,11 +169,12 @@ public class RetriableAvroGenericStoreClientTest {
     doReturn(STORE_NAME).when(mockMetadata).getStoreName();
     doReturn(1).when(mockMetadata).getLatestValueSchemaId();
     doReturn(STORE_VALUE_SCHEMA).when(mockMetadata).getValueSchema(1);
-    return new DispatchingAvroGenericStoreClient(mockMetadata, clientConfig) {
+    return new DispatchingAvroGenericStoreClient<Object, Object>(mockMetadata, clientConfig) {
       private int requestCnt = 0;
 
       @Override
-      protected CompletableFuture get(GetRequestContext requestContext, Object key) throws VeniceClientException {
+      protected CompletableFuture get(GetRequestContext<Object> requestContext, Object key)
+          throws VeniceClientException {
         InstanceHealthMonitor instanceHealthMonitor = mock(InstanceHealthMonitor.class);
         doReturn(timeoutProcessor).when(instanceHealthMonitor).getTimeoutProcessor();
         requestContext.instanceHealthMonitor = instanceHealthMonitor;
