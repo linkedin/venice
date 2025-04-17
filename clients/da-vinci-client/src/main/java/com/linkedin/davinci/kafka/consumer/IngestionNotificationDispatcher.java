@@ -309,10 +309,12 @@ class IngestionNotificationDispatcher {
         logMessage.append("Replica: ").append(pcs.getReplicaId()).append(" has already been ");
         boolean report = true;
 
-        // Report error for non-current version ingestions otherwise they will be stuck till push timeout
-        if (pcs.isComplete() && pcs.isCurrentVersion()) {
-          logMessage.append("marked as completed so an error will not be reported.");
-          report = false;
+        // Report error for non-current version ingestion otherwise they will be stuck till push timeout
+        if (pcs.isComplete()) {
+          if (pcs.isHybrid() || pcs.isCurrentVersion()) {
+            logMessage.append("marked as completed so an error will not be reported.");
+            report = false;
+          }
         }
         if (pcs.isErrorReported()) {
           logMessage.append("reported as an error before so it will not be reported again.");
