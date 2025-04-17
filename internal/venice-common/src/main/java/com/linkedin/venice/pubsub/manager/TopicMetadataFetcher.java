@@ -238,8 +238,8 @@ class TopicMetadataFetcher implements Closeable {
             + "remaining {} consumers. This may be caused by an improper shutdown sequence.",
         pubSubClusterAddress,
         pubSubConsumerAdapters.size());
-    for (Closeable closeable: pubSubConsumerAdapters) {
-      Utils.closeQuietlyWithErrorLogged(closeable);
+    for (Closeable pubSubConsumerAdapter: pubSubConsumerAdapters) {
+      Utils.closeQuietlyWithErrorLogged(pubSubConsumerAdapter);
     }
   }
 
