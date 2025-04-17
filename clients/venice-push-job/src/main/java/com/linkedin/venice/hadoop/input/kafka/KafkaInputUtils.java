@@ -21,7 +21,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
-import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.security.SSLFactory;
@@ -56,7 +55,7 @@ public class KafkaInputUtils {
             veniceProperties.clipAndFilterNamespace(KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX)
                 .toProperties());
         // Copy the mandatory ssl configs
-        ApacheKafkaUtils.validateAndCopyKafkaSSLConfig(veniceProperties, consumerFactoryProperties);
+        consumerFactoryProperties.putAll(veniceProperties.getAsMap());
       } catch (IOException e) {
         throw new VeniceException("Could not get user credential for job:" + config.getJobName(), e);
       }
@@ -64,6 +63,7 @@ public class KafkaInputUtils {
 
     /**
      * Use a large receive buffer size: 4MB since Kafka re-push could consume remotely.
+     * TODO(sushantmane): Remove hardcoded buffer size and pass it down from the job config.
      */
     consumerFactoryProperties.setProperty(CommonClientConfigs.RECEIVE_BUFFER_CONFIG, Long.toString(4 * 1024 * 1024));
     consumerFactoryProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, config.get(KAFKA_INPUT_BROKER_URL));
