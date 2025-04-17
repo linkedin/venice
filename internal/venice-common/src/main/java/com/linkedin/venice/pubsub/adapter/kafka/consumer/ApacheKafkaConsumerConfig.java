@@ -38,7 +38,6 @@ public class ApacheKafkaConsumerConfig {
   public static final int DEFAULT_RECEIVE_BUFFER_SIZE = 1024 * 1024;
 
   private final Properties consumerProperties;
-  private final boolean isSslEnabled;
   private final int consumerPollRetryTimes;
   private final int consumerPollRetryBackoffMs;
   private final int topicQueryRetryTimes;
@@ -48,13 +47,10 @@ public class ApacheKafkaConsumerConfig {
 
   ApacheKafkaConsumerConfig(VeniceProperties veniceProperties, String consumerName) {
     this.consumerProperties =
-        getValidConsumerProperties(veniceProperties.clipAndFilterNamespace(KAFKA_CONFIG_PREFIX).toProperties());
+        ApacheKafkaUtils.getValidKafkaClientProperties(veniceProperties, ConsumerConfig.configNames());
     consumerProperties.put(
         ConsumerConfig.CLIENT_ID_CONFIG,
         generateClientId(consumerName, consumerProperties.getProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG)));
-
-    // Setup ssl config if needed.
-    isSslEnabled = ApacheKafkaUtils.validateAndCopyKafkaSSLConfig(veniceProperties, this.consumerProperties);
 
     if (!consumerProperties.containsKey(ConsumerConfig.RECEIVE_BUFFER_CONFIG)) {
       consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, DEFAULT_RECEIVE_BUFFER_SIZE);
@@ -108,16 +104,12 @@ public class ApacheKafkaConsumerConfig {
   @Override
   public String toString() {
     return "ApacheKafkaConsumerConfig{brokerAddress=" + consumerProperties.get(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG)
-        + ", isSslEnabled=" + isSslEnabled + ", consumerPollRetryTimes=" + consumerPollRetryTimes
-        + ", consumerPollRetryBackoffMs=" + consumerPollRetryBackoffMs + "}";
+        + ", consumerPollRetryTimes=" + consumerPollRetryTimes + ", consumerPollRetryBackoffMs="
+        + consumerPollRetryBackoffMs + "}";
   }
 
   Properties getConsumerProperties() {
     return consumerProperties;
-  }
-
-  boolean isSslEnabled() {
-    return isSslEnabled;
   }
 
   int getConsumerPollRetryTimes() {
@@ -142,15 +134,5 @@ public class ApacheKafkaConsumerConfig {
 
   boolean shouldCheckTopicExistenceBeforeConsuming() {
     return shouldCheckTopicExistenceBeforeConsuming;
-  }
-
-  public static Properties getValidConsumerProperties(Properties extractedProperties) {
-    Properties validProperties = new Properties();
-    extractedProperties.forEach((configKey, configVal) -> {
-      if (ConsumerConfig.configNames().contains(configKey)) {
-        validProperties.put(configKey, configVal);
-      }
-    });
-    return validProperties;
   }
 }

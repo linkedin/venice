@@ -60,7 +60,6 @@ import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -1195,8 +1194,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    */
   private Properties getCommonKafkaConsumerProperties(VeniceServerConfig serverConfig) {
     Properties kafkaConsumerProperties = serverConfig.getClusterProperties().getPropertiesCopy();
-    ApacheKafkaProducerConfig
-        .copyKafkaSASLProperties(serverConfig.getClusterProperties(), kafkaConsumerProperties, false);
     kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, serverConfig.getKafkaBootstrapServers());
     kafkaConsumerProperties.setProperty(KAFKA_AUTO_OFFSET_RESET_CONFIG, "earliest");
     // Venice is persisting offset in local offset db.
@@ -1236,9 +1233,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           new VeniceServerConfig(new VeniceProperties(clonedProperties), serverConfig.getKafkaClusterMap());
     }
 
-    VeniceProperties clusterProperties = serverConfigForPubSubCluster.getClusterProperties();
     Properties properties = serverConfigForPubSubCluster.getClusterProperties().getPropertiesCopy();
-    ApacheKafkaProducerConfig.copyKafkaSASLProperties(clusterProperties, properties, false);
     kafkaBootstrapUrls = serverConfigForPubSubCluster.getKafkaBootstrapServers();
     String resolvedKafkaUrl = serverConfigForPubSubCluster.getKafkaClusterUrlResolver().apply(kafkaBootstrapUrls);
     if (resolvedKafkaUrl != null) {
