@@ -1048,7 +1048,7 @@ public class VeniceControllerClusterConfig {
     this.minSchemaCountToKeep = props.getInt(CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP, 20);
     this.useDaVinciSpecificExecutionStatusForError =
         props.getBoolean(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, false);
-    this.pubSubClientsFactory = new PubSubClientsFactory(props);
+    this.pubSubClientsFactory = PubSubClientsFactory.fromVeniceProperties(props);
     this.pubSubPositionTypeRegistry = PubSubPositionTypeRegistry.fromPropertiesOrDefault(props);
     this.sourceOfTruthAdminAdapterFactory = PubSubClientsFactory.createSourceOfTruthAdminFactory(props);
     this.danglingTopicCleanupIntervalSeconds = props.getLong(CONTROLLER_DANGLING_TOPIC_CLEAN_UP_INTERVAL_SECOND, -1);

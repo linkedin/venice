@@ -201,7 +201,8 @@ public class AdminTool {
 
   public static void main(String[] args) throws Exception {
     // Generate PubSubClientsFactory from java system properties, apache kafka adapter is the default one.
-    PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(new VeniceProperties(System.getProperties()));
+    PubSubClientsFactory pubSubClientsFactory =
+        PubSubClientsFactory.fromVeniceProperties(new VeniceProperties(System.getProperties()));
     CommandLine cmd = getCommandLine(args);
     try {
       Command foundCommand = ensureOnlyOneCommand(cmd);

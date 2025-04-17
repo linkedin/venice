@@ -7,6 +7,7 @@ import com.linkedin.venice.hadoop.input.kafka.KafkaInputRecordReader;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -34,6 +35,7 @@ public abstract class DataWriterComputeJob implements ComputeJob {
           ConfigKeys.KAFKA_CONFIG_PREFIX,
           ConfigKeys.PUBSUB_CLIENT_CONFIG_PREFIX,
           KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX));
+  public static final String PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY = "pass.through.config.prefixes.list";
 
   private Status jobStatus = Status.NOT_STARTED;
   private Throwable failureReason = null;
@@ -186,5 +188,50 @@ public abstract class DataWriterComputeJob implements ComputeJob {
     if (totalValueSize != 0) {
       throw new VeniceException("Expect 0 byte for total value size. Got count: " + totalValueSize);
     }
+  }
+
+  /**
+   * Override the configs following the rules:
+   * <ul>
+   *   <li>Pass-through the properties whose names start with the prefixes defined in {@link DataWriterComputeJob#PASS_THROUGH_CONFIG_PREFIXES}.</li>
+   *   <li>Pass-through the properties whose names starts with the prefix defined by another special property {@link DataWriterComputeJob#PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY}</li>
+   *   <li>Override the properties that are specified with a particular prefix, like {@link com.linkedin.venice.hadoop.mapreduce.datawriter.jobs.DataWriterMRJob#HADOOP_PREFIX} or  {@link com.linkedin.venice.spark.SparkConstants#SPARK_DATA_WRITER_CONF_PREFIX}.</li>
+   * </ul>
+   **/
+  protected void populateWithPassThroughConfigs(
+      VeniceProperties props,
+      ConfigSetter configSetter,
+      String overridePrefix) {
+    List<String> additionalPassThroughConfigPrefixes =
+        new ArrayList<>(props.getList(PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY, new ArrayList<>()));
+    additionalPassThroughConfigPrefixes.removeAll(PASS_THROUGH_CONFIG_PREFIXES);
+
+    for (String configKey: props.keySet()) {
+      String lowerCaseConfigKey = configKey.toLowerCase();
+
+      if (lowerCaseConfigKey.startsWith(overridePrefix)) {
+        String overrideKey = configKey.substring(overridePrefix.length());
+        configSetter.set(overrideKey, props.getString(configKey));
+      }
+
+      for (String prefix: PASS_THROUGH_CONFIG_PREFIXES) {
+        if (lowerCaseConfigKey.startsWith(prefix)) {
+          configSetter.set(configKey, props.getString(configKey));
+          break;
+        }
+      }
+
+      for (String prefix: additionalPassThroughConfigPrefixes) {
+        if (lowerCaseConfigKey.startsWith(prefix)) {
+          configSetter.set(configKey, props.getString(configKey));
+          break;
+        }
+      }
+    }
+  }
+
+  @FunctionalInterface
+  public interface ConfigSetter {
+    void set(String key, String value);
   }
 }

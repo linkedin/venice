@@ -16,8 +16,8 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
@@ -92,14 +92,15 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
         split,
         job,
         taskTracker,
-        new ApacheKafkaConsumerAdapterFactory().create(
-            KafkaInputUtils.getConsumerProperties(job),
-            false,
-            new PubSubMessageDeserializer(
-                KafkaInputUtils.getKafkaValueSerializer(job),
-                new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-                new LandFillObjectPool<>(KafkaMessageEnvelope::new)),
-            null),
+        PubSubClientsFactory.createConsumerFactory(KafkaInputUtils.getConsumerProperties(job))
+            .create(
+                KafkaInputUtils.getConsumerProperties(job),
+                false,
+                new PubSubMessageDeserializer(
+                    KafkaInputUtils.getKafkaValueSerializer(job),
+                    new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+                    new LandFillObjectPool<>(KafkaMessageEnvelope::new)),
+                null),
         PUBSUB_TOPIC_REPOSITORY);
   }
 

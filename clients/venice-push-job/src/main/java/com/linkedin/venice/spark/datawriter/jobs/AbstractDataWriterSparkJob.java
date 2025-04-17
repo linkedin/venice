@@ -262,26 +262,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       jobConf.set(RMD_SCHEMA_DIR, pushJobSetting.rmdSchemaDir);
     }
 
-    /**
-     * Override the configs following the rules:
-     * <ul>
-     *   <li>Pass-through the properties whose names start with the prefixes defined in {@link PASS_THROUGH_CONFIG_PREFIXES}.</li>
-     *   <li>Override the properties that are specified with the {@link SPARK_DATA_WRITER_CONF_PREFIX} prefix.</li>
-     * </ul>
-     **/
-    for (String configKey: props.keySet()) {
-      String lowerCaseConfigKey = configKey.toLowerCase();
-      if (lowerCaseConfigKey.startsWith(SPARK_DATA_WRITER_CONF_PREFIX)) {
-        String overrideKey = configKey.substring(SPARK_DATA_WRITER_CONF_PREFIX.length());
-        jobConf.set(overrideKey, props.getString(configKey));
-      }
-      for (String prefix: PASS_THROUGH_CONFIG_PREFIXES) {
-        if (lowerCaseConfigKey.startsWith(prefix)) {
-          jobConf.set(configKey, props.getString(configKey));
-          break;
-        }
-      }
-    }
+    populateWithPassThroughConfigs(props, jobConf::set, SPARK_DATA_WRITER_CONF_PREFIX);
   }
 
   protected SparkSession getSparkSession() {
