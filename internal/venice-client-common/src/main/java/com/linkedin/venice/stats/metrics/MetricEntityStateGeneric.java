@@ -29,14 +29,14 @@ import javax.annotation.Nonnull;
  * dynamic dimensions to be enums and does not require explicit dimension types during instantiation.
  */
 public class MetricEntityStateGeneric extends MetricEntityState {
-  public MetricEntityStateGeneric(
+  private MetricEntityStateGeneric(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap) {
     this(metricEntity, otelRepository, null, null, Collections.EMPTY_LIST, baseDimensionsMap);
   }
 
-  public MetricEntityStateGeneric(
+  private MetricEntityStateGeneric(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
       TehutiSensorRegistrationFunction registerTehutiSensorFn,
@@ -51,6 +51,31 @@ public class MetricEntityStateGeneric extends MetricEntityState {
         tehutiMetricNameEnum,
         tehutiMetricStats);
     validateRequiredDimensions(metricEntity, baseDimensionsMap);
+  }
+
+  /** Factory method to keep the API consistent with other subclasses like {@link MetricEntityStateOneEnum} */
+  public static MetricEntityStateGeneric create(
+      MetricEntity metricEntity,
+      VeniceOpenTelemetryMetricsRepository otelRepository,
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap) {
+    return new MetricEntityStateGeneric(metricEntity, otelRepository, baseDimensionsMap);
+  }
+
+  /** Overloaded Factory method for constructor with Tehuti parameters */
+  public static MetricEntityStateGeneric create(
+      MetricEntity metricEntity,
+      VeniceOpenTelemetryMetricsRepository otelRepository,
+      TehutiSensorRegistrationFunction registerTehutiSensorFn,
+      TehutiMetricNameEnum tehutiMetricNameEnum,
+      List<MeasurableStat> tehutiMetricStats,
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap) {
+    return new MetricEntityStateGeneric(
+        metricEntity,
+        otelRepository,
+        registerTehutiSensorFn,
+        tehutiMetricNameEnum,
+        tehutiMetricStats,
+        baseDimensionsMap);
   }
 
   /**

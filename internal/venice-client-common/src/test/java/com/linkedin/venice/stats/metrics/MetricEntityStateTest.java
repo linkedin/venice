@@ -91,21 +91,21 @@ public class MetricEntityStateTest {
 
     // without tehuti sensor
     MetricEntityState metricEntityState =
-        new MetricEntityStateBase(mockMetricEntity, null, baseDimensionsMap, baseAttributes);
+        MetricEntityStateBase.create(mockMetricEntity, null, baseDimensionsMap, baseAttributes);
     Assert.assertNotNull(metricEntityState);
     Assert.assertNull(metricEntityState.getOtelMetric());
     Assert.assertNull(metricEntityState.getTehutiSensor()); // No Tehuti sensors added
     Assert.assertEquals(((MetricEntityStateBase) metricEntityState).getAttributes(), baseAttributes);
 
     // without tehuti sensor with empty attributes
-    metricEntityState = new MetricEntityStateBase(mockMetricEntity, null, baseDimensionsMap, null);
+    metricEntityState = MetricEntityStateBase.create(mockMetricEntity, null, baseDimensionsMap, null);
     Assert.assertNotNull(metricEntityState);
     Assert.assertNull(metricEntityState.getOtelMetric());
     Assert.assertNull(metricEntityState.getTehutiSensor()); // No Tehuti sensors added
     Assert.assertNull(((MetricEntityStateBase) metricEntityState).getAttributes());
 
     // with tehuti sensor
-    metricEntityState = new MetricEntityStateBase(
+    metricEntityState = MetricEntityStateBase.create(
         mockMetricEntity,
         null,
         sensorRegistrationFunction,
@@ -127,7 +127,7 @@ public class MetricEntityStateTest {
 
     // without tehuti sensor
     MetricEntityState metricEntityState =
-        new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
+        MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
     Assert.assertNotNull(metricEntityState);
     Assert.assertNotNull(metricEntityState.getOtelMetric());
     Assert.assertNull(metricEntityState.getTehutiSensor()); // No Tehuti sensors added
@@ -135,14 +135,14 @@ public class MetricEntityStateTest {
 
     // without tehuti sensor but with empty attributes
     try {
-      new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, null);
+      MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, null);
       fail();
     } catch (IllegalArgumentException e) {
       Assert.assertTrue(e.getMessage().contains("Base attributes cannot be null for MetricEntityStateBase"));
     }
 
     // with tehuti sensor
-    metricEntityState = new MetricEntityStateBase(
+    metricEntityState = MetricEntityStateBase.create(
         mockMetricEntity,
         mockOtelRepository,
         sensorRegistrationFunction,
@@ -162,7 +162,7 @@ public class MetricEntityStateTest {
     when(mockMetricEntity.getMetricType()).thenReturn(HISTOGRAM);
 
     MetricEntityState metricEntityState =
-        new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
+        MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
     metricEntityState.setOtelMetric(doubleHistogram);
 
     Attributes attributes = Attributes.builder().put("key", "value").build();
@@ -177,7 +177,7 @@ public class MetricEntityStateTest {
     when(mockMetricEntity.getMetricType()).thenReturn(MetricType.COUNTER);
 
     MetricEntityState metricEntityState =
-        new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
+        MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
     metricEntityState.setOtelMetric(longCounter);
 
     Attributes attributes = Attributes.builder().put("key", "value").build();
@@ -189,7 +189,7 @@ public class MetricEntityStateTest {
   @Test
   public void testRecordTehutiMetric() {
     MetricEntityState metricEntityState =
-        new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
+        MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
     metricEntityState.setTehutiSensor(mockSensor);
     metricEntityState.recordTehutiMetric(15.0);
     verify(mockSensor, times(1)).record(15.0);
@@ -201,7 +201,7 @@ public class MetricEntityStateTest {
     when(mockMetricEntity.getMetricType()).thenReturn(HISTOGRAM);
 
     MetricEntityState metricEntityState =
-        new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
+        MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
     metricEntityState.setOtelMetric(doubleHistogram);
     metricEntityState.setTehutiSensor(mockSensor);
 
@@ -229,13 +229,13 @@ public class MetricEntityStateTest {
     baseDimensionsMap.put(VENICE_REQUEST_METHOD, MULTI_GET_STREAMING.getDimensionValue());
     Attributes baseAttributes1 = getBaseAttributes(baseDimensionsMap);
     MetricEntityState metricEntityState =
-        new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes1);
+        MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes1);
     assertNotNull(metricEntityState);
 
     // case 2: baseAttributes have different count than baseDimensionsMap
     Attributes baseAttributes2 = Attributes.builder().build();
     try {
-      new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes2);
+      MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes2);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("should have the same size and values"));
@@ -246,7 +246,7 @@ public class MetricEntityStateTest {
     baseAttributes3Map.put(VENICE_REQUEST_RETRY_TYPE, ERROR_RETRY.getDimensionValue());
     Attributes baseAttributes3 = getBaseAttributes(baseAttributes3Map);
     try {
-      new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes3);
+      MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes3);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("should contain all the keys and same values as in baseDimensionsMap"));
@@ -258,7 +258,7 @@ public class MetricEntityStateTest {
     baseDimensionsMap.put(VENICE_REQUEST_RETRY_TYPE, ERROR_RETRY.getDimensionValue());
     Attributes baseAttributes4 = getBaseAttributes(baseDimensionsMap);
     try {
-      new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes4);
+      MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes4);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
@@ -268,7 +268,7 @@ public class MetricEntityStateTest {
     baseDimensionsMap.clear();
     Attributes baseAttributes5 = Attributes.builder().build();
     try {
-      new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes5);
+      MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes5);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
@@ -279,7 +279,7 @@ public class MetricEntityStateTest {
     baseDimensionsMap.put(VENICE_REQUEST_RETRY_TYPE, ERROR_RETRY.getDimensionValue());
     Attributes baseAttributes6 = getBaseAttributes(baseDimensionsMap);
     try {
-      new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes6);
+      MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes6);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
@@ -292,7 +292,7 @@ public class MetricEntityStateTest {
     baseDimensionsMap.clear();
     baseDimensionsMap.put(VENICE_REQUEST_METHOD, MULTI_GET_STREAMING.getDimensionValue());
     try {
-      new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes7);
+      MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes7);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("should have the same size and values"));
@@ -303,7 +303,7 @@ public class MetricEntityStateTest {
     baseDimensionsMap.clear();
     baseDimensionsMap.put(VENICE_REQUEST_METHOD, null);
     try {
-      new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes8);
+      MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes8);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("should contain all the keys and same values as in baseDimensionsMap"));

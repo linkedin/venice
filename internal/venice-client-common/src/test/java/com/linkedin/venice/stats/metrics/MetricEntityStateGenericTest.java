@@ -87,7 +87,7 @@ public class MetricEntityStateGenericTest {
     when(mockMetricEntity.getMetricType()).thenReturn(MetricType.COUNTER);
 
     MetricEntityState metricEntityState =
-        new MetricEntityStateGeneric(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
+        MetricEntityStateGeneric.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
     metricEntityState.setOtelMetric(longCounter);
 
     Attributes attributes = Attributes.builder().put("key", "value").build();
@@ -102,7 +102,7 @@ public class MetricEntityStateGenericTest {
     when(mockMetricEntity.getMetricType()).thenReturn(HISTOGRAM);
 
     MetricEntityStateGeneric metricEntityState =
-        new MetricEntityStateGeneric(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
+        MetricEntityStateGeneric.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
     metricEntityState.setOtelMetric(doubleHistogram);
     metricEntityState.setTehutiSensor(mockSensor);
 
@@ -136,7 +136,7 @@ public class MetricEntityStateGenericTest {
     when(mockMetricEntity.getMetricType()).thenReturn(HISTOGRAM);
 
     MetricEntityStateGeneric metricEntityState =
-        new MetricEntityStateGeneric(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
+        MetricEntityStateGeneric.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
     metricEntityState.setOtelMetric(doubleHistogram);
     metricEntityState.setTehutiSensor(mockSensor);
 
@@ -183,7 +183,7 @@ public class MetricEntityStateGenericTest {
     // case 1: right values
     baseDimensionsMap.put(VENICE_REQUEST_METHOD, MULTI_GET_STREAMING.getDimensionValue());
     MetricEntityStateGeneric metricEntityState =
-        new MetricEntityStateGeneric(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
+        MetricEntityStateGeneric.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
     assertNotNull(metricEntityState);
 
     // case 2: baseDimensionsMap has extra values
@@ -192,7 +192,7 @@ public class MetricEntityStateGenericTest {
     baseDimensionsMap.put(VENICE_REQUEST_RETRY_ABORT_REASON, SLOW_ROUTE.getDimensionValue());
 
     try {
-      new MetricEntityStateGeneric(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
+      MetricEntityStateGeneric.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("contains invalid dimension"), e.getMessage());
@@ -200,14 +200,14 @@ public class MetricEntityStateGenericTest {
 
     // case 3: baseDimensionsMap has less values
     baseDimensionsMap.clear();
-    metricEntityState = new MetricEntityStateGeneric(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
+    metricEntityState = MetricEntityStateGeneric.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
     assertNotNull(metricEntityState);
 
     // case 4: baseDimensionsMap has same count, but different dimensions
     baseDimensionsMap.clear();
     baseDimensionsMap.put(VENICE_REQUEST_RETRY_ABORT_REASON, SLOW_ROUTE.getDimensionValue());
     try {
-      new MetricEntityStateGeneric(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
+      MetricEntityStateGeneric.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("contains invalid dimension"), e.getMessage());
@@ -217,7 +217,7 @@ public class MetricEntityStateGenericTest {
     baseDimensionsMap.clear();
     baseDimensionsMap.put(VENICE_REQUEST_METHOD, null);
     try {
-      new MetricEntityStateGeneric(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
+      MetricEntityStateGeneric.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("contains a null or empty value for dimension"), e.getMessage());
@@ -227,7 +227,7 @@ public class MetricEntityStateGenericTest {
     baseDimensionsMap.clear();
     baseDimensionsMap.put(VENICE_REQUEST_METHOD, "");
     try {
-      new MetricEntityStateGeneric(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
+      MetricEntityStateGeneric.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("contains a null or empty value for dimension"), e.getMessage());
@@ -239,7 +239,7 @@ public class MetricEntityStateGenericTest {
     baseDimensionsMap.put(VENICE_STORE_NAME, "store1");
     baseDimensionsMap.put(VENICE_CLUSTER_NAME, "cluster1");
     try {
-      new MetricEntityStateGeneric(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
+      MetricEntityStateGeneric.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("contains all or more dimensions than required"), e.getMessage());
@@ -248,7 +248,7 @@ public class MetricEntityStateGenericTest {
     // case 8: baseDimensionsMap has more keys
     baseDimensionsMap.put(VENICE_REQUEST_RETRY_ABORT_REASON, SLOW_ROUTE.getDimensionValue());
     try {
-      new MetricEntityStateGeneric(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
+      MetricEntityStateGeneric.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("contains all or more dimensions than required"), e.getMessage());

@@ -18,7 +18,8 @@ import org.apache.commons.lang.Validate;
 public class MetricEntityStateBase extends MetricEntityState {
   private final Attributes attributes;
 
-  public MetricEntityStateBase(
+  /** should not be called directly, call {@link #create} instead */
+  private MetricEntityStateBase(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
@@ -26,7 +27,8 @@ public class MetricEntityStateBase extends MetricEntityState {
     this(metricEntity, otelRepository, null, null, Collections.EMPTY_LIST, baseDimensionsMap, baseAttributes);
   }
 
-  public MetricEntityStateBase(
+  /** should not be called directly, call {@link #create} instead */
+  private MetricEntityStateBase(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
       TehutiSensorRegistrationFunction registerTehutiSensorFn,
@@ -50,6 +52,34 @@ public class MetricEntityStateBase extends MetricEntityState {
           "Base attributes cannot be null for MetricEntityStateBase for metric: " + metricEntity.getMetricName());
     }
     this.attributes = baseAttributes;
+  }
+
+  /** Factory method to keep the API consistent with other subclasses like {@link MetricEntityStateOneEnum} */
+  public static MetricEntityStateBase create(
+      MetricEntity metricEntity,
+      VeniceOpenTelemetryMetricsRepository otelRepository,
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap,
+      Attributes baseAttributes) {
+    return new MetricEntityStateBase(metricEntity, otelRepository, baseDimensionsMap, baseAttributes);
+  }
+
+  /** Overloaded Factory method for constructor with Tehuti parameters */
+  public static MetricEntityStateBase create(
+      MetricEntity metricEntity,
+      VeniceOpenTelemetryMetricsRepository otelRepository,
+      TehutiSensorRegistrationFunction registerTehutiSensorFn,
+      TehutiMetricNameEnum tehutiMetricNameEnum,
+      List<MeasurableStat> tehutiMetricStats,
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap,
+      Attributes baseAttributes) {
+    return new MetricEntityStateBase(
+        metricEntity,
+        otelRepository,
+        registerTehutiSensorFn,
+        tehutiMetricNameEnum,
+        tehutiMetricStats,
+        baseDimensionsMap,
+        baseAttributes);
   }
 
   public void record(long value) {
