@@ -284,20 +284,6 @@ public class MetricEntityStateTwoEnumTest {
   }
 
   @Test
-  public void testRecordWithNullDimension() {
-    MetricEntityStateTwoEnums<MetricEntityStateTest.DimensionEnum1, MetricEntityStateTest.DimensionEnum2> metricEntityState =
-        MetricEntityStateTwoEnums.create(
-            mockMetricEntity,
-            mockOtelRepository,
-            baseDimensionsMap,
-            MetricEntityStateTest.DimensionEnum1.class,
-            MetricEntityStateTest.DimensionEnum2.class);
-    // Null dimension will cause IllegalArgumentException in getDimension, record should catch it.
-    metricEntityState.record(100L, null, null);
-    metricEntityState.record(100.5, null, null);
-  }
-
-  @Test
   public void testValidateRequiredDimensions() {
     Map<VeniceMetricsDimensions, String> baseDimensionsMap = new HashMap<>();
     // case 1: right values

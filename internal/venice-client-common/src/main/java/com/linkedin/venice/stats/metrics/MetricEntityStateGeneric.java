@@ -11,18 +11,19 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import javax.annotation.Nonnull;
 
 
 /**
- * Provides a flexible, generic, and non-caching implementation of {@link MetricEntityState} for zero or more
- * dynamic dimensions, where the dimensions can be enums or arbitrary strings
- *
- * This implementation should be used only in certain control-path components (such as controllers) where:
+ * Provides a flexible, generic, and non-caching implementation of {@link MetricEntityState} for one or more
+ * dynamic dimensions, where the dimensions can be enums or arbitrary strings and do not need to be cached: This
+ * implementation should be used only in certain control-path components (such as controllers) where:
  * 1. Performance constraints are lenient, and metric recording is infrequent.
- * 2. The metric entity requires an arbitrary number of dynamic dimensions without predefined enums.
+ * 2. The metric entity requires an arbitrary number of dynamic dimensions without predefined enums: For example,
+ *    store name, cluster name, etc. Do not use this for cases with 0 dynamic dimensions and use
+ *    {@link MetricEntityStateBase} instead.
  * This approach also helps reduce code complexity and avoids the proliferation of specialized subclasses (like
- * MetricEntityStateOneEnum or MetricEntityStateTwoEnums) for different dynamic dimension combinations when
- * attribute caching is not necessary.
+ * MetricEntityStateOneEnum) for different dynamic dimension combinations when attribute caching is not necessary.
  *
  * Compared to enum-based subclasses, this class provides less compile-time type safety, as it does not enforce
  * dynamic dimensions to be enums and does not require explicit dimension types during instantiation.
@@ -49,25 +50,38 @@ public class MetricEntityStateGeneric extends MetricEntityState {
         registerTehutiSensorFn,
         tehutiMetricNameEnum,
         tehutiMetricStats);
-    validateRequiredDimensions(metricEntity, null, baseDimensionsMap);
+    validateRequiredDimensions(metricEntity, baseDimensionsMap);
   }
 
   /**
-   * Overrides {@link MetricEntityState#validateRequiredDimensions} with simplified logic suitable
-   * for generic dimensions, which can be enums or arbitrary strings. Validates only the base dimensions
-   * upfront, while validation of additional dimensions occurs later during {@link #getAttributes}.
+   * Validates only the base dimensions upfront, while validation of additional dimensions
+   * occurs later during {@link #getAttributes}.
    */
-  @Override
-  void validateRequiredDimensions(
+  private void validateRequiredDimensions(
       MetricEntity metricEntity,
-      Attributes baseAttributes,
-      Map<VeniceMetricsDimensions, String> baseDimensionsMap,
-      Class<?>... enumTypes) {
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap) {
     if (baseDimensionsMap != null) {
-      // check of all dimensions in baseDimensionsMap are valid dimensions
-      Set<VeniceMetricsDimensions> dimensionsList = metricEntity.getDimensionsList();
-      for (VeniceMetricsDimensions dimension: baseDimensionsMap.keySet()) {
-        if (!dimensionsList.contains(dimension)) {
+      Set<VeniceMetricsDimensions> requiredDimensionsList = metricEntity.getDimensionsList();
+      // check if all required dimensions are present in baseDimensionsMap itself
+      if (baseDimensionsMap.keySet().size() >= requiredDimensionsList.size()) {
+        // if the baseDimensionsMap has all dimensions, MetricEntityStateBase should be used instead
+        throw new IllegalArgumentException(
+            "baseDimensionsMap " + baseDimensionsMap.keySet() + " contains all or more dimensions than required "
+                + requiredDimensionsList + " for metric: " + metricEntity.getMetricName());
+      }
+
+      for (Map.Entry<VeniceMetricsDimensions, String> entry: baseDimensionsMap.entrySet()) {
+        VeniceMetricsDimensions dimension = entry.getKey();
+        String value = entry.getValue();
+
+        if (value == null || value.isEmpty()) {
+          throw new IllegalArgumentException(
+              "baseDimensionsMap " + baseDimensionsMap.keySet() + " contains a null or empty value for dimension "
+                  + dimension + " for metric: " + metricEntity.getMetricName());
+        }
+
+        // check if all dimensions in baseDimensionsMap are valid dimensions
+        if (!requiredDimensionsList.contains(dimension)) {
           throw new IllegalArgumentException(
               "baseDimensionsMap " + baseDimensionsMap.keySet() + " contains invalid dimension " + dimension
                   + " for metric: " + metricEntity.getMetricName());
@@ -105,7 +119,7 @@ public class MetricEntityStateGeneric extends MetricEntityState {
     return attributes;
   }
 
-  public void record(long value, Map<VeniceMetricsDimensions, String> dimensions) {
+  public void record(long value, @Nonnull Map<VeniceMetricsDimensions, String> dimensions) {
     try {
       super.record(value, getAttributes(dimensions));
     } catch (IllegalArgumentException e) {
@@ -115,7 +129,7 @@ public class MetricEntityStateGeneric extends MetricEntityState {
     }
   }
 
-  public void record(double value, Map<VeniceMetricsDimensions, String> dimensions) {
+  public void record(double value, @Nonnull Map<VeniceMetricsDimensions, String> dimensions) {
     try {
       super.record(value, getAttributes(dimensions));
     } catch (IllegalArgumentException e) {

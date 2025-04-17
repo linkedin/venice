@@ -249,7 +249,7 @@ public class MetricEntityStateTest {
       new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes3);
       fail();
     } catch (IllegalArgumentException e) {
-      assertTrue(e.getMessage().contains("should contain all the keys in baseDimensionsMap"));
+      assertTrue(e.getMessage().contains("should contain all the keys and same values as in baseDimensionsMap"));
     }
 
     // case 4: baseDimensionsMap has extra values
@@ -284,6 +284,31 @@ public class MetricEntityStateTest {
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
     }
+
+    // case 7: baseAttributes has empty values
+    baseDimensionsMap.clear();
+    baseDimensionsMap.put(VENICE_REQUEST_METHOD, null);
+    Attributes baseAttributes7 = getBaseAttributes(baseDimensionsMap);
+    baseDimensionsMap.clear();
+    baseDimensionsMap.put(VENICE_REQUEST_METHOD, MULTI_GET_STREAMING.getDimensionValue());
+    try {
+      new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes7);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertTrue(e.getMessage().contains("should have the same size and values"));
+    }
+
+    // case 8: baseDimensionsMap has empty values
+    Attributes baseAttributes8 = getBaseAttributes(baseDimensionsMap);
+    baseDimensionsMap.clear();
+    baseDimensionsMap.put(VENICE_REQUEST_METHOD, null);
+    try {
+      new MetricEntityStateBase(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes8);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertTrue(e.getMessage().contains("should contain all the keys and same values as in baseDimensionsMap"));
+    }
+
   }
 
   private Attributes getBaseAttributes(Map<VeniceMetricsDimensions, String> inputMap) {

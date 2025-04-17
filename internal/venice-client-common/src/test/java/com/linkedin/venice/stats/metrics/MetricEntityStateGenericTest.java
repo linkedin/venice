@@ -107,25 +107,25 @@ public class MetricEntityStateGenericTest {
     metricEntityState.setTehutiSensor(mockSensor);
 
     // make a copy of the testInputDimensions as it will be modified in the test
-    Map<VeniceMetricsDimensions, String> testInputDimensions = new HashMap<>(this.testInputDimensions);
+    Map<VeniceMetricsDimensions, String> testInputDimensionsCopy = new HashMap<>(this.testInputDimensions);
 
     // called 0 times
     verify(doubleHistogram, times(0)).record(20.0, expectedAttributesForTestInputDimensions);
     verify(mockSensor, times(0)).record(20.0);
 
     // called 1 time
-    metricEntityState.record(20.0, testInputDimensions);
+    metricEntityState.record(20.0, testInputDimensionsCopy);
     verify(doubleHistogram, times(1)).record(20.0, expectedAttributesForTestInputDimensions);
     verify(mockSensor, times(1)).record(20.0);
 
     // called 2 times
-    metricEntityState.record(20.0, testInputDimensions);
+    metricEntityState.record(20.0, testInputDimensionsCopy);
     verify(doubleHistogram, times(2)).record(20.0, expectedAttributesForTestInputDimensions);
     verify(mockSensor, times(2)).record(20.0);
 
     // test without full dimensions
-    testInputDimensions.remove(VENICE_CLUSTER_NAME);
-    metricEntityState.record(20.0, testInputDimensions);
+    testInputDimensionsCopy.remove(VENICE_CLUSTER_NAME);
+    metricEntityState.record(20.0, testInputDimensionsCopy);
     verify(doubleHistogram, times(2)).record(20.0, expectedAttributesForTestInputDimensions);
     verify(mockSensor, times(2)).record(20.0);
   }
@@ -141,36 +141,36 @@ public class MetricEntityStateGenericTest {
     metricEntityState.setTehutiSensor(mockSensor);
 
     // make a copy of the testInputDimensions as it will be modified in the test
-    Map<VeniceMetricsDimensions, String> testInputDimensions = new HashMap<>(this.testInputDimensions);
+    Map<VeniceMetricsDimensions, String> testInputDimensionsCopy = new HashMap<>(this.testInputDimensions);
 
     // case 1: valid attributes
-    Attributes actualAttributes = metricEntityState.getAttributes(testInputDimensions);
+    Attributes actualAttributes = metricEntityState.getAttributes(testInputDimensionsCopy);
     assertEquals(actualAttributes, expectedAttributesForTestInputDimensions);
 
     // case 2: less number of Attributes
-    testInputDimensions.remove(VENICE_CLUSTER_NAME);
+    testInputDimensionsCopy.remove(VENICE_CLUSTER_NAME);
     try {
-      metricEntityState.getAttributes(testInputDimensions);
+      metricEntityState.getAttributes(testInputDimensionsCopy);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"), e.getMessage());
     }
 
     // case 3: extra number of Attributes
-    testInputDimensions.put(VENICE_CLUSTER_NAME, "cluster1");
-    testInputDimensions.put(VENICE_REQUEST_RETRY_TYPE, "test");
+    testInputDimensionsCopy.put(VENICE_CLUSTER_NAME, "cluster1");
+    testInputDimensionsCopy.put(VENICE_REQUEST_RETRY_TYPE, "test");
     try {
-      metricEntityState.getAttributes(testInputDimensions);
+      metricEntityState.getAttributes(testInputDimensionsCopy);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"), e.getMessage());
     }
 
     // case 4: empty dimension value
-    testInputDimensions.put(VENICE_CLUSTER_NAME, "");
-    testInputDimensions.remove(VENICE_REQUEST_RETRY_TYPE); // remove the extra dimension from case 3
+    testInputDimensionsCopy.put(VENICE_CLUSTER_NAME, "");
+    testInputDimensionsCopy.remove(VENICE_REQUEST_RETRY_TYPE); // remove the extra dimension from case 3
     try {
-      metricEntityState.getAttributes(testInputDimensions);
+      metricEntityState.getAttributes(testInputDimensionsCopy);
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("Dimension value cannot be null or empty for key"), e.getMessage());
@@ -211,6 +211,47 @@ public class MetricEntityStateGenericTest {
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("contains invalid dimension"), e.getMessage());
+    }
+
+    // case 5: baseDimensionsMap has null value
+    baseDimensionsMap.clear();
+    baseDimensionsMap.put(VENICE_REQUEST_METHOD, null);
+    try {
+      new MetricEntityStateGeneric(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertTrue(e.getMessage().contains("contains a null or empty value for dimension"), e.getMessage());
+    }
+
+    // case 6: baseDimensionsMap has empty value
+    baseDimensionsMap.clear();
+    baseDimensionsMap.put(VENICE_REQUEST_METHOD, "");
+    try {
+      new MetricEntityStateGeneric(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertTrue(e.getMessage().contains("contains a null or empty value for dimension"), e.getMessage());
+    }
+
+    // case 7: baseDimensionsMap has all keys
+    baseDimensionsMap.clear();
+    baseDimensionsMap.put(VENICE_REQUEST_METHOD, MULTI_GET_STREAMING.getDimensionValue());
+    baseDimensionsMap.put(VENICE_STORE_NAME, "store1");
+    baseDimensionsMap.put(VENICE_CLUSTER_NAME, "cluster1");
+    try {
+      new MetricEntityStateGeneric(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertTrue(e.getMessage().contains("contains all or more dimensions than required"), e.getMessage());
+    }
+
+    // case 8: baseDimensionsMap has more keys
+    baseDimensionsMap.put(VENICE_REQUEST_RETRY_ABORT_REASON, SLOW_ROUTE.getDimensionValue());
+    try {
+      new MetricEntityStateGeneric(mockMetricEntity, mockOtelRepository, baseDimensionsMap);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertTrue(e.getMessage().contains("contains all or more dimensions than required"), e.getMessage());
     }
   }
 }
