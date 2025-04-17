@@ -39,6 +39,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_STATUS_UPL
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 
@@ -56,6 +57,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -79,10 +81,12 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -816,6 +820,76 @@ public class TestPushJobWithNativeReplication {
               });
             });
           }
+        });
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testKilledRepushJobVersionStatus() throws Exception {
+    motherOfAllTests(
+        "testKilledRepushJobVersionStatus",
+        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
+        100,
+        (parentControllerClient, clusterName, storeName, props, inputDir) -> {
+          // start a regular push job
+          try (VenicePushJob job = new VenicePushJob("Test regular push job", props)) {
+            job.run();
+
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+              // Current version should become 1 all data centers
+              for (int version: parentControllerClient.getStore(storeName)
+                  .getStore()
+                  .getColoToCurrentVersions()
+                  .values()) {
+                Assert.assertEquals(version, 1);
+              }
+            });
+          }
+
+          // create repush topic
+          parentControllerClient.requestTopicForWrites(
+              storeName,
+              1000,
+              Version.PushType.BATCH,
+              Version.generateRePushId("2"),
+              true,
+              true,
+              false,
+              Optional.empty(),
+              Optional.empty(),
+              Optional.of("dc-1"),
+              false,
+              -1,
+              false,
+              null,
+              1,
+              false);
+
+          // kill repush version
+          parentControllerClient.killOfflinePushJob(Version.composeKafkaTopic(storeName, 2));
+
+          // verify parent version status is marked as killed
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+            StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
+            Assert.assertEquals(parentStore.getVersion(2).get().getStatus(), VersionStatus.KILLED);
+          });
+
+          // verify child version status is marked as killed
+          for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
+            ControllerClient childControllerClient =
+                new ControllerClient(clusterName, childDatacenter.getControllerConnectString());
+            StoreResponse store = childControllerClient.getStore(storeName);
+            Optional<Version> version = store.getStore().getVersion(2);
+            assertNotNull(version);
+            assertEquals(version.get().getStatus(), VersionStatus.KILLED);
+          }
+
+          TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, true, () -> {
+            JobStatusQueryResponse jobStatusQueryResponse = assertCommand(
+                parentControllerClient
+                    .queryOverallJobStatus(Version.composeKafkaTopic(storeName, 2), Optional.empty()));
+            ExecutionStatus executionStatus = ExecutionStatus.valueOf(jobStatusQueryResponse.getStatus());
+            assertEquals(executionStatus, ExecutionStatus.ERROR);
+          });
         });
   }
 
