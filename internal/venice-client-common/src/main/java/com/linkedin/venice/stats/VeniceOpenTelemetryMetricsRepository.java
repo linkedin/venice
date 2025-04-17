@@ -248,7 +248,7 @@ public class VeniceOpenTelemetryMetricsRepository {
       if (!REDUNDANT_LOG_FILTER.isRedundantLog(errorLog)) {
         LOGGER.error(errorLog);
       }
-      throw new VeniceException(errorLog);
+      throw new IllegalArgumentException(errorLog);
     }
   }
 
@@ -261,17 +261,27 @@ public class VeniceOpenTelemetryMetricsRepository {
     attributesBuilder.put(getDimensionName(dimension), dimensionValue);
   }
 
-  public Attributes createAttributes(
+  private AttributesBuilder createAttributesBuilderWithBaseAndCustomDimensions(
       MetricEntity metricEntity,
-      Map<VeniceMetricsDimensions, String> baseDimensionsMap,
-      VeniceDimensionInterface... additionalDimensionEnums) {
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap) {
     AttributesBuilder attributesBuilder = Attributes.builder();
-
     // add common dimensions
     baseDimensionsMap.forEach(
         (key, value) -> validateDimensionValuesAndBuildAttributes(metricEntity, key, value, attributesBuilder));
 
-    // add additional dimensions
+    // add custom dimensions passed in by the user
+    getMetricsConfig().getOtelCustomDimensionsMap().forEach(attributesBuilder::put);
+    return attributesBuilder;
+  }
+
+  public Attributes createAttributes(
+      MetricEntity metricEntity,
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap,
+      VeniceDimensionInterface... additionalDimensionEnums) {
+    AttributesBuilder attributesBuilder =
+        createAttributesBuilderWithBaseAndCustomDimensions(metricEntity, baseDimensionsMap);
+
+    // add additional dimensions passed in as type VeniceDimensionInterface
     for (VeniceDimensionInterface additionalDimensionEnum: additionalDimensionEnums) {
       validateDimensionValuesAndBuildAttributes(
           metricEntity,
@@ -280,8 +290,19 @@ public class VeniceOpenTelemetryMetricsRepository {
           attributesBuilder);
     }
 
-    // add custom dimensions passed in by the user
-    getMetricsConfig().getOtelCustomDimensionsMap().forEach(attributesBuilder::put);
+    return attributesBuilder.build();
+  }
+
+  public Attributes createAttributes(
+      MetricEntity metricEntity,
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap,
+      Map<VeniceMetricsDimensions, String> additionalDimensionsMap) {
+    AttributesBuilder attributesBuilder =
+        createAttributesBuilderWithBaseAndCustomDimensions(metricEntity, baseDimensionsMap);
+
+    // add additional dimensions passed in as a map
+    additionalDimensionsMap.forEach(
+        (key, value) -> validateDimensionValuesAndBuildAttributes(metricEntity, key, value, attributesBuilder));
 
     return attributesBuilder.build();
   }

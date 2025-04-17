@@ -1,7 +1,5 @@
 package com.linkedin.venice.stats.metrics;
 
-import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository.REDUNDANT_LOG_FILTER;
-
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
@@ -11,6 +9,7 @@ import java.util.Collections;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import javax.annotation.Nonnull;
 
 
 /**
@@ -134,24 +133,12 @@ public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterfa
     return attributes;
   }
 
-  public void record(long value, E dimension) {
-    try {
-      super.record(value, getAttributes(dimension));
-    } catch (IllegalArgumentException e) {
-      if (!REDUNDANT_LOG_FILTER.isRedundantLog(e.getMessage())) {
-        LOGGER.error("Error recording metric: ", e);
-      }
-    }
+  public void record(long value, @Nonnull E dimension) {
+    super.record(value, getAttributes(dimension));
   }
 
-  public void record(double value, E dimension) {
-    try {
-      super.record(value, getAttributes(dimension));
-    } catch (IllegalArgumentException e) {
-      if (!REDUNDANT_LOG_FILTER.isRedundantLog(e.getMessage())) {
-        LOGGER.error("Error recording metric: ", e);
-      }
-    }
+  public void record(double value, @Nonnull E dimension) {
+    super.record(value, getAttributes(dimension));
   }
 
   /** visible for testing */

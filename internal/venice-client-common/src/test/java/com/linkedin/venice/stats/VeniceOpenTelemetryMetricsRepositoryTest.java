@@ -149,7 +149,7 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
           .build();
 
       MetricEntityState metricEntityState =
-          new MetricEntityStateBase(metricEntity, metricsRepository, baseDimensionsMap, baseAttributes);
+          MetricEntityStateBase.create(metricEntity, metricsRepository, baseDimensionsMap, baseAttributes);
       metricEntityState.setOtelMetric(instrument);
 
       Attributes attributes = Attributes.builder().put("key", "value").build();

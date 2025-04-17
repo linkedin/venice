@@ -17,6 +17,7 @@ import static org.testng.Assert.fail;
 
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
+import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
@@ -43,7 +44,7 @@ public class MetricEntityStateOneEnumTest {
     when(mockOtelRepository.emitOpenTelemetryMetrics()).thenReturn(true);
     when(mockOtelRepository.getMetricFormat()).thenReturn(getDefaultFormat());
     when(mockOtelRepository.getDimensionName(any())).thenCallRealMethod();
-    when(mockOtelRepository.createAttributes(any(), any(), any())).thenCallRealMethod();
+    when(mockOtelRepository.createAttributes(any(), any(), (VeniceDimensionInterface) any())).thenCallRealMethod();
     VeniceMetricsConfig mockMetricsConfig = Mockito.mock(VeniceMetricsConfig.class);
     when(mockMetricsConfig.getOtelCustomDimensionsMap()).thenReturn(new HashMap<>());
     when(mockOtelRepository.getMetricsConfig()).thenReturn(mockMetricsConfig);
@@ -210,15 +211,6 @@ public class MetricEntityStateOneEnumTest {
   }
 
   @Test
-  public void testRecordWithNullDimension() {
-    MetricEntityStateOneEnum<MetricEntityStateTest.DimensionEnum1> metricEntityState = MetricEntityStateOneEnum
-        .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
-    // Null dimension will cause IllegalArgumentException in getDimension, record should catch it.
-    metricEntityState.record(100L, (MetricEntityStateTest.DimensionEnum1) null);
-    metricEntityState.record(100.5, (MetricEntityStateTest.DimensionEnum1) null);
-  }
-
-  @Test
   public void testValidateRequiredDimensions() {
     Map<VeniceMetricsDimensions, String> baseDimensionsMap = new HashMap<>();
     // case 1: right values
@@ -259,6 +251,28 @@ public class MetricEntityStateOneEnumTest {
       fail();
     } catch (IllegalArgumentException e) {
       assertTrue(e.getMessage().contains("doesn't match with the required dimensions"));
+    }
+
+    // case 5: baseDimensionsMap has same count, but one or more null values
+    baseDimensionsMap.clear();
+    baseDimensionsMap.put(VENICE_REQUEST_METHOD, null);
+    try {
+      MetricEntityStateOneEnum
+          .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertTrue(e.getMessage().contains("contains a null or empty value for dimension"));
+    }
+
+    // case 5: baseDimensionsMap has same count, but one or more empty values
+    baseDimensionsMap.clear();
+    baseDimensionsMap.put(VENICE_REQUEST_METHOD, "");
+    try {
+      MetricEntityStateOneEnum
+          .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, MetricEntityStateTest.DimensionEnum1.class);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertTrue(e.getMessage().contains("contains a null or empty value for dimension"));
     }
   }
 }
