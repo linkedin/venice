@@ -9,9 +9,8 @@ import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
 import com.linkedin.venice.pubsub.api.PubSubMessageSerializer;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterContext;
 import com.linkedin.venice.utils.VeniceProperties;
-import java.util.Arrays;
-import java.util.HashSet;
 import java.util.Properties;
+import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.logging.log4j.LogManager;
@@ -33,6 +32,8 @@ public class ApacheKafkaProducerConfig {
   public static final String KAFKA_CONFIG_PREFIX = "kafka.";
   public static final String PUBSUB_KAFKA_CLIENT_CONFIG_PREFIX = PUBSUB_CLIENT_CONFIG_PREFIX + KAFKA_CONFIG_PREFIX;
 
+  public static final String KAFKA_SECURITY_PROTOCOL =
+      KAFKA_CONFIG_PREFIX + CommonClientConfigs.SECURITY_PROTOCOL_CONFIG;
   public static final String KAFKA_BOOTSTRAP_SERVERS = KAFKA_CONFIG_PREFIX + ProducerConfig.BOOTSTRAP_SERVERS_CONFIG;
   public static final String KAFKA_PRODUCER_RETRIES_CONFIG = KAFKA_CONFIG_PREFIX + ProducerConfig.RETRIES_CONFIG;
   public static final String KAFKA_LINGER_MS = KAFKA_CONFIG_PREFIX + ProducerConfig.LINGER_MS_CONFIG;
@@ -70,24 +71,15 @@ public class ApacheKafkaProducerConfig {
     this.pubSubMessageSerializer = context.getPubSubMessageSerializer();
     String brokerAddress =
         brokerAddressToOverride != null ? brokerAddressToOverride : getPubsubBrokerAddress(allVeniceProperties);
-    this.producerProperties = getValidProducerProperties(
-        allVeniceProperties
-            .clipAndFilterNamespace(
-                new HashSet<>(Arrays.asList(KAFKA_CONFIG_PREFIX, PUBSUB_KAFKA_CLIENT_CONFIG_PREFIX)))
-            .toProperties());
+    this.producerProperties =
+        ApacheKafkaUtils.getValidKafkaClientProperties(allVeniceProperties, ProducerConfig.configNames());
+
     this.producerProperties.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, brokerAddress);
     validateAndUpdateProperties(this.producerProperties, strictConfigs);
     producerProperties.put(ProducerConfig.CLIENT_ID_CONFIG, generateClientId(producerName, brokerAddress));
 
     if (allVeniceProperties.getBoolean(PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS, false)) {
       addHighThroughputDefaults();
-    }
-
-    // Setup ssl config if needed.
-    if (ApacheKafkaUtils.validateAndCopyKafkaSSLConfig(allVeniceProperties, this.producerProperties)) {
-      LOGGER.info("Will initialize an SSL Kafka producer");
-    } else {
-      LOGGER.info("Will initialize a non-SSL Kafka producer");
     }
 
     if (context.isProducerCompressionEnabled()) {
@@ -205,23 +197,6 @@ public class ApacheKafkaProducerConfig {
               + "requiredConfigKey: '" + requiredConfigKey + "', requiredConfigValue: '" + requiredConfigValue
               + "', actualConfigValue: '" + actualConfigValue + "'.");
     }
-  }
-
-  public static Properties getValidProducerProperties(Properties extractedProperties) {
-    Properties validProperties = new Properties();
-    extractedProperties.forEach((configKey, configVal) -> {
-      if (ProducerConfig.configNames().contains(configKey)) {
-        validProperties.put(configKey, configVal);
-      }
-    });
-    return validProperties;
-  }
-
-  public static void copyKafkaSASLProperties(
-      VeniceProperties configuration,
-      Properties properties,
-      boolean stripPrefix) {
-    copyKafkaSASLProperties(configuration.toProperties(), properties, stripPrefix);
   }
 
   public static void copyKafkaSASLProperties(Properties configuration, Properties properties, boolean stripPrefix) {
