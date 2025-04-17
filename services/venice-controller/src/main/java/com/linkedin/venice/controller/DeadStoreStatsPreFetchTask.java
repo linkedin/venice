@@ -1,10 +1,12 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
@@ -39,6 +41,15 @@ public class DeadStoreStatsPreFetchTask implements Runnable, Closeable {
     logger.info("Started {}", taskId);
     isRunning.set(true);
     try {
+      // wait for 60 seconds for controller to become leader as it's required to be leader for dead store stats
+      long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(60);
+      while (!admin.isLeaderControllerFor(clusterName)) {
+        if (System.currentTimeMillis() > deadline) {
+          throw new VeniceException("Timed out waiting for controller to become leader for cluster: " + clusterName);
+        }
+        Utils.sleep(10_000); // sleep for 10 seconds
+      }
+
       logger.debug("Initial fetch of dead store stats for cluster: {}", clusterName);
       admin.preFetchDeadStoreStats(clusterName, getStoresInCluster());
     } catch (Exception e) {
