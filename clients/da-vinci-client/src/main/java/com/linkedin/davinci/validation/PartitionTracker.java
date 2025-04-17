@@ -23,7 +23,6 @@ import com.linkedin.venice.kafka.validation.Segment;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -311,7 +310,7 @@ public class PartitionTracker {
    * 1. The previous segment does not exist, or
    * 2. The incoming segment is exactly one greater than the previous one, and the previous segment is ended.
    *
-   * @see #initializeNewSegment(TopicType, PubSubMessage, boolean, boolean)
+   * @see #initializeNewSegment(TopicType, DefaultPubSubMessage, boolean, boolean)
    *
    * @param consumerRecord the incoming Kafka message.
    * @throws DuplicateDataException if the incoming segment is lower than the previously seen segment.
@@ -841,7 +840,7 @@ public class PartitionTracker {
           /**
            * The {@link #trackSequenceNumber(Segment, DefaultPubSubMessage, boolean, Lazy, boolean)} function is called
            * prior to the {@link #trackCheckSum(Segment, DefaultPubSubMessage, boolean, Lazy)} function, so the previous
-           * segment number is no longer available when we get to the checksum validation step, which is the one that
+           * sequence number is no longer available when we get to the checksum validation step, which is the one that
            * would throw a {@link CorruptDataException}. If we printed the sequence number contained in the
            * {@link Segment} state anyway, then we could be confused as to why this shows up as corrupt data, rather
            * than duplicate data.

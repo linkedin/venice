@@ -530,9 +530,6 @@ public class TestPartitionTracker {
       } catch (CorruptDataException e) {
         LOGGER.info("Caught CorruptDataEx!", e);
       }
-      // assertThrows(
-      // CorruptDataException.class,
-      // () -> this.partitionTracker.validateMessage(type, lastMessage, true, Lazy.FALSE));
     }
 
     /** SCENARIO 2: Consume full segment with a proper checksum at the end. */
@@ -575,9 +572,6 @@ public class TestPartitionTracker {
       } catch (CorruptDataException e) {
         LOGGER.info("Caught CorruptDataEx!", e);
       }
-      // assertThrows(
-      // CorruptDataException.class,
-      // () -> this.partitionTracker.validateMessage(type, lastMessage, true, Lazy.FALSE));
     }
 
     /**
