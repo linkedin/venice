@@ -69,7 +69,7 @@ class TopicMetadataFetcher implements Closeable {
    * implementations are not guaranteed to be thread-safe.
    */
   private final BlockingQueue<PubSubConsumerAdapter> pubSubConsumerPool;
-  private final List<Closeable> closeables;
+  private final List<PubSubConsumerAdapter> pubSubConsumerAdapters;
   private final ThreadPoolExecutor threadPoolExecutor;
   private final PubSubAdminAdapter pubSubAdminAdapter;
   private final TopicManagerStats stats;
@@ -99,7 +99,7 @@ class TopicMetadataFetcher implements Closeable {
     this.stats = stats;
     this.pubSubAdminAdapter = pubSubAdminAdapter;
     this.pubSubConsumerPool = new LinkedBlockingQueue<>(topicManagerContext.getTopicMetadataFetcherConsumerPoolSize());
-    this.closeables = new ArrayList<>(topicManagerContext.getTopicMetadataFetcherConsumerPoolSize());
+    this.pubSubConsumerAdapters = new ArrayList<>(topicManagerContext.getTopicMetadataFetcherConsumerPoolSize());
     this.cachedEntryTtlInNs = MILLISECONDS.toNanos(topicManagerContext.getTopicOffsetCheckIntervalMs());
     PubSubMessageDeserializer pubSubMessageDeserializer = PubSubMessageDeserializer.getInstance();
     for (int i = 0; i < topicManagerContext.getTopicMetadataFetcherConsumerPoolSize(); i++) {
@@ -110,7 +110,7 @@ class TopicMetadataFetcher implements Closeable {
               pubSubMessageDeserializer,
               pubSubClusterAddress);
 
-      closeables.add(pubSubConsumerAdapter);
+      pubSubConsumerAdapters.add(pubSubConsumerAdapter);
       if (!pubSubConsumerPool.offer(pubSubConsumerAdapter)) {
         throw new VeniceException("Failed to initialize consumer pool for topic metadata fetcher");
       }
@@ -151,7 +151,7 @@ class TopicMetadataFetcher implements Closeable {
     this.pubSubConsumerPool = pubSubConsumerPool;
     this.threadPoolExecutor = threadPoolExecutor;
     this.cachedEntryTtlInNs = cachedEntryTtlInNs;
-    this.closeables = new ArrayList<>(pubSubConsumerPool);
+    this.pubSubConsumerAdapters = new ArrayList<>(pubSubConsumerPool);
   }
 
   // acquire the consumer from the pool
@@ -207,7 +207,7 @@ class TopicMetadataFetcher implements Closeable {
     LOGGER.info(
         "Closing TopicMetadataFetcher for pubSubClusterAddress: {} with num of consumers: {}",
         pubSubClusterAddress,
-        closeables.size());
+        pubSubConsumerAdapters.size());
     threadPoolExecutor.shutdown();
     try {
       if (!threadPoolExecutor.awaitTermination(50, MILLISECONDS)) {
@@ -217,7 +217,7 @@ class TopicMetadataFetcher implements Closeable {
       Thread.currentThread().interrupt();
     }
     long waitUntil = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(30);
-    while (System.currentTimeMillis() <= waitUntil && !closeables.isEmpty()) {
+    while (System.currentTimeMillis() <= waitUntil && !pubSubConsumerAdapters.isEmpty()) {
       PubSubConsumerAdapter pubSubConsumerAdapter = null;
       try {
         pubSubConsumerAdapter = pubSubConsumerPool.poll(5, MILLISECONDS);
@@ -225,11 +225,11 @@ class TopicMetadataFetcher implements Closeable {
         Thread.currentThread().interrupt();
       }
       if (pubSubConsumerAdapter != null) {
-        closeables.remove(pubSubConsumerAdapter);
+        pubSubConsumerAdapters.remove(pubSubConsumerAdapter);
         Utils.closeQuietlyWithErrorLogged(pubSubConsumerAdapter);
       }
     }
-    if (closeables.isEmpty()) {
+    if (pubSubConsumerAdapters.isEmpty()) {
       LOGGER.info("Closed all metadata fetcher consumers for pubSubClusterAddress: {}", pubSubClusterAddress);
       return;
     }
@@ -237,8 +237,8 @@ class TopicMetadataFetcher implements Closeable {
         "Failed to close metadata fetcher consumers for pubSubClusterAddress: {}. Forcibly closing "
             + "remaining {} consumers. This may be caused by an improper shutdown sequence.",
         pubSubClusterAddress,
-        closeables.size());
-    for (Closeable closeable: closeables) {
+        pubSubConsumerAdapters.size());
+    for (Closeable closeable: pubSubConsumerAdapters) {
       Utils.closeQuietlyWithErrorLogged(closeable);
     }
   }
@@ -823,6 +823,6 @@ class TopicMetadataFetcher implements Closeable {
   @Override
   public String toString() {
     return "TopicMetadataFetcher{" + "pubSubClusterAddress='" + pubSubClusterAddress + '\'' + ", numOfConsumers="
-        + closeables.size() + ", threadPoolExecutor=" + threadPoolExecutor + '}';
+        + pubSubConsumerAdapters.size() + ", threadPoolExecutor=" + threadPoolExecutor + '}';
   }
 }

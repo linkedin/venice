@@ -21,7 +21,7 @@ public class PubSubClientsFactoryTest {
   public void testCreateInstanceSuccess() {
     // default
     VeniceProperties veniceProps = new VeniceProperties(new Properties());
-    PubSubClientsFactory factory = new PubSubClientsFactory(veniceProps);
+    PubSubClientsFactory factory = PubSubClientsFactory.fromVeniceProperties(veniceProps);
 
     PubSubProducerAdapterFactory producerFactory = factory.getProducerAdapterFactory();
     assertNotNull(producerFactory);
@@ -41,7 +41,7 @@ public class PubSubClientsFactoryTest {
     properties.put(PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS, ApacheKafkaConsumerAdapterFactory.class.getName());
     properties.put(PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS, ApacheKafkaAdminAdapterFactory.class.getName());
     veniceProps = new VeniceProperties(properties);
-    factory = new PubSubClientsFactory(veniceProps);
+    factory = PubSubClientsFactory.fromVeniceProperties(veniceProps);
 
     producerFactory = factory.getProducerAdapterFactory();
     assertNotNull(producerFactory);
