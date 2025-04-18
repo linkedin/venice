@@ -69,15 +69,25 @@ public class StoreBufferService extends AbstractStoreBufferService {
   private final boolean isSorted;
 
   private volatile boolean isStarted = false;
+  private final String regionName;
 
   public StoreBufferService(
       int drainerNum,
       long bufferCapacityPerDrainer,
       long bufferNotifyDelta,
       boolean queueLeaderWrites,
+      String regionName,
       MetricsRepository metricsRepository,
       boolean sorted) {
-    this(drainerNum, bufferCapacityPerDrainer, bufferNotifyDelta, queueLeaderWrites, null, metricsRepository, sorted);
+    this(
+        drainerNum,
+        bufferCapacityPerDrainer,
+        bufferNotifyDelta,
+        queueLeaderWrites,
+        null,
+        regionName,
+        metricsRepository,
+        sorted);
   }
 
   /**
@@ -88,8 +98,9 @@ public class StoreBufferService extends AbstractStoreBufferService {
       long bufferCapacityPerDrainer,
       long bufferNotifyDelta,
       boolean queueLeaderWrites,
-      StoreBufferServiceStats stats) {
-    this(drainerNum, bufferCapacityPerDrainer, bufferNotifyDelta, queueLeaderWrites, stats, null, true);
+      StoreBufferServiceStats stats,
+      String regionName) {
+    this(drainerNum, bufferCapacityPerDrainer, bufferNotifyDelta, queueLeaderWrites, stats, regionName, null, true);
   }
 
   /**
@@ -105,8 +116,10 @@ public class StoreBufferService extends AbstractStoreBufferService {
       long bufferNotifyDelta,
       boolean queueLeaderWrites,
       StoreBufferServiceStats stats,
+      String regionName,
       MetricsRepository metricsRepository,
       boolean sorted) {
+    this.regionName = regionName;
     this.drainerNum = drainerNum;
     this.blockingQueueArr = new ArrayList<>();
     this.bufferCapacityPerDrainer = bufferCapacityPerDrainer;
@@ -311,7 +324,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   public boolean startInner() {
     this.executorService = Executors.newFixedThreadPool(
         drainerNum,
-        new DaemonThreadFactory(isSorted ? "Store-writer-sorted" : "Store-writer-hybrid"));
+        new DaemonThreadFactory(isSorted ? "Store-writer-sorted" : "Store-writer-hybrid", regionName));
 
     // Submit all the buffer drainers
     for (int cur = 0; cur < drainerNum; ++cur) {

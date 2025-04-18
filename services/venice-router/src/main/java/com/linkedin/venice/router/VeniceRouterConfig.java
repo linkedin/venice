@@ -112,6 +112,7 @@ import com.linkedin.venice.meta.NameRepository;
 import com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -132,7 +133,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
   private static final Logger LOGGER = LogManager.getLogger(VeniceRouterConfig.class);
 
   // IMMUTABLE CONFIGS
-
+  private final String regionName;
   private final String clusterName;
   private final String zkConnection;
   private final int port;
@@ -239,6 +240,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
+      regionName = RegionUtils.getLocalRegionName(props, false);
       clusterName = props.getString(CLUSTER_NAME);
       port = props.getInt(LISTENER_PORT);
       hostname = props.getString(LISTENER_HOSTNAME, () -> Utils.getHostName());
@@ -912,5 +914,9 @@ public class VeniceRouterConfig implements RouterRetryConfig {
 
   public int getAclInMemoryCacheTTLMs() {
     return aclInMemoryCacheTTLMs;
+  }
+
+  public String getRegionName() {
+    return regionName;
   }
 }

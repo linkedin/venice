@@ -113,7 +113,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.metadataRepository = metadataRepository;
     if (serverConfig.isStuckConsumerRepairEnabled()) {
       this.stuckConsumerRepairExecutorService = Executors.newSingleThreadScheduledExecutor(
-          new DaemonThreadFactory(this.getClass().getName() + "-StuckConsumerRepair"));
+          new DaemonThreadFactory(this.getClass().getName() + "-StuckConsumerRepair", serverConfig.getRegionName()));
       int intervalInSeconds = serverConfig.getStuckConsumerRepairIntervalSecond();
       this.stuckConsumerRepairExecutorService.scheduleAtFixedRate(
           getStuckConsumerDetectionAndRepairRunnable(
@@ -311,7 +311,8 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
                 null,
                 isKafkaConsumerOffsetCollectionEnabled,
                 metadataRepository,
-                serverConfig.isUnregisterMetricForDeletedStoreEnabled()),
+                serverConfig.isUnregisterMetricForDeletedStoreEnabled(),
+                serverConfig),
             isAAOrWCEnabledFunc));
 
     if (!consumerService.isRunning()) {

@@ -217,8 +217,12 @@ public class ListenerService extends AbstractVeniceService {
   }
 
   protected ThreadPoolExecutor createThreadPool(int threadCount, String threadNamePrefix, int capacity) {
-    return ThreadPoolFactory
-        .createThreadPool(threadCount, threadNamePrefix, capacity, serverConfig.getBlockingQueueType());
+    return ThreadPoolFactory.createThreadPool(
+        threadCount,
+        threadNamePrefix,
+        serverConfig.getRegionName(),
+        capacity,
+        serverConfig.getBlockingQueueType());
   }
 
   protected StorageReadRequestHandler createRequestHandler(
