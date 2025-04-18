@@ -47,14 +47,14 @@ We will use the following key and value schema for store creation.
 key schema:
 ```bash
 {
-    "name": "id",
+    "name": "key",
     "type": "string"
 }
 ```
 value schema:
 ```bash
 {
-   "name": "name",
+   "name": "value",
    "type": "string"
 }
 ```
