@@ -75,6 +75,10 @@ public enum HttpResponseStatusEnum implements VeniceDimensionInterface {
     return statusToEnumMap.getOrDefault(status.code(), UNKNOWN);
   }
 
+  public static HttpResponseStatusEnum transformIntToHttpResponseStatusEnum(int status) {
+    return statusToEnumMap.getOrDefault(status, UNKNOWN);
+  }
+
   /**
    * All the instances of this Enum should have the same dimension name.
    * Refer {@link VeniceDimensionInterface#getDimensionName()} for more details.
