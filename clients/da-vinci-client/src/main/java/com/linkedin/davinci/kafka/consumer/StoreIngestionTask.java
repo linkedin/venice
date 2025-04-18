@@ -1727,7 +1727,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   @Override
   public void run() {
-    LogContext.updateThreadContext(serverConfig.getRegionName());
+    LogContext.setRegionLogContext(serverConfig.getRegionName());
     CountDownLatch shutdownLatch = gracefulShutdownLatch.get();
     boolean doFlush = true;
     try {

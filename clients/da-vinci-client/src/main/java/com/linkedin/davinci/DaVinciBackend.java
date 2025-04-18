@@ -514,10 +514,8 @@ public class DaVinciBackend implements Closeable {
     cacheBackend.ifPresent(
         objectCacheBackend -> storeRepository
             .unregisterStoreDataChangedListener(objectCacheBackend.getCacheInvalidatingStoreChangeListener()));
-    ExecutorService storeBackendCloseExecutor = Executors.newCachedThreadPool(
-        new DaemonThreadFactory(
-            "DaVinciBackend-StoreBackend-Close",
-            getConfigLoader().getVeniceServerConfig().getRegionName()));
+    ExecutorService storeBackendCloseExecutor =
+        Executors.newCachedThreadPool(new DaemonThreadFactory("DaVinciBackend-StoreBackend-Close"));
     for (StoreBackend storeBackend: storeByNameMap.values()) {
       /**
        * {@link StoreBackend#close()} is time-consuming since the internal {@link VersionBackend#close()} call triggers
@@ -872,14 +870,11 @@ public class DaVinciBackend implements Closeable {
   }
 
   static class BootstrappingAwareCompletableFuture {
-    private final ScheduledExecutorService scheduledExecutor;
+    private ScheduledExecutorService scheduledExecutor =
+        Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("DaVinci_Bootstrapping_Check_Executor"));
     public final CompletableFuture<Void> bootstrappingFuture = new CompletableFuture<>();
 
     public BootstrappingAwareCompletableFuture(DaVinciBackend backend) {
-      scheduledExecutor = Executors.newSingleThreadScheduledExecutor(
-          new DaemonThreadFactory(
-              "DaVinci_Bootstrapping_Check_Executor",
-              backend.getConfigLoader().getVeniceServerConfig().getRegionName()));
       scheduledExecutor.scheduleAtFixedRate(() -> {
         if (bootstrappingFuture.isDone()) {
           return;

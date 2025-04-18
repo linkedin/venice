@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils;
 
+import javax.annotation.Nullable;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.ThreadContext;
 
@@ -24,7 +25,11 @@ public class LogContext {
   private LogContext(Builder builder) {
     this.regionName = builder.regionName;
     this.componentName = builder.componentName;
-    this.value = String.format("%s|%s", componentName, regionName);
+    if (StringUtils.isBlank(regionName) && StringUtils.isBlank(componentName)) {
+      this.value = "";
+    } else {
+      this.value = String.format("%s|%s", componentName, regionName);
+    }
   }
 
   /**
@@ -33,21 +38,20 @@ public class LogContext {
    *
    * @param regionName The name of the region to include in the log context.
    */
-  public static void updateThreadContext(String regionName) {
-    String loggingContext = getLoggingContext(regionName);
-    if (StringUtils.isNotBlank(loggingContext)) {
-      ThreadContext.put(LOG_CONTEXT_KEY, loggingContext);
+  public static void setRegionLogContext(String regionName) {
+    putLogContextKeyValue(regionName);
+  }
+
+  public static void setStructuredLogContext(@Nullable LogContext logContext) {
+    if (logContext != null) {
+      putLogContextKeyValue(logContext.getValue());
     }
   }
 
-  /**
-   * Returns the region name as the logging context string, or an empty string if null.
-   */
-  private static String getLoggingContext(String regionName) {
-    if (regionName == null) {
-      return "";
+  private static void putLogContextKeyValue(String value) {
+    if (StringUtils.isNotBlank(value)) {
+      ThreadContext.put(LOG_CONTEXT_KEY, value);
     }
-    return regionName;
   }
 
   /**

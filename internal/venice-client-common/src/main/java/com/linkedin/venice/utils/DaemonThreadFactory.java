@@ -28,7 +28,7 @@ public class DaemonThreadFactory implements ThreadFactory {
   @Override
   public Thread newThread(Runnable r) {
     Runnable wrapped = () -> {
-      LogContext.updateThreadContext(logContext);
+      LogContext.setRegionLogContext(logContext);
       try {
         r.run();
       } finally {

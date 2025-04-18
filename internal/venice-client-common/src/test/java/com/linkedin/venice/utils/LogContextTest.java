@@ -35,8 +35,8 @@ public class LogContextTest {
   }
 
   @Test
-  public void testUpdateThreadContextWithValidRegion() {
-    LogContext.updateThreadContext(REGION_NAME);
+  public void testSetRegionLogContextWithValidRegion() {
+    LogContext.setRegionLogContext(REGION_NAME);
     String value = ThreadContext.get(LogContext.LOG_CONTEXT_KEY);
 
     assertNotNull(value);
@@ -44,14 +44,14 @@ public class LogContextTest {
   }
 
   @Test
-  public void testUpdateThreadContextWithNullRegion() {
-    LogContext.updateThreadContext(null);
+  public void testSetRegionLogContextWithNullRegion() {
+    LogContext.setRegionLogContext(null);
     assertNull(ThreadContext.get(LogContext.LOG_CONTEXT_KEY));
   }
 
   @Test
-  public void testUpdateThreadContextWithBlankRegion() {
-    LogContext.updateThreadContext("   ");
+  public void testSetRegionLogContextWithBlankRegion() {
+    LogContext.setRegionLogContext("   ");
     assertNull(ThreadContext.get(LogContext.LOG_CONTEXT_KEY));
   }
 
@@ -62,6 +62,56 @@ public class LogContextTest {
     assertNotNull(context);
     assertNull(context.getRegionName());
     assertNull(context.getComponentName());
-    assertEquals(context.toString(), "null|null");
+    assertEquals(context.toString(), "");
+  }
+
+  @Test
+  public void testSetStructuredLogContextWithValidContext() {
+    LogContext logContext = LogContext.newBuilder().setRegionName(REGION_NAME).setComponentName(COMPONENT_NAME).build();
+
+    LogContext.setStructuredLogContext(logContext);
+    String actual = ThreadContext.get(LogContext.LOG_CONTEXT_KEY);
+
+    assertNotNull(actual);
+    assertEquals(actual, logContext.toString());
+  }
+
+  @Test
+  public void testSetStructuredLogContextWithNullRegionAndComponent() {
+    LogContext logContext = LogContext.newBuilder().build();
+
+    LogContext.setStructuredLogContext(logContext);
+    String actual = ThreadContext.get(LogContext.LOG_CONTEXT_KEY);
+
+    // Expecting "null|null", but blank check should skip it
+    assertNull(actual);
+  }
+
+  @Test
+  public void testSetStructuredLogContextWithBlankContextString() {
+    // Simulate blank output from getValue (e.g., empty strings)
+    LogContext logContext = LogContext.newBuilder().setRegionName(" ").setComponentName(" ").build();
+
+    LogContext.setStructuredLogContext(logContext);
+    assertNull(ThreadContext.get(LogContext.LOG_CONTEXT_KEY));
+  }
+
+  @Test
+  public void testSetStructuredLogContextWithNullLogContext() {
+    // should not throw NPE
+    LogContext.setStructuredLogContext(null);
+  }
+
+  @Test
+  public void testSetStructuredLogContextOverwritesPreviousContext() {
+    LogContext first = LogContext.newBuilder().setRegionName("us-east-1").setComponentName("controller").build();
+
+    LogContext second = LogContext.newBuilder().setRegionName("us-west-2").setComponentName("router").build();
+
+    LogContext.setStructuredLogContext(first);
+    assertEquals(ThreadContext.get(LogContext.LOG_CONTEXT_KEY), first.toString());
+
+    LogContext.setStructuredLogContext(second);
+    assertEquals(ThreadContext.get(LogContext.LOG_CONTEXT_KEY), second.toString());
   }
 }
