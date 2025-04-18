@@ -19,12 +19,14 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.router.stats.RouterCurrentVersionStats;
 import com.linkedin.venice.router.stats.StaleVersionReason;
 import com.linkedin.venice.router.stats.StaleVersionStats;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -34,6 +36,8 @@ import org.apache.logging.log4j.Logger;
  */
 public class VeniceVersionFinder {
   private static final Logger LOGGER = LogManager.getLogger(VeniceVersionFinder.class);
+  private static final RedundantExceptionFilter EXCEPTION_FILTER =
+      new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(5));
   private static final String UNINITALISED_KAFKA_TOPIC_STRING = "";
 
   private final ReadOnlyStoreRepository metadataRepository;
@@ -144,13 +148,10 @@ public class VeniceVersionFinder {
     }
 
     // new version not ready to serve
-    LOGGER.debug("Unable to serve new version: {}", newVersionKafkaTopic);
     if (!newVersionPartitionResourcesReady) {
-      LOGGER.debug("Partition resources not ready for new version");
       stats.recordStalenessReason(StaleVersionReason.OFFLINE_PARTITIONS);
     }
     if (!newVersionDecompressorReady) {
-      LOGGER.debug("Decompressor not ready for new version (Has dictionary downloaded?)");
       stats.recordStalenessReason(StaleVersionReason.DICTIONARY_NOT_DOWNLOADED);
     }
 
@@ -161,20 +162,33 @@ public class VeniceVersionFinder {
         isDecompressorReady(store, existingVersion, Version.composeKafkaTopic(storeName, existingVersion));
     if (existingVersionStatusOnline && existingVersionDecompressorReady) {
       // existing version ready to serve
-      LOGGER.debug("Continuing to serve existing version: {}", existingVersion);
+      if (LOGGER.isDebugEnabled()) {
+        String errorMessage = "Unable to serve new version: " + newVersionKafkaTopic + ".";
+        errorMessage += newVersionPartitionResourcesReady ? "" : " Partition resources not ready for new version.";
+        errorMessage += newVersionDecompressorReady ? "" : " Decompressor not ready for new version.";
+        errorMessage += " Continuing to serve existing version: " + existingVersion + ".";
+        if (!EXCEPTION_FILTER.isRedundantException(errorMessage)) {
+          LOGGER.debug(errorMessage);
+        }
+      }
       stats.recordStale(metadataCurrentVersion, existingVersion);
       return existingVersion;
     }
 
     // existing version not ready to serve -> no version ready to serve
-    LOGGER.debug("Unable to serve existing version: {}. No version ready to serve.", existingVersion);
-    if (!existingVersionStatusOnline) {
-      LOGGER.debug("Existing version has status: {}", existingVersionStatus);
+    if (LOGGER.isDebugEnabled()) {
+      String errorMessage = "Unable to serve new version: " + newVersionKafkaTopic + ".";
+      errorMessage += newVersionPartitionResourcesReady ? "" : " Partition resources not ready for new version.";
+      errorMessage += newVersionDecompressorReady ? "" : " Decompressor not ready for new version.";
+      errorMessage += "Unable to serve existing version: " + existingVersion + " No version ready to serve.";
+      errorMessage += existingVersionStatusOnline ? "" : " Existing version has status: " + existingVersionStatus;
+      errorMessage += existingVersionDecompressorReady
+          ? ""
+          : " Decompressor not ready for existing version. (Has dictionary downloaded?)";
+      if (!EXCEPTION_FILTER.isRedundantException(errorMessage)) {
+        LOGGER.debug(errorMessage);
+      }
     }
-    if (!existingVersionDecompressorReady) {
-      LOGGER.debug("Decompressor not ready for existing version (Has dictionary downloaded?)");
-    }
-
     stats.recordStale(metadataCurrentVersion, Store.NON_EXISTING_VERSION);
     lastCurrentVersionMap.put(storeName, Store.NON_EXISTING_VERSION);
     return Store.NON_EXISTING_VERSION;
