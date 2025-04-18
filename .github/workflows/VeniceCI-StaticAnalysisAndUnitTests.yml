@@ -46,7 +46,14 @@ jobs:
         with:
           add-job-summary: never
       - name: Run Static Analysis
-        run: ./gradlew --continue --no-daemon clean check --parallel -Pspotallbugs -x test -x integrationTest -x jacocoTestCoverageVerification
+        run: ./gradlew --continue --no-daemon clean check --parallel -Pspotallbugs -x test -x integrationTest -x jacocoTestCoverageVerification -Pspotbugs.reports.all=true
+      - name: Annotate PR with SpotBugs results
+        if: failure()
+        uses: jwgmeligmeyling/spotbugs-github-action@master
+        with:
+          path: |
+            **/build/reports/spotbugs/main.xml
+            **/build/reports/spotbugs/test.xml
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -62,6 +69,7 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+
 
   Clients:
    uses: ./.github/workflows/UnitTests-core.yml

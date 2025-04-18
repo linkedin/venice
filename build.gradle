@@ -373,10 +373,10 @@ subprojects {
     showStackTraces = false
     reports ({
       xml {
-        enabled = project.hasProperty('spotbugs.xml')
+        enabled = project.hasProperty('spotbugs.xml') || project.hasProperty('spotbugs.reports.all')
       }
       html {
-        enabled = !reports.getByName('XML').enabled
+        enabled = !reports.getByName('XML').enabled || project.hasProperty('spotbugs.reports.all')
         stylesheet = 'fancy-hist.xsl'
       }
     })
