@@ -13,6 +13,7 @@ import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.CompletableFuture;
@@ -91,14 +92,18 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
       int version = Version.parseVersionFromKafkaTopicName(resourceName);
       Store store = getStoreRepo().getStoreOrThrow(storeName);
-      boolean isRegularStoreCurrentVersion = store.getCurrentVersion() == version;
+      int currentVersion = store.getCurrentVersion();
+      boolean isCurrentVersion = currentVersion == version;
+      boolean isFutureVersionOnline =
+          currentVersion < version && store.getVersionStatus(version).equals(VersionStatus.ONLINE);
 
       /**
-       * For regular store current version, firstly create a latch, then start ingestion and wait for ingestion
-       * completion. Otherwise, if we start ingestion first, ingestion completion might be reported before latch
-       * creation, and latch will never be released until timeout, resulting in error replica.
+       * For current version and already completed future versions, firstly create a latch, then start ingestion and wait
+       * for ingestion completion to make sure that the state transition waits until this new replica finished consuming
+       * before asked to serve requests. Also, if we start ingestion first before creating the latch, ingestion completion
+       * might be reported before latch creation, and latch will never be released until timeout, resulting in error replica.
        */
-      if (isRegularStoreCurrentVersion) {
+      if (isCurrentVersion || isFutureVersionOnline) {
         notifier.startConsumption(resourceName, getPartition());
       }
       try {
@@ -110,12 +115,12 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
             LatencyUtils.getElapsedTimeFromNSToMS(startTimeForSettingUpNewStorePartitionInNs));
       } catch (Exception e) {
         logger.error("Failed to set up the new replica: {}", Utils.getReplicaId(resourceName, getPartition()), e);
-        if (isRegularStoreCurrentVersion) {
+        if (isCurrentVersion || isFutureVersionOnline) {
           notifier.stopConsumption(resourceName, getPartition());
         }
         throw e;
       }
-      if (isRegularStoreCurrentVersion) {
+      if (isCurrentVersion || isFutureVersionOnline) {
         waitConsumptionCompleted(resourceName, notifier);
       }
       heartbeatMonitoringService
