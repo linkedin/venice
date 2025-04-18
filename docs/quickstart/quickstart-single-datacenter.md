@@ -146,7 +146,7 @@ value=val101
 
 #### Step 10: Exit `venice-client`
 ```bash
-# type exit command on the terminal or use cntrl + c
+# type exit command on the terminal or use ctrl + c
 exit
 ```
 
