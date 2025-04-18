@@ -10,6 +10,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.CONTROLLER_REQUEST_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
@@ -1032,6 +1033,17 @@ public class VenicePushJobTest {
       fail("Test should fail, but doesn't.");
     } catch (VeniceException e) {
       assertEquals(e.getMessage(), "Incremental push is not supported while using targeted region push mode");
+    }
+
+    props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+    props.put(DEFER_VERSION_SWAP, true);
+    props.put(INCREMENTAL_PUSH, false);
+    try (VenicePushJob pushJob = new VenicePushJob(PUSH_JOB_ID, props)) {
+      fail("Test should fail, but doesn't.");
+    } catch (VeniceException e) {
+      assertEquals(
+          e.getMessage(),
+          "Target region push with deferred swap and deferred swap cannot be enabled at the same time");
     }
   }
 
