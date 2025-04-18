@@ -32,6 +32,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(ProtocolVersionAutoDetectionService.class);
+  private static final String PARENT_REGION_NAME = "parentRegion";
   private final AtomicBoolean stop = new AtomicBoolean(false);
   private final Set<String> allClusters;
   private final Map<String, ProtocolVersionAutoDetectionStats> clusterToStatsMap = new HashMap<>();
@@ -68,7 +69,7 @@ public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
   @Override
   public boolean startInner() throws Exception {
     executor.scheduleAtFixedRate(
-        new ProtocolVersionDetectionTask(),
+        getRunnableForProtocolVersionAutoDetectionService(),
         0,
         multiClusterConfigs.getAdminOperationProtocolVersionAutoDetectionIntervalMs(),
         TimeUnit.MILLISECONDS);
@@ -96,101 +97,102 @@ public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
     return clusterToStatsMap.get(clusterName);
   }
 
-  class ProtocolVersionDetectionTask implements Runnable {
-    @Override
-    public void run() {
+  private Runnable getRunnableForProtocolVersionAutoDetectionService() {
+    return () -> {
+      if (stop.get()) {
+        return;
+      }
       LOGGER.info("Started running {}", getClass().getSimpleName());
-      while (!stop.get()) {
-        for (String clusterName: allClusters) {
-          if (!veniceParentHelixAdmin.isLeaderControllerFor(clusterName)) {
-            continue;
-          }
-          try {
-            // start the clock
-            long startTime = System.currentTimeMillis();
-            Long currentGoodVersion = getSmallestLocalAdminOperationProtocolVersionForAllConsumers(clusterName);
-            Long upstreamVersion = AdminTopicMetadataAccessor.getAdminOperationProtocolVersion(
-                veniceParentHelixAdmin.getAdminTopicMetadata(clusterName, Optional.empty()));
+      for (String clusterName: allClusters) {
+        if (!veniceParentHelixAdmin.isLeaderControllerFor(clusterName)) {
+          continue;
+        }
+        try {
+          // start the clock
+          long startTime = System.currentTimeMillis();
+          Long currentGoodVersion = getSmallestLocalAdminOperationProtocolVersionForAllConsumers(clusterName);
+          Long upstreamVersion = AdminTopicMetadataAccessor.getAdminOperationProtocolVersion(
+              veniceParentHelixAdmin.getAdminTopicMetadata(clusterName, Optional.empty()));
+          LOGGER.info(
+              "Current good Admin Operation version for cluster {} is {} and upstream version is {}",
+              clusterName,
+              currentGoodVersion,
+              upstreamVersion);
+          if (upstreamVersion != -1 && currentGoodVersion != Long.MAX_VALUE
+              && !Objects.equals(currentGoodVersion, upstreamVersion)) {
+            veniceParentHelixAdmin.updateAdminOperationProtocolVersion(clusterName, currentGoodVersion);
             LOGGER.info(
-                "Current good Admin Operation version for cluster {} is {} and upstream version is {}",
+                "Updated admin operation protocol version in ZK for cluster {} from {} to {}",
                 clusterName,
-                currentGoodVersion,
-                upstreamVersion);
-            if (upstreamVersion != -1 && !Objects.equals(currentGoodVersion, upstreamVersion)) {
-              veniceParentHelixAdmin.updateAdminOperationProtocolVersion(clusterName, currentGoodVersion);
-              LOGGER.info(
-                  "Updated admin operation protocol version in ZK for cluster {} from {} to {}",
-                  clusterName,
-                  upstreamVersion,
-                  currentGoodVersion);
-            }
-            long elapsedTimeFromMsToMs = LatencyUtils.getElapsedTimeFromMsToMs(startTime);
-            getClusterStat(clusterName).recordProtocolVersionAutoDetectionLatencySensor(elapsedTimeFromMsToMs);
-          } catch (Exception e) {
-            LOGGER.warn("Received exception while running ProtocolVersionDetectionTask", e);
-            getClusterStat(clusterName).recordProtocolVersionAutoDetectionErrorSensor();
-          } catch (Throwable throwable) {
-            LOGGER.warn("Received a throwable while running ProtocolVersionDetectionTask", throwable);
-            getClusterStat(clusterName).recordProtocolVersionAutoDetectionThrowableSensor();
+                upstreamVersion,
+                currentGoodVersion);
           }
+          long elapsedTimeInMs = LatencyUtils.getElapsedTimeFromMsToMs(startTime);
+          getClusterStat(clusterName).recordProtocolVersionAutoDetectionLatencySensor(elapsedTimeInMs);
+        } catch (Exception e) {
+          LOGGER.warn("Received exception while running ProtocolVersionDetectionTask", e);
+          getClusterStat(clusterName).recordProtocolVersionAutoDetectionErrorSensor();
+        } catch (Throwable throwable) {
+          LOGGER.warn("Received a throwable while running ProtocolVersionDetectionTask", throwable);
+          getClusterStat(clusterName).recordProtocolVersionAutoDetectionThrowableSensor();
         }
       }
+    };
+  }
+
+  /**
+   * Get the smallest local admin operation protocol version for all consumers in the given cluster.
+   * This will help to ensure that all consumers are on the same page regarding the protocol version.
+   *
+   * @param clusterName The name of the cluster to check.
+   * @return The smallest local admin operation protocol version for all consumers (parent + child controllers)
+   * in the cluster.
+   */
+  public long getSmallestLocalAdminOperationProtocolVersionForAllConsumers(String clusterName) {
+    // Map to store all consumers versions
+    Map<String, Map<String, Long>> regionToControllerToVersionMap = new ConcurrentHashMap<>();
+
+    // Get all versions for parent controllers
+    Map<String, Long> parentClusterVersions =
+        veniceParentHelixAdmin.getVeniceHelixAdmin().getAdminOperationVersionFromControllers(clusterName);
+    regionToControllerToVersionMap.put(PARENT_REGION_NAME, parentClusterVersions);
+
+    // Get child controller clients for all regions
+    Map<String, ControllerClient> controllerClientMap =
+        veniceParentHelixAdmin.getVeniceHelixAdmin().getControllerClientMap(clusterName);
+
+    // Forward the request to all regions
+    for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
+      Map<String, Long> controllerUrlToVersionMap = getControllerUrlToVersionMap(clusterName, entry);
+      regionToControllerToVersionMap.put(entry.getKey(), controllerUrlToVersionMap);
     }
 
-    /**
-     * Get the smallest local admin operation protocol version for all consumers in the given cluster.
-     * This will help to ensure that all consumers are on the same page regarding the protocol version.
-     *
-     * @param clusterName The name of the cluster to check.
-     * @return The smallest local admin operation protocol version for all consumers (parent + child controllers)
-     * in the cluster.
-     */
-    public long getSmallestLocalAdminOperationProtocolVersionForAllConsumers(String clusterName) {
-      // Map to store all consumers versions
-      Map<String, Map<String, Long>> regionToControllerToVersionMap = new ConcurrentHashMap<>();
+    LOGGER.info("All controller versions for cluster {}: {}", clusterName, regionToControllerToVersionMap);
+    return getSmallestVersion(regionToControllerToVersionMap);
+  }
 
-      // Get all versions for parent clusters
-      Map<String, Long> parentClusterVersions =
-          veniceParentHelixAdmin.getVeniceHelixAdmin().getAdminOperationVersionFromControllers(clusterName);
-      regionToControllerToVersionMap.put("parentRegion", parentClusterVersions);
-
-      // Get child controller clients for all regions
-      Map<String, ControllerClient> controllerClientMap =
-          veniceParentHelixAdmin.getVeniceHelixAdmin().getControllerClientMap(clusterName);
-
-      // Forward the request to all regions
-      for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
-        Map<String, Long> controllerUrlToVersionMap = getControllerUrlToVersionMap(clusterName, entry);
-        regionToControllerToVersionMap.put(entry.getKey(), controllerUrlToVersionMap);
-      }
-
-      LOGGER.info("All controller versions for cluster {}: {}", clusterName, regionToControllerToVersionMap);
-      return getSmallestVersion(regionToControllerToVersionMap);
+  private Map<String, Long> getControllerUrlToVersionMap(
+      String clusterName,
+      Map.Entry<String, ControllerClient> regionToControllerClient) {
+    ControllerClient controllerClient = regionToControllerClient.getValue();
+    AdminOperationProtocolVersionControllerResponse response =
+        controllerClient.getAdminOperationProtocolVersionFromControllers(clusterName);
+    if (response.isError()) {
+      throw new VeniceException(
+          "Failed to get admin operation protocol version from child controller " + regionToControllerClient.getKey()
+              + ": " + response.getError());
     }
+    return response.getControllerUrlToVersionMap();
+  }
 
-    private Map<String, Long> getControllerUrlToVersionMap(
-        String clusterName,
-        Map.Entry<String, ControllerClient> regionToControllerClient) {
-      ControllerClient controllerClient = regionToControllerClient.getValue();
-      AdminOperationProtocolVersionControllerResponse response =
-          controllerClient.getAdminOperationProtocolVersionFromControllers(clusterName);
-      if (response.isError()) {
-        throw new VeniceException(
-            "Failed to get admin operation protocol version from child controller " + regionToControllerClient.getKey()
-                + ": " + response.getError());
-      }
-      return response.getControllerUrlToVersionMap();
-    }
-
-    /**
-     * Get the smallest version from a map of versions.
-     *
-     * @param versions A map of versions, where the key is regionName,
-     *                and the value is another map of controllerUrl to admin operation protocol version.
-     * @return The smallest version as a long.
-     */
-    private long getSmallestVersion(Map<String, Map<String, Long>> versions) {
-      return versions.values().stream().flatMap(m -> m.values().stream()).min(Long::compare).orElse(Long.MAX_VALUE);
-    }
+  /**
+   * Get the smallest version from a map of versions.
+   *
+   * @param versions A map of versions, where the key is regionName,
+   *                and the value is another map of controllerUrl to admin operation protocol version.
+   * @return The smallest version as a long.
+   */
+  private long getSmallestVersion(Map<String, Map<String, Long>> versions) {
+    return versions.values().stream().flatMap(m -> m.values().stream()).min(Long::compare).orElse(Long.MAX_VALUE);
   }
 }

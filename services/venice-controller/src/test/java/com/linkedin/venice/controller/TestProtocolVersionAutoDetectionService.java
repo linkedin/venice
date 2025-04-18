@@ -166,7 +166,7 @@ public class TestProtocolVersionAutoDetectionService {
         mock(VeniceControllerMultiClusterConfig.class),
         mock(MetricsRepository.class),
         Optional.ofNullable(clusterToStatsMap));
-    long smallestVersion = localProtocolVersionAutoDetectionService.new ProtocolVersionDetectionTask()
+    long smallestVersion = localProtocolVersionAutoDetectionService
         .getSmallestLocalAdminOperationProtocolVersionForAllConsumers(CLUSTER_VENICE_0);
 
     assertEquals(smallestVersion, 1L);
@@ -194,7 +194,7 @@ public class TestProtocolVersionAutoDetectionService {
           mock(MetricsRepository.class),
           Optional.ofNullable(clusterToStatsMap));
 
-      localProtocolVersionAutoDetectionService.new ProtocolVersionDetectionTask()
+      localProtocolVersionAutoDetectionService
           .getSmallestLocalAdminOperationProtocolVersionForAllConsumers(CLUSTER_VENICE_0);
     } catch (VeniceException e) {
       assertEquals(
