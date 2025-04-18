@@ -14,7 +14,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_ALLOCATION_STR
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
-import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
@@ -1426,7 +1425,6 @@ public class TestHybrid {
           storeName,
           new UpdateStoreQueryParams().setHybridRewindSeconds(streamingRewindSeconds)
               .setHybridOffsetLagThreshold(streamingMessageLag)
-              .setGlobalRtDivEnabled(true)
               .setPartitionCount(1));
       Assert.assertFalse(response.isError());
       // Do a VPJ push
@@ -1734,7 +1732,6 @@ public class TestHybrid {
     serverProperties.setProperty(
         SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY,
         KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION.name());
-    serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, "5000");
 
     if (enablePartitionWiseSharedConsumer) {
       serverProperties.setProperty(DEFAULT_MAX_NUMBER_OF_PARTITIONS, "4");

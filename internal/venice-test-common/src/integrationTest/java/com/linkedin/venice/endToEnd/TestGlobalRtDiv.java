@@ -9,23 +9,42 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_S
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.*;
+import static com.linkedin.venice.utils.TestWriteUtils.*;
+import static org.testng.Assert.*;
 
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
+import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
+import com.linkedin.venice.serializer.AvroSerializer;
+import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterOptions;
+import java.io.File;
 import java.util.AbstractMap;
 import java.util.Collections;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
+import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -40,6 +59,8 @@ public class TestGlobalRtDiv {
   public void setUp() {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
+    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
+    extraProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, "5000");
 
     // N.B.: RF 2 with 3 servers is important, in order to test both the leader and follower code paths
     sharedVenice = ServiceFactory.getVeniceCluster(
@@ -121,5 +142,73 @@ public class TestGlobalRtDiv {
             .getBrokerDetailsForClients(Collections.singletonList(sharedVenice.getPubSubBrokerWrapper())));
 
     // TODO: integration test
+  }
+
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
+  public void testGlobalRtDiv() throws Exception {
+    VeniceClusterWrapper venice = sharedVenice;
+    LOGGER.info("Finished creating VeniceClusterWrapper");
+    long streamingRewindSeconds = 10L;
+    long streamingMessageLag = 2L;
+    String storeName = Utils.getUniqueString("hybrid-store");
+    File inputDir = getTempDataDirectory();
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir); // records 1-100
+    Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
+    try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
+        AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
+      // Have 1 partition only, so that all keys are produced to the same partition
+      ControllerResponse response = controllerClient.updateStore(
+          storeName,
+          new UpdateStoreQueryParams().setHybridRewindSeconds(streamingRewindSeconds)
+              .setHybridOffsetLagThreshold(streamingMessageLag)
+              .setGlobalRtDivEnabled(true)
+              .setPartitionCount(1));
+      Assert.assertFalse(response.isError());
+      // Do a VPJ push
+      runVPJ(vpjProperties, 1, controllerClient);
+      Properties veniceWriterProperties = new Properties();
+      veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getPubSubBrokerWrapper().getAddress());
+      /**
+       * Set max segment elapsed time to 0 to enforce creating small segments aggressively
+       */
+      veniceWriterProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, "0");
+      veniceWriterProperties.putAll(
+          PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
+      AvroSerializer<String> stringSerializer = new AvroSerializer(STRING_SCHEMA);
+      String prefix = "testGlobalRtDiv_";
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+          venice.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+      StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
+
+      // chunk the data into 2 parts and send each part by different producers. Also, close the producers
+      // as soon as it finishes writing. This makes sure that closing or switching producers won't
+      // impact the ingestion
+      for (int i = 0; i < 2; i++) {
+        try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter =
+            TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
+                .createVeniceWriter(new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build())) {
+          for (int j = i * 50 + 1; j <= i * 50 + 50; j++) {
+            realTimeTopicWriter
+                .put(stringSerializer.serialize(String.valueOf(j)), stringSerializer.serialize(prefix + j), 1);
+          }
+        }
+      }
+
+      // Check both leader and follower hosts
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+        try {
+          for (int i = 1; i <= 100; i++) {
+            String key = Integer.toString(i);
+            Object value = client.get(key).get();
+            assertNotNull(value, "Key " + i + " should not be missing!");
+            assertEquals(value.toString(), prefix + key);
+          }
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+    }
   }
 }
