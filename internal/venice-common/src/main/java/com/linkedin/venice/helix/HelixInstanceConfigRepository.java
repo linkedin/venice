@@ -50,7 +50,6 @@ public class HelixInstanceConfigRepository
     this.keyBuilder = new PropertyKey.Builder(manager.getClusterName());
     ClusterConfig clusterConfig = manager.getConfigAccessor().getClusterConfig(manager.getClusterName());
     this.faultZoneType = clusterConfig.getFaultZoneType();
-    LOGGER.info("Will use '{}' as the fault zone in Helix domain.", this.faultZoneType);
   }
 
   @Override
@@ -108,7 +107,7 @@ public class HelixInstanceConfigRepository
     return groupCount;
   }
 
-  private synchronized void updateInstanceGroupIdMappings() {
+  private void updateInstanceGroupIdMappings() {
     if (instanceConfigs.isEmpty()) {
       LOGGER.warn("Received empty instance configs, so will skip it");
       return;
@@ -121,7 +120,7 @@ public class HelixInstanceConfigRepository
       String id2 = instanceConfig2.getId();
       return id1.compareTo(id2);
     });
-    LOGGER.info("Received instance configs: {}.", instanceConfigs);
+    LOGGER.info("Received instance configs: {} and FAULT_ZONE_TYPE: {}", instanceConfigs, faultZoneType);
     Map<String, Integer> newInstanceGroupIdMapping = new VeniceConcurrentHashMap<>();
     Map<String, Integer> groupIdMapping = new HashMap<>();
     final AtomicInteger groupIdCnt = new AtomicInteger(0);
@@ -149,9 +148,11 @@ public class HelixInstanceConfigRepository
    * If there is no group defined for some instances, this function will use empty string as the default.
    */
   @Override
-  public synchronized void onInstanceConfigChange(List<InstanceConfig> instanceConfigs, NotificationContext context) {
-    this.instanceConfigs = instanceConfigs;
-    updateInstanceGroupIdMappings();
+  public void onInstanceConfigChange(List<InstanceConfig> instanceConfigs, NotificationContext context) {
+    synchronized (this) {
+      this.instanceConfigs = instanceConfigs;
+      updateInstanceGroupIdMappings();
+    }
   }
 
   @Override
@@ -160,7 +161,10 @@ public class HelixInstanceConfigRepository
     if (faultZoneType.equals(updatedFaultZoneType)) {
       return;
     }
-    this.faultZoneType = updatedFaultZoneType;
-    updateInstanceGroupIdMappings();
+    synchronized (this) {
+      LOGGER.info("Updated FAULT_ZONE_TYPE to: {}", updatedFaultZoneType);
+      this.faultZoneType = updatedFaultZoneType;
+      updateInstanceGroupIdMappings();
+    }
   }
 }
