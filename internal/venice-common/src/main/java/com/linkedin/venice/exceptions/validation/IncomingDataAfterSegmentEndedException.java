@@ -7,8 +7,4 @@ public class IncomingDataAfterSegmentEndedException extends FatalDataValidationE
   public IncomingDataAfterSegmentEndedException(String message) {
     super(message);
   }
-
-  public IncomingDataAfterSegmentEndedException(String message, Throwable throwable) {
-    super(message, throwable);
-  }
 }

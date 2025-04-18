@@ -23,7 +23,7 @@ import com.linkedin.venice.kafka.validation.Segment;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
@@ -310,7 +310,7 @@ public class PartitionTracker {
    * 1. The previous segment does not exist, or
    * 2. The incoming segment is exactly one greater than the previous one, and the previous segment is ended.
    *
-   * @see #initializeNewSegment(TopicType, PubSubMessage, boolean, boolean)
+   * @see #initializeNewSegment(TopicType, DefaultPubSubMessage, boolean, boolean)
    *
    * @param consumerRecord the incoming Kafka message.
    * @throws DuplicateDataException if the incoming segment is lower than the previously seen segment.
@@ -763,15 +763,19 @@ public class PartitionTracker {
     throw new IllegalArgumentException("Unsupported TopicType: " + type);
   }
 
+  /**
+   * Pre-allocated, as this is a hot path exception. In order to avoid confusion with where the exception comes from,
+   * the fillInStacktrace behavior is explicitly disabled.
+   */
   private static final DuplicateDataException SINGLETON_DUPLICATE_DATA_EXCEPTION =
-      new DuplicateDataException("Duplicate message will be skipped!");
+      new DuplicateDataException("Duplicate message will be skipped!", false);
 
   enum DataFaultType {
     /**
      * A given producer sent a message with a sequence number smaller or equal to the previously received
      * sequence number, rather than being exactly one greater than the previous.
      */
-    DUPLICATE(DuplicateDataException::new),
+    DUPLICATE(ignored -> SINGLETON_DUPLICATE_DATA_EXCEPTION),
 
     /**
      * A given producer sent a message with a sequence number more than one greater than the previously
@@ -801,9 +805,9 @@ public class PartitionTracker {
      */
     UNREGISTERED_PRODUCER(ImproperlyStartedSegmentException::new);
 
-    final Function<String, DataValidationException> exceptionSupplier;
+    final Function<Lazy<String>, DataValidationException> exceptionSupplier;
 
-    DataFaultType(Function<String, DataValidationException> exceptionSupplier) {
+    DataFaultType(Function<Lazy<String>, DataValidationException> exceptionSupplier) {
       this.exceptionSupplier = exceptionSupplier;
     }
 
@@ -817,6 +821,13 @@ public class PartitionTracker {
         return SINGLETON_DUPLICATE_DATA_EXCEPTION;
       }
 
+      return exceptionSupplier.apply(Lazy.of(() -> generateMessage(segment, consumerRecord, extraInfo)));
+    }
+
+    /** N.B.: This is an expensive function, so we only want to invoke it lazily */
+    private String generateMessage(Segment segment, DefaultPubSubMessage consumerRecord, String extraInfo) {
+      boolean isCorruptException = this == CORRUPT;
+
       ProducerMetadata producerMetadata = consumerRecord.getValue().producerMetadata;
       MessageType messageType = MessageType.valueOf(consumerRecord.getValue());
       String previousSegment, previousSequenceNumber;
@@ -825,7 +836,19 @@ public class PartitionTracker {
         previousSegment = previousSequenceNumber = "N/A (null segment)";
       } else {
         previousSegment = String.valueOf(segment.getSegmentNumber());
-        previousSequenceNumber = String.valueOf(segment.getSequenceNumber());
+        if (isCorruptException) {
+          /**
+           * The {@link #trackSequenceNumber(Segment, DefaultPubSubMessage, boolean, Lazy, boolean)} function is called
+           * prior to the {@link #trackCheckSum(Segment, DefaultPubSubMessage, boolean, Lazy)} function, so the previous
+           * sequence number is no longer available when we get to the checksum validation step, which is the one that
+           * would throw a {@link CorruptDataException}. If we printed the sequence number contained in the
+           * {@link Segment} state anyway, then we could be confused as to why this shows up as corrupt data, rather
+           * than duplicate data.
+           */
+          previousSequenceNumber = "N/A (already incremented by previous step)";
+        } else {
+          previousSequenceNumber = String.valueOf(segment.getSequenceNumber());
+        }
       }
       StringBuilder sb = new StringBuilder();
       // during parsing the logs, you can pipe these lines to
@@ -835,9 +858,12 @@ public class PartitionTracker {
           .append(GuidUtils.getHexFromGuid(producerMetadata.producerGUID))
           .append("; message type: ")
           .append(messageType.name());
-      if (MessageType.CONTROL_MESSAGE.equals(messageType)) {
-        ControlMessage controlMessage = (ControlMessage) consumerRecord.getValue().payloadUnion;
-        sb.append(" (").append(ControlMessageType.valueOf(controlMessage).name()).append(")");
+      ControlMessage controlMessage = null;
+      ControlMessageType controlMessageType = null;
+      if (messageType == MessageType.CONTROL_MESSAGE) {
+        controlMessage = (ControlMessage) consumerRecord.getValue().payloadUnion;
+        controlMessageType = ControlMessageType.valueOf(controlMessage);
+        sb.append(" (").append(controlMessageType.name()).append(")");
       }
 
       sb.append("; partition: ").append(consumerRecord.getTopicPartition().getPartitionNumber());
@@ -864,22 +890,61 @@ public class PartitionTracker {
           .append(new Date(producerMetadata.messageTimestamp))
           .append(")");
       if (consumerRecord.getValue().leaderMetadataFooter != null) {
-        sb.append("; leader metadata's upstream offset: ")
+        sb.append("; LeaderMetadata { upstream offset: ")
             .append(consumerRecord.getValue().leaderMetadataFooter.upstreamOffset)
-            .append("; leader metadata's host name: ")
-            .append(consumerRecord.getValue().leaderMetadataFooter.hostName);
+            .append("; upstream pub sub cluster ID: ")
+            .append(consumerRecord.getValue().leaderMetadataFooter.upstreamKafkaClusterId)
+            .append("; producer host name: ")
+            .append(consumerRecord.getValue().leaderMetadataFooter.hostName)
+            .append(" }");
       }
       if (segment != null) {
-        sb.append("; aggregates: ");
-        printMap(segment.getAggregates(), sb);
-        sb.append("; debugInfo: ");
-        printMap(segment.getDebugInfo(), sb);
+        if (!CollectionUtils.isEmpty(segment.getAggregates())) {
+          sb.append("; aggregates: ");
+          printMap(segment.getAggregates(), sb);
+        }
+        if (!CollectionUtils.isEmpty(segment.getDebugInfo())) {
+          sb.append("; debugInfo: ");
+          printMap(segment.getDebugInfo(), sb);
+        }
+      }
+      if (isCorruptException) {
+        /** Since corrupt data exceptions are pretty rare and tricky, we print as much info as possible. */
+        sb.append("; Segment { isRegistered: ")
+            .append(segment.isRegistered())
+            .append("; isNewSegment: ")
+            .append(segment.isNewSegment())
+            .append("; isEnded: ")
+            .append(segment.isEnded())
+            .append("; isStarted: ")
+            .append(segment.isStarted())
+            .append("; checksum type: ")
+            .append(segment.getCheckSumType())
+            .append("; checksum value: ")
+            .append(ByteUtils.toHexString(segment.getFinalCheckSum()))
+            .append(" }");
+        if (controlMessageType == ControlMessageType.END_OF_SEGMENT) {
+          /**
+           * It should always be the case that we are dealing with an EOS CM in the corrupt data case, so these checks
+           * are just defensive code to avoid class cast exceptions... No need to append any other info in the else case
+           * since we are already printing the message type and CM type at the beginning, which is all we can really do.
+           */
+          EndOfSegment endOfSegment = (EndOfSegment) controlMessage.controlMessageUnion;
+          sb.append("; EOS { checksum value: ");
+          ByteBuffer eosChecksum = endOfSegment.getChecksumValue();
+          if (eosChecksum == null || eosChecksum.remaining() == 0) {
+            sb.append("(empty)");
+          } else {
+            sb.append(ByteUtils.toHexString(ByteUtils.extractByteArray(eosChecksum)));
+          }
+          sb.append("; isFinalSegment: ").append(endOfSegment.getFinalSegment()).append(" }");
+        }
       }
       if (extraInfo != null) {
         sb.append("; extra info: ").append(extraInfo);
       }
 
-      return exceptionSupplier.apply(sb.toString());
+      return sb.toString();
     }
 
     private <K, V> void printMap(Map<K, V> map, StringBuilder sb) {

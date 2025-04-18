@@ -1,6 +1,7 @@
 package com.linkedin.venice.exceptions.validation;
 
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
+import com.linkedin.venice.utils.lazy.Lazy;
 
 
 /**
@@ -11,11 +12,7 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
  * be treated more leniently than a regular {@link MissingDataException}.
  */
 public class ImproperlyStartedSegmentException extends MissingDataException {
-  public ImproperlyStartedSegmentException(String message) {
+  public ImproperlyStartedSegmentException(Lazy<String> message) {
     super(message);
-  }
-
-  public ImproperlyStartedSegmentException(String message, Throwable throwable) {
-    super(message, throwable);
   }
 }

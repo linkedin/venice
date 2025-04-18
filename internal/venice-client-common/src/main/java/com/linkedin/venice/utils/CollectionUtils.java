@@ -121,6 +121,14 @@ public class CollectionUtils {
     return map == null || map.isEmpty() ? Collections.emptyMap() : map;
   }
 
+  public static boolean isEmpty(Collection c) {
+    return c == null || c.isEmpty();
+  }
+
+  public static boolean isEmpty(Map m) {
+    return m == null || m.isEmpty();
+  }
+
   public static <K, V> MapBuilder<K, V> mapBuilder() {
     return new MapBuilder<>();
   }

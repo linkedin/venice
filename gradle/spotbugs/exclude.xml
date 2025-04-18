@@ -206,6 +206,10 @@
       <Class name="com.linkedin.venice.samza.VeniceSystemFactory">
         <Field name="systemProducerStatues"/>
       </Class>
+      <Class name="com.linkedin.venice.serialization.avro.AvroProtocolDefinition">
+        <Field name="currentProtocolVersion"/>
+        <Field name="magicByte"/>
+      </Class>
     </Or>
   </Match>
   <Match>

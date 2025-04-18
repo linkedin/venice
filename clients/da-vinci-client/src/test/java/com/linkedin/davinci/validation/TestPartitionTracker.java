@@ -50,6 +50,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
 import org.apache.avro.specific.FixedSize;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
@@ -57,6 +59,7 @@ import org.testng.annotations.Test;
 
 
 public class TestPartitionTracker {
+  private static final Logger LOGGER = LogManager.getLogger(TestPartitionTracker.class);
   private static TopicType rt = TopicType.of(TopicType.REALTIME_TOPIC_TYPE, "testUrl");
   private static TopicType vt = TopicType.of(TopicType.VERSION_TOPIC_TYPE);
   private PartitionTracker partitionTracker;
@@ -521,9 +524,12 @@ public class TestPartitionTracker {
     if (checkSumType == NONE) {
       this.partitionTracker.validateMessage(type, lastMessage, true, Lazy.FALSE);
     } else {
-      assertThrows(
-          CorruptDataException.class,
-          () -> this.partitionTracker.validateMessage(type, lastMessage, true, Lazy.FALSE));
+      try {
+        this.partitionTracker.validateMessage(type, lastMessage, true, Lazy.FALSE);
+        fail("Should have thrown!");
+      } catch (CorruptDataException e) {
+        LOGGER.info("Caught CorruptDataEx!", e);
+      }
     }
 
     /** SCENARIO 2: Consume full segment with a proper checksum at the end. */
@@ -536,6 +542,36 @@ public class TestPartitionTracker {
     for (int i = 0; i < messageBatch2.size(); i++) {
       DefaultPubSubMessage message = messageBatch2.get(i);
       this.partitionTracker.validateMessage(type, message, true, Lazy.FALSE);
+    }
+
+    /** SCENARIO 2.1: Consume full segment with a present but wrong checksum at the end. */
+    ByteBuffer corruptedChecksumState = ByteBuffer.allocate(computedChecksumState.remaining());
+    for (byte i = 0; i < computedChecksumState.remaining(); i++) {
+      corruptedChecksumState.put(i);
+    }
+    corruptedChecksumState.position(0);
+
+    List<DefaultPubSubMessage> messageBatch2point1 =
+        getSegmentOfMessages(type, checkSumType, segmentId++, offset, corruptedChecksumState);
+
+    /** We stop shy of the last message, because we'll handle it separately after... */
+    indexPriorToLastMessage = messageBatch2point1.size() - 1;
+    for (int i = 0; i < indexPriorToLastMessage; i++) {
+      DefaultPubSubMessage message = messageBatch2point1.get(i);
+      this.partitionTracker.validateMessage(type, message, true, Lazy.FALSE);
+    }
+
+    lastMessage = messageBatch2point1.get(messageBatch2point1.size() - 1);
+
+    if (checkSumType == NONE) {
+      this.partitionTracker.validateMessage(type, lastMessage, true, Lazy.FALSE);
+    } else {
+      try {
+        this.partitionTracker.validateMessage(type, lastMessage, true, Lazy.FALSE);
+        fail("Should have thrown!");
+      } catch (CorruptDataException e) {
+        LOGGER.info("Caught CorruptDataEx!", e);
+      }
     }
 
     /**

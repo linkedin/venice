@@ -1,6 +1,6 @@
 package com.linkedin.venice.exceptions.validation;
 
-import com.linkedin.venice.exceptions.KafkaConsumerException;
+import com.linkedin.venice.exceptions.VeniceException;
 
 
 /**
@@ -14,12 +14,11 @@ import com.linkedin.venice.exceptions.KafkaConsumerException;
  * // Benign data validation exception, which includes::
  * @see   DuplicateDataException
  */
-public abstract class DataValidationException extends KafkaConsumerException {
-  public DataValidationException(String message) {
-    super(message);
+public abstract class DataValidationException extends VeniceException {
+  protected DataValidationException() {
   }
 
-  public DataValidationException(String message, Throwable throwable) {
-    super(message, throwable);
+  public DataValidationException(String message, boolean fillInStacktrace) {
+    super(message, fillInStacktrace);
   }
 }

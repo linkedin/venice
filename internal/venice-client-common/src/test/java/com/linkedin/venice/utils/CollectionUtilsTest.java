@@ -4,13 +4,17 @@ import static org.apache.avro.Schema.Type;
 import static org.apache.avro.Schema.create;
 import static org.apache.avro.Schema.createArray;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.alpini.base.misc.ImmutableMapEntry;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -107,6 +111,27 @@ public class CollectionUtilsTest {
     Map populatedMap = new HashMap();
     populatedMap.put("foo", "bar");
     assertNotEquals(CollectionUtils.substituteEmptyMap(populatedMap), Collections.emptyMap());
+  }
+
+  @Test
+  public void testIsEmpty() {
+    assertTrue(CollectionUtils.isEmpty((Map) null));
+    assertTrue(CollectionUtils.isEmpty(Collections.emptyMap()));
+    assertTrue(CollectionUtils.isEmpty(new HashMap<>()));
+    assertFalse(CollectionUtils.isEmpty(CollectionUtils.mapBuilder().put("foo", "bar").build()));
+    assertFalse(CollectionUtils.isEmpty(CollectionUtils.mapBuilder().put("foo", "bar").put("bar", "baz").build()));
+
+    assertTrue(CollectionUtils.isEmpty((Collection) null));
+    assertTrue(CollectionUtils.isEmpty(Collections.emptyList()));
+    assertTrue(CollectionUtils.isEmpty(new ArrayList()));
+    assertFalse(CollectionUtils.isEmpty(Collections.singletonList("foo")));
+    assertFalse(CollectionUtils.isEmpty(Arrays.asList("foo", "bar")));
+
+    assertTrue(CollectionUtils.isEmpty((Set) null));
+    assertTrue(CollectionUtils.isEmpty(Collections.emptySet()));
+    assertTrue(CollectionUtils.isEmpty(new HashSet()));
+    assertFalse(CollectionUtils.isEmpty(Collections.singleton("foo")));
+    assertFalse(CollectionUtils.isEmpty(CollectionUtils.setOf("foo", "bar")));
   }
 
   private void populateIntegerList(List<Integer> list) {
