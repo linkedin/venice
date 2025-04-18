@@ -315,7 +315,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
         .flatMap(store -> store.getVersions().stream())
         .filter(
             version -> version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT
-                && version.getStatus() == VersionStatus.ONLINE)
+                && (version.getStatus() == VersionStatus.STARTED || version.getStatus() == VersionStatus.ONLINE))
         .filter(version -> !downloadingDictionaryFutures.containsKey(version.kafkaTopicName()))
         .map(Version::kafkaTopicName)
         .collect(Collectors.toList());
@@ -419,7 +419,8 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
 
   private void initCompressorFromDictionary(Version version, byte[] dictionary) {
     String kafkaTopic = version.kafkaTopicName();
-    if (version.getStatus() != VersionStatus.ONLINE || !downloadingDictionaryFutures.containsKey(kafkaTopic)) {
+    if ((version.getStatus() != VersionStatus.ONLINE && version.getStatus() != VersionStatus.STARTED)
+        || !downloadingDictionaryFutures.containsKey(kafkaTopic)) {
       // Nothing to do since version was retired.
       return;
     }
