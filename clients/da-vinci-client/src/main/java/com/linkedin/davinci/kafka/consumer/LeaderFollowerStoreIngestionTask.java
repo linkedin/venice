@@ -3237,10 +3237,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return false; // Not leader, don't compress
     }
     PubSubTopic leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
-    if (realTimeTopic != null && !realTimeTopic.equals(leaderTopic)) {
+    if (realTimeTopic == null || !realTimeTopic.equals(leaderTopic)) {
       return false; // We're consuming from version topic (don't compress it)
+    } else {
+      return !compressionStrategy.equals(CompressionStrategy.NO_OP);
     }
-    return !compressionStrategy.equals(CompressionStrategy.NO_OP);
   }
 
   private PubSubMessageProcessedResult processMessage(
