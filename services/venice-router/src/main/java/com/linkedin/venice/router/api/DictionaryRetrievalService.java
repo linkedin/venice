@@ -20,6 +20,7 @@ import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.httpclient.VeniceMetaDataRequest;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -224,7 +225,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     CompletableFuture<PortableHttpResponse> responseFuture = new CompletableFuture<>();
 
     return CompletableFuture.supplyAsync(() -> {
-      long startTime = System.currentTimeMillis();
+      long dictionaryDownloadStartTime = System.currentTimeMillis();
       storageNodeClient.sendRequest(request, responseFuture);
       VeniceException exception = null;
       try {
@@ -236,11 +237,10 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
               "Dictionary download for resource: " + kafkaTopic + " from: " + instanceUrl
                   + " returned unexpected response.");
         } else {
-          long elapsedTimeForDictionaryRetrievalMs = System.currentTimeMillis() - startTime;
           LOGGER.info(
               "Dictionary downloaded successfully for resource: {} took: {} ms",
               kafkaTopic,
-              elapsedTimeForDictionaryRetrievalMs);
+              LatencyUtils.getElapsedTimeFromMsToMs(dictionaryDownloadStartTime));
           return dictionary;
         }
       } catch (InterruptedException e) {
