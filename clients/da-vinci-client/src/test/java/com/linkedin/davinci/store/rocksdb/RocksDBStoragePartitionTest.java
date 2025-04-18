@@ -66,6 +66,7 @@ import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.rocksdb.Checkpoint;
 import org.rocksdb.ComparatorOptions;
+import org.rocksdb.FlushOptions;
 import org.rocksdb.Options;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
@@ -1129,17 +1130,20 @@ public class RocksDBStoragePartitionTest {
 
     try (MockedStatic<RocksDBStoragePartition> rocksDBStoragePartition =
         Mockito.mockStatic(RocksDBStoragePartition.class)) {
-      rocksDBStoragePartition.when(() -> RocksDBStoragePartition.createSnapshot(Mockito.any(), Mockito.any()))
+      rocksDBStoragePartition
+          .when(() -> RocksDBStoragePartition.createSnapshot(Mockito.any(), Mockito.any(), Mockito.anyBoolean()))
           .thenAnswer(invocation -> {
             return null;
           });
       storagePartition.createSnapshot();
       if (blobTransferEnabled) {
-        rocksDBStoragePartition
-            .verify(() -> RocksDBStoragePartition.createSnapshot(Mockito.any(), Mockito.any()), Mockito.times(1));
+        rocksDBStoragePartition.verify(
+            () -> RocksDBStoragePartition.createSnapshot(Mockito.any(), Mockito.any(), Mockito.anyBoolean()),
+            Mockito.times(1));
       } else {
-        rocksDBStoragePartition
-            .verify(() -> RocksDBStoragePartition.createSnapshot(Mockito.any(), Mockito.any()), Mockito.never());
+        rocksDBStoragePartition.verify(
+            () -> RocksDBStoragePartition.createSnapshot(Mockito.any(), Mockito.any(), Mockito.anyBoolean()),
+            Mockito.never());
       }
     }
 
@@ -1158,6 +1162,7 @@ public class RocksDBStoragePartitionTest {
     int partition = 0;
     String dir = basePath + "/" + storeName + "_v" + version + "/"
         + RocksDBUtils.getPartitionDbName(storeName + "_v" + version, partition);
+    boolean isReadOnly = false;
 
     try (MockedStatic<Checkpoint> checkpointMockedStatic = Mockito.mockStatic(Checkpoint.class)) {
       try (MockedStatic<FileUtils> fileUtilsMockedStatic = Mockito.mockStatic(FileUtils.class)) {
@@ -1165,17 +1170,19 @@ public class RocksDBStoragePartitionTest {
         RocksDB mockRocksDB = mock(RocksDB.class);
         Checkpoint mockCheckpoint = mock(Checkpoint.class);
         checkpointMockedStatic.when(() -> Checkpoint.create(mockRocksDB)).thenReturn(mockCheckpoint);
+        Mockito.doNothing().when(mockRocksDB).flush(Mockito.any(FlushOptions.class));
         String fullSnapshotPath = dir + "/.snapshot_files";
         File file = Mockito.spy(new File(fullSnapshotPath));
         Mockito.doNothing().when(mockCheckpoint).createCheckpoint(fullSnapshotPath);
 
         // case 1: snapshot file not exists
         // test execute
-        RocksDBStoragePartition.createSnapshot(mockRocksDB, fullSnapshotPath);
+        RocksDBStoragePartition.createSnapshot(mockRocksDB, fullSnapshotPath, isReadOnly);
         // test verify
         Mockito.verify(mockCheckpoint, Mockito.times(1)).createCheckpoint(fullSnapshotPath);
         fileUtilsMockedStatic
             .verify(() -> FileUtils.deleteDirectory(Mockito.eq(file.getAbsoluteFile())), Mockito.times(0));
+        Mockito.verify(mockRocksDB, Mockito.times(1)).flush(Mockito.any(FlushOptions.class));
 
         // case 2: snapshot file exists
         // test prepare
@@ -1184,11 +1191,12 @@ public class RocksDBStoragePartitionTest {
           fullSnapshotDir.mkdirs();
         }
         // test execute
-        RocksDBStoragePartition.createSnapshot(mockRocksDB, fullSnapshotPath);
+        RocksDBStoragePartition.createSnapshot(mockRocksDB, fullSnapshotPath, isReadOnly);
         // test verify
         Mockito.verify(mockCheckpoint, Mockito.times(2)).createCheckpoint(fullSnapshotPath);
         fileUtilsMockedStatic
             .verify(() -> FileUtils.deleteDirectory(Mockito.eq(file.getAbsoluteFile())), Mockito.times(1));
+        Mockito.verify(mockRocksDB, Mockito.times(2)).flush(Mockito.any(FlushOptions.class));
 
         // case 3: delete snapshot file fail
         // test prepare
@@ -1196,7 +1204,7 @@ public class RocksDBStoragePartitionTest {
             .thenThrow(new IOException("Delete snapshot file failed."));
         // test execute
         try {
-          RocksDBStoragePartition.createSnapshot(mockRocksDB, fullSnapshotPath);
+          RocksDBStoragePartition.createSnapshot(mockRocksDB, fullSnapshotPath, isReadOnly);
           Assert.fail("Should throw exception");
         } catch (VeniceException e) {
           // test verify
@@ -1215,7 +1223,7 @@ public class RocksDBStoragePartitionTest {
             .createCheckpoint(fullSnapshotPath);
         // test execute
         try {
-          RocksDBStoragePartition.createSnapshot(mockRocksDB, fullSnapshotPath);
+          RocksDBStoragePartition.createSnapshot(mockRocksDB, fullSnapshotPath, isReadOnly);
           Assert.fail("Should throw exception");
         } catch (VeniceException e) {
           // test verify
@@ -1226,6 +1234,38 @@ public class RocksDBStoragePartitionTest {
               e.getMessage(),
               "Received exception during RocksDB's snapshot creation in directory " + fullSnapshotPath);
         }
+      }
+    }
+  }
+
+  @Test
+  public void testCreateSnapshotForReadOnlyDB() throws RocksDBException {
+    String basePath = Utils.getUniqueTempPath("sstTest");
+    String storeName = "test-store";
+    int version = 1;
+    int partition = 0;
+    String dir = basePath + "/" + storeName + "_v" + version + "/"
+        + RocksDBUtils.getPartitionDbName(storeName + "_v" + version, partition);
+    boolean isReadOnly = true;
+
+    try (MockedStatic<Checkpoint> checkpointMockedStatic = Mockito.mockStatic(Checkpoint.class)) {
+      try (MockedStatic<FileUtils> fileUtilsMockedStatic = Mockito.mockStatic(FileUtils.class)) {
+        // test prepare
+        RocksDB mockRocksDB = mock(RocksDB.class);
+        Checkpoint mockCheckpoint = mock(Checkpoint.class);
+        checkpointMockedStatic.when(() -> Checkpoint.create(mockRocksDB)).thenReturn(mockCheckpoint);
+        Mockito.doNothing().when(mockRocksDB).flush(Mockito.any(FlushOptions.class));
+        String fullSnapshotPath = dir + "/.snapshot_files";
+        File file = Mockito.spy(new File(fullSnapshotPath));
+        Mockito.doNothing().when(mockCheckpoint).createCheckpoint(fullSnapshotPath);
+
+        // test execute
+        RocksDBStoragePartition.createSnapshot(mockRocksDB, fullSnapshotPath, isReadOnly);
+        // test verify
+        Mockito.verify(mockCheckpoint, Mockito.times(1)).createCheckpoint(fullSnapshotPath);
+        fileUtilsMockedStatic
+            .verify(() -> FileUtils.deleteDirectory(Mockito.eq(file.getAbsoluteFile())), Mockito.times(0));
+        Mockito.verify(mockRocksDB, Mockito.never()).flush(Mockito.any(FlushOptions.class));
       }
     }
   }
