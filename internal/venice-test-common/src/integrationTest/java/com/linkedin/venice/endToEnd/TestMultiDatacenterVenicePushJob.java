@@ -1,7 +1,5 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V3_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
@@ -45,8 +43,6 @@ public class TestMultiDatacenterVenicePushJob {
   public void setUp() {
     String clusterName = CLUSTER_NAMES[0];
     Properties controllerProps = new Properties();
-    controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, 100);
-    controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, true);
     Properties serverProperties = new Properties();
 
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
@@ -81,6 +77,7 @@ public class TestMultiDatacenterVenicePushJob {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
+  // Runs a VPJ and verifies remote consumption for compression enabled batch store in a multi-region setup
   public void testVPJWithCompressionEnabledBatchStore() throws IOException {
     File inputDir = getTempDataDirectory();
     TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100, 100);
