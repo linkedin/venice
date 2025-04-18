@@ -27,6 +27,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
@@ -799,6 +800,18 @@ public class TopicManager implements Closeable {
 
   public String getPubSubClusterAddress() {
     return this.pubSubClusterAddress;
+  }
+
+  /**
+   * Resolve the position bytes to a PubSubPosition object.
+   * @param topicPartition the topic partition to resolve the position for
+   * @param positionBytes the position bytes to resolve
+   * @return the resolved PubSubPosition object
+   */
+  public PubSubPosition resolvePosition(PubSubTopicPartition topicPartition, byte[] positionBytes) {
+    // todo(sushantmane): This is a temporary solution. We should be using the PubSubPosition class
+    // to resolve the position bytes.
+    return null;
   }
 
   @Override

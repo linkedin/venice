@@ -64,7 +64,6 @@ public class TestAdminConsumerService {
     VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
     doReturn(mock(ZkClient.class)).when(admin).getZkClient();
     doReturn(mock(HelixAdapterSerializer.class)).when(admin).getAdapterSerializer();
-    doReturn(consumerFactory).when(admin).getPubSubConsumerAdapterFactory();
     doReturn("localhost:1234").when(admin).getKafkaBootstrapServers(true);
     doReturn(true).when(admin).isSslToKafka();
 
@@ -81,6 +80,7 @@ public class TestAdminConsumerService {
           admin,
           controllerConfig,
           metricsRepository,
+          consumerFactory,
           pubSubTopicRepository,
           pubSubMessageDeserializer);
 
@@ -93,6 +93,7 @@ public class TestAdminConsumerService {
             admin,
             controllerConfig,
             metricsRepository,
+            consumerFactory,
             pubSubTopicRepository,
             pubSubMessageDeserializer);
       } catch (Exception e) {

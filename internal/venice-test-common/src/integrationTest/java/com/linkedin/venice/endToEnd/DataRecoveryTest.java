@@ -268,7 +268,8 @@ public class DataRecoveryTest {
           IntStream.range(0, 10).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))),
           HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID,
           pubSubProducerAdapterFactory,
-          additionalConfigs);
+          additionalConfigs,
+          pubSubBrokerWrappers.get(0).getPubSubPositionTypeRegistry());
       TestUtils.waitForNonDeterministicPushCompletion(
           versionCreationResponse.getKafkaTopic(),
           parentControllerClient,

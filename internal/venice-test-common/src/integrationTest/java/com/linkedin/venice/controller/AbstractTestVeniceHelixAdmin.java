@@ -113,7 +113,8 @@ class AbstractTestVeniceHelixAdmin {
         metricsRepository,
         D2TestUtils.getAndStartD2Client(zkAddress),
         pubSubTopicRepository,
-        pubSubBrokerWrapper.getPubSubClientsFactory());
+        pubSubBrokerWrapper.getPubSubClientsFactory(),
+        pubSubBrokerWrapper.getPubSubPositionTypeRegistry());
     veniceAdmin.initStorageCluster(clusterName);
     TopicCleanupService topicCleanupService = new TopicCleanupService(
         veniceAdmin,

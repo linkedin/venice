@@ -31,6 +31,7 @@ import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
@@ -67,6 +68,7 @@ public class DaVinciClusterAgnosticTest {
   private static final String FABRIC = "dc-0";
 
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
+  private PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
   private VeniceMultiClusterWrapper multiClusterVenice;
   private String[] clusterNames;
   private String parentControllerURLs;
@@ -97,6 +99,8 @@ public class DaVinciClusterAgnosticTest {
         .stream()
         .map(VeniceControllerWrapper::getControllerUrl)
         .collect(Collectors.joining(","));
+    pubSubPositionTypeRegistry =
+        multiRegionMultiClusterWrapper.getParentKafkaBrokerWrapper().getPubSubPositionTypeRegistry();
 
     for (String cluster: clusterNames) {
       try (ControllerClient controllerClient =
@@ -152,7 +156,8 @@ public class DaVinciClusterAgnosticTest {
             INT_VALUE_SCHEMA,
             IntStream.range(0, initialKeyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, value)),
             pubSubProducerAdapterFactory,
-            additionalPubSubProperties);
+            additionalPubSubProperties,
+            pubSubPositionTypeRegistry);
         // Verify the data can be ingested by classical Venice before proceeding.
         TestUtils.waitForNonDeterministicPushCompletion(
             response.getKafkaTopic(),
@@ -203,7 +208,8 @@ public class DaVinciClusterAgnosticTest {
             INT_VALUE_SCHEMA,
             IntStream.range(0, initialKeyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, newValue)),
             pubSubProducerAdapterFactory,
-            additionalPubSubProperties);
+            additionalPubSubProperties,
+            pubSubPositionTypeRegistry);
         TestUtils.waitForNonDeterministicPushCompletion(
             versionCreationResponse.getKafkaTopic(),
             parentControllerClient,
@@ -236,7 +242,8 @@ public class DaVinciClusterAgnosticTest {
             INT_VALUE_SCHEMA,
             IntStream.range(0, initialKeyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, newMigratedStoreValue)),
             pubSubProducerAdapterFactory,
-            additionalPubSubProperties);
+            additionalPubSubProperties,
+            pubSubPositionTypeRegistry);
         TestUtils.waitForNonDeterministicPushCompletion(
             versionCreationResponse.getKafkaTopic(),
             parentControllerClient,
@@ -308,7 +315,8 @@ public class DaVinciClusterAgnosticTest {
           IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, record1)),
           1,
           pubSubProducerAdapterFactory,
-          additionalPubSubProperties);
+          additionalPubSubProperties,
+          pubSubPositionTypeRegistry);
       // Verify the data can be ingested by classical Venice before proceeding.
       TestUtils.waitForNonDeterministicPushCompletion(
           response.getKafkaTopic(),
@@ -354,7 +362,8 @@ public class DaVinciClusterAgnosticTest {
             IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, record2)),
             2,
             pubSubProducerAdapterFactory,
-            additionalPubSubProperties);
+            additionalPubSubProperties,
+            pubSubPositionTypeRegistry);
 
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
           for (int k = 0; k < keyCount; k++) {

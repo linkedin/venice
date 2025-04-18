@@ -11,11 +11,11 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterConcurrentDelegator;
-import com.linkedin.venice.pubsub.api.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterDelegator;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
@@ -34,7 +34,7 @@ public class VeniceWriterFactoryTest {
     when(producerFactoryMock.create(producerCtxCaptor.capture())).thenReturn(producerAdapterMock);
     Properties properties = new Properties();
     properties.put(ConfigKeys.PUBSUB_BROKER_ADDRESS, "kafka:9898");
-    VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(properties, producerFactoryMock, null);
+    VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(properties, producerFactoryMock, null, null);
     try (VeniceWriter veniceWriter = veniceWriterFactory.createVeniceWriter(
         new VeniceWriterOptions.Builder("store_v1").setBrokerAddress("kafka:9898").setPartitionCount(1).build())) {
       PubSubProducerAdapterContext capturedProducerCtx = producerCtxCaptor.getValue();
@@ -59,7 +59,7 @@ public class VeniceWriterFactoryTest {
 
     Properties properties = new Properties();
     properties.put(ConfigKeys.PUBSUB_BROKER_ADDRESS, "kafka:9898");
-    VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(properties, producerFactoryMock, null);
+    VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(properties, producerFactoryMock, null, null);
     try (VeniceWriter veniceWriter = veniceWriterFactory.createVeniceWriter(
         new VeniceWriterOptions.Builder("store_v1").setBrokerAddress("kafka:9898")
             .setPartitionCount(1)
@@ -111,14 +111,14 @@ public class VeniceWriterFactoryTest {
     Properties properties = new Properties();
     properties.put(ConfigKeys.PUBSUB_BROKER_ADDRESS, "kafka:9898");
 
-    VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(properties, null, null);
+    VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(properties, null, null, null);
     assertNotNull(veniceWriterFactory.getProducerAdapterFactory());
 
     veniceWriterFactory = new VeniceWriterFactory(properties);
     assertNotNull(veniceWriterFactory.getProducerAdapterFactory());
     assertEquals(veniceWriterFactory.getProducerAdapterFactory().getClass(), ApacheKafkaProducerAdapterFactory.class);
 
-    veniceWriterFactory = new VeniceWriterFactory(properties, new ApacheKafkaProducerAdapterFactory(), null);
+    veniceWriterFactory = new VeniceWriterFactory(properties, new ApacheKafkaProducerAdapterFactory(), null, null);
     assertNotNull(veniceWriterFactory.getProducerAdapterFactory());
     assertEquals(veniceWriterFactory.getProducerAdapterFactory().getClass(), ApacheKafkaProducerAdapterFactory.class);
   }

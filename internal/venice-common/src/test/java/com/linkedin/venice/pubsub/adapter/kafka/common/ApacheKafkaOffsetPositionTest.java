@@ -1,4 +1,4 @@
-package com.linkedin.venice.pubsub.adapter.kafka;
+package com.linkedin.venice.pubsub.adapter.kafka.common;
 
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
@@ -7,7 +7,7 @@ import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.pubsub.PubSubPositionType;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import java.io.IOException;
@@ -115,7 +115,7 @@ public class ApacheKafkaOffsetPositionTest {
   public void testGetPositionWireFormat() throws IOException {
     ApacheKafkaOffsetPosition kafkaPosition = ApacheKafkaOffsetPosition.of(Long.MAX_VALUE);
     PubSubPositionWireFormat wireFormat = kafkaPosition.getPositionWireFormat();
-    assertEquals(wireFormat.type, PubSubPositionType.APACHE_KAFKA_OFFSET);
+    assertEquals(wireFormat.type, PubSubPositionTypeRegistry.APACHE_KAFKA_OFFSET_POSITION_TYPE_ID);
     ApacheKafkaOffsetPosition kafkaPosition2 = new ApacheKafkaOffsetPosition(wireFormat.rawBytes);
     assertEquals(kafkaPosition2.getOffset(), kafkaPosition.getOffset());
     assertEquals(kafkaPosition2, kafkaPosition);

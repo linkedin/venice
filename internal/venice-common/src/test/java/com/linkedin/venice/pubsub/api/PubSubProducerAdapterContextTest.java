@@ -8,6 +8,7 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
@@ -29,7 +30,7 @@ public class PubSubProducerAdapterContextTest {
         .setCompressionType("snappy")
         .build();
 
-    assertEquals(context.getProducerName(), "test-producer");
+    assertTrue(context.getProducerName().contains("test-producer"));
     assertEquals(context.getBrokerAddress(), "localhost:9092");
     assertEquals(context.getCompressionType(), "none");
     assertFalse(context.isProducerCompressionEnabled());
@@ -56,6 +57,6 @@ public class PubSubProducerAdapterContextTest {
     assertNull(context.getPubSubTopicRepository());
     assertTrue(context.shouldValidateProducerConfigStrictly());
     assertNull(context.getSecurityProtocol());
-    assertNull(context.getProducerName());
+    assertNotNull(context.getProducerName());
   }
 }

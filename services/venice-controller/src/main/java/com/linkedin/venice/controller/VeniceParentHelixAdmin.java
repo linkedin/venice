@@ -207,7 +207,6 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.persona.StoragePersona;
-import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -4481,14 +4480,6 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public VeniceWriterFactory getVeniceWriterFactory() {
     return getVeniceHelixAdmin().getVeniceWriterFactory();
-  }
-
-  /**
-   * @see VeniceHelixAdmin#getPubSubConsumerAdapterFactory()
-   */
-  @Override
-  public PubSubConsumerAdapterFactory getPubSubConsumerAdapterFactory() {
-    return getVeniceHelixAdmin().getPubSubConsumerAdapterFactory();
   }
 
   @Override

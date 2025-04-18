@@ -23,6 +23,7 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.utils.TestUtils;
@@ -64,6 +65,7 @@ public class NearlineE2ELatencyTest {
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
+  private PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {
@@ -86,6 +88,8 @@ public class NearlineE2ELatencyTest {
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
     multiRegionMultiClusterWrapper.logMultiCluster();
+    pubSubPositionTypeRegistry =
+        multiRegionMultiClusterWrapper.getParentKafkaBrokerWrapper().getPubSubPositionTypeRegistry();
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -140,7 +144,8 @@ public class NearlineE2ELatencyTest {
           IntStream.range(0, 10).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))),
           HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID,
           pubSubProducerAdapterFactory,
-          additionalConfigs);
+          additionalConfigs,
+          pubSubPositionTypeRegistry);
       JobStatusQueryResponse response = parentControllerCli
           .queryDetailedJobStatus(versionCreationResponse.getKafkaTopic(), childDatacenters.get(0).getRegionName());
       Assert.assertFalse(response.isError());
