@@ -7164,7 +7164,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (nodeRemovableResult.isRemovable()) {
         stoppableInstances.add(nodeRemovableResult.getInstanceId());
       } else {
-        nonStoppableInstances.put(nodeRemovableResult.getInstanceId(), nodeRemovableResult.getBlockingReason());
+        nonStoppableInstances.put(nodeRemovableResult.getInstanceId(), nodeRemovableResult.getFormattedMessage());
       }
     }
     return statuses;
