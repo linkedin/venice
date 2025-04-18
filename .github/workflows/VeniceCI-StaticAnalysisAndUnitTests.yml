@@ -62,6 +62,12 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
+      - name: Annotate PR with SpotBugs results
+        uses: jwgmeligmeyling/spotbugs-github-action@master
+        with:
+          path: |
+            **/build/reports/spotbugs/main.xml
+            **/build/reports/spotbugs/test.xml
 
   Clients:
    uses: ./.github/workflows/UnitTests-core.yml
