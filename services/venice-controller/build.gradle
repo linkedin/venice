@@ -43,6 +43,7 @@ dependencies {
   implementation libraries.spark
   // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
   implementation libraries.zkclient
+  implementation libraries.opentelemetryApi
 
   testImplementation project(':services:venice-router')
   testImplementation libraries.avroUtilFastserde
