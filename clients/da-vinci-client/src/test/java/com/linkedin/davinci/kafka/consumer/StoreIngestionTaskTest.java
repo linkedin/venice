@@ -481,8 +481,14 @@ public abstract class StoreIngestionTaskTest {
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricRepo).sensor(anyString(), any());
     taskPollingService = Executors.newFixedThreadPool(1);
-    storeBufferService =
-        new StoreBufferService(3, 10000, 1000, isStoreWriterBufferAfterLeaderLogicEnabled(), mockMetricRepo, true);
+    storeBufferService = new StoreBufferService(
+        3,
+        10000,
+        1000,
+        isStoreWriterBufferAfterLeaderLogicEnabled(),
+        null,
+        mockMetricRepo,
+        true);
     storeBufferService.start();
   }
 
@@ -1091,7 +1097,8 @@ public abstract class StoreIngestionTaskTest {
         kafkaConsumerServiceStats,
         false,
         mock(ReadOnlyStoreRepository.class),
-        false);
+        false,
+        veniceServerConfig);
     localKafkaConsumerService.start();
 
     Properties remoteKafkaProps = new Properties();
@@ -1114,7 +1121,8 @@ public abstract class StoreIngestionTaskTest {
         kafkaConsumerServiceStats,
         false,
         mock(ReadOnlyStoreRepository.class),
-        false);
+        false,
+        veniceServerConfig);
     remoteKafkaConsumerService.start();
 
     prepareAggKafkaConsumerServiceMock();

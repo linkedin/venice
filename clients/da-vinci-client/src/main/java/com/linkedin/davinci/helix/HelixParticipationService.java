@@ -155,7 +155,7 @@ public class HelixParticipationService extends AbstractVeniceService
         300L,
         TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(),
-        new DaemonThreadFactory(threadName));
+        new DaemonThreadFactory(threadName, veniceConfigLoader.getVeniceServerConfig().getRegionName()));
     helixStateTransitionThreadPool.allowCoreThreadTimeOut(true);
 
     return helixStateTransitionThreadPool;

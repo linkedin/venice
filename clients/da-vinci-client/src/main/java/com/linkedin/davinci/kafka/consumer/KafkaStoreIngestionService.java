@@ -343,6 +343,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           serverConfig.getStoreWriterBufferMemoryCapacity(),
           serverConfig.getStoreWriterBufferNotifyDelta(),
           serverConfig.isStoreWriterBufferAfterLeaderLogicEnabled(),
+          serverConfig.getRegionName(),
           metricsRepository,
           true);
     }
@@ -448,18 +449,20 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     if (serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
       this.aaWCWorkLoadProcessingThreadPool = Executors.newFixedThreadPool(
           serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize(),
-          new DaemonThreadFactory("AA_WC_PARALLEL_PROCESSING"));
+          new DaemonThreadFactory("AA_WC_PARALLEL_PROCESSING", serverConfig.getRegionName()));
     } else {
       this.aaWCWorkLoadProcessingThreadPool = null;
     }
 
     this.idleStoreIngestionTaskKillerExecutor = serverConfig.getIdleIngestionTaskCleanupIntervalInSeconds() > 0
-        ? Executors.newScheduledThreadPool(1, new DaemonThreadFactory("idle-store-ingestion-task-clean-up-thread"))
+        ? Executors.newScheduledThreadPool(
+            1,
+            new DaemonThreadFactory("idle-store-ingestion-task-clean-up-thread", serverConfig.getRegionName()))
         : null;
 
     this.aaWCIngestionStorageLookupThreadPool = Executors.newFixedThreadPool(
         serverConfig.getAaWCIngestionStorageLookupThreadPoolSize(),
-        new DaemonThreadFactory("AA_WC_INGESTION_STORAGE_LOOKUP"));
+        new DaemonThreadFactory("AA_WC_INGESTION_STORAGE_LOOKUP", serverConfig.getRegionName()));
     LOGGER.info(
         "Enabled a thread pool for AA/WC ingestion lookup with {} threads.",
         serverConfig.getAaWCIngestionStorageLookupThreadPoolSize());
@@ -539,8 +542,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       aggKafkaConsumerService.start();
     }
     if (participantStoreConsumptionTask != null) {
-      participantStoreConsumerExecutorService =
-          Executors.newSingleThreadExecutor(new DaemonThreadFactory("ParticipantStoreConsumptionTask"));
+      participantStoreConsumerExecutorService = Executors.newSingleThreadExecutor(
+          new DaemonThreadFactory("ParticipantStoreConsumptionTask", serverConfig.getRegionName()));
       participantStoreConsumerExecutorService.submit(participantStoreConsumptionTask);
     }
     final int idleIngestionTaskCleanupIntervalInSeconds = serverConfig.getIdleIngestionTaskCleanupIntervalInSeconds();

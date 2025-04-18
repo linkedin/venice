@@ -40,7 +40,7 @@ public class AdminConsumerService extends AbstractVeniceService {
   private final Optional<String> remoteKafkaServerUrl;
   // Only support single cluster right now
   private AdminConsumptionTask consumerTask;
-  private final ThreadFactory threadFactory = new DaemonThreadFactory("AdminTopicConsumer");
+  private final ThreadFactory threadFactory;
   private Thread consumerThread;
 
   private final PubSubTopicRepository pubSubTopicRepository;
@@ -69,6 +69,7 @@ public class AdminConsumerService extends AbstractVeniceService {
     }
     this.localKafkaServerUrl = admin.getKafkaBootstrapServers(admin.isSslToKafka());
     this.consumerFactory = admin.getPubSubConsumerAdapterFactory();
+    this.threadFactory = new DaemonThreadFactory("AdminConsumerService", config.getRegionName());
   }
 
   @Override

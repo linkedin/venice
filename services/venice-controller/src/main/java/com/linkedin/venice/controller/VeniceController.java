@@ -323,6 +323,7 @@ public class VeniceController {
     grpcExecutor = ThreadPoolFactory.createThreadPool(
         multiClusterConfigs.getGrpcServerThreadCount(),
         CONTROLLER_GRPC_SERVER_THREAD_NAME,
+        multiClusterConfigs.getRegionName(),
         Integer.MAX_VALUE,
         BlockingQueueType.LINKED_BLOCKING_QUEUE);
 
