@@ -25,6 +25,8 @@ import org.apache.hadoop.mapred.OutputCollector;
 import org.apache.hadoop.mapred.Reducer;
 import org.apache.hadoop.mapred.Reporter;
 import org.apache.hadoop.mapred.RunningJob;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -40,6 +42,7 @@ import org.apache.hadoop.mapred.RunningJob;
  */
 public class VeniceReducer extends AbstractPartitionWriter
     implements Reducer<BytesWritable, BytesWritable, BytesWritable, BytesWritable> {
+  private static final Logger LOGGER = LogManager.getLogger(AbstractPartitionWriter.class);
   public static final String MAP_REDUCE_JOB_ID_PROP = "mapreduce.job.id";
 
   private Reporter reporter = null;
@@ -134,6 +137,7 @@ public class VeniceReducer extends AbstractPartitionWriter
     JobID jobID = null;
     RunningJob runningJob = null;
     Counters quotaCounters = null;
+
     try {
       hadoopJobClient = hadoopJobClientProvider.getJobClientFromConfig(jobConfig);
       jobIdProp = jobConfig.get(MAP_REDUCE_JOB_ID_PROP);
@@ -141,16 +145,13 @@ public class VeniceReducer extends AbstractPartitionWriter
       runningJob = hadoopJobClient.getJob(jobID);
       quotaCounters = runningJob.getCounters();
       return MRJobCounterHelper.getTotalKeySize(quotaCounters) + MRJobCounterHelper.getTotalValueSize(quotaCounters);
-
     } catch (Exception e) {
-      /**
-       * Note that this will catch a NPE during tests unless the storage quota is set to
-       * {@link Store.UNLIMITED_STORAGE_QUOTA}, which seems quite messed up. It manifests as {@link runningJob}
-       * being null, which then prevents us from calling {@link RunningJob#getCounters()}. Obviously, this is
-       * not happening in prod, though it's not completely clear why...
-       *
-       * TODO: Fix this so that tests are more representative of prod
-       */
+      if (jobConfig.get("mapreduce.framework.name").equals("local")) {
+        // jobs cannot be tracked when the job is running in local mode, as happens in tests.
+        // prod jobs run in yarn mode
+        LOGGER.warn("MapReduce job is running in local mode, so not checking the data size.");
+        return 0;
+      }
       throw new VeniceException(
           String.format(
               "Can't read input file size from counters; hadoopJobClient: %s; jobIdProp: %s; jobID: %s; runningJob: %s; quotaCounters: %s",
