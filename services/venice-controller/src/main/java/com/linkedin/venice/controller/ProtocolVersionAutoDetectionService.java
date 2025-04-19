@@ -64,7 +64,8 @@ public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
 
   /**
    * Get the smallest local admin operation protocol version for all consumers in the given cluster.
-   * This will help to ensure that all consumers are on the same page regarding the protocol version.
+   * This will help to ensure that, during re-balancing process, the version we use is still a good version,
+   * and we won't send in bad admin message that consumers cannot deserialize.
    *
    * @param clusterName The name of the cluster to check.
    * @return The smallest local admin operation protocol version for all consumers (parent + child controllers)
@@ -83,30 +84,25 @@ public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
 
     // Forward the request to all regions
     for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
-      Map<String, Long> controllerUrlToVersionMap = getControllerUrlToVersionMap(clusterName, entry);
+      ControllerClient controllerClient = entry.getValue();
+      AdminOperationProtocolVersionControllerResponse response =
+          controllerClient.getAdminOperationProtocolVersionFromControllers(clusterName);
+      if (response.isError()) {
+        throw new VeniceException(
+            "Failed to get admin operation protocol version from child controller " + entry.getKey() + ": "
+                + response.getError());
+      }
+      Map<String, Long> controllerUrlToVersionMap = response.getControllerUrlToVersionMap();
       regionToControllerToVersionMap.put(entry.getKey(), controllerUrlToVersionMap);
     }
 
     LOGGER.info("All controller versions for cluster {}: {}", clusterName, regionToControllerToVersionMap);
+    // Find the smallest version across all consumers
     return regionToControllerToVersionMap.values()
         .stream()
         .flatMap(m -> m.values().stream())
         .min(Long::compare)
         .orElse(Long.MAX_VALUE);
-  }
-
-  private Map<String, Long> getControllerUrlToVersionMap(
-      String clusterName,
-      Map.Entry<String, ControllerClient> regionToControllerClient) {
-    ControllerClient controllerClient = regionToControllerClient.getValue();
-    AdminOperationProtocolVersionControllerResponse response =
-        controllerClient.getAdminOperationProtocolVersionFromControllers(clusterName);
-    if (response.isError()) {
-      throw new VeniceException(
-          "Failed to get admin operation protocol version from child controller " + regionToControllerClient.getKey()
-              + ": " + response.getError());
-    }
-    return response.getControllerUrlToVersionMap();
   }
 
   class ProtocolVersionDetectionTask implements Runnable {
