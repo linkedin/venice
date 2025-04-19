@@ -396,12 +396,6 @@ public class ConfigKeys {
       "admin.operation.protocol.version.auto.detection.enabled";
 
   /**
-   * The number of threads to use for the admin operation protocol version auto-detection service.
-   */
-  public static final String ADMIN_OPERATION_PROTOCOL_VERSION_AUTO_DETECTION_THREAD_COUNT =
-      "admin.operation.protocol.version.auto.detection.thread.count";
-
-  /**
    * The time interval to check the admin operation protocol version auto-detection service.
    */
   public static final String ADMIN_OPERATION_PROTOCOL_VERSION_AUTO_DETECTION_INTERVAL_MS =
