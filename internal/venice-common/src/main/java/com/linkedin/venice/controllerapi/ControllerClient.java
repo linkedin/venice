@@ -1543,6 +1543,17 @@ public class ControllerClient implements Closeable {
         Optional.empty());
   }
 
+  /**
+   * This method is used to make a request to the controller.
+   * The request will be routed to LEADER controller if the controllerUrl is not provided.
+   * @param route : Controller Route
+   * @param params : Params for the request
+   * @param responseType : Type of the response
+   * @param timeoutMs : Timeout for the request
+   * @param maxAttempts : Number of attempts to make the request
+   * @param data : Data to be sent in the request
+   * @param controllerUrl : URL of the controller to send the request to. If not provided, send to the leader controller.
+   */
   private <T extends ControllerResponse> T request(
       ControllerRoute route,
       QueryParams params,
@@ -1556,6 +1567,8 @@ public class ControllerClient implements Closeable {
     try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
       for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
         try {
+          // If the controllerUrl is not provided, use the leader controller URL.
+          // This option is useful when we want to forward request to specific controller (e.g. to standby controller)
           return transport
               .request(controllerUrl.orElse(getLeaderControllerUrl()), route, params, responseType, timeoutMs, data);
         } catch (ExecutionException | TimeoutException e) {
