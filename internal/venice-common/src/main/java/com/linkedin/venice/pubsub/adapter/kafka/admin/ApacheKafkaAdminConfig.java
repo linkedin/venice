@@ -21,15 +21,13 @@ public class ApacheKafkaAdminConfig {
   private final String brokerAddress;
   private final long topicConfigMaxRetryInMs;
   private final Duration defaultApiTimeout;
-  private final boolean isSslEnabled;
 
   public ApacheKafkaAdminConfig(VeniceProperties veniceProperties) {
     this.brokerAddress = veniceProperties.getString(ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS);
-    this.adminProperties = getValidAdminProperties(
-        veniceProperties.clipAndFilterNamespace(ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX).toProperties());
+    this.adminProperties =
+        ApacheKafkaUtils.getValidKafkaClientProperties(veniceProperties, AdminClientConfig.configNames());
     this.adminProperties.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, brokerAddress);
     // Setup ssl config if needed.
-    this.isSslEnabled = ApacheKafkaUtils.validateAndCopyKafkaSSLConfig(veniceProperties, this.adminProperties);
     this.adminProperties.put(AdminClientConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
     this.topicConfigMaxRetryInMs =
         Duration
@@ -53,7 +51,7 @@ public class ApacheKafkaAdminConfig {
   @Override
   public String toString() {
     return "ApacheKafkaAdminConfig{brokerAddress=" + adminProperties.get(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG)
-        + ", isSslEnabled=" + isSslEnabled + ", defaultApiTimeout=" + defaultApiTimeout + "}";
+        + ", defaultApiTimeout=" + defaultApiTimeout + "}";
   }
 
   long getTopicConfigMaxRetryInMs() {
@@ -66,15 +64,5 @@ public class ApacheKafkaAdminConfig {
 
   public String getBrokerAddress() {
     return brokerAddress;
-  }
-
-  public static Properties getValidAdminProperties(Properties extractedProperties) {
-    Properties validProperties = new Properties();
-    extractedProperties.forEach((configKey, configVal) -> {
-      if (AdminClientConfig.configNames().contains(configKey)) {
-        validProperties.put(configKey, configVal);
-      }
-    });
-    return validProperties;
   }
 }

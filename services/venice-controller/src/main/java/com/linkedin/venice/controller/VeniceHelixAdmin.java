@@ -166,7 +166,6 @@ import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
@@ -786,7 +785,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     controllerConfig = new VeniceControllerClusterConfig(new VeniceProperties(clonedProperties));
     Properties properties = multiClusterConfigs.getCommonConfig().getProps().getPropertiesCopy();
-    ApacheKafkaProducerConfig.copyKafkaSASLProperties(originalPros, properties, false);
     if (ApacheKafkaUtils.isKafkaSSLProtocol(controllerConfig.getKafkaSecurityProtocol())) {
       Optional<SSLConfig> sslConfig = controllerConfig.getSslConfig();
       if (!sslConfig.isPresent()) {
