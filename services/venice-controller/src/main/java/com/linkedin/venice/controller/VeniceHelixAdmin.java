@@ -6573,6 +6573,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public void stopVeniceController() {
     try {
+      controllerStateModelFactory.close();
       helixManager.disconnect();
       topicManagerRepository.close();
       zkClient.close();

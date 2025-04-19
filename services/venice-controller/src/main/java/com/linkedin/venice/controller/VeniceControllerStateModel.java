@@ -7,9 +7,15 @@ import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.NotificationContext;
@@ -51,6 +57,8 @@ public class VeniceControllerStateModel extends StateModel {
   private SafeHelixManager helixManager;
   private HelixVeniceClusterResources clusterResources;
 
+  private final ExecutorService workerService;
+
   public VeniceControllerStateModel(
       String clusterName,
       ZkClient zkClient,
@@ -73,6 +81,8 @@ public class VeniceControllerStateModel extends StateModel {
     this.realTimeTopicSwitcher = realTimeTopicSwitcher;
     this.accessController = accessController;
     this.helixAdminClient = helixAdminClient;
+    this.workerService = Executors
+        .newSingleThreadExecutor(new DaemonThreadFactory("Venice-Controller-State-Model-Worker-" + this.clusterName));
   }
 
   /**
@@ -101,24 +111,33 @@ public class VeniceControllerStateModel extends StateModel {
     return result;
   }
 
-  private void executeStateTransition(Message message, StateTransition stateTransition) throws VeniceException {
+  private void executeStateTransition(Message message, StateTransition stateTransition) {
+    try {
+      executeStateTransition(message, stateTransition, false).get();
+    } catch (InterruptedException | ExecutionException e) {
+      throw new VeniceException(e);
+    }
+  }
+
+  Future<?> executeStateTransition(Message message, StateTransition stateTransition, boolean isAsync) {
     String from = message.getFromState();
     String to = message.getToState();
     String threadName = "Helix-ST-" + message.getResourceName() + "-" + from + "->" + to;
     // Change name to indicate which st is occupied this thread.
     Thread.currentThread().setName(threadName);
     try {
-      stateTransition.execute();
-    } catch (Exception e) {
-      throw new VeniceException("Failed to execute '" + threadName + "'.", e);
+      if (isAsync) {
+        return workerService.submit(stateTransition);
+      }
+      stateTransition.run();
+      return CompletableFuture.completedFuture(null);
     } finally {
       // Once st is terminated, change the name to indicate this thread will not be occupied by this st.
       Thread.currentThread().setName("Inactive ST thread.");
     }
   }
 
-  private interface StateTransition {
-    void execute() throws Exception;
+  interface StateTransition extends Runnable {
   }
 
   /**
@@ -126,35 +145,53 @@ public class VeniceControllerStateModel extends StateModel {
    */
   @Transition(to = HelixState.LEADER_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeLeaderFromStandby(Message message, NotificationContext context) {
+    String controllerName = message.getTgtName();
+
+    // Call it in executeStateTransition to log the start of state transition with correct thread name.
     executeStateTransition(message, () -> {
       if (clusterConfig == null) {
         throw new VeniceException("No configuration exists for " + clusterName);
       }
-      String controllerName = message.getTgtName();
       LOGGER.info("{} becoming leader from standby for {}", controllerName, clusterName);
-
-      if (helixManagerInitialized()) {
-        // TODO: It seems like this should throw an exception. Otherwise the case would be you'd have an instance be
-        // leader
-        // in Helix that hadn't subscribed to any resource. This could happen if a state transition thread timed out and
-        // ERROR'd
-        // and the partition was 'reset' instead of bouncing the process.
-        LOGGER.error(
-            "Helix manager already exists for instance {} on cluster {} and received controller name {}",
-            helixManager.getInstanceName(),
-            clusterName,
-            controllerName);
-
-      } else {
-        initHelixManager(controllerName);
-        initClusterResources();
-        LOGGER.info(
-            "Controller {} with instance {} is the leader of cluster {}",
-            controllerName,
-            helixManager.getInstanceName(),
-            clusterName);
-      }
     });
+
+    /**
+     * STANDBY->LEADER state transition is fine to be synchronous and slow transition, because controller client has
+     * retry logic. However, the state transition has to be executed in order, such that if there is any unfinished
+     * state transition actions from previous round (e.g. LEADER -> FOLLOWER) for the same controller, it will be
+     * blocked until the previous transition is finished.
+     */
+    try {
+      executeStateTransition(message, () -> {
+        if (helixManagerInitialized()) {
+          // TODO: It seems like this should throw an exception. Otherwise the case would be you'd have an instance be
+          // leader
+          // in Helix that hadn't subscribed to any resource. This could happen if a state transition thread timed out
+          // and
+          // ERROR'd
+          // and the partition was 'reset' instead of bouncing the process.
+          LOGGER.error(
+              "Helix manager already exists for instance {} on cluster {} and received controller name {}",
+              helixManager.getInstanceName(),
+              clusterName,
+              controllerName);
+        } else {
+          try {
+            initHelixManager(controllerName);
+          } catch (Exception e) {
+            throw new VeniceException("Failed to initialize Helix Manager for " + controllerName, e);
+          }
+          initClusterResources();
+          LOGGER.info(
+              "Controller {} with instance {} is the leader of cluster {}",
+              controllerName,
+              helixManager.getInstanceName(),
+              clusterName);
+        }
+      }, true /* isAsync */).get();
+    } catch (InterruptedException | ExecutionException e) {
+      throw new VeniceException(e);
+    }
   }
 
   private boolean helixManagerInitialized() {
@@ -203,13 +240,21 @@ public class VeniceControllerStateModel extends StateModel {
    */
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.LEADER_STATE)
   public void onBecomeStandbyFromLeader(Message message, NotificationContext context) {
+    // Call it in executeStateTransition to log the start of state transition with correct thread name.
     executeStateTransition(message, () -> {
       String controllerName = message.getTgtName();
 
       LOGGER.info("{} becoming standby from leader for {}", controllerName, clusterName);
-      // Reset acquires the cluster write lock to prevent the partial result of admin operation.
-      reset();
     });
+
+    /**
+     * The reset() method could be a long-running operation, and it should be run asynchronously in a separate thread
+     * to avoid blocking the Helix state transition thread. Running it in the Helix state transition thread could lead
+     * to a problem that the controller is still in the leader role thus still supposed to serve requests, however its
+     * metadata is already cleared and not able to serve. This often results in returning 404 or store not found for
+     * a store that actually exists.
+     */
+    executeStateTransition(message, this::reset, true /* isAsync */);
   }
 
   /**
@@ -346,5 +391,27 @@ public class VeniceControllerStateModel extends StateModel {
    */
   protected String getClusterName() {
     return clusterName;
+  }
+
+  /**
+   * Shutdown the internal executor service.
+   */
+  public void close() {
+    workerService.shutdown();
+  }
+
+  // Only for testing.
+  void setClusterResources(HelixVeniceClusterResources clusterResources) {
+    this.clusterResources = clusterResources;
+  }
+
+  // Only for testing.
+  void setClusterConfig(VeniceControllerClusterConfig config) {
+    this.clusterConfig = config;
+  }
+
+  // Only for testing.
+  void setHelixManager(SafeHelixManager helixManager) {
+    this.helixManager = helixManager;
   }
 }
