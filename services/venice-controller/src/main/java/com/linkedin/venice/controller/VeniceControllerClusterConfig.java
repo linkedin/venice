@@ -12,7 +12,6 @@ import static com.linkedin.venice.ConfigKeys.ADMIN_HELIX_MESSAGING_CHANNEL_ENABL
 import static com.linkedin.venice.ConfigKeys.ADMIN_HOSTNAME;
 import static com.linkedin.venice.ConfigKeys.ADMIN_OPERATION_PROTOCOL_VERSION_AUTO_DETECTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ADMIN_OPERATION_PROTOCOL_VERSION_AUTO_DETECTION_INTERVAL_MS;
-import static com.linkedin.venice.ConfigKeys.ADMIN_OPERATION_PROTOCOL_VERSION_AUTO_DETECTION_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.ADMIN_PORT;
 import static com.linkedin.venice.ConfigKeys.ADMIN_SECURE_PORT;
 import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_REPLICATION_FACTOR;
@@ -605,7 +604,6 @@ public class VeniceControllerClusterConfig {
   * Configs for admin operation version auto-detection service
   */
   private final boolean isAdminOperationVersionAutoDetectionEnabled;
-  private final int adminOperationVersionAutoDetectionThreadCount;
   private final long adminOperationVersionAutoDetectionIntervalMS;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
@@ -1090,8 +1088,6 @@ public class VeniceControllerClusterConfig {
 
     this.isAdminOperationVersionAutoDetectionEnabled =
         props.getBoolean(ADMIN_OPERATION_PROTOCOL_VERSION_AUTO_DETECTION_ENABLED, false);
-    this.adminOperationVersionAutoDetectionThreadCount =
-        props.getInt(ADMIN_OPERATION_PROTOCOL_VERSION_AUTO_DETECTION_THREAD_COUNT, 1);
     this.adminOperationVersionAutoDetectionIntervalMS =
         props.getLong(ADMIN_OPERATION_PROTOCOL_VERSION_AUTO_DETECTION_INTERVAL_MS, TimeUnit.MINUTES.toMillis(10));
 
@@ -1977,10 +1973,6 @@ public class VeniceControllerClusterConfig {
 
   public boolean getAdminOperationVersionAutoDetectionEnabled() {
     return isAdminOperationVersionAutoDetectionEnabled;
-  }
-
-  public int getAdminOperationVersionAutoDetectionThreadCount() {
-    return adminOperationVersionAutoDetectionThreadCount;
   }
 
   public long getAdminOperationVersionAutoDetectionIntervalMS() {
