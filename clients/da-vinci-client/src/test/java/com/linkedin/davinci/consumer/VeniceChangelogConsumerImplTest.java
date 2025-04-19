@@ -272,11 +272,6 @@ public class VeniceChangelogConsumerImplTest {
 
   @Test
   public void testAdjustCheckpoints() {
-    // protected static void adjustSeekCheckPointsBasedOnHeartbeats(
-    // Map<Integer, VeniceChangeCoordinate> checkpoints,
-    // Map<Integer, Long> currentVersionLastHeartbeat,
-    // PubSubConsumerAdapter consumerAdapter,
-    // List<PubSubTopicPartition> topicPartitionList)
     PubSubConsumerAdapter mockConsumer = Mockito.mock(PubSubConsumerAdapter.class);
     Map<Integer, VeniceChangeCoordinate> checkpoints = new HashMap<>();
     Map<Integer, Long> currentVersionLastHeartbeat = new HashMap<>();
@@ -385,6 +380,27 @@ public class VeniceChangelogConsumerImplTest {
         topicPartitionList);
 
     Assert.assertNotEquals(checkpoints.get(0), aheadCoordinate);
+
+    // Let's throw some nulls at it now
+    Mockito.when(mockConsumer.getPositionByTimestamp(partition0, 1L)).thenReturn(null);
+    Mockito.when(mockConsumer.getPositionByTimestamp(partition1, 2L)).thenReturn(null);
+    Mockito.when(mockConsumer.getPositionByTimestamp(partition2, 1L)).thenReturn(null);
+
+    VeniceChangeCoordinate formerCorodinate0 = checkpoints.get(0);
+    VeniceChangeCoordinate formerCorodinate1 = checkpoints.get(1);
+    VeniceChangeCoordinate formerCorodinate2 = checkpoints.get(2);
+
+    VeniceAfterImageConsumerImpl.adjustSeekCheckPointsBasedOnHeartbeats(
+        checkpoints,
+        currentVersionLastHeartbeat,
+        mockConsumer,
+        topicPartitionList);
+
+    // This should have left everything the same
+    Assert.assertEquals(checkpoints.get(0), formerCorodinate0);
+    Assert.assertEquals(checkpoints.get(1), formerCorodinate1);
+    Assert.assertEquals(checkpoints.get(2), formerCorodinate2);
+
   }
 
   @Test
