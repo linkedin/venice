@@ -1051,10 +1051,10 @@ public class TestVeniceHelixAdmin {
     // Mock response for standby controllers
     AdminOperationProtocolVersionControllerResponse response1 = new AdminOperationProtocolVersionControllerResponse();
     response1.setLocalAdminOperationProtocolVersion(1);
-    response1.setRequestUrl("standbyHost1:1234");
+    response1.setRequestUrl("http://standbyHost1:1234");
     AdminOperationProtocolVersionControllerResponse response2 = new AdminOperationProtocolVersionControllerResponse();
     response2.setLocalAdminOperationProtocolVersion(2);
-    response2.setRequestUrl("standbyHost2:1234");
+    response2.setRequestUrl("http://standbyHost2:1234");
 
     List<Instance> standbyControllers = new ArrayList<>();
     standbyControllers.add(new Instance("1", "standbyHost1", 1234));
@@ -1069,10 +1069,19 @@ public class TestVeniceHelixAdmin {
       controllerClientMockedStatic
           .when(() -> ControllerClient.constructClusterControllerClient(eq(clusterName), any(), any()))
           .thenReturn(client);
-      when(client.getLocalAdminOperationProtocolVersion()).thenReturn(response1).thenReturn(response2);
+      when(client.getLocalAdminOperationProtocolVersion("http://standbyHost1:1234")).thenReturn(response1);
+      when(client.getLocalAdminOperationProtocolVersion("http://standbyHost2:1234")).thenReturn(response2);
 
       Map<String, Long> urlToVersionMap = veniceParentHelixAdmin.getAdminOperationVersionFromControllers(clusterName);
       assertEquals(urlToVersionMap.size(), 3);
+      assertTrue(
+          urlToVersionMap.containsKey("http://standbyHost1:1234")
+              && urlToVersionMap.get("http://standbyHost1:1234") == 1L);
+      assertTrue(
+          urlToVersionMap.containsKey("http://standbyHost2:1234")
+              && urlToVersionMap.get("http://standbyHost2:1234") == 2L);
+      assertTrue(
+          urlToVersionMap.containsKey("http://leaderHost:1234") && urlToVersionMap.get("http://leaderHost:1234") == 2L);
     }
   }
 
@@ -1095,7 +1104,7 @@ public class TestVeniceHelixAdmin {
 
     AdminOperationProtocolVersionControllerResponse response1 = new AdminOperationProtocolVersionControllerResponse();
     response1.setLocalAdminOperationProtocolVersion(1);
-    response1.setRequestUrl("standbyHost1:1234");
+    response1.setRequestUrl("http://standbyHost1:1234");
     AdminOperationProtocolVersionControllerResponse failedResponse =
         new AdminOperationProtocolVersionControllerResponse();
     failedResponse.setError("Failed to get version");
@@ -1109,7 +1118,8 @@ public class TestVeniceHelixAdmin {
       controllerClientMockedStatic
           .when(() -> ControllerClient.constructClusterControllerClient(eq(clusterName), any(), any()))
           .thenReturn(client);
-      when(client.getLocalAdminOperationProtocolVersion()).thenReturn(response1).thenReturn(failedResponse);
+      when(client.getLocalAdminOperationProtocolVersion("http://standbyHost1:1234")).thenReturn(response1);
+      when(client.getLocalAdminOperationProtocolVersion("http://standbyHost2:1234")).thenReturn(failedResponse);
 
       expectThrows(
           VeniceException.class,
