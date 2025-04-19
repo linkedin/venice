@@ -517,6 +517,18 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
       }
 
       @Override
+      public CompletableFuture<PubSubProduceResult> put(
+          Object key,
+          Object value,
+          int valueSchemaId,
+          long logicalTimestamp,
+          PubSubProducerCallback callback,
+          PutMetadata putMetadata) {
+        callback.onCompletion(null, new VeniceException("Fake exception"));
+        return null;
+      }
+
+      @Override
       public CompletableFuture<PubSubProduceResult> delete(
           Object key,
           PubSubProducerCallback callback,
@@ -573,6 +585,18 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
           Object key,
           Object value,
           int valueSchemaId,
+          PubSubProducerCallback callback,
+          PutMetadata putMetadata) {
+        callback.onCompletion(null, new VeniceException("Some writer exception"));
+        return null;
+      }
+
+      @Override
+      public CompletableFuture<PubSubProduceResult> put(
+          Object key,
+          Object value,
+          int valueSchemaId,
+          long logicalTimestamp,
           PubSubProducerCallback callback,
           PutMetadata putMetadata) {
         callback.onCompletion(null, new VeniceException("Some writer exception"));
