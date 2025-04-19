@@ -203,6 +203,8 @@ public class TestProtocolVersionAutoDetectionService {
           if (clusterToStateMap.get(clusterName) != null && clusterToStateMap.get(clusterName)) {
             // Add the local version for leader controller
             response.setLocalAdminOperationProtocolVersion(version);
+            response.setRequestUrl(hostName);
+            response.setCluster(clusterName);
           }
         }
       }
