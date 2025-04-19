@@ -60,7 +60,7 @@ public class SystemStoreRepairTask implements Runnable {
 
   @Override
   public void run() {
-    LogContext.setStructuredLogContext(parentAdmin.getLogContext());
+    LogContext.setStructuredLogContext(getParentAdmin().getLogContext());
     for (String clusterName: getParentAdmin().getClustersLeaderOf()) {
       if (!getClusterToSystemStoreHealthCheckStatsMap().containsKey(clusterName)) {
         continue;
