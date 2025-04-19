@@ -1043,11 +1043,20 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       List<Long> localOffset = (List<Long>) currentVersionHighWatermarks
           .getOrDefault(pubSubTopicPartition.getPartitionNumber(), Collections.EMPTY_MAP)
           .getOrDefault(upstreamPartition, Collections.EMPTY_LIST);
-      if (RmdUtils.hasOffsetAdvanced(localOffset, versionSwap.getLocalHighWatermarks())) {
+      // safety checks
+      if (localOffset == null) {
+        localOffset = new ArrayList<>();
+      }
+      List<Long> highWatermarkOffsets =
+          versionSwap.getLocalHighWatermarks() == null ? new ArrayList<>() : versionSwap.getLocalHighWatermarks();
+      if (RmdUtils.hasOffsetAdvanced(localOffset, highWatermarkOffsets)) {
 
-        currentVersionHighWatermarks.putIfAbsent(pubSubTopicPartition.getPartitionNumber(), new HashMap<>());
+        currentVersionHighWatermarks.putIfAbsent(pubSubTopicPartition.getPartitionNumber(), new ConcurrentHashMap<>());
+        List<Long> highWatermarkOffsets = versionSwap.localHighWatermarks == null
+            ? new ArrayList<>()
+            : new ArrayList<>(versionSwap.getLocalHighWatermarks());
         currentVersionHighWatermarks.get(pubSubTopicPartition.getPartitionNumber())
-            .put(upstreamPartition, versionSwap.getLocalHighWatermarks());
+            .put(upstreamPartition, highWatermarkOffsets);
       }
       switchToNewTopic(newServingVersionTopic, topicSuffix, pubSubTopicPartition.getPartitionNumber());
       chunkAssembler.clearBuffer();
