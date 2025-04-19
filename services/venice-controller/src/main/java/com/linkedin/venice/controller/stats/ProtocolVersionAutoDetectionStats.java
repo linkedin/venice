@@ -10,28 +10,20 @@ import io.tehuti.metrics.stats.Max;
 
 public class ProtocolVersionAutoDetectionStats extends AbstractVeniceStats {
   private final Sensor protocolVersionAutoDetectionErrorSensor;
-  private final Sensor protocolVersionAutoDetectionThrowableSensor;
   private final Sensor protocolVersionAutoDetectionLatencySensor;
   private final static String PROTOCOL_VERSION_AUTO_DETECTION_ERROR = "protocol_version_auto_detection_error";
-  private final static String PROTOCOL_VERSION_AUTO_DETECTION_THROWABLE = "protocol_version_auto_detection_throwable";
   private final static String PROTOCOL_VERSION_AUTO_DETECTION_LATENCY = "protocol_version_auto_detection_latency";
 
   public ProtocolVersionAutoDetectionStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
     protocolVersionAutoDetectionErrorSensor =
         registerSensorIfAbsent(PROTOCOL_VERSION_AUTO_DETECTION_ERROR, new Count());
-    protocolVersionAutoDetectionThrowableSensor =
-        registerSensorIfAbsent(PROTOCOL_VERSION_AUTO_DETECTION_THROWABLE, new Count());
     protocolVersionAutoDetectionLatencySensor =
         registerSensorIfAbsent(PROTOCOL_VERSION_AUTO_DETECTION_LATENCY, new Avg(), new Max());
   }
 
   public void recordProtocolVersionAutoDetectionErrorSensor() {
     protocolVersionAutoDetectionErrorSensor.record();
-  }
-
-  public void recordProtocolVersionAutoDetectionThrowableSensor() {
-    protocolVersionAutoDetectionThrowableSensor.record();
   }
 
   public void recordProtocolVersionAutoDetectionLatencySensor(double latencyInMs) {
