@@ -4,42 +4,39 @@ import static org.mockito.Mockito.*;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.fail;
 
+import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.stats.ProtocolVersionAutoDetectionStats;
 import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.TestUtils;
-import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class TestProtocolVersionAutoDetectionService {
-  private VeniceParentHelixAdmin parentAdmin;
   private VeniceHelixAdmin admin;
-  private VeniceControllerMultiClusterConfig veniceControllerMultiClusterConfig;
+  private AdminConsumerService adminConsumerService;
   private Map<String, Map<String, Long>> regionToHostToVersionMap = new HashMap<>();
   private Map<String, Map<String, Boolean>> hostToClusterToLeaderStateMap = new HashMap<>();
-  private Map<String, ProtocolVersionAutoDetectionStats> clusterToStatsMap = new HashMap<>();
-  private ProtocolVersionAutoDetectionService localProtocolVersionAutoDetectionService;
+  private String clusterName;
   private static final String CLUSTER_VENICE_0 = "venice0";
   private static final String CLUSTER_VENICE_1 = "venice1";
   private static final String REGION_DC_0 = "dc0";
   private static final String REGION_DC_1 = "dc1";
   private static final String REGION_DC_2 = "dc2";
+  private static final long DEFAULT_SLEEP_INTERVAL_MS = TimeUnit.SECONDS.toMillis(1);
 
   /**
    * This test is to verify that the protocol version auto-detection service
    */
   @BeforeMethod(alwaysRun = true)
   public void setUp() {
+    this.clusterName = CLUSTER_VENICE_0;
     /**
      * Parent controllers are in dc0
      * Child controllers are in dc1, and dc2.
@@ -66,27 +63,19 @@ public class TestProtocolVersionAutoDetectionService {
     addHostToClusterToStateMap("host8", REGION_DC_2, 5L, false, true);
     addHostToClusterToStateMap("host9", REGION_DC_2, 6L, false, false);
 
-    // Mock parent admin
-    parentAdmin = mock(VeniceParentHelixAdmin.class);
-    doReturn(true).when(parentAdmin).isLeaderControllerFor(CLUSTER_VENICE_0);
-    doReturn(false).when(parentAdmin).isLeaderControllerFor(CLUSTER_VENICE_1);
-    doReturn(regionToHostToVersionMap.get(REGION_DC_0)).when(parentAdmin)
-        .getAdminOperationVersionFromControllers(CLUSTER_VENICE_0);
-    doNothing().when(parentAdmin).updateAdminOperationProtocolVersion(anyString(), anyLong());
-
+    // Mock admin
     admin = mock(VeniceHelixAdmin.class);
-    doReturn(admin).when(parentAdmin).getVeniceHelixAdmin();
+    doReturn(true).when(admin).isLeaderControllerFor(CLUSTER_VENICE_0);
+    doReturn(false).when(admin).isLeaderControllerFor(CLUSTER_VENICE_1);
+    doReturn(regionToHostToVersionMap.get(REGION_DC_0)).when(admin)
+        .getAdminOperationVersionFromControllers(CLUSTER_VENICE_0);
+    doCallRealMethod().when(admin).updateAdminOperationProtocolVersion(anyString(), anyLong());
 
-    // Mock the VeniceControllerMultiClusterConfig
-    veniceControllerMultiClusterConfig = mock(VeniceControllerMultiClusterConfig.class);
-    Set<String> clusters = new HashSet<>();
-    clusters.add(CLUSTER_VENICE_0);
-    clusters.add(CLUSTER_VENICE_1);
-    doReturn(clusters).when(veniceControllerMultiClusterConfig).getClusters();
-    doReturn(TimeUnit.SECONDS.toMillis(5)).when(veniceControllerMultiClusterConfig)
-        .getAdminOperationProtocolVersionAutoDetectionIntervalMs();
-    doReturn(1).when(veniceControllerMultiClusterConfig).getAdminOperationProtocolVersionAutoDetectionThreadCount();
-    doReturn(true).when(veniceControllerMultiClusterConfig).isAdminOperationProtocolVersionAutoDetectionEnabled();
+    // Mock AdminConsumerService
+    adminConsumerService = mock(AdminConsumerService.class);
+    doReturn(adminConsumerService).when(admin).getAdminConsumerService(anyString());
+    when(admin.getAdminConsumerService(clusterName)).thenReturn(adminConsumerService);
+    doNothing().when(adminConsumerService).updateAdminOperationProtocolVersion(anyString(), anyLong());
 
     // Mock response for child controllers in different regions
     Map<String, ControllerClient> controllerClientMap = new HashMap<>();
@@ -97,77 +86,66 @@ public class TestProtocolVersionAutoDetectionService {
     when(mockControllerClient.getAdminOperationProtocolVersionFromControllers(CLUSTER_VENICE_0))
         .thenReturn(getAdminOperationProtocolVersionResponse(REGION_DC_1, CLUSTER_VENICE_0))
         .thenReturn(getAdminOperationProtocolVersionResponse(REGION_DC_2, CLUSTER_VENICE_0));
-
-    // mock the clusterToStatsMap
-    ProtocolVersionAutoDetectionStats mockStats = mock(ProtocolVersionAutoDetectionStats.class);
-    clusterToStatsMap.put(CLUSTER_VENICE_0, mockStats);
-    clusterToStatsMap.put(CLUSTER_VENICE_1, mockStats);
-    doNothing().when(mockStats).recordProtocolVersionAutoDetectionLatencySensor(anyLong());
-    doNothing().when(mockStats).recordProtocolVersionAutoDetectionErrorSensor();
-    doNothing().when(mockStats).recordProtocolVersionAutoDetectionErrorSensor();
-  }
-
-  @AfterMethod(alwaysRun = true)
-  public void methodCleanUp() throws Exception {
-    if (localProtocolVersionAutoDetectionService != null) {
-      localProtocolVersionAutoDetectionService.stopInner();
-    }
   }
 
   @Test
   public void testProtocolVersionDetection() throws Exception {
-    String clusterName = "venice0";
     Map<String, Long> adminTopicMetadataMap = AdminTopicMetadataAccessor
         .generateMetadataMap(Optional.of(1L), Optional.of(-1L), Optional.of(1L), Optional.of(80L));
-    doReturn(adminTopicMetadataMap).when(parentAdmin).getAdminTopicMetadata(clusterName, Optional.empty());
+    doReturn(adminTopicMetadataMap).when(admin).getAdminTopicMetadata(clusterName, Optional.empty());
 
-    localProtocolVersionAutoDetectionService = new ProtocolVersionAutoDetectionService(
-        parentAdmin,
-        veniceControllerMultiClusterConfig,
-        mock(MetricsRepository.class),
-        Optional.ofNullable(clusterToStatsMap));
+    ProtocolVersionAutoDetectionService localProtocolVersionAutoDetectionService =
+        new ProtocolVersionAutoDetectionService(
+            clusterName,
+            admin,
+            mock(ProtocolVersionAutoDetectionStats.class),
+            DEFAULT_SLEEP_INTERVAL_MS);
 
     localProtocolVersionAutoDetectionService.startInner();
 
-    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       verify(admin, atLeastOnce()).getAdminOperationVersionFromControllers(clusterName);
-      verify(parentAdmin, atLeastOnce()).updateAdminOperationProtocolVersion(clusterName, 1L);
+      verify(adminConsumerService, atLeastOnce()).updateAdminOperationProtocolVersion(clusterName, 1L);
     });
+
+    localProtocolVersionAutoDetectionService.stopInner();
   }
 
   @Test
   public void testProtocolVersionDetectionWithNoUpdate() throws Exception {
-    String clusterName = "venice0";
     // When version is -1, no need to update
     Map<String, Long> adminTopicMetadataMap = AdminTopicMetadataAccessor
         .generateMetadataMap(Optional.of(1L), Optional.of(-1L), Optional.of(1L), Optional.of(-1L));
 
-    doReturn(adminTopicMetadataMap).when(parentAdmin).getAdminTopicMetadata(clusterName, Optional.empty());
-    doNothing().when(parentAdmin).updateAdminOperationProtocolVersion(anyString(), anyLong());
+    doReturn(adminTopicMetadataMap).when(admin).getAdminTopicMetadata(clusterName, Optional.empty());
 
-    localProtocolVersionAutoDetectionService = new ProtocolVersionAutoDetectionService(
-        parentAdmin,
-        veniceControllerMultiClusterConfig,
-        mock(MetricsRepository.class),
-        Optional.ofNullable(clusterToStatsMap));
+    ProtocolVersionAutoDetectionService localProtocolVersionAutoDetectionService =
+        new ProtocolVersionAutoDetectionService(
+            clusterName,
+            admin,
+            mock(ProtocolVersionAutoDetectionStats.class),
+            DEFAULT_SLEEP_INTERVAL_MS);
 
     localProtocolVersionAutoDetectionService.startInner();
 
-    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       verify(admin, atLeastOnce()).getAdminOperationVersionFromControllers(clusterName);
-      verify(parentAdmin, never()).updateAdminOperationProtocolVersion(anyString(), anyLong());
+      verify(adminConsumerService, never()).updateAdminOperationProtocolVersion(anyString(), anyLong());
     });
+
+    localProtocolVersionAutoDetectionService.stopInner();
   }
 
   @Test
   public void testGetLocalAdminOperationProtocolVersionForAllConsumers() {
-    localProtocolVersionAutoDetectionService = new ProtocolVersionAutoDetectionService(
-        parentAdmin,
-        mock(VeniceControllerMultiClusterConfig.class),
-        mock(MetricsRepository.class),
-        Optional.ofNullable(clusterToStatsMap));
+    ProtocolVersionAutoDetectionService localProtocolVersionAutoDetectionService =
+        new ProtocolVersionAutoDetectionService(
+            clusterName,
+            admin,
+            mock(ProtocolVersionAutoDetectionStats.class),
+            DEFAULT_SLEEP_INTERVAL_MS);
     long smallestVersion = localProtocolVersionAutoDetectionService
-        .getSmallestLocalAdminOperationProtocolVersionForAllConsumers(CLUSTER_VENICE_0);
+        .getSmallestLocalAdminOperationProtocolVersionForAllConsumers(clusterName);
 
     assertEquals(smallestVersion, 1L);
   }
@@ -188,14 +166,15 @@ public class TestProtocolVersionAutoDetectionService {
         .thenReturn(failResponse);
 
     try {
-      localProtocolVersionAutoDetectionService = new ProtocolVersionAutoDetectionService(
-          parentAdmin,
-          mock(VeniceControllerMultiClusterConfig.class),
-          mock(MetricsRepository.class),
-          Optional.ofNullable(clusterToStatsMap));
+      ProtocolVersionAutoDetectionService localProtocolVersionAutoDetectionService =
+          new ProtocolVersionAutoDetectionService(
+              clusterName,
+              admin,
+              mock(ProtocolVersionAutoDetectionStats.class),
+              DEFAULT_SLEEP_INTERVAL_MS);
 
       localProtocolVersionAutoDetectionService
-          .getSmallestLocalAdminOperationProtocolVersionForAllConsumers(CLUSTER_VENICE_0);
+          .getSmallestLocalAdminOperationProtocolVersionForAllConsumers(clusterName);
     } catch (VeniceException e) {
       assertEquals(
           e.getMessage(),

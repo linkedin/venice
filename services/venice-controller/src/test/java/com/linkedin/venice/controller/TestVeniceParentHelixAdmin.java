@@ -3254,6 +3254,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     when(veniceParentHelixAdmin.getVeniceHelixAdmin()).thenReturn(veniceHelixAdmin);
     doCallRealMethod().when(veniceParentHelixAdmin)
         .updateAdminOperationProtocolVersion(clusterName, adminProtocolVersion);
+    doCallRealMethod().when(veniceHelixAdmin).updateAdminOperationProtocolVersion(clusterName, adminProtocolVersion);
     AdminConsumerService adminConsumerService = mock(AdminConsumerService.class);
     when(veniceHelixAdmin.getAdminConsumerService(clusterName)).thenReturn(adminConsumerService);
 
