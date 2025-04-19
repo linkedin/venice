@@ -203,10 +203,11 @@ public class TestInstanceRemovable {
       statuses =
           client.getAggregatedHealthStatus(clusterName, Arrays.asList(server1, server2), Collections.emptyList());
       Assert.assertEquals(statuses.getStoppableInstances(), Collections.singletonList(server1));
-      Assert.assertTrue(statuses.getNonStoppableInstancesWithReasons().containsKey(server2));
+      Assert.assertEquals(statuses.getNonStoppableInstancesWithReasons().size(), 1);
       Assert.assertTrue(
           statuses.getNonStoppableInstancesWithReasons()
-              .containsValue(NodeRemovableResult.BlockingRemoveReason.WILL_TRIGGER_LOAD_REBALANCE.name()));
+              .get(server2)
+              .startsWith(NodeRemovableResult.BlockingRemoveReason.WILL_TRIGGER_LOAD_REBALANCE.name()));
 
       Assert.assertFalse(
           client

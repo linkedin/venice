@@ -194,7 +194,7 @@ public class InstanceStatusDecider {
         // After removing the instance, no online replica exists. Venice will lose data in this case.
         return new Pair<>(
             true,
-            "Partition: " + partitionAfterRemoving.getId() + " will have no online replicas after removing the node.");
+            "Partition " + partitionAfterRemoving.getId() + " will have no online replicas after removing the node.");
       }
     }
 
@@ -211,7 +211,7 @@ public class InstanceStatusDecider {
         // After removing the instance, Venice would not have enough active replicas so a re-balance would be triggered.
         return new Pair<>(
             true,
-            "Partition: " + partitionAfterRemoving.getId() + " will only have " + activeReplicaCount
+            "Partition " + partitionAfterRemoving.getId() + " will only have " + activeReplicaCount
                 + " active replicas which is smaller than required minimum active replicas: " + minActiveReplicas);
       }
     }
