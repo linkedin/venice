@@ -75,7 +75,7 @@ public abstract class HelixBaseRoutingRepository
 
   public HelixBaseRoutingRepository(SafeHelixManager manager) {
     this.manager = manager;
-    listenerManager = new ListenerManager<>(); // TODO make thread count configurable
+    listenerManager = new ListenerManager<>(null); // TODO make thread count configurable
     keyBuilder = new PropertyKey.Builder(manager.getClusterName());
     dataSource = new HashMap<>();
   }

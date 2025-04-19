@@ -123,8 +123,13 @@ public class TestHelixCustomizedView {
      */
     ZkClient zkClient = ZkClientFactory.newZkClient(veniceCluster.getZk().getAddress());
     HelixAdapterSerializer adapterSerializer = new HelixAdapterSerializer();
-    VeniceOfflinePushMonitorAccessor offlinePushStatusAccessor =
-        new VeniceOfflinePushMonitorAccessor(veniceCluster.getClusterName(), zkClient, adapterSerializer, 3, 1000);
+    VeniceOfflinePushMonitorAccessor offlinePushStatusAccessor = new VeniceOfflinePushMonitorAccessor(
+        veniceCluster.getClusterName(),
+        zkClient,
+        adapterSerializer,
+        3,
+        1000,
+        veniceCluster.getRegionName());
     HelixUtils.create(
         offlinePushStatusAccessor.getOfflinePushStatusAccessor(),
         offlinePushStatusAccessor.getOfflinePushStatuesParentPath() + "/invalid_topic",
