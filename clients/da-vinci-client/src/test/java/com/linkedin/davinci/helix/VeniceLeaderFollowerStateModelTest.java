@@ -20,6 +20,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.meta.VersionStatus;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Duration;
 import java.util.HashSet;
@@ -61,10 +62,10 @@ public class VeniceLeaderFollowerStateModelTest extends
   @Test
   public void testOnBecomeFollowerFromOffline() throws Exception {
     // if the resource is not the current serving version, latch is not placed.
-    Version version = new VersionImpl("mockStore.getName()", 2, "");
-    when(mockStore.getVersion(anyInt())).thenReturn(version);
+    // Note that the mockStore has version 1 for the resource
     when(mockStore.getCurrentVersion()).thenReturn(2);
     testStateModel.onBecomeStandbyFromOffline(mockMessage, mockContext);
+    verify(mockNotifier, never()).startConsumption(mockMessage.getResourceName(), testPartition);
     verify(mockNotifier, never()).waitConsumptionCompleted(
         mockMessage.getResourceName(),
         testPartition,
@@ -73,6 +74,7 @@ public class VeniceLeaderFollowerStateModelTest extends
 
     when(mockSystemStore.getCurrentVersion()).thenReturn(2);
     testStateModel.onBecomeStandbyFromOffline(mockSystemStoreMessage, mockContext);
+    verify(mockNotifier, never()).startConsumption(mockSystemStoreMessage.getResourceName(), testPartition);
     verify(mockNotifier, never()).waitConsumptionCompleted(
         mockSystemStoreMessage.getResourceName(),
         testPartition,
@@ -82,7 +84,8 @@ public class VeniceLeaderFollowerStateModelTest extends
     // When serving current version system store, it should have latch in place.
     when(mockSystemStore.getCurrentVersion()).thenReturn(1);
     testStateModel.onBecomeStandbyFromOffline(mockSystemStoreMessage, mockContext);
-    verify(mockNotifier, times(1)).waitConsumptionCompleted(
+    verify(mockNotifier).startConsumption(mockSystemStoreMessage.getResourceName(), testPartition);
+    verify(mockNotifier).waitConsumptionCompleted(
         mockSystemStoreMessage.getResourceName(),
         testPartition,
         Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS,
@@ -96,6 +99,28 @@ public class VeniceLeaderFollowerStateModelTest extends
         testPartition,
         Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS,
         mockStoreIngestionService);
+
+    // When its future version that is completed, it should have a latch in place.
+    when(mockStore.getCurrentVersion()).thenReturn(0);
+    when(mockStore.getVersionStatus(1)).thenReturn(VersionStatus.ONLINE);
+    testStateModel.onBecomeStandbyFromOffline(mockMessage, mockContext);
+    verify(mockNotifier, times(2)).startConsumption(mockMessage.getResourceName(), testPartition);
+    verify(mockNotifier, times(2)).waitConsumptionCompleted(
+        mockMessage.getResourceName(),
+        testPartition,
+        Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS,
+        mockStoreIngestionService);
+
+    // When its future version that is not completed, it should not have a latch in place
+    when(mockStore.getVersionStatus(1)).thenReturn(VersionStatus.STARTED);
+    testStateModel.onBecomeStandbyFromOffline(mockMessage, mockContext);
+    verify(mockNotifier, times(2)).startConsumption(mockMessage.getResourceName(), testPartition);
+    verify(mockNotifier, times(2)).waitConsumptionCompleted(
+        mockMessage.getResourceName(),
+        testPartition,
+        Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS,
+        mockStoreIngestionService);
+
   }
 
   @Test
