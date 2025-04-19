@@ -31,7 +31,7 @@ public class LogContextTest {
     assertNotNull(context);
     assertEquals(context.getRegionName(), REGION_NAME);
     assertEquals(context.getComponentName(), COMPONENT_NAME);
-    assertEquals(context.toString(), COMPONENT_NAME + "|" + REGION_NAME);
+    assertEquals(context.toString(), COMPONENT_NAME + "--" + REGION_NAME);
   }
 
   @Test

@@ -236,7 +236,7 @@ public class AdminConsumerService extends AbstractVeniceService {
      * {@link KAFKA_CLIENT_ID_CONFIG} can be used to identify different consumers while checking Kafka related metrics.
      */
     kafkaConsumerProperties
-        .setProperty(KAFKA_CLIENT_ID_CONFIG, clusterName + (logContext != null ? logContext.toString() : ""));
+        .setProperty(KAFKA_CLIENT_ID_CONFIG, (logContext != null ? logContext + "--" : "") + clusterName);
     kafkaConsumerProperties.setProperty(KAFKA_AUTO_OFFSET_RESET_CONFIG, "earliest");
     /**
      * Reason to disable auto_commit

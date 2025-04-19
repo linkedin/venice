@@ -32,7 +32,7 @@ public class LogContext {
     if (StringUtils.isBlank(regionName) && StringUtils.isBlank(componentName)) {
       this.value = "";
     } else {
-      this.value = String.format("%s|%s", componentName, regionName);
+      this.value = String.format("%s--%s", componentName, regionName);
     }
   }
 
