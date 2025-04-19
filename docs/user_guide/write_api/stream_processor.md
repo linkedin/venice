@@ -14,7 +14,7 @@ processor has well-defined semantics around when to ensure that produced data is
 checkpoint its progress relative to its consumption progress in upstream data sources, whereas the online producer 
 library is a lower-level building block which leaves these reliability details up to the user.
 
-For Apache Samza, the integration point is done at the level of the [VeniceSystemProducer](https://github.com/linkedin/venice/blob/main/clients/venice-samza/src/main/java/com/linkedin/venice/samza/VeniceSystemProducer.java)
-and [VeniceSystemFactory](https://github.com/linkedin/venice/blob/main/clients/venice-samza/src/main/java/com/linkedin/venice/samza/VeniceSystemFactory.java).
+For Apache Samza, the integration point is done at the level of the [VeniceSystemProducer](https://github.com/linkedin/venice/blob/main/integrations/venice-samza/src/main/java/com/linkedin/venice/samza/VeniceSystemProducer.java)
+and [VeniceSystemFactory](https://github.com/linkedin/venice/blob/main/integrations/venice-samza/src/main/java/com/linkedin/venice/samza/VeniceSystemFactory.java).
 
 More details to come.
