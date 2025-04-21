@@ -124,9 +124,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
       dictionaryDownloadCandidates.addAll(
           store.getVersions()
               .stream()
-              .filter(
-                  version -> version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT
-                      && shouldDownloadDictionaryForVersion(version))
+              .filter(version -> shouldDownloadDictionaryForVersion(version))
               .filter(version -> !downloadingDictionaryFutures.containsKey(version.kafkaTopicName()))
               .map(Version::kafkaTopicName)
               .collect(Collectors.toList()));
@@ -444,7 +442,8 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
   }
 
   private boolean shouldDownloadDictionaryForVersion(Version version) {
-    return version.getStatus() == VersionStatus.ONLINE || version.getStatus() == VersionStatus.STARTED;
+    return version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT
+        && (version.getStatus() == VersionStatus.ONLINE || version.getStatus() == VersionStatus.STARTED);
   }
 
   @Override
