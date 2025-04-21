@@ -3764,9 +3764,11 @@ public class VeniceParentHelixAdmin implements Admin {
         getFinalReturnStatus(statuses, childRegions, numChildRegionsFailedToFetchStatus, currentReturnStatusDetails);
 
     // Do not delete parent Kafka if its part of targeted colo push to prevent concurrent pushes
+    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+    int versionNum = Version.parseVersionFromKafkaTopicName(kafkaTopic);
     if (currentReturnStatus.isTerminal()) {
-      String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
-      int versionNum = Version.parseVersionFromKafkaTopicName(kafkaTopic);
+      LOGGER.info("Received terminal status: {} for topic: {}", currentReturnStatus, kafkaTopic);
+
       HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
 
       try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
@@ -3818,8 +3820,6 @@ public class VeniceParentHelixAdmin implements Admin {
     } else {
       // If the aggregate status is not terminal, but the parent version status is marked as KILLED, we should mark the
       // push job status as terminal (ERROR) as job was killed
-      String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
-      int versionNum = Version.parseVersionFromKafkaTopicName(kafkaTopic);
       Store parentStore = getStore(clusterName, storeName);
       Version parentStoreVersion = parentStore.getVersion(versionNum);
       if (parentStoreVersion.getStatus().equals(KILLED)) {
