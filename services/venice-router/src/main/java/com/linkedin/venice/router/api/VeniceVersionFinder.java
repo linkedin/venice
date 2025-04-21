@@ -38,7 +38,7 @@ public class VeniceVersionFinder {
   private static final Logger LOGGER = LogManager.getLogger(VeniceVersionFinder.class);
   private static final RedundantExceptionFilter EXCEPTION_FILTER =
       new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(5));
-  private static final String UNINITALISED_KAFKA_TOPIC_STRING = "";
+  private static final String UNINITIALISED_KAFKA_TOPIC_STRING = "";
 
   private final ReadOnlyStoreRepository metadataRepository;
   private final StaleVersionStats stats;
@@ -100,7 +100,7 @@ public class VeniceVersionFinder {
     }
 
     int metadataCurrentVersion = store.getCurrentVersion();
-    String newVersionKafkaTopic = UNINITALISED_KAFKA_TOPIC_STRING;
+    String newVersionKafkaTopic = UNINITIALISED_KAFKA_TOPIC_STRING;
     boolean newVersionPartitionResourcesReady = false;
     boolean newVersionDecompressorReady = false;
 
@@ -133,7 +133,7 @@ public class VeniceVersionFinder {
     }
 
     // version swap: new version
-    if (newVersionKafkaTopic.equals(UNINITALISED_KAFKA_TOPIC_STRING)) {
+    if (newVersionKafkaTopic.equals(UNINITIALISED_KAFKA_TOPIC_STRING)) {
       // new version is of an existing store rather than new store
       newVersionKafkaTopic = Version.composeKafkaTopic(storeName, metadataCurrentVersion);
       newVersionPartitionResourcesReady = isPartitionResourcesReady(newVersionKafkaTopic);
