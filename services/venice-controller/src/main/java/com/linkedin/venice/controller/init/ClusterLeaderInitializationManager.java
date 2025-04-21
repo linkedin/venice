@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.init;
 
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,12 +28,15 @@ public class ClusterLeaderInitializationManager implements ClusterLeaderInitiali
       new VeniceConcurrentHashMap<>();
   private final List<ClusterLeaderInitializationRoutine> initRoutines;
   private final boolean concurrentInit;
+  private final LogContext logContext;
 
   public ClusterLeaderInitializationManager(
       List<ClusterLeaderInitializationRoutine> initRoutines,
-      boolean concurrentInit) {
+      boolean concurrentInit,
+      LogContext logContext) {
     this.initRoutines = initRoutines;
     this.concurrentInit = concurrentInit;
+    this.logContext = logContext;
   }
 
   /**
@@ -59,6 +63,7 @@ public class ClusterLeaderInitializationManager implements ClusterLeaderInitiali
       ClusterLeaderInitializationRoutine routine) {
     initializedRoutinesForCluster.computeIfAbsent(routine, k -> {
       try {
+        LogContext.setStructuredLogContext(logContext);
         LOGGER.info(logMessage("Starting", routine, clusterToInit));
         routine.execute(clusterToInit);
         LOGGER.info(logMessage("Finished", routine, clusterToInit));
@@ -69,6 +74,8 @@ public class ClusterLeaderInitializationManager implements ClusterLeaderInitiali
                 : " Will proceed to the next initialization routine."),
             e);
         return null; // Will not populate the inner map...
+      } finally {
+        LogContext.clearLogContext();
       }
       return new Object(); // Success
     });
