@@ -59,7 +59,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final IngestionThrottler ingestionThrottler;
   private final KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler;
   private final MetricsRepository metricsRepository;
-  private final TopicExistenceChecker topicExistenceChecker;
+  private final StaleTopicChecker staleTopicChecker;
   private final boolean liveConfigBasedKafkaThrottlingEnabled;
   private final boolean isKafkaConsumerOffsetCollectionEnabled;
   private final KafkaConsumerService.ConsumerAssignmentStrategy sharedConsumerAssignmentStrategy;
@@ -90,7 +90,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       final IngestionThrottler ingestionThrottler,
       KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
       final MetricsRepository metricsRepository,
-      TopicExistenceChecker topicExistenceChecker,
+      StaleTopicChecker staleTopicChecker,
       final PubSubMessageDeserializer pubSubDeserializer,
       Consumer<String> killIngestionTaskRunnable,
       Function<String, Boolean> isAAOrWCEnabledFunc,
@@ -102,7 +102,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.ingestionThrottler = ingestionThrottler;
     this.kafkaClusterBasedRecordThrottler = kafkaClusterBasedRecordThrottler;
     this.metricsRepository = metricsRepository;
-    this.topicExistenceChecker = topicExistenceChecker;
+    this.staleTopicChecker = staleTopicChecker;
     this.liveConfigBasedKafkaThrottlingEnabled = serverConfig.isLiveConfigBasedKafkaThrottlingEnabled();
     this.sharedConsumerAssignmentStrategy = serverConfig.getSharedConsumerAssignmentStrategy();
     this.kafkaClusterUrlToAliasMap = serverConfig.getKafkaClusterUrlToAliasMap();
@@ -113,7 +113,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.metadataRepository = metadataRepository;
     if (serverConfig.isStuckConsumerRepairEnabled()) {
       this.stuckConsumerRepairExecutorService = Executors.newSingleThreadScheduledExecutor(
-          new DaemonThreadFactory(this.getClass().getName() + "-StuckConsumerRepair"));
+          new DaemonThreadFactory(this.getClass().getName() + "-StuckConsumerRepair", serverConfig.getRegionName()));
       int intervalInSeconds = serverConfig.getStuckConsumerRepairIntervalSecond();
       this.stuckConsumerRepairExecutorService.scheduleAtFixedRate(
           getStuckConsumerDetectionAndRepairRunnable(
@@ -304,14 +304,15 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
                 metricsRepository,
                 kafkaClusterUrlToAliasMap.getOrDefault(url, url) + poolType.getStatSuffix(),
                 sharedConsumerNonExistingTopicCleanupDelayMS,
-                topicExistenceChecker,
+                staleTopicChecker,
                 liveConfigBasedKafkaThrottlingEnabled,
                 pubSubDeserializer,
                 SystemTime.INSTANCE,
                 null,
                 isKafkaConsumerOffsetCollectionEnabled,
                 metadataRepository,
-                serverConfig.isUnregisterMetricForDeletedStoreEnabled()),
+                serverConfig.isUnregisterMetricForDeletedStoreEnabled(),
+                serverConfig),
             isAAOrWCEnabledFunc));
 
     if (!consumerService.isRunning()) {

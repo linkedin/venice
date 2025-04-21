@@ -7,6 +7,7 @@ import static java.util.stream.Collectors.toList;
 
 import com.linkedin.davinci.stats.StoreBufferServiceStats;
 import com.linkedin.davinci.utils.LockAssistedCompletableFuture;
+import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -68,15 +69,25 @@ public class StoreBufferService extends AbstractStoreBufferService {
   private final boolean isSorted;
 
   private volatile boolean isStarted = false;
+  private final String regionName;
 
   public StoreBufferService(
       int drainerNum,
       long bufferCapacityPerDrainer,
       long bufferNotifyDelta,
       boolean queueLeaderWrites,
+      String regionName,
       MetricsRepository metricsRepository,
       boolean sorted) {
-    this(drainerNum, bufferCapacityPerDrainer, bufferNotifyDelta, queueLeaderWrites, null, metricsRepository, sorted);
+    this(
+        drainerNum,
+        bufferCapacityPerDrainer,
+        bufferNotifyDelta,
+        queueLeaderWrites,
+        null,
+        regionName,
+        metricsRepository,
+        sorted);
   }
 
   /**
@@ -87,8 +98,9 @@ public class StoreBufferService extends AbstractStoreBufferService {
       long bufferCapacityPerDrainer,
       long bufferNotifyDelta,
       boolean queueLeaderWrites,
-      StoreBufferServiceStats stats) {
-    this(drainerNum, bufferCapacityPerDrainer, bufferNotifyDelta, queueLeaderWrites, stats, null, true);
+      StoreBufferServiceStats stats,
+      String regionName) {
+    this(drainerNum, bufferCapacityPerDrainer, bufferNotifyDelta, queueLeaderWrites, stats, regionName, null, true);
   }
 
   /**
@@ -104,8 +116,10 @@ public class StoreBufferService extends AbstractStoreBufferService {
       long bufferNotifyDelta,
       boolean queueLeaderWrites,
       StoreBufferServiceStats stats,
+      String regionName,
       MetricsRepository metricsRepository,
       boolean sorted) {
+    this.regionName = regionName;
     this.drainerNum = drainerNum;
     this.blockingQueueArr = new ArrayList<>();
     this.bufferCapacityPerDrainer = bufferCapacityPerDrainer;
@@ -297,11 +311,20 @@ public class StoreBufferService extends AbstractStoreBufferService {
     return syncOffsetCmd.getCmdExecutedFuture();
   }
 
+  public void execSyncOffsetFromSnapshotAsync(
+      PubSubTopicPartition topicPartition,
+      PartitionTracker vtDivSnapshot,
+      StoreIngestionTask ingestionTask) throws InterruptedException {
+    DefaultPubSubMessage fakeRecord = new FakePubSubMessage(topicPartition);
+    SyncVtDivNode syncDivNode = new SyncVtDivNode(fakeRecord, vtDivSnapshot, ingestionTask);
+    getDrainerForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber()).put(syncDivNode);
+  }
+
   @Override
   public boolean startInner() {
     this.executorService = Executors.newFixedThreadPool(
         drainerNum,
-        new DaemonThreadFactory(isSorted ? "Store-writer-sorted" : "Store-writer-hybrid"));
+        new DaemonThreadFactory(isSorted ? "Store-writer-sorted" : "Store-writer-hybrid", regionName));
 
     // Submit all the buffer drainers
     for (int cur = 0; cur < drainerNum; ++cur) {
@@ -638,6 +661,41 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   /**
+   * Allows the ConsumptionTask to command the Drainer to sync the VT DIV to the OffsetRecord.
+   */
+  private static class SyncVtDivNode extends QueueNode {
+    private static final int PARTIAL_CLASS_OVERHEAD = getClassOverhead(SyncVtDivNode.class);
+
+    private PartitionTracker vtDivSnapshot;
+
+    public SyncVtDivNode(
+        DefaultPubSubMessage consumerRecord,
+        PartitionTracker vtDivSnapshot,
+        StoreIngestionTask ingestionTask) {
+      super(consumerRecord, ingestionTask, StringUtils.EMPTY, 0);
+      this.vtDivSnapshot = vtDivSnapshot;
+    }
+
+    public void execute() {
+      getIngestionTask().updateAndSyncOffsetFromSnapshot(vtDivSnapshot, getConsumerRecord().getTopicPartition());
+    }
+
+    @Override
+    public int hashCode() {
+      return super.hashCode();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      return super.equals(o);
+    }
+
+    protected int getBaseClassOverhead() {
+      return PARTIAL_CLASS_OVERHEAD;
+    }
+  }
+
+  /**
    * Worker thread, which will invoke {@link StoreIngestionTask#processConsumerRecord}
    * to process each {@link PubSubMessage} buffered in {@link BlockingQueue}.
    */
@@ -685,6 +743,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
                 ingestionTask,
                 ingestionTask.getPartitionConsumptionState(partitionNum));
             continue;
+          } else if (node instanceof SyncVtDivNode) {
+            ((SyncVtDivNode) node).execute();
           }
 
           processRecord(

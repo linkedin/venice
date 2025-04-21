@@ -16,6 +16,7 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import io.tehuti.metrics.MetricsRepository;
@@ -40,12 +41,13 @@ public class AdminConsumerService extends AbstractVeniceService {
   private final Optional<String> remoteKafkaServerUrl;
   // Only support single cluster right now
   private AdminConsumptionTask consumerTask;
-  private final ThreadFactory threadFactory = new DaemonThreadFactory("AdminTopicConsumer");
+  private final ThreadFactory threadFactory;
   private Thread consumerThread;
 
   private final PubSubTopicRepository pubSubTopicRepository;
   private final String localKafkaServerUrl;
   private final PubSubMessageDeserializer pubSubMessageDeserializer;
+  private final LogContext logContext;
 
   public AdminConsumerService(
       VeniceHelixAdmin admin,
@@ -54,6 +56,7 @@ public class AdminConsumerService extends AbstractVeniceService {
       PubSubTopicRepository pubSubTopicRepository,
       PubSubMessageDeserializer pubSubMessageDeserializer) {
     this.config = config;
+    this.logContext = config.getLogContext();
     this.admin = admin;
     this.adminTopicMetadataAccessor =
         new ZkAdminTopicMetadataAccessor(admin.getZkClient(), admin.getAdapterSerializer());
@@ -69,6 +72,7 @@ public class AdminConsumerService extends AbstractVeniceService {
     }
     this.localKafkaServerUrl = admin.getKafkaBootstrapServers(admin.isSslToKafka());
     this.consumerFactory = admin.getPubSubConsumerAdapterFactory();
+    this.threadFactory = new DaemonThreadFactory("AdminConsumerService", logContext);
   }
 
   @Override
@@ -231,7 +235,8 @@ public class AdminConsumerService extends AbstractVeniceService {
     /**
      * {@link KAFKA_CLIENT_ID_CONFIG} can be used to identify different consumers while checking Kafka related metrics.
      */
-    kafkaConsumerProperties.setProperty(KAFKA_CLIENT_ID_CONFIG, clusterName);
+    kafkaConsumerProperties
+        .setProperty(KAFKA_CLIENT_ID_CONFIG, (logContext != null ? logContext + "--" : "") + clusterName);
     kafkaConsumerProperties.setProperty(KAFKA_AUTO_OFFSET_RESET_CONFIG, "earliest");
     /**
      * Reason to disable auto_commit

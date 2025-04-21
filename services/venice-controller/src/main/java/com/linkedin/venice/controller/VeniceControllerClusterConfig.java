@@ -217,6 +217,7 @@ import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pushmonitor.LeakedPushStatusCleanUpService;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -586,6 +587,16 @@ public class VeniceControllerClusterConfig {
   private final int logCompactionThreadCount;
   private final long logCompactionIntervalMS;
   private final long timeSinceLastLogCompactionThresholdMS;
+
+  /**
+   * Configs for Dead Store Endpoint
+   */
+  private final boolean isDeadStoreEndpointEnabled;
+  private final String deadStoreStatsClassName;
+  private final boolean isPreFetchDeadStoreStatsEnabled;
+  private final long deadStoreStatsPreFetchIntervalInMs;
+  private final VeniceProperties deadStoreStatsConfigs;
+  private final LogContext logContext;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
@@ -1053,6 +1064,14 @@ public class VeniceControllerClusterConfig {
     this.timeSinceLastLogCompactionThresholdMS =
         props.getLong(TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS, TimeUnit.HOURS.toMillis(24));
 
+    this.isDeadStoreEndpointEnabled = props.getBoolean(ConfigKeys.CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED, false);
+    this.deadStoreStatsClassName = props.getString(ConfigKeys.CONTROLLER_DEAD_STORE_STATS_CLASS_NAME, "");
+    this.isPreFetchDeadStoreStatsEnabled =
+        props.getBoolean(ConfigKeys.CONTROLLER_DEAD_STORE_STATS_PRE_FETCH_ENABLED, false);
+    this.deadStoreStatsPreFetchIntervalInMs =
+        props.getLong(ConfigKeys.CONTROLLER_DEAD_STORE_STATS_PRE_FETCH_INTERVAL_MS, 24 * 60 * 60 * 1000);
+    this.deadStoreStatsConfigs = props.clipAndFilterNamespace(ConfigKeys.CONTROLLER_DEAD_STORE_STATS_PREFIX);
+
     this.isRealTimeTopicVersioningEnabled = props.getBoolean(
         ConfigKeys.CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING,
         DEFAULT_CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING);
@@ -1113,6 +1132,7 @@ public class VeniceControllerClusterConfig {
         props.getLong(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, TimeUnit.MINUTES.toMillis(1));
     this.deferredVersionSwapServiceEnabled = props.getBoolean(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, false);
     this.skipDeferredVersionSwapForDVCEnabled = props.getBoolean(SKIP_DEFERRED_VERSION_SWAP_FOR_DVC_ENABLED, true);
+    this.logContext = new LogContext.Builder().setRegionName(regionName).setComponentName("controller").build();
   }
 
   public VeniceProperties getProps() {
@@ -1995,6 +2015,26 @@ public class VeniceControllerClusterConfig {
     return timeSinceLastLogCompactionThresholdMS;
   }
 
+  public boolean isDeadStoreEndpointEnabled() {
+    return isDeadStoreEndpointEnabled;
+  }
+
+  public String getDeadStoreStatsClassName() {
+    return deadStoreStatsClassName;
+  }
+
+  public boolean isPreFetchDeadStoreStatsEnabled() {
+    return isPreFetchDeadStoreStatsEnabled;
+  }
+
+  public long getDeadStoreStatsPreFetchRefreshIntervalInMs() {
+    return deadStoreStatsPreFetchIntervalInMs;
+  }
+
+  public VeniceProperties getDeadStoreStatsConfigs() {
+    return deadStoreStatsConfigs;
+  }
+
   public Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> getHelixGlobalRebalancePreference() {
     return helixGlobalRebalancePreference;
   }
@@ -2075,5 +2115,9 @@ public class VeniceControllerClusterConfig {
       throw new ConfigurationException(
           CONTROLLER_HELIX_INSTANCE_CAPACITY + " cannot be <  " + CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT);
     }
+  }
+
+  public LogContext getLogContext() {
+    return logContext;
   }
 }

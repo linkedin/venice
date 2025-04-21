@@ -1,5 +1,9 @@
 package com.linkedin.venice.utils;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -13,8 +17,10 @@ import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -516,5 +522,25 @@ public class UtilsTest {
             avroProtocolDefinition.getClassName());
       }
     }
+  }
+
+  @Test
+  public void testWaitStoreVersion() {
+    ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
+    String storeName = "foo";
+    String badStoreName = "bar";
+
+    Store store = mock(Store.class);
+    Version version = mock(Version.class);
+    doReturn(new StoreVersionInfo(store, version)).when(storeRepository).waitVersion(eq(storeName), eq(1), any());
+    doReturn(new StoreVersionInfo(store, null)).when(storeRepository).waitVersion(eq(storeName), eq(2), any());
+    doReturn(new StoreVersionInfo(null, null)).when(storeRepository).waitVersion(eq(badStoreName), anyInt(), any());
+    Assert.assertThrows(
+        () -> Utils.waitStoreVersionOrThrow(Version.composeKafkaTopic(badStoreName, 123), storeRepository));
+    Assert.assertThrows(() -> Utils.waitStoreVersionOrThrow(Version.composeKafkaTopic(storeName, 2), storeRepository));
+    StoreVersionInfo storeVersionInfo =
+        Utils.waitStoreVersionOrThrow(Version.composeKafkaTopic(storeName, 1), storeRepository);
+    Assert.assertEquals(storeVersionInfo.getStore(), store);
+    Assert.assertEquals(storeVersionInfo.getVersion(), version);
   }
 }

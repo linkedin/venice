@@ -81,7 +81,7 @@ public abstract class VeniceView {
     // validation based on view implementation
   }
 
-  public void close() {
+  public void close(boolean gracefulClose) {
     // close out anything which should be shutdown
   }
 

@@ -36,6 +36,7 @@ import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.servicediscovery.AsyncRetryingServiceDiscoveryAnnouncer;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
@@ -96,6 +97,7 @@ public class VeniceController {
   private final Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator;
   private final PubSubTopicRepository pubSubTopicRepository;
   private final PubSubClientsFactory pubSubClientsFactory;
+  private final LogContext logContext;
 
   /**
    * Allocates a new {@code VeniceController} object.
@@ -145,6 +147,7 @@ public class VeniceController {
 
   public VeniceController(VeniceControllerContext ctx) {
     this.multiClusterConfigs = new VeniceControllerMultiClusterConfig(ctx.getPropertiesList());
+    this.logContext = multiClusterConfigs.getLogContext();
     this.metricsRepository = ctx.getMetricsRepository();
     this.serviceDiscoveryAnnouncers = ctx.getServiceDiscoveryAnnouncers();
     Optional<SSLConfig> sslConfig = multiClusterConfigs.getSslConfig();
@@ -276,8 +279,7 @@ public class VeniceController {
   }
 
   private Optional<SystemStoreRepairService> createSystemStoreRepairService() {
-    if (multiClusterConfigs.isParent()
-        && multiClusterConfigs.getCommonConfig().isParentSystemStoreRepairServiceEnabled()) {
+    if (multiClusterConfigs.isParent()) {
       Admin admin = controllerService.getVeniceHelixAdmin();
       return Optional
           .of(new SystemStoreRepairService((VeniceParentHelixAdmin) admin, multiClusterConfigs, metricsRepository));
@@ -324,6 +326,7 @@ public class VeniceController {
     grpcExecutor = ThreadPoolFactory.createThreadPool(
         multiClusterConfigs.getGrpcServerThreadCount(),
         CONTROLLER_GRPC_SERVER_THREAD_NAME,
+        multiClusterConfigs.getLogContext(),
         Integer.MAX_VALUE,
         BlockingQueueType.LINKED_BLOCKING_QUEUE);
 

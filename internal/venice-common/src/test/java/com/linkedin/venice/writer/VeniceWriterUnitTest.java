@@ -45,7 +45,6 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
-import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -752,56 +751,6 @@ public class VeniceWriterUnitTest {
         }
       }
       clearInvocations(mockedProducer); // important for the non-chunked messages don't appear in the next iteration
-    }
-  }
-
-  /**
-   * Writes two GlobalRtDiv messages, one that needs chunking and one that doesn't, and verifies the sent output.
-   */
-  @Test(timeOut = TIMEOUT)
-  public void testGlobalRtDivChunking() {
-    final int NON_CHUNKED_VALUE_SIZE = BYTES_PER_MB / 2; // 500 KB
-    final int CHUNKED_VALUE_SIZE = BYTES_PER_MB * 2; // 2 MB
-    for (int size: Arrays.asList(NON_CHUNKED_VALUE_SIZE, CHUNKED_VALUE_SIZE)) {
-      CompletableFuture<PubSubProduceResult> mockedFuture = mock(CompletableFuture.class);
-      PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
-      when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
-      final VeniceKafkaSerializer<Object> serializer = new VeniceAvroKafkaSerializer(TestWriteUtils.STRING_SCHEMA);
-      final VeniceWriterOptions options = new VeniceWriterOptions.Builder("testTopic").setPartitionCount(1)
-          .setKeyPayloadSerializer(serializer)
-          .setValuePayloadSerializer(serializer)
-          .build();
-      VeniceProperties props = VeniceProperties.empty();
-      final VeniceWriter<Object, Object, Object> writer = new VeniceWriter<>(options, props, mockedProducer);
-
-      char[] valueChars = new char[size];
-      Arrays.fill(valueChars, '*');
-      writer.sendGlobalRtDivMessage(0, "test-key", new String(valueChars));
-
-      // NON_CHUNKED_VALUE_SIZE: 1 SOS, 1 GlobalRtDiv Message
-      // CHUNKED_VALUE_SIZE: 1 SOS, 3 DivChunk, 1 DivManifest
-      final int invocationCount = (size == NON_CHUNKED_VALUE_SIZE) ? 2 : 5;
-      ArgumentCaptor<KafkaKey> keyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
-      ArgumentCaptor<KafkaMessageEnvelope> kmeArgumentCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
-      verify(mockedProducer, times(invocationCount))
-          .sendMessage(any(), any(), keyArgumentCaptor.capture(), kmeArgumentCaptor.capture(), any(), any());
-      assertFalse(keyArgumentCaptor.getAllValues().isEmpty());
-      keyArgumentCaptor.getAllValues().forEach(key -> assertTrue(key.isGlobalRtDiv() || key.isControlMessage()));
-
-      for (KafkaMessageEnvelope kme: kmeArgumentCaptor.getAllValues()) {
-        if (kme.messageType == MessageType.CONTROL_MESSAGE.getValue()) {
-          ControlMessage controlMessage = ((ControlMessage) kme.getPayloadUnion());
-          assertEquals(ControlMessageType.START_OF_SEGMENT.getValue(), controlMessage.getControlMessageType());
-        } else {
-          Put put = (Put) kme.payloadUnion;
-          assertEquals(kme.messageType, MessageType.PUT.getValue());
-          if (size == NON_CHUNKED_VALUE_SIZE) {
-            assertEquals(put.getSchemaId(), AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
-          } else {
-            assertTrue(put.getSchemaId() == CHUNK_VALUE_SCHEMA_ID || put.getSchemaId() == CHUNK_MANIFEST_SCHEMA_ID);
-          }
-        }
-      }
     }
   }
 }

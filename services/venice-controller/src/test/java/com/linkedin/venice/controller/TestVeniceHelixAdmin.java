@@ -26,12 +26,17 @@ import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
+import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
+import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionControllerResponse;
+import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
+import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
@@ -63,6 +68,8 @@ import java.util.Properties;
 import java.util.Set;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 import org.testng.annotations.Test;
 
 
@@ -1027,5 +1034,108 @@ public class TestVeniceHelixAdmin {
         Optional.of(upstreamOffset));
     verify(executionIdAccessor, never()).updateLastSucceededExecutionId(anyString(), anyLong());
     verify(adminConsumerService, times(1)).updateAdminTopicMetadata(clusterName, executionId, offset, upstreamOffset);
+  }
+
+  @Test
+  public void testGetAdminOperationVersionsFromControllers() {
+    String clusterName = "test-cluster";
+    VeniceParentHelixAdmin veniceParentHelixAdmin = mock(VeniceParentHelixAdmin.class);
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    when(veniceParentHelixAdmin.getVeniceHelixAdmin()).thenReturn(veniceHelixAdmin);
+    doCallRealMethod().when(veniceParentHelixAdmin).getAdminOperationVersionFromControllers(clusterName);
+    doCallRealMethod().when(veniceHelixAdmin).getAdminOperationVersionFromControllers(clusterName);
+
+    // Mock current version in leader is 2
+    when(veniceHelixAdmin.getLocalAdminOperationProtocolVersion()).thenReturn(2L);
+
+    // Mock response for standby controllers
+    AdminOperationProtocolVersionControllerResponse response1 = new AdminOperationProtocolVersionControllerResponse();
+    response1.setLocalAdminOperationProtocolVersion(1);
+    response1.setRequestUrl("standbyHost1:1234");
+    AdminOperationProtocolVersionControllerResponse response2 = new AdminOperationProtocolVersionControllerResponse();
+    response2.setLocalAdminOperationProtocolVersion(2);
+    response2.setRequestUrl("standbyHost2:1234");
+
+    List<Instance> standbyControllers = new ArrayList<>();
+    standbyControllers.add(new Instance("1", "standbyHost1", 1234));
+    standbyControllers.add(new Instance("2", "standbyHost2", 1234));
+
+    when(veniceHelixAdmin.getControllersByHelixState(clusterName, HelixState.STANDBY_STATE))
+        .thenReturn(standbyControllers);
+    when(veniceHelixAdmin.getLeaderController(clusterName)).thenReturn(new Instance("3", "leaderHost", 1234));
+
+    try (MockedStatic<ControllerClient> controllerClientMockedStatic = Mockito.mockStatic(ControllerClient.class)) {
+      ControllerClient client = mock(ControllerClient.class);
+      controllerClientMockedStatic
+          .when(() -> ControllerClient.constructClusterControllerClient(eq(clusterName), any(), any()))
+          .thenReturn(client);
+      when(client.getLocalAdminOperationProtocolVersion()).thenReturn(response1).thenReturn(response2);
+
+      Map<String, Long> urlToVersionMap = veniceParentHelixAdmin.getAdminOperationVersionFromControllers(clusterName);
+      assertEquals(urlToVersionMap.size(), 3);
+    }
+  }
+
+  @Test
+  public void testFailedGetAdminOperationVersionsForStandbyControllers() {
+    String clusterName = "test-cluster";
+    VeniceParentHelixAdmin veniceParentHelixAdmin = mock(VeniceParentHelixAdmin.class);
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    when(veniceParentHelixAdmin.getVeniceHelixAdmin()).thenReturn(veniceHelixAdmin);
+    doCallRealMethod().when(veniceParentHelixAdmin).getAdminOperationVersionFromControllers(clusterName);
+    doCallRealMethod().when(veniceHelixAdmin).getAdminOperationVersionFromControllers(clusterName);
+
+    // Mock current version in leader is 2
+    when(veniceHelixAdmin.getLocalAdminOperationProtocolVersion()).thenReturn(2L);
+
+    // Mock response for standby controllers
+    List<Instance> standbyControllers = new ArrayList<>();
+    standbyControllers.add(new Instance("1", "standbyHost1", 1234));
+    standbyControllers.add(new Instance("2", "standbyHost2", 1234));
+
+    AdminOperationProtocolVersionControllerResponse response1 = new AdminOperationProtocolVersionControllerResponse();
+    response1.setLocalAdminOperationProtocolVersion(1);
+    response1.setRequestUrl("standbyHost1:1234");
+    AdminOperationProtocolVersionControllerResponse failedResponse =
+        new AdminOperationProtocolVersionControllerResponse();
+    failedResponse.setError("Failed to get version");
+
+    when(veniceHelixAdmin.getControllersByHelixState(clusterName, HelixState.STANDBY_STATE))
+        .thenReturn(standbyControllers);
+    when(veniceHelixAdmin.getLeaderController(clusterName)).thenReturn(new Instance("3", "leaderHost", 1234));
+
+    try (MockedStatic<ControllerClient> controllerClientMockedStatic = Mockito.mockStatic(ControllerClient.class)) {
+      ControllerClient client = mock(ControllerClient.class);
+      controllerClientMockedStatic
+          .when(() -> ControllerClient.constructClusterControllerClient(eq(clusterName), any(), any()))
+          .thenReturn(client);
+      when(client.getLocalAdminOperationProtocolVersion()).thenReturn(response1).thenReturn(failedResponse);
+
+      expectThrows(
+          VeniceException.class,
+          () -> veniceParentHelixAdmin.getAdminOperationVersionFromControllers(clusterName));
+    }
+  }
+
+  @Test
+  public void testGetLocalAdminOperationProtocolVersion() {
+    VeniceParentHelixAdmin veniceParentHelixAdmin = mock(VeniceParentHelixAdmin.class);
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    when(veniceParentHelixAdmin.getVeniceHelixAdmin()).thenReturn(veniceHelixAdmin);
+    doCallRealMethod().when(veniceParentHelixAdmin).getLocalAdminOperationProtocolVersion();
+
+    doCallRealMethod().when(veniceHelixAdmin).getLocalAdminOperationProtocolVersion();
+    assertEquals(
+        veniceParentHelixAdmin.getLocalAdminOperationProtocolVersion(),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+  }
+
+  @Test
+  public void testGetControllersWithInvalidHelixState() {
+    String clusterName = "test-cluster";
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    doCallRealMethod().when(veniceHelixAdmin).getControllersByHelixState(any(), any());
+
+    expectThrows(VeniceException.class, () -> veniceHelixAdmin.getControllersByHelixState(clusterName, "state"));
   }
 }

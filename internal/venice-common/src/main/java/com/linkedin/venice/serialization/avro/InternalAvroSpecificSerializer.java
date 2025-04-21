@@ -18,6 +18,7 @@ import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Properties;
 import java.util.function.BiConsumer;
+import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.BinaryEncoder;
@@ -359,7 +360,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
     return deserialize(bytes, specificDatumReader, reuse);
   }
 
-  public SPECIFIC_RECORD deserialize(byte[] bytes, Schema providedProtocolSchema, SPECIFIC_RECORD reuse) {
+  public SPECIFIC_RECORD deserialize(byte[] bytes, Supplier<Schema> providedProtocolSchema, SPECIFIC_RECORD reuse) {
     int protocolVersion = getProtocolVersion(bytes);
 
     /**
@@ -379,11 +380,12 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
      */
     VeniceSpecificDatumReader<SPECIFIC_RECORD> specificDatumReader =
         protocolVersionToReader.computeIfAbsent(protocolVersion, index -> {
-          newSchemaEncountered.accept(protocolVersion, providedProtocolSchema);
+          Schema schema = providedProtocolSchema.get();
+          newSchemaEncountered.accept(protocolVersion, schema);
 
           // Add a new datum reader for the protocol version. Notice that in that case that newSchemaEncountered is
           // an empty lambda, the reader will still be added locally.
-          return cacheDatumReader(protocolVersion, providedProtocolSchema);
+          return cacheDatumReader(protocolVersion, schema);
         });
     return deserialize(bytes, specificDatumReader, reuse);
   }

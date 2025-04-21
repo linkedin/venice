@@ -12,6 +12,7 @@ import com.linkedin.venice.client.store.transport.TransportClientCallback;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.schema.SchemaData;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -59,6 +60,8 @@ public class R2TransportClient extends InternalTransportClient {
 
   public static class R2TransportClientCallback extends TransportClientCallback implements Callback<RestResponse> {
     private final Logger logger = LogManager.getLogger(R2TransportClientCallback.class);
+    private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER =
+        RedundantExceptionFilter.getRedundantExceptionFilter();
 
     public R2TransportClientCallback(CompletableFuture<TransportClientResponse> valueFuture) {
       super(valueFuture);
@@ -71,7 +74,9 @@ public class R2TransportClient extends InternalTransportClient {
         RestResponse result = ((RestException) e).getResponse();
         onSuccess(result);
       } else {
-        logger.error("", e);
+        if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(e.getMessage())) {
+          logger.error("", e);
+        }
         getValueFuture().completeExceptionally(new VeniceClientException(e));
       }
     }

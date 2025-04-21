@@ -3,6 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLIENT_ID_CONFIG;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
 import com.linkedin.davinci.utils.IndexedHashMap;
@@ -89,6 +90,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   // 4MB bitset size, 2 bitmaps for active and old bitset
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       new RedundantExceptionFilter(8 * 1024 * 1024 * 4, TimeUnit.MINUTES.toMillis(10));
+  private final VeniceServerConfig serverConfig;
 
   /**
    * @param statsOverride injection of stats, for test purposes
@@ -104,23 +106,25 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       final MetricsRepository metricsRepository,
       final String kafkaClusterAlias,
       final long sharedConsumerNonExistingTopicCleanupDelayMS,
-      final TopicExistenceChecker topicExistenceChecker,
+      final StaleTopicChecker staleTopicChecker,
       final boolean liveConfigBasedKafkaThrottlingEnabled,
       final PubSubMessageDeserializer pubSubDeserializer,
       final Time time,
       final AggKafkaConsumerServiceStats statsOverride,
       final boolean isKafkaConsumerOffsetCollectionEnabled,
       final ReadOnlyStoreRepository metadataRepository,
-      final boolean isUnregisterMetricForDeletedStoreEnabled) {
+      final boolean isUnregisterMetricForDeletedStoreEnabled,
+      VeniceServerConfig serverConfig) {
     this.kafkaUrl = consumerProperties.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.kafkaUrlForLogger = Utils.getSanitizedStringForLogger(kafkaUrl);
     this.LOGGER = LogManager.getLogger(
         KafkaConsumerService.class.getSimpleName() + " [" + kafkaUrlForLogger + "-" + poolType.getStatSuffix() + "]");
     this.poolType = poolType;
+    this.serverConfig = serverConfig;
 
     // Initialize consumers and consumerExecutor
     String consumerNamePrefix = "venice-shared-consumer-for-" + kafkaUrl + '-' + poolType.getStatSuffix();
-    threadFactory = new RandomAccessDaemonThreadFactory(consumerNamePrefix);
+    threadFactory = new RandomAccessDaemonThreadFactory(consumerNamePrefix, serverConfig.getRegionName());
     consumerExecutor = Executors.newFixedThreadPool(numOfConsumersPerKafkaCluster, threadFactory);
     this.consumerToConsumptionTask = new IndexedHashMap<>(numOfConsumersPerKafkaCluster);
     this.aggStats = statsOverride != null
@@ -159,7 +163,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       final ConsumerSubscriptionCleaner cleaner = new ConsumerSubscriptionCleaner(
           sharedConsumerNonExistingTopicCleanupDelayMS,
           1000,
-          topicExistenceChecker,
+          staleTopicChecker,
           pubSubConsumer::getAssignment,
           aggStats::recordTotalDetectedDeletedTopicNum,
           pubSubConsumer::batchUnsubscribe,
@@ -465,14 +469,15 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         MetricsRepository metricsRepository,
         String kafkaClusterAlias,
         long sharedConsumerNonExistingTopicCleanupDelayMS,
-        TopicExistenceChecker topicExistenceChecker,
+        StaleTopicChecker staleTopicChecker,
         boolean liveConfigBasedKafkaThrottlingEnabled,
         PubSubMessageDeserializer pubSubDeserializer,
         Time time,
         AggKafkaConsumerServiceStats stats,
         boolean isKafkaConsumerOffsetCollectionEnabled,
         ReadOnlyStoreRepository metadataRepository,
-        boolean unregisterMetricForDeletedStoreEnabled);
+        boolean unregisterMetricForDeletedStoreEnabled,
+        VeniceServerConfig serverConfig);
   }
 
   /**

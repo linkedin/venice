@@ -104,7 +104,7 @@ public class TestCompactionManager {
   }
 
   @Test(expectedExceptions = VeniceException.class)
-  public void testCompactStoreWithNullResponse() throws Exception {
+  public void testRepushStoreWithNullResponse() throws Exception {
     // Setup a mocked RepushOrchestrator that returns null on repush()
     when(mockRepushOrchestrator.repush(any())).thenReturn(null);
 
@@ -112,7 +112,7 @@ public class TestCompactionManager {
     RepushJobRequest repushJobRequest =
         new RepushJobRequest(Utils.getUniqueString("store"), RepushJobRequest.MANUAL_TRIGGER);
 
-    // Call the compactStore method and expect a VeniceException
-    testCompactionManager.compactStore(repushJobRequest);
+    // Call the repushStore method and expect a VeniceException
+    testCompactionManager.repushStore(repushJobRequest);
   }
 }

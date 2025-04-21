@@ -548,14 +548,15 @@ public class KafkaConsumerServiceDelegatorTest {
         mockMetricsRepository,
         "test_kafka_cluster_alias",
         TimeUnit.MINUTES.toMillis(1),
-        mock(TopicExistenceChecker.class),
+        mock(StaleTopicChecker.class),
         false,
         pubSubDeserializer,
         SystemTime.INSTANCE,
         mock(AggKafkaConsumerServiceStats.class),
         false,
         mock(ReadOnlyStoreRepository.class),
-        false);
+        false,
+        mock(VeniceServerConfig.class));
     String storeName = Utils.getUniqueString("test_consumer_service");
 
     Function<String, Boolean> isAAWCStoreFunc = vt -> true;

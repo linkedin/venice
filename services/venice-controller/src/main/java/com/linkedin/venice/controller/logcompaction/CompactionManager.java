@@ -103,12 +103,12 @@ public class CompactionManager {
   /**
    * This function triggers a repush job to perform log compaction on the topic of a store.
    * <p>
-   * - intermediary between {@link com.linkedin.venice.controller.VeniceHelixAdmin#compactStore} and
+   * - intermediary between {@link com.linkedin.venice.controller.VeniceHelixAdmin#repushStore} and
    * {@link RepushOrchestrator#repush} - a wrapper around repush() - handles repush job status/response
    *
    * @param repushJobRequest
    */
-  public RepushJobResponse compactStore(RepushJobRequest repushJobRequest) throws Exception {
+  public RepushJobResponse repushStore(RepushJobRequest repushJobRequest) throws Exception {
     try {
       RepushJobResponse response = repushOrchestrator.repush(repushJobRequest);
 
