@@ -126,7 +126,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
               .stream()
               .filter(
                   version -> version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT
-                      && isCurrentOrFutureVersion(version))
+                      && shouldDownloadDictionaryForVersion(version))
               .filter(version -> !downloadingDictionaryFutures.containsKey(version.kafkaTopicName()))
               .map(Version::kafkaTopicName)
               .collect(Collectors.toList()));
@@ -315,7 +315,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
         .flatMap(store -> store.getVersions().stream())
         .filter(
             version -> version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT
-                && isCurrentOrFutureVersion(version))
+                && shouldDownloadDictionaryForVersion(version))
         .filter(version -> !downloadingDictionaryFutures.containsKey(version.kafkaTopicName()))
         .map(Version::kafkaTopicName)
         .collect(Collectors.toList());
@@ -419,7 +419,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
 
   private void initCompressorFromDictionary(Version version, byte[] dictionary) {
     String kafkaTopic = version.kafkaTopicName();
-    if (!isCurrentOrFutureVersion(version) || !downloadingDictionaryFutures.containsKey(kafkaTopic)) {
+    if (!shouldDownloadDictionaryForVersion(version) || !downloadingDictionaryFutures.containsKey(kafkaTopic)) {
       // Nothing to do since version was retired.
       return;
     }
@@ -443,7 +443,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     compressorFactory.removeVersionSpecificCompressor(kafkaTopic);
   }
 
-  private boolean isCurrentOrFutureVersion(Version version) {
+  private boolean shouldDownloadDictionaryForVersion(Version version) {
     return version.getStatus() == VersionStatus.ONLINE || version.getStatus() == VersionStatus.STARTED;
   }
 
