@@ -4,7 +4,6 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.linkedin.venice.controller.stats.DeadStoreStats;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
@@ -55,7 +54,6 @@ public class TestVeniceHelixResources {
         .getReadOnlyZKSharedSystemStoreRepository();
     doReturn(mock(HelixReadOnlyZKSharedSchemaRepository.class)).when(veniceHelixAdmin)
         .getReadOnlyZKSharedSchemaRepository();
-    veniceHelixAdmin.deadStoreStatsMap.put(cluster, mock(DeadStoreStats.class));
 
     doReturn(Collections.emptyList()).when(veniceHelixAdmin).getAllStores(cluster);
 
@@ -65,6 +63,7 @@ public class TestVeniceHelixResources {
     when(controllerConfig.isDaVinciPushStatusEnabled()).thenReturn(true);
     when(controllerConfig.getOffLineJobWaitTimeInMilliseconds()).thenReturn(120000L);
     when(controllerConfig.isDeadStoreEndpointEnabled()).thenReturn(true);
+    when(controllerConfig.isPreFetchDeadStoreStatsEnabled()).thenReturn(true);
     when(controllerConfig.getDeadStoreStatsPreFetchRefreshIntervalInMs()).thenReturn(100L); // Must be Long
 
     return new HelixVeniceClusterResources(
@@ -112,9 +111,10 @@ public class TestVeniceHelixResources {
   @Test
   public void testStartAndStopDeadStoreStatsPreFetchTask() throws Exception {
     HelixVeniceClusterResources resources = getVeniceHelixResources("test-dead-store");
+    Assert.assertNotNull(resources.deadStoreStatsPreFetchTask, "Dead store stats prefetch task should be initialized");
     resources.startDeadStoreStatsPreFetchTask();
-    Thread.sleep(300); // Let it run a few times
+    Thread.sleep(500);
     resources.stopDeadStoreStatsPreFetchTask();
-    Assert.assertTrue(true, "Dead store stats task started and stopped cleanly");
+    Assert.assertTrue(resources.deadStoreStatsPreFetchService.isShutdown(), "Executor service should be shut down");
   }
 }

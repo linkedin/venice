@@ -74,8 +74,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
 
   private ErrorPartitionResetTask errorPartitionResetTask = null;
 
-  private final ExecutorService deadStoreStatsPreFetchService = Executors.newSingleThreadExecutor();
-  private DeadStoreStatsPreFetchTask deadStoreStatsPreFetchTask = null;
+  final ExecutorService deadStoreStatsPreFetchService = Executors.newSingleThreadExecutor();
+  DeadStoreStatsPreFetchTask deadStoreStatsPreFetchTask = null;
   private final Optional<MetaStoreWriter> metaStoreWriter;
   private final VeniceAdminStats veniceAdminStats;
   private final VeniceHelixAdmin admin;
