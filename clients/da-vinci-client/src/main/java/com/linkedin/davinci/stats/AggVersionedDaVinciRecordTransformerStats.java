@@ -30,21 +30,6 @@ public class AggVersionedDaVinciRecordTransformerStats
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordDeleteLatency(value, timestamp));
   }
 
-  public void recordOnRecoveryLatency(String storeName, int version, double value, long timestamp) {
-    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordOnRecoveryLatency(value, timestamp));
-  }
-
-  public void recordOnStartVersionIngestionLatency(String storeName, int version, double value, long timestamp) {
-    recordVersionedAndTotalStat(
-        storeName,
-        version,
-        stat -> stat.recordOnStartVersionIngestionLatency(value, timestamp));
-  }
-
-  public void recordOnEndVersionIngestionLatency(String storeName, int version, double value, long timestamp) {
-    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordOnEndVersionIngestionLatency(value, timestamp));
-  }
-
   public void recordPutError(String storeName, int version, long timestamp) {
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordPutError(timestamp));
   }

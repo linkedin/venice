@@ -551,11 +551,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // before bootstrapping starts
       long startTime = System.nanoTime();
       recordTransformer.onStartVersionIngestion(isCurrentVersion.getAsBoolean());
-      daVinciRecordTransformerStats.recordOnStartVersionIngestionLatency(
-          storeName,
-          versionNumber,
-          LatencyUtils.getElapsedTimeFromNSToMS(startTime),
-          System.currentTimeMillis());
+      LOGGER.info(
+          "DaVinciRecordTransformer onStartVersionIngestion took {} ms",
+          LatencyUtils.getElapsedTimeFromNSToMS(startTime));
     } else {
       this.recordTransformerKeyDeserializer = null;
       this.recordTransformerInputValueSchema = null;
@@ -703,11 +701,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (recordTransformer != null) {
       long startTime = System.nanoTime();
       recordTransformer.internalOnRecovery(storageEngine, partitionNumber, partitionStateSerializer, compressor);
-      daVinciRecordTransformerStats.recordOnRecoveryLatency(
-          storeName,
-          versionNumber,
-          LatencyUtils.getElapsedTimeFromNSToMS(startTime),
-          System.currentTimeMillis());
+      LOGGER.info("DaVinciRecordTransformer onRecovery took {} ms", LatencyUtils.getElapsedTimeFromNSToMS(startTime));
     }
 
     partitionToPendingConsumerActionCountMap.computeIfAbsent(partitionNumber, x -> new AtomicInteger(0))
@@ -4356,11 +4350,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long startTime = System.nanoTime();
       Store store = storeRepository.getStoreOrThrow(storeName);
       recordTransformer.onEndVersionIngestion(store.getCurrentVersion());
-      daVinciRecordTransformerStats.recordOnEndVersionIngestionLatency(
-          storeName,
-          versionNumber,
-          LatencyUtils.getElapsedTimeFromNSToMS(startTime),
-          System.currentTimeMillis());
+      LOGGER.info(
+          "DaVinciRecordTransformer onEndVersionIngestion took {} ms",
+          LatencyUtils.getElapsedTimeFromNSToMS(startTime));
       Utils.closeQuietlyWithErrorLogged(this.recordTransformer);
     }
   }
