@@ -9,11 +9,11 @@ package com.linkedin.venice.exceptions.validation;
  * forgo any processing it had planned to do about the duplicate data.
  */
 public class DuplicateDataException extends DataValidationException {
-  public DuplicateDataException(String message) {
-    super(message);
+  public DuplicateDataException(String message, boolean fillInStacktrace) {
+    super(message, fillInStacktrace);
   }
 
-  public DuplicateDataException(String message, Throwable throwable) {
-    super(message, throwable);
+  public DuplicateDataException(String message) {
+    this(message, true);
   }
 }

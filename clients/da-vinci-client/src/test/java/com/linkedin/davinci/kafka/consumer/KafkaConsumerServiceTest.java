@@ -15,19 +15,19 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.utils.IndexedHashMap;
 import com.linkedin.davinci.utils.IndexedMap;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -101,14 +101,15 @@ public class KafkaConsumerServiceTest {
         mockMetricsRepository,
         testKafkaClusterAlias,
         TimeUnit.MINUTES.toMillis(1),
-        mock(TopicExistenceChecker.class),
+        mock(StaleTopicChecker.class),
         false,
         pubSubDeserializer,
         SystemTime.INSTANCE,
         null,
         false,
         mock(ReadOnlyStoreRepository.class),
-        false);
+        false,
+        mock(VeniceServerConfig.class));
     consumerService.start();
 
     PubSubTopic versionTopicForTask1 = task1.getVersionTopic();
@@ -192,10 +193,9 @@ public class KafkaConsumerServiceTest {
     consumerAssignedPartitions.add(topicPartition);
     assignedConsumer.setCurrentAssignment(consumerAssignedPartitions);
 
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumer2MessageMap =
-        new HashMap<>();
-    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> pubSubMessages = new ArrayList<>();
-    PubSubMessage pubSubMessage = mock(PubSubMessage.class);
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> consumer2MessageMap = new HashMap<>();
+    List<DefaultPubSubMessage> pubSubMessages = new ArrayList<>();
+    DefaultPubSubMessage pubSubMessage = mock(DefaultPubSubMessage.class);
     when(pubSubMessage.getPayloadSize()).thenReturn(10);
     pubSubMessages.add(pubSubMessage);
     consumer2MessageMap.put(topicPartition, pubSubMessages);
@@ -239,14 +239,15 @@ public class KafkaConsumerServiceTest {
         mockMetricsRepository,
         "test_kafka_cluster_alias",
         TimeUnit.MINUTES.toMillis(1),
-        mock(TopicExistenceChecker.class),
+        mock(StaleTopicChecker.class),
         false,
         pubSubDeserializer,
         SystemTime.INSTANCE,
         null,
         false,
         mock(ReadOnlyStoreRepository.class),
-        false) {
+        false,
+        mock(VeniceServerConfig.class)) {
       @Override
       protected SharedKafkaConsumer pickConsumerForPartition(
           PubSubTopic versionTopic,
@@ -293,14 +294,15 @@ public class KafkaConsumerServiceTest {
         mockMetricsRepository,
         "test_kafka_cluster_alias",
         TimeUnit.MINUTES.toMillis(1),
-        mock(TopicExistenceChecker.class),
+        mock(StaleTopicChecker.class),
         false,
         pubSubDeserializer,
         SystemTime.INSTANCE,
         null,
         false,
         mock(ReadOnlyStoreRepository.class),
-        false);
+        false,
+        mock(VeniceServerConfig.class));
     consumerService.start();
 
     String storeName = Utils.getUniqueString("test_consumer_service");
@@ -393,14 +395,15 @@ public class KafkaConsumerServiceTest {
         mockMetricsRepository,
         "test_kafka_cluster_alias",
         TimeUnit.MINUTES.toMillis(1),
-        mock(TopicExistenceChecker.class),
+        mock(StaleTopicChecker.class),
         false,
         pubSubDeserializer,
         SystemTime.INSTANCE,
         null,
         false,
         mock(ReadOnlyStoreRepository.class),
-        false);
+        false,
+        mock(VeniceServerConfig.class));
     consumerService.start();
 
     PubSubConsumerAdapter consumerForT1P0 = consumerService
@@ -578,14 +581,15 @@ public class KafkaConsumerServiceTest {
         mockMetricsRepository,
         "test_kafka_cluster_alias",
         TimeUnit.MINUTES.toMillis(1),
-        mock(TopicExistenceChecker.class),
+        mock(StaleTopicChecker.class),
         false,
         pubSubDeserializer,
         SystemTime.INSTANCE,
         null,
         false,
         mock(ReadOnlyStoreRepository.class),
-        false) {
+        false,
+        mock(VeniceServerConfig.class)) {
       @Override
       protected SharedKafkaConsumer pickConsumerForPartition(
           PubSubTopic versionTopic,

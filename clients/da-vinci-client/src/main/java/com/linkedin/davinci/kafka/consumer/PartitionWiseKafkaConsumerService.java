@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -50,14 +51,15 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
       final MetricsRepository metricsRepository,
       final String kafkaClusterAlias,
       final long sharedConsumerNonExistingTopicCleanupDelayMS,
-      final TopicExistenceChecker topicExistenceChecker,
+      final StaleTopicChecker staleTopicChecker,
       final boolean liveConfigBasedKafkaThrottlingEnabled,
       final PubSubMessageDeserializer pubSubDeserializer,
       final Time time,
       final AggKafkaConsumerServiceStats stats,
       final boolean isKafkaConsumerOffsetCollectionEnabled,
       final ReadOnlyStoreRepository metadataRepository,
-      final boolean isUnregisterMetricForDeletedStoreEnabled) {
+      final boolean isUnregisterMetricForDeletedStoreEnabled,
+      VeniceServerConfig veniceServerConfig) {
     this(
         poolType,
         consumerFactory,
@@ -69,7 +71,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
         metricsRepository,
         kafkaClusterAlias,
         sharedConsumerNonExistingTopicCleanupDelayMS,
-        topicExistenceChecker,
+        staleTopicChecker,
         liveConfigBasedKafkaThrottlingEnabled,
         pubSubDeserializer,
         time,
@@ -77,7 +79,8 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
         isKafkaConsumerOffsetCollectionEnabled,
         metadataRepository,
         isUnregisterMetricForDeletedStoreEnabled,
-        PartitionWiseKafkaConsumerService.class.toString());
+        PartitionWiseKafkaConsumerService.class.toString(),
+        veniceServerConfig);
   }
 
   PartitionWiseKafkaConsumerService(
@@ -91,7 +94,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
       final MetricsRepository metricsRepository,
       final String kafkaClusterAlias,
       final long sharedConsumerNonExistingTopicCleanupDelayMS,
-      final TopicExistenceChecker topicExistenceChecker,
+      final StaleTopicChecker staleTopicChecker,
       final boolean liveConfigBasedKafkaThrottlingEnabled,
       final PubSubMessageDeserializer pubSubDeserializer,
       final Time time,
@@ -99,7 +102,8 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
       final boolean isKafkaConsumerOffsetCollectionEnabled,
       final ReadOnlyStoreRepository metadataRepository,
       final boolean isUnregisterMetricForDeletedStoreEnabled,
-      final String loggerNamePrefix) {
+      final String loggerNamePrefix,
+      VeniceServerConfig veniceServerConfig) {
     super(
         poolType,
         consumerFactory,
@@ -111,14 +115,15 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
         metricsRepository,
         kafkaClusterAlias,
         sharedConsumerNonExistingTopicCleanupDelayMS,
-        topicExistenceChecker,
+        staleTopicChecker,
         liveConfigBasedKafkaThrottlingEnabled,
         pubSubDeserializer,
         time,
         stats,
         isKafkaConsumerOffsetCollectionEnabled,
         metadataRepository,
-        isUnregisterMetricForDeletedStoreEnabled);
+        isUnregisterMetricForDeletedStoreEnabled,
+        veniceServerConfig);
     this.LOGGER = LogManager.getLogger(loggerNamePrefix + " [" + kafkaUrlForLogger + "]");
   }
 

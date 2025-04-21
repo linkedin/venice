@@ -9,7 +9,7 @@ permalink: /docs/proposals/vip-3
 
 * **Status**: _Under Discussion_
 * **Author(s)**: _Felix GV_
-* **Pull Request**: _N/A_
+* **Pull Request**: [PR 604](https://github.com/linkedin/venice/pull/604)
 * **Release**: _N/A_
 
 ## Introduction

@@ -22,10 +22,12 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_ST
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.GLOBAL_RT_DIV_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_OVERHEAD_BYPASS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_DAVINCI_HEARTBEAT_REPORTED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_RT_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LATEST_SUPERSET_SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_COMPACTION_LAG_SECONDS;
@@ -129,6 +131,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setHybridStoreDiskQuotaEnabled(srcStore.isHybridStoreDiskQuotaEnabled())
             .setIncrementalPushEnabled(srcStore.isIncrementalPushEnabled())
             .setLargestUsedVersionNumber(srcStore.getLargestUsedVersionNumber())
+            .setLargestUsedRTVersionNumber(srcStore.getLargestUsedRTVersionNumber())
             .setNativeReplicationEnabled(srcStore.isNativeReplicationEnabled())
             .setNativeReplicationSourceFabric(srcStore.getNativeReplicationSourceFabric())
             .setNumVersionsToPreserve(srcStore.getNumVersionsToPreserve())
@@ -147,6 +150,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setMaxNearlineRecordSizeBytes(srcStore.getMaxNearlineRecordSizeBytes())
             .setTargetRegionSwap(srcStore.getTargetRegionSwap())
             .setTargetRegionSwapWaitTime(srcStore.getTargetRegionSwapWaitTime())
+            .setGlobalRtDivEnabled(srcStore.isGlobalRtDivEnabled())
             // TODO: This needs probably some refinement, but since we only support one kind of view type today, this is
             // still easy to parse
             .setStoreViews(
@@ -181,6 +185,7 @@ public class UpdateStoreQueryParams extends QueryParams {
           .setHybridTimeLagThreshold(hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds());
       updateStoreQueryParams.setHybridDataReplicationPolicy(hybridStoreConfig.getDataReplicationPolicy());
       updateStoreQueryParams.setHybridBufferReplayPolicy(hybridStoreConfig.getBufferReplayPolicy());
+      updateStoreQueryParams.setRealTimeTopicName(hybridStoreConfig.getRealTimeTopicName());
     }
 
     PartitionerConfig partitionerConfig = srcStore.getPartitionerConfig();
@@ -258,6 +263,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Integer> getLargestUsedVersionNumber() {
     return getInteger(LARGEST_USED_VERSION_NUMBER);
+  }
+
+  public UpdateStoreQueryParams setLargestUsedRTVersionNumber(int largestUsedRTVersionNumber) {
+    return putInteger(LARGEST_USED_RT_VERSION_NUMBER, largestUsedRTVersionNumber);
+  }
+
+  public Optional<Integer> getLargestUsedRTVersionNumber() {
+    return getInteger(LARGEST_USED_RT_VERSION_NUMBER);
   }
 
   public UpdateStoreQueryParams setEnableReads(boolean enableReads) {
@@ -770,6 +783,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Boolean> getIsDavinciHeartbeatReported() {
     return getBoolean(IS_DAVINCI_HEARTBEAT_REPORTED);
+  }
+
+  public UpdateStoreQueryParams setGlobalRtDivEnabled(boolean globalRtDivEnabled) {
+    return putBoolean(GLOBAL_RT_DIV_ENABLED, globalRtDivEnabled);
+  }
+
+  public Optional<Boolean> isGlobalRtDivEnabled() {
+    return getBoolean(GLOBAL_RT_DIV_ENABLED);
   }
 
   // ***************** above this line are getters and setters *****************

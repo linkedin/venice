@@ -575,7 +575,7 @@ public class RouterServer extends AbstractVeniceService {
 
     retryManagerExecutorService = Executors.newScheduledThreadPool(
         config.getRetryManagerCorePoolSize(),
-        new DaemonThreadFactory(ROUTER_RETRY_MANAGER_THREAD_PREFIX));
+        new DaemonThreadFactory(ROUTER_RETRY_MANAGER_THREAD_PREFIX, config.getRegionName()));
 
     VenicePathParser pathParser = new VenicePathParser(
         versionFinder,
@@ -601,7 +601,8 @@ public class RouterServer extends AbstractVeniceService {
         config.getKafkaBootstrapServers(),
         config.isSslToKafka(),
         versionFinder,
-        pushStatusStoreReader);
+        pushStatusStoreReader,
+        metricsRepository);
 
     // Setup stat tracking for exceptional case
     RouterExceptionAndTrackingUtils.setRouterStats(routerStats);
@@ -635,10 +636,7 @@ public class RouterServer extends AbstractVeniceService {
         .enableRetryRequestAlwaysUseADifferentHost(true)
         .build();
 
-    SecurityStats securityStats = new SecurityStats(
-        this.metricsRepository,
-        "security",
-        secureRouter != null ? () -> secureRouter.getConnectedCount() : () -> 0);
+    SecurityStats securityStats = new SecurityStats(this.metricsRepository, "security");
     RouterThrottleStats routerThrottleStats = new RouterThrottleStats(this.metricsRepository, "router_throttler_stats");
     routerEarlyThrottler = new EventThrottler(
         config.getMaxRouterReadCapacityCu(),
@@ -664,6 +662,9 @@ public class RouterServer extends AbstractVeniceService {
               .bossPoolBuilder(EventLoopGroup.class, ignored -> serverEventLoopGroup)
               .ioWorkerPoolBuilder(EventLoopGroup.class, ignored -> workerEventLoopGroup)
               .connectionLimit(config.getConnectionLimit())
+              .connectionHandleMode(config.getConnectionHandleMode())
+              .connectionCountRecorder(securityStats::recordLiveConnectionCount)
+              .rejectedConnectionCountRecorder(securityStats::recordRejectedConnectionCount)
               .timeoutProcessor(timeoutProcessor)
               .beforeHttpRequestHandler(ChannelPipeline.class, (pipeline) -> {
                 pipeline.addLast(
@@ -693,34 +694,38 @@ public class RouterServer extends AbstractVeniceService {
     if (sslFactory.isPresent()) {
       sslInitializer = new SslInitializer(SslUtils.toAlpiniSSLFactory(sslFactory.get()), false);
       if (config.getClientSslHandshakeThreads() > 0) {
-        if (config.isResolveBeforeSSL()) {
-          ExecutorService sslHandshakeExecutor = registry.factory(ShutdownableExecutors.class)
-              .newFixedThreadPool(
-                  config.getClientSslHandshakeThreads(),
-                  new DefaultThreadFactory("RouterDNSBeforeSSLThread", true, Thread.NORM_PRIORITY));
-          int clientSslHandshakeThreads = config.getClientSslHandshakeThreads();
-          int maxConcurrentResolution = config.getMaxConcurrentResolutions();
-          int clientResolutionRetryAttempts = config.getClientResolutionRetryAttempts();
-          long clientResolutionRetryBackoffMs = config.getClientResolutionRetryBackoffMs();
-          if (useEpoll) {
-            sslResolverEventLoopGroup = new EpollEventLoopGroup(clientSslHandshakeThreads, sslHandshakeExecutor);
-          } else {
-            sslResolverEventLoopGroup = new NioEventLoopGroup(clientSslHandshakeThreads, sslHandshakeExecutor);
-          }
-          sslInitializer.enableResolveBeforeSSL(
-              sslResolverEventLoopGroup,
-              clientResolutionRetryAttempts,
-              clientResolutionRetryBackoffMs,
-              maxConcurrentResolution);
+        ThreadPoolExecutor sslHandshakeExecutor = ThreadPoolFactory.createThreadPool(
+            config.getClientSslHandshakeThreads(),
+            "SSLHandShakeThread",
+            config.getRegionName(),
+            config.getClientSslHandshakeQueueCapacity(),
+            LINKED_BLOCKING_QUEUE);
+        ThreadPoolStats sslHandshakeThreadPoolStats =
+            new ThreadPoolStats(metricsRepository, sslHandshakeExecutor, "ssl_handshake_thread_pool");
+        sslInitializer.enableSslTaskExecutor(sslHandshakeExecutor, sslHandshakeThreadPoolStats::recordQueuedTasksCount);
+      }
+      if (config.getResolveThreads() > 0) {
+        ThreadPoolExecutor dnsResolveExecutor = ThreadPoolFactory.createThreadPool(
+            config.getResolveThreads(),
+            "DNSResolveThread",
+            config.getRegionName(),
+            config.getResolveQueueCapacity(),
+            LINKED_BLOCKING_QUEUE);
+        new ThreadPoolStats(metricsRepository, dnsResolveExecutor, "dns_resolution_thread_pool");
+        int clientSslHandshakeThreads = config.getClientSslHandshakeThreads();
+        int maxConcurrentSslHandshakes = config.getMaxConcurrentSslHandshakes();
+        int clientResolutionRetryAttempts = config.getClientResolutionRetryAttempts();
+        long clientResolutionRetryBackoffMs = config.getClientResolutionRetryBackoffMs();
+        if (useEpoll) {
+          sslResolverEventLoopGroup = new EpollEventLoopGroup(clientSslHandshakeThreads, dnsResolveExecutor);
         } else {
-          ThreadPoolExecutor sslHandshakeExecutor = ThreadPoolFactory.createThreadPool(
-              config.getClientSslHandshakeThreads(),
-              "SSLHandShakeThread",
-              config.getClientSslHandshakeQueueCapacity(),
-              LINKED_BLOCKING_QUEUE);
-          new ThreadPoolStats(metricsRepository, sslHandshakeExecutor, "ssl_handshake_thread_pool");
-          sslInitializer.enableSslTaskExecutor(sslHandshakeExecutor);
+          sslResolverEventLoopGroup = new NioEventLoopGroup(clientSslHandshakeThreads, dnsResolveExecutor);
         }
+        sslInitializer.enableResolveBeforeSSL(
+            sslResolverEventLoopGroup,
+            clientResolutionRetryAttempts,
+            clientResolutionRetryBackoffMs,
+            maxConcurrentSslHandshakes);
       }
       sslInitializer.setIdentityParser(identityParser::parseIdentityFromCert);
       securityStats.registerSslHandshakeSensors(sslInitializer);
@@ -762,6 +767,9 @@ public class RouterServer extends AbstractVeniceService {
         .bossPoolBuilder(EventLoopGroup.class, ignored -> serverEventLoopGroup)
         .ioWorkerPoolBuilder(EventLoopGroup.class, ignored -> workerEventLoopGroup)
         .connectionLimit(config.getConnectionLimit())
+        .connectionHandleMode(config.getConnectionHandleMode())
+        .connectionCountRecorder(securityStats::recordLiveConnectionCount)
+        .rejectedConnectionCountRecorder(securityStats::recordRejectedConnectionCount)
         .timeoutProcessor(timeoutProcessor)
         .beforeHttpServerCodec(ChannelPipeline.class, sslFactory.isPresent() ? addSslInitializer : noop) // Compare once
                                                                                                          // per router.
@@ -1001,7 +1009,7 @@ public class RouterServer extends AbstractVeniceService {
         /**
          * This statement should be invoked after {@link #manager} is connected.
          */
-        instanceConfigRepository = new HelixInstanceConfigRepository(manager, config.isUseGroupFieldInHelixDomain());
+        instanceConfigRepository = new HelixInstanceConfigRepository(manager);
         instanceConfigRepository.refresh();
         helixGroupSelector = new HelixGroupSelector(
             metricsRepository,

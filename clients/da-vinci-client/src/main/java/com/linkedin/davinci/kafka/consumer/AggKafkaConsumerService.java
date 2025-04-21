@@ -8,12 +8,10 @@ import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.stats.StuckConsumerRepairStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.VeniceJsonSerializer;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -61,7 +59,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final IngestionThrottler ingestionThrottler;
   private final KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler;
   private final MetricsRepository metricsRepository;
-  private final TopicExistenceChecker topicExistenceChecker;
+  private final StaleTopicChecker staleTopicChecker;
   private final boolean liveConfigBasedKafkaThrottlingEnabled;
   private final boolean isKafkaConsumerOffsetCollectionEnabled;
   private final KafkaConsumerService.ConsumerAssignmentStrategy sharedConsumerAssignmentStrategy;
@@ -92,7 +90,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       final IngestionThrottler ingestionThrottler,
       KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
       final MetricsRepository metricsRepository,
-      TopicExistenceChecker topicExistenceChecker,
+      StaleTopicChecker staleTopicChecker,
       final PubSubMessageDeserializer pubSubDeserializer,
       Consumer<String> killIngestionTaskRunnable,
       Function<String, Boolean> isAAOrWCEnabledFunc,
@@ -104,7 +102,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.ingestionThrottler = ingestionThrottler;
     this.kafkaClusterBasedRecordThrottler = kafkaClusterBasedRecordThrottler;
     this.metricsRepository = metricsRepository;
-    this.topicExistenceChecker = topicExistenceChecker;
+    this.staleTopicChecker = staleTopicChecker;
     this.liveConfigBasedKafkaThrottlingEnabled = serverConfig.isLiveConfigBasedKafkaThrottlingEnabled();
     this.sharedConsumerAssignmentStrategy = serverConfig.getSharedConsumerAssignmentStrategy();
     this.kafkaClusterUrlToAliasMap = serverConfig.getKafkaClusterUrlToAliasMap();
@@ -115,7 +113,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.metadataRepository = metadataRepository;
     if (serverConfig.isStuckConsumerRepairEnabled()) {
       this.stuckConsumerRepairExecutorService = Executors.newSingleThreadScheduledExecutor(
-          new DaemonThreadFactory(this.getClass().getName() + "-StuckConsumerRepair"));
+          new DaemonThreadFactory(this.getClass().getName() + "-StuckConsumerRepair", serverConfig.getRegionName()));
       int intervalInSeconds = serverConfig.getStuckConsumerRepairIntervalSecond();
       this.stuckConsumerRepairExecutorService.scheduleAtFixedRate(
           getStuckConsumerDetectionAndRepairRunnable(
@@ -306,14 +304,15 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
                 metricsRepository,
                 kafkaClusterUrlToAliasMap.getOrDefault(url, url) + poolType.getStatSuffix(),
                 sharedConsumerNonExistingTopicCleanupDelayMS,
-                topicExistenceChecker,
+                staleTopicChecker,
                 liveConfigBasedKafkaThrottlingEnabled,
                 pubSubDeserializer,
                 SystemTime.INSTANCE,
                 null,
                 isKafkaConsumerOffsetCollectionEnabled,
                 metadataRepository,
-                serverConfig.isUnregisterMetricForDeletedStoreEnabled()),
+                serverConfig.isUnregisterMetricForDeletedStoreEnabled(),
+                serverConfig),
             isAAOrWCEnabledFunc));
 
     if (!consumerService.isRunning()) {
@@ -382,7 +381,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     }
   }
 
-  public ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> subscribeConsumerFor(
+  public ConsumedDataReceiver<List<DefaultPubSubMessage>> subscribeConsumerFor(
       final String kafkaURL,
       StoreIngestionTask storeIngestionTask,
       PartitionReplicaIngestionContext partitionReplicaIngestionContext,
@@ -396,12 +395,11 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
           "Kafka consumer service must exist for version topic: " + versionTopic + " in Kafka cluster: " + kafkaURL);
     }
 
-    ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> dataReceiver =
-        new StorePartitionDataReceiver(
-            storeIngestionTask,
-            pubSubTopicPartition,
-            kafkaURL, // do not resolve and let it pass downstream for offset tracking purpose
-            kafkaClusterUrlToIdMap.getOrDefault(kafkaURL, -1)); // same pubsub url but different id for sep topic
+    ConsumedDataReceiver<List<DefaultPubSubMessage>> dataReceiver = new StorePartitionDataReceiver(
+        storeIngestionTask,
+        pubSubTopicPartition,
+        kafkaURL, // do not resolve and let it pass downstream for offset tracking purpose
+        kafkaClusterUrlToIdMap.getOrDefault(kafkaURL, -1)); // same pubsub url but different id for sep topic
 
     versionTopicStoreIngestionTaskMapping.put(storeIngestionTask.getVersionTopic().getName(), storeIngestionTask);
     consumerService.startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, lastOffset, dataReceiver);

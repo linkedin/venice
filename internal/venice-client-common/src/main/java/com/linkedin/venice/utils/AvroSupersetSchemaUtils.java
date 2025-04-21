@@ -141,9 +141,10 @@ public class AvroSupersetSchemaUtils {
   }
 
   /**
-   * Merge field schema from two schema object. The rule is: If a field exist in both new schema and old schema, we should
-   * generate the superset schema of these two versions of the same field, with new schema's information taking higher
-   * priority.
+   * Merge field schema from two schema object.
+   * The rule is: If a field exist in both new schema and old schema, we should generate the superset schema of these
+   * two versions of the same field, with new schema's information taking higher priority.
+   * For default value, if new schema does not have default value, we will still preserve the old default value.
    * @param newSchema new schema
    * @param existingSchema old schema
    * @return merged schema field
@@ -158,8 +159,12 @@ public class AvroSupersetSchemaUtils {
       if (fieldInExistingSchema != null) {
         fieldBuilder.setSchema(generateSupersetSchema(fieldInExistingSchema.schema(), fieldInNewSchema.schema()))
             .setDoc(fieldInNewSchema.doc() != null ? fieldInNewSchema.doc() : fieldInExistingSchema.doc());
+        if (!fieldInNewSchema.hasDefaultValue() && fieldInExistingSchema.hasDefaultValue()) {
+          fieldBuilder.setDefault(getFieldDefault(fieldInExistingSchema));
+        }
       }
-      fields.add(fieldBuilder.build());
+      Schema.Field generatedField = fieldBuilder.build();
+      fields.add(generatedField);
     }
 
     for (Schema.Field fieldInExistingSchema: existingSchema.getFields()) {

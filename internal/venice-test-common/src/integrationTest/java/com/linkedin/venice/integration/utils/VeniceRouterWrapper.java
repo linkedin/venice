@@ -6,6 +6,7 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.ConfigKeys.LISTENER_SSL_PORT;
+import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.MAX_READ_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_SSL_HANDSHAKE_THREADS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CONNECTION_LIMIT;
@@ -15,7 +16,7 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP_CLIENT_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_OUTGOING_CONNECTION;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_RESOLVE_BEFORE_SSL;
+import static com.linkedin.venice.ConfigKeys.ROUTER_RESOLVE_THREADS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_STORAGE_NODE_CLIENT_TYPE;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_STORAGE_NODES;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
@@ -147,10 +148,10 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           .put(SSL_TO_STORAGE_NODES, sslToStorageNodes)
           .put(CLUSTER_TO_D2, TestUtils.getClusterToD2String(finalClusterToD2))
           .put(CLUSTER_TO_SERVER_D2, TestUtils.getClusterToD2String(finalClusterToServerD2))
-          .put(ROUTER_CLIENT_SSL_HANDSHAKE_THREADS, 10)
-          .put(ROUTER_RESOLVE_BEFORE_SSL, true)
+          .put(ROUTER_CLIENT_SSL_HANDSHAKE_THREADS, 5)
+          .put(ROUTER_RESOLVE_THREADS, 5)
           // Below configs are to attempt to minimize resource utilization in tests
-          .put(ROUTER_CONNECTION_LIMIT, 20)
+          .put(ROUTER_CONNECTION_LIMIT, 200)
           .put(ROUTER_HTTP_CLIENT_POOL_SIZE, 2)
           .put(ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE, 2)
           .put(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_LOW_WATER_MARK, 1)
@@ -167,6 +168,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           .put(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION, "base2_exponential_bucket_histogram")
           .put(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_SCALE, 3)
           .put(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_BUCKETS, 250)
+          .put(LOCAL_REGION_NAME, regionName)
           .put(properties);
 
       // setup d2 config first

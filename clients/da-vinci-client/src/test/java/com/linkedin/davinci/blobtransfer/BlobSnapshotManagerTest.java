@@ -1,11 +1,7 @@
 package com.linkedin.davinci.blobtransfer;
 
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
@@ -22,21 +18,13 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import java.io.File;
-import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import org.apache.commons.io.FileUtils;
-import org.mockito.MockedStatic;
 import org.mockito.Mockito;
-import org.rocksdb.Checkpoint;
-import org.rocksdb.RocksDB;
-import org.rocksdb.RocksDBException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -53,8 +41,7 @@ public class BlobSnapshotManagerTest {
   private static final StorageMetadataService storageMetadataService = mock(StorageMetadataService.class);
   private static final BlobTransferPartitionMetadata blobTransferPartitionMetadata =
       new BlobTransferPartitionMetadata();
-  private static final String DB_DIR = BASE_PATH + "/" + STORE_NAME + "_v" + VERSION_ID + "/"
-      + RocksDBUtils.getPartitionDbName(STORE_NAME + "_v" + VERSION_ID, PARTITION_ID);
+
   private static final BlobTransferPayload blobTransferPayload = new BlobTransferPayload(
       BASE_PATH,
       STORE_NAME,
@@ -66,6 +53,7 @@ public class BlobSnapshotManagerTest {
   public void testHybridSnapshot() {
     AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
     Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
+    Mockito.doReturn(true).when(storageEngine).containsPartition(PARTITION_ID);
 
     AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
     Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
@@ -106,6 +94,7 @@ public class BlobSnapshotManagerTest {
     AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
     AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
     Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
+    Mockito.doReturn(true).when(storageEngine).containsPartition(PARTITION_ID);
     Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
     Mockito.doNothing().when(storagePartition).createSnapshot();
 
@@ -137,6 +126,7 @@ public class BlobSnapshotManagerTest {
     AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
     AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
     Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
+    Mockito.doReturn(true).when(storageEngine).containsPartition(PARTITION_ID);
     Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
     Mockito.doNothing().when(storagePartition).createSnapshot();
 
@@ -180,6 +170,7 @@ public class BlobSnapshotManagerTest {
     AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
     AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
     Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
+    Mockito.doReturn(true).when(storageEngine).containsPartition(PARTITION_ID);
     Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
     Mockito.doNothing().when(storagePartition).createSnapshot();
 
@@ -220,6 +211,7 @@ public class BlobSnapshotManagerTest {
     AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
     AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
     Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
+    Mockito.doReturn(true).when(storageEngine).containsPartition(PARTITION_ID);
     Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
     Mockito.doNothing().when(storagePartition).createSnapshot();
 
@@ -246,74 +238,6 @@ public class BlobSnapshotManagerTest {
     Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers(TOPIC_NAME, PARTITION_ID), 0);
   }
 
-  @Test(timeOut = TIMEOUT)
-  public void testCreateSnapshotForBatch() throws RocksDBException {
-    try (MockedStatic<Checkpoint> checkpointMockedStatic = Mockito.mockStatic(Checkpoint.class)) {
-      try (MockedStatic<FileUtils> fileUtilsMockedStatic = Mockito.mockStatic(FileUtils.class)) {
-        // test prepare
-        RocksDB mockRocksDB = mock(RocksDB.class);
-        Checkpoint mockCheckpoint = mock(Checkpoint.class);
-        checkpointMockedStatic.when(() -> Checkpoint.create(mockRocksDB)).thenReturn(mockCheckpoint);
-        String fullSnapshotPath = DB_DIR + "/.snapshot_files";
-        File file = spy(new File(fullSnapshotPath));
-        doNothing().when(mockCheckpoint).createCheckpoint(fullSnapshotPath);
-
-        // case 1: snapshot file not exists
-        // test execute
-        BlobSnapshotManager.createSnapshot(mockRocksDB, fullSnapshotPath);
-        // test verify
-        verify(mockCheckpoint, times(1)).createCheckpoint(fullSnapshotPath);
-        fileUtilsMockedStatic.verify(() -> FileUtils.deleteDirectory(eq(file.getAbsoluteFile())), times(0));
-
-        // case 2: snapshot file exists
-        // test prepare
-        File fullSnapshotDir = new File(fullSnapshotPath);
-        if (!fullSnapshotDir.exists()) {
-          fullSnapshotDir.mkdirs();
-        }
-        // test execute
-        BlobSnapshotManager.createSnapshot(mockRocksDB, fullSnapshotPath);
-        // test verify
-        verify(mockCheckpoint, times(2)).createCheckpoint(fullSnapshotPath);
-        fileUtilsMockedStatic.verify(() -> FileUtils.deleteDirectory(eq(file.getAbsoluteFile())), times(1));
-
-        // case 3: delete snapshot file fail
-        // test prepare
-        fileUtilsMockedStatic.when(() -> FileUtils.deleteDirectory(any(File.class)))
-            .thenThrow(new IOException("Delete snapshot file failed."));
-        // test execute
-        try {
-          BlobSnapshotManager.createSnapshot(mockRocksDB, fullSnapshotPath);
-          Assert.fail("Should throw exception");
-        } catch (VeniceException e) {
-          // test verify
-          verify(mockCheckpoint, times(2)).createCheckpoint(fullSnapshotPath);
-          fileUtilsMockedStatic.verify(() -> FileUtils.deleteDirectory(eq(file.getAbsoluteFile())), times(2));
-          Assert.assertEquals(e.getMessage(), "Failed to delete the existing snapshot directory: " + fullSnapshotPath);
-        }
-
-        // case 4: create createCheckpoint failed
-        // test prepare
-        fullSnapshotDir.delete();
-        fileUtilsMockedStatic.reset();
-        doThrow(new RocksDBException("Create checkpoint failed.")).when(mockCheckpoint)
-            .createCheckpoint(fullSnapshotPath);
-        // test execute
-        try {
-          BlobSnapshotManager.createSnapshot(mockRocksDB, fullSnapshotPath);
-          Assert.fail("Should throw exception");
-        } catch (VeniceException e) {
-          // test verify
-          verify(mockCheckpoint, times(3)).createCheckpoint(fullSnapshotPath);
-          fileUtilsMockedStatic.verify(() -> FileUtils.deleteDirectory(eq(file.getAbsoluteFile())), times(0));
-          Assert.assertEquals(
-              e.getMessage(),
-              "Received exception during RocksDB's snapshot creation in directory " + fullSnapshotPath);
-        }
-      }
-    }
-  }
-
   @Test
   public void testNotAllowRecreateSnapshotWhenHavingConcurrentUsers() {
     // Prepare
@@ -331,6 +255,7 @@ public class BlobSnapshotManagerTest {
     AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
     AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
     Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
+    Mockito.doReturn(true).when(storageEngine).containsPartition(PARTITION_ID);
     Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
     Mockito.doNothing().when(storagePartition).createSnapshot();
 

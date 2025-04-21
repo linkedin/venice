@@ -12,7 +12,7 @@ import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
-import com.linkedin.davinci.listener.response.StorePropertiesResponse;
+import com.linkedin.davinci.listener.response.StorePropertiesPayload;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.listener.response.AbstractReadResponse;
@@ -124,13 +124,13 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
           contentType = HttpConstants.TEXT_PLAIN;
           responseStatus = INTERNAL_SERVER_ERROR;
         }
-      } else if (msg instanceof StorePropertiesResponse) {
-        StorePropertiesResponse storePropertiesResponse = (StorePropertiesResponse) msg;
-        if (!storePropertiesResponse.isError()) {
-          body = storePropertiesResponse.getResponseBody();
-          schemaIdHeader = storePropertiesResponse.getResponseSchemaIdHeader();
+      } else if (msg instanceof StorePropertiesPayload) {
+        StorePropertiesPayload storePropertiesPayload = (StorePropertiesPayload) msg;
+        if (!storePropertiesPayload.isError()) {
+          body = storePropertiesPayload.getResponseBody();
+          schemaIdHeader = storePropertiesPayload.getResponseSchemaIdHeader();
         } else {
-          String errorMessage = storePropertiesResponse.getMessage();
+          String errorMessage = storePropertiesPayload.getMessage();
           if (errorMessage == null) {
             errorMessage = "Unknown error";
           }

@@ -2,12 +2,14 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.meta.VersionStatus.ERROR;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
+import static com.linkedin.venice.meta.VersionStatus.PARTIALLY_ONLINE;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
@@ -15,6 +17,8 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.LogContext;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RegionUtils;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -35,14 +39,20 @@ import org.apache.logging.log4j.Logger;
 /**
  * This service is in charge of swapping to a new version after a specified wait time in the remaining regions of a target region push if enabled.
  * The wait time is specified through a store/version level config (target_swap_region_wait_time) and the default wait time is 60m.
+ * This service also updates the parent version status of a store w/ a terminal push status after performing the swap
+ * or deeming it ineligible for a version swap and the statuses mean:
+ * 1. ONLINE - all regions are serving the target version
+ * 2. PARTIALLY_ONLINE - 1+ regions are serving the target version, but 1+ regions' pushes failed & are serving the old version
+ * 3. ERROR - all regions are serving the old version. the push failed in target regions
  */
 public class DeferredVersionSwapService extends AbstractVeniceService {
   private final AtomicBoolean stop = new AtomicBoolean(false);
-  private final Set<String> allClusters;
   private final VeniceControllerMultiClusterConfig veniceControllerMultiClusterConfig;
   private final VeniceParentHelixAdmin veniceParentHelixAdmin;
   private final ScheduledExecutorService deferredVersionSwapExecutor = Executors.newSingleThreadScheduledExecutor();
   private final DeferredVersionSwapStats deferredVersionSwapStats;
+  private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER =
+      new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(10));
   private static final Logger LOGGER = LogManager.getLogger(DeferredVersionSwapService.class);
   private Cache<String, Map<String, Long>> storePushCompletionTimeCache =
       Caffeine.newBuilder().expireAfterWrite(2, TimeUnit.HOURS).build();
@@ -52,7 +62,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       VeniceControllerMultiClusterConfig multiClusterConfig,
       DeferredVersionSwapStats deferredVersionSwapStats) {
     this.veniceParentHelixAdmin = admin;
-    this.allClusters = multiClusterConfig.getClusters();
     this.veniceControllerMultiClusterConfig = multiClusterConfig;
     this.deferredVersionSwapStats = deferredVersionSwapStats;
   }
@@ -60,7 +69,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   @Override
   public boolean startInner() throws Exception {
     deferredVersionSwapExecutor.scheduleAtFixedRate(
-        new DeferredVersionSwapTask(),
+        getRunnableForDeferredVersionSwap(),
         0,
         veniceControllerMultiClusterConfig.getDeferredVersionSwapSleepMs(),
         TimeUnit.MILLISECONDS);
@@ -79,10 +88,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     return remainingRegions;
   }
 
-  private String getTargetRegion(Set<String> targetRegions) {
-    return targetRegions.iterator().next();
-  }
-
   private StoreResponse getStoreForRegion(String clusterName, String targetRegion, String storeName) {
     Map<String, ControllerClient> controllerClientMap =
         veniceParentHelixAdmin.getVeniceHelixAdmin().getControllerClientMap(clusterName);
@@ -90,221 +95,391 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     return targetRegionControllerClient.getStore(storeName);
   }
 
+  /**
+   * Checks whether the wait time has passed since the push completion time in the list of regions
+   * @param completionTimes a mapping of region to push completion time
+   * @param targetRegions the list of regions to check if wait time has elapsed
+   * @param store the store to check if the push wait time has elapsed
+   * @param targetVersionNum the version to check if the push wait time has elapsed
+   * @return
+   */
   private boolean didWaitTimeElapseInTargetRegions(
       Map<String, Long> completionTimes,
       Set<String> targetRegions,
-      int waitTime) {
-    boolean didWaitTimeElapseInTargetRegions = true;
+      Store store,
+      int targetVersionNum) {
     for (String targetRegion: targetRegions) {
+      if (!completionTimes.containsKey(targetRegion)) {
+        continue;
+      }
+
       long completionTime = completionTimes.get(targetRegion);
-      long storeWaitTime = TimeUnit.MINUTES.toSeconds(waitTime);
+      long storeWaitTime = TimeUnit.MINUTES.toSeconds(store.getTargetSwapRegionWaitTime());
       long currentTime = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
       if ((completionTime + storeWaitTime) > currentTime) {
-        didWaitTimeElapseInTargetRegions = false;
+        String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
+            + " as wait time: " + store.getTargetSwapRegionWaitTime() + " has not passed";
+        logMessageIfNotRedundant(message);
+        return false;
       }
     }
 
-    return didWaitTimeElapseInTargetRegions;
+    return true;
   }
 
-  private class DeferredVersionSwapTask implements Runnable {
-    @Override
-    public void run() {
-      while (!stop.get()) {
-        try {
-          for (String cluster: allClusters) {
-            if (!veniceParentHelixAdmin.isLeaderControllerFor(cluster)) {
-              continue;
-            }
+  /**
+   * Checks whether the wait time has passed since the cached push completion time in the list of regions
+   * @param targetRegions the list of regions to check if wait time has elapsed
+   * @param store the store to check if the push wait time has elapsed
+   * @param targetVersionNum the version to check if the push wait time has elapsed
+   * @param kafkaTopicName the name of the kafka topic for this target version
+   * @return
+   */
+  private boolean didCachedWaitTimeElapseInTargetRegions(
+      Set<String> targetRegions,
+      Store store,
+      int targetVersionNum,
+      String kafkaTopicName) {
+    Map<String, Long> storePushCompletionTimes = storePushCompletionTimeCache.getIfPresent(kafkaTopicName);
 
-            List<Store> stores = veniceParentHelixAdmin.getAllStores(cluster);
-            for (Store store: stores) {
-              int targetVersionNum = store.getLargestUsedVersionNumber();
-              Version targetVersion = store.getVersion(targetVersionNum);
-              if (targetVersion == null) {
-                continue;
-              }
+    // If there is no cached completion time, we should let the service continue the checks for the store as:
+    // 1. It could be a new push that we haven't checked for yet
+    // 2. The existing cached wait time expired
+    if (storePushCompletionTimes == null) {
+      return true;
+    }
 
-              String targetRegionsString = targetVersion.getTargetSwapRegion();
-              if (StringUtils.isEmpty(targetRegionsString)) {
-                continue;
-              }
+    return didWaitTimeElapseInTargetRegions(storePushCompletionTimes, targetRegions, store, targetVersionNum);
+  }
 
-              // The store is eligible for a version swap if its push job is in terminal status. For a target region
-              // push, the parent version status is set to PUSHED in getOfflinePushStatus when this happens
-              if (targetVersion.getStatus() != VersionStatus.PUSHED) {
-                continue;
-              }
+  private void logMessageIfNotRedundant(String message) {
+    if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(message)) {
+      LOGGER.info(message);
+    }
+  }
 
-              // If we have a cached push completion for this store, check that the waitTime has elapsed before
-              // proceeding further
-              String storeName = store.getName();
-              String kafkaTopicName = Version.composeKafkaTopic(storeName, targetVersionNum);
-              Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetRegionsString);
-              Map<String, Long> storePushCompletionTimes = storePushCompletionTimeCache.getIfPresent(kafkaTopicName);
-              if (storePushCompletionTimes != null) {
-                if (!didWaitTimeElapseInTargetRegions(
-                    storePushCompletionTimes,
-                    targetRegions,
-                    store.getTargetSwapRegionWaitTime())) {
-                  LOGGER.info(
-                      "Skipping version swap for store: {} on version: {} as wait time: {} has not passed",
-                      storeName,
-                      targetVersionNum,
-                      store.getTargetSwapRegionWaitTime());
-                  continue;
-                }
-              }
+  /**
+   * Iterate through the list of given regions and checks if the specified version of the store has a davinci heartbeat in any
+   * of the regions. If there is, the store is a davinci store. If not, the store is not a davinci store
+   * @param cluster the cluster the store is in
+   * @param regions the list of regions to check for a davinci heartbeat
+   * @param storeName the name of the store
+   * @param targetVersionNum the version to check for a davinci heartbeat
+   * @return
+   */
+  private boolean isDavinciStore(String cluster, Set<String> regions, String storeName, int targetVersionNum) {
+    for (String region: regions) {
+      StoreResponse targetRegionStoreResponse = getStoreForRegion(cluster, region, storeName);
 
-              Map<String, Integer> coloToVersions =
-                  veniceParentHelixAdmin.getCurrentVersionsForMultiColos(cluster, storeName);
-              Set<String> remainingRegions = getRegionsForVersionSwap(coloToVersions, targetRegions);
+      if (targetRegionStoreResponse.isError()) {
+        String message = "Got error when fetching targetRegionStore: " + targetRegionStoreResponse.getStore();
+        logMessageIfNotRedundant(message);
+        continue;
+      }
 
-              // Do not perform version swap for davinci stores
-              // TODO remove this check once DVC delayed ingestion is completed
-              if (veniceControllerMultiClusterConfig.isSkipDeferredVersionSwapForDVCEnabled()) {
-                StoreResponse targetRegionStoreResponse =
-                    getStoreForRegion(cluster, getTargetRegion(targetRegions), storeName);
-                if (targetRegionStoreResponse.isError()) {
-                  LOGGER.warn("Got error when fetching targetRegionStore: {}", targetRegionStoreResponse.getError());
-                  continue;
-                }
+      StoreInfo targetRegionStore = targetRegionStoreResponse.getStore();
+      Optional<Version> version = targetRegionStore.getVersion(targetVersionNum);
+      Optional<Version> previousVersion = targetRegionStore.getVersion(targetVersionNum - 1);
+      if (!version.isPresent() && !previousVersion.isPresent()) {
+        String message =
+            "Unable to find version " + targetVersionNum + " for store: " + storeName + " in region " + region;
+        logMessageIfNotRedundant(message);
+        continue;
+      }
 
-                StoreInfo targetRegionStore = targetRegionStoreResponse.getStore();
-                Optional<Version> version = targetRegionStore.getVersion(targetVersionNum);
-                if (!version.isPresent()) {
-                  LOGGER.warn(
-                      "Unable to find version {} for store: {} in regions: {}",
-                      targetVersionNum,
-                      storeName,
-                      targetRegionsString);
-                  continue;
-                }
+      if (version.isPresent()) {
+        if (version.get().getIsDavinciHeartbeatReported()) {
+          String message = "Skipping version swap for store: " + storeName + " on version: " + targetVersionNum
+              + " as there is a davinci heartbeat in region: " + region;
+          logMessageIfNotRedundant(message);
+          return true;
+        }
+      }
 
-                if (version.get().getIsDavinciHeartbeatReported()) {
-                  LOGGER.info(
-                      "Skipping version swap for store: {} on version: {} as it is davinci",
-                      storeName,
-                      targetVersionNum);
-                  continue;
-                }
-              }
-
-              // Check that push is completed in target regions
-              Admin.OfflinePushStatusInfo pushStatusInfo =
-                  veniceParentHelixAdmin.getOffLinePushStatus(cluster, kafkaTopicName);
-              Set<String> targetRegionsCompleted = new HashSet<>();
-              for (String targetRegion: targetRegions) {
-                String executionStatus = pushStatusInfo.getExtraInfo().get(targetRegion);
-                if (executionStatus.equals(ExecutionStatus.COMPLETED.toString())) {
-                  targetRegionsCompleted.add(targetRegion);
-                  LOGGER.warn(
-                      "Skipping version swap for store: {} on version: {} as push is not complete in target region {}",
-                      storeName,
-                      targetVersionNum,
-                      targetRegion);
-                }
-              }
-
-              if (targetRegionsCompleted.size() < targetRegions.size() / 2) {
-                LOGGER.warn(
-                    "Skipping version swap for store: {} on version: {} as push is complete in the majority of target regions."
-                        + "Completed target regions: {}, target regions: {}",
-                    storeName,
-                    targetVersionNum,
-                    targetRegionsCompleted,
-                    targetRegions);
-                continue;
-              }
-
-              // Check that push is complete in non target regions
-              int numNonTargetRegionsFailed = 0;
-              Set<String> nonTargetRegionsCompleted = new HashSet<>();
-              for (String remainingRegion: remainingRegions) {
-                String executionStatus = pushStatusInfo.getExtraInfo().get(remainingRegion);
-                if (executionStatus.equals(ExecutionStatus.ERROR.toString())) {
-                  numNonTargetRegionsFailed += 1;
-                  LOGGER.warn(
-                      "Push has error status for store: {} on version: {} in a non target region: {}",
-                      storeName,
-                      targetVersionNum,
-                      remainingRegion);
-                } else if (executionStatus.equals(ExecutionStatus.COMPLETED.toString())) {
-                  nonTargetRegionsCompleted.add(remainingRegion);
-                }
-              }
-
-              // If the majority of the remaining regions have failed their push jobs, mark the version status as ERROR
-              // so that we don't check this store again for this version
-              HelixVeniceClusterResources resources =
-                  veniceParentHelixAdmin.getVeniceHelixAdmin().getHelixVeniceClusterResources(cluster);
-              ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
-              if (numNonTargetRegionsFailed > remainingRegions.size() / 2) {
-                LOGGER.warn(
-                    "Skipping version swap for store: {} on version: {} as majority of non target regions have failed",
-                    storeName,
-                    targetVersionNum);
-                store.updateVersionStatus(targetVersionNum, ERROR);
-                repository.updateStore(store);
-                continue;
-              }
-
-              // Do not perform a version swap if:
-              // 1. The majority of the remaining regions have not completed their push yet
-              // 2. Any of the remaining regions have yet to reach a terminal status: COMPLETED or ERRORas we need to
-              // wait for all of the
-              // remaining regions to be completed to account for cases where we have 3 remaining regions and 2
-              // COMPLETED, but 1 is STARTED
-              int nonTargetRegionsInTerminalStatus = nonTargetRegionsCompleted.size() + numNonTargetRegionsFailed;
-              if (nonTargetRegionsCompleted.size() < remainingRegions.size() / 2
-                  || nonTargetRegionsInTerminalStatus != remainingRegions.size()) {
-                LOGGER.info(
-                    "Skipping version swap for store: {} on version: {} as majority of non target regions have not completed their push",
-                    storeName,
-                    targetVersionNum);
-                continue;
-              }
-
-              // Check that waitTime has elapsed in target regions
-              boolean didWaitTimeElapseInTargetRegions = didWaitTimeElapseInTargetRegions(
-                  pushStatusInfo.getExtraInfoUpdateTimestamp(),
-                  targetRegions,
-                  store.getTargetSwapRegionWaitTime());
-
-              if (!didWaitTimeElapseInTargetRegions) {
-                LOGGER.info(
-                    "Skipping version swap for store: {} on version: {} as wait time: {} has not passed",
-                    storeName,
-                    targetVersionNum,
-                    store.getTargetSwapRegionWaitTime());
-                storePushCompletionTimeCache.put(kafkaTopicName, pushStatusInfo.getExtraInfoUpdateTimestamp());
-                continue;
-              }
-
-              // TODO add call for postStoreVersionSwap() once it is implemented
-
-              String regionsToRollForward = RegionUtils.composeRegionList(nonTargetRegionsCompleted);
-              LOGGER.info("Issuing roll forward message for store: {} in regions: {}", storeName, regionsToRollForward);
-              veniceParentHelixAdmin.rollForwardToFutureVersion(cluster, storeName, regionsToRollForward);
-
-              // Once version is swapped in the remaining regions, update parent status to ONLINE so that we don't check
-              // this version for version swap again
-              store.updateVersionStatus(targetVersionNum, ONLINE);
-              repository.updateStore(store);
-              LOGGER.info(
-                  "Updated parent version status to online for version: {} in store: {}",
-                  targetVersionNum,
-                  storeName);
-            }
-          }
-        } catch (Exception e) {
-          LOGGER.warn("Caught exception: {} while performing deferred version swap", e.toString());
-          deferredVersionSwapStats.recordDeferredVersionSwapErrorSensor();
-        } catch (Throwable throwable) {
-          LOGGER.warn("Caught a throwable: {} while performing deferred version swap", throwable.getMessage());
-          deferredVersionSwapStats.recordDeferreredVersionSwapThrowableSensor();
+      // Check the previous version for a dvc heartbeat if we can't find the target version number
+      if (!version.isPresent() && previousVersion.isPresent()) {
+        if (previousVersion.get().getIsDavinciHeartbeatReported()) {
+          String message = "Skipping version swap for store: " + storeName + " on the previous version: "
+              + previousVersion.get().getNumber() + " as there is a davinci heartbeat in region: " + region;
+          logMessageIfNotRedundant(message);
+          return true;
         }
       }
     }
+
+    return false;
+  }
+
+  /**
+   * Roll forward to the specified version for a list of regions. Once the roll forward is done, traffic will be served from
+   * that version and the version status will be updated to ONLINE or PARTIALLY_ONLINE
+   * @param regions the list of regions to update the version status
+   * @param store the store of the version to roll forward in
+   * @param targetVersion the version to start serving traffic in
+   * @param cluster the cluster the store is in
+   */
+  private void rollForwardToTargetVersion(
+      Set<String> regions,
+      Store store,
+      Version targetVersion,
+      String cluster,
+      ReadWriteStoreRepository repository) {
+    String regionsToRollForward = RegionUtils.composeRegionList(regions);
+    String storeName = store.getName();
+    int targetVersionNum = targetVersion.getNumber();
+    LOGGER.info(
+        "Issuing roll forward message for store: {} in regions: {} for version: {}",
+        storeName,
+        regionsToRollForward,
+        targetVersionNum);
+    veniceParentHelixAdmin.rollForwardToFutureVersion(cluster, storeName, regionsToRollForward);
+
+    // Update parent version status after roll forward, so we don't check this store version again
+    // If push was successful (version status is PUSHED), the parent version is marked as ONLINE
+    // if push was successful in some regions (version status is KILLED), the parent version is marked PARTIALLY_ONLINE
+    if (targetVersion.getStatus() == VersionStatus.PUSHED) {
+      store.updateVersionStatus(targetVersionNum, ONLINE);
+      repository.updateStore(store);
+      LOGGER.info("Updated parent version status to ONLINE for version: {} in store: {}", targetVersionNum, storeName);
+    } else {
+      store.updateVersionStatus(targetVersionNum, VersionStatus.PARTIALLY_ONLINE);
+      repository.updateStore(store);
+      LOGGER.info(
+          "Updated parent version status to PARTIALLY_ONLINE for version: {} in store: {}",
+          targetVersionNum,
+          storeName);
+    }
+  }
+
+  /**
+   * Checks if a store version is in a terminal state. It is in a terminal state & eligible for a version swap if targetSwapRegion is not
+   * empty and the push job for the current version is completed. It is completed if the version status is either PUSHED or
+   * KILLED (see VeniceParentHelixAdmin.getOfflinePushStatus)
+   * @param targetVersion the version to check eligibility for
+   * @return
+   */
+  private boolean isPushInTerminalState(Version targetVersion) {
+    if (targetVersion == null) {
+      return false;
+    }
+
+    String targetRegionsString = targetVersion.getTargetSwapRegion();
+    if (StringUtils.isEmpty(targetRegionsString)) {
+      return false;
+    }
+
+    // The store is eligible for a version swap if its push job is in terminal status. For a target region
+    // push, the parent version status is set to PUSHED in getOfflinePushStatus when this happens or KILLED if the push
+    // failed. PUSHED represents when a push successfully completes in all regions and KILLED represents when a push
+    // fails in
+    // 1+ regions. KILLED is still eligible for a version swap because some non target regions may have succeeded and we
+    // need to perform a version swap for those regions
+    if (targetVersion.getStatus() != VersionStatus.PUSHED && targetVersion.getStatus() != VersionStatus.KILLED) {
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Given a list of regions and push statuses and an expected status, return the number of regions in that status
+   * @param regions list of regions to find the push status for
+   * @param pushStatusInfo wrapper containing push status info
+   * @param status expected status to search for
+   * @return
+   */
+  private int getRegionsWithPushStatusCount(
+      Set<String> regions,
+      Admin.OfflinePushStatusInfo pushStatusInfo,
+      ExecutionStatus status) {
+    int regionsWithStatus = 0;
+    for (String region: regions) {
+      String executionStatus = pushStatusInfo.getExtraInfo().get(region);
+      if (executionStatus.equals(status.toString())) {
+        regionsWithStatus += 1;
+      }
+    }
+    return regionsWithStatus;
+  }
+
+  /**
+   * Checks if a push failed a majority of target regions or succeeded in a majority of target regions. If the push failed in a
+   * majority of target regions, mark the parent version status as ERROR
+   * @param targetRegions list of regions to check the push status for
+   * @param pushStatusInfo wrapper containing push status information
+   * @return
+   */
+  private boolean didPushFailInTargetRegions(
+      Set<String> targetRegions,
+      Admin.OfflinePushStatusInfo pushStatusInfo,
+      ReadWriteStoreRepository repository,
+      Store store,
+      int targetVersionNum) {
+    int numCompletedTargetRegions =
+        getRegionsWithPushStatusCount(targetRegions, pushStatusInfo, ExecutionStatus.COMPLETED);
+    int numFailedTargetRegions = getRegionsWithPushStatusCount(targetRegions, pushStatusInfo, ExecutionStatus.ERROR);
+    if (numFailedTargetRegions > targetRegions.size() / 2) {
+      String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
+          + " as push failed in the majority of target regions. Completed target regions: " + numCompletedTargetRegions
+          + " , failed target regions: " + numFailedTargetRegions + ", target regions: " + targetRegions;
+      logMessageIfNotRedundant(message);
+      store.updateVersionStatus(targetVersionNum, ERROR);
+      repository.updateStore(store);
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Gets a list of eligible regions to roll forward in. A region is eligible to be rolled forward if it's push status is
+   * COMPLETED. If there are no eligible regions to roll forward in or if not all regions have reached a terminal status, null is
+   * returned and the version status is marked as PARTIALLY_ONLINE as only the target regions are serving traffic from the new version
+   * @param nonTargetRegions list of regions to check eligibility for
+   * @param pushStatusInfo wrapper containing push status information
+   * @param repository repository to update store
+   * @param store store to update
+   * @param targetVersionNum target version to roll forward in
+   * @return
+   */
+  private Set<String> getRegionsToRollForward(
+      Set<String> nonTargetRegions,
+      Admin.OfflinePushStatusInfo pushStatusInfo,
+      ReadWriteStoreRepository repository,
+      Store store,
+      int targetVersionNum) {
+    int numCompletedTargetRegions =
+        getRegionsWithPushStatusCount(nonTargetRegions, pushStatusInfo, ExecutionStatus.COMPLETED);
+    int numFailedTargetRegions = getRegionsWithPushStatusCount(nonTargetRegions, pushStatusInfo, ExecutionStatus.ERROR);
+    Set<String> completedNonTargetRegions = new HashSet<>();
+    if (numFailedTargetRegions == nonTargetRegions.size()) {
+      String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
+          + "as push failed in all non target regions. Failed non target regions: " + numFailedTargetRegions
+          + ", non target regions: " + nonTargetRegions;
+      logMessageIfNotRedundant(message);
+      store.updateVersionStatus(targetVersionNum, PARTIALLY_ONLINE);
+      repository.updateStore(store);
+      return completedNonTargetRegions;
+    } else if ((numFailedTargetRegions + numCompletedTargetRegions) != nonTargetRegions.size()) {
+      String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
+          + "as push is not in terminal status in all non target regions. Completed non target regions: "
+          + numCompletedTargetRegions + ", non target regions: " + nonTargetRegions;
+      logMessageIfNotRedundant(message);
+      return completedNonTargetRegions;
+    }
+
+    for (String region: nonTargetRegions) {
+      String executionStatus = pushStatusInfo.getExtraInfo().get(region);
+      if (executionStatus.equals(ExecutionStatus.COMPLETED.toString())) {
+        completedNonTargetRegions.add(region);
+      }
+    }
+    return completedNonTargetRegions;
+  }
+
+  private Runnable getRunnableForDeferredVersionSwap() {
+    return () -> {
+      LogContext.setStructuredLogContext(veniceControllerMultiClusterConfig.getLogContext());
+      if (stop.get()) {
+        return;
+      }
+
+      try {
+        for (String cluster: veniceParentHelixAdmin.getClustersLeaderOf()) {
+          if (!veniceParentHelixAdmin.isLeaderControllerFor(cluster)) {
+            continue;
+          }
+
+          List<Store> parentStores;
+          try {
+            parentStores = veniceParentHelixAdmin.getAllStores(cluster);
+          } catch (VeniceNoClusterException e) {
+            LOGGER.warn("Leadership changed during getAllStores call for cluster: {}", cluster, e);
+            break;
+          }
+
+          for (Store parentStore: parentStores) {
+            int targetVersionNum = parentStore.getLargestUsedVersionNumber();
+            Version targetVersion = parentStore.getVersion(targetVersionNum);
+
+            // Check if the target version is in a terminal state (push job completed or failed)
+            if (!isPushInTerminalState(targetVersion)) {
+              continue;
+            }
+
+            // Check if the cached waitTime for the target version has elapsed
+            String storeName = parentStore.getName();
+            String kafkaTopicName = Version.composeKafkaTopic(storeName, targetVersionNum);
+            Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetVersion.getTargetSwapRegion());
+            if (!didCachedWaitTimeElapseInTargetRegions(targetRegions, parentStore, targetVersionNum, kafkaTopicName)) {
+              continue;
+            }
+
+            // TODO remove this check once DVC delayed ingestion is completed
+            // Skip davinci stores if skip.deferred.version.swap.for.dvc.enabled is enabled
+            Map<String, Integer> coloToVersions =
+                veniceParentHelixAdmin.getCurrentVersionsForMultiColos(cluster, storeName);
+            if (veniceControllerMultiClusterConfig.isSkipDeferredVersionSwapForDVCEnabled()) {
+              if (isDavinciStore(cluster, coloToVersions.keySet(), storeName, targetVersionNum)) {
+                continue;
+              }
+            }
+
+            Admin.OfflinePushStatusInfo pushStatusInfo =
+                veniceParentHelixAdmin.getOffLinePushStatus(cluster, kafkaTopicName);
+            HelixVeniceClusterResources resources =
+                veniceParentHelixAdmin.getVeniceHelixAdmin().getHelixVeniceClusterResources(cluster);
+            ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+            Set<String> remainingRegions = getRegionsForVersionSwap(coloToVersions, targetRegions);
+
+            // If version status is marked as KILLED (push timeout, user killed push job, etc), check if target
+            // regions failed
+            if (targetVersion.getStatus() == VersionStatus.KILLED) {
+              if (didPushFailInTargetRegions(
+                  targetRegions,
+                  pushStatusInfo,
+                  repository,
+                  parentStore,
+                  targetVersionNum)) {
+                continue;
+              }
+            }
+
+            // Get eligible non target regions to roll forward in
+            Set<String> nonTargetRegionsCompleted =
+                getRegionsToRollForward(remainingRegions, pushStatusInfo, repository, parentStore, targetVersionNum);
+            if (nonTargetRegionsCompleted == null) {
+              continue;
+            }
+
+            // Check that waitTime has elapsed in target regions
+            if (!didWaitTimeElapseInTargetRegions(
+                pushStatusInfo.getExtraInfoUpdateTimestamp(),
+                targetRegions,
+                parentStore,
+                targetVersionNum)) {
+              storePushCompletionTimeCache.put(kafkaTopicName, pushStatusInfo.getExtraInfoUpdateTimestamp());
+              continue;
+            }
+
+            // TODO add call for postStoreVersionSwap() once it is implemented
+
+            // Switch to the target version in the completed non target regions
+            rollForwardToTargetVersion(nonTargetRegionsCompleted, parentStore, targetVersion, cluster, repository);
+          }
+        }
+      } catch (Exception e) {
+        LOGGER.warn("Caught exception while performing deferred version swap", e);
+        deferredVersionSwapStats.recordDeferredVersionSwapErrorSensor();
+      } catch (Throwable throwable) {
+        LOGGER.warn("Caught a throwable while performing deferred version swap", throwable);
+        deferredVersionSwapStats.recordDeferreredVersionSwapThrowableSensor();
+      }
+    };
+  }
+
+  // Only used for testing
+  Cache<String, Map<String, Long>> getStorePushCompletionTimes() {
+    return storePushCompletionTimeCache;
   }
 }

@@ -76,7 +76,7 @@ public class TestZKStore {
     Assert.assertTrue(s.equals(clonedStore), "The cloned store is expected to be equal!");
     clonedStore.setCurrentVersion(100);
     Assert.assertEquals(s.getCurrentVersion(), 0, "The cloned store's version is expected to be 0!");
-    Assert.assertEquals(s.peekNextVersion().getNumber(), 1, "clone should peek at biggest used version plus 1");
+    Assert.assertEquals(s.peekNextVersionNumber(), 1, "clone should peek at biggest used version plus 1");
 
     Store s2 = TestUtils.createTestStore("s2", "owner", System.currentTimeMillis());
     s2.addVersion(new VersionImpl(s2.getName(), s2.getLargestUsedVersionNumber() + 1, "pushJobId"));
@@ -224,7 +224,7 @@ public class TestZKStore {
     Assert.assertEquals(store.getVersions().get(0).getNumber(), 1);
     store.addVersion(new VersionImpl(store.getName(), store.getLargestUsedVersionNumber() + 1, "pushJobId"));
     Assert.assertEquals(store.getVersions().get(1).getNumber(), 2);
-    Assert.assertEquals(store.peekNextVersion().getNumber(), 3);
+    Assert.assertEquals(store.peekNextVersionNumber(), 3);
     store.setCurrentVersion(1);
     Assert.assertEquals(store.getCurrentVersion(), 1);
     store.updateVersionStatus(2, VersionStatus.ONLINE);
@@ -304,7 +304,7 @@ public class TestZKStore {
     Version version = new VersionImpl(store.getName(), store.getLargestUsedVersionNumber() + 1, "pushJobId3");
     store.addVersion(version);
     Assert.assertEquals(version.getNumber(), 3);
-    Assert.assertEquals(store.peekNextVersion().getNumber(), 4);
+    Assert.assertEquals(store.peekNextVersionNumber(), 4);
   }
 
   @Test
@@ -319,19 +319,19 @@ public class TestZKStore {
     assertPresentVersion(store, 5);
     assertVersionCount(store, 1);
     // largest used version is 5
-    assertEquals(store.peekNextVersion().getNumber(), 6);
+    assertEquals(store.peekNextVersionNumber(), 6);
 
     store.addVersion(new VersionImpl(storeName, 2));
     assertMissingVersion(store, 6);
     assertPresentVersion(store, 2, 5);
     assertVersionCount(store, 2);
     // largest used version is still 5
-    Assert.assertEquals(store.peekNextVersion().getNumber(), 6);
+    Assert.assertEquals(store.peekNextVersionNumber(), 6);
 
     Version version = new VersionImpl(store.getName(), store.getLargestUsedVersionNumber() + 1, "pushJobId");
     Assert.assertEquals(version.getNumber(), 6);
     store.addVersion(version);
-    Assert.assertEquals(store.peekNextVersion().getNumber(), 7);
+    Assert.assertEquals(store.peekNextVersionNumber(), 7);
     assertPresentVersion(store, 2, 5, 6);
     assertVersionCount(store, 3);
   }

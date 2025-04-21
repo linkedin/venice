@@ -3,9 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -15,7 +13,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -177,23 +174,28 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
 
   @Override
   public boolean hasAnySubscriptionFor(PubSubTopic versionTopic) {
-    return consumerServices.stream()
-        .anyMatch(kafkaConsumerService -> kafkaConsumerService.hasAnySubscriptionFor(versionTopic));
+    for (KafkaConsumerService kafkaConsumerService: this.consumerServices) {
+      if (kafkaConsumerService.hasAnySubscriptionFor(versionTopic)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   @Override
   public long getMaxElapsedTimeMSSinceLastPollInConsumerPool() {
-    return Collections.max(
-        consumerServices.stream()
-            .map(KafkaConsumerService::getMaxElapsedTimeMSSinceLastPollInConsumerPool)
-            .collect(Collectors.toList()));
+    long max = -1;
+    for (KafkaConsumerService kafkaConsumerService: this.consumerServices) {
+      max = Math.max(max, kafkaConsumerService.getMaxElapsedTimeMSSinceLastPollInConsumerPool());
+    }
+    return max;
   }
 
   @Override
   public void startConsumptionIntoDataReceiver(
       PartitionReplicaIngestionContext partitionReplicaIngestionContext,
       long lastReadOffset,
-      ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumedDataReceiver) {
+      ConsumedDataReceiver<List<DefaultPubSubMessage>> consumedDataReceiver) {
     assignKafkaConsumerServiceFor(partitionReplicaIngestionContext)
         .startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, lastReadOffset, consumedDataReceiver);
   }

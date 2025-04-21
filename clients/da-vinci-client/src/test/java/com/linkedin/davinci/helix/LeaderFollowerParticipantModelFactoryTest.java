@@ -1,5 +1,8 @@
 package com.linkedin.davinci.helix;
 
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -14,6 +17,7 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
+import java.time.Duration;
 import java.util.HashSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -52,12 +56,12 @@ public class LeaderFollowerParticipantModelFactoryTest {
 
   @BeforeMethod
   public void setupTestCase() {
-    mockIngestionBackend = Mockito.mock(IngestionBackend.class);
-    mockConfigLoader = Mockito.mock(VeniceConfigLoader.class);
-    mockServerConfig = Mockito.mock(VeniceServerConfig.class);
-    mockStoreConfig = Mockito.mock(VeniceStoreVersionConfig.class);
-    mockReadOnlyStoreRepository = Mockito.mock(ReadOnlyStoreRepository.class);
-    mockStore = Mockito.mock(Store.class);
+    mockIngestionBackend = mock(IngestionBackend.class);
+    mockConfigLoader = mock(VeniceConfigLoader.class);
+    mockServerConfig = mock(VeniceServerConfig.class);
+    mockStoreConfig = mock(VeniceStoreVersionConfig.class);
+    mockReadOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
+    mockStore = mock(Store.class);
     Mockito.when(mockConfigLoader.getVeniceServerConfig()).thenReturn(mockServerConfig);
     Mockito.when(mockConfigLoader.getStoreConfig(resourceName)).thenReturn(mockStoreConfig);
     Mockito.when(mockStoreConfig.getStoreVersionName()).thenReturn(resourceName);
@@ -65,23 +69,21 @@ public class LeaderFollowerParticipantModelFactoryTest {
         .thenReturn(mockStore);
     Mockito.when(mockStore.getBootstrapToOnlineTimeoutInHours()).thenReturn(Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
 
-    mockMessage = Mockito.mock(Message.class);
+    mockMessage = mock(Message.class);
     Mockito.when(mockMessage.getResourceName()).thenReturn(resourceName);
-
+    VeniceServerConfig veniceServerConfig = mock(VeniceServerConfig.class);
+    doReturn(new HashSet<>()).when(veniceServerConfig).getRegionNames();
+    doReturn("local").when(veniceServerConfig).getRegionName();
+    doReturn(Duration.ofSeconds(5)).when(veniceServerConfig).getServerMaxWaitForVersionInfo();
     factory = new LeaderFollowerPartitionStateModelFactory(
         mockIngestionBackend,
         mockConfigLoader,
         this.executorService,
-        Mockito.mock(ParticipantStateTransitionStats.class),
+        mock(ParticipantStateTransitionStats.class),
         mockReadOnlyStoreRepository,
         null,
         null,
-        new HeartbeatMonitoringService(
-            new MetricsRepository(),
-            mockReadOnlyStoreRepository,
-            new HashSet<>(),
-            "local",
-            null));
+        new HeartbeatMonitoringService(new MetricsRepository(), mockReadOnlyStoreRepository, veniceServerConfig, null));
   }
 
   @Test

@@ -5,9 +5,9 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
-import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.RepushInfo;
+import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
@@ -46,6 +46,7 @@ import com.linkedin.venice.system.store.MetaStoreReader;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -314,8 +315,6 @@ public interface Admin extends AutoCloseable, Closeable {
 
   RepushInfo getRepushInfo(String clusterNae, String storeName, Optional<String> fabricName);
 
-  Version peekNextVersion(String clusterName, String storeName);
-
   /**
    * Delete all of venice versions in given store(including venice resource, kafka topic, offline pushs and all related
    * resources).
@@ -451,6 +450,8 @@ public interface Admin extends AutoCloseable, Closeable {
 
   void setStoreLargestUsedVersion(String clusterName, String storeName, int versionNumber);
 
+  void setStoreLargestUsedRTVersion(String clusterName, String storeName, int versionNumber);
+
   void setStoreOwner(String clusterName, String storeName, String owner);
 
   void setStorePartitionCount(String clusterName, String storeName, int partitionCount);
@@ -497,7 +498,8 @@ public interface Admin extends AutoCloseable, Closeable {
       String kafkaTopic,
       Optional<String> incrementalPushVersion,
       String region,
-      String targetedRegions);
+      String targetedRegions,
+      boolean isTargetRegionPushWithDeferredSwap);
 
   /**
    * Return the ssl or non-ssl bootstrap servers based on the given flag.
@@ -537,7 +539,7 @@ public interface Admin extends AutoCloseable, Closeable {
       List<String> toBeStoppedInstances,
       boolean isSSLEnabled);
 
-  boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, String storeName);
+  boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, String rtTopicName);
 
   /**
    * Check if this controller itself is the leader controller for a given cluster or not. Note that the controller can be
@@ -944,19 +946,25 @@ public interface Admin extends AutoCloseable, Closeable {
 
   /**
    * triggers repush for storeName for log compaction of store topic implemented in
-   * {@link VeniceHelixAdmin#compactStore}
+   * {@link VeniceHelixAdmin#repushStore}
    *
    * @param repushJobRequest contains params for repush job
    * @return data model of repush job run info
    */
-  RepushJobResponse compactStore(RepushJobRequest repushJobRequest) throws Exception;
+  RepushJobResponse repushStore(RepushJobRequest repushJobRequest) throws Exception;
 
-  public CompactionManager getCompactionManager();
+  CompactionManager getCompactionManager();
 
   /**
    * @return the largest used version number for the given store from store graveyard.
    */
   int getLargestUsedVersionFromStoreGraveyard(String clusterName, String storeName);
+
+  /**
+   * @return list of stores infos that are considered dead. A store is considered dead if it exists but has no
+   * user traffic in it's read or write path.
+   */
+  List<StoreInfo> getDeadStores(String clusterName, String storeName, boolean includeSystemStores);
 
   Map<String, RegionPushDetails> listStorePushInfo(
       String clusterName,
@@ -975,6 +983,10 @@ public interface Admin extends AutoCloseable, Closeable {
       Optional<Long> upstreamOffset);
 
   void updateAdminOperationProtocolVersion(String clusterName, Long adminOperationProtocolVersion);
+
+  Map<String, Long> getAdminOperationVersionFromControllers(String clusterName);
+
+  long getLocalAdminOperationProtocolVersion();
 
   void createStoragePersona(
       String clusterName,
@@ -1032,4 +1044,6 @@ public interface Admin extends AutoCloseable, Closeable {
   HelixVeniceClusterResources getHelixVeniceClusterResources(String cluster);
 
   PubSubTopicRepository getPubSubTopicRepository();
+
+  LogContext getLogContext();
 }

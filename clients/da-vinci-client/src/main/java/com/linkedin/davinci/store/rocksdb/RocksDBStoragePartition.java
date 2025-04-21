@@ -2,7 +2,6 @@ package com.linkedin.davinci.store.rocksdb;
 
 import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITION_ID;
 
-import com.linkedin.davinci.blobtransfer.BlobSnapshotManager;
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
@@ -16,6 +15,7 @@ import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -29,11 +29,13 @@ import java.util.Set;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
 import javax.annotation.concurrent.NotThreadSafe;
+import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.rocksdb.BlockBasedTableConfig;
 import org.rocksdb.ByteBufferGetStatus;
 import org.rocksdb.Cache;
+import org.rocksdb.Checkpoint;
 import org.rocksdb.ColumnFamilyDescriptor;
 import org.rocksdb.ColumnFamilyHandle;
 import org.rocksdb.ColumnFamilyOptions;
@@ -504,7 +506,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   @Override
   public synchronized void createSnapshot() {
     if (blobTransferEnabled) {
-      BlobSnapshotManager.createSnapshot(rocksDB, fullPathForPartitionDBSnapshot);
+      createSnapshot(rocksDB, fullPathForPartitionDBSnapshot);
     }
   }
 
@@ -983,7 +985,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     readCloseRWLock.readLock().lock();
     try {
       makeSureRocksDBIsStillOpen();
-      return getRocksDBStatValue("rocksdb.live-sst-files-size");
+      return getRocksDBStatValue("rocksdb.live-sst-files-size") + getRocksDBStatValue("rocksdb.live-blob-file-size");
     } finally {
       readCloseRWLock.readLock().unlock();
     }
@@ -1006,5 +1008,39 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   @Override
   public AbstractStorageIterator getIterator() {
     return new RocksDBStorageIterator(rocksDB.newIterator());
+  }
+
+  /**
+   * util method to create a snapshot
+   * It will check the snapshot directory and delete it if it exists, then generate a new snapshot
+   */
+  public static void createSnapshot(RocksDB rocksDB, String fullPathForPartitionDBSnapshot) {
+    LOGGER.info("Creating snapshot in directory: {}", fullPathForPartitionDBSnapshot);
+
+    // clean up the snapshot directory if it exists
+    File partitionSnapshotDir = new File(fullPathForPartitionDBSnapshot);
+    if (partitionSnapshotDir.exists()) {
+      LOGGER.info("Snapshot directory already exists, deleting old snapshots at {}", fullPathForPartitionDBSnapshot);
+      try {
+        FileUtils.deleteDirectory(partitionSnapshotDir);
+      } catch (IOException e) {
+        throw new VeniceException(
+            "Failed to delete the existing snapshot directory: " + fullPathForPartitionDBSnapshot,
+            e);
+      }
+    }
+
+    try {
+      LOGGER.info("Start creating snapshots in directory: {}", fullPathForPartitionDBSnapshot);
+
+      Checkpoint checkpoint = Checkpoint.create(rocksDB);
+      checkpoint.createCheckpoint(fullPathForPartitionDBSnapshot);
+
+      LOGGER.info("Finished creating snapshots in directory: {}", fullPathForPartitionDBSnapshot);
+    } catch (RocksDBException e) {
+      throw new VeniceException(
+          "Received exception during RocksDB's snapshot creation in directory " + fullPathForPartitionDBSnapshot,
+          e);
+    }
   }
 }

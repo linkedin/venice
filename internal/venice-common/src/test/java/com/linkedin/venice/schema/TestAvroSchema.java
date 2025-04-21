@@ -14,7 +14,9 @@ import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -67,6 +69,11 @@ public class TestAvroSchema {
     ps.previousStatuses = Collections.emptyMap();
     ps.pendingReportIncrementalPushVersions = Collections.emptyList();
     ps.setRealtimeTopicProducerStates(Collections.emptyMap());
+    ps.currentTermStartPubSubPosition = ByteBuffer.wrap("".getBytes());
+    ps.lastProcessedVersionTopicPubSubPosition = ByteBuffer.wrap("".getBytes());
+    ps.lastConsumedVersionTopicPubSubPosition = ByteBuffer.wrap("".getBytes());
+    ps.upstreamRealTimeTopicPubSubPositionMap = new VeniceConcurrentHashMap<>();
+    ps.upstreamVersionTopicPubSubPosition = ByteBuffer.wrap("".getBytes());
 
     AvroSerializer serializer = new AvroSerializer(ps.getSchema());
     byte[] serializedBytes = serializer.serialize(ps);

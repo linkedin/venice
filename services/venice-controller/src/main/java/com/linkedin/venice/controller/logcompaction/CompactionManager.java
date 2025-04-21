@@ -1,15 +1,18 @@
 package com.linkedin.venice.controller.logcompaction;
 
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
-import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
+import com.linkedin.venice.controllerapi.RepushJobResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.StoreInfo;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -55,21 +58,16 @@ public class CompactionManager {
   }
 
   // public for testing
-  List<StoreInfo> filterStoresForCompaction(ArrayList<StoreInfo> storeInfoList) {
-    ArrayList<StoreInfo> compactionReadyStores = new ArrayList<>();
-    for (StoreInfo storeInfo: storeInfoList) {
-      if (isCompactionReady(storeInfo)) {
-        compactionReadyStores.add(storeInfo);
-      }
-    }
-    return compactionReadyStores;
+  @VisibleForTesting
+  List<StoreInfo> filterStoresForCompaction(List<StoreInfo> storeInfoList) {
+    return storeInfoList.stream().filter(this::isCompactionReady).collect(Collectors.toList());
   }
 
   /**
    * This function abstracts the criteria for a store to be ready for compaction
    *
    * public for testing in {@link com.linkedin.venice.endToEnd.TestHybrid#testHybridStoreLogCompaction}
-   * todo: move TestHybrid::testHybridStoreLogCompaction to TestCompactionManager, then make this class package private
+   * TODO: move TestHybrid::testHybridStoreLogCompaction to TestCompactionManager, then make this class package private
    */
   //
   public boolean isCompactionReady(StoreInfo storeInfo) {
@@ -105,14 +103,20 @@ public class CompactionManager {
   /**
    * This function triggers a repush job to perform log compaction on the topic of a store.
    * <p>
-   * - intermediary between {@link com.linkedin.venice.controller.VeniceHelixAdmin#compactStore} and
+   * - intermediary between {@link com.linkedin.venice.controller.VeniceHelixAdmin#repushStore} and
    * {@link RepushOrchestrator#repush} - a wrapper around repush() - handles repush job status/response
    *
    * @param repushJobRequest
    */
-  public RepushJobResponse compactStore(RepushJobRequest repushJobRequest) throws Exception {
+  public RepushJobResponse repushStore(RepushJobRequest repushJobRequest) throws Exception {
     try {
       RepushJobResponse response = repushOrchestrator.repush(repushJobRequest);
+
+      if (response == null) {
+        String nullResponseMessage = "Repush job response is null for repush request: " + repushJobRequest.toString();
+        LOGGER.error(nullResponseMessage);
+        throw new VeniceException(nullResponseMessage);
+      }
       LOGGER.info(
           "Repush job triggered for store: {} | exec id: {} | trigger source: {}",
           response.getName(),

@@ -25,7 +25,8 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
@@ -48,32 +49,32 @@ public class IngestionBatchProcessorTest {
     PubSubTopicPartition versionTopicPartition = new PubSubTopicPartitionImpl(versionTopic, 1);
     PubSubTopicPartition rtTopicPartition = new PubSubTopicPartitionImpl(rtTopic, 1);
 
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> vtMessage1 = new ImmutablePubSubMessage<>(
+    DefaultPubSubMessage vtMessage1 = new ImmutablePubSubMessage(
         mock(KafkaKey.class),
         mock(KafkaMessageEnvelope.class),
         versionTopicPartition,
-        1,
+        mock(PubSubPosition.class),
         100,
         100);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> vtMessage2 = new ImmutablePubSubMessage<>(
+    DefaultPubSubMessage vtMessage2 = new ImmutablePubSubMessage(
         mock(KafkaKey.class),
         mock(KafkaMessageEnvelope.class),
         versionTopicPartition,
-        2,
+        mock(PubSubPosition.class),
         101,
         100);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> rtMessage1 = new ImmutablePubSubMessage<>(
+    DefaultPubSubMessage rtMessage1 = new ImmutablePubSubMessage(
         mock(KafkaKey.class),
         mock(KafkaMessageEnvelope.class),
         rtTopicPartition,
-        1,
+        mock(PubSubPosition.class),
         100,
         100);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> rtMessage2 = new ImmutablePubSubMessage<>(
+    DefaultPubSubMessage rtMessage2 = new ImmutablePubSubMessage(
         mock(KafkaKey.class),
         mock(KafkaMessageEnvelope.class),
         rtTopicPartition,
-        2,
+        mock(PubSubPosition.class),
         101,
         100);
 
@@ -94,18 +95,18 @@ public class IngestionBatchProcessorTest {
 
     PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic("store_rt");
     PubSubTopicPartition rtTopicPartition = new PubSubTopicPartitionImpl(rtTopic, 1);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> rtMessage1 = new ImmutablePubSubMessage<>(
+    DefaultPubSubMessage rtMessage1 = new ImmutablePubSubMessage(
         new KafkaKey(MessageType.PUT, key1),
         mock(KafkaMessageEnvelope.class),
         rtTopicPartition,
-        1,
+        mock(PubSubPosition.class),
         100,
         100);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> rtMessage2 = new ImmutablePubSubMessage<>(
+    DefaultPubSubMessage rtMessage2 = new ImmutablePubSubMessage(
         new KafkaKey(MessageType.PUT, key2),
         mock(KafkaMessageEnvelope.class),
         rtTopicPartition,
-        2,
+        mock(PubSubPosition.class),
         101,
         100);
 
@@ -159,18 +160,18 @@ public class IngestionBatchProcessorTest {
     byte[] key1 = "key1".getBytes();
     byte[] key2 = "key2".getBytes();
     PubSubTopicPartition rtTopicPartition = new PubSubTopicPartitionImpl(rtTopic, 1);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> rtMessage1 = new ImmutablePubSubMessage<>(
+    DefaultPubSubMessage rtMessage1 = new ImmutablePubSubMessage(
         new KafkaKey(MessageType.PUT, key1),
         mock(KafkaMessageEnvelope.class),
         rtTopicPartition,
-        1,
+        mock(PubSubPosition.class),
         100,
         100);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> rtMessage2 = new ImmutablePubSubMessage<>(
+    DefaultPubSubMessage rtMessage2 = new ImmutablePubSubMessage(
         new KafkaKey(MessageType.PUT, key2),
         mock(KafkaMessageEnvelope.class),
         rtTopicPartition,
-        2,
+        mock(PubSubPosition.class),
         101,
         100);
 
@@ -200,7 +201,7 @@ public class IngestionBatchProcessorTest {
         mockAggVersionedIngestionStats,
         mockHostLevelIngestionStats);
 
-    List<PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long>> result = batchProcessor.process(
+    List<PubSubMessageProcessedResultWrapper> result = batchProcessor.process(
         Arrays.asList(rtMessage1, rtMessage2),
         mock(PartitionConsumptionState.class),
         1,
@@ -210,11 +211,11 @@ public class IngestionBatchProcessorTest {
         1);
 
     assertEquals(result.size(), 2);
-    PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> resultForKey1 = result.get(0);
+    PubSubMessageProcessedResultWrapper resultForKey1 = result.get(0);
     assertEquals(
         resultForKey1.getProcessedResult().getWriteComputeResultWrapper().getNewPut().putValue.array(),
         "value1".getBytes());
-    PubSubMessageProcessedResultWrapper<KafkaKey, KafkaMessageEnvelope, Long> resultForKey2 = result.get(1);
+    PubSubMessageProcessedResultWrapper resultForKey2 = result.get(1);
     assertEquals(
         resultForKey2.getProcessedResult().getWriteComputeResultWrapper().getNewPut().putValue.array(),
         "value2".getBytes());

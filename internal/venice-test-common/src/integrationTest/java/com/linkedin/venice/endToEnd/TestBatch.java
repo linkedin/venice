@@ -48,7 +48,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAG
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.USE_MAPPER_TO_BUILD_DICTIONARY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_COMPRESSION_LEVEL;
 
@@ -240,9 +239,8 @@ public abstract class TestBatch {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testCompressingRecord(boolean compressionMetricCollectionEnabled, boolean useMapperToBuildDict)
-      throws Exception {
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testCompressingRecord(boolean compressionMetricCollectionEnabled) throws Exception {
     VPJValidator validator = (avroClient, vsonClient, metricsRepository) -> {
       // test single get
       for (int i = 1; i <= 100; i++) {
@@ -269,7 +267,6 @@ public abstract class TestBatch {
         properties -> {
           properties
               .setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(compressionMetricCollectionEnabled));
-          properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, String.valueOf(useMapperToBuildDict));
         },
         validator,
         new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.GZIP));
@@ -344,17 +341,15 @@ public abstract class TestBatch {
         new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
   }
 
-  @Test(timeOut = TEST_TIMEOUT * 2, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testZstdCompressingAvroRecordWhenFallbackAvailable(
-      boolean compressionMetricCollectionEnabled,
-      boolean useMapperToBuildDict) throws Exception {
+  @Test(timeOut = TEST_TIMEOUT * 2, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testZstdCompressingAvroRecordWhenFallbackAvailable(boolean compressionMetricCollectionEnabled)
+      throws Exception {
     // Running a batch push first.
     String storeName = testBatchStore(
         inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {
           properties
               .setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(compressionMetricCollectionEnabled));
-          properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, String.valueOf(useMapperToBuildDict));
         },
         getSimpleFileWithUserSchemaValidatorForZstd());
 
@@ -390,7 +385,6 @@ public abstract class TestBatch {
         properties -> {
           properties
               .setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(compressionMetricCollectionEnabled));
-          properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, String.valueOf(useMapperToBuildDict));
         },
         validator,
         storeName,
@@ -486,16 +480,13 @@ public abstract class TestBatch {
         new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testIncrementalPushWithCompression(
-      boolean compressionMetricCollectionEnabled,
-      boolean useMapperToBuildDict) throws Exception {
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testIncrementalPushWithCompression(boolean compressionMetricCollectionEnabled) throws Exception {
     String storeName = testBatchStore(
         inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {
           properties
               .setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(compressionMetricCollectionEnabled));
-          properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, String.valueOf(useMapperToBuildDict));
         },
         getSimpleFileWithUserSchemaValidatorForZstd(),
         new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT)
@@ -509,7 +500,6 @@ public abstract class TestBatch {
           properties.setProperty(INCREMENTAL_PUSH, "true");
           properties
               .setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(compressionMetricCollectionEnabled));
-          properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, String.valueOf(useMapperToBuildDict));
         },
         (avroClient, vsonClient, metricsRepository) -> {
           // Original data from the full push
@@ -631,10 +621,9 @@ public abstract class TestBatch {
         validator);
 
     // Since chunking was not enabled, verify that the assembled record size metrics are not collected
-    String baseMetricName = AbstractVeniceStats.getSensorFullName(storeName, ASSEMBLED_RECORD_SIZE_IN_BYTES);
-    MetricsUtils.getAvgMax(baseMetricName, veniceCluster.getVeniceServers()).forEach(value -> {
-      Assert.assertTrue(value == Double.MIN_VALUE || value == Double.MAX_VALUE || value.isNaN(), "Must be invalid");
-    });
+    String metricName = AbstractVeniceStats.getSensorFullName(storeName, ASSEMBLED_RECORD_SIZE_IN_BYTES) + ".Max";
+    double assembledRecordSize = MetricsUtils.getMax(metricName, veniceCluster.getVeniceServers());
+    Assert.assertEquals(assembledRecordSize, Double.MIN_VALUE, "Metric must be unset / invalid");
 
     // Re-push with Kafka Input
     testRepush(storeName, validator);
@@ -970,9 +959,9 @@ public abstract class TestBatch {
 
     // Verify that after records are chunked and re-assembled, the original sizes of these records are being recorded
     // to the metrics sensor, and are within the correct size range.
-    String baseMetricName = AbstractVeniceStats.getSensorFullName(storeName, ASSEMBLED_RECORD_SIZE_IN_BYTES);
-    List<Double> assembledRecordSizes = MetricsUtils.getAvgMax(baseMetricName, veniceCluster.getVeniceServers());
-    MetricsUtils.validateMetricRange(assembledRecordSizes, BYTES_PER_MB, LARGE_VALUE_SIZE);
+    String metricName = AbstractVeniceStats.getSensorFullName(storeName, ASSEMBLED_RECORD_SIZE_IN_BYTES) + ".Max";
+    double assembledRecordSize = MetricsUtils.getMax(metricName, veniceCluster.getVeniceServers());
+    Assert.assertTrue(assembledRecordSize >= BYTES_PER_MB && assembledRecordSize <= LARGE_VALUE_SIZE);
   }
 
   /** Test that values that are too large will fail the push job only when the limit is enforced. */
@@ -989,9 +978,9 @@ public abstract class TestBatch {
 
       // Add a little wiggle room (1e-3) for generating the test data / record sizes
       final double maxRatio = (double) tooLargeValueSize / maxRecordSizeBytesForTest + 1e-3;
-      String baseMetricName = AbstractVeniceStats.getSensorFullName(storeName, ASSEMBLED_RECORD_SIZE_RATIO);
-      List<Double> assembledRecordSizeRatios = MetricsUtils.getAvgMax(baseMetricName, veniceCluster.getVeniceServers());
-      MetricsUtils.validateMetricRange(assembledRecordSizeRatios, 0, maxRatio);
+      String metricName = AbstractVeniceStats.getSensorFullName(storeName, ASSEMBLED_RECORD_SIZE_RATIO) + ".Max";
+      double assembledRecordSizeRatios = MetricsUtils.getMax(metricName, veniceCluster.getVeniceServers());
+      Assert.assertTrue(assembledRecordSizeRatios >= 0 && assembledRecordSizeRatios <= maxRatio);
     } catch (VeniceException e) {
       final String limitStr = generateHumanReadableByteCountString(maxRecordSizeBytesForTest);
       Assert.assertTrue(e.getMessage().contains("exceed the maximum record limit of " + limitStr), e.getMessage());

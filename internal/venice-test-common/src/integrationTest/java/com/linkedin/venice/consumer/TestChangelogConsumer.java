@@ -171,7 +171,7 @@ public class TestChangelogConsumer {
   }
 
   // This is a beefier test, so giving it a bit more time
-  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  @Test(timeOut = TEST_TIMEOUT * 3, priority = 3)
   public void testVersionSwapInALoop() throws Exception {
     // create a active-active enabled store and run batch push job
     // batch job contains 100 records
@@ -273,7 +273,7 @@ public class TestChangelogConsumer {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT * 10, priority = 3)
+  @Test(timeOut = TEST_TIMEOUT, priority = 3)
   public void testAAIngestionWithStoreView() throws Exception {
     // Set up the store
     Long timestamp = System.currentTimeMillis();
@@ -392,7 +392,8 @@ public class TestChangelogConsumer {
         .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
         .setLocalD2ZkHosts(localZkServer.getAddress())
         .setVersionSwapDetectionIntervalTimeInSeconds(3L)
-        .setControllerRequestRetryCount(3);
+        .setControllerRequestRetryCount(3)
+        .setBootstrapFileSystemPath(getTempDataDirectory().getAbsolutePath());
     VeniceChangelogConsumerClientFactory veniceViewChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(viewChangeLogClientConfig, metricsRepository);
 
@@ -667,7 +668,7 @@ public class TestChangelogConsumer {
     polledChangeEvents.clear();
 
     // Seek to a bogus checkpoint
-    PubSubPosition badPubSubPosition = new ApacheKafkaOffsetPosition(1337L);
+    PubSubPosition badPubSubPosition = ApacheKafkaOffsetPosition.of(1337L);
     VeniceChangeCoordinate badCoordinate = new MockVeniceChangeCoordinate(storeName + "_v777777", badPubSubPosition, 0);
     Set<VeniceChangeCoordinate> badCheckpointSet = new HashSet<>();
     badCheckpointSet.add(badCoordinate);

@@ -7,6 +7,7 @@ import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 
 import com.linkedin.venice.HttpConstants;
 import io.netty.buffer.Unpooled;
+import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -23,6 +24,15 @@ public class NettyUtils {
       byte[] body,
       boolean isJson,
       ChannelHandlerContext ctx) {
+    setupResponseAndFlush(status, body, isJson, ctx, false);
+  }
+
+  public static void setupResponseAndFlush(
+      HttpResponseStatus status,
+      byte[] body,
+      boolean isJson,
+      ChannelHandlerContext ctx,
+      boolean closeChannelAfterFlush) {
     FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, status, Unpooled.wrappedBuffer(body));
     try {
       if (isJson) {
@@ -36,6 +46,10 @@ public class NettyUtils {
       throw e;
     }
     response.headers().set(CONTENT_LENGTH, response.content().readableBytes());
-    ctx.writeAndFlush(response);
+    if (closeChannelAfterFlush) {
+      ctx.writeAndFlush(response).addListener(ChannelFutureListener.CLOSE);
+    } else {
+      ctx.writeAndFlush(response);
+    }
   }
 }

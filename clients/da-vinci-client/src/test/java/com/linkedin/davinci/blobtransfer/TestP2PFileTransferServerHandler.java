@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.blobtransfer.server.P2PFileTransferServerHandler;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -17,17 +18,16 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import io.netty.buffer.ByteBuf;
-import io.netty.channel.DefaultFileRegion;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.DefaultHttpResponse;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpChunkedInput;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
-import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.timeout.IdleStateEvent;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -150,6 +150,9 @@ public class TestP2PFileTransferServerHandler {
 
   @Test
   public void testFailOnAccessPath() throws IOException {
+    AbstractStorageEngine localStorageEngine = Mockito.mock(AbstractStorageEngine.class);
+    Mockito.doReturn(localStorageEngine).when(storageEngineRepository).getLocalStorageEngine(Mockito.any());
+    Mockito.doReturn(true).when(localStorageEngine).containsPartition(Mockito.anyInt());
     // prepare response from metadata service for the metadata preparation
     StoreVersionState storeVersionState = new StoreVersionState();
     Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());
@@ -181,6 +184,10 @@ public class TestP2PFileTransferServerHandler {
 
   @Test
   public void testTransferSingleFileAndSingleMetadataForBatchStore() throws IOException {
+    AbstractStorageEngine localStorageEngine = Mockito.mock(AbstractStorageEngine.class);
+    Mockito.doReturn(localStorageEngine).when(storageEngineRepository).getLocalStorageEngine(Mockito.any());
+    Mockito.doReturn(true).when(localStorageEngine).containsPartition(Mockito.anyInt());
+
     // prepare response from metadata service
     StoreVersionState storeVersionState = new StoreVersionState();
     Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());
@@ -213,10 +220,7 @@ public class TestP2PFileTransferServerHandler {
     Assert.assertEquals(httpResponse.headers().get(BLOB_TRANSFER_TYPE), BlobTransferType.FILE.toString());
     // send the content in one chunk
     response = ch.readOutbound();
-    Assert.assertTrue(response instanceof DefaultFileRegion);
-    // the last empty response for file1
-    response = ch.readOutbound();
-    Assert.assertTrue(response instanceof LastHttpContent);
+    Assert.assertTrue(response instanceof HttpChunkedInput);
     // end of file1
 
     // start of metadata
@@ -238,6 +242,10 @@ public class TestP2PFileTransferServerHandler {
 
   @Test
   public void testTransferMultipleFiles() throws IOException {
+    AbstractStorageEngine localStorageEngine = Mockito.mock(AbstractStorageEngine.class);
+    Mockito.doReturn(localStorageEngine).when(storageEngineRepository).getLocalStorageEngine(Mockito.any());
+    Mockito.doReturn(true).when(localStorageEngine).containsPartition(Mockito.anyInt());
+
     // prepare response from metadata service
     StoreVersionState storeVersionState = new StoreVersionState();
     Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());
@@ -277,9 +285,7 @@ public class TestP2PFileTransferServerHandler {
     fileNames.remove(httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION));
     fileChecksums.remove(httpResponse.headers().get(HttpHeaderNames.CONTENT_MD5));
     response = ch.readOutbound();
-    Assert.assertTrue(response instanceof DefaultFileRegion);
-    response = ch.readOutbound();
-    Assert.assertTrue(response instanceof LastHttpContent);
+    Assert.assertTrue(response instanceof HttpChunkedInput);
     // end of file1
 
     // start of file2
@@ -289,9 +295,7 @@ public class TestP2PFileTransferServerHandler {
     Assert.assertTrue(fileNames.contains(httpResponse.headers().get(HttpHeaderNames.CONTENT_DISPOSITION)));
     Assert.assertTrue(fileChecksums.contains(httpResponse.headers().get(HttpHeaderNames.CONTENT_MD5)));
     response = ch.readOutbound();
-    Assert.assertTrue(response instanceof DefaultFileRegion);
-    response = ch.readOutbound();
-    Assert.assertTrue(response instanceof LastHttpContent);
+    Assert.assertTrue(response instanceof HttpChunkedInput);
     // end of a file2
 
     // start of metadata

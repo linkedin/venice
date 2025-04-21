@@ -10,6 +10,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -59,7 +60,11 @@ public class SystemStoreRepairTask implements Runnable {
 
   @Override
   public void run() {
-    for (String clusterName: parentAdmin.getClustersLeaderOf()) {
+    LogContext.setStructuredLogContext(getParentAdmin().getLogContext());
+    for (String clusterName: getParentAdmin().getClustersLeaderOf()) {
+      if (!getClusterToSystemStoreHealthCheckStatsMap().containsKey(clusterName)) {
+        continue;
+      }
       Set<String> unhealthySystemStoreSet = new HashSet<>();
       Set<String> unreachableSystemStoreSet = new HashSet<>();
       Map<String, Long> systemStoreToHeartbeatTimestampMap = new VeniceConcurrentHashMap<>();
@@ -70,7 +75,7 @@ public class SystemStoreRepairTask implements Runnable {
           unreachableSystemStoreSet,
           systemStoreToHeartbeatTimestampMap);
       // Try repair all bad system stores.
-      repairBadSystemStore(clusterName, unhealthySystemStoreSet, unreachableSystemStoreSet, maxRepairRetry);
+      repairBadSystemStore(clusterName, unhealthySystemStoreSet, unreachableSystemStoreSet, getMaxRepairRetry());
     }
   }
 
@@ -323,8 +328,12 @@ public class SystemStoreRepairTask implements Runnable {
         .toMillis(SKIP_NEWLY_CREATED_STORE_SYSTEM_STORE_HEALTH_CHECK_HOURS);
   }
 
-  public SystemStoreHealthCheckStats getClusterSystemStoreHealthCheckStats(String clusterName) {
-    return clusterToSystemStoreHealthCheckStatsMap.get(clusterName);
+  Map<String, SystemStoreHealthCheckStats> getClusterToSystemStoreHealthCheckStatsMap() {
+    return clusterToSystemStoreHealthCheckStatsMap;
+  }
+
+  SystemStoreHealthCheckStats getClusterSystemStoreHealthCheckStats(String clusterName) {
+    return getClusterToSystemStoreHealthCheckStatsMap().get(clusterName);
   }
 
   AtomicLong getBadMetaStoreCount(String clusterName) {
@@ -352,5 +361,9 @@ public class SystemStoreRepairTask implements Runnable {
 
   VeniceParentHelixAdmin getParentAdmin() {
     return parentAdmin;
+  }
+
+  int getMaxRepairRetry() {
+    return maxRepairRetry;
   }
 }

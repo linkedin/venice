@@ -1,6 +1,8 @@
 package com.linkedin.davinci.blobtransfer;
 
+import static com.linkedin.davinci.blobtransfer.BlobTransferGlobalTrafficShapingHandlerHolder.getGlobalChannelTrafficShapingHandlerInstance;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
+import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.createAclHandler;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
@@ -8,9 +10,12 @@ import static org.mockito.Mockito.mock;
 
 import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
 import com.linkedin.davinci.blobtransfer.server.P2PBlobTransferService;
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
 import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
@@ -20,11 +25,15 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.netty.handler.traffic.GlobalChannelTrafficShapingHandler;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -35,6 +44,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
+import java.util.Properties;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -68,6 +79,9 @@ public class TestNettyP2PBlobTransferManager {
   Path destFile2;
   Path destFile3;
 
+  Optional<SSLFactory> sslFactory;
+  Optional<BlobTransferAclHandler> aclHandler;
+
   @BeforeMethod
   public void setUp() throws Exception {
     int port = TestUtils.getFreePort();
@@ -80,12 +94,44 @@ public class TestNettyP2PBlobTransferManager {
     blobTransferStats = mock(AggVersionedBlobTransferStats.class);
     ReadOnlyStoreRepository readOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
     StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
+    GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler =
+        getGlobalChannelTrafficShapingHandlerInstance(2000000, 2000000);
+
+    AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
+    Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(Mockito.anyString());
+    Mockito.doReturn(true).when(storageEngine).containsPartition(Mockito.anyInt());
+
+    sslFactory = Optional.of(SslUtils.getVeniceLocalSslFactory());
+
+    Properties sslProperties = SslUtils.getVeniceLocalSslProperties();
+    sslProperties.setProperty(ConfigKeys.BLOB_TRANSFER_SSL_ENABLED, "true");
+    sslProperties.setProperty(ConfigKeys.BLOB_TRANSFER_ACL_ENABLED, "true");
+
+    VeniceProperties veniceProperties = new VeniceProperties(sslProperties);
+    VeniceConfigLoader configLoader = Mockito.mock(VeniceConfigLoader.class);
+
+    Mockito.when(configLoader.getCombinedProperties()).thenReturn(veniceProperties);
+    aclHandler = createAclHandler(configLoader);
+
     blobSnapshotManager =
         Mockito.spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
 
-    server =
-        new P2PBlobTransferService(port, tmpSnapshotDir.toString(), blobTransferMaxTimeoutInMin, blobSnapshotManager);
-    client = Mockito.spy(new NettyFileTransferClient(port, tmpPartitionDir.toString(), storageMetadataService, 30));
+    server = new P2PBlobTransferService(
+        port,
+        tmpSnapshotDir.toString(),
+        blobTransferMaxTimeoutInMin,
+        blobSnapshotManager,
+        globalChannelTrafficShapingHandler,
+        sslFactory,
+        aclHandler);
+    client = Mockito.spy(
+        new NettyFileTransferClient(
+            port,
+            tmpPartitionDir.toString(),
+            storageMetadataService,
+            30,
+            globalChannelTrafficShapingHandler,
+            sslFactory));
     finder = mock(BlobFinder.class);
 
     manager = new NettyP2PBlobTransferManager(server, client, finder, tmpPartitionDir.toString(), blobTransferStats);

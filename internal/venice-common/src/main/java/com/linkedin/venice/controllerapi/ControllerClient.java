@@ -65,6 +65,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CON
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_SIZE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGETED_REGIONS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_REGION_PUSH_WITH_DEFERRED_SWAP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TO_BE_STOPPED_INSTANCES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPSTREAM_OFFSET;
@@ -780,8 +781,21 @@ public class ControllerClient implements Closeable {
   public JobStatusQueryResponse queryOverallJobStatus(
       String kafkaTopic,
       Optional<String> incrementalPushVersion,
+      String targetedRegions,
+      boolean isTargetRegionPushWithDeferredSwap) {
+    return queryJobStatus(
+        kafkaTopic,
+        incrementalPushVersion,
+        5 * QUERY_JOB_STATUS_TIMEOUT,
+        targetedRegions,
+        isTargetRegionPushWithDeferredSwap);
+  }
+
+  public JobStatusQueryResponse queryOverallJobStatus(
+      String kafkaTopic,
+      Optional<String> incrementalPushVersion,
       String targetedRegions) {
-    return queryJobStatus(kafkaTopic, incrementalPushVersion, 5 * QUERY_JOB_STATUS_TIMEOUT, targetedRegions);
+    return queryOverallJobStatus(kafkaTopic, incrementalPushVersion, null, false);
   }
 
   public JobStatusQueryResponse queryOverallJobStatus(String kafkaTopic, Optional<String> incrementalPushVersion) {
@@ -789,7 +803,7 @@ public class ControllerClient implements Closeable {
   }
 
   public JobStatusQueryResponse queryJobStatus(String kafkaTopic) {
-    return queryJobStatus(kafkaTopic, Optional.empty(), QUERY_JOB_STATUS_TIMEOUT, null);
+    return queryJobStatus(kafkaTopic, Optional.empty(), QUERY_JOB_STATUS_TIMEOUT, null, false);
   }
 
   /**
@@ -798,25 +812,28 @@ public class ControllerClient implements Closeable {
    * target is a parent controller.
    */
   public JobStatusQueryResponse queryJobStatus(String kafkaTopic, Optional<String> incrementalPushVersion) {
-    return queryJobStatus(kafkaTopic, incrementalPushVersion, QUERY_JOB_STATUS_TIMEOUT, null);
+    return queryJobStatus(kafkaTopic, incrementalPushVersion, QUERY_JOB_STATUS_TIMEOUT, null, false);
   }
 
   public JobStatusQueryResponse queryJobStatus(
       String kafkaTopic,
       Optional<String> incrementalPushVersion,
       String targetedRegions) {
-    return queryJobStatus(kafkaTopic, incrementalPushVersion, QUERY_JOB_STATUS_TIMEOUT, targetedRegions);
+    return queryJobStatus(kafkaTopic, incrementalPushVersion, QUERY_JOB_STATUS_TIMEOUT, targetedRegions, false);
   }
 
   public JobStatusQueryResponse queryJobStatus(
       String kafkaTopic,
       Optional<String> incrementalPushVersion,
       int timeoutMs,
-      String targetedRegions) {
+      String targetedRegions,
+      boolean isTargetRegionPushWithDeferredSwap) {
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-    QueryParams params =
-        newParams().add(NAME, storeName).add(VERSION, version).add(INCREMENTAL_PUSH_VERSION, incrementalPushVersion);
+    QueryParams params = newParams().add(NAME, storeName)
+        .add(VERSION, version)
+        .add(INCREMENTAL_PUSH_VERSION, incrementalPushVersion)
+        .add(TARGET_REGION_PUSH_WITH_DEFERRED_SWAP, isTargetRegionPushWithDeferredSwap);
 
     if (StringUtils.isNotEmpty(targetedRegions)) {
       params.add(TARGETED_REGIONS, targetedRegions);
@@ -1201,13 +1218,22 @@ public class ControllerClient implements Closeable {
    * @param storeName
    * @return //TODO LC:
    */
-  public ControllerResponse triggerRepush(String storeName, byte[] repushJobDetails) {
+  public RepushJobResponse repushStore(String storeName) {
     QueryParams params = newParams().add(NAME, storeName);
     // TODO repush: Use byte[] to pass parameters instead of QueryParams as it is a post method. see
     // (https://github.com/linkedin/venice/pull/1282#discussion_r1871510627)
     // TODO repush: add params from admin tool for repush: e.g. version, fabric etc.
     // TODO repush: add admin.repush()
-    return request(ControllerRoute.COMPACT_STORE, params, ControllerResponse.class, repushJobDetails);
+    return request(ControllerRoute.REPUSH_STORE, params, RepushJobResponse.class);
+  }
+
+  public MultiStoreInfoResponse getDeadStores(
+      String clusterName,
+      boolean includeSystemStores,
+      Optional<String> storeName) {
+    QueryParams params = newParams().add(CLUSTER, clusterName).add(INCLUDE_SYSTEM_STORES, includeSystemStores);
+    storeName.ifPresent(s -> params.add(NAME, s));
+    return request(ControllerRoute.GET_DEAD_STORES, params, MultiStoreInfoResponse.class);
   }
 
   public VersionResponse getStoreLargestUsedVersion(String clusterName, String storeName) {
@@ -1393,6 +1419,23 @@ public class ControllerClient implements Closeable {
     QueryParams params =
         newParams().add(CLUSTER, clusterName).add(ADMIN_OPERATION_PROTOCOL_VERSION, adminOperationProtocolVersion);
     return request(ControllerRoute.UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION, params, AdminTopicMetadataResponse.class);
+  }
+
+  public AdminOperationProtocolVersionControllerResponse getAdminOperationProtocolVersionFromControllers(
+      String clusterName) {
+    QueryParams params = newParams().add(CLUSTER, clusterName);
+    return request(
+        ControllerRoute.GET_ADMIN_OPERATION_VERSION_FROM_CONTROLLERS,
+        params,
+        AdminOperationProtocolVersionControllerResponse.class);
+  }
+
+  public AdminOperationProtocolVersionControllerResponse getLocalAdminOperationProtocolVersion() {
+    // TODO: Modify this method to send to given controller url
+    return request(
+        ControllerRoute.GET_LOCAL_ADMIN_OPERATION_PROTOCOL_VERSION,
+        newParams(),
+        AdminOperationProtocolVersionControllerResponse.class);
   }
 
   public ControllerResponse deleteKafkaTopic(String topicName) {

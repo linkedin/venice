@@ -92,4 +92,32 @@ public class ApacheKafkaUtils {
     return kafkaProtocol.equals(PubSubSecurityProtocol.SSL.name())
         || kafkaProtocol.equals(PubSubSecurityProtocol.SASL_SSL.name());
   }
+
+  /**
+   * Generates a standardized and unique client ID for Kafka clients.
+   *
+   * <p>
+   * This ensures uniqueness in client IDs, preventing naming collisions that could cause
+   * `InstanceAlreadyExistsException` during JMX metric registration. If multiple Kafka clients
+   * share the same client ID, Kafka's internal JMX registration can fail, leading to errors.
+   * By appending a timestamp, this method guarantees that each generated ID is unique.
+   * </p>
+   *
+   * <p>
+   * If the provided client name is null, it defaults to "kc".
+   * If the broker address is null, it defaults to an empty string.
+   * The generated client ID follows the format:
+   * <pre>{@code clientName-brokerAddress-timestamp}</pre>
+   * </p>
+   *
+   * @param clientName    The name of the client (can be null, defaults to "kc").
+   * @param brokerAddress The broker address (can be null, defaults to an empty string).
+   * @return A unique client ID in the format: {@code clientName-brokerAddress-timestamp}.
+   */
+  public static String generateClientId(String clientName, String brokerAddress) {
+    String resolvedClientName = (clientName != null) ? clientName : "kc";
+    String resolvedBrokerAddress = (brokerAddress != null) ? brokerAddress : "";
+
+    return String.format("%s-%s-%d", resolvedClientName, resolvedBrokerAddress, System.currentTimeMillis());
+  }
 }

@@ -75,10 +75,12 @@
     <Or>
       <Class name="com.linkedin.venice.router.api.TestHostFinder"/>
       <Class name="com.linkedin.davinci.StoreBackendTest"/>
+      <Class name="com.linkedin.davinci.consumer.VeniceChangelogConsumerImplTest"/>
       <Class name="com.linkedin.venice.memory.ClassSizeEstimatorTest"/>
       <Class name="com.linkedin.venice.controller.server.VeniceControllerAccessManagerTest"/>
       <Class name="com.linkedin.venice.sql.SQLUtilsTest"/>
       <Class name="com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterTest"/>
+      <Class name="com.linkedin.venice.utils.LogContextTest"/>
     </Or>
   </Match>
   <Match>
@@ -204,6 +206,10 @@
       </Class>
       <Class name="com.linkedin.venice.samza.VeniceSystemFactory">
         <Field name="systemProducerStatues"/>
+      </Class>
+      <Class name="com.linkedin.venice.serialization.avro.AvroProtocolDefinition">
+        <Field name="currentProtocolVersion"/>
+        <Field name="magicByte"/>
       </Class>
     </Or>
   </Match>
@@ -415,6 +421,7 @@
     <Or>
       <Class name="com.linkedin.venice.integration.utils.ZkServerWrapper"/>
       <Class name="com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest"/>
+      <Class name="com.linkedin.venice.endToEnd.TestHybrid"/>
     </Or>
   </Match>
   <Match>

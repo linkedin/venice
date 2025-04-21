@@ -3,6 +3,7 @@ package com.linkedin.venice.pubsub.adapter.kafka;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.io.ZeroCopyByteArrayOutputStream;
+import com.linkedin.venice.memory.ClassSizeEstimator;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubPositionType;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -19,6 +20,8 @@ import org.apache.avro.io.BinaryEncoder;
 public class ApacheKafkaOffsetPosition implements PubSubPosition {
   private static final ThreadLocal<BinaryDecoder> DECODER = new ThreadLocal<>();
   private static final ThreadLocal<BinaryEncoder> ENCODER = new ThreadLocal<>();
+  private static final int SHALLOW_CLASS_OVERHEAD =
+      ClassSizeEstimator.getClassOverhead(ApacheKafkaOffsetPosition.class);
 
   private final long offset;
 
@@ -83,7 +86,7 @@ public class ApacheKafkaOffsetPosition implements PubSubPosition {
 
   @Override
   public String toString() {
-    return "ApacheKafkaOffsetPosition{" + "offset=" + offset + '}';
+    return offset + "";
   }
 
   @Override
@@ -105,6 +108,19 @@ public class ApacheKafkaOffsetPosition implements PubSubPosition {
     return Long.hashCode(offset);
   }
 
+  @Override
+  public long getNumericOffset() {
+    return offset;
+  }
+
+  public static ApacheKafkaOffsetPosition of(long offset) {
+    return new ApacheKafkaOffsetPosition(offset);
+  }
+
+  public static ApacheKafkaOffsetPosition of(ByteBuffer buffer) throws IOException {
+    return new ApacheKafkaOffsetPosition(buffer);
+  }
+
   /**
    * Position wrapper is used to wrap the position type and the position value.
    * This is used to serialize and deserialize the position object when sending and receiving it over the wire.
@@ -124,5 +140,10 @@ public class ApacheKafkaOffsetPosition implements PubSubPosition {
       throw new VeniceException("Failed to serialize ApacheKafkaOffsetPosition", e);
     }
     return wireFormat;
+  }
+
+  @Override
+  public int getHeapSize() {
+    return SHALLOW_CLASS_OVERHEAD;
   }
 }

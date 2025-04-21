@@ -73,19 +73,10 @@ public class ClientConfigTest {
     clientConfigBuilder.build();
   }
 
-  @Test(expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "Speculative query feature can't be enabled together with long-tail retry for single-get")
-  public void testLongTailRetryWithSpeculativeQuery() {
-    ClientConfig.ClientConfigBuilder clientConfigBuilder = getClientConfigWithMinimumRequiredInputs();
-    clientConfigBuilder.setSpeculativeQueryEnabled(true);
-    clientConfigBuilder.setLongTailRetryEnabledForSingleGet(true);
-    clientConfigBuilder.build();
-  }
-
   @Test
   public void testLongTailRetryWithDualRead() {
     ClientConfig.ClientConfigBuilder clientConfigBuilder = getClientConfigWithMinimumRequiredInputs();
-    clientConfigBuilder.setSpeculativeQueryEnabled(false)
-        .setDualReadEnabled(true)
+    clientConfigBuilder.setDualReadEnabled(true)
         .setGenericThinClient(mock(AvroGenericStoreClient.class))
         .setLongTailRetryEnabledForSingleGet(true)
         .setLongTailRetryThresholdForSingleGetInMicroSeconds(1000)

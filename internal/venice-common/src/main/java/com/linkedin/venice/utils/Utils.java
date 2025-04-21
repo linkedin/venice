@@ -1,10 +1,12 @@
 package com.linkedin.venice.utils;
 
 import static com.linkedin.venice.HttpConstants.LOCALHOST;
+import static com.linkedin.venice.meta.Version.REAL_TIME_TOPIC_SUFFIX;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
@@ -21,6 +23,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -573,19 +576,11 @@ public class Utils {
    * {@link Utils#getRealTimeTopicName(Version)}
    */
   public static String composeRealTimeTopic(String storeName) {
-    return storeName + Version.REAL_TIME_TOPIC_SUFFIX;
+    return storeName + REAL_TIME_TOPIC_SUFFIX;
   }
 
-  public static String getRealTimeTopicNameFromStoreConfig(Store store) {
-    HybridStoreConfig hybridStoreConfig = store.getHybridStoreConfig();
-    String storeName = store.getName();
-
-    if (hybridStoreConfig != null) {
-      String realTimeTopicName = hybridStoreConfig.getRealTimeTopicName();
-      return getRealTimeTopicNameIfEmpty(realTimeTopicName, storeName);
-    } else {
-      return composeRealTimeTopic(storeName);
-    }
+  public static String composeRealTimeTopic(String storeName, int versionNumber) {
+    return String.format(Version.REAL_TIME_TOPIC_TEMPLATE, storeName, versionNumber);
   }
 
   /**
@@ -608,9 +603,17 @@ public class Utils {
         storeInfo.getHybridStoreConfig());
   }
 
+  public static boolean isRTVersioningApplicable(String storeName) {
+    return !(VeniceSystemStoreUtils.isSystemStore(storeName) || VeniceSystemStoreUtils.isUserSystemStore(storeName)
+        || VeniceSystemStoreUtils.isParticipantStore(storeName));
+  }
+
   public static String getRealTimeTopicName(Version version) {
-    HybridStoreConfig hybridStoreConfig = version.getHybridStoreConfig();
-    if (hybridStoreConfig != null) {
+    if (!isRTVersioningApplicable(version.getStoreName())) {
+      return composeRealTimeTopic(version.getStoreName());
+    }
+
+    if (version.isHybrid()) {
       String realTimeTopicName = version.getHybridStoreConfig().getRealTimeTopicName();
       return getRealTimeTopicNameIfEmpty(realTimeTopicName, version.getStoreName());
     } else {
@@ -620,52 +623,50 @@ public class Utils {
     }
   }
 
+  public static Set<String> getAllRealTimeTopicNames(Store store) {
+    return store.getVersions().stream().map(Utils::getRealTimeTopicName).collect(Collectors.toSet());
+  }
+
   static String getRealTimeTopicName(
       String storeName,
       List<Version> versions,
       int currentVersionNumber,
       HybridStoreConfig hybridStoreConfig) {
-    if (currentVersionNumber < 1) {
+    if (!isRTVersioningApplicable(storeName)) {
       return composeRealTimeTopic(storeName);
-    }
-
-    Optional<Version> currentVersion =
-        versions.stream().filter(version -> version.getNumber() == currentVersionNumber).findFirst();
-    if (currentVersion.isPresent() && currentVersion.get().isHybrid()) {
-      String realTimeTopicName = currentVersion.get().getHybridStoreConfig().getRealTimeTopicName();
-      if (StringUtils.isNotBlank(realTimeTopicName)) {
-        return realTimeTopicName;
-      }
-    }
-
-    if (hybridStoreConfig != null) {
-      String realTimeTopicName = hybridStoreConfig.getRealTimeTopicName();
-      return getRealTimeTopicNameIfEmpty(realTimeTopicName, storeName);
     }
 
     Set<String> realTimeTopicNames = new HashSet<>();
 
     for (Version version: versions) {
-      try {
-        if (version.isHybrid()) {
-          String realTimeTopicName = version.getHybridStoreConfig().getRealTimeTopicName();
-          if (StringUtils.isNotBlank(realTimeTopicName)) {
+      if (version.isHybrid()) {
+        String realTimeTopicName = version.getHybridStoreConfig().getRealTimeTopicName();
+        if (StringUtils.isNotBlank(realTimeTopicName)) {
+          if (version.getNumber() == currentVersionNumber) {
+            return realTimeTopicName;
+          } else {
             realTimeTopicNames.add(realTimeTopicName);
           }
         }
-      } catch (VeniceException e) {
-        // just try another version
       }
     }
 
     if (realTimeTopicNames.size() > 1) {
       LOGGER.warn(
-          "Store " + storeName + " and current version are not hybrid, yet " + realTimeTopicNames.size()
-              + " older versions are using real time topics. Will return one of them.");
+          "Current version({}) of store {} is not hybrid, yet {} older version(s) is/are using real "
+              + "time topic(s). Will return one of them.",
+          currentVersionNumber,
+          storeName,
+          realTimeTopicNames.size());
     }
 
     if (!realTimeTopicNames.isEmpty()) {
       return realTimeTopicNames.iterator().next();
+    }
+
+    if (hybridStoreConfig != null) {
+      String realTimeTopicName = hybridStoreConfig.getRealTimeTopicName();
+      return getRealTimeTopicNameIfEmpty(realTimeTopicName, storeName);
     }
 
     return composeRealTimeTopic(storeName);
@@ -675,28 +676,20 @@ public class Utils {
     return StringUtils.isBlank(realTimeTopicName) ? composeRealTimeTopic(storeName) : realTimeTopicName;
   }
 
-  public static String createNewRealTimeTopicName(String oldRealTimeTopicName) {
-    if (oldRealTimeTopicName == null || !oldRealTimeTopicName.endsWith(Version.REAL_TIME_TOPIC_SUFFIX)) {
-      throw new IllegalArgumentException("Invalid old name format");
-    }
+  public static String getRealTimeTopicNameFromSeparateRealTimeTopic(String separateRealTimeTopicName) {
+    return separateRealTimeTopicName.substring(0, separateRealTimeTopicName.indexOf(Utils.SEPARATE_TOPIC_SUFFIX));
+  }
 
-    // Extract the base name and current version
-    int suffixLength = Version.REAL_TIME_TOPIC_SUFFIX.length();
-    String base = oldRealTimeTopicName.substring(0, oldRealTimeTopicName.length() - suffixLength);
+  public static String getSeparateRealTimeTopicName(String realTimeTopicName) {
+    return realTimeTopicName + Utils.SEPARATE_TOPIC_SUFFIX;
+  }
 
-    // Locate the last version separator "_v" in the base
-    int versionSeparatorIndex = base.lastIndexOf("_v");
-    if (versionSeparatorIndex > -1 && versionSeparatorIndex < base.length() - 2) {
-      // Extract and increment the version
-      String versionStr = base.substring(versionSeparatorIndex + 2);
-      int version = Integer.parseInt(versionStr) + 1;
-      base = base.substring(0, versionSeparatorIndex) + "_v" + version;
-    } else {
-      // Start with version 2 if no valid version is present
-      base = base + "_v2";
-    }
+  public static String getSeparateRealTimeTopicName(Version version) {
+    return getSeparateRealTimeTopicName(Utils.getRealTimeTopicName(version));
+  }
 
-    return base + Version.REAL_TIME_TOPIC_SUFFIX;
+  public static String getSeparateRealTimeTopicName(StoreInfo storeInfo) {
+    return getSeparateRealTimeTopicName(Utils.getRealTimeTopicName(storeInfo));
   }
 
   private static class TimeUnitInfo {
@@ -1020,17 +1013,17 @@ public class Utils {
     return params;
   }
 
-  public static Pair<Store, Version> waitStoreVersionOrThrow(
+  public static StoreVersionInfo waitStoreVersionOrThrow(
       String storeVersionName,
       ReadOnlyStoreRepository metadataRepo) {
     String storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
     int versionNumber = Version.parseVersionFromKafkaTopicName(storeVersionName);
 
-    Pair<Store, Version> storeVersionPair = metadataRepo.waitVersion(storeName, versionNumber, Duration.ofSeconds(30));
-    if (storeVersionPair.getFirst() == null) {
+    StoreVersionInfo storeVersionPair = metadataRepo.waitVersion(storeName, versionNumber, Duration.ofSeconds(30));
+    if (storeVersionPair.getStore() == null) {
       throw new VeniceException("Store " + storeName + " does not exist.");
     }
-    if (storeVersionPair.getSecond() == null) {
+    if (storeVersionPair.getVersion() == null) {
       throw new VeniceException("Store " + storeName + " version " + versionNumber + " does not exist.");
     }
     return storeVersionPair;
@@ -1124,7 +1117,7 @@ public class Utils {
       PubSubTopic pubSubTopic) {
     if (pubSubTopic.getPubSubTopicType().equals(PubSubTopicType.REALTIME_TOPIC)
         && pubSubTopic.getName().endsWith(SEPARATE_TOPIC_SUFFIX)) {
-      return pubSubTopicRepository.getTopic(composeRealTimeTopic(pubSubTopic.getStoreName()));
+      return pubSubTopicRepository.getTopic(getRealTimeTopicNameFromSeparateRealTimeTopic(pubSubTopic.getName()));
     }
     return pubSubTopic;
   }

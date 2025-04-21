@@ -3,10 +3,8 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.Delete;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
-import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
@@ -26,13 +24,15 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
   private static final Logger LOGGER = LogManager.getLogger(LeaderFollowerStoreIngestionTask.class);
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
+  private static final Runnable NO_OP = () -> {};
+  private Runnable onCompletionFunction = NO_OP;
 
   protected static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER =
       new ChunkedValueManifestSerializer(false);
   protected static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.allocate(0);
 
   protected final LeaderFollowerStoreIngestionTask ingestionTask;
-  private final PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> sourceConsumerRecord;
+  private final DefaultPubSubMessage sourceConsumerRecord;
   private final PartitionConsumptionState partitionConsumptionState;
   private final int partition;
   private final String kafkaUrl;
@@ -56,7 +56,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
 
   public LeaderProducerCallback(
       LeaderFollowerStoreIngestionTask ingestionTask,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> sourceConsumerRecord,
+      DefaultPubSubMessage sourceConsumerRecord,
       PartitionConsumptionState partitionConsumptionState,
       LeaderProducedRecordContext leaderProducedRecordContext,
       int partition,
@@ -74,6 +74,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
 
   @Override
   public void onCompletion(PubSubProduceResult produceResult, Exception e) {
+    this.onCompletionFunction.run();
     if (e != null) {
       ingestionTask.getVersionedDIVStats()
           .recordLeaderProducerFailure(ingestionTask.getStoreName(), ingestionTask.versionNumber);
@@ -212,7 +213,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
             ingestionTask.ingestionTaskName,
             endOfPushReceived,
             sourceConsumerRecord.getTopicPartition(),
-            sourceConsumerRecord.getOffset(),
+            sourceConsumerRecord.getPosition(),
             oe);
         // If EOP is not received yet, set the ingestion task exception so that ingestion will fail eventually.
         if (!endOfPushReceived) {
@@ -347,12 +348,16 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
     }
   }
 
+  public void setOnCompletionFunction(Runnable onCompletionFunction) {
+    this.onCompletionFunction = onCompletionFunction;
+  }
+
   // Visible for VeniceWriter unit test.
   public PartitionConsumptionState getPartitionConsumptionState() {
     return partitionConsumptionState;
   }
 
-  public PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> getSourceConsumerRecord() {
+  public DefaultPubSubMessage getSourceConsumerRecord() {
     return sourceConsumerRecord;
   }
 

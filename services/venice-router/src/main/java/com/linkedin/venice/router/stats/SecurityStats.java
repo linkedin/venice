@@ -2,54 +2,72 @@ package com.linkedin.venice.router.stats;
 
 import com.linkedin.alpini.netty4.ssl.SslInitializer;
 import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.stats.LongAdderRateGauge;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
-import io.tehuti.metrics.stats.Min;
-import java.util.function.IntSupplier;
+import java.util.concurrent.atomic.AtomicInteger;
 
 
 public class SecurityStats extends AbstractVeniceStats {
-  private final IntSupplier secureConnectionCountSupplier;
-  private final Sensor sslErrorCount;
-  private final Sensor sslSuccessCount;
-  private final Sensor sslLiveConnectionCount;
-  private final Sensor nonSslConnectionCount;
+  private final Sensor sslErrorCountSensor;
+  private final Sensor sslSuccessCountSensor;
+  private final Sensor liveConnectionCountSensor;
+  private final Sensor rejectedConnectionCountSensor;
+  private final Sensor nonSslConnectionCountSensor;
 
-  public SecurityStats(MetricsRepository repository, String name, IntSupplier secureConnectionCountSupplier) {
+  private final AtomicInteger activeConnectionCount = new AtomicInteger();
+
+  public SecurityStats(MetricsRepository repository, String name) {
     super(repository, name);
-    this.secureConnectionCountSupplier = secureConnectionCountSupplier;
-    this.sslErrorCount = registerSensor("ssl_error", new Count());
-    this.sslSuccessCount = registerSensor("ssl_success", new Count());
-    this.sslLiveConnectionCount = registerSensor("ssl_connection_count", new Avg(), new Max(), new Min());
-    this.nonSslConnectionCount = registerSensor("non_ssl_request_count", new Avg(), new Max());
+    this.sslErrorCountSensor = registerSensor("ssl_error", new Count());
+    this.sslSuccessCountSensor = registerSensor("ssl_success", new Count());
+    this.liveConnectionCountSensor = registerSensor("connection_count", new Avg(), new Max());
+    registerSensor(new AsyncGauge((ignored1, ignored2) -> activeConnectionCount.get(), "connection_count_gauge"));
+    this.nonSslConnectionCountSensor = registerSensor("non_ssl_request_count", new Avg(), new Max());
+    rejectedConnectionCountSensor = registerSensor("rejected_connection_count", new LongAdderRateGauge());
   }
 
   public void recordSslError() {
-    this.sslErrorCount.record();
-    recordLiveConnectionCount();
+    this.sslErrorCountSensor.record();
   }
 
   public void recordSslSuccess() {
-    this.sslSuccessCount.record();
-    recordLiveConnectionCount();
+    this.sslSuccessCountSensor.record();
   }
 
   /**
    * Record all HTTP requests received in routers.
    */
   public void recordNonSslRequest() {
-    this.nonSslConnectionCount.record();
+    this.nonSslConnectionCountSensor.record();
   }
 
   /**
-   * This function will be triggered in every ssl event.
+   * This function will be triggered in {@link com.linkedin.alpini.netty4.handlers.ConnectionControlHandler}
+   * or {@link com.linkedin.alpini.netty4.handlers.ConnectionLimitHandler} depending on the connection handle mode.
    */
-  private void recordLiveConnectionCount() {
-    this.sslLiveConnectionCount.record(secureConnectionCountSupplier.getAsInt());
+  public void recordLiveConnectionCount(int connectionCount) {
+    this.activeConnectionCount.set(connectionCount);
+    updateConnectionCountInCurrentMetricTimeWindow();
+  }
+
+  public void recordRejectedConnectionCount(int rejectedConnectionCount) {
+    this.rejectedConnectionCountSensor.record(rejectedConnectionCount);
+  }
+
+  /**
+   * Calling this function doesn't mean the active connection counter is updated; this function will only update
+   * the metric with the connection counter maintained above {@link SecurityStats#activeConnectionCount}
+   *
+   * Since new connections or inactive connections events might not happen in each one-minute time window, a more
+   * active path like data request path will be leveraged to record avg/max connections in each time window.
+   */
+  public void updateConnectionCountInCurrentMetricTimeWindow() {
+    this.liveConnectionCountSensor.record(activeConnectionCount.get());
   }
 
   public void registerSslHandshakeSensors(SslInitializer sslInitializer) {
@@ -62,5 +80,9 @@ public class SecurityStats extends AbstractVeniceStats {
         new AsyncGauge(
             (ignored1, ignored2) -> sslInitializer.getHandshakesFailed(),
             "total_failed_ssl_handshake_count"));
+    registerSensor(
+        new AsyncGauge(
+            (ignored1, ignored2) -> sslInitializer.getHandshakesStarted() - sslInitializer.getHandshakesFailed(),
+            "active_ssl_connection_count"));
   }
 }

@@ -16,8 +16,6 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
-import java.io.File;
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Objects;
@@ -26,12 +24,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
-import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.rocksdb.Checkpoint;
-import org.rocksdb.RocksDB;
-import org.rocksdb.RocksDBException;
 
 
 /**
@@ -124,6 +118,13 @@ public class BlobSnapshotManager {
 
     // check if the concurrent user count exceeds the limit
     checkIfConcurrentUserExceedsLimit(topicName, partitionId);
+
+    // check if storageEngineRepository has this store partition, so exit early if not, otherwise won't be able to
+    // create snapshot
+    if (storageEngineRepository.getLocalStorageEngine(topicName) == null
+        || !storageEngineRepository.getLocalStorageEngine(topicName).containsPartition(partitionId)) {
+      throw new VeniceException("No storage engine found for topic: " + topicName + " partition: " + partitionId);
+    }
 
     boolean isHybrid = isStoreHybrid(payload.getStoreName(), versionNum);
     if (!isHybrid) {
@@ -289,40 +290,6 @@ public class BlobSnapshotManager {
         version.isUseVersionLevelHybridConfig() ? version.getHybridStoreConfig() : store.getHybridStoreConfig());
 
     return hybridStoreConfig.isPresent();
-  }
-
-  /**
-   * util method to create a snapshot
-   * It will check the snapshot directory and delete it if it exists, then generate a new snapshot
-   */
-  public static void createSnapshot(RocksDB rocksDB, String fullPathForPartitionDBSnapshot) {
-    LOGGER.info("Creating snapshot in directory: {}", fullPathForPartitionDBSnapshot);
-
-    // clean up the snapshot directory if it exists
-    File partitionSnapshotDir = new File(fullPathForPartitionDBSnapshot);
-    if (partitionSnapshotDir.exists()) {
-      LOGGER.info("Snapshot directory already exists, deleting old snapshots at {}", fullPathForPartitionDBSnapshot);
-      try {
-        FileUtils.deleteDirectory(partitionSnapshotDir);
-      } catch (IOException e) {
-        throw new VeniceException(
-            "Failed to delete the existing snapshot directory: " + fullPathForPartitionDBSnapshot,
-            e);
-      }
-    }
-
-    try {
-      LOGGER.info("Start creating snapshots in directory: {}", fullPathForPartitionDBSnapshot);
-
-      Checkpoint checkpoint = Checkpoint.create(rocksDB);
-      checkpoint.createCheckpoint(fullPathForPartitionDBSnapshot);
-
-      LOGGER.info("Finished creating snapshots in directory: {}", fullPathForPartitionDBSnapshot);
-    } catch (RocksDBException e) {
-      throw new VeniceException(
-          "Received exception during RocksDB's snapshot creation in directory " + fullPathForPartitionDBSnapshot,
-          e);
-    }
   }
 
   /**

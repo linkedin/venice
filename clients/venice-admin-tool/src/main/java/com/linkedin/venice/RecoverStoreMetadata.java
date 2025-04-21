@@ -20,12 +20,11 @@ import com.linkedin.venice.helix.StoreJSONSerializer;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Utils;
@@ -104,19 +103,17 @@ public class RecoverStoreMetadata {
     String keySchema = null;
     Map<Integer, String> valueSchemas = null;
     while (true) {
-      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> records =
-          consumer.poll(3000); // 3 seconds
+      Map<PubSubTopicPartition, List<DefaultPubSubMessage>> records = consumer.poll(3000); // 3 seconds
       if (records.isEmpty()) {
         break;
       }
 
-      Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> recordsIterator =
-          Utils.iterateOnMapOfLists(records);
+      Iterator<DefaultPubSubMessage> recordsIterator = Utils.iterateOnMapOfLists(records);
 
       while (recordsIterator.hasNext()) {
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = recordsIterator.next();
-        if (record.getOffset() % 1000 == 0) {
-          System.out.println("Consumed " + record.getOffset() + " messages");
+        DefaultPubSubMessage record = recordsIterator.next();
+        if (record.getPosition().getNumericOffset() % 1000 == 0) {
+          System.out.println("Consumed " + record.getPosition() + " messages");
         }
         messageEnvelope = record.getValue();
         // check message type
@@ -260,7 +257,8 @@ public class RecoverStoreMetadata {
             .setBlobTransferEnabled(deletedStore.isBlobTransferEnabled())
             .setTargetRegionSwap(deletedStore.getTargetSwapRegion())
             .setTargetRegionSwapWaitTime(deletedStore.getTargetSwapRegionWaitTime())
-            .setIsDavinciHeartbeatReported(deletedStore.getIsDavinciHeartbeatReported());
+            .setIsDavinciHeartbeatReported(deletedStore.getIsDavinciHeartbeatReported())
+            .setGlobalRtDivEnabled(deletedStore.isGlobalRtDivEnabled());
         System.out.println(
             "Updating store: " + storeName + " in cluster: " + recoverCluster + " with params: "
                 + updateParams.toString());

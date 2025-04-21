@@ -11,6 +11,7 @@ import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.ssl.SslHandshakeCompletionEvent;
 import io.netty.util.ReferenceCountUtil;
 import java.io.IOException;
+import javax.annotation.Nonnull;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -21,11 +22,11 @@ public class RouterSslVerificationHandler extends SimpleChannelInboundHandler<Ht
   private final SecurityStats stats;
   private final boolean requireSsl;
 
-  public RouterSslVerificationHandler(SecurityStats stats) {
+  public RouterSslVerificationHandler(@Nonnull SecurityStats stats) {
     this(stats, true);
   }
 
-  public RouterSslVerificationHandler(SecurityStats stats, boolean requireSsl) {
+  public RouterSslVerificationHandler(@Nonnull SecurityStats stats, boolean requireSsl) {
     this.stats = stats;
     this.requireSsl = requireSsl;
   }
@@ -40,6 +41,8 @@ public class RouterSslVerificationHandler extends SimpleChannelInboundHandler<Ht
    */
   @Override
   public void channelRead0(ChannelHandlerContext ctx, HttpRequest req) throws IOException {
+    // Leverage user request to update connection count metric in the current metric time window.
+    stats.updateConnectionCountInCurrentMetricTimeWindow();
     SslHandler sslHandler = ctx.pipeline().get(SslHandler.class);
     if (sslHandler == null) {
       /**

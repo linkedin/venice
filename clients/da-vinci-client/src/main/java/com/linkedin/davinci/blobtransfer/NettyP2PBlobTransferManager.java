@@ -17,6 +17,7 @@ import com.linkedin.venice.utils.Utils;
 import java.io.InputStream;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -95,7 +96,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     }
 
     List<String> discoverPeers = response.getDiscoveryResult();
-    Set<String> connectablePeers = getConnectableHosts(discoverPeers, storeName, version, partition);
+    List<String> connectablePeers = getConnectableHosts(discoverPeers, storeName, version, partition);
 
     // 2: Process peers sequentially to fetch the blob
     processPeersSequentially(connectablePeers, storeName, version, partition, tableFormat, resultFuture);
@@ -131,7 +132,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
    * @param resultFuture the future to complete with the InputStream of the blob
    */
   private void processPeersSequentially(
-      Set<String> uniqueConnectablePeers,
+      List<String> uniqueConnectablePeers,
       String storeName,
       int version,
       int partition,
@@ -259,7 +260,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
    * @param partition the partition of the store
    * @return the set of unique connectable hosts
    */
-  private Set<String> getConnectableHosts(List<String> discoverPeers, String storeName, int version, int partition) {
+  private List<String> getConnectableHosts(List<String> discoverPeers, String storeName, int version, int partition) {
     // Extract unique hosts from the discovered peers
     Set<String> uniquePeers = discoverPeers.stream().map(peer -> peer.split("_")[0]).collect(Collectors.toSet());
 
@@ -282,6 +283,11 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
         version,
         partition,
         connectablePeers);
-    return connectablePeers;
+
+    // Change to list and shuffle the list
+    List<String> connectablePeersList = connectablePeers.stream().collect(Collectors.toList());
+    Collections.shuffle(connectablePeersList);
+
+    return connectablePeersList;
   }
 }

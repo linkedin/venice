@@ -2,10 +2,8 @@ package com.linkedin.davinci.validation;
 
 import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.kafka.protocol.GUID;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.HashSet;
@@ -83,7 +81,7 @@ public class KafkaDataIntegrityValidator {
    */
   public void validateMessage(
       PartitionTracker.TopicType type,
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       boolean endOfPushReceived,
       Lazy<Boolean> tolerateMissingMsgs) throws DataValidationException {
     PartitionTracker partitionTracker = registerPartition(consumerRecord.getPartition());
@@ -109,9 +107,29 @@ public class KafkaDataIntegrityValidator {
     }
   }
 
-  public void cloneProducerStates(int partition, KafkaDataIntegrityValidator newValidator) {
+  public void cloneVtProducerStates(int partition, KafkaDataIntegrityValidator newValidator) {
     PartitionTracker destPartitionTracker = newValidator.registerPartition(partition);
-    this.partitionTrackers.get(partition).cloneProducerStates(destPartitionTracker);
+    registerPartition(partition).cloneVtProducerStates(destPartitionTracker);
+  }
+
+  /**
+   * Returns the RT DIV state for a given partition and broker URL pair.
+   */
+  public PartitionTracker cloneRtProducerStates(int partition, String brokerUrl) {
+    PartitionTracker clonedPartitionTracker = partitionTrackerCreator.apply(partition);
+    final PartitionTracker existingPartitionTracker = registerPartition(partition);
+    existingPartitionTracker.cloneRtProducerStates(clonedPartitionTracker, brokerUrl); // for a single broker
+    return clonedPartitionTracker;
+  }
+
+  /**
+   * Returns the VT DIV state and latest consumed vt offset for a given partition.
+   */
+  public PartitionTracker cloneVtProducerStates(int partition) {
+    PartitionTracker clonedPartitionTracker = partitionTrackerCreator.apply(partition);
+    final PartitionTracker existingPartitionTracker = registerPartition(partition);
+    existingPartitionTracker.cloneVtProducerStates(clonedPartitionTracker); // for a single broker
+    return clonedPartitionTracker;
   }
 
   /**
@@ -127,7 +145,7 @@ public class KafkaDataIntegrityValidator {
    * TODO: Open source the ETL or make it stop depending on an exotic open source API
    */
   public void checkMissingMessage(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      DefaultPubSubMessage consumerRecord,
       Optional<PartitionTracker.DIVErrorMetricCallback> errorMetricCallback) throws DataValidationException {
     PartitionTracker partitionTracker = registerPartition(consumerRecord.getPartition());
     partitionTracker.checkMissingMessage(
@@ -135,6 +153,11 @@ public class KafkaDataIntegrityValidator {
         consumerRecord,
         errorMetricCallback,
         this.kafkaLogCompactionDelayInMs);
+  }
+
+  public void updateLatestConsumedVtOffset(int partition, long offset) {
+    PartitionTracker partitionTracker = registerPartition(partition);
+    partitionTracker.updateLatestConsumedVtOffset(offset);
   }
 
   /**

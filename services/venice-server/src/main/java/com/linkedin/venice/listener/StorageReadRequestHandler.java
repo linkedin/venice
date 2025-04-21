@@ -9,7 +9,7 @@ import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.listener.response.ReadResponseStats;
 import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
-import com.linkedin.davinci.listener.response.StorePropertiesResponse;
+import com.linkedin.davinci.listener.response.StorePropertiesPayload;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.IngestionMetadataRetriever;
 import com.linkedin.davinci.storage.ReadMetadataRetriever;
@@ -372,7 +372,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       }
     } else if (message instanceof StorePropertiesFetchRequest) {
       try {
-        StorePropertiesResponse response = handleStorePropertiesFetchRequest((StorePropertiesFetchRequest) message);
+        StorePropertiesPayload response = handleStorePropertiesFetchRequest((StorePropertiesFetchRequest) message);
         context.writeAndFlush(response);
       } catch (UnsupportedOperationException e) {
         LOGGER.warn(
@@ -795,7 +795,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     return readMetadataRetriever.getMetadata(request.getStoreName());
   }
 
-  private StorePropertiesResponse handleStorePropertiesFetchRequest(StorePropertiesFetchRequest request) {
+  private StorePropertiesPayload handleStorePropertiesFetchRequest(StorePropertiesFetchRequest request) {
     return readMetadataRetriever.getStoreProperties(request.getStoreName(), request.getLargestKnownSchemaId());
   }
 

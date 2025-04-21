@@ -307,6 +307,11 @@ public class ConfigKeys {
    * Whether log compaction is enabled for stores in this Venice controller
    */
   public static final String LOG_COMPACTION_ENABLED = "log.compaction.enabled";
+
+  /**
+   * Whether log compaction scheduling is enabled for stores in this Venice controller
+   */
+  public static final String LOG_COMPACTION_SCHEDULING_ENABLED = "log.compaction.scheduling.enabled";
   /**
    * Number of threads to use for log compaction
    */
@@ -843,6 +848,8 @@ public class ConfigKeys {
   public static final String SERVER_RESET_ERROR_REPLICA_ENABLED = "server.reset.error.replica.enabled";
 
   public static final String SERVER_ADAPTIVE_THROTTLER_ENABLED = "server.adaptive.throttler.enabled";
+
+  public static final String SERVER_SKIP_CHECK_AFTER_UNSUB_ENABLED = "server.skip.check.after.unsub.enabled";
   public static final String SERVER_ADAPTIVE_THROTTLER_SIGNAL_IDLE_THRESHOLD =
       "server.adaptive.throttler.signal.idle.threshold";
   public static final String SERVER_ADAPTIVE_THROTTLER_SINGLE_GET_LATENCY_THRESHOLD =
@@ -1058,6 +1065,7 @@ public class ConfigKeys {
    */
   public static final String ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ = "router.max.key_count.in.multiget.req";
   public static final String ROUTER_CONNECTION_LIMIT = "router.connection.limit";
+  public static final String ROUTER_CONNECTION_HANDLE_MODE = "router.connection.handle.mode";
   /**
    * The http client pool size being used in one Router;
    */
@@ -1091,12 +1099,6 @@ public class ConfigKeys {
    * Please check {@literal VeniceMultiKeyRoutingStrategy} to find available routing strategy.
    */
   public static final String ROUTER_MULTI_KEY_ROUTING_STRATEGY = "router.multi.key.routing.strategy";
-
-  /**
-   * The Helix virtual group field name in domain, and the allowed values: {@link com.linkedin.venice.helix.HelixInstanceConfigRepository#GROUP_FIELD_NAME_IN_DOMAIN}
-   * and {@link com.linkedin.venice.helix.HelixInstanceConfigRepository#ZONE_FIELD_NAME_IN_DOMAIN}.
-   */
-  public static final String ROUTER_HELIX_VIRTUAL_GROUP_FIELD_IN_DOMAIN = "router.helix.virtual.group.field.in.domain";
 
   /**
    * Helix group selection strategy when Helix assisted routing is enabled.
@@ -1863,6 +1865,20 @@ public class ConfigKeys {
   // if the connectivity is not fresh, then retry the connection.
   public static final String BLOB_TRANSFER_PEERS_CONNECTIVITY_FRESHNESS_IN_SECONDS =
       "blob.transfer.peers.connectivity.freshness.in.seconds";
+  // This is the maximum allowed read speed (in bytes per sec) for the Netty client when receiving data from the remote
+  // peer.
+  public static final String BLOB_TRANSFER_CLIENT_READ_LIMIT_BYTES_PER_SEC =
+      "blob.transfer.client.read.limit.bytes.per.sec";
+  // This is the maximum allowed write speed (in bytes per sec) for the file transfer service when sending out data to
+  // the remote peer.
+  public static final String BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC =
+      "blob.transfer.service.write.limit.bytes.per.sec";
+
+  // Enable ssl for the blob transfer
+  public static final String BLOB_TRANSFER_SSL_ENABLED = "blob.transfer.ssl.enabled";
+
+  // Enable acl for the blob transfer between Da Vinci peers, or server peers
+  public static final String BLOB_TRANSFER_ACL_ENABLED = "blob.transfer.acl.enabled";
 
   // Port used by peer-to-peer transfer service. It should be used by both server and client
   public static final String DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT = "davinci.p2p.blob.transfer.server.port";
@@ -1910,16 +1926,21 @@ public class ConfigKeys {
   public static final String ROUTER_CLIENT_SSL_HANDSHAKE_THREADS = "router.client.ssl.handshake.threads";
 
   /**
-   * Config to control if DNS resolution should be done before SSL handshake between clients and a router.
-   * If this is enabled, the above SSL handshake thread pool will be used to perform DNS resolution, because
-   * DNS resolution before SSL and separate SSL handshake thread pool are mutually exclusive features.
+   * Config to control the number of threads used for DNS resolution.
+   * If the value is positive, DNS resolution would be done before SSL handshake between clients and a router.
+   * 0 will disable the dns resolution but does not affect the SSL handshake.
    */
-  public static final String ROUTER_RESOLVE_BEFORE_SSL = "router.resolve.before.ssl";
+  public static final String ROUTER_RESOLVE_THREADS = "router.resolve.threads";
+
+  /**
+   * Config to control the queue capacity for the thread pool executor used for DNS resolution.
+   */
+  public static final String ROUTER_RESOLVE_QUEUE_CAPACITY = "router.resolve.queue.capacity";
 
   /**
    * Config to control the maximum number of concurrent DNS resolutions that can be done by the router.
    */
-  public static final String ROUTER_MAX_CONCURRENT_RESOLUTIONS = "router.max.concurrent.resolutions";
+  public static final String ROUTER_MAX_CONCURRENT_SSL_HANDSHAKES = "router.max.concurrent.ssl.handshakes";
 
   /**
    * Config to control the maximum number of attempts to resolve a client host name before giving up.
@@ -2453,6 +2474,23 @@ public class ConfigKeys {
       "server.aa.wc.ingestion.storage.lookup.thread.pool.size";
 
   /**
+   * Please find more details here: {@link com.linkedin.venice.reliability.LoadController}.
+   */
+  public static final String SERVER_LOAD_CONTROLLER_ENABLED = "server.load.controller.enabled";
+  public static final String SERVER_LOAD_CONTROLLER_WINDOW_SIZE_IN_SECONDS =
+      "server.load.controller.window.size.in.seconds";
+  public static final String SERVER_LOAD_CONTROLLER_ACCEPT_MULTIPLIER = "server.load.controller.accept.multiplier";
+  public static final String SERVER_LOAD_CONTROLLER_MAX_REJECTION_RATIO = "server.load.controller.max.rejection.ratio";
+  public static final String SERVER_LOAD_CONTROLLER_REJECTION_RATIO_UPDATE_INTERNAL_IN_SECONDS =
+      "server.load.controller.rejection.ratio.update.internal.in.seconds";
+  public static final String SERVER_LOAD_CONTROLLER_SINGLE_GET_LATENCY_ACCEPT_THRESHOLD_IN_MS =
+      "server.load.controller.single.get.latency.accept.threshold.in.ms";
+  public static final String SERVER_LOAD_CONTROLLER_MULTI_GET_LATENCY_ACCEPT_THRESHOLD_IN_MS =
+      "server.load.controller.multi.get.latency.accept.threshold.in.ms";
+  public static final String SERVER_LOAD_CONTROLLER_COMPUTE_LATENCY_ACCEPT_THRESHOLD_IN_MS =
+      "server.load.controller.compute.latency.accept.threshold.in.ms";
+
+  /**
    * Whether to enable producer throughput optimization for realtime workload or not.
    * Two strategies:
    * 1. Disable compression.
@@ -2465,6 +2503,10 @@ public class ConfigKeys {
 
   public static final String SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP =
       "server.delete.unassigned.partitions.on.startup";
+  public static final String CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING =
+      "controller.enable.realtime.topic.versioning";
+
+  public static final boolean DEFAULT_CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING = false;
   public static final String CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE =
       "controller.enable.hybrid.store.partition.count.update";
   public static final String PUSH_JOB_VIEW_CONFIGS = "push.job.view.configs";
@@ -2535,4 +2577,52 @@ public class ConfigKeys {
    * controls the TTL of the cache per entry.
    */
   public static final String ACL_IN_MEMORY_CACHE_TTL_MS = "acl.in.memory.cache.ttl.ms";
+
+  /**
+   * If enabled, the controller's get dead store endpoint will be enabled.
+   */
+  public static final String CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED = "controller.dead.store.endpoint.enabled";
+
+  /**
+   * (Only matters if CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED true). Class name of {@link com.linkedin.venice.controller.stats.DeadStoreStats} implementation
+   */
+  public static final String CONTROLLER_DEAD_STORE_STATS_CLASS_NAME = "controller.dead.store.stats.class.name";
+
+  /**
+   * (Only matters if CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED true) Allow the controller to pre-fetch dead store stats before the endpoint is called
+   */
+  public static final String CONTROLLER_DEAD_STORE_STATS_PRE_FETCH_ENABLED =
+      "controller.dead.store.stats.pre.fetch.enabled";
+
+  /**
+   * (Only matters if CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED and CONTROLLER_DEAD_STORE_STATS_PRE_FETCH_ENABLED are true) Amount of time in milliseconds to wait before refetching the dead store stats
+   */
+  public static final String CONTROLLER_DEAD_STORE_STATS_PRE_FETCH_INTERVAL_MS =
+      "controller.dead.store.stats.pre.fetch.interval.ms";
+
+  /**
+   * (Only matters if CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED true) Prefix of configs to configure the DeadStoreStats implementation
+   */
+  public static final String CONTROLLER_DEAD_STORE_STATS_PREFIX = "controller.dead.store.stats.";
+
+  /**
+   * Enables / disables the Global RT DIV feature. Default value is disabled. The DIV will be centralized in the
+   * ConsumptionTask, and leaders will periodically replicate the RT DIV to followers via VT.
+   */
+  public static final String GLOBAL_RT_DIV_ENABLED = "global.rt.div.enabled";
+
+  /**
+   * The interval for cleaning up the idle store ingestion tasks in a centralized way inside KafkaStoreIngestionService.
+   * If config value is non-positive, it means the new clean up service is disabled and the old mechanism is still in place.
+   * If config value is positive, it means the new clean up service is enabled and the value is the clean up
+   * schedule interval in seconds.
+   *
+   * Once enabled, Store ingestion tasks will not try to close themselves when they are idle; instead, a service
+   * is started inside KafkaStoreIngestionService to clean up idle tasks. This is completely eliminate the race
+   * conditions between store ingestion task thread and Helix state transition threads when managing the life cycle
+   * of a store ingestion task.
+   * TODO: Deprecate this config after new clean up service is fully rolled out and stable.
+   */
+  public static final String SERVER_IDLE_INGESTION_TASK_CLEANUP_INTERVAL_IN_SECONDS =
+      "server.idle.ingestion.task.cleanup.interval.in.seconds";
 }

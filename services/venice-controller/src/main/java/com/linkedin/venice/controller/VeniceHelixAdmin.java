@@ -13,7 +13,9 @@ import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
+import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
 import static com.linkedin.venice.meta.Version.PushType;
+import static com.linkedin.venice.meta.Version.REAL_TIME_TOPIC_SUFFIX;
 import static com.linkedin.venice.meta.VersionStatus.ERROR;
 import static com.linkedin.venice.meta.VersionStatus.KILLED;
 import static com.linkedin.venice.meta.VersionStatus.NOT_CREATED;
@@ -59,13 +61,15 @@ import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
+import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.logcompaction.LogCompactionService;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
-import com.linkedin.venice.controller.repush.RepushJobResponse;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
+import com.linkedin.venice.controller.stats.DeadStoreStats;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
+import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerRoute;
@@ -73,6 +77,7 @@ import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.RepushInfo;
+import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -143,6 +148,7 @@ import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreName;
+import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.SystemStoreAttributes;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
@@ -212,11 +218,11 @@ import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.ReflectUtils;
-import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.StoreUtils;
@@ -295,6 +301,7 @@ import org.apache.http.HttpStatus;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import spark.utils.Assert;
 
 
 /**
@@ -335,6 +342,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private static final Logger LOGGER = LogManager.getLogger(VeniceHelixAdmin.class);
   private static final int RECORD_COUNT = 10;
+  public static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES = Collections.singletonList(Exception.class);
 
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final String controllerClusterName;
@@ -450,6 +458,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final Lazy<ByteBuffer> emptyPushZSTDDictionary;
 
   private Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
+  private final LogContext logContext;
+
+  DeadStoreStats deadStoreStats;
 
   public VeniceHelixAdmin(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
@@ -484,6 +495,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       List<ClusterLeaderInitializationRoutine> additionalInitRoutines) {
     Validate.notNull(d2Client);
     this.multiClusterConfigs = multiClusterConfigs;
+    this.logContext = multiClusterConfigs.getLogContext();
     VeniceControllerClusterConfig commonConfig = multiClusterConfigs.getCommonConfig();
     this.controllerName =
         Utils.getHelixNodeIdentifier(multiClusterConfigs.getAdminHostname(), multiClusterConfigs.getAdminPort());
@@ -646,7 +658,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             this));
     initRoutines.add(
         new SystemSchemaInitializationRoutine(
-            AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE,
+            AvroProtocolDefinition.SERVER_STORE_PROPERTIES_PAYLOAD,
             multiClusterConfigs,
             this));
 
@@ -701,8 +713,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
     }
 
-    clusterLeaderInitializationManager =
-        new ClusterLeaderInitializationManager(initRoutines, commonConfig.isConcurrentInitRoutinesEnabled());
+    clusterLeaderInitializationManager = new ClusterLeaderInitializationManager(
+        initRoutines,
+        commonConfig.isConcurrentInitRoutinesEnabled(),
+        commonConfig.getLogContext());
 
     // Create the controller cluster if required.
     if (isControllerClusterHAAS) {
@@ -841,16 +855,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     InstanceConfig.Builder defaultInstanceConfigBuilder =
         new InstanceConfig.Builder().setPort(Integer.toString(multiClusterConfigs.getAdminPort()));
 
-    List<String> instanceTagList = multiClusterConfigs.getControllerInstanceTagList();
-    for (String instanceTag: instanceTagList) {
-      defaultInstanceConfigBuilder.addTag(instanceTag);
-    }
-
     HelixManagerProperty helixManagerProperty =
         new HelixManagerProperty.Builder().setDefaultInstanceConfigBuilder(defaultInstanceConfigBuilder).build();
 
     SafeHelixManager tempManager = new SafeHelixManager(
         new ZKHelixManager(controllerClusterName, controllerName, instanceType, zkAddress, null, helixManagerProperty));
+
+    // for refreshing the instance config list if the controller is already a participant in venice-controller cluster
+    // but assigned to another venice cluster
+    tempManager.addPreConnectCallback(
+        new ControllerInstanceTagRefresher(tempManager, multiClusterConfigs.getControllerInstanceTagList()));
     StateMachineEngine stateMachine = tempManager.getStateMachineEngine();
     stateMachine.registerStateModelFactory(LeaderStandbySMD.name, controllerStateModelFactory);
     try {
@@ -1037,11 +1051,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
        * Get the largestUsedVersionNumber from graveyard to avoid resource conflict.
        */
       int largestUsedStoreVersion = storeGraveyard.getLargestUsedVersionNumber(storeName);
-      if (largestUsedStoreVersion == Store.NON_EXISTING_VERSION) {
+      if (largestUsedStoreVersion == NON_EXISTING_VERSION) {
         LOGGER.info(
             "Store: {} does NOT exist in the store graveyard. Will initialize the new store at version: {}.",
             storeName,
-            Store.NON_EXISTING_VERSION);
+            NON_EXISTING_VERSION);
       } else {
         LOGGER.info(
             "Found store: {} in the store graveyard. Will initialize the new store at version: {}.",
@@ -1050,11 +1064,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
 
       int largestUsedRTStoreVersion = storeGraveyard.getLargestUsedRTVersionNumber(storeName);
-      if (largestUsedRTStoreVersion == Store.NON_EXISTING_VERSION) {
+      if (largestUsedRTStoreVersion == NON_EXISTING_VERSION) {
         LOGGER.info(
             "Store: {} does NOT exist in the store graveyard. Will initialize the RT version to {}.",
             storeName,
-            Store.NON_EXISTING_VERSION);
+            NON_EXISTING_VERSION);
       } else {
         LOGGER.info(
             "Found store: {} in the store graveyard. Will initialize the RT version to {}.",
@@ -1076,11 +1090,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       schemaRepo.initKeySchema(storeName, keySchema);
       schemaRepo.addValueSchema(storeName, valueSchema, HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
       LOGGER.info(
-          "Completed creating Store {} in cluster {} with owner {} and largestUsedVersionNumber {}",
+          "Completed creating store: {} in cluster: {} with owner: {} and largestUsedVersionNumber: {} and partitionCount: {}",
           storeName,
           clusterName,
           owner,
-          newStore.getLargestUsedVersionNumber());
+          newStore.getLargestUsedVersionNumber(),
+          newStore.getPartitionCount());
     }
   }
 
@@ -1100,7 +1115,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       newStore.setNativeReplicationSourceFabric(config.getNativeReplicationSourceFabricAsDefaultForBatchOnly());
     }
     newStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
-    newStore.setLargestUsedRTVersionNumber(largestUsedRTVersionNumber);
+    /* If this store existed previously, we do not want to use the same RT topic name that was used by the previous
+    store. To ensure this, increase largestUsedRTVersionNumber and new RT name will be different */
+    if (getMultiClusterConfigs().isRealTimeTopicVersioningEnabled()) {
+      newStore.setLargestUsedRTVersionNumber(largestUsedRTVersionNumber + 1);
+    }
   }
 
   /**
@@ -1172,6 +1191,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
       }
       if (store != null) {
+        List<PubSubTopic> rtTopics = Utils.getAllRealTimeTopicNames(store)
+            .stream()
+            .map(pubSubTopicRepository::getTopic)
+            .collect(Collectors.toList());
         // Delete All versions and push statues
         deleteAllVersionsInStore(clusterName, storeName);
         resources.getPushMonitor().cleanupStoreStatus(storeName);
@@ -1179,12 +1202,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         truncateOldTopics(clusterName, store, true);
 
         if (!store.isMigrating() && !isAbortMigrationCleanup) {
-          // for RT topic block on deletion so that next create store does not see the lingering RT topic which could
-          // have different partition count
-          PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
-          truncateKafkaTopic(rtTopic.getName());
-          if (waitOnRTTopicDeletion && getTopicManager().containsTopic(rtTopic)) {
-            throw new VeniceRetriableException("Waiting for RT topic deletion for store: " + storeName);
+          // Some implementations of PubSubAdminAdapter may retry multiple times to get/update topic's config in order
+          // to truncate it. Because of this, `truncateKafkaTopic` may take long enough time to make `delete store`
+          // operation time out. Therefore, we check for the existence of RT topic before trying to truncate it.
+          // No known implementation of PubSubAdminAdapter does retries for `containsTopic`.
+          for (PubSubTopic rtTopic: rtTopics) {
+            if (getTopicManager().containsTopic(rtTopic)) {
+              // for RT topic block on deletion so that next create store does not see the lingering RT topic which
+              // could have different partition count
+              truncateKafkaTopic(rtTopic.getName());
+              if (waitOnRTTopicDeletion && getTopicManager().containsTopic(rtTopic)) {
+                throw new VeniceRetriableException("Waiting for RT topic deletion for store: " + storeName);
+              }
+            }
           }
         }
 
@@ -1763,7 +1793,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Duration.ofMillis(100),
         Duration.ofMillis(200),
         Duration.ofSeconds(10),
-        Collections.singletonList(Exception.class));
+        RETRY_FAILURE_TYPES);
     if (value == null) {
       return;
     }
@@ -1782,7 +1812,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Duration.ofMillis(100),
         Duration.ofMillis(200),
         Duration.ofSeconds(10),
-        Collections.singletonList(Exception.class));
+        RETRY_FAILURE_TYPES);
 
     // wait for kill message to be removed
     RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
@@ -1791,12 +1821,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             "Kill message still exists in participant store for store-version: " + versionTopicName + " in cluster: "
                 + clusterName);
       }
-    },
-        5,
-        Duration.ofMillis(100),
-        Duration.ofMillis(200),
-        Duration.ofSeconds(10),
-        Collections.singletonList(Exception.class));
+    }, 5, Duration.ofMillis(100), Duration.ofMillis(200), Duration.ofSeconds(10), RETRY_FAILURE_TYPES);
     LOGGER.info(
         "Spent: {}ms for kill message removal from participant store for store-version: {} in cluster: {}",
         System.currentTimeMillis() - startTs,
@@ -1884,6 +1909,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       return controllerClients;
     });
+  }
+
+  private StoreInfo getStoreInfo(String storeName, String clusterName) {
+    ControllerClient controllerClient = getControllerClientMap(clusterName).get(getRegionName());
+    if (controllerClient == null) {
+      throw new VeniceException(
+          "Failed to constructed controller client for cluster " + clusterName + " and region " + getRegionName());
+    }
+    StoreResponse storeResponse = controllerClient.getStore(storeName);
+    if (storeResponse.isError()) {
+      throw new VeniceException(
+          "Failed to get store " + storeName + " from cluster " + clusterName + " and region " + getRegionName()
+              + " with error " + storeResponse.getError());
+    }
+    return storeResponse.getStore();
   }
 
   /**
@@ -2047,6 +2087,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private void checkStoreNameConflict(String storeName, boolean allowSystemStore) {
+    if (storeName.endsWith(REAL_TIME_TOPIC_SUFFIX)) {
+      throw new VeniceException(
+          "Store name: " + storeName + " ends with a keyword - `" + REAL_TIME_TOPIC_SUFFIX + "`"
+              + " reserved for internal usage, please change it.");
+    }
+
     if (storeName.equals(AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT)) {
       throw new VeniceException("Store name: " + storeName + " clashes with the internal usage, please change it");
     }
@@ -2115,6 +2161,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
+  /**
+   * This function is only being used by store migration parent controllers, which write add version admin message.
+   * We use {@link Version#DEFAULT_RT_VERSION_NUMBER} here that does not change anything in the version and the migrated
+   * version copies whatever is there in the source version.
+   */
   @Override
   public void addVersionAndStartIngestion(
       String clusterName,
@@ -2140,7 +2191,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         replicationMetadataVersionId,
         versionSwapDeferred,
         null,
-        repushSourceVersion);
+        repushSourceVersion,
+        DEFAULT_RT_VERSION_NUMBER);
   }
 
   /**
@@ -2160,7 +2212,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       int replicationMetadataVersionId,
       boolean versionSwapDeferred,
       String targetedRegions,
-      int repushSourceVersion) {
+      int repushSourceVersion,
+      int currentRTVersionNumber) {
     Store store = getStore(clusterName, storeName);
     if (store == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
@@ -2211,7 +2264,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional.empty(),
         versionSwapDeferred,
         targetedRegions,
-        repushSourceVersion);
+        repushSourceVersion,
+        currentRTVersionNumber);
   }
 
   /**
@@ -2223,7 +2277,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String pushJobId,
       int versionNumber,
       int numberOfPartitions,
-      Version.PushType pushType,
+      PushType pushType,
       String remoteKafkaBootstrapServers,
       long rewindTimeInSecondsOverride,
       int replicationMetadataVersionId) {
@@ -2287,44 +2341,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  public Pair<Boolean, Version> addVersionAndTopicOnly(
-      String clusterName,
-      String storeName,
-      String pushJobId,
-      int versionNumber,
-      int numberOfPartitions,
-      int replicationFactor,
-      boolean sendStartOfPush,
-      boolean sorted,
-      PushType pushType,
-      String compressionDictionary,
-      String remoteKafkaBootstrapServers,
-      Optional<String> sourceGridFabric,
-      long rewindTimeInSecondsOverride,
-      int replicationMetadataVersionId,
-      Optional<String> emergencySourceRegion,
-      boolean versionSwapDeferred) {
-    return addVersionAndTopicOnly(
-        clusterName,
-        storeName,
-        pushJobId,
-        versionNumber,
-        numberOfPartitions,
-        replicationFactor,
-        sendStartOfPush,
-        sorted,
-        pushType,
-        compressionDictionary,
-        remoteKafkaBootstrapServers,
-        sourceGridFabric,
-        rewindTimeInSecondsOverride,
-        replicationMetadataVersionId,
-        emergencySourceRegion,
-        versionSwapDeferred,
-        null,
-        -1);
-  }
-
   /**
    * A wrapper to invoke VeniceHelixAdmin#addVersion to only increment the version and create the topic(s) needed
    * without starting ingestion.
@@ -2347,7 +2363,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
       String targetedRegions,
-      int repushSourceVersion) {
+      int repushSourceVersion,
+      int largestUsedRTVersionNumber) {
     return addVersion(
         clusterName,
         storeName,
@@ -2368,7 +2385,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         emergencySourceRegion,
         versionSwapDeferred,
         targetedRegions,
-        repushSourceVersion);
+        repushSourceVersion,
+        largestUsedRTVersionNumber);
   }
 
   /**
@@ -2381,10 +2399,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String pushJobId,
       int versionNumber,
       int numberOfPartitions,
-      Version.PushType pushType,
+      PushType pushType,
       String remoteKafkaBootstrapServers,
       long rewindTimeInSecondsOverride,
-      int replicationMetadataVersionId) {
+      int replicationMetadataVersionId,
+      int largestUsedRTVersionNumber) {
     checkControllerLeadershipFor(clusterName);
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
@@ -2414,7 +2433,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // Update the store object to avoid potential system store flags reversion during repository.updateStore(store).
         store = repository.getStore(storeName);
         version.setPushType(pushType);
-        store.addVersion(version);
+        store.addVersion(version, false, largestUsedRTVersionNumber);
 
         VeniceControllerClusterConfig clusterConfig = resources.getConfig();
         version.setNativeReplicationEnabled(clusterConfig.isMultiRegion());
@@ -2482,7 +2501,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (store.containsVersion(versionNumber)) {
               throwVersionAlreadyExists(storeName, versionNumber);
             } else {
-              store.addVersion(version);
+              store.addVersion(version, false, DEFAULT_RT_VERSION_NUMBER);
             }
             storeRepository.updateStore(store);
           }
@@ -2704,7 +2723,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         emergencySourceRegion,
         versionSwapDeferred,
         null,
-        repushSourceVersion);
+        repushSourceVersion,
+        getStore(clusterName, storeName).getLargestUsedRTVersionNumber());
   }
 
   private Optional<Version> getVersionFromSourceCluster(
@@ -2752,7 +2772,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     LOGGER.info(
         "During store migration, version configs from source cluster {}: {}",
         migrationSourceCluster,
-        srcStoreResponse.getStore().getVersion(versionNumber).get());
+        srcStoreInfo.getVersion(versionNumber).get());
     return srcStoreResponse.getStore().getVersion(versionNumber);
   }
 
@@ -2785,7 +2805,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
       String targetedRegions,
-      int repushSourceVersion) {
+      int repushSourceVersion,
+      int currentRTVersionNumber) {
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     MaintenanceSignal maintenanceSignal =
         HelixUtils.getClusterMaintenanceSignal(clusterName, resources.getHelixManager());
@@ -2828,14 +2849,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             throwStoreDoesNotExist(clusterName, storeName);
           }
           currentVersionBeforePush = store.getCurrentVersion();
+
           // Dest child controllers skip the version whose kafka topic is truncated
           if (store.isMigrating() && skipMigratingVersion(clusterName, storeName, versionNumber)) {
+
             if (versionNumber > store.getLargestUsedVersionNumber()) {
               store.setLargestUsedVersionNumber(versionNumber);
               repository.updateStore(store);
             }
             LOGGER.warn(
-                "Skip adding version: {} for store: {} in cluster: {} because the version topic is truncated",
+                "Skip adding version: {} for store: {} in cluster: {} because the version topic is truncated/deleted",
                 versionNumber,
                 storeName,
                 clusterName);
@@ -2864,13 +2887,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               throwVersionAlreadyExists(storeName, version.getNumber());
             }
             // Update ZK with the new version
-            store.addVersion(version, true);
+            store.addVersion(version, true, currentRTVersionNumber);
             repository.updateStore(store);
           } else {
             if (versionNumber == VERSION_ID_UNSET) {
               // No version supplied, generate a new version. This could happen either in the parent
               // controller or local Samza jobs.
-              version = new VersionImpl(storeName, store.peekNextVersion().getNumber(), pushJobId, numberOfPartitions);
+              version = new VersionImpl(storeName, store.peekNextVersionNumber(), pushJobId, numberOfPartitions);
             } else {
               if (store.containsVersion(versionNumber)) {
                 throwVersionAlreadyExists(storeName, versionNumber);
@@ -2892,7 +2915,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             store = repository.getStore(storeName);
             if (!store.containsVersion(version.getNumber())) {
               version.setPushType(pushType);
-              store.addVersion(version);
+              store.addVersion(version, false, currentRTVersionNumber);
             }
 
             version.setNativeReplicationEnabled(store.isNativeReplicationEnabled());
@@ -2901,7 +2924,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (version.isNativeReplicationEnabled()) {
               if (remoteKafkaBootstrapServers != null) {
                 /**
-                 * AddVersion is invoked by {@link com.linkedin.venice.controller.kafka.consumer.AdminExecutionTask}
+                 * AddVersion is invoked by {@link AdminExecutionTask}
                  * which is processing an AddVersion message that contains remote Kafka bootstrap servers url.
                  */
                 version.setPushStreamSourceAddress(remoteKafkaBootstrapServers);
@@ -3175,7 +3198,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         store.getName(),
         version.getNumber(),
         clusterName);
-    String storeName = store.getName();
     // Create real-time topic if it doesn't exist; otherwise, update the retention time if necessary
     PubSubTopic realTimeTopic = getPubSubTopicRepository().getTopic(Utils.getRealTimeTopicName(version));
     createOrUpdateRealTimeTopic(clusterName, store, version, realTimeTopic);
@@ -3187,7 +3209,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           clusterName,
           store,
           version,
-          getPubSubTopicRepository().getTopic(Version.composeSeparateRealTimeTopic(storeName)));
+          getPubSubTopicRepository().getTopic(Utils.getSeparateRealTimeTopicName(version)));
     }
   }
 
@@ -3290,6 +3312,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * During store migration, skip a version if:
    * This is the child controller of the destination cluster
    * And the kafka topic of related store and version is truncated
+   * And kafka topic doesn't exist and the version is smaller than the largest used version number which means the version is already deleted in the source cluster.
    *
    * @param clusterName the name of the cluster
    * @param storeName the name of the store
@@ -3304,8 +3327,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     String destCluster = storeConfig.getMigrationDestCluster();
     if (clusterName.equals(destCluster)) {
       PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, versionNumber));
+      String migrationSourceCluster = storeConfig.getMigrationSrcCluster();
       // If the topic doesn't exist, we don't know whether it's not created or already deleted, so we don't skip
-      return getTopicManager().containsTopic(versionTopic) && isTopicTruncated(versionTopic.getName());
+      return getTopicManager().containsTopic(versionTopic) && isTopicTruncated(versionTopic.getName()) ||
+      // The topic doesn't exist and less/equal than the largest used version number in the source, it's deleted
+          !getTopicManager().containsTopic(versionTopic)
+              && (versionNumber <= getStoreInfo(storeName, migrationSourceCluster).getLargestUsedVersionNumber());
     }
     return false;
   }
@@ -3589,7 +3616,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String pushJobId) {
     PubSubTopicRepository topicRepository = getPubSubTopicRepository();
     if (referenceHybridVersion.isSeparateRealTimeTopicEnabled()) {
-      PubSubTopic separateRtTopic = topicRepository.getTopic(Version.composeSeparateRealTimeTopic(store.getName()));
+      PubSubTopic separateRtTopic =
+          topicRepository.getTopic(Utils.getSeparateRealTimeTopicName(referenceHybridVersion));
       validateTopicPresenceAndState(
           clusterName,
           store.getName(),
@@ -3677,7 +3705,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (store.isEnableReads()) {
       return store.getCurrentVersion();
     } else {
-      return Store.NON_EXISTING_VERSION;
+      return NON_EXISTING_VERSION;
     }
   }
 
@@ -3767,15 +3795,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @return the next version without adding the new version to the store.
-   */
-  @Override
-  public Version peekNextVersion(String clusterName, String storeName) {
-    Store store = getStoreForReadOnly(clusterName, storeName);
-    return store.peekNextVersion(); /* Does not modify the store */
-  }
-
-  /**
    * @see Admin#deleteAllVersionsInStore(String, String)
    */
   @Override
@@ -3790,7 +3809,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       // Set current version to NON_VERSION_AVAILABLE. Otherwise after this store is enabled again, as all of
       // version were deleted, router will get a current version which does not exist actually.
       store.setEnableWrites(true);
-      store.setCurrentVersion(Store.NON_EXISTING_VERSION);
+      store.setCurrentVersion(NON_EXISTING_VERSION);
       store.setEnableWrites(false);
       repository.updateStore(store);
       List<Version> deletingVersionSnapshot = new ArrayList<>(store.getVersions());
@@ -3914,10 +3933,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             executor.shutdownNow();
           }
         }
-      }
-      PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
-      if (!store.isHybrid() && getTopicManager().containsTopic(rtTopic)) {
-        safeDeleteRTTopic(clusterName, storeName);
+
+        PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(deletedVersion.get()));
+        if (!store.isHybrid() && getTopicManager().containsTopic(rtTopic)) {
+          safeDeleteRTTopic(clusterName, deletedVersion.get());
+        }
       }
     }
   }
@@ -3932,34 +3952,38 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  private void safeDeleteRTTopic(String clusterName, String storeName) {
-    boolean rtDeletionPermitted = isRTTopicDeletionPermittedByAllControllers(clusterName, storeName);
+  private void safeDeleteRTTopic(String clusterName, Version version) {
+    String realTimeTopicName = Utils.getRealTimeTopicName(version);
+    boolean rtDeletionPermitted = isRTTopicDeletionPermittedByAllControllers(clusterName, realTimeTopicName);
+
     if (rtDeletionPermitted) {
-      String rtTopicToDelete = Utils.composeRealTimeTopic(storeName);
-      deleteRTTopicFromAllFabrics(rtTopicToDelete, clusterName);
+      deleteRTTopicFromAllFabrics(realTimeTopicName, clusterName);
       // Check if there is incremental push topic exist. If yes, delete it and send out to let other controller to
       // delete it.
-      String incrementalPushRTTopicToDelete = Version.composeSeparateRealTimeTopic(storeName);
+      String incrementalPushRTTopicToDelete = Utils.getSeparateRealTimeTopicName(version);
       if (getTopicManager().containsTopic(pubSubTopicRepository.getTopic(incrementalPushRTTopicToDelete))) {
         deleteRTTopicFromAllFabrics(incrementalPushRTTopicToDelete, clusterName);
       }
     }
   }
 
-  public boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, String storeName) {
+  public boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, String rtTopicName) {
     // Perform RT cleanup checks for batch only store that used to be hybrid. Check versions
     // to see if any version is still using RT before deleting the RT.
     // Since we perform this check everytime when a store version is deleted we can afford to do best effort
     // approach if some fabrics are unavailable or out of sync (temporarily).
-    String rtTopicName = Utils.composeRealTimeTopic(storeName);
     Map<String, ControllerClient> controllerClientMap = getControllerClientMap(clusterName);
+
     for (Map.Entry<String, ControllerClient> controllerClientEntry: controllerClientMap.entrySet()) {
       StoreResponse storeResponse;
+      String storeName = null;
       try {
+        storeName = Version.parseStoreFromRealTimeTopic(rtTopicName);
+        String finalStoreName = storeName;
         storeResponse = RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
-          StoreResponse response = controllerClientEntry.getValue().getStore(storeName);
+          StoreResponse response = controllerClientEntry.getValue().getStore(finalStoreName);
           if (response.isError() && response.getError().contains(DOES_NOT_EXISTS)) {
-            throw new VeniceNoStoreException(storeName);
+            throw new VeniceNoStoreException(finalStoreName);
           }
           return response;
         },
@@ -3989,6 +4013,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         LOGGER.warn(
             "Store {} does not exist in cluster {} in fabric {}, probably deleted already, skipping RT check",
             storeName,
+            clusterName,
+            controllerClientEntry.getKey());
+        continue;
+      } catch (VeniceException e) {
+        LOGGER.warn(
+            "Could not parse store name from RT topic {} in cluster {} in fabric {}.",
+            rtTopicName,
             clusterName,
             controllerClientEntry.getKey());
         continue;
@@ -4377,7 +4408,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
        *
        * The reason to check whether the to-be-deleted version is smaller than the largest used version of current store or not:
        * 1. Topic could be created either by Kafka MM or addVersion function call (triggered by
-       * {@link com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask};
+       * {@link AdminConsumptionTask};
        * 2. If the topic is created by Kafka MM and the actual version creation gets delayed for some reason, the following
        * scenario could happen (assuming the current version is n):
        *   a. Topics: store_v(n-2), store_v(n-1), store_v(n), store_v(n+1) could exist at the same time because of the actual
@@ -4509,7 +4540,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return repository.getStore(storeName);
   }
 
-  Pair<Store, Version> waitVersion(String clusterName, String storeName, int versionNumber, Duration timeout) {
+  StoreVersionInfo waitVersion(String clusterName, String storeName, int versionNumber, Duration timeout) {
     checkControllerLeadershipFor(clusterName);
     ReadWriteStoreRepository repository = getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
     return repository.waitVersion(storeName, versionNumber, timeout);
@@ -4543,8 +4574,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     storeMetadataUpdate(clusterName, storeName, store -> {
-      if (store.getCurrentVersion() != Store.NON_EXISTING_VERSION) {
-        if (versionNumber != Store.NON_EXISTING_VERSION && !store.containsVersion(versionNumber)) {
+      if (store.getCurrentVersion() != NON_EXISTING_VERSION) {
+        if (versionNumber != NON_EXISTING_VERSION && !store.containsVersion(versionNumber)) {
           throw new VeniceException("Version: " + versionNumber + " does not exist for store:" + storeName);
         }
 
@@ -4579,7 +4610,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
     }
     int futureVersion = getOnlineFutureVersion(clusterName, storeName);
-    if (futureVersion == Store.NON_EXISTING_VERSION) {
+    if (futureVersion == NON_EXISTING_VERSION) {
       return;
     }
     storeMetadataUpdate(clusterName, storeName, store -> {
@@ -4624,7 +4655,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             "Unable to update store:" + storeName + " current version since store does not enable write");
       }
       int backupVersion = getBackupVersionNumber(store.getVersions(), store.getCurrentVersion());
-      if (backupVersion == Store.NON_EXISTING_VERSION) {
+      if (backupVersion == NON_EXISTING_VERSION) {
         return store;
       }
       int previousVersion = store.getCurrentVersion();
@@ -4642,7 +4673,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public int getBackupVersionNumber(List<Version> versions, int currentVersion) {
     versions.sort(Comparator.comparingInt(Version::getNumber).reversed());
     for (Version v: versions) {
-      if (v.getNumber() < currentVersion && VersionStatus.ONLINE.equals(v.getStatus())) {
+      if (v.getNumber() < currentVersion && ONLINE.equals(v.getStatus())) {
         return v.getNumber();
       }
     }
@@ -4656,6 +4687,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public void setStoreLargestUsedVersion(String clusterName, String storeName, int versionNumber) {
     storeMetadataUpdate(clusterName, storeName, store -> {
       store.setLargestUsedVersionNumber(versionNumber);
+      return store;
+    });
+  }
+
+  /**
+   * Update the largest used RT version number of a specified store.
+   */
+  @Override
+  public void setStoreLargestUsedRTVersion(String clusterName, String storeName, int versionNumber) {
+    storeMetadataUpdate(clusterName, storeName, store -> {
+      store.setLargestUsedRTVersionNumber(versionNumber);
       return store;
     });
   }
@@ -4688,6 +4730,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (store.isHybrid()
           && multiClusterConfigs.getControllerConfig(clusterName).isHybridStorePartitionCountUpdateEnabled()) {
         generateAndUpdateRealTimeTopicName(store);
+        LOGGER.info(
+            "Updated largestUsedRTVersionNumber to {} for store {} in cluster {}",
+            store.getLargestUsedRTVersionNumber(),
+            storeName,
+            clusterName);
       }
       if (partitionCount != 0) {
         store.setPartitionCount(partitionCount);
@@ -4748,17 +4795,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private void generateAndUpdateRealTimeTopicName(Store store) {
-    // get oldRealTimeTopicName from the store config because that will be more (or equally) recent than any version
-    // config
-    String oldRealTimeTopicName = Utils.getRealTimeTopicNameFromStoreConfig(store);
-    String newRealTimeTopicName = Utils.createNewRealTimeTopicName(oldRealTimeTopicName);
-    PubSubTopic newRealTimeTopic = getPubSubTopicRepository().getTopic(newRealTimeTopicName);
-
-    if (getTopicManager().containsTopic(newRealTimeTopic)) {
-      throw new VeniceException("Topic " + newRealTimeTopic + " should not exist.");
-    }
+    String newRealTimeTopicName = Utils.isRTVersioningApplicable(store.getName())
+        ? Utils.composeRealTimeTopic(store.getName(), store.getLargestUsedRTVersionNumber() + 1)
+        : DEFAULT_REAL_TIME_TOPIC_NAME;
 
     store.getHybridStoreConfig().setRealTimeTopicName(newRealTimeTopicName);
+    /*
+       After partition count update, new VT, if is hybrid, has to use a new RT with the same partition count, so we
+       increase `largestUsedRTVersionNumber`; this will ensure that a new RT is created when/if needed
+     */
+    store.setLargestUsedRTVersionNumber(store.getLargestUsedRTVersionNumber() + 1);
   }
 
   void setStorePartitionerConfig(String clusterName, String storeName, PartitionerConfig partitionerConfig) {
@@ -5233,6 +5279,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Long> readQuotaInCU = params.getReadQuotaInCU();
     Optional<Integer> currentVersion = params.getCurrentVersion();
     Optional<Integer> largestUsedVersionNumber = params.getLargestUsedVersionNumber();
+    Optional<Integer> largestUsedRTVersionNumber = params.getLargestUsedRTVersionNumber();
     Optional<Long> hybridRewindSeconds = params.getHybridRewindSeconds();
     Optional<Long> hybridOffsetLagThreshold = params.getHybridOffsetLagThreshold();
     Optional<Long> hybridTimeLagThreshold = params.getHybridTimeLagThreshold();
@@ -5281,6 +5328,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<String> targetSwapRegion = params.getTargetSwapRegion();
     Optional<Integer> targetSwapRegionWaitTime = params.getTargetRegionSwapWaitTime();
     Optional<Boolean> isDavinciHeartbeatReported = params.getIsDavinciHeartbeatReported();
+    Optional<Boolean> globalRtDivEnabled = params.isGlobalRtDivEnabled();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -5353,6 +5401,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       if (largestUsedVersionNumber.isPresent()) {
         setStoreLargestUsedVersion(clusterName, storeName, largestUsedVersionNumber.get());
+      }
+
+      if (largestUsedRTVersionNumber.isPresent()) {
+        setStoreLargestUsedRTVersion(clusterName, storeName, largestUsedRTVersionNumber.get());
       }
 
       if (bootstrapToOnlineTimeoutInHours.isPresent()) {
@@ -5590,6 +5642,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return store;
       }));
 
+      globalRtDivEnabled.ifPresent(aBool -> storeMetadataUpdate(clusterName, storeName, store -> {
+        store.setGlobalRtDivEnabled(aBool);
+        return store;
+      }));
+
       LOGGER.info("Finished updating store: {} in cluster: {}", storeName, clusterName);
     } catch (VeniceException e) {
       LOGGER.error(
@@ -5733,6 +5790,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             oldStore.getName() + " was not a hybrid store.  In order to make it a hybrid store both "
                 + " rewind time in seconds and offset or time lag threshold must be specified");
       }
+
+      String newRealTimeTopicName = oldStore.getLargestUsedRTVersionNumber() > DEFAULT_RT_VERSION_NUMBER
+          && Utils.isRTVersioningApplicable(oldStore.getName())
+              ? Utils.composeRealTimeTopic(oldStore.getName(), oldStore.getLargestUsedRTVersionNumber())
+              : DEFAULT_REAL_TIME_TOPIC_NAME;
+
       mergedHybridStoreConfig = new HybridStoreConfigImpl(
           hybridRewindSeconds.get(),
           // If not specified, offset/time lag threshold will be -1 and will not be used to determine whether
@@ -5741,7 +5804,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           hybridTimeLagThreshold.orElse(DEFAULT_HYBRID_TIME_LAG_THRESHOLD),
           hybridDataReplicationPolicy.orElse(DataReplicationPolicy.NON_AGGREGATE),
           bufferReplayPolicy.orElse(BufferReplayPolicy.REWIND_FROM_EOP),
-          realTimeTopicName.orElse(DEFAULT_REAL_TIME_TOPIC_NAME));
+          realTimeTopicName.orElse(newRealTimeTopicName));
     }
     if (mergedHybridStoreConfig.getRewindTimeInSeconds() > 0
         && mergedHybridStoreConfig.getOffsetLagThresholdToGoOnline() < 0
@@ -6374,7 +6437,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return;
     }
     SystemStoreAttributes systemStoreAttributes = store.getSystemStores().get(systemStoreType.getPrefix());
-    if (systemStoreAttributes.getCurrentVersion() == Store.NON_EXISTING_VERSION) {
+    if (systemStoreAttributes.getCurrentVersion() == NON_EXISTING_VERSION) {
       int latestVersionNumber = systemStoreAttributes.getLargestUsedVersionNumber();
       List<Version> filteredVersionList = systemStoreAttributes.getVersions()
           .stream()
@@ -6524,10 +6587,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return getOffLinePushStatus(clusterName, kafkaTopic, Optional.empty(), null, null);
   }
 
-  /**
-   * @see Admin#getOffLinePushStatus(String, String, Optional, String, String).
-   */
   @Override
+  public OfflinePushStatusInfo getOffLinePushStatus(
+      String clusterName,
+      String kafkaTopic,
+      Optional<String> incrementalPushVersion,
+      String region,
+      String targetedRegions,
+      boolean isTargetRegionPushWithDeferredSwap) {
+    return getOffLinePushStatus(clusterName, kafkaTopic, incrementalPushVersion, region, targetedRegions);
+  }
+
+  /**
+   * @see Admin#getOffLinePushStatus(String, String, Optional, String, String, boolean).
+   */
   public OfflinePushStatusInfo getOffLinePushStatus(
       String clusterName,
       String kafkaTopic,
@@ -6806,7 +6879,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         helixClusterConfig.setDelayRebalaceEnabled(true);
       }
       helixClusterConfig.setPersistBestPossibleAssignment(true);
-      // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constrains on CRUSH alg to
+      // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constraints on CRUSH alg to
       // choose proper instance to hold the replica.
       helixClusterConfig.setTopology("/" + HelixUtils.TOPOLOGY_CONSTRAINT);
       helixClusterConfig.setFaultZoneType(HelixUtils.TOPOLOGY_CONSTRAINT);
@@ -6956,7 +7029,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return sourceFabric;
     }
 
-    Set<String> regions = targetedRegions != null ? RegionUtils.parseRegionsFilterList(targetedRegions) : null;
+    Set<String> regions = targetedRegions != null ? parseRegionsFilterList(targetedRegions) : null;
 
     if (sourceGridFabric.isPresent()) {
       sourceFabric = getPreferredRegion(sourceGridFabric.get(), regions);
@@ -7096,7 +7169,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (nodeRemovableResult.isRemovable()) {
         stoppableInstances.add(nodeRemovableResult.getInstanceId());
       } else {
-        nonStoppableInstances.put(nodeRemovableResult.getInstanceId(), nodeRemovableResult.getBlockingReason());
+        nonStoppableInstances.put(nodeRemovableResult.getInstanceId(), nodeRemovableResult.getFormattedMessage());
       }
     }
     return statuses;
@@ -7192,6 +7265,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public Instance getLeaderController(String clusterName) {
+    List<Instance> leaderControllers = getControllersByHelixState(clusterName, HelixState.LEADER_STATE);
+    return leaderControllers.get(0);
+  }
+
+  /**
+   * Get controllers instance based on the given helix state.
+   * We look at the external view of the controller cluster to find the venice controller by the wanted state.
+   */
+  public List<Instance> getControllersByHelixState(String clusterName, String helixState) {
+    // Validate helix state
+    if (!HelixState.isValidHelixState(helixState)) {
+      throw new VeniceException("Invalid Helix state: " + helixState);
+    }
+
     if (!multiClusterConfigs.getClusters().contains(clusterName)) {
       throw new VeniceNoClusterException(clusterName);
     }
@@ -7200,35 +7287,44 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     String partitionName = HelixUtils.getPartitionName(clusterName, 0);
     for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
       ExternalView externalView = helixManager.getHelixDataAccessor().getProperty(keyBuilder.externalView(clusterName));
+      List<Instance> controllers = new ArrayList<>();
       if (externalView == null || externalView.getStateMap(partitionName) == null) {
         // Assignment is incomplete, try again later
         continue;
       }
       Map<String, String> veniceClusterStateMap = externalView.getStateMap(partitionName);
       for (Map.Entry<String, String> instanceNameAndState: veniceClusterStateMap.entrySet()) {
-        if (instanceNameAndState.getValue().equals(HelixState.LEADER_STATE)) {
-          // Found the Venice controller leader
+        if (instanceNameAndState.getValue().equals(helixState)) {
+          // Found the Venice controller, adding to the return list
           String id = instanceNameAndState.getKey();
-          return new Instance(
-              id,
-              Utils.parseHostFromHelixNodeIdentifier(id),
-              Utils.parsePortFromHelixNodeIdentifier(id),
-              multiClusterConfigs.getAdminSecurePort(),
-              multiClusterConfigs.getAdminGrpcPort(),
-              multiClusterConfigs.getAdminSecureGrpcPort());
+          controllers.add(
+              new Instance(
+                  id,
+                  Utils.parseHostFromHelixNodeIdentifier(id),
+                  Utils.parsePortFromHelixNodeIdentifier(id),
+                  multiClusterConfigs.getAdminSecurePort(),
+                  multiClusterConfigs.getAdminGrpcPort(),
+                  multiClusterConfigs.getAdminSecureGrpcPort()));
         }
       }
+
+      // Return the controllers if found
+      if (!controllers.isEmpty()) {
+        return controllers;
+      }
+
       if (attempt < maxAttempts) {
         LOGGER.warn(
-            "Venice controller leader does not exist for cluster: {}, attempt: {}/{}",
+            "Venice controller with state {} does not exist for cluster: {}, attempt: {}/{}",
+            helixState,
             clusterName,
             attempt,
             maxAttempts);
         Utils.sleep(5 * Time.MS_PER_SECOND);
       }
     }
-    String message =
-        "Unable to find Venice controller leader for cluster: " + clusterName + " after " + maxAttempts + " attempts";
+    String message = "Unable to find Venice controller " + helixState + " for cluster: " + clusterName + " after "
+        + maxAttempts + " attempts";
     LOGGER.error(message);
     throw new VeniceException(message);
   }
@@ -7353,7 +7449,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           // Update version status to KILLED on ZkNode.
           ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
           Store store = repository.getStore(storeName);
-          store.updateVersionStatus(version.getNumber(), VersionStatus.KILLED);
+          store.updateVersionStatus(version.getNumber(), KILLED);
           repository.updateStore(store);
         }
       }
@@ -7594,11 +7690,59 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * Update the version of admin operation protocol in admin topic metadata
+   * Unsupported operation in the child controller.
    */
   public void updateAdminOperationProtocolVersion(String clusterName, Long adminOperationProtocolVersion) {
-    getAdminConsumerService(clusterName)
-        .updateAdminOperationProtocolVersion(clusterName, adminOperationProtocolVersion);
+    throw new VeniceUnsupportedOperationException(
+        "updateAdminOperationProtocolVersion is not supported for child controller");
+  }
+
+  /**
+   * Get the admin operation protocol versions from controllers (leader + standby) for specific cluster.
+   * @param clusterName: the cluster name
+   * @return map (controllerUrl: version). Example: {http://localhost:1234=1, http://localhost:1235=1}*/
+  @Override
+  public Map<String, Long> getAdminOperationVersionFromControllers(String clusterName) {
+    checkControllerLeadershipFor(clusterName);
+
+    Map<String, Long> controllerUrlToAdminOperationVersionMap = new HashMap<>();
+
+    // Get the version from the current controller - leader
+    String leaderControllerUrl = getLeaderController(clusterName).getUrl(false);
+    controllerUrlToAdminOperationVersionMap.put(leaderControllerUrl, getLocalAdminOperationProtocolVersion());
+
+    // Create the controller client to reuse
+    // (this is controller client to communicate with other controllers in the same cluster, the same region)
+    ControllerClient localControllerClient =
+        ControllerClient.constructClusterControllerClient(clusterName, leaderControllerUrl, sslFactory);
+
+    // Get version for standby controllers
+    List<Instance> standbyControllers = getControllersByHelixState(clusterName, HelixState.STANDBY_STATE);
+
+    for (Instance standbyController: standbyControllers) {
+      String standbyControllerUrl = standbyController.getUrl(false);
+
+      // Get the admin operation protocol version from standby controller
+      AdminOperationProtocolVersionControllerResponse response =
+          localControllerClient.getLocalAdminOperationProtocolVersion();
+      if (response.isError()) {
+        throw new VeniceException(
+            "Failed to get admin operation protocol version from standby controller: " + standbyControllerUrl
+                + ", error message: " + response.getError());
+      }
+      controllerUrlToAdminOperationVersionMap
+          .put(response.getRequestUrl(), response.getLocalAdminOperationProtocolVersion());
+    }
+
+    return controllerUrlToAdminOperationVersionMap;
+  }
+
+  /**
+   * Get the local admin operation protocol version.
+   */
+  @Override
+  public long getLocalAdminOperationProtocolVersion() {
+    return AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
   }
 
   /**
@@ -7688,7 +7832,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Map<String, String> result = new HashMap<>();
     // Find all ongoing offline pushes at first.
     PushMonitor monitor = getHelixVeniceClusterResources(clusterName).getPushMonitor();
-    monitor.getTopicsOfOngoingOfflinePushes().forEach(topic -> result.put(topic, VersionStatus.STARTED.toString()));
+    monitor.getTopicsOfOngoingOfflinePushes().forEach(topic -> result.put(topic, STARTED.toString()));
     // Find the versions which had been ONLINE, but some of replicas are still bootstrapping due to:
     // 1. As we use N-1 strategy, so there might be some slow replicas caused by kafka or other issues.
     // 2. Storage node was added/removed/disconnected, so replicas need to bootstrap again on the same or other node.
@@ -7951,7 +8095,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
 
       /**
-       * The function is invoked by {@link com.linkedin.venice.controller.kafka.consumer.AdminExecutionTask} if the
+       * The function is invoked by {@link AdminExecutionTask} if the
        * storeName is present.
        */
       Store originalStore = getStore(clusterName, storeName.get());
@@ -8070,7 +8214,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * - intermediary between {@link com.linkedin.venice.controller.logcompaction.LogCompactionService} and {@link CompactionManager}
+   * - intermediary between {@link LogCompactionService} and {@link CompactionManager}
    * - injects the child controller's {@link ControllerClient} into the function {@link CompactionManager#getStoresForCompaction(String, Map)}
    * - serves as API endpoint to query stores ready for log compaction
    * @param clusterName
@@ -8078,6 +8222,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public List<StoreInfo> getStoresForCompaction(String clusterName) {
+    Assert.isTrue(multiClusterConfigs.isLogCompactionEnabled(), "Log compaction is not enabled for this cluster!");
     try {
       Map<String, ControllerClient> childControllers = getControllerClientMap(clusterName);
       return compactionManager.getStoresForCompaction(clusterName, childControllers);
@@ -8089,17 +8234,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   /**
    * triggers repush for storeName for log compaction of store topic
    * <p>
-   * - intermediary between {@link com.linkedin.venice.controller.logcompaction.LogCompactionService} and
+   * - intermediary between {@link LogCompactionService} and
    * {@link CompactionManager} - serves as API endpoint to trigger scheduled & adhoc log compaction
    *
    * @param repushJobRequest@return
    */
   @Override
-  public RepushJobResponse compactStore(RepushJobRequest repushJobRequest) throws Exception {
+  public RepushJobResponse repushStore(RepushJobRequest repushJobRequest) throws Exception {
+    Assert.isTrue(multiClusterConfigs.isLogCompactionEnabled(), "Log compaction is not enabled for this cluster!");
     try {
-      return compactionManager.compactStore(repushJobRequest);
+      return compactionManager.repushStore(repushJobRequest);
     } catch (Exception e) {
-      LOGGER.error("Error while compacting store: {}", repushJobRequest.getStoreName(), e);
+      LOGGER.error("Error while triggering repush for store: {}", repushJobRequest.getStoreName(), e);
       throw e; // this method is the first common point for scheduled & adhoc log compaction, each has different error
     }
   }
@@ -8184,8 +8330,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   public OfflinePushStatus retrievePushStatus(String clusterName, StoreInfo store) {
-    VeniceOfflinePushMonitorAccessor accessor =
-        new VeniceOfflinePushMonitorAccessor(clusterName, getZkClient(), getAdapterSerializer());
+    VeniceOfflinePushMonitorAccessor accessor = new VeniceOfflinePushMonitorAccessor(
+        clusterName,
+        getZkClient(),
+        getAdapterSerializer(),
+        multiClusterConfigs.getLogContext());
 
     Optional<Version> currentVersion = store.getVersion(store.getCurrentVersion());
     String kafkaTopic = currentVersion.isPresent() ? currentVersion.get().kafkaTopicName() : "";
@@ -8350,8 +8499,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     // Check all offline push zk nodes.
     if (checkOfflinePush) {
-      VeniceOfflinePushMonitorAccessor accessor =
-          new VeniceOfflinePushMonitorAccessor(clusterName, zkClient, adapterSerializer);
+      VeniceOfflinePushMonitorAccessor accessor = new VeniceOfflinePushMonitorAccessor(
+          clusterName,
+          zkClient,
+          adapterSerializer,
+          multiClusterConfigs.getLogContext());
       List<String> offlinePushes = zkClient.getChildren(accessor.getOfflinePushStatuesParentPath());
       offlinePushes.forEach(resource -> {
         if (Version.isVersionTopic(resource)) {
@@ -8720,7 +8872,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String destinationFabric,
       boolean copyAllVersionConfigs,
       Optional<Version> sourceFabricVersion) {
-    checkControllerLeadershipFor(clusterName);
+    RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
+        () -> checkControllerLeadershipFor(clusterName),
+        1,
+        Duration.ofMillis(100),
+        Duration.ofMillis(200),
+        Duration.ofSeconds(10),
+        RETRY_FAILURE_TYPES);
     checkCurrentFabricMatchesExpectedFabric(destinationFabric);
     if (!sourceFabricVersion.isPresent()) {
       throw new VeniceException("Source fabric version object is required for data recovery");
@@ -9027,5 +9185,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   InternalAvroSpecificSerializer<PushJobDetails> getPushJobDetailsSerializer() {
     return pushJobDetailsSerializer;
+  }
+
+  public LogContext getLogContext() {
+    return logContext;
   }
 }

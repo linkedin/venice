@@ -94,4 +94,10 @@ public class PartitionerConfigImpl implements PartitionerConfig {
   public PartitionerConfig clone() {
     return new PartitionerConfigImpl(getPartitionerClass(), getPartitionerParams(), getAmplificationFactor());
   }
+
+  @Override
+  public String toString() {
+    return "PartitionerConfig{" + "partitionerClass='" + getPartitionerClass() + '\'' + ", partitionerParams="
+        + getPartitionerParams() + '}';
+  }
 }

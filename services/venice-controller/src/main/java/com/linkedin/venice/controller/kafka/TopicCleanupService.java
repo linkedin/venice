@@ -17,6 +17,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
@@ -177,6 +178,7 @@ public class TopicCleanupService extends AbstractVeniceService {
   private class TopicCleanupTask implements Runnable {
     @Override
     public void run() {
+      LogContext.setStructuredLogContext(multiClusterConfigs.getLogContext());
       while (!stop.get()) {
         try {
           Thread.sleep(sleepIntervalBetweenTopicListFetchMs);
@@ -234,7 +236,7 @@ public class TopicCleanupService extends AbstractVeniceService {
         clusterDiscovered = admin.discoverCluster(storeName).getFirst();
       } catch (VeniceNoStoreException e) {
         LOGGER.warn(
-            "Store {} not found. Exception when trying to delete topic: {} - {}",
+            "Expected store: {} not found corresponding to topic: {} in Venice. Will delete the topic without running any safety checks. Error: {}",
             storeName,
             topic.getName(),
             e.toString());
@@ -242,7 +244,7 @@ public class TopicCleanupService extends AbstractVeniceService {
         continue;
       }
 
-      if (!topic.isRealTime() || admin.isRTTopicDeletionPermittedByAllControllers(clusterDiscovered, storeName)) {
+      if (!topic.isRealTime() || admin.isRTTopicDeletionPermittedByAllControllers(clusterDiscovered, topic.getName())) {
         // delete if it is a VT topic or an RT topic eligible for deletion by the above condition
         deleteTopic(topic);
       } else {

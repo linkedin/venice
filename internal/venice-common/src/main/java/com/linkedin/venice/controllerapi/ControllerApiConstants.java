@@ -241,6 +241,7 @@ public class ControllerApiConstants {
    * String representation of the list of regions that is separated by comma for targeted region push
    */
   public static final String TARGETED_REGIONS = "targeted_regions";
+  public static final String TARGET_REGION_PUSH_WITH_DEFERRED_SWAP = "target_region_push_with_deferred_swap";
 
   public static final String STORAGE_NODE_READ_QUOTA_ENABLED = "storage_node_read_quota_enabled";
 
@@ -262,6 +263,7 @@ public class ControllerApiConstants {
   public static final String TARGET_SWAP_REGION = "target_swap_region";
   public static final String TARGET_SWAP_REGION_WAIT_TIME = "target_swap_region_wait_time";
   public static final String IS_DAVINCI_HEARTBEAT_REPORTED = "is_davinci_heartbeat_reported";
+  public static final String GLOBAL_RT_DIV_ENABLED = "global_rt_div_enabled";
 
   /**
    * Params for repush job

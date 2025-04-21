@@ -43,6 +43,7 @@ import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.MultiStoragePersonaResponse;
+import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
@@ -55,6 +56,7 @@ import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.PubSubTopicConfigResponse;
 import com.linkedin.venice.controllerapi.ReadyForDataRecoveryResponse;
+import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.RoutersClusterConfigResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoragePersonaResponse;
@@ -87,8 +89,8 @@ import com.linkedin.venice.meta.ServerAdminAction;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.metadata.payload.StorePropertiesPayloadRecord;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
-import com.linkedin.venice.metadata.response.StorePropertiesResponseRecord;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -177,9 +179,6 @@ public class AdminTool {
   private static final String STATUS = "status";
   private static final String ERROR = "error";
   private static final String SUCCESS = "success";
-
-  private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
-
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
   private static ControllerClient controllerClient;
@@ -197,6 +196,8 @@ public class AdminTool {
       "zookeeper.ssl.trustStore.type");
   private static final String DEFAULT_DATE_FORMAT = "yyyy-MM-dd hh:mm:ss";
   private static final String PST_TIME_ZONE = "America/Los_Angeles";
+
+  static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
 
   public static void main(String[] args) throws Exception {
     // Generate PubSubClientsFactory from java system properties, apache kafka adapter is the default one.
@@ -341,6 +342,9 @@ public class AdminTool {
           break;
         case SET_OWNER:
           setStoreOwner(cmd);
+          break;
+        case GET_PARTITION_ID:
+          getPartitionIdForKey(cmd);
           break;
         case SET_PARTITION_COUNT:
           setStorePartition(cmd);
@@ -500,6 +504,12 @@ public class AdminTool {
           break;
         case LIST_CLUSTER_STALE_STORES:
           listClusterStaleStores(cmd);
+          break;
+        case REPUSH_STORE:
+          repushStore(cmd);
+          break;
+        case GET_DEAD_STORES:
+          getDeadStores(cmd);
           break;
         case COMPARE_STORE:
           compareStore(cmd);
@@ -1149,6 +1159,14 @@ public class AdminTool {
     printSuccess(response);
   }
 
+  private static void getPartitionIdForKey(CommandLine cmd) {
+    String storeName = getRequiredArgument(cmd, Arg.STORE, Command.GET_PARTITION_ID);
+    String key = getRequiredArgument(cmd, Arg.KEY, Command.GET_PARTITION_ID);
+    int version = Integer.parseInt(getOptionalArgument(cmd, Arg.VERSION, "-1"));
+    String keySchemaStr = controllerClient.getKeySchema(storeName).getSchemaStr();
+    TopicMessageFinder.findPartitionIdForKey(controllerClient, storeName, version, key, keySchemaStr);
+  }
+
   private static void integerParam(CommandLine cmd, Arg param, Consumer<Integer> setter, Set<Arg> argSet) {
     genericParam(cmd, param, s -> Utils.parseIntFromString(s, param.toString()), setter, argSet);
   }
@@ -1311,6 +1329,7 @@ public class AdminTool {
     genericParam(cmd, Arg.TARGET_SWAP_REGION, s -> s, p -> params.setTargetRegionSwap(p), argSet);
     integerParam(cmd, Arg.TARGET_SWAP_REGION_WAIT_TIME, p -> params.setTargetRegionSwapWaitTime(p), argSet);
     booleanParam(cmd, Arg.DAVINCI_HEARTBEAT_REPORTED, p -> params.setIsDavinciHeartbeatReported(p), argSet);
+    booleanParam(cmd, Arg.GLOBAL_RT_DIV_ENABLED, params::setGlobalRtDivEnabled, argSet);
 
     /**
      * {@link Arg#REPLICATE_ALL_CONFIGS} doesn't require parameters; once specified, it means true.
@@ -2807,6 +2826,21 @@ public class AdminTool {
     printObject(response);
   }
 
+  private static void repushStore(CommandLine cmd) {
+    String storeName = getRequiredArgument(cmd, Arg.STORE);
+    RepushJobResponse response = controllerClient.repushStore(storeName);
+    printObject(response);
+  }
+
+  private static void getDeadStores(CommandLine cmd) {
+    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
+    Optional<String> storeName = Optional.ofNullable(getOptionalArgument(cmd, Arg.STORE));
+    boolean includeSystemStores = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.INCLUDE_SYSTEM_STORES));
+
+    MultiStoreInfoResponse response = controllerClient.getDeadStores(clusterName, includeSystemStores, storeName);
+    printObject(response);
+  }
+
   private static void listStorePushInfo(CommandLine cmd) {
     String storeParam = getRequiredArgument(cmd, Arg.STORE);
     boolean isPartitionDetailEnabled = Optional.ofNullable(getOptionalArgument(cmd, Arg.PARTITION_DETAIL_ENABLED))
@@ -3213,7 +3247,7 @@ public class AdminTool {
       getAndPrintRequestBasedStoreProperties(
           transportClient,
           () -> ControllerClientFactory.discoverAndConstructControllerClient(
-              AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE.getSystemStoreName(),
+              AvroProtocolDefinition.SERVER_STORE_PROPERTIES_PAYLOAD.getSystemStoreName(),
               url,
               sslFactory,
               1),
@@ -3469,23 +3503,23 @@ public class AdminTool {
           e);
     }
     Schema writerSchema;
-    if (writerSchemaId != AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE.getCurrentProtocolVersion()) {
+    if (writerSchemaId != AvroProtocolDefinition.SERVER_STORE_PROPERTIES_PAYLOAD.getCurrentProtocolVersion()) {
       SchemaResponse schemaResponse = controllerClientSupplier.get()
-          .getValueSchema(AvroProtocolDefinition.SERVER_STORE_PROPERTIES_RESPONSE.getSystemStoreName(), writerSchemaId);
+          .getValueSchema(AvroProtocolDefinition.SERVER_STORE_PROPERTIES_PAYLOAD.getSystemStoreName(), writerSchemaId);
       if (schemaResponse.isError()) {
         throw new VeniceException(
             "Failed to fetch store properties response schema from controller, error: " + schemaResponse.getError());
       }
       writerSchema = parseSchemaFromJSONLooseValidation(schemaResponse.getSchemaStr());
     } else {
-      writerSchema = StorePropertiesResponseRecord.SCHEMA$;
+      writerSchema = StorePropertiesPayloadRecord.SCHEMA$;
     }
-    RecordDeserializer<GenericRecord> storePropertiesResponseDeserializer =
+    RecordDeserializer<GenericRecord> storePropertiesPayloadDeserializer =
         FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema, writerSchema);
-    GenericRecord storePropertiesResponse = storePropertiesResponseDeserializer.deserialize(body);
+    GenericRecord storePropertiesPayload = storePropertiesPayloadDeserializer.deserialize(body);
     // Using the jsonWriter to print Avro objects directly does not handle the collection types (List and Map) well.
     // Use the Avro record's toString() instead and pretty print it.
-    Object printObject = ObjectMapperFactory.getInstance().readValue(storePropertiesResponse.toString(), Object.class);
+    Object printObject = ObjectMapperFactory.getInstance().readValue(storePropertiesPayload.toString(), Object.class);
     System.out.println(jsonWriter.writeValueAsString(printObject));
   }
 

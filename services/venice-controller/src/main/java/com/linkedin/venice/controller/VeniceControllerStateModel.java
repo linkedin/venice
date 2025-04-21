@@ -194,6 +194,7 @@ public class VeniceControllerStateModel extends StateModel {
         helixAdminClient);
     clusterResources.refresh();
     clusterResources.startErrorPartitionResetTask();
+    clusterResources.startDeadStoreStatsPreFetchTask();
     clusterResources.startLeakedPushStatusCleanUpService();
   }
 
@@ -303,8 +304,9 @@ public class VeniceControllerStateModel extends StateModel {
        * its dependent service.
        */
       clusterResources.stopLeakedPushStatusCleanUpService();
-      clusterResources.clear();
+      clusterResources.stopDeadStoreStatsPreFetchTask();
       clusterResources.stopErrorPartitionResetTask();
+      clusterResources.clear();
       clusterResources = null;
     }
   }
