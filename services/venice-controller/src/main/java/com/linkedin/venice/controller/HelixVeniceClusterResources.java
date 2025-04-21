@@ -149,7 +149,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
         zkClient,
         adapterSerializer,
         config.getRefreshAttemptsForZkReconnect(),
-        config.getRefreshIntervalForZkReconnectInMs());
+        config.getRefreshIntervalForZkReconnectInMs(),
+        config.getLogContext());
     String aggregateRealTimeSourceKafkaUrl =
         config.getChildDataCenterKafkaUrlMap().get(config.getAggregateRealTimeSourceRegion());
     boolean unregisterMetricEnabled = config.isUnregisterMetricForDeletedStoreEnabled();
@@ -207,7 +208,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
           config.getErrorPartitionProcessingCycleDelay());
     }
 
-    if (config.isParent() && config.isDeadStoreEndpointEnabled() && config.isPreFetchDeadStoreStatsEnabled()) {
+    if (config.isDeadStoreEndpointEnabled() && config.isPreFetchDeadStoreStatsEnabled()) {
+      LOGGER.info("Dead store stats pre-fetch task is enabled for cluster: {}", clusterName);
       deadStoreStatsPreFetchTask =
           new DeadStoreStatsPreFetchTask(clusterName, admin, config.getDeadStoreStatsPreFetchRefreshIntervalInMs());
     }

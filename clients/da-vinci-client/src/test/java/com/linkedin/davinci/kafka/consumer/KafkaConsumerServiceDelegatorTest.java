@@ -555,7 +555,8 @@ public class KafkaConsumerServiceDelegatorTest {
         mock(AggKafkaConsumerServiceStats.class),
         false,
         mock(ReadOnlyStoreRepository.class),
-        false);
+        false,
+        mock(VeniceServerConfig.class));
     String storeName = Utils.getUniqueString("test_consumer_service");
 
     Function<String, Boolean> isAAWCStoreFunc = vt -> true;

@@ -235,6 +235,7 @@ import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.CollectionUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -363,6 +364,7 @@ public class VeniceParentHelixAdmin implements Admin {
   private final SupersetSchemaGenerator defaultSupersetSchemaGenerator = new DefaultSupersetSchemaGenerator();
 
   private final IdentityParser identityParser;
+  private final LogContext logContext;
 
   // New fabric controller client map per cluster per fabric
   private final Map<String, Map<String, ControllerClient>> newFabricControllerClientMap =
@@ -433,6 +435,7 @@ public class VeniceParentHelixAdmin implements Admin {
     Validate.notNull(writeComputeSchemaConverter);
     this.veniceHelixAdmin = veniceHelixAdmin;
     this.multiClusterConfigs = multiClusterConfigs;
+    this.logContext = multiClusterConfigs.getLogContext();
     this.waitingTimeForConsumptionMs = this.multiClusterConfigs.getParentControllerWaitingTimeForConsumptionMs();
     this.veniceWriterMap = new ConcurrentHashMap<>();
     this.adminTopicMetadataAccessor = new ZkAdminTopicMetadataAccessor(
@@ -5752,5 +5755,10 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public PubSubTopicRepository getPubSubTopicRepository() {
     return pubSubTopicRepository;
+  }
+
+  @Override
+  public LogContext getLogContext() {
+    return getVeniceHelixAdmin().getLogContext();
   }
 }

@@ -64,7 +64,6 @@ public class TestVeniceHelixResources {
     when(controllerConfig.getDaVinciPushStatusScanIntervalInSeconds()).thenReturn(5);
     when(controllerConfig.isDaVinciPushStatusEnabled()).thenReturn(true);
     when(controllerConfig.getOffLineJobWaitTimeInMilliseconds()).thenReturn(120000L);
-    when(controllerConfig.isParent()).thenReturn(true);
     when(controllerConfig.isDeadStoreEndpointEnabled()).thenReturn(true);
     when(controllerConfig.getDeadStoreStatsPreFetchRefreshIntervalInMs()).thenReturn(100L); // Must be Long
 

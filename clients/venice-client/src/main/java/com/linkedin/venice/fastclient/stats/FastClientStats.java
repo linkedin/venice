@@ -27,6 +27,8 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
   private final Sensor dualReadThinClientFastClientLatencyDeltaSensor;
 
   private final Sensor leakedRequestCountSensor;
+  private final Sensor rejectedRequestCountByLoadControllerSensor;
+  private final Sensor rejectionRatioSensor;
 
   private final Sensor longTailRetryRequestSensor;
   private final Sensor errorRetryRequestSensor;
@@ -86,6 +88,9 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
     }, "metadata_staleness_high_watermark_ms"));
     this.fanoutSizeSensor = registerSensor("fanout_size", new Avg(), new Max());
     this.retryFanoutSizeSensor = registerSensor("retry_fanout_size", new Avg(), new Max());
+    this.rejectedRequestCountByLoadControllerSensor =
+        registerSensor("rejected_request_count_by_load_controller", new OccurrenceRate());
+    this.rejectionRatioSensor = registerSensor("rejection_ratio", new Avg(), new Max());
   }
 
   public void recordNoAvailableReplicaRequest() {
@@ -126,6 +131,14 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
 
   public void recordRetryFanoutSize(int retryFanoutSize) {
     retryFanoutSizeSensor.record(retryFanoutSize);
+  }
+
+  public void recordRejectedRequestByLoadController() {
+    rejectedRequestCountByLoadControllerSensor.record();
+  }
+
+  public void recordRejectionRatio(double rejectionRatio) {
+    rejectionRatioSensor.record(rejectionRatio);
   }
 
   /**

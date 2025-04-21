@@ -114,6 +114,7 @@ import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SparseConcurrentList;
@@ -1726,6 +1727,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   @Override
   public void run() {
+    LogContext.setRegionLogContext(serverConfig.getRegionName());
     CountDownLatch shutdownLatch = gracefulShutdownLatch.get();
     boolean doFlush = true;
     try {
@@ -1999,16 +2001,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     } catch (Exception e) {
       LOGGER.error("{} Error while unsubscribing topic.", ingestionTaskName, e);
     }
+
+    try {
+      closeVeniceViewWriters(doFlush);
+    } catch (Exception e) {
+      LOGGER.error("Error while closing venice view writer", e);
+    }
+
     try {
       closeVeniceWriters(doFlush);
     } catch (Exception e) {
       LOGGER.error("Error while closing venice writers", e);
-    }
-
-    try {
-      closeVeniceViewWriters();
-    } catch (Exception e) {
-      LOGGER.error("Error while closing venice view writer", e);
     }
 
     if (topicManagerRepository != null) {
@@ -2027,7 +2030,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   public void closeVeniceWriters(boolean doFlush) {
   }
 
-  protected void closeVeniceViewWriters() {
+  protected void closeVeniceViewWriters(boolean doFlush) {
   }
 
   /**

@@ -47,14 +47,14 @@ We will use the following key and value schema for store creation.
 key schema:
 ```bash
 {
-    "name": "id",
+    "name": "key",
     "type": "string"
 }
 ```
 value schema:
 ```bash
 {
-   "name": "name",
+   "name": "value",
    "type": "string"
 }
 ```
@@ -146,7 +146,7 @@ value=val101
 
 #### Step 10: Exit `venice-client`
 ```bash
-# type exit command on the terminal or use cntrl + c
+# type exit command on the terminal or use ctrl + c
 exit
 ```
 

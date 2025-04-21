@@ -5,6 +5,7 @@ import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
 import java.util.Collection;
@@ -347,8 +348,11 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getDeadStoreStatsConfigs();
   }
 
-  public boolean isDeadStoreEndpointEnabled() {
-    return getCommonConfig().isDeadStoreEndpointEnabled();
+  public boolean isDeadStoreEndpointEnabled(String clusterName) {
+    if (!clusterToControllerConfigMap.containsKey(clusterName)) {
+      return false; // can be the case where venice-controllers isn't a configmap in current tests
+    }
+    return getControllerConfig(clusterName).isDeadStoreEndpointEnabled();
   }
 
   public long getTimeSinceLastLogCompactionThresholdMS() {
@@ -357,5 +361,9 @@ public class VeniceControllerMultiClusterConfig {
 
   public boolean isRealTimeTopicVersioningEnabled() {
     return getCommonConfig().getRealTimeTopicVersioningEnabled();
+  }
+
+  public LogContext getLogContext() {
+    return getCommonConfig().getLogContext();
   }
 }

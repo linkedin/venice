@@ -6,6 +6,7 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.ConfigKeys.LISTENER_SSL_PORT;
+import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.MAX_READ_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_SSL_HANDSHAKE_THREADS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CONNECTION_LIMIT;
@@ -167,6 +168,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           .put(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION, "base2_exponential_bucket_histogram")
           .put(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_SCALE, 3)
           .put(OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION_MAX_BUCKETS, 250)
+          .put(LOCAL_REGION_NAME, regionName)
           .put(properties);
 
       // setup d2 config first

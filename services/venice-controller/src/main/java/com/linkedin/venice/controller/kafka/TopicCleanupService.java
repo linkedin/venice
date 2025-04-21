@@ -17,6 +17,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
@@ -177,6 +178,7 @@ public class TopicCleanupService extends AbstractVeniceService {
   private class TopicCleanupTask implements Runnable {
     @Override
     public void run() {
+      LogContext.setStructuredLogContext(multiClusterConfigs.getLogContext());
       while (!stop.get()) {
         try {
           Thread.sleep(sleepIntervalBetweenTopicListFetchMs);

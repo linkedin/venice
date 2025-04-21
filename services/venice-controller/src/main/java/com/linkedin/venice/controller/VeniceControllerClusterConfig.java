@@ -217,6 +217,7 @@ import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pushmonitor.LeakedPushStatusCleanUpService;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -595,6 +596,7 @@ public class VeniceControllerClusterConfig {
   private final boolean isPreFetchDeadStoreStatsEnabled;
   private final long deadStoreStatsPreFetchIntervalInMs;
   private final VeniceProperties deadStoreStatsConfigs;
+  private final LogContext logContext;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
@@ -1130,6 +1132,7 @@ public class VeniceControllerClusterConfig {
         props.getLong(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, TimeUnit.MINUTES.toMillis(1));
     this.deferredVersionSwapServiceEnabled = props.getBoolean(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, false);
     this.skipDeferredVersionSwapForDVCEnabled = props.getBoolean(SKIP_DEFERRED_VERSION_SWAP_FOR_DVC_ENABLED, true);
+    this.logContext = new LogContext.Builder().setRegionName(regionName).setComponentName("controller").build();
   }
 
   public VeniceProperties getProps() {
@@ -2112,5 +2115,9 @@ public class VeniceControllerClusterConfig {
       throw new ConfigurationException(
           CONTROLLER_HELIX_INSTANCE_CAPACITY + " cannot be <  " + CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT);
     }
+  }
+
+  public LogContext getLogContext() {
+    return logContext;
   }
 }
