@@ -506,7 +506,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   @Override
   public synchronized void createSnapshot() {
     if (blobTransferEnabled) {
-      createSnapshot(rocksDB, fullPathForPartitionDBSnapshot, readOnly);
+      createSnapshot(rocksDB, fullPathForPartitionDBSnapshot);
     }
   }
 
@@ -1013,11 +1013,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   /**
    * util method to create a snapshot
    * It will check the snapshot directory and delete it if it exists, then generate a new snapshot
-   * @param rocksDB rocksDB instance
-   * @param fullPathForPartitionDBSnapshot the path to store the snapshot
-   * @param readOnly whether the rockDB is read-only
    */
-  public static void createSnapshot(RocksDB rocksDB, String fullPathForPartitionDBSnapshot, boolean readOnly) {
+  public static void createSnapshot(RocksDB rocksDB, String fullPathForPartitionDBSnapshot) {
     LOGGER.info("Creating snapshot in directory: {}", fullPathForPartitionDBSnapshot);
 
     // clean up the snapshot directory if it exists
@@ -1035,10 +1032,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
     try {
       LOGGER.info("Start creating snapshots in directory: {}", fullPathForPartitionDBSnapshot);
-      if (!readOnly) {
-        // if the rocksDB is read only, it will not enable to flush.
-        rocksDB.flush(new FlushOptions());
-      }
+
       Checkpoint checkpoint = Checkpoint.create(rocksDB);
       checkpoint.createCheckpoint(fullPathForPartitionDBSnapshot);
 
