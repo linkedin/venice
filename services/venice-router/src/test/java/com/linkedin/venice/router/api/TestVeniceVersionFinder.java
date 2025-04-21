@@ -104,6 +104,7 @@ public class TestVeniceVersionFinder {
     store.setMigrating(true);
     int currentVersion = 10;
     store.setCurrentVersion(currentVersion);
+    store.addVersion(new VersionImpl(storeName, currentVersion));
     doReturn(store).when(mockRepo).getStore(anyString());
     StaleVersionStats stats = mock(StaleVersionStats.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
@@ -123,7 +124,7 @@ public class TestVeniceVersionFinder {
             mock(VeniceMetricsRepository.class)));
     String kafkaTopicName = Version.composeKafkaTopic(storeName, currentVersion);
     doReturn(true).when(versionFinder).isPartitionResourcesReady(kafkaTopicName);
-    doReturn(true).when(versionFinder).isDecompressorReady(store, currentVersion, kafkaTopicName);
+    doReturn(true).when(versionFinder).isDecompressorReady(store.getVersion(currentVersion), kafkaTopicName);
     try {
       request.headers().add(HttpConstants.VENICE_ALLOW_REDIRECT, "1");
       versionFinder.getVersion("store", request);
@@ -144,6 +145,7 @@ public class TestVeniceVersionFinder {
     int currentVersion = 10;
     Store store = TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
     store.setCurrentVersion(currentVersion);
+    store.addVersion(new VersionImpl(storeName, currentVersion));
     // disable store, should return the number indicates that none of version is avaiable to read.
     store.setEnableReads(false);
     doReturn(store).when(mockRepo).getStore(storeName);
@@ -162,7 +164,7 @@ public class TestVeniceVersionFinder {
             mock(VeniceMetricsRepository.class)));
     String kafkaTopicName = Version.composeKafkaTopic(storeName, currentVersion);
     doReturn(true).when(versionFinder).isPartitionResourcesReady(kafkaTopicName);
-    doReturn(true).when(versionFinder).isDecompressorReady(store, currentVersion, kafkaTopicName);
+    doReturn(true).when(versionFinder).isDecompressorReady(store.getVersion(currentVersion), kafkaTopicName);
 
     try {
       versionFinder.getVersion(storeName, request);
@@ -190,6 +192,7 @@ public class TestVeniceVersionFinder {
     String fourthVersionKafkaTopic = Version.composeKafkaTopic(storeName, fourthVersion);
     String fifthVersionKafkaTopic = Version.composeKafkaTopic(storeName, fifthVersion);
     Store store = TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
+    // store.setCompressionStrategy(CompressionStrategy.NO_OP);
     store.setPartitionCount(1);
     store.addVersion(new VersionImpl(storeName, firstVersion));
     store.setCurrentVersion(firstVersion);
@@ -380,6 +383,8 @@ public class TestVeniceVersionFinder {
     store.addVersion(new VersionImpl(storeName, firstVersion));
     store.setCurrentVersion(firstVersion);
     store.updateVersionStatus(firstVersion, VersionStatus.ONLINE);
+    // note: first version's compression strategy is NO_OP by default
+    // -> VeniceVersionFinder::isDecompressorReady() for first version will return true
 
     doReturn(store).when(storeRepository).getStore(storeName);
 
@@ -530,7 +535,7 @@ public class TestVeniceVersionFinder {
 
     // Update the store's version to 1
     store.setCurrentVersion(firstVersion);
-    doReturn(true).when(versionFinder).isDecompressorReady(any(), anyInt(), anyString());
+    doReturn(true).when(versionFinder).isDecompressorReady(any(), anyString());
     doReturn(true).when(versionFinder).isPartitionResourcesReady(anyString());
 
     // Call getVersion() again and verify it returns the updated version

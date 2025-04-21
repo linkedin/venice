@@ -95,7 +95,7 @@ public class TestVenicePathParser {
             CLUSTER,
             compressorFactory,
             null));
-    doReturn(true).when(veniceVersionFinder).isDecompressorReady(any(), anyInt(), anyString());
+    doReturn(true).when(veniceVersionFinder).isDecompressorReady(any(), anyString());
     doReturn(true).when(veniceVersionFinder).isPartitionResourcesReady(anyString());
     return veniceVersionFinder;
   }
