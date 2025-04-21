@@ -321,7 +321,6 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     int newAdminPort = controllerConfig.getAdminPort() + 100;
     PropertyBuilder builder = new PropertyBuilder().put(controllerProps.toProperties())
         .put("admin.port", newAdminPort)
-        .put("controller.cluster.name", clusterName)
         .put("controller.dead.store.endpoint.enabled", true)
         .put("controller.dead.store.stats.class.name", MockDeadStoreStats.class.getName());
     VeniceProperties newControllerProps = builder.build();
