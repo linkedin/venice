@@ -125,6 +125,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -177,6 +178,7 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final boolean disableParentRequestTopicForStreamPushes;
   private final PubSubTopicRepository pubSubTopicRepository;
   private final VeniceControllerRequestHandler requestHandler;
+  private final LogContext logContext;
 
   public AdminSparkServer(
       int port,
@@ -192,6 +194,7 @@ public class AdminSparkServer extends AbstractVeniceService {
       boolean disableParentRequestTopicForStreamPushes,
       PubSubTopicRepository pubSubTopicRepository,
       VeniceControllerRequestHandler requestHandler) {
+    this.logContext = admin.getLogContext();
     this.port = port;
     this.enforceSSL = enforceSSL;
     this.sslEnabled = sslConfig.isPresent();
@@ -237,6 +240,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     }
 
     httpService.before((request, response) -> {
+      LogContext.setStructuredLogContext(logContext);
       AuditInfo audit = new AuditInfo(request);
       LOGGER.info(audit.toString());
       SparkServerStats stats = statsMap.get(request.queryParams(CLUSTER));
@@ -266,6 +270,7 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     // filter for blocked api calls
     httpService.before((request, response) -> {
+      LogContext.setStructuredLogContext(logContext);
       if (disabledRoutes.contains(ControllerRoute.valueOfPath(request.uri()))) {
         httpService.halt(403, String.format("Route %s has been disabled in venice controller config!!", request.uri()));
       }
@@ -285,6 +290,7 @@ public class AdminSparkServer extends AbstractVeniceService {
         LOGGER.info(audit.failureString(response.body()));
         stats.recordFailedRequestLatency(latency);
       }
+      LogContext.clearLogContext();
     });
 
     // Build all different routes

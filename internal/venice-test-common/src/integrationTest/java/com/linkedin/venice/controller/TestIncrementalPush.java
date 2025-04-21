@@ -23,6 +23,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
@@ -111,8 +112,13 @@ public class TestIncrementalPush {
             .equals(ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED));
 
     ZkClient zkClient = ZkClientFactory.newZkClient(cluster.getZk().getAddress());
-    VeniceOfflinePushMonitorAccessor accessor =
-        new VeniceOfflinePushMonitorAccessor(cluster.getClusterName(), zkClient, new HelixAdapterSerializer(), 1, 0);
+    VeniceOfflinePushMonitorAccessor accessor = new VeniceOfflinePushMonitorAccessor(
+        cluster.getClusterName(),
+        zkClient,
+        new HelixAdapterSerializer(),
+        1,
+        0,
+        LogContext.EMPTY);
 
     // Even after consuming SOIP, we should see replica current status not flipped to non-terminal status
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {

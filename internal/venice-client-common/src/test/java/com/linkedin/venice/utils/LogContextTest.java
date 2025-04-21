@@ -16,12 +16,12 @@ public class LogContextTest {
 
   @BeforeMethod
   public void setUp() {
-    ThreadContext.clearAll();
+    LogContext.clearLogContext();
   }
 
   @AfterMethod
   public void tearDown() {
-    ThreadContext.clearAll();
+    LogContext.clearLogContext();
   }
 
   @Test
@@ -31,7 +31,7 @@ public class LogContextTest {
     assertNotNull(context);
     assertEquals(context.getRegionName(), REGION_NAME);
     assertEquals(context.getComponentName(), COMPONENT_NAME);
-    assertEquals(context.toString(), COMPONENT_NAME + "|" + REGION_NAME);
+    assertEquals(context.toString(), COMPONENT_NAME + "--" + REGION_NAME);
   }
 
   @Test
@@ -113,5 +113,63 @@ public class LogContextTest {
 
     LogContext.setStructuredLogContext(second);
     assertEquals(ThreadContext.get(LogContext.LOG_CONTEXT_KEY), second.toString());
+  }
+
+  @Test
+  public void testSetLogContextWithString() {
+    String expected = "test-region";
+    LogContext.setLogContext(expected);
+
+    String actual = ThreadContext.get(LogContext.LOG_CONTEXT_KEY);
+    assertNotNull(actual);
+    assertEquals(actual, expected);
+  }
+
+  @Test
+  public void testSetLogContextWithLogContextObject() {
+    LogContext context = LogContext.newBuilder().setComponentName("server").setRegionName("us-east-1").build();
+
+    LogContext.setLogContext(context);
+
+    String actual = ThreadContext.get(LogContext.LOG_CONTEXT_KEY);
+    assertNotNull(actual);
+    assertEquals(actual, context.toString());
+  }
+
+  @Test
+  public void testSetLogContextWithNull() {
+    LogContext.setLogContext(null);
+    String actual = ThreadContext.get(LogContext.LOG_CONTEXT_KEY);
+    assertNull(actual);
+  }
+
+  @Test
+  public void testSetLogContextWithUnsupportedType() {
+    Object unsupported = new Object();
+    LogContext.setLogContext(unsupported);
+
+    String actual = ThreadContext.get(LogContext.LOG_CONTEXT_KEY);
+    assertNull(actual); // Nothing should have been set
+  }
+
+  @Test
+  public void testClearLogContextRemovesKey() {
+    ThreadContext.put(LogContext.LOG_CONTEXT_KEY, "test-value");
+    assertNotNull(ThreadContext.get(LogContext.LOG_CONTEXT_KEY));
+
+    LogContext.clearLogContext();
+
+    assertNull(ThreadContext.get(LogContext.LOG_CONTEXT_KEY));
+  }
+
+  @Test
+  public void testClearLogContextDoesNotThrowWhenKeyAbsent() {
+    assertNull(ThreadContext.get(LogContext.LOG_CONTEXT_KEY));
+
+    // Should not throw any exception even if the key is not present
+    LogContext.clearLogContext();
+
+    // Still null, but no exception occurred
+    assertNull(ThreadContext.get(LogContext.LOG_CONTEXT_KEY));
   }
 }

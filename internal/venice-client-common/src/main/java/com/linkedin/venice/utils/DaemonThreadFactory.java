@@ -13,9 +13,9 @@ import org.apache.logging.log4j.ThreadContext;
 public class DaemonThreadFactory implements ThreadFactory {
   protected final AtomicInteger threadNumber;
   private final String namePrefix;
-  private final String logContext;
+  private final Object logContext;
 
-  public DaemonThreadFactory(String threadNamePrefix, @Nullable String logContext) {
+  public DaemonThreadFactory(String threadNamePrefix, @Nullable Object logContext) {
     this.threadNumber = new AtomicInteger(0);
     this.namePrefix = threadNamePrefix;
     this.logContext = logContext;
@@ -28,7 +28,7 @@ public class DaemonThreadFactory implements ThreadFactory {
   @Override
   public Thread newThread(Runnable r) {
     Runnable wrapped = () -> {
-      LogContext.setRegionLogContext(logContext);
+      LogContext.setLogContext(logContext);
       try {
         r.run();
       } finally {

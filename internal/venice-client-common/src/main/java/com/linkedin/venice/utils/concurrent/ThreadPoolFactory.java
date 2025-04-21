@@ -27,7 +27,7 @@ public final class ThreadPoolFactory {
   public static ThreadPoolExecutor createThreadPool(
       int threadCount,
       String threadNamePrefix,
-      @Nullable String logContext,
+      @Nullable Object logContext,
       int capacity,
       BlockingQueueType blockingQueueType) {
     ThreadPoolExecutor executor = new ThreadPoolExecutor(

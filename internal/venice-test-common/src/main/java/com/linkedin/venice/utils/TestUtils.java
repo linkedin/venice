@@ -649,8 +649,13 @@ public class TestUtils {
       String stateModelDef) {
     ZkClient foo = new ZkClient(zkAddress);
     foo.close();
-    VeniceOfflinePushMonitorAccessor offlinePushStatusAccessor =
-        new VeniceOfflinePushMonitorAccessor(cluster, new ZkClient(zkAddress), new HelixAdapterSerializer(), 3, 1000);
+    VeniceOfflinePushMonitorAccessor offlinePushStatusAccessor = new VeniceOfflinePushMonitorAccessor(
+        cluster,
+        new ZkClient(zkAddress),
+        new HelixAdapterSerializer(),
+        3,
+        1000,
+        cluster);
     MockTestStateModelFactory stateModelFactory = new MockTestStateModelFactory(offlinePushStatusAccessor);
     return getParticipant(cluster, nodeId, zkAddress, httpPort, stateModelFactory, stateModelDef);
   }

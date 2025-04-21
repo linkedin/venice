@@ -375,7 +375,8 @@ public class HelixParticipationService extends AbstractVeniceService
         zkClient,
         new HelixAdapterSerializer(),
         veniceConfigLoader.getVeniceClusterConfig().getRefreshAttemptsForZkReconnect(),
-        veniceConfigLoader.getVeniceClusterConfig().getRefreshIntervalForZkReconnectInMs());
+        veniceConfigLoader.getVeniceClusterConfig().getRefreshIntervalForZkReconnectInMs(),
+        veniceServerConfig.getRegionName());
 
     /**
      * The accessor can only get created successfully after helix manager is created.
