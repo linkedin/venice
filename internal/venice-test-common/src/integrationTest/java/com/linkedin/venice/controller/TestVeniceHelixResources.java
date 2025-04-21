@@ -55,7 +55,7 @@ public class TestVeniceHelixResources {
         .getReadOnlyZKSharedSystemStoreRepository();
     doReturn(mock(HelixReadOnlyZKSharedSchemaRepository.class)).when(veniceHelixAdmin)
         .getReadOnlyZKSharedSchemaRepository();
-    veniceHelixAdmin.deadStoreStats = mock(DeadStoreStats.class);
+    veniceHelixAdmin.deadStoreStatsMap.put(cluster, mock(DeadStoreStats.class));
 
     doReturn(Collections.emptyList()).when(veniceHelixAdmin).getAllStores(cluster);
 
