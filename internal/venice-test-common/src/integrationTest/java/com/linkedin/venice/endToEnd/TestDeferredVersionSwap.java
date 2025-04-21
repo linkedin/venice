@@ -6,12 +6,16 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJ
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V3_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 
+import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -19,6 +23,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
@@ -31,6 +36,7 @@ import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
 import java.util.HashSet;
@@ -496,4 +502,74 @@ public class TestDeferredVersionSwap {
     }
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDeferredVersionSwapWithoutTargetRegionPush() throws IOException {
+    File inputDir = getTempDataDirectory();
+    TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100, 100);
+    // Setup job properties
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("testDeferredVersionSwapWithoutTargetRegionPush");
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    String keySchemaStr = "\"string\"";
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setUnusedSchemaDeletionEnabled(true);
+    storeParms.setTargetRegionSwapWaitTime(1);
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
+      createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, NAME_RECORD_V3_SCHEMA.toString(), props, storeParms).close();
+
+      VeniceClusterWrapper veniceClusterWrapper =
+          childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1).getClusters().get(CLUSTER_NAMES[0]);
+
+      // Start push job with version swap
+      props.put(DEFER_VERSION_SWAP, true);
+      TestWriteUtils.runPushJob("Test push job", props);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 1),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+
+      parentControllerClient.rollForwardToFutureVersion(
+          storeName,
+          String.join(",", multiRegionMultiClusterWrapper.getChildRegionNames()));
+
+      // Check that child version status is marked as ONLINE if it didn't fail
+      for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
+        ControllerClient childControllerClient =
+            new ControllerClient(CLUSTER_NAMES[0], childDatacenter.getControllerConnectString());
+        StoreResponse store = childControllerClient.getStore(storeName);
+        Optional<Version> version = store.getStore().getVersion(1);
+        assertNotNull(version);
+        assertEquals(version.get().getStatus(), VersionStatus.ONLINE);
+      }
+
+      // Verify the version is online
+      TestUtils.waitForNonDeterministicAssertion(50, TimeUnit.SECONDS, () -> {
+        int version = veniceClusterWrapper.getRandomVeniceController()
+            .getVeniceAdmin()
+            .getCurrentVersion(CLUSTER_NAMES[0], storeName);
+        Assert.assertEquals(version, 1);
+      });
+
+      veniceClusterWrapper.refreshAllRouterMetaData();
+
+      // use a thin client to verify the data in the push
+      MetricsRepository metricsRepository = new MetricsRepository();
+      try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName)
+              .setVeniceURL(veniceClusterWrapper.getRandomRouterURL())
+              .setMetricsRepository(metricsRepository))) {
+
+        for (int i = 1; i <= 100; i++) {
+          try {
+            Assert.assertNotNull(avroClient.get(Integer.toString(i)).get());
+          } catch (Exception e) {
+            throw new RuntimeException(e);
+          }
+        }
+      }
+    }
+  }
 }

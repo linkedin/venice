@@ -32,15 +32,15 @@ import org.apache.helix.participant.statemachine.Transition;
  *
  * There is only at most one leader at a time and it is elected from the follower. At present,
  * Followers and Leader behave the same in the read path. However, in the write path, leader
- * will take extra work. See {@link LeaderFollowerStoreIngestionTask}
- * for more details.
+ * will take extra work. See {@link LeaderFollowerStoreIngestionTask} for more details.
  *
  * There is an optional latch between Offline to Follower transition. The latch is only placed if the
- * version state model served is the current version. (During cluster rebalancing or SN rebouncing)
- * Since Helix rebalancer only refers to state model to determine the rebalancing time. The latch is
- * a safeguard to prevent Helix "over-rebalancing" the cluster and failing the read traffic. The
- * latch is released when ingestion has caught up the lag or the ingestion has reached the last known
- * offset of VT.
+ * version state model served is the current version or the future version but completed already.
+ * (During cluster rebalancing or SN rebouncing) Since Helix rebalancer only refers to state model
+ * to determine the rebalancing time. The latch is a safeguard to prevent Helix "over-rebalancing"
+ * the cluster and failing the read traffic for the current version or when a deferred swap rolls
+ * forward the future version. The latch is released when ingestion has caught up the lag or the
+ * ingestion has reached the last known offset of VT.
  */
 @StateModelInfo(initialState = HelixState.OFFLINE_STATE, states = { HelixState.LEADER_STATE, HelixState.STANDBY_STATE })
 public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateModel {
