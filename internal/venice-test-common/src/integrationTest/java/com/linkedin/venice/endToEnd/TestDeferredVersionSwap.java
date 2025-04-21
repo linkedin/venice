@@ -531,31 +531,40 @@ public class TestDeferredVersionSwap {
           30,
           TimeUnit.SECONDS);
 
-      parentControllerClient.rollForwardToFutureVersion(
-          storeName,
-          String.join(",", multiRegionMultiClusterWrapper.getChildRegionNames()));
-
-      // Check that child version status is marked as ONLINE if it didn't fail
+      // Check that child version status is marked as ONLINE
       for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
         ControllerClient childControllerClient =
             new ControllerClient(CLUSTER_NAMES[0], childDatacenter.getControllerConnectString());
         StoreResponse store = childControllerClient.getStore(storeName);
         Optional<Version> version = store.getStore().getVersion(1);
         assertNotNull(version);
-        assertEquals(version.get().getStatus(), VersionStatus.ONLINE);
+        VersionStatus versionStatus = version.get().getStatus();
+        assertEquals(versionStatus, VersionStatus.ONLINE, "versionStatus should be ONLINE, but was: " + versionStatus);
       }
 
-      // Verify the version is online
+      // validate that the current version is still 0 before rolling forward
+      Assert.assertEquals(
+          veniceClusterWrapper.getRandomVeniceController()
+              .getVeniceAdmin()
+              .getCurrentVersion(CLUSTER_NAMES[0], storeName),
+          0,
+          "version before roll forward should be 0");
+
+      // roll forward
+      parentControllerClient.rollForwardToFutureVersion(
+          storeName,
+          String.join(",", multiRegionMultiClusterWrapper.getChildRegionNames()));
+
+      // validate that the current version is rolled forward to 1
       TestUtils.waitForNonDeterministicAssertion(50, TimeUnit.SECONDS, () -> {
         int version = veniceClusterWrapper.getRandomVeniceController()
             .getVeniceAdmin()
             .getCurrentVersion(CLUSTER_NAMES[0], storeName);
-        Assert.assertEquals(version, 1);
+        Assert.assertEquals(version, 1, "version should be 1, but was: " + version);
       });
 
-      veniceClusterWrapper.refreshAllRouterMetaData();
-
       // use a thin client to verify the data in the push
+      veniceClusterWrapper.refreshAllRouterMetaData();
       MetricsRepository metricsRepository = new MetricsRepository();
       try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName)
