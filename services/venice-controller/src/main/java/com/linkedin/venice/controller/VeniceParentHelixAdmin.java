@@ -3766,10 +3766,10 @@ public class VeniceParentHelixAdmin implements Admin {
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int versionNum = Version.parseVersionFromKafkaTopicName(kafkaTopic);
     HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
+    ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+    Store parentStore = repository.getStore(storeName);
+    Version version = parentStore.getVersion(versionNum);
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
-      ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
-      Store parentStore = repository.getStore(storeName);
-      Version version = parentStore.getVersion(versionNum);
       if (currentReturnStatus.isTerminal()) {
         LOGGER.info("Received terminal status: {} for topic: {}", currentReturnStatus, kafkaTopic);
 
@@ -3854,14 +3854,14 @@ public class VeniceParentHelixAdmin implements Admin {
     boolean isHybridStore = storeVersion != null && storeVersion.getHybridStoreConfig() != null;
 
     boolean isTargetRegionPush = !StringUtils.isEmpty(targetedRegions);
-    boolean isTargetRegionPushWithDeferredSwapForCurrentVersion = isTargetRegionPush && version.isVersionSwapDeferred();
+    boolean isTargetRegionPushWithDeferredSwap = isTargetRegionPush && version.isVersionSwapDeferred();
 
     if (!isTargetRegionPush // Push is complete for a normal batch push w/o target region push
         || isPushCompleteInAllRegionsForTargetRegionPush // Push is complete in all regions for a target region push w/o
                                                          // deferred swap
         || isHybridStore // Push is to a hybrid store
-        || isTargetRegionPushWithDeferredSwapForCurrentVersion // Push is complete for a target region push with
-                                                               // deferred swap
+        || isTargetRegionPushWithDeferredSwap // Push is complete for a target region push with
+                                              // deferred swap
     ) {
       LOGGER.info("Truncating parent VT {} after push status {}", kafkaTopic, currentReturnStatus.getRootStatus());
       truncateTopicsOptionally(
