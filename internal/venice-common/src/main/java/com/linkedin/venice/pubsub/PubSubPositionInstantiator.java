@@ -11,10 +11,10 @@ import java.io.IOException;
 
 
 /**
- * Factory class for creating PubSubPosition objects from wire format
+ * A class for creating PubSubPosition objects from wire format
  */
-public class PubSubPositionFactory {
-  public static final PubSubPositionFactory INSTANCE = new PubSubPositionFactory();
+public class PubSubPositionInstantiator {
+  public static final PubSubPositionInstantiator INSTANCE = new PubSubPositionInstantiator();
 
   /**
    * Converts a wire format position to a PubSubPosition
