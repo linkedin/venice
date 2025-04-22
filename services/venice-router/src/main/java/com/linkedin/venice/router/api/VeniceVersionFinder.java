@@ -160,38 +160,23 @@ public class VeniceVersionFinder {
     boolean existingVersionStatusOnline = existingVersionStatus.equals(VersionStatus.ONLINE);
     boolean existingVersionDecompressorReady =
         isDecompressorReady(existingVersion, Version.composeKafkaTopic(storeName, existingVersionNumber));
-    if (existingVersionStatusOnline && existingVersionDecompressorReady) {
-      // existing version ready to serve
-      if (LOGGER.isDebugEnabled()) {
-        String errorMessage = "Unable to serve new version: " + newVersionKafkaTopic + ".";
-        errorMessage += newVersionPartitionResourcesReady ? "" : " Partition resources not ready for new version.";
-        errorMessage += newVersionDecompressorReady ? "" : " Decompressor not ready for new version.";
-        errorMessage += " Continuing to serve existing version: " + existingVersionNumber + ".";
-        if (!EXCEPTION_FILTER.isRedundantException(errorMessage)) {
-          LOGGER.warn(errorMessage);
-        }
-      }
-      stats.recordStale(metadataCurrentVersionNumber, existingVersionNumber);
-      return existingVersionNumber;
+    // existing version ready to serve
+    if (!EXCEPTION_FILTER.isRedundantException(storeName)) {
+      LOGGER.warn(
+          "Unable to serve new version: {}." + " Partition resources ready for new version? {}."
+              + " Decompressor not ready for new version? {}." + " Continuing to serve existing version: {}."
+              + " Decompressor ready for existing version? (Has dictionary downloaded?) {}.",
+          newVersionKafkaTopic,
+          newVersionPartitionResourcesReady,
+          newVersionDecompressorReady,
+          existingVersionNumber,
+          existingVersionDecompressorReady);
     }
-
-    // existing version not ready to serve -> no version ready to serve
-    if (LOGGER.isDebugEnabled()) {
-      String errorMessage = "Unable to serve new version: " + newVersionKafkaTopic + ".";
-      errorMessage += newVersionPartitionResourcesReady ? "" : " Partition resources not ready for new version.";
-      errorMessage += newVersionDecompressorReady ? "" : " Decompressor not ready for new version.";
-      errorMessage += "Unable to serve existing version: " + existingVersionNumber + " No version ready to serve.";
-      errorMessage += existingVersionStatusOnline ? "" : " Existing version has status: " + existingVersionStatus;
-      errorMessage += existingVersionDecompressorReady
-          ? ""
-          : " Decompressor not ready for existing version. (Has dictionary downloaded?)";
-      if (!EXCEPTION_FILTER.isRedundantException(errorMessage)) {
-        LOGGER.warn(errorMessage);
-      }
-    }
-    stats.recordStale(metadataCurrentVersionNumber, Store.NON_EXISTING_VERSION);
-    lastCurrentVersionMap.put(storeName, Store.NON_EXISTING_VERSION);
-    return Store.NON_EXISTING_VERSION;
+    stats.recordStale(metadataCurrentVersionNumber, existingVersionNumber);
+    lastCurrentVersionMap.put(storeName, existingVersionNumber);
+    // new and existing version both being not ready is a rare case. However, returning something is better than
+    // nothing.
+    return existingVersionNumber;
   }
 
   protected boolean isPartitionResourcesReady(String kafkaTopic) {
