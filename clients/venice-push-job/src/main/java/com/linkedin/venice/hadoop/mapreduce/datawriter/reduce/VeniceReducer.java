@@ -70,7 +70,6 @@ public class VeniceReducer extends AbstractPartitionWriter
       dataWriterTaskTracker = getDataWriterTaskTracker();
     }
 
-    // TODO: Figure out how to make logical timestamp work for MR
     processValuesForKey(
         key.copyBytes(),
         IteratorUtils.mapIterator(values, BytesWritable::copyBytes),

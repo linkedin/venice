@@ -42,9 +42,9 @@ public abstract class AbstractAvroRecordReader<INPUT_KEY, INPUT_VALUE>
       Schema dataSchema,
       String keyFieldStr,
       String valueFieldStr,
+      String timestampFieldStr,
       ETLValueSchemaTransformation etlValueSchemaTransformation,
-      Schema updateSchema,
-      String timestampFieldStr) {
+      Schema updateSchema) {
     this.dataSchema = dataSchema;
     Schema.Field keyField = getField(dataSchema, keyFieldStr);
     keyFieldPos = keyField.pos();

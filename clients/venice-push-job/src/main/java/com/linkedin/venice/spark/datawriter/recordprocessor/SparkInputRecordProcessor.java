@@ -8,13 +8,13 @@ import com.linkedin.venice.spark.SparkConstants;
 import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
 import com.linkedin.venice.spark.datawriter.task.SparkDataWriterTaskTracker;
 import com.linkedin.venice.spark.engine.SparkEngineTaskConfigProvider;
+import com.linkedin.venice.utils.TriConsumer;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
-import org.apache.logging.log4j.util.TriConsumer;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema;
 
@@ -34,8 +34,8 @@ public class SparkInputRecordProcessor extends AbstractInputRecordProcessor<Byte
   public Iterator<Row> processRecord(Row record) {
     List<Row> outputRows = new ArrayList<>();
     ByteBuffer keyBB = ByteBuffer.wrap(record.getAs(SparkConstants.KEY_COLUMN_NAME));
-    // GET THE TIMESTAMP!!!!! ITS HERE
     byte[] value = record.getAs(SparkConstants.VALUE_COLUMN_NAME);
+    Long timestamp = record.getAs(SparkConstants.TIMESTAMP_COLUMN_NAME);
     // add get timestamp (make complex object?)
     ByteBuffer valueBB = value == null ? null : ByteBuffer.wrap(value);
     super.processRecord(keyBB, valueBB, getRecordEmitter(outputRows), dataWriterTaskTracker);
@@ -52,11 +52,4 @@ public class SparkInputRecordProcessor extends AbstractInputRecordProcessor<Byte
       rows.add(new GenericRowWithSchema(new Object[] { key, value, timestamp }, SparkConstants.DEFAULT_SCHEMA));
     };
   }
-
-  // TODO: Add timestamp or something
-  // private BiConsumer<byte[], byte[]> getRecordEmitter(List<Row> rows) {
-  // return (key, value) -> {
-  // rows.add(new GenericRowWithSchema(new Object[] { key, value }, SparkConstants.DEFAULT_SCHEMA));
-  // };
-  // }
 }

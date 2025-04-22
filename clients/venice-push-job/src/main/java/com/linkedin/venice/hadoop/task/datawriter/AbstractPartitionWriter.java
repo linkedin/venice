@@ -17,7 +17,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_I
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_ID_PROP;
-import static com.linkedin.venice.writer.VeniceWriter.*;
+import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.annotation.NotThreadsafe;
@@ -201,7 +201,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   private PubSubProducerCallback callback = null;
   private DataWriterTaskTracker dataWriterTaskTracker = null;
   /**
-   * This doesn't need to be atomic since {@link #processValuesAndTimestampsForKey(byte[], Iterator, DataWriterTaskTracker)} will be called sequentially.
+   * This doesn't need to be atomic since {@link #processValuesForKey(byte[], Iterator, DataWriterTaskTracker)} will be called sequentially.
    */
   private long messageSent = 0;
   private final AtomicLong messageCompleted = new AtomicLong();

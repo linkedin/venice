@@ -3,7 +3,10 @@ package com.linkedin.venice.zstd;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_KB;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.*;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTIONARY_SAMPLE_SIZE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTIONARY_SIZE_LIMIT;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_OPTIONAL_TIMESTAMP_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PATH_FILTER;
 
 import com.github.luben.zstd.ZstdDictTrainer;
 import com.github.luben.zstd.ZstdException;
@@ -55,9 +58,9 @@ public class TestZstdLibrary {
             HdfsAvroUtils.getFileSchema(fs, fileStatus.getPath()),
             "key",
             "value",
+            DEFAULT_OPTIONAL_TIMESTAMP_FIELD_PROP,
             ETLValueSchemaTransformation.NONE,
-            null,
-            DEFAULT_OPTIONAL_TIMESTAMP_FIELD_PROP);
+            null);
         VeniceAvroFileIterator avroFileIterator = new VeniceAvroFileIterator(fs, fileStatus.getPath(), recordReader);
         InputDataInfoProvider.loadZstdTrainingSamples(avroFileIterator, pushJobZstdConfig);
         Utils.closeQuietlyWithErrorLogged(avroFileIterator);

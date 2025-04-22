@@ -23,7 +23,7 @@ public final class VenicePushJobConstants {
 
   public static final String KEY_FIELD_PROP = "key.field";
   public static final String VALUE_FIELD_PROP = "value.field";
-  public static final String OPTIONAL_TIMESTAMP_FIELD_PROP = "timestamp.field";
+  public static final String TIMESTAMP_FIELD_PROP = "timestamp.field";
   public static final String DEFAULT_KEY_FIELD_PROP = "key";
   public static final String DEFAULT_VALUE_FIELD_PROP = "value";
   public static final String DEFAULT_OPTIONAL_TIMESTAMP_FIELD_PROP = "timestamp";

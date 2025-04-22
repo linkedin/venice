@@ -26,8 +26,8 @@ public class SparkConstants {
   public static final StructType DEFAULT_SCHEMA_WITH_PARTITION = new StructType(
       new StructField[] { new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()),
           new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()),
-          new StructField(PARTITION_COLUMN_NAME, IntegerType, false, Metadata.empty()),
-          new StructField(TIMESTAMP_COLUMN_NAME, LongType, true, Metadata.empty()) });
+          new StructField(TIMESTAMP_COLUMN_NAME, LongType, true, Metadata.empty()),
+          new StructField(PARTITION_COLUMN_NAME, IntegerType, false, Metadata.empty()) });
 
   /**
    * Configs with this prefix will be set when building the spark session. These will get applied to all Spark jobs that
