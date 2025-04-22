@@ -460,7 +460,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
   private final LogContext logContext;
 
-  DeadStoreStats deadStoreStats;
+  final Map<String, DeadStoreStats> deadStoreStatsMap = new VeniceConcurrentHashMap<>();
 
   public VeniceHelixAdmin(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
@@ -699,17 +699,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               ParticipantMessageKey.getClassSchema()));
     }
 
-    if (multiClusterConfigs.isDeadStoreEndpointEnabled(controllerClusterName)) {
-      Class<? extends DeadStoreStats> deadStoreStatsClass =
-          ReflectUtils.loadClass(multiClusterConfigs.getDeadStoreStatsClassName());
-      try {
-        deadStoreStats = ReflectUtils.callConstructor(
-            deadStoreStatsClass,
-            new Class[] { VeniceProperties.class },
-            new Object[] { multiClusterConfigs.getDeadStoreStatsConfigs() });
-      } catch (Exception e) {
-        LOGGER.error("Failed to enable " + DeadStoreStats.class.getSimpleName(), e);
-        throw new VeniceException(e);
+    for (String clusterName: multiClusterConfigs.getClusters()) {
+      if (multiClusterConfigs.getControllerConfig(clusterName).isDeadStoreEndpointEnabled()) {
+        Class<? extends DeadStoreStats> deadStoreStatsClass =
+            ReflectUtils.loadClass(multiClusterConfigs.getControllerConfig(clusterName).getDeadStoreStatsClassName());
+        try {
+          DeadStoreStats deadStoreStats = ReflectUtils.callConstructor(
+              deadStoreStatsClass,
+              new Class[] { VeniceProperties.class },
+              new Object[] { multiClusterConfigs.getControllerConfig(clusterName).getDeadStoreStatsConfigs() });
+
+          deadStoreStatsMap.put(clusterName, deadStoreStats);
+        } catch (Exception e) {
+          LOGGER.error("Failed to enable " + DeadStoreStats.class.getSimpleName(), e);
+          throw new VeniceException(e);
+        }
       }
     }
 
@@ -8266,7 +8270,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   public void preFetchDeadStoreStats(String clusterName, List<StoreInfo> storeInfos) {
     checkControllerLeadershipFor(clusterName);
-    deadStoreStats.preFetchStats(storeInfos);
+    deadStoreStatsMap.get(clusterName).preFetchStats(storeInfos);
   }
 
   /**
@@ -8275,7 +8279,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public List<StoreInfo> getDeadStores(String clusterName, String storeName, boolean includeSystemStores) {
     checkControllerLeadershipFor(clusterName);
-    if (!multiClusterConfigs.isDeadStoreEndpointEnabled(clusterName)) {
+    if (!multiClusterConfigs.getControllerConfig(clusterName).isDeadStoreEndpointEnabled()) {
       throw new VeniceUnsupportedOperationException("Dead store stats is not enabled.");
     }
 
@@ -8285,13 +8289,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           .filter(store -> includeSystemStores || !store.isSystemStore())
           .map(StoreInfo::fromStore)
           .collect(Collectors.toList());
-      return deadStoreStats.getDeadStores(clusterStoreInfos);
+      return deadStoreStatsMap.get(clusterName).getDeadStores(clusterStoreInfos);
     } else {
       StoreInfo store = StoreInfo.fromStore(getStore(clusterName, storeName));
       if (store == null) {
         throw new VeniceNoStoreException(storeName, clusterName);
       }
-      return deadStoreStats.getDeadStores(Collections.singletonList(store));
+      return deadStoreStatsMap.get(clusterName).getDeadStores(Collections.singletonList(store));
     }
   }
 

@@ -340,21 +340,6 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getLogCompactionIntervalMS();
   }
 
-  public String getDeadStoreStatsClassName() {
-    return getCommonConfig().getDeadStoreStatsClassName();
-  }
-
-  public VeniceProperties getDeadStoreStatsConfigs() {
-    return getCommonConfig().getDeadStoreStatsConfigs();
-  }
-
-  public boolean isDeadStoreEndpointEnabled(String clusterName) {
-    if (!clusterToControllerConfigMap.containsKey(clusterName)) {
-      return false; // can be the case where venice-controllers isn't a configmap in current tests
-    }
-    return getControllerConfig(clusterName).isDeadStoreEndpointEnabled();
-  }
-
   public long getTimeSinceLastLogCompactionThresholdMS() {
     return getCommonConfig().getTimeSinceLastLogCompactionThresholdMS();
   }
