@@ -15,6 +15,7 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.util.List;
 import java.util.Optional;
@@ -27,14 +28,16 @@ import org.testng.annotations.Test;
 
 
 public class TestProtocolVersionAutoDetection {
+  private static final int TEST_TIMEOUT = 30 * Time.MS_PER_SECOND;
   private static final int NUMBER_OF_CHILD_DATACENTERS = 1;
   private static final int NUMBER_OF_CLUSTERS = 1;
   private static final long SERVICE_INTERVAL_MS = TimeUnit.SECONDS.toMillis(5);
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private String clusterName;
+  private ControllerClient parentControllerClient;
 
-  @BeforeClass
+  @BeforeClass(alwaysRun = true)
   public void setUp() {
     Properties parentControllerProps = new Properties();
     parentControllerProps.put(CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED, true);
@@ -57,6 +60,9 @@ public class TestProtocolVersionAutoDetection {
         ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     clusterName = multiRegionMultiClusterWrapper.getClusterNames()[0];
+    VeniceControllerWrapper parentController =
+        multiRegionMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName);
+    parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
   }
 
   @AfterClass(alwaysRun = true)
@@ -64,16 +70,14 @@ public class TestProtocolVersionAutoDetection {
     Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testProtocolVersionAutoDetection() {
-    VeniceControllerWrapper parentController =
-        multiRegionMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName);
-    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
-
-    // update the upstream version to LATEST + 1
-    AdminTopicMetadataResponse updateResponse = parentControllerClient
-        .updateAdminOperationProtocolVersion(clusterName, (long) (LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION + 1));
-    assertFalse(updateResponse.isError());
+    TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      // update the upstream version to LATEST + 1
+      AdminTopicMetadataResponse updateResponse = parentControllerClient
+          .updateAdminOperationProtocolVersion(clusterName, (long) (LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION + 1));
+      assertFalse(updateResponse.isError());
+    });
 
     TestUtils.waitForNonDeterministicAssertion(SERVICE_INTERVAL_MS, TimeUnit.MILLISECONDS, () -> {
       // With ProtocolVersionAutoDetectionService is enabled, the version should be updated to LATEST (smallest version
@@ -85,26 +89,21 @@ public class TestProtocolVersionAutoDetection {
     });
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testGetAdminOperationProtocolVersionFromControllers() {
     // parent controller
-    VeniceControllerWrapper parentController =
-        multiRegionMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName);
-    try (ControllerClient parentControllerClient =
-        new ControllerClient(clusterName, parentController.getControllerUrl())) {
-      AdminOperationProtocolVersionControllerResponse parentResponse =
-          parentControllerClient.getAdminOperationProtocolVersionFromControllers(clusterName);
-      assertEquals(parentResponse.getLocalAdminOperationProtocolVersion(), LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-      assertEquals(parentResponse.getControllerUrlToVersionMap().size(), 2);
-    }
+    AdminOperationProtocolVersionControllerResponse parentResponse =
+        parentControllerClient.getAdminOperationProtocolVersionFromControllers(clusterName);
+    assertEquals(parentResponse.getLocalAdminOperationProtocolVersion(), LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    assertEquals(parentResponse.getControllerUrlToVersionMap().size(), 2);
 
     // child controller
     Function<Integer, String> connectionString = i -> childDatacenters.get(i).getControllerConnectString();
     try (ControllerClient dc0ControllerClient = new ControllerClient(clusterName, connectionString.apply(0))) {
-      AdminOperationProtocolVersionControllerResponse parentResponse =
+      AdminOperationProtocolVersionControllerResponse childResponse =
           dc0ControllerClient.getAdminOperationProtocolVersionFromControllers(clusterName);
-      assertEquals(parentResponse.getLocalAdminOperationProtocolVersion(), LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-      assertEquals(parentResponse.getControllerUrlToVersionMap().size(), 2);
+      assertEquals(childResponse.getLocalAdminOperationProtocolVersion(), LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+      assertEquals(childResponse.getControllerUrlToVersionMap().size(), 2);
     }
   }
 }
