@@ -11,9 +11,9 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
@@ -55,10 +55,10 @@ public class DefaultIngestionBackend implements IngestionBackend {
   public void startConsumption(VeniceStoreVersionConfig storeConfig, int partition) {
     String storeVersion = storeConfig.getStoreVersionName();
     LOGGER.info("Retrieving storage engine for store {} partition {}", storeVersion, partition);
-    Pair<Store, Version> storeAndVersion =
+    StoreVersionInfo storeAndVersion =
         Utils.waitStoreVersionOrThrow(storeVersion, getStoreIngestionService().getMetadataRepo());
     Supplier<StoreVersionState> svsSupplier = () -> storageMetadataService.getStoreVersionState(storeVersion);
-    syncStoreVersionConfig(storeAndVersion.getFirst(), storeConfig);
+    syncStoreVersionConfig(storeAndVersion.getStore(), storeConfig);
 
     Runnable runnable = () -> {
       AbstractStorageEngine storageEngine =
@@ -79,7 +79,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
           storeVersion,
           partition);
     };
-    if (!storeAndVersion.getFirst().isBlobTransferEnabled() || blobTransferManager == null) {
+    if (!storeAndVersion.getStore().isBlobTransferEnabled() || blobTransferManager == null) {
       runnable.run();
     } else {
       // Open store for lag check and later metadata update for offset/StoreVersionState
@@ -91,8 +91,8 @@ public class DefaultIngestionBackend implements IngestionBackend {
               : BlobTransferTableFormat.BLOCK_BASED_TABLE;
 
       CompletionStage<Void> bootstrapFuture = bootstrapFromBlobs(
-          storeAndVersion.getFirst(),
-          storeAndVersion.getSecond().getNumber(),
+          storeAndVersion.getStore(),
+          storeAndVersion.getVersion().getNumber(),
           partition,
           requestTableFormat,
           serverConfig.getBlobTransferDisabledOffsetLagThreshold());

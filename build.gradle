@@ -373,10 +373,10 @@ subprojects {
     showStackTraces = false
     reports ({
       xml {
-        enabled = project.hasProperty('spotbugs.xml')
+        enabled = project.hasProperty('spotbugs.xml') || project.hasProperty('spotbugs.reports.all')
       }
       html {
-        enabled = !reports.getByName('XML').enabled
+        enabled = !reports.getByName('XML').enabled || project.hasProperty('spotbugs.reports.all')
         stylesheet = 'fancy-hist.xsl'
       }
     })
@@ -771,6 +771,7 @@ ext.createDiffFile = { ->
       ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceControllerService.java',
       ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceHelixAdmin.java',
       ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceParentHelixAdmin.java',
+      ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/HelixVeniceClusterResources.java',
 
       // venice-router
       ':!services/venice-router/src/main/java/com/linkedin/venice/router/RouterServer.java',

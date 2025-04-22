@@ -38,7 +38,6 @@ import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.ErrorType;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -542,8 +541,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
    *
    * @return a response with a list of host names for live DVC nodes; returns an empty list if no live nodes are found or if conditions are not met
    */
-  private void handleBlobDiscovery(ChannelHandlerContext ctx, VenicePathParserHelper helper, HttpRequest request)
-      throws IOException {
+  private void handleBlobDiscovery(ChannelHandlerContext ctx, VenicePathParserHelper helper, HttpRequest request) {
 
     // i.e. /blob_discovery?store_name=storeName&store_version=22&store_partition=2
     Map<String, String> queryParams = helper.extractQueryParameters(request);
@@ -572,52 +570,85 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       return;
     }
 
-    BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
     try {
-      // gets the instances for a FULL_PUSH for the store's version and partitionId
-      // gets the instance's hostnames from its keys & filter to include only live instances
-      Map<CharSequence, Integer> instances = pushStatusStoreReader.getPartitionStatus(
-          storeName,
-          Integer.parseInt(storeVersion),
-          Integer.parseInt(storePartition),
-          Optional.empty());
+      pushStatusStoreReader
+          .getPartitionStatusAsync(
+              storeName,
+              Integer.parseInt(storeVersion),
+              Integer.parseInt(storePartition),
+              Optional.empty(),
+              Optional.empty())
+          .whenComplete((instances, throwable) -> {
+            try {
+              if (throwable != null) {
+                LOGGER.error(
+                    "Failed to get partition status for store: {} version: {} partition: {}",
+                    storeName,
+                    storeVersion,
+                    storePartition,
+                    throwable);
 
-      if (instances.isEmpty()) {
-        LOGGER.info(
-            "No instances found for store: {} version: {} partition: {}",
-            storeName,
-            storeVersion,
-            storePartition);
-      } else {
-        LOGGER.info("{} instances were found", instances.size());
-      }
+                byte[] errBody =
+                    (String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition))
+                        .getBytes();
+                setupResponseAndFlush(INTERNAL_SERVER_ERROR, errBody, false, ctx);
+                return;
+              }
 
-      List<String> readyToServeNodeHostNames = instances.entrySet()
-          .stream()
-          .filter(entry -> entry.getValue() == ExecutionStatus.COMPLETED.getValue())
-          .map(Map.Entry::getKey)
-          .map(CharSequence::toString)
-          .collect(Collectors.toList());
+              // Process successful response
+              BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
 
-      if (!readyToServeNodeHostNames.isEmpty()) {
-        LOGGER.info("{} ready to serve nodes were found", readyToServeNodeHostNames.size());
-      } else {
-        LOGGER.info(
-            "No ready to serve nodes found for store: {} version: {} partition: {}",
-            storeName,
-            storeVersion,
-            storePartition);
-      }
+              if (instances.isEmpty()) {
+                LOGGER.info(
+                    "No instances found for store: {} version: {} partition: {}",
+                    storeName,
+                    storeVersion,
+                    storePartition);
+              } else {
+                LOGGER.info(
+                    "{} instances were found for store {}, version {}, partition {}",
+                    instances.size(),
+                    storeName,
+                    storeVersion,
+                    storePartition);
+              }
 
-      response.setDiscoveryResult(readyToServeNodeHostNames);
-    } catch (VeniceException e) {
+              List<String> readyToServeNodeHostNames = instances.entrySet()
+                  .stream()
+                  .filter(entry -> entry.getValue() == ExecutionStatus.COMPLETED.getValue())
+                  .map(Map.Entry::getKey)
+                  .map(CharSequence::toString)
+                  .collect(Collectors.toList());
+
+              if (!readyToServeNodeHostNames.isEmpty()) {
+                LOGGER.info(
+                    "{} ready to serve nodes were found for store {} version {} partition {}",
+                    readyToServeNodeHostNames.size(),
+                    storeName,
+                    storeVersion,
+                    storePartition);
+              } else {
+                LOGGER.info(
+                    "No ready to serve nodes found for store: {} version: {} partition: {}",
+                    storeName,
+                    storeVersion,
+                    storePartition);
+              }
+
+              response.setDiscoveryResult(readyToServeNodeHostNames);
+              setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(response), true, ctx);
+            } catch (Exception e) {
+              byte[] errBody =
+                  (String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition))
+                      .getBytes();
+              setupResponseAndFlush(INTERNAL_SERVER_ERROR, errBody, false, ctx);
+            }
+          });
+    } catch (Exception e) {
       byte[] errBody =
           (String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition)).getBytes();
       setupResponseAndFlush(INTERNAL_SERVER_ERROR, errBody, false, ctx);
-      return;
     }
-
-    setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(response), true, ctx);
   }
 
   private void handleResourceStateLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {

@@ -107,20 +107,28 @@ public class KafkaDataIntegrityValidator {
     }
   }
 
-  public void cloneProducerStates(int partition, KafkaDataIntegrityValidator newValidator) {
+  public void cloneVtProducerStates(int partition, KafkaDataIntegrityValidator newValidator) {
     PartitionTracker destPartitionTracker = newValidator.registerPartition(partition);
-    this.partitionTrackers.get(partition).cloneProducerStates(destPartitionTracker, null);
+    registerPartition(partition).cloneVtProducerStates(destPartitionTracker);
   }
 
   /**
-   * Returns the RT DIV state for a given partition and broker URL, and the VT DIV state
+   * Returns the RT DIV state for a given partition and broker URL pair.
    */
-  public PartitionTracker cloneProducerStates(int partition, String brokerUrl) {
+  public PartitionTracker cloneRtProducerStates(int partition, String brokerUrl) {
     PartitionTracker clonedPartitionTracker = partitionTrackerCreator.apply(partition);
-    final PartitionTracker existingPartitionTracker = this.partitionTrackers.get(partition);
-    if (existingPartitionTracker != null) {
-      existingPartitionTracker.cloneProducerStates(clonedPartitionTracker, brokerUrl); // for a single broker
-    }
+    final PartitionTracker existingPartitionTracker = registerPartition(partition);
+    existingPartitionTracker.cloneRtProducerStates(clonedPartitionTracker, brokerUrl); // for a single broker
+    return clonedPartitionTracker;
+  }
+
+  /**
+   * Returns the VT DIV state and latest consumed vt offset for a given partition.
+   */
+  public PartitionTracker cloneVtProducerStates(int partition) {
+    PartitionTracker clonedPartitionTracker = partitionTrackerCreator.apply(partition);
+    final PartitionTracker existingPartitionTracker = registerPartition(partition);
+    existingPartitionTracker.cloneVtProducerStates(clonedPartitionTracker); // for a single broker
     return clonedPartitionTracker;
   }
 

@@ -6,10 +6,11 @@ import com.linkedin.davinci.kafka.consumer.ReplicaHeartbeatInfo;
 import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.service.AbstractVeniceService;
-import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricConfig;
@@ -294,10 +295,10 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     try {
       String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
       int storeVersion = Version.parseVersionFromKafkaTopicName(resourceName);
-      Pair<Store, Version> res =
+      StoreVersionInfo res =
           getMetadataRepository().waitVersion(storeName, storeVersion, getMaxWaitForVersionInfo(), 200);
-      Store store = res.getFirst();
-      Version version = res.getSecond();
+      Store store = res.getStore();
+      Version version = res.getVersion();
       if (store == null) {
         LOGGER.error(
             "Failed to get store for resource: {} with trigger: {}. Will not update lag monitor.",
@@ -531,6 +532,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
 
     @Override
     public void run() {
+      LogContext.setRegionLogContext(localRegionName);
       while (!Thread.interrupted()) {
         try {
           heartbeatMonitoringServiceStats.recordLoggerHeartbeat();

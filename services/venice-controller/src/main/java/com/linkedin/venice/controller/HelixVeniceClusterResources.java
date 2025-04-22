@@ -73,6 +73,9 @@ public class HelixVeniceClusterResources implements VeniceResource {
   private final StoragePersonaRepository storagePersonaRepository;
 
   private ErrorPartitionResetTask errorPartitionResetTask = null;
+
+  final ExecutorService deadStoreStatsPreFetchService = Executors.newSingleThreadExecutor();
+  DeadStoreStatsPreFetchTask deadStoreStatsPreFetchTask = null;
   private final Optional<MetaStoreWriter> metaStoreWriter;
   private final VeniceAdminStats veniceAdminStats;
   private final VeniceHelixAdmin admin;
@@ -146,7 +149,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
         zkClient,
         adapterSerializer,
         config.getRefreshAttemptsForZkReconnect(),
-        config.getRefreshIntervalForZkReconnectInMs());
+        config.getRefreshIntervalForZkReconnectInMs(),
+        config.getLogContext());
     String aggregateRealTimeSourceKafkaUrl =
         config.getChildDataCenterKafkaUrlMap().get(config.getAggregateRealTimeSourceRegion());
     boolean unregisterMetricEnabled = config.isUnregisterMetricForDeletedStoreEnabled();
@@ -202,6 +206,12 @@ public class HelixVeniceClusterResources implements VeniceResource {
           metricsRepository,
           config.getErrorPartitionAutoResetLimit(),
           config.getErrorPartitionProcessingCycleDelay());
+    }
+
+    if (config.isDeadStoreEndpointEnabled() && config.isPreFetchDeadStoreStatsEnabled()) {
+      LOGGER.info("Dead store stats pre-fetch task is enabled for cluster: {}", clusterName);
+      deadStoreStatsPreFetchTask =
+          new DeadStoreStatsPreFetchTask(clusterName, admin, config.getDeadStoreStatsPreFetchRefreshIntervalInMs());
     }
     veniceAdminStats = new VeniceAdminStats(metricsRepository, "venice-admin-" + clusterName);
     this.storagePersonaRepository =
@@ -273,6 +283,30 @@ public class HelixVeniceClusterResources implements VeniceResource {
     customizedViewRepo.clear();
     routersClusterManager.clear();
     admin.clearInstanceMonitor(clusterName);
+  }
+
+  /**
+   * Cause {@link DeadStoreStatsPreFetchTask} service to begin executing.
+   */
+  public void startDeadStoreStatsPreFetchTask() {
+    if (deadStoreStatsPreFetchTask != null) {
+      deadStoreStatsPreFetchService.submit(deadStoreStatsPreFetchTask);
+    }
+  }
+
+  /**
+   * Cause {@link DeadStoreStatsPreFetchTask} service to stop executing.
+   */
+  public void stopDeadStoreStatsPreFetchTask() {
+    if (deadStoreStatsPreFetchTask != null) {
+      deadStoreStatsPreFetchTask.close();
+      deadStoreStatsPreFetchService.shutdown();
+      try {
+        deadStoreStatsPreFetchService.awaitTermination(30, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    }
   }
 
   /**

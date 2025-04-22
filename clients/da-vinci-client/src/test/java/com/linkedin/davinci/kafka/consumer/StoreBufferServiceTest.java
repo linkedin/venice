@@ -61,7 +61,7 @@ public class StoreBufferServiceTest {
 
   @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
   public void testRun(boolean queueLeaderWrites) throws Exception {
-    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites, mockedStats);
+    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites, mockedStats, null);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = Utils.getUniqueString("test_topic") + "_v1";
     PubSubPosition mockPosition = mock(PubSubPosition.class);
@@ -103,7 +103,7 @@ public class StoreBufferServiceTest {
 
   @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
   public void testRunWhenThrowException(boolean queueLeaderWrites) throws Exception {
-    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites, mockedStats);
+    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites, mockedStats, null);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = Utils.getUniqueString("test_topic") + "_v1";
     PubSubPosition mockPosition = mock(PubSubPosition.class);
@@ -132,7 +132,7 @@ public class StoreBufferServiceTest {
 
   @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
   public void testDrainBufferedRecordsWhenNotExists(boolean queueLeaderWrites) throws Exception {
-    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites, mockedStats);
+    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites, mockedStats, null);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = Utils.getUniqueString("test_topic") + "_v1";
     PubSubPosition mockPosition = mock(PubSubPosition.class);
@@ -153,7 +153,7 @@ public class StoreBufferServiceTest {
 
   @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
   public void testDrainBufferedRecordsWhenExists(boolean queueLeaderWrites) throws Exception {
-    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites, mockedStats);
+    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites, mockedStats, null);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = Utils.getUniqueString("test_topic") + "_v1";
     int partition = 1;
@@ -219,7 +219,7 @@ public class StoreBufferServiceTest {
     for (int i = 0; i < drainerNum; ++i) {
       drainerPartitionCount[i] = 0;
     }
-    StoreBufferService bufferService = new StoreBufferService(8, 10000, 1000, queueLeaderWrites, mockedStats);
+    StoreBufferService bufferService = new StoreBufferService(8, 10000, 1000, queueLeaderWrites, mockedStats, null);
     for (int partition = 0; partition < partitionCount; ++partition) {
       DefaultPubSubMessage cr = new ImmutablePubSubMessage(
           key,
@@ -239,7 +239,7 @@ public class StoreBufferServiceTest {
 
   @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
   public void testRunWhenThrowVeniceCheckSumFailException(boolean queueLeaderWrites) throws Exception {
-    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites, mockedStats);
+    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites, mockedStats, null);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = Utils.getUniqueString("test_topic") + "_v1";
     int partition1 = 1;

@@ -8,6 +8,7 @@ import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -310,6 +311,20 @@ public class OffsetRecord {
     this.partitionState.setRecordTransformerClassHash(classHash);
   }
 
+  public void setLatestConsumedVtOffset(long latestConsumedVtOffset) {
+    this.partitionState.setLastConsumedVersionTopicPubSubPosition(
+        ApacheKafkaOffsetPosition.of(latestConsumedVtOffset).getPositionWireFormat().getRawBytes());
+  }
+
+  public long getLatestConsumedVtOffset() {
+    try {
+      return ApacheKafkaOffsetPosition.of(this.partitionState.getLastConsumedVersionTopicPubSubPosition())
+          .getNumericOffset();
+    } catch (IOException e) {
+      throw new VeniceException(e);
+    }
+  }
+
   /**
    * It may be useful to cache this mapping. TODO: Explore GC tuning later.
    *
@@ -317,6 +332,7 @@ public class OffsetRecord {
    * @return a {@link Utf8} instance corresponding to the {@link GUID} that was passed in
    */
   CharSequence guidToUtf8(GUID guid) {
+    /** TODO: Consider replacing with {@link GuidUtils#getUtf8FromGuid(GUID)}, which might be more efficient. */
     return new Utf8(GuidUtils.getCharSequenceFromGuid(guid));
   }
 

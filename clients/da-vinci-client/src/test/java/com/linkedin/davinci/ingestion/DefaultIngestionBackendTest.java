@@ -27,9 +27,9 @@ import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.utils.Pair;
 import java.io.InputStream;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
@@ -82,7 +82,7 @@ public class DefaultIngestionBackendTest {
     MockitoAnnotations.openMocks(this);
     when(store.getName()).thenReturn(STORE_NAME);
     when(version.getNumber()).thenReturn(VERSION_NUMBER);
-    Pair<Store, Version> storeAndVersion = Pair.create(store, version);
+    StoreVersionInfo storeAndVersion = new StoreVersionInfo(store, version);
 
     when(storeConfig.getStoreVersionName()).thenReturn(STORE_VERSION);
     when(storeIngestionService.getMetadataRepo()).thenReturn(metadataRepo);

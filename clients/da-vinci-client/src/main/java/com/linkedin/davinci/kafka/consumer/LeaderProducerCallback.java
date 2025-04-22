@@ -24,6 +24,8 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
   private static final Logger LOGGER = LogManager.getLogger(LeaderFollowerStoreIngestionTask.class);
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
+  private static final Runnable NO_OP = () -> {};
+  private Runnable onCompletionFunction = NO_OP;
 
   protected static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER =
       new ChunkedValueManifestSerializer(false);
@@ -72,6 +74,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
 
   @Override
   public void onCompletion(PubSubProduceResult produceResult, Exception e) {
+    this.onCompletionFunction.run();
     if (e != null) {
       ingestionTask.getVersionedDIVStats()
           .recordLeaderProducerFailure(ingestionTask.getStoreName(), ingestionTask.versionNumber);
@@ -343,6 +346,10 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
           beforeProcessingRecordTimestampNs,
           currentTimeForMetricsMs);
     }
+  }
+
+  public void setOnCompletionFunction(Runnable onCompletionFunction) {
+    this.onCompletionFunction = onCompletionFunction;
   }
 
   // Visible for VeniceWriter unit test.

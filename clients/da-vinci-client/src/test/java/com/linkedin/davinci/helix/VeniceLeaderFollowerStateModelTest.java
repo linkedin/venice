@@ -17,9 +17,9 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
-import com.linkedin.venice.utils.Pair;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Duration;
 import java.util.HashSet;
@@ -134,7 +134,7 @@ public class VeniceLeaderFollowerStateModelTest extends
     when(mockIngestionBackend.stopConsumption(any(VeniceStoreVersionConfig.class), eq(testPartition)))
         .thenReturn(CompletableFuture.completedFuture(null));
     when(mockReadOnlyStoreRepository.waitVersion(eq(storeName), eq(version), any(), anyLong()))
-        .thenReturn(Pair.create(mockStore, null));
+        .thenReturn(new StoreVersionInfo(mockStore, null));
     testStateModel.onBecomeOfflineFromStandby(mockMessage, mockContext);
     verify(spyHeartbeatMonitoringService).removeLagMonitor(any(), eq(testPartition));
   }

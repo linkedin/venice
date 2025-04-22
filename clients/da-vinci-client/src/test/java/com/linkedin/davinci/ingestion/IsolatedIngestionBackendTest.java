@@ -30,8 +30,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.HashMap;
@@ -57,7 +57,7 @@ public class IsolatedIngestionBackendTest {
       KafkaStoreIngestionService storeIngestionService = mock(KafkaStoreIngestionService.class);
       ReadOnlyStoreRepository repository = mock(ReadOnlyStoreRepository.class);
       when(repository.waitVersion(anyString(), anyInt(), any()))
-          .thenReturn(Pair.create(mock(Store.class), mock(Version.class)));
+          .thenReturn(new StoreVersionInfo(mock(Store.class), mock(Version.class)));
       when(storeIngestionService.getMetadataRepo()).thenReturn(repository);
       when(storeIngestionService.isPartitionConsuming(topic, partition)).thenReturn(true);
       when(backend.getStoreIngestionService()).thenReturn(storeIngestionService);
@@ -122,7 +122,7 @@ public class IsolatedIngestionBackendTest {
       KafkaStoreIngestionService storeIngestionService = mock(KafkaStoreIngestionService.class);
       ReadOnlyStoreRepository repository = mock(ReadOnlyStoreRepository.class);
       when(repository.waitVersion(anyString(), anyInt(), any()))
-          .thenReturn(Pair.create(mock(Store.class), mock(Version.class)));
+          .thenReturn(new StoreVersionInfo(mock(Store.class), mock(Version.class)));
       when(storeIngestionService.getMetadataRepo()).thenReturn(repository);
       when(storeIngestionService.isPartitionConsuming(topic, partition)).thenReturn(true);
       when(backend.getStoreIngestionService()).thenReturn(storeIngestionService);
@@ -171,7 +171,7 @@ public class IsolatedIngestionBackendTest {
        */
       executionFlag.set(0);
       topicIngestionStatusMap.clear();
-      when(repository.waitVersion(anyString(), anyInt(), any())).thenReturn(Pair.create(null, null));
+      when(repository.waitVersion(anyString(), anyInt(), any())).thenReturn(new StoreVersionInfo(null, null));
 
       Assert.assertThrows(VeniceException.class, () -> {
         backend.executeCommandWithRetry(topic, partition, START_CONSUMPTION, () -> {

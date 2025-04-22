@@ -28,10 +28,10 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Duration;
@@ -442,7 +442,7 @@ public class HeartbeatMonitoringServiceTest {
 
     // 1. Test when both store and version are null
     when(metadataRepo.waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong()))
-        .thenReturn(Pair.create(null, null));
+        .thenReturn(new StoreVersionInfo(null, null));
     heartbeatMonitoringService.updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_LEADER_MONITOR);
     verify(metadataRepo).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
     verify(heartbeatMonitoringService, never()).addLeaderLagMonitor(any(Version.class), anyInt());
@@ -458,7 +458,7 @@ public class HeartbeatMonitoringServiceTest {
 
     // 2. Test when store is not null and version is null
     when(metadataRepo.waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong()))
-        .thenReturn(Pair.create(store, null));
+        .thenReturn(new StoreVersionInfo(store, null));
     heartbeatMonitoringService.updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_LEADER_MONITOR);
     verify(metadataRepo, times(4)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
     verify(heartbeatMonitoringService, never()).addLeaderLagMonitor(any(Version.class), anyInt());
@@ -474,7 +474,7 @@ public class HeartbeatMonitoringServiceTest {
 
     // 3. Test both store and version are not null
     when(metadataRepo.waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong()))
-        .thenReturn(Pair.create(store, version));
+        .thenReturn(new StoreVersionInfo(store, version));
     heartbeatMonitoringService.updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_LEADER_MONITOR);
     verify(metadataRepo, times(7)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
     verify(heartbeatMonitoringService).addLeaderLagMonitor(version, partition);
