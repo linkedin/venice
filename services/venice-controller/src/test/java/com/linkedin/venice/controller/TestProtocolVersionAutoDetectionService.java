@@ -18,6 +18,18 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
+/**
+ * This test is to verify that the protocol version auto-detection service works as expected
+ * in a multi-cluster environment.
+ * The test is designed to simulate a scenario where there are multiple clusters and regions,
+ * with different host states and admin operation versions.
+ * The test checks the following:
+ * 1. The protocol version auto-detection service correctly detects the smallest local admin operation protocol version
+ *   for all consumers in the cluster.
+ * 2. The service correctly updates the admin operation protocol version for the cluster.
+ * 3. The service handles the case where the admin operation protocol version is -1, indicating that no update is needed.
+ * 4. The service handles the case where the request to get the admin operation protocol version fails.
+ */
 public class TestProtocolVersionAutoDetectionService {
   private VeniceHelixAdmin admin;
   private AdminConsumerService adminConsumerService;
@@ -31,9 +43,6 @@ public class TestProtocolVersionAutoDetectionService {
   private static final String REGION_DC_2 = "dc2";
   private static final long DEFAULT_SLEEP_INTERVAL_MS = TimeUnit.SECONDS.toMillis(1);
 
-  /**
-   * This test is to verify that the protocol version auto-detection service
-   */
   @BeforeMethod(alwaysRun = true)
   public void setUp() {
     this.clusterName = CLUSTER_VENICE_0;

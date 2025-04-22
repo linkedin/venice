@@ -369,12 +369,18 @@ public class HelixVeniceClusterResources implements VeniceResource {
     }
   }
 
+  /**
+   * Cause {@link ProtocolVersionAutoDetectionService} service to begin executing.
+   */
   public void startProtocolVersionAutoDetectionService() {
     if (protocolVersionAutoDetectionService != null) {
       protocolVersionAutoDetectionService.start();
     }
   }
 
+  /**
+   * Cause {@link ProtocolVersionAutoDetectionService} service to stop executing.
+   */
   public void stopProtocolVersionAutoDetectionService() {
     if (protocolVersionAutoDetectionService != null) {
       try {
