@@ -3763,75 +3763,49 @@ public class VeniceParentHelixAdmin implements Admin {
     ExecutionStatus currentReturnStatus =
         getFinalReturnStatus(statuses, childRegions, numChildRegionsFailedToFetchStatus, currentReturnStatusDetails);
 
-    // Do not delete parent Kafka if its part of targeted colo push to prevent concurrent pushes
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int versionNum = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-    if (currentReturnStatus.isTerminal()) {
-      LOGGER.info("Received terminal status: {} for topic: {}", currentReturnStatus, kafkaTopic);
+    HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
+    try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+      ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+      Store parentStore = repository.getStore(storeName);
+      Version version = parentStore.getVersion(versionNum);
+      if (currentReturnStatus.isTerminal()) {
+        LOGGER.info("Received terminal status: {} for topic: {}", currentReturnStatus, kafkaTopic);
 
-      HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
-
-      try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
-        ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
-        Store parentStore = repository.getStore(storeName);
-        Version version = parentStore.getVersion(versionNum);
+        // Do not truncate the parent version topic if it is a push w/ deferred swap to prevent concurrent pushes
+        // Otherwise, truncate the parent version topic and updating the version status
         boolean isDeferredSwap = version != null && version.isVersionSwapDeferred();
         if (!isDeferredSwap || !StringUtils.isEmpty(targetedRegions)) {
-          // targetedRegions is non-empty for target region push of batch store
-          boolean isTargetRegionPush = !StringUtils.isEmpty(targetedRegions);
-          Version storeVersion = parentStore.getVersion(versionNum);
-          boolean isVersionPushed = storeVersion != null && storeVersion.getStatus().equals(PUSHED);
-          boolean isHybridStore = storeVersion != null && storeVersion.getHybridStoreConfig() != null;
-          boolean isTargetRegionPushWithDeferredSwapForCurrentVersion =
-              isTargetRegionPush && version.isVersionSwapDeferred();
-          // Truncate topic after push is in terminal state if
-          // 1. Its a hybrid store or regular push. (Hybrid store target push uses repush where isTargetRegionPush is
-          // false)
-          // 2. If target region push is enabled and job to push data only to target region completed (status == PUSHED)
-          // 3. If it is a target region push with deferred swap and a majority of regions have reached terminal status
-          if (!isTargetRegionPush // regular push
-              || isVersionPushed // target region push
-              || isHybridStore || isTargetRegionPushWithDeferredSwapForCurrentVersion) {
-            LOGGER
-                .info("Truncating parent VT {} after push status {}", kafkaTopic, currentReturnStatus.getRootStatus());
-            truncateTopicsOptionally(
-                clusterName,
-                kafkaTopic,
-                incrementalPushVersion,
-                currentReturnStatus,
-                currentReturnStatusDetails);
-          }
-          // status PUSHED is set when batch store's target region push is completed, but other region are yet to
-          // complete
-          if (currentReturnStatus.equals(ExecutionStatus.COMPLETED)) {
-            if (isTargetRegionPush && !isVersionPushed) {
-              parentStore.updateVersionStatus(versionNum, PUSHED);
-              repository.updateStore(parentStore);
-              LOGGER.info("Updating parent store version {} status to {}", kafkaTopic, PUSHED);
-            } else { // status ONLINE is set when all region finishes ingestion for either regular or target region
-                     // push.
-              parentStore.updateVersionStatus(versionNum, ONLINE);
-              repository.updateStore(parentStore);
-              LOGGER.info("Updating parent store version {} status to {}", kafkaTopic, ONLINE);
-            }
-          }
+          handleTerminalJobStatus(
+              clusterName,
+              kafkaTopic,
+              incrementalPushVersion,
+              targetedRegions,
+              parentStore,
+              version,
+              versionNum,
+              currentReturnStatus,
+              currentReturnStatusDetails,
+              repository);
         }
-      }
-    } else {
-      // If the aggregate status is not terminal, but the parent version status is marked as KILLED, we should mark the
-      // push job status as terminal (ERROR) as job was killed
-      Store parentStore = getStore(clusterName, storeName);
-      Version parentStoreVersion = parentStore.getVersion(versionNum);
-      if (parentStoreVersion.getStatus().equals(KILLED)) {
-        LOGGER
-            .info("Marking execution status as ERROR for store {} because parent version status is KILLED", storeName);
-        return new OfflinePushStatusInfo(
-            ExecutionStatus.ERROR,
-            null,
-            extraInfo,
-            currentReturnStatusDetails.toString(),
-            extraDetails,
-            extraInfoUpdateTimestamp);
+      } else {
+        // If the aggregate status is not terminal, but the parent version status is marked as KILLED, we should mark
+        // the
+        // push job status as terminal (ERROR) as job was killed
+        Version parentStoreVersion = parentStore.getVersion(versionNum);
+        if (parentStoreVersion.getStatus().equals(KILLED)) {
+          LOGGER.info(
+              "Marking execution status as ERROR for store {} because parent version status is KILLED",
+              storeName);
+          return new OfflinePushStatusInfo(
+              ExecutionStatus.ERROR,
+              null,
+              extraInfo,
+              currentReturnStatusDetails.toString(),
+              extraDetails,
+              extraInfoUpdateTimestamp);
+        }
       }
     }
 
@@ -3842,6 +3816,76 @@ public class VeniceParentHelixAdmin implements Admin {
         currentReturnStatusDetails.toString(),
         extraDetails,
         extraInfoUpdateTimestamp);
+  }
+
+  /**
+   * For a job with a terminal status, the following tasks are performed:
+   * 1. Truncate the parent topic so that we can start another push. Truncation happens if
+   *    a. It is a hybrid store or regular push. (Hybrid store target push uses repush where isTargetRegionPush == false)
+   *    b. If target region push w/o deferred swap is enabled and job to push data to all regions have reached terminal status
+   *    c. If it is a target region push with deferred swap and a majority of regions have reached terminal status
+   * 2. Update the parent version status to either ONLINE or PUSHED if currentReturnStatus is COMPLETED.
+   *    a. PUSHED is set if only the target region in a target region push is complete and serving traffic
+   *    b. ONLINE is set if all regions have completed their push and are serving traffic
+   * @param clusterName
+   * @param kafkaTopic
+   * @param incrementalPushVersion
+   * @param targetedRegions
+   * @param parentStore
+   * @param version
+   * @param currentReturnStatus
+   * @param currentReturnStatusDetails
+   * @param repository
+   */
+  private void handleTerminalJobStatus(
+      String clusterName,
+      String kafkaTopic,
+      Optional<String> incrementalPushVersion,
+      String targetedRegions,
+      Store parentStore,
+      Version version,
+      int versionNum,
+      ExecutionStatus currentReturnStatus,
+      StringBuilder currentReturnStatusDetails,
+      ReadWriteStoreRepository repository) {
+    Version storeVersion = parentStore.getVersion(versionNum);
+    boolean isPushCompleteInAllRegionsForTargetRegionPush =
+        storeVersion != null && storeVersion.getStatus().equals(PUSHED);
+    boolean isHybridStore = storeVersion != null && storeVersion.getHybridStoreConfig() != null;
+
+    boolean isTargetRegionPush = !StringUtils.isEmpty(targetedRegions);
+    boolean isTargetRegionPushWithDeferredSwapForCurrentVersion = isTargetRegionPush && version.isVersionSwapDeferred();
+
+    if (!isTargetRegionPush // Push is complete for a normal batch push w/o target region push
+        || isPushCompleteInAllRegionsForTargetRegionPush // Push is complete in all regions for a target region push w/o
+                                                         // deferred swap
+        || isHybridStore // Push is to a hybrid store
+        || isTargetRegionPushWithDeferredSwapForCurrentVersion // Push is complete for a target region push with
+                                                               // deferred swap
+    ) {
+      LOGGER.info("Truncating parent VT {} after push status {}", kafkaTopic, currentReturnStatus.getRootStatus());
+      truncateTopicsOptionally(
+          clusterName,
+          kafkaTopic,
+          incrementalPushVersion,
+          currentReturnStatus,
+          currentReturnStatusDetails);
+    }
+
+    // Update the parent version status
+    if (currentReturnStatus.equals(ExecutionStatus.COMPLETED)) {
+      if (isTargetRegionPush && !isPushCompleteInAllRegionsForTargetRegionPush) {
+        parentStore.updateVersionStatus(versionNum, PUSHED); // Push is complete in the target regions & only target
+                                                             // regions are serving traffic
+        repository.updateStore(parentStore);
+        LOGGER.info("Updating parent store version {} status to {}", kafkaTopic, PUSHED);
+      } else {
+        parentStore.updateVersionStatus(versionNum, ONLINE); // Push is complete in all regions & version is serving
+                                                             // traffic
+        repository.updateStore(parentStore);
+        LOGGER.info("Updating parent store version {} status to {}", kafkaTopic, ONLINE);
+      }
+    }
   }
 
   /**
