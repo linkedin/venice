@@ -100,7 +100,7 @@ public class VeniceClusterConfig {
       throws ConfigurationException {
     this.clusterName = clusterProps.getString(CLUSTER_NAME);
     this.zookeeperAddress = clusterProps.getString(ZOOKEEPER_ADDRESS);
-    this.pubSubPositionTypeRegistry = PubSubPositionTypeRegistry.getRegistryFromPropertiesOrDefault(clusterProps);
+    this.pubSubPositionTypeRegistry = PubSubPositionTypeRegistry.fromPropertiesOrDefault(clusterProps);
     try {
       this.persistenceType =
           PersistenceType.valueOf(clusterProps.getString(PERSISTENCE_TYPE, PersistenceType.IN_MEMORY.toString()));

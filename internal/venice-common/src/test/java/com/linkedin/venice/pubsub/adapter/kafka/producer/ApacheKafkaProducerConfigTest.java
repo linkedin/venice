@@ -3,6 +3,7 @@ package com.linkedin.venice.pubsub.adapter.kafka.producer;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_POSITION_CLASS_NAME;
+import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_POSITION_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.SSL_TO_KAFKA_LEGACY;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -228,8 +229,8 @@ public class ApacheKafkaProducerConfigTest {
     assertTrue(exception.getMessage().contains("not found in PubSubPositionMapper"));
 
     // Case: class is found in PubSubPositionTypeRegistry but value does not match
-    when(mockedPositionTypeRegistry.hasType(KAFKA_POSITION_CLASS_NAME)).thenReturn(true);
-    when(mockedPositionTypeRegistry.getTypeId(KAFKA_POSITION_CLASS_NAME))
+    when(mockedPositionTypeRegistry.containsFactoryClass(KAFKA_POSITION_FACTORY_CLASS_NAME)).thenReturn(true);
+    when(mockedPositionTypeRegistry.getTypeIdForFactoryClass(KAFKA_POSITION_FACTORY_CLASS_NAME))
         .thenReturn(PubSubPositionTypeRegistry.POSITION_TYPE_INVALID_MAGIC_VALUE);
     exception = expectThrows(VeniceException.class, () -> new ApacheKafkaProducerConfig(context));
     assertTrue(exception.getMessage().contains("Unexpected type ID for Kafka position"));

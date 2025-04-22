@@ -27,7 +27,7 @@ final class LatestPosition implements PubSubPosition {
     // Private constructor for singleton
   }
 
-  public static LatestPosition getInstance() {
+  static LatestPosition getInstance() {
     return INSTANCE;
   }
 

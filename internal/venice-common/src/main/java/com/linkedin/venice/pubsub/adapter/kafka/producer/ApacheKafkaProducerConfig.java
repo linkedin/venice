@@ -7,7 +7,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
-import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPositionFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessageSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Objects;
@@ -47,7 +47,7 @@ public class ApacheKafkaProducerConfig {
       KAFKA_CONFIG_PREFIX + ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG;
   public static final String SSL_KAFKA_BOOTSTRAP_SERVERS = "ssl." + KAFKA_BOOTSTRAP_SERVERS;
 
-  protected static final String KAFKA_POSITION_CLASS_NAME = ApacheKafkaOffsetPosition.class.getName();
+  protected static final String KAFKA_POSITION_FACTORY_CLASS_NAME = ApacheKafkaOffsetPositionFactory.class.getName();
 
   /**
    * N.B. do not attempt to change spelling, "kakfa", without carefully replacing all instances in use and some of them
@@ -201,21 +201,21 @@ public class ApacheKafkaProducerConfig {
    * @throws VeniceException if the type is missing or mismatched
    */
   private static void validateKafkaPositionType(PubSubPositionTypeRegistry typeRegistry) {
-    if (!typeRegistry.hasType(KAFKA_POSITION_CLASS_NAME)) {
+    if (!typeRegistry.containsFactoryClass(KAFKA_POSITION_FACTORY_CLASS_NAME)) {
       String message = String.format(
-          "Kafka position type class (%s) not found in PubSubPositionMapper: %s",
-          KAFKA_POSITION_CLASS_NAME,
+          "Kafka position factory type class (%s) not found in PubSubPositionMapper: %s",
+          KAFKA_POSITION_FACTORY_CLASS_NAME,
           typeRegistry);
       LOGGER.error(message);
       throw new VeniceException(message);
     }
 
-    int positionTypeId = typeRegistry.getTypeId(KAFKA_POSITION_CLASS_NAME);
+    int positionTypeId = typeRegistry.getTypeIdForFactoryClass(KAFKA_POSITION_FACTORY_CLASS_NAME);
     int expectedTypeId = PubSubPositionTypeRegistry.APACHE_KAFKA_OFFSET_POSITION_TYPE_ID;
 
     if (positionTypeId != expectedTypeId) {
       String message = String.format(
-          "Unexpected type ID for Kafka position. Expected: %d, Found: %d, Registry: %s",
+          "Unexpected type ID for Kafka position factory. Expected: %d, Found: %d, Registry: %s",
           expectedTypeId,
           positionTypeId,
           typeRegistry);

@@ -3,9 +3,13 @@ package com.linkedin.venice.pubsub;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.annotation.VisibleForTesting;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPositionFactory;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
+import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
@@ -21,7 +25,7 @@ import org.apache.logging.log4j.Logger;
 
 /**
  * A configurable registry that maintains a bidirectional mapping between
- * {@link PubSubPosition} implementation class names (fully qualified) and their corresponding integer type IDs.
+ * {@link PubSubPositionFactory} implementation class names (fully qualified) and their corresponding integer type IDs.
  * <p>
  * This registry enables compact serialization and deserialization of {@link PubSubPosition} instances
  * by representing them with integer type IDs instead of full class names.
@@ -63,32 +67,36 @@ public class PubSubPositionTypeRegistry {
   public static final int POSITION_TYPE_INVALID_MAGIC_VALUE = Integer.MIN_VALUE;
 
   /**
-   * A predefined map of reserved PubSub position type IDs to their corresponding fully qualified class names.
+   * A predefined map of reserved PubSub position type IDs to their corresponding fully qualified factory class names.
    * <p>
    * This map is intended for internal use to bootstrap or validate known position implementations.
    * It includes all reserved positions that are part of the standard Venice PubSub position model.
    * <p>
-   * Entries:
-   * <ul>
-   *   <li>{@code -2} -> {@link PubSubSymbolicPosition#EARLIEST}</li>
-   *   <li>{@code -1} -> {@link PubSubSymbolicPosition#LATEST}</li>
-   *   <li>{@code  0} -> {@link ApacheKafkaOffsetPosition}</li>
-   * </ul>
    */
   public static final Int2ObjectMap<String> RESERVED_POSITION_TYPE_ID_TO_CLASS_NAME_MAP;
+  public static final Int2ObjectMap<PubSubPositionFactory> RESERVED_POSITION_TYPE_ID_TO_FACTORY_MAP;
 
   static {
-    Int2ObjectMap<String> tempMap = new Int2ObjectOpenHashMap<>();
-    tempMap.put(EARLIEST_POSITION_RESERVED_TYPE_ID, PubSubSymbolicPosition.EARLIEST.getClass().getName());
-    tempMap.put(LATEST_POSITION_RESERVED_TYPE_ID, PubSubSymbolicPosition.LATEST.getClass().getName());
-    tempMap.put(APACHE_KAFKA_OFFSET_POSITION_TYPE_ID, ApacheKafkaOffsetPosition.class.getName());
+    Int2ObjectMap<String> tempMap = new Int2ObjectOpenHashMap<>(3);
+    tempMap.put(EARLIEST_POSITION_RESERVED_TYPE_ID, EarliestPositionFactory.class.getName());
+    tempMap.put(LATEST_POSITION_RESERVED_TYPE_ID, LatestPositionFactory.class.getName());
+    tempMap.put(APACHE_KAFKA_OFFSET_POSITION_TYPE_ID, ApacheKafkaOffsetPositionFactory.class.getName());
+
+    Int2ObjectMap<PubSubPositionFactory> factoryMap = new Int2ObjectOpenHashMap<>(3);
+    factoryMap.put(EARLIEST_POSITION_RESERVED_TYPE_ID, new EarliestPositionFactory(EARLIEST_POSITION_RESERVED_TYPE_ID));
+    factoryMap.put(LATEST_POSITION_RESERVED_TYPE_ID, new LatestPositionFactory(LATEST_POSITION_RESERVED_TYPE_ID));
+    factoryMap.put(
+        APACHE_KAFKA_OFFSET_POSITION_TYPE_ID,
+        new ApacheKafkaOffsetPositionFactory(APACHE_KAFKA_OFFSET_POSITION_TYPE_ID));
+
     // Make the map unmodifiable for safety
     RESERVED_POSITION_TYPE_ID_TO_CLASS_NAME_MAP = Int2ObjectMaps.unmodifiable(tempMap);
+    RESERVED_POSITION_TYPE_ID_TO_FACTORY_MAP = Int2ObjectMaps.unmodifiable(factoryMap);
   }
 
   /**
    * A default, pre-configured {@link PubSubPositionTypeRegistry} instance that contains all reserved
-   * {@link PubSubPosition} type IDs and their associated class names.
+   * {@link PubSubPosition} type IDs and their associated factory class names.
    * <p>
    * This instance should be used wherever a standard, system-defined position registry is sufficient.
    * It includes entries for known symbolic positions like {@link PubSubSymbolicPosition#EARLIEST},
@@ -99,8 +107,9 @@ public class PubSubPositionTypeRegistry {
   public static final PubSubPositionTypeRegistry RESERVED_POSITION_TYPE_REGISTRY =
       new PubSubPositionTypeRegistry(RESERVED_POSITION_TYPE_ID_TO_CLASS_NAME_MAP);
 
-  private final Object2IntMap<String> classNameToTypeIdMap;
-  private final Int2ObjectMap<String> typeIdToClassNameMap;
+  private final Object2IntMap<String> factoryClassNameToTypeIdMap;
+  private final Int2ObjectMap<String> typeIdToFactoryClassNameMap;
+  private final Int2ObjectMap<PubSubPositionFactory> typeIdToFactoryMap;
 
   /**
    * Constructs a {@link PubSubPositionTypeRegistry} by merging the provided type ID to class name map
@@ -109,157 +118,164 @@ public class PubSubPositionTypeRegistry {
    * Reserved position type IDs (such as those for {@link PubSubSymbolicPosition#EARLIEST}, {@link PubSubSymbolicPosition#LATEST}, and
    * {@link ApacheKafkaOffsetPosition}) are validated to ensure they are not overridden with a conflicting class name.
    * If a reserved ID is present in the provided map, it must map to the exact same class name as the reserved definition;
-   * otherwise, an {@link IllegalArgumentException} is thrown.
+   * otherwise, an {@link VeniceException} is thrown.
    * <p>
    * Any reserved IDs not present in the input map are automatically included.
    * The final registry is unmodifiable after construction.
    *
    * @param userProvidedMap a map from position type IDs to fully qualified class names
-   * @throws IllegalArgumentException if a reserved type ID is overridden with a different class
+   * @throws VeniceException if a reserved type ID is overridden with a different class
    * @throws ClassNotFoundException if any of the provided class names cannot be loaded
    */
   public PubSubPositionTypeRegistry(Int2ObjectMap<String> userProvidedMap) {
-    Int2ObjectMap<String> mergedMap = mergeWithReservedTypes(userProvidedMap);
-    this.typeIdToClassNameMap = Int2ObjectMaps.unmodifiable(mergedMap);
-    this.classNameToTypeIdMap = Object2IntMaps.unmodifiable(getClassNameToTypeIdMap(this.typeIdToClassNameMap));
+    Int2ObjectMap<String> mergedMap = mergeAndValidateTypes(userProvidedMap);
+    this.typeIdToFactoryClassNameMap = Int2ObjectMaps.unmodifiable(mergedMap);
+    this.factoryClassNameToTypeIdMap = Object2IntMaps.unmodifiable(buildClassNameToTypeIdMap(mergedMap));
+    this.typeIdToFactoryMap = Int2ObjectMaps.unmodifiable(instantiateFactories(mergedMap));
     LOGGER.info(
         "PubSub position type registry initialized with {} entries: {}",
-        classNameToTypeIdMap.size(),
-        classNameToTypeIdMap);
+        factoryClassNameToTypeIdMap.size(),
+        factoryClassNameToTypeIdMap);
   }
 
-  /**
-   * Merges the given user-provided map with the reserved type map.
-   * Throws an exception if any reserved type ID is associated with a different class name.
-   *
-   * @param userMap the input map to validate and merge
-   * @return a new map that contains both reserved and user-defined entries
-   */
-  private static Int2ObjectMap<String> mergeWithReservedTypes(Int2ObjectMap<String> userMap) {
+  private static Int2ObjectMap<String> mergeAndValidateTypes(Int2ObjectMap<String> userMap) {
     Int2ObjectMap<String> merged = new Int2ObjectOpenHashMap<>(userMap);
-
     for (Int2ObjectMap.Entry<String> reservedEntry: RESERVED_POSITION_TYPE_ID_TO_CLASS_NAME_MAP.int2ObjectEntrySet()) {
       int reservedId = reservedEntry.getIntKey();
-      String reservedClassName = reservedEntry.getValue();
-
-      if (!merged.containsKey(reservedId)) {
-        // If the reserved ID is not in the user map, add it to the merged map and continue with the next entry
-        merged.put(reservedId, reservedClassName);
-        continue;
-      }
-
-      // If the reserved ID is in the user map, check for conflicts
-      String userClassName = merged.get(reservedId);
-      if (!reservedClassName.equals(userClassName)) {
-        throw new IllegalArgumentException(
-            "Conflicting entry for reserved position type ID " + reservedId + ": expected class name ["
-                + reservedClassName + "], but got [" + userClassName + "]");
+      String reservedClass = reservedEntry.getValue();
+      if (merged.containsKey(reservedId)) {
+        String userClass = merged.get(reservedId);
+        if (!reservedClass.equals(userClass)) {
+          LOGGER.error(
+              "Conflicting entry for reserved position type ID: {}. Expected class name: [{}], but got: [{}].",
+              reservedId,
+              reservedClass,
+              userClass);
+          throw new VeniceException(
+              "Conflicting entry for reserved position type ID: " + reservedId + ". Expected class name: ["
+                  + reservedClass + "], but got: [" + userClass + "]");
+        }
+      } else {
+        merged.put(reservedId, reservedClass);
       }
     }
     return merged;
   }
 
-  private static Object2IntMap<String> getClassNameToTypeIdMap(Int2ObjectMap<String> typeIdToClassNameMap) {
-    Object2IntMap<String> classNameToTypeIdMap = new Object2IntOpenHashMap<>(typeIdToClassNameMap.size());
-    for (Map.Entry<Integer, String> entry: typeIdToClassNameMap.int2ObjectEntrySet()) {
-      String className = entry.getValue();
+  private static Object2IntMap<String> buildClassNameToTypeIdMap(Int2ObjectMap<String> typeIdToClassMap) {
+    Object2IntMap<String> classNameToTypeId = new Object2IntOpenHashMap<>(typeIdToClassMap.size());
+    for (Map.Entry<Integer, String> entry: typeIdToClassMap.int2ObjectEntrySet()) {
       int typeId = entry.getKey();
-
+      String className = entry.getValue();
       if (StringUtils.isBlank(className)) {
-        LOGGER.error(
-            "Class name for pubsub position type ID: {} is null. Type ID mapping: {} cannot be used.",
-            typeId,
-            typeIdToClassNameMap);
-        throw new IllegalArgumentException("Class name for type ID: " + typeId + " is null or empty.");
+        LOGGER.error("Blank class name for type ID: {}. Type ID mapping: {} cannot be used.", typeId, typeIdToClassMap);
+        throw new VeniceException("Blank class name for type ID: " + typeId);
       }
-
-      if (classNameToTypeIdMap.containsKey(className) && classNameToTypeIdMap.getInt(className) != typeId) {
+      if (classNameToTypeId.containsKey(className) && classNameToTypeId.getInt(className) != typeId) {
         LOGGER.error(
-            "Class name {} is already mapped to type ID {}. Type ID mapping: {} cannot be used.",
+            "Duplicate mapping for class name {}. Type ID: {} conflicts with existing mapping: {}.",
             className,
-            classNameToTypeIdMap.getInt(className),
-            typeIdToClassNameMap);
-        throw new IllegalArgumentException("Class name " + className + " is already mapped to a different type ID.");
+            typeId,
+            classNameToTypeId.getInt(className));
+        throw new VeniceException("Duplicate mapping for class " + className);
       }
+      classNameToTypeId.put(className, typeId);
+    }
+    return classNameToTypeId;
+  }
 
-      classNameToTypeIdMap.put(className, typeId);
-
+  private static Int2ObjectMap<PubSubPositionFactory> instantiateFactories(Int2ObjectMap<String> typeIdToClassMap) {
+    Int2ObjectMap<PubSubPositionFactory> factories = new Int2ObjectOpenHashMap<>(typeIdToClassMap.size());
+    for (Map.Entry<Integer, String> entry: typeIdToClassMap.int2ObjectEntrySet()) {
+      int typeId = entry.getKey();
+      String className = entry.getValue();
       try {
-        Class.forName(className);
-      } catch (ClassNotFoundException e) {
-        LOGGER.error("Class not found for FQCN: {} (type ID: {}). Mapping cannot be used.", className, typeId, e);
-        throw new IllegalArgumentException("Class not found for fully qualified name: " + className, e);
+        PubSubPositionFactory factory = ReflectUtils
+            .callConstructor(ReflectUtils.loadClass(className), new Class<?>[] { int.class }, new Object[] { typeId });
+        factories.put(typeId, factory);
+      } catch (Exception e) {
+        LOGGER.error(
+            "Failed to create factory for class name: {} (type ID: {}). Mapping: {} cannot be used.",
+            className,
+            typeId,
+            typeIdToClassMap,
+            e);
+        throw new VeniceException("Failed to create factory for " + className + " (ID " + typeId + ")", e);
       }
     }
-    return classNameToTypeIdMap;
+    return factories;
   }
 
   /**
-   * Returns the integer type ID for the given class name.
+   * Returns the integer type ID for the given pubsub position factory class name.
    *
-   * @param className the fully qualified class name of a {@code PubSubPosition} implementation
-   * @return the integer type ID, or -1 if the class name is not found
+   * @param factoryClassName the fully qualified class name of a {@link PubSubPositionFactory} implementation
+   * @return the integer type ID or throws an exception if the class name is not found
    */
-  public int getTypeId(String className) {
-    if (!classNameToTypeIdMap.containsKey(className)) {
+  public int getTypeIdForFactoryClass(String factoryClassName) {
+    if (!factoryClassNameToTypeIdMap.containsKey(factoryClassName)) {
       LOGGER.error(
-          "PubSub position class name not found: {}. Valid class names: {}",
-          className,
-          classNameToTypeIdMap.keySet());
-      throw new IllegalArgumentException("PubSub position class name not found: " + className);
+          "PubSub position factory class name not found: {}. Valid class names: {}",
+          factoryClassName,
+          factoryClassNameToTypeIdMap.keySet());
+      throw new VeniceException("PubSub position factory class name not found: " + factoryClassName);
     }
-    return classNameToTypeIdMap.getInt(className);
+    return factoryClassNameToTypeIdMap.getInt(factoryClassName);
   }
 
   /**
-   * Returns the integer type ID for the given {@code PubSubPosition} implementation.
+   * Returns the integer type ID for the given {@link PubSubPositionFactory} implementation.
    *
-   * @param pubSubPosition the {@code PubSubPosition} implementation
-   * @return the integer type ID, or -1 if the class name is not found
+   * @param pubSubPositionFactory the {@link PubSubPositionFactory} implementation
+   * @return the integer type ID, or throws an exception if the factory is null
    */
-  public int getTypeId(PubSubPosition pubSubPosition) {
-    if (pubSubPosition == null) {
-      LOGGER.error("PubSub position is null. Cannot get type ID.");
-      throw new IllegalArgumentException("PubSub position is null.");
+  public int getTypeIdForFactoryInstance(PubSubPositionFactory pubSubPositionFactory) {
+    if (pubSubPositionFactory == null) {
+      LOGGER.error("PubSub position factory is null. Cannot get type ID.");
+      throw new VeniceException("PubSub position factory is null.");
     }
-    return getTypeId(pubSubPosition.getClass().getName());
+    return getTypeIdForFactoryClass(pubSubPositionFactory.getClass().getName());
   }
 
   /**
-   * Checks if the given class name is present in the mapping.
+   * Checks if the given pubsub position factory class name is present in the registry.
    *
-   * @param className the fully qualified class name of a {@code PubSubPosition} implementation
+   * @param positionFactoryClassName the fully qualified class name of a {@link PubSubPositionFactory} implementation
    * @return true if the class name is present, false otherwise
    */
-  public boolean hasType(String className) {
-    return classNameToTypeIdMap.containsKey(className);
+  public boolean containsFactoryClass(String positionFactoryClassName) {
+    return factoryClassNameToTypeIdMap.containsKey(positionFactoryClassName);
   }
 
   /**
-   * Returns the fully qualified class name for the given integer type ID.
+   * Returns the fully qualified class name of the {@link PubSubPositionFactory} implementation
    *
    * @param typeId the integer type ID of a {@code PubSubPosition} implementation
-   * @return the fully qualified class name, or null if the type ID is not found
+   * @return the fully qualified class name, or throws an exception if the type ID is not found
    */
-  public String getClassName(int typeId) {
-    if (!typeIdToClassNameMap.containsKey(typeId)) {
-      LOGGER.error("PubSub position type ID not found: {}. Valid type IDs: {}", typeId, typeIdToClassNameMap.keySet());
-      throw new IllegalArgumentException("PubSub position type ID not found: " + typeId);
+  public PubSubPositionFactory getFactoryByTypeId(int typeId) {
+    if (!typeIdToFactoryClassNameMap.containsKey(typeId)) {
+      LOGGER.error(
+          "PubSub position type ID not found: {}. Valid type IDs: {}",
+          typeId,
+          typeIdToFactoryClassNameMap.keySet());
+      throw new VeniceException("PubSub position type ID not found: " + typeId);
     }
-    return typeIdToClassNameMap.get(typeId);
+    return typeIdToFactoryMap.get(typeId);
   }
 
   /**
-   * Returns the mapping of integer type IDs to fully qualified class names.
-   * @return a map from integer type IDs to the fully qualified class names of {@code PubSubPosition} implementations
+   * Returns the mapping of integer type IDs to fully qualified factory class names.
+   * @return a map from integer type IDs to the fully qualified class factory names of {@code PubSubPosition} implementations
    */
-  public Int2ObjectMap<String> getTypeIdToClassNameMap() {
-    return typeIdToClassNameMap;
+  @VisibleForTesting
+  Int2ObjectMap<String> getAllTypeIdToFactoryClassNameMappings() {
+    return typeIdToFactoryClassNameMap;
   }
 
   @Override
   public String toString() {
-    return "PositionTypeRegistry(" + classNameToTypeIdMap + ")";
+    return "PositionTypeRegistry(" + factoryClassNameToTypeIdMap + ")";
   }
 
   /**
@@ -271,9 +287,9 @@ public class PubSubPositionTypeRegistry {
    *
    * @param properties the {@link VeniceProperties} containing the configuration
    * @return a {@link PubSubPositionTypeRegistry} constructed from the provided configuration, or the default registry if not configured
-   * @throws IllegalArgumentException if the provided configuration attempts to override a reserved type with a different class
+   * @throws VeniceException if the provided configuration attempts to override a reserved type with a different class
    */
-  public static PubSubPositionTypeRegistry getRegistryFromPropertiesOrDefault(VeniceProperties properties) {
+  public static PubSubPositionTypeRegistry fromPropertiesOrDefault(VeniceProperties properties) {
     if (properties.containsKey(PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP)) {
       return new PubSubPositionTypeRegistry(properties.getIntKeyedMap(PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP));
     }

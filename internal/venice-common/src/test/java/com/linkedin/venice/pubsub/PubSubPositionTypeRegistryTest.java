@@ -8,10 +8,11 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPositionFactory;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
-import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
@@ -25,35 +26,39 @@ public class PubSubPositionTypeRegistryTest {
     PubSubPositionTypeRegistry registry = PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY;
 
     assertEquals(
-        registry.getClassName(EARLIEST_POSITION_RESERVED_TYPE_ID),
-        PubSubSymbolicPosition.EARLIEST.getClass().getName());
+        registry.getFactoryByTypeId(EARLIEST_POSITION_RESERVED_TYPE_ID).getClass(),
+        EarliestPositionFactory.class);
+    assertEquals(registry.getFactoryByTypeId(LATEST_POSITION_RESERVED_TYPE_ID).getClass(), LatestPositionFactory.class);
     assertEquals(
-        registry.getClassName(LATEST_POSITION_RESERVED_TYPE_ID),
-        PubSubSymbolicPosition.LATEST.getClass().getName());
-    assertEquals(
-        registry.getClassName(APACHE_KAFKA_OFFSET_POSITION_TYPE_ID),
-        ApacheKafkaOffsetPosition.class.getName());
+        registry.getFactoryByTypeId(APACHE_KAFKA_OFFSET_POSITION_TYPE_ID).getClass(),
+        ApacheKafkaOffsetPositionFactory.class);
 
-    assertEquals(registry.getTypeId(PubSubSymbolicPosition.EARLIEST), EARLIEST_POSITION_RESERVED_TYPE_ID);
-    assertEquals(registry.getTypeId(PubSubSymbolicPosition.LATEST), LATEST_POSITION_RESERVED_TYPE_ID);
-    assertTrue(registry.hasType(ApacheKafkaOffsetPosition.class.getName()));
-    PubSubPosition kafkaOffsetPosition = new ApacheKafkaOffsetPosition(0);
-    assertEquals(registry.getTypeId(kafkaOffsetPosition), APACHE_KAFKA_OFFSET_POSITION_TYPE_ID);
+    assertEquals(
+        registry.getTypeIdForFactoryClass(EarliestPositionFactory.class.getName()),
+        EARLIEST_POSITION_RESERVED_TYPE_ID);
+    assertEquals(
+        registry.getTypeIdForFactoryClass(LatestPositionFactory.class.getName()),
+        LATEST_POSITION_RESERVED_TYPE_ID);
+    assertTrue(registry.containsFactoryClass(ApacheKafkaOffsetPositionFactory.class.getName()));
+    assertEquals(
+        registry
+            .getTypeIdForFactoryInstance(new ApacheKafkaOffsetPositionFactory(APACHE_KAFKA_OFFSET_POSITION_TYPE_ID)),
+        APACHE_KAFKA_OFFSET_POSITION_TYPE_ID);
   }
 
   @Test
   public void testRegistryMergesUserTypesWithReservedTypes() {
     Int2ObjectMap<String> userMap = new Int2ObjectOpenHashMap<>();
-    userMap.put(99, DummyPubSubPosition.class.getName());
+    userMap.put(99, DummyPubSubPositionFactory.class.getName());
 
     PubSubPositionTypeRegistry registry = new PubSubPositionTypeRegistry(userMap);
 
-    assertEquals(registry.getClassName(99), DummyPubSubPosition.class.getName());
-    assertEquals(registry.getTypeId(DummyPubSubPosition.class.getName()), 99);
+    assertEquals(registry.getFactoryByTypeId(99).getClass(), DummyPubSubPositionFactory.class);
+    assertEquals(registry.getTypeIdForFactoryClass(DummyPubSubPositionFactory.class.getName()), 99);
 
     // check each entry in reserved map is in the merged map
-    Int2ObjectMap<String> typeIdToClassNameMap = registry.getTypeIdToClassNameMap();
-    PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY.getTypeIdToClassNameMap()
+    Int2ObjectMap<String> typeIdToClassNameMap = registry.getAllTypeIdToFactoryClassNameMappings();
+    PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY.getAllTypeIdToFactoryClassNameMappings()
         .forEach((typeId, className) -> {
           if (typeId != 99) {
             assertEquals(
@@ -67,19 +72,21 @@ public class PubSubPositionTypeRegistryTest {
   @Test
   public void testRegistryRejectsConflictingReservedOverride() {
     Int2ObjectMap<String> userMap = new Int2ObjectOpenHashMap<>();
-    userMap.put(EARLIEST_POSITION_RESERVED_TYPE_ID, DummyPubSubPosition.class.getName());
+    userMap.put(EARLIEST_POSITION_RESERVED_TYPE_ID, DummyPubSubPositionFactory.class.getName());
 
-    Exception exception = expectThrows(IllegalArgumentException.class, () -> new PubSubPositionTypeRegistry(userMap));
-    assertTrue(exception.getMessage().contains("Conflicting entry for reserved position type ID"));
+    Exception exception = expectThrows(VeniceException.class, () -> new PubSubPositionTypeRegistry(userMap));
+    assertTrue(
+        exception.getMessage().contains("Conflicting entry for reserved position type ID"),
+        "Got: " + exception.getMessage());
   }
 
   @Test
   public void testRegistryRejectsUnknownClassName() {
     Int2ObjectMap<String> userMap = new Int2ObjectOpenHashMap<>();
     userMap.put(99, "com.example.NonExistentPositionClass");
-
-    Exception exception = expectThrows(IllegalArgumentException.class, () -> new PubSubPositionTypeRegistry(userMap));
-    assertTrue(exception.getMessage().contains("Class not found for fully qualified name"));
+    Exception exception = expectThrows(VeniceException.class, () -> new PubSubPositionTypeRegistry(userMap));
+    assertTrue(exception.getMessage().contains("Failed to create factory for"), "Got: " + exception.getMessage());
+    assertTrue(ExceptionUtils.recursiveClassEquals(exception.getCause(), ClassNotFoundException.class));
   }
 
   @Test
@@ -87,52 +94,43 @@ public class PubSubPositionTypeRegistryTest {
     Int2ObjectMap<String> userMap = new Int2ObjectOpenHashMap<>();
     userMap.put(100, null);
 
-    Exception exception = expectThrows(IllegalArgumentException.class, () -> new PubSubPositionTypeRegistry(userMap));
-    assertTrue(exception.getMessage().contains("null or empty"));
+    Exception exception = expectThrows(VeniceException.class, () -> new PubSubPositionTypeRegistry(userMap));
+    assertTrue(exception.getMessage().contains("Blank class name for type ID"), "Got: " + exception.getMessage());
   }
 
   @Test
   public void testGetRegistryFromProperties() {
     Properties props = new Properties();
-    props.put(ConfigKeys.PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP, "101:" + DummyPubSubPosition.class.getName());
+    props
+        .put(ConfigKeys.PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP, "101:" + DummyPubSubPositionFactory.class.getName());
     VeniceProperties properties = new VeniceProperties(props);
 
-    PubSubPositionTypeRegistry registry = PubSubPositionTypeRegistry.getRegistryFromPropertiesOrDefault(properties);
+    PubSubPositionTypeRegistry registry = PubSubPositionTypeRegistry.fromPropertiesOrDefault(properties);
 
-    assertEquals(registry.getClassName(101), DummyPubSubPosition.class.getName());
-    assertEquals(registry.getTypeId(DummyPubSubPosition.class.getName()), 101);
+    // Compare factory class, not instance
+    assertEquals(registry.getFactoryByTypeId(101).getClass(), DummyPubSubPositionFactory.class);
+    assertEquals(registry.getTypeIdForFactoryClass(DummyPubSubPositionFactory.class.getName()), 101);
 
     // Case: No user-defined types
     assertEquals(
-        PubSubPositionTypeRegistry.getRegistryFromPropertiesOrDefault(new VeniceProperties(new Properties())),
+        PubSubPositionTypeRegistry.fromPropertiesOrDefault(new VeniceProperties(new Properties())),
         PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY);
   }
 
   // Dummy implementation for test use only
-  public static class DummyPubSubPosition implements PubSubPosition {
-    @Override
-    public int getHeapSize() {
-      return 0;
+  public static class DummyPubSubPositionFactory extends PubSubPositionFactory {
+    public DummyPubSubPositionFactory(int positionTypeId) {
+      super(positionTypeId);
     }
 
     @Override
-    public int comparePosition(PubSubPosition other) {
-      return 0;
-    }
-
-    @Override
-    public long diff(PubSubPosition other) {
-      return 0;
-    }
-
-    @Override
-    public PubSubPositionWireFormat getPositionWireFormat() {
+    public PubSubPosition fromWireFormat(PubSubPositionWireFormat positionWireFormat) {
       return null;
     }
 
     @Override
-    public long getNumericOffset() {
-      return 0;
+    public String getPubSubPositionClassName() {
+      return "";
     }
   }
 
@@ -140,37 +138,36 @@ public class PubSubPositionTypeRegistryTest {
   @Test
   public void testRegistryRejectsDuplicateUserTypes() {
     Int2ObjectMap<String> userMap = new Int2ObjectOpenHashMap<>();
-    userMap.put(99, DummyPubSubPosition.class.getName());
-    userMap.put(100, DummyPubSubPosition.class.getName());
+    userMap.put(99, DummyPubSubPositionFactory.class.getName());
+    userMap.put(100, DummyPubSubPositionFactory.class.getName());
 
-    Exception exception = expectThrows(IllegalArgumentException.class, () -> new PubSubPositionTypeRegistry(userMap));
-    assertTrue(
-        exception.getMessage().contains(" is already mapped to a different type ID."),
-        "Got: " + exception.getMessage());
+    Exception exception = expectThrows(VeniceException.class, () -> new PubSubPositionTypeRegistry(userMap));
+    assertTrue(exception.getMessage().contains("Duplicate mapping for class"), "Got: " + exception.getMessage());
   }
 
   @Test
-  public void testGetTypeIdFailsForUnknownClass() {
+  public void testGetTypeIdForFactoryClassFailsForUnknownInstance() {
     PubSubPositionTypeRegistry registry = PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY;
 
     Exception exception =
-        expectThrows(IllegalArgumentException.class, () -> registry.getTypeId("com.unknown.ClassName"));
-    assertTrue(exception.getMessage().contains("class name not found"));
+        expectThrows(VeniceException.class, () -> registry.getTypeIdForFactoryClass("com.unknown.ClassName"));
+    assertTrue(exception.getMessage().contains("class name not found"), "Got: " + exception.getMessage());
   }
 
   @Test
-  public void testGetTypeIdFailsForNullPosition() {
+  public void testGetTypeIdForFactoryClassFailsForNullPosition() {
     PubSubPositionTypeRegistry registry = PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY;
 
-    Exception exception = expectThrows(IllegalArgumentException.class, () -> registry.getTypeId((PubSubPosition) null));
-    assertTrue(exception.getMessage().contains("position is null"));
+    Exception exception =
+        expectThrows(VeniceException.class, () -> registry.getTypeIdForFactoryInstance((PubSubPositionFactory) null));
+    assertTrue(exception.getMessage().contains("position factory is null"), "Got: " + exception.getMessage());
   }
 
   @Test
-  public void testGetClassNameFailsForInvalidTypeId() {
+  public void testGetFactoryByTypeIdFailsForInvalidTypeId() {
     PubSubPositionTypeRegistry registry = PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY;
 
-    Exception exception = expectThrows(IllegalArgumentException.class, () -> registry.getClassName(12345));
-    assertTrue(exception.getMessage().contains("type ID not found"));
+    Exception exception = expectThrows(VeniceException.class, () -> registry.getFactoryByTypeId(12345));
+    assertTrue(exception.getMessage().contains("type ID not found"), "Got: " + exception.getMessage());
   }
 }

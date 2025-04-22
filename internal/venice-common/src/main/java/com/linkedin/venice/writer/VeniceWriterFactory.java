@@ -68,7 +68,7 @@ public class VeniceWriterFactory {
     this.pubSubPositionTypeRegistry = Objects.requireNonNull(
         pubSubPositionTypeRegistry != null
             ? pubSubPositionTypeRegistry
-            : PubSubPositionTypeRegistry.getRegistryFromPropertiesOrDefault(veniceProperties),
+            : PubSubPositionTypeRegistry.fromPropertiesOrDefault(veniceProperties),
         "PubSubPositionTypeRegistry cannot be null when creating VeniceWriterFactory");
     LOGGER.info(
         "### MARKER ### Creating VeniceWriterFactory with properties: {} defaultBrokerAddress: {} pubSubPositionTypeRegistry: {} pubSubProducerAdapterFactory: {}",
